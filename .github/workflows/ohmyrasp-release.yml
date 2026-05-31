@@ -1,0 +1,161 @@
+name: ohmyrasp-release
+
+on:
+  push:
+    tags:
+      - "v*.*.*"
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Release version without the leading v, for example 0.1.0.
+        required: true
+        type: string
+
+permissions:
+  id-token: write
+  contents: read
+  packages: write
+  attestations: write
+  artifact-metadata: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    env:
+      REGISTRY: ghcr.io
+    steps:
+      - uses: actions/checkout@1af3b93b6815bc44a9784bd300feb67ff0d1eeb3 # v6.0.0
+
+      - name: Resolve release metadata
+        id: release
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+            version="${{ inputs.version }}"
+          else
+            version="${GITHUB_REF_NAME#v}"
+          fi
+
+          if [[ ! "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z][0-9A-Za-z.-]*)?$ ]]; then
+            echo "Release version must be a Docker-tag-safe semantic version without build metadata." >&2
+            exit 1
+          fi
+
+          namespace="$(echo "${GITHUB_REPOSITORY_OWNER}" | tr '[:upper:]' '[:lower:]')"
+          short_sha="${GITHUB_SHA::12}"
+
+          echo "version=${version}" >> "$GITHUB_OUTPUT"
+          echo "namespace=${namespace}" >> "$GITHUB_OUTPUT"
+          echo "short_sha=${short_sha}" >> "$GITHUB_OUTPUT"
+
+      - name: Stamp chart and default image tags
+        run: deploy/scripts/set-release-version.sh "${{ steps.release.outputs.version }}" "${{ steps.release.outputs.namespace }}" "$REGISTRY"
+
+      - name: Log in to GHCR
+        shell: bash
+        run: echo "${{ secrets.GITHUB_TOKEN }}" | docker login "$REGISTRY" -u "${{ github.actor }}" --password-stdin
+
+      - name: Configure Docker Buildx
+        shell: bash
+        run: |
+          set -euo pipefail
+          docker buildx create --name ohmyrasp-release-builder --use || docker buildx use ohmyrasp-release-builder
+          docker buildx inspect --bootstrap
+
+      - name: Build and push API image
+        id: build_api
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p dist
+          image="${REGISTRY}/${{ steps.release.outputs.namespace }}/control-api"
+          metadata_file="dist/control-api-build-metadata.json"
+          docker buildx build \
+            --platform linux/amd64 \
+            --attest type=sbom \
+            --attest type=provenance,mode=max \
+            --build-arg VERSION="${{ steps.release.outputs.version }}" \
+            --build-arg REVISION="${GITHUB_SHA}" \
+            --build-arg SOURCE="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}" \
+            --tag "${image}:${{ steps.release.outputs.version }}" \
+            --tag "${image}:sha-${{ steps.release.outputs.short_sha }}" \
+            --metadata-file "$metadata_file" \
+            --push \
+            api
+          digest="$(python3 -c 'import json, sys; print(json.load(open(sys.argv[1], encoding="utf-8"))["containerimage.digest"])' "$metadata_file")"
+          echo "digest=${digest}" >> "$GITHUB_OUTPUT"
+
+      - name: Attest API image provenance
+        uses: actions/attest@59d89421af93a897026c735860bf21b6eb4f7b26 # v4.1.0
+        with:
+          subject-name: ${{ env.REGISTRY }}/${{ steps.release.outputs.namespace }}/control-api
+          subject-digest: ${{ steps.build_api.outputs.digest }}
+          push-to-registry: true
+
+      - name: Build and push web image
+        id: build_web
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p dist
+          image="${REGISTRY}/${{ steps.release.outputs.namespace }}/control-web"
+          metadata_file="dist/control-web-build-metadata.json"
+          docker buildx build \
+            --platform linux/amd64 \
+            --attest type=sbom \
+            --attest type=provenance,mode=max \
+            --build-arg VERSION="${{ steps.release.outputs.version }}" \
+            --build-arg REVISION="${GITHUB_SHA}" \
+            --build-arg SOURCE="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}" \
+            --tag "${image}:${{ steps.release.outputs.version }}" \
+            --tag "${image}:sha-${{ steps.release.outputs.short_sha }}" \
+            --metadata-file "$metadata_file" \
+            --push \
+            web
+          digest="$(python3 -c 'import json, sys; print(json.load(open(sys.argv[1], encoding="utf-8"))["containerimage.digest"])' "$metadata_file")"
+          echo "digest=${digest}" >> "$GITHUB_OUTPUT"
+
+      - name: Attest web image provenance
+        uses: actions/attest@59d89421af93a897026c735860bf21b6eb4f7b26 # v4.1.0
+        with:
+          subject-name: ${{ env.REGISTRY }}/${{ steps.release.outputs.namespace }}/control-web
+          subject-digest: ${{ steps.build_web.outputs.digest }}
+          push-to-registry: true
+
+      - name: Scan release images for high and critical CVEs
+        run: |
+          deploy/scripts/scan-release-images.sh \
+            "${REGISTRY}/${{ steps.release.outputs.namespace }}/control-api:${{ steps.release.outputs.version }}" \
+            "${REGISTRY}/${{ steps.release.outputs.namespace }}/control-web:${{ steps.release.outputs.version }}"
+
+      - name: Package and push Helm chart
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          VERSION: ${{ steps.release.outputs.version }}
+          IMAGE_NAMESPACE: ${{ steps.release.outputs.namespace }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p dist
+          docker run --rm --entrypoint sh \
+            -e GITHUB_TOKEN \
+            -e GITHUB_ACTOR \
+            -e VERSION \
+            -e IMAGE_NAMESPACE \
+            -v "$PWD":/work \
+            -w /work \
+            alpine/helm:3.14.4 -c '
+              set -eu
+              echo "$GITHUB_TOKEN" | helm registry login ghcr.io -u "$GITHUB_ACTOR" --password-stdin
+              helm lint deploy/helm/ohmyrasp-control
+              helm package deploy/helm/ohmyrasp-control --destination dist
+              sha256sum "dist/ohmyrasp-control-${VERSION}.tgz" > "dist/ohmyrasp-control-${VERSION}.tgz.sha256"
+              helm push "dist/ohmyrasp-control-${VERSION}.tgz" "oci://ghcr.io/${IMAGE_NAMESPACE}/charts"
+            '
+
+      - name: Attest Helm chart package provenance
+        uses: actions/attest@59d89421af93a897026c735860bf21b6eb4f7b26 # v4.1.0
+        with:
+          subject-path: dist/ohmyrasp-control-${{ steps.release.outputs.version }}.tgz
