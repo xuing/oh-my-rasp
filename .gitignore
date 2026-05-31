@@ -1,4 +1,5 @@
-archive/
+.archive/
+.env
 
 # JavaScript
 node_modules/

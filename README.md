@@ -5,7 +5,7 @@ PostgreSQL control store, ClickHouse analytics store, Valkey cache, Prometheus,
 Alertmanager, Grafana, and a Java agent proof of concept.
 
 The repository is organized so the active OhMyRASP project lives at the root.
-Reference source drops and unrelated material are kept in `archive/`, which is
+Reference source drops and unrelated material are kept in `.archive/`, which is
 ignored by Git.
 
 ## Layout
@@ -17,17 +17,19 @@ java-agent/   Java agent and comparative Tomcat playground
 deploy/       Helm chart, Prometheus/Grafana assets, smoke and validation scripts
 docs/         Project docs and runbooks
 .github/      CI and release workflows
-archive/      Ignored reference material and unrelated source drops
+.archive/     Ignored reference material and unrelated source drops
 ```
 
 ## Configuration
 
-The committed `.env` contains generated acceptance-environment defaults. All
-published service ports bind to `0.0.0.0` so they can be reached remotely at
-`http://<host>:<port>`.
+The committed `.env.example` contains the acceptance-environment defaults
+without passwords. Copy it to `.env` and fill the empty password values before
+starting the stack. All published service ports bind to `0.0.0.0` so they can
+be reached remotely at `http://<host>:<port>`.
 
-Rotate every password in `.env` before using this stack for production or any
-shared environment beyond acceptance testing.
+The local `.env` file is ignored by Git. Generate strong values for
+`POSTGRES_PASSWORD`, `CLICKHOUSE_PASSWORD`, `VALKEY_PASSWORD`,
+`GRAFANA_ADMIN_PASSWORD`, and `OHMYRASP_BOOTSTRAP_ADMIN_PASSWORD`.
 
 | Service | Remote URL |
 | --- | --- |
@@ -126,5 +128,5 @@ Primary docs live under `docs/`:
 - `docs/capability-audit.md`
 - `docs/runbooks/`
 
-Historical upstream/reference code is retained locally under `archive/` for
+Historical upstream/reference code is retained locally under `.archive/` for
 traceability, but it is not part of the root Git repository.
