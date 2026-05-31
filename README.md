@@ -1,47 +1,107 @@
 # OhMyRASP
 
-OhMyRASP is a self-hosted RASP control plane with a Go API, React web console,
-PostgreSQL control store, ClickHouse analytics store, Valkey cache, Prometheus,
-Alertmanager, Grafana, and a Java agent proof of concept.
+Self-hosted runtime application self-protection for Java services, with a
+control plane, observability stack, daemon-compatible APIs, and a Java agent
+proof of concept.
 
-The repository is organized so the active OhMyRASP project lives at the root.
-Reference source drops and unrelated material are kept in `.archive/`, which is
-ignored by Git.
+[![License](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
+[![Go](https://img.shields.io/badge/Go-1.26-00ADD8.svg)](https://go.dev/)
+[![React](https://img.shields.io/badge/React-19-61DAFB.svg)](https://react.dev/)
+[![Docker](https://img.shields.io/badge/Docker-Compose-2496ED.svg)](https://docs.docker.com/compose/)
 
-## Layout
+OhMyRASP is built for teams that want an inspectable, self-hosted RASP control
+plane instead of a black-box security appliance. It combines application and
+agent inventory, policy lifecycle management, runtime telemetry, daemon
+workload reporting, auditability, and an OSS Java agent testbed in one
+repository.
+
+## Highlights
+
+- **Self-hosted control plane**: Go API, React console, PostgreSQL, ClickHouse,
+  Valkey, Prometheus, Alertmanager, and Grafana.
+- **Agent lifecycle APIs**: application secrets, agent registration,
+  heartbeat, policy pull, artifact catalog, and artifact upload/download.
+- **Daemon compatibility**: workload inventory reporting, bind/unbind
+  workflows, injection reports, and legacy command websocket support.
+- **Policy operations**: draft editing, validation, versioning, canary rollout,
+  rollback, and rule testing.
+- **Runtime telemetry**: attack, hook, performance, crash, dependency, and
+  baseline posture ingestion with filtered reads and analytics.
+- **Operations ready**: Helm chart, smoke tests, release workflow, runbooks,
+  Prometheus rules, Alertmanager config, and Grafana dashboards.
+- **Java agent PoC**: ASM-based Java agent and comparative Tomcat playground
+  for validating detector behavior.
+
+## Architecture
+
+```text
+                 +-------------------+
+                 |   Web Console     |
+                 |  React + Vite     |
+                 +---------+---------+
+                           |
+                           v
++-------------------+  +---+----------------+  +--------------------+
+| Java Agents       |  | Control API        |  | Daemon / Helper    |
+| heartbeat/policy  +->+ Go + OpenAPI       +<-+ workload commands  |
++-------------------+  +---+---+---+---+----+  +--------------------+
+                           |   |   |
+                +----------+   |   +----------------+
+                v              v                    v
+          PostgreSQL       ClickHouse             Valkey
+        control state      telemetry              cache
+                |
+                v
+   Prometheus + Alertmanager + Grafana
+```
+
+## Repository Layout
 
 ```text
 api/          Go control-plane API, migrations, OpenAPI contract, generated bindings
 web/          React 19 + Vite control-plane console
 java-agent/   Java agent and comparative Tomcat playground
-deploy/       Helm chart, Prometheus/Grafana assets, smoke and validation scripts
-docs/         Project docs and runbooks
+deploy/       Helm chart, observability assets, smoke and validation scripts
+docs/         Architecture notes, audits, and operational runbooks
 .github/      CI and release workflows
-.archive/     Ignored reference material and unrelated source drops
+.archive/     Ignored reference material and upstream source drops
 ```
 
-## Configuration
+## Quick Start
 
-The committed `.env.example` contains the acceptance-environment defaults
-without passwords. Copy it to `.env` and fill the empty password values before
-starting the stack. All published service ports bind to `0.0.0.0` so they can
-be reached remotely at `http://<host>:<port>`.
+Create a local environment file:
 
-The local `.env` file is ignored by Git. Generate strong values for
-`POSTGRES_PASSWORD`, `CLICKHOUSE_PASSWORD`, `VALKEY_PASSWORD`,
-`GRAFANA_ADMIN_PASSWORD`, and `OHMYRASP_BOOTSTRAP_ADMIN_PASSWORD`.
+```bash
+cp .env.example .env
+```
 
-| Service | Remote URL |
+Fill every empty password value in `.env` before starting the stack:
+
+```bash
+POSTGRES_PASSWORD=
+CLICKHOUSE_PASSWORD=
+VALKEY_PASSWORD=
+GRAFANA_ADMIN_PASSWORD=
+OHMYRASP_BOOTSTRAP_ADMIN_PASSWORD=
+```
+
+Start the full self-hosted stack:
+
+```bash
+docker compose --env-file .env -f docker-compose.yml up -d --build
+docker compose --env-file .env -f docker-compose.yml ps
+```
+
+Open the services from the host running Docker:
+
+| Service | URL |
 | --- | --- |
 | Web console | `http://<host>:18091` |
 | API | `http://<host>:18090` |
-| PostgreSQL | `<host>:15432` |
-| ClickHouse HTTP | `http://<host>:18123` |
-| ClickHouse native | `<host>:19000` |
-| Valkey | `<host>:16379` |
+| Grafana | `http://<host>:13000` |
 | Prometheus | `http://<host>:19090` |
 | Alertmanager | `http://<host>:19093` |
-| Grafana | `http://<host>:13000` |
+| ClickHouse HTTP | `http://<host>:18123` |
 
 Default control-plane login:
 
@@ -57,22 +117,13 @@ User: admin
 Password: value of GRAFANA_ADMIN_PASSWORD in .env
 ```
 
-## Run The Stack
-
-Start all services from the repository root:
-
-```bash
-docker compose --env-file .env -f docker-compose.yml up -d --build
-docker compose --env-file .env -f docker-compose.yml ps
-```
-
 Stop the stack:
 
 ```bash
 docker compose --env-file .env -f docker-compose.yml down
 ```
 
-Remove data volumes for a clean acceptance rerun:
+Remove data volumes for a clean local run:
 
 ```bash
 docker compose --env-file .env -f docker-compose.yml down -v
@@ -114,19 +165,30 @@ bash scripts/acceptance.sh
 ```
 
 The Java agent acceptance script starts a baseline Tomcat instance on `18080`
-and a protected Tomcat instance on `18081`. Those ports are separate from the
-control-plane stack.
+and a protected Tomcat instance on `18081`. Those ports are intentionally
+separate from the control-plane stack.
 
 ## Documentation
 
-Primary docs live under `docs/`:
+- [Control platform overview](docs/control-platform.md)
+- [Capability audit](docs/capability-audit.md)
+- [API notes](docs/api.md)
+- [Web console notes](docs/web.md)
+- [Java agent notes](docs/java-agent.md)
+- [Runbooks](docs/runbooks/)
 
-- `docs/api.md`
-- `docs/web.md`
-- `docs/java-agent.md`
-- `docs/control-platform.md`
-- `docs/capability-audit.md`
-- `docs/runbooks/`
+Historical upstream and reference material is retained locally under
+`.archive/` for traceability, but it is ignored by Git and is not part of the
+published repository.
 
-Historical upstream/reference code is retained locally under `.archive/` for
-traceability, but it is not part of the root Git repository.
+## Security
+
+`.env` is intentionally ignored. Do not commit real service credentials,
+private hostnames, private IP addresses, or production agent artifacts.
+
+For security issues, open a private advisory or contact the maintainers before
+publishing details.
+
+## License
+
+Apache License 2.0. See [LICENSE](LICENSE).
