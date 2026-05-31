@@ -1,0 +1,38 @@
+{
+  "name": "@ohmyrasp/web",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc --noEmit && vite build",
+    "test": "vitest run",
+    "test:ui": "vitest",
+    "e2e": "playwright test",
+    "e2e:live": "playwright test -c playwright.live.config.ts"
+  },
+  "dependencies": {
+    "@tanstack/react-query": "5.100.14",
+    "@tanstack/react-router": "1.170.10",
+    "@tailwindcss/vite": "4.3.0",
+    "class-variance-authority": "0.7.1",
+    "clsx": "2.1.1",
+    "lucide-react": "1.17.0",
+    "react": "19.2.6",
+    "react-dom": "19.2.6",
+    "tailwind-merge": "3.6.0",
+    "tailwindcss": "4.3.0"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.60.0",
+    "@testing-library/react": "16.3.2",
+    "@types/node": "latest",
+    "@types/react": "latest",
+    "@types/react-dom": "latest",
+    "@vitejs/plugin-react": "6.0.2",
+    "jsdom": "29.1.1",
+    "typescript": "6.0.3",
+    "vite": "8.0.14",
+    "vitest": "4.1.7"
+  }
+}

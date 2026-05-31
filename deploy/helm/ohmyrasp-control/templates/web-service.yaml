@@ -1,0 +1,12 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: ohmyrasp-web
+spec:
+  type: {{ .Values.service.type }}
+  selector:
+    app.kubernetes.io/name: ohmyrasp-web
+  ports:
+    - name: http
+      port: {{ .Values.service.webPort }}
+      targetPort: {{ .Values.service.webTargetPort }}

@@ -1,0 +1,16 @@
+global:
+  scrape_interval: 15s
+
+alerting:
+  alertmanagers:
+    - static_configs:
+        - targets: ["alertmanager:9093"]
+
+rule_files:
+  - /etc/prometheus/rules/*.yml
+
+scrape_configs:
+  - job_name: ohmyrasp-api
+    metrics_path: /metrics
+    static_configs:
+      - targets: ["api:8080"]

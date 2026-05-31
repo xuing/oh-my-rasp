@@ -1,0 +1,243 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>OhMyRasp</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --ink: #182033;
+      --muted: #5d667a;
+      --line: #d6dce7;
+      --bg: #f5f7fb;
+      --panel: #ffffff;
+      --nav: #0f172a;
+      --accent: #0f766e;
+      --baseline: #2563eb;
+      --protected: #b42318;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--ink);
+      font-family: Arial, Helvetica, sans-serif;
+    }
+
+    header {
+      background: var(--nav);
+      border-bottom: 4px solid #2dd4bf;
+      color: #ffffff;
+      padding: 18px 24px;
+    }
+
+    header h1 {
+      font-size: 24px;
+      letter-spacing: 0;
+      line-height: 1.2;
+      margin: 0;
+    }
+
+    header p {
+      color: #cbd5e1;
+      margin: 6px 0 0;
+    }
+
+    main {
+      margin: 0 auto;
+      max-width: 1180px;
+      padding: 20px 24px 32px;
+    }
+
+    .actions {
+      align-items: center;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      margin-bottom: 18px;
+    }
+
+    a.button {
+      background: var(--accent);
+      border: 1px solid transparent;
+      border-radius: 6px;
+      color: #ffffff;
+      display: inline-flex;
+      font-weight: 700;
+      justify-content: center;
+      min-width: 132px;
+      padding: 10px 12px;
+      text-decoration: none;
+    }
+
+    a.button.baseline {
+      background: var(--baseline);
+    }
+
+    a.button.protected {
+      background: var(--protected);
+    }
+
+    .overview {
+      display: grid;
+      gap: 14px;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      margin-bottom: 18px;
+    }
+
+    .env {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 14px;
+    }
+
+    .env h2 {
+      font-size: 16px;
+      letter-spacing: 0;
+      margin: 0 0 8px;
+    }
+
+    .env code {
+      background: #eef2f8;
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      display: block;
+      margin: 10px 0;
+      overflow-wrap: anywhere;
+      padding: 8px;
+    }
+
+    .status {
+      color: var(--muted);
+      font-size: 13px;
+      min-height: 18px;
+    }
+
+    table {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-collapse: collapse;
+      border-radius: 8px;
+      overflow: hidden;
+      width: 100%;
+    }
+
+    th,
+    td {
+      border-bottom: 1px solid var(--line);
+      font-size: 14px;
+      padding: 11px;
+      text-align: left;
+      vertical-align: middle;
+    }
+
+    th {
+      background: #eef2f8;
+      color: #334155;
+      font-size: 12px;
+      letter-spacing: .04em;
+      text-transform: uppercase;
+    }
+
+    tr:last-child td {
+      border-bottom: 0;
+    }
+
+    @media (max-width: 860px) {
+      main {
+        padding: 14px;
+      }
+
+      .overview {
+        grid-template-columns: 1fr;
+      }
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>OhMyRasp</h1>
+    <p>Comparative RASP testbed with separate baseline and protected ports</p>
+  </header>
+
+  <main>
+    <nav class="actions" aria-label="Primary">
+      <a class="button" href="/rasp/ui">Open Current</a>
+      <a class="button baseline" id="baselineUi" href="http://localhost:18080/rasp/ui">Baseline UI</a>
+      <a class="button protected" id="protectedUi" href="http://localhost:18081/rasp/ui">Protected UI</a>
+      <a class="button" href="/rasp/cases">API Cases</a>
+    </nav>
+
+    <section class="overview" aria-label="Environment URLs">
+      <article class="env">
+        <h2>Current Service</h2>
+        <code id="currentUrl">/rasp/ui</code>
+        <div class="status" id="currentStatus">checking health</div>
+      </article>
+      <article class="env">
+        <h2>Baseline</h2>
+        <code id="baselineUrl">http://localhost:18080/rasp/ui</code>
+        <div class="status">no Java agent</div>
+      </article>
+      <article class="env">
+        <h2>Protected</h2>
+        <code id="protectedUrl">http://localhost:18081/rasp/ui</code>
+        <div class="status">blocking mode on port 18081</div>
+      </article>
+    </section>
+
+    <table>
+      <thead>
+        <tr>
+          <th>Route</th>
+          <th>Purpose</th>
+          <th>Open</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><code>/rasp/ui</code></td>
+          <td>Clickable test runner; baseline controls call :18080 and protected controls call :18081</td>
+          <td><a href="/rasp/ui">Open</a></td>
+        </tr>
+        <tr>
+          <td><code>/rasp/cases</code></td>
+          <td>JSON catalog for clickable API cases</td>
+          <td><a href="/rasp/cases">Open</a></td>
+        </tr>
+        <tr>
+          <td><code>/rasp/blocked</code></td>
+          <td>Protected interception destination</td>
+          <td><a href="/rasp/blocked?hook=demo&amp;algorithm=demo&amp;message=demo">Open</a></td>
+        </tr>
+      </tbody>
+    </table>
+  </main>
+
+  <script>
+    const host = location.hostname || 'localhost';
+    const baselineBase = `${location.protocol}//${host}:18080`;
+    const protectedBase = `${location.protocol}//${host}:18081`;
+
+    currentUrl.textContent = `${location.origin}/rasp/ui`;
+    baselineUrl.textContent = `${baselineBase}/rasp/ui`;
+    protectedUrl.textContent = `${protectedBase}/rasp/ui`;
+    baselineUi.href = `${baselineBase}/rasp/ui`;
+    protectedUi.href = `${protectedBase}/rasp/ui`;
+
+    fetch('/rasp/health')
+      .then(response => {
+        currentStatus.textContent = response.ok ? 'healthy' : `status ${response.status}`;
+      })
+      .catch(error => {
+        currentStatus.textContent = String(error);
+      });
+  </script>
+</body>
+</html>

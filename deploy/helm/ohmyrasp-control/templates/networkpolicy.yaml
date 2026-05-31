@@ -1,0 +1,70 @@
+{{- if .Values.networkPolicy.enabled }}
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: ohmyrasp-api
+  labels:
+    app.kubernetes.io/name: ohmyrasp-api
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: ohmyrasp-api
+  policyTypes:
+    - Ingress
+    {{- if .Values.networkPolicy.egress.enabled }}
+    - Egress
+    {{- end }}
+  ingress:
+    - from:
+        {{- toYaml .Values.networkPolicy.ingress.api.from | nindent 8 }}
+      ports:
+        - protocol: TCP
+          port: 8080
+  {{- if .Values.networkPolicy.egress.enabled }}
+  egress:
+    {{- if .Values.networkPolicy.egress.api.to }}
+    - to:
+        {{- toYaml .Values.networkPolicy.egress.api.to | nindent 8 }}
+    {{- else }}
+    []
+    {{- end }}
+  {{- end }}
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: ohmyrasp-web
+  labels:
+    app.kubernetes.io/name: ohmyrasp-web
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: ohmyrasp-web
+  policyTypes:
+    - Ingress
+    {{- if .Values.networkPolicy.egress.enabled }}
+    - Egress
+    {{- end }}
+  ingress:
+    - {{- if .Values.networkPolicy.ingress.web.from }}
+      from:
+        {{- toYaml .Values.networkPolicy.ingress.web.from | nindent 8 }}
+      {{- end }}
+      ports:
+        - protocol: TCP
+          port: {{ .Values.service.webTargetPort }}
+  {{- if .Values.networkPolicy.egress.enabled }}
+  egress:
+    - to:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: ohmyrasp-api
+      ports:
+        - protocol: TCP
+          port: 8080
+    {{- if .Values.networkPolicy.egress.web.to }}
+    - to:
+        {{- toYaml .Values.networkPolicy.egress.web.to | nindent 8 }}
+    {{- end }}
+  {{- end }}
+{{- end }}

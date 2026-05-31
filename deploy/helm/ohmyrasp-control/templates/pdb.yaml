@@ -1,0 +1,35 @@
+{{- if .Values.podDisruptionBudgets.api.enabled }}
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: ohmyrasp-api
+  labels:
+    app.kubernetes.io/name: ohmyrasp-api
+spec:
+  {{- if hasKey .Values.podDisruptionBudgets.api "minAvailable" }}
+  minAvailable: {{ .Values.podDisruptionBudgets.api.minAvailable }}
+  {{- else }}
+  maxUnavailable: {{ .Values.podDisruptionBudgets.api.maxUnavailable }}
+  {{- end }}
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: ohmyrasp-api
+{{- end }}
+---
+{{- if .Values.podDisruptionBudgets.web.enabled }}
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: ohmyrasp-web
+  labels:
+    app.kubernetes.io/name: ohmyrasp-web
+spec:
+  {{- if hasKey .Values.podDisruptionBudgets.web "minAvailable" }}
+  minAvailable: {{ .Values.podDisruptionBudgets.web.minAvailable }}
+  {{- else }}
+  maxUnavailable: {{ .Values.podDisruptionBudgets.web.maxUnavailable }}
+  {{- end }}
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: ohmyrasp-web
+{{- end }}

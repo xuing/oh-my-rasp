@@ -1,0 +1,167 @@
+imagePullSecrets: []
+
+serviceAccount:
+  create: true
+  name: ""
+  annotations: {}
+  automountServiceAccountToken: false
+
+podSecurityContext:
+  runAsNonRoot: true
+  fsGroup: 101
+  fsGroupChangePolicy: OnRootMismatch
+  seccompProfile:
+    type: RuntimeDefault
+
+containerSecurityContext:
+  allowPrivilegeEscalation: false
+  capabilities:
+    drop:
+      - ALL
+  readOnlyRootFilesystem: true
+
+api:
+  image:
+    repository: ghcr.io/ohmyrasp/control-api
+    tag: 0.1.0
+  replicas: 2
+  podAnnotations: {}
+  podLabels: {}
+  nodeSelector: {}
+  affinity: {}
+  tolerations: []
+  topologySpreadConstraints: []
+  securityContext: {}
+  resources: {}
+  env:
+    postgresDsn: postgres://ohmyrasp:ohmyrasp@postgres:5432/ohmyrasp?sslmode=disable
+    clickhouseDsn: clickhouse://ohmyrasp:ohmyrasp@clickhouse:9000?database=ohmyrasp
+    valkeyAddr: valkey:6379
+    valkeyUsername: ""
+    valkeyPassword: ""
+    rateLimit: "600"
+    rateLimitWindow: 1m
+  artifacts:
+    enabled: true
+    mountPath: /var/lib/ohmyrasp/artifacts
+    persistence:
+      enabled: false
+      existingClaim: ""
+      annotations: {}
+      storageClassName: ""
+      accessModes:
+        - ReadWriteOnce
+      size: 10Gi
+
+migrations:
+  enabled: true
+  backoffLimit: 3
+  podAnnotations: {}
+  podLabels: {}
+  nodeSelector: {}
+  affinity: {}
+  tolerations: []
+  securityContext: {}
+  resources: {}
+
+web:
+  image:
+    repository: ghcr.io/ohmyrasp/control-web
+    tag: 0.1.0
+  replicas: 2
+  podAnnotations: {}
+  podLabels: {}
+  nodeSelector: {}
+  affinity: {}
+  tolerations: []
+  topologySpreadConstraints: []
+  securityContext:
+    runAsUser: 101
+    runAsGroup: 101
+  writableRuntimeDirs:
+    enabled: true
+  resources: {}
+
+service:
+  type: ClusterIP
+  apiPort: 8080
+  webPort: 80
+  webTargetPort: 8080
+
+secrets:
+  create: false
+  name: ohmyrasp-control-env
+  existingSecret: ""
+  data:
+    postgresDsn: ""
+    clickhouseDsn: ""
+    valkeyAddr: ""
+    valkeyUsername: ""
+    valkeyPassword: ""
+
+ingress:
+  enabled: false
+  className: ""
+  annotations: {}
+  hosts:
+    - host: ohmyrasp.local
+      paths:
+        - path: /
+          pathType: Prefix
+          serviceName: ohmyrasp-web
+          servicePort: 80
+  tls: []
+
+podDisruptionBudgets:
+  api:
+    enabled: true
+    minAvailable: 1
+  web:
+    enabled: true
+    minAvailable: 1
+
+autoscaling:
+  api:
+    enabled: false
+    minReplicas: 2
+    maxReplicas: 6
+    targetCPUUtilizationPercentage: 70
+    targetMemoryUtilizationPercentage: null
+  web:
+    enabled: false
+    minReplicas: 2
+    maxReplicas: 6
+    targetCPUUtilizationPercentage: 70
+    targetMemoryUtilizationPercentage: null
+
+networkPolicy:
+  enabled: false
+  ingress:
+    web:
+      from: []
+    api:
+      from:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: ohmyrasp-web
+  egress:
+    enabled: false
+    api:
+      to: []
+    web:
+      to: []
+
+monitoring:
+  prometheusRules:
+    enabled: true
+    labels: {}
+    annotations: {}
+  grafanaDashboard:
+    enabled: true
+    labels:
+      grafana_dashboard: "1"
+    annotations: {}
+  alertmanagerExamples:
+    enabled: false
+    labels: {}
+    annotations: {}

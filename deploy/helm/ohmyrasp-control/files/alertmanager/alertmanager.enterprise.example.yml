@@ -1,0 +1,85 @@
+global:
+  resolve_timeout: 5m
+  smtp_smarthost: smtp.example.com:587
+  smtp_from: alertmanager@example.com
+  smtp_auth_username: alertmanager@example.com
+  smtp_auth_password: replace-with-smtp-secret
+  slack_api_url: https://hooks.slack.com/services/REPLACE/ME
+
+templates:
+  - /etc/alertmanager/templates/*.tmpl
+
+route:
+  receiver: platform-warning-email
+  group_by:
+    - alertname
+    - service
+    - severity
+  group_wait: 30s
+  group_interval: 5m
+  repeat_interval: 4h
+  routes:
+    - receiver: security-critical-pagerduty
+      matchers:
+        - service="ohmyrasp-control"
+        - severity="critical"
+      group_wait: 10s
+      repeat_interval: 1h
+    - receiver: security-critical-slack
+      matchers:
+        - service="ohmyrasp-control"
+        - severity="critical"
+      continue: true
+      group_wait: 10s
+      repeat_interval: 1h
+    - receiver: platform-warning-email
+      matchers:
+        - service="ohmyrasp-control"
+        - severity="warning"
+      repeat_interval: 8h
+    - receiver: platform-webhook
+      matchers:
+        - service="ohmyrasp-control"
+      continue: true
+      repeat_interval: 4h
+
+inhibit_rules:
+  - source_matchers:
+      - service="ohmyrasp-control"
+      - severity="critical"
+    target_matchers:
+      - service="ohmyrasp-control"
+      - severity="warning"
+    equal:
+      - alertname
+
+receivers:
+  - name: security-critical-pagerduty
+    pagerduty_configs:
+      - routing_key: replace-with-pagerduty-routing-key
+        description: '{{ template "ohmyrasp.title" . }}'
+        severity: '{{ .CommonLabels.severity }}'
+        details:
+          service: '{{ .CommonLabels.service }}'
+          summary: '{{ .CommonAnnotations.summary }}'
+          status: '{{ .Status }}'
+        send_resolved: true
+  - name: security-critical-slack
+    slack_configs:
+      - channel: "#security-alerts"
+        title: '{{ template "ohmyrasp.title" . }}'
+        text: '{{ template "ohmyrasp.text" . }}'
+        send_resolved: true
+  - name: platform-warning-email
+    email_configs:
+      - to: platform-oncall@example.com
+        headers:
+          Subject: '{{ template "ohmyrasp.title" . }}'
+        html: '{{ template "ohmyrasp.html" . }}'
+        text: '{{ template "ohmyrasp.text" . }}'
+        send_resolved: true
+  - name: platform-webhook
+    webhook_configs:
+      - url: https://alerts.example.com/prometheus/ohmyrasp
+        send_resolved: true
+        max_alerts: 20

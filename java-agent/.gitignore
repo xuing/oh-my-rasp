@@ -1,0 +1,7 @@
+.gradle/
+build/
+*/build/
+logs/*.jsonl
+logs/*.log
+logs/*.txt
+logs/**

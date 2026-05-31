@@ -1,0 +1,36 @@
+{{- if .Values.ingress.enabled }}
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: ohmyrasp-control
+  labels:
+    app.kubernetes.io/name: ohmyrasp-control
+  {{- with .Values.ingress.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  {{- if .Values.ingress.className }}
+  ingressClassName: {{ .Values.ingress.className | quote }}
+  {{- end }}
+  {{- with .Values.ingress.tls }}
+  tls:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+  rules:
+    {{- range .Values.ingress.hosts }}
+    - host: {{ .host | quote }}
+      http:
+        paths:
+          {{- $paths := default (list (dict "path" "/" "pathType" "Prefix" "serviceName" "ohmyrasp-web" "servicePort" $.Values.service.webPort)) .paths }}
+          {{- range $paths }}
+          - path: {{ .path | quote }}
+            pathType: {{ default "Prefix" .pathType }}
+            backend:
+              service:
+                name: {{ default "ohmyrasp-web" .serviceName }}
+                port:
+                  number: {{ default $.Values.service.webPort .servicePort }}
+          {{- end }}
+    {{- end }}
+{{- end }}

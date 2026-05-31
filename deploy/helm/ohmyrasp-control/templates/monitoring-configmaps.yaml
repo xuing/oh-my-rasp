@@ -1,0 +1,60 @@
+{{- if .Values.monitoring.prometheusRules.enabled }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: ohmyrasp-prometheus-rules
+  labels:
+    app.kubernetes.io/name: ohmyrasp-control
+    {{- with .Values.monitoring.prometheusRules.labels }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+  {{- with .Values.monitoring.prometheusRules.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+data:
+  ohmyrasp-control-rules.yml: |
+    {{- .Files.Get "files/prometheus/ohmyrasp-control-rules.yml" | nindent 4 }}
+{{- end }}
+---
+{{- if .Values.monitoring.grafanaDashboard.enabled }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: ohmyrasp-grafana-dashboard
+  labels:
+    app.kubernetes.io/name: ohmyrasp-control
+    {{- with .Values.monitoring.grafanaDashboard.labels }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+  {{- with .Values.monitoring.grafanaDashboard.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+data:
+  ohmyrasp-control-dashboard.json: |
+    {{- .Files.Get "files/grafana/ohmyrasp-control-dashboard.json" | nindent 4 }}
+{{- end }}
+---
+{{- if .Values.monitoring.alertmanagerExamples.enabled }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: ohmyrasp-alertmanager-examples
+  labels:
+    app.kubernetes.io/name: ohmyrasp-control
+    {{- with .Values.monitoring.alertmanagerExamples.labels }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+  {{- with .Values.monitoring.alertmanagerExamples.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+data:
+  alertmanager.yml: |
+    {{- .Files.Get "files/alertmanager/alertmanager.yml" | nindent 4 }}
+  alertmanager.enterprise.example.yml: |
+    {{- .Files.Get "files/alertmanager/alertmanager.enterprise.example.yml" | nindent 4 }}
+  ohmyrasp.tmpl: |
+    {{- .Files.Get "files/alertmanager/templates/ohmyrasp.tmpl" | nindent 4 }}
+{{- end }}

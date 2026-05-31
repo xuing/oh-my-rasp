@@ -1,0 +1,21 @@
+{{- if and .Values.api.artifacts.enabled .Values.api.artifacts.persistence.enabled (not .Values.api.artifacts.persistence.existingClaim) }}
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: ohmyrasp-agent-artifacts
+  labels:
+    app.kubernetes.io/name: ohmyrasp-api
+  {{- with .Values.api.artifacts.persistence.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  accessModes:
+    {{- toYaml .Values.api.artifacts.persistence.accessModes | nindent 4 }}
+  resources:
+    requests:
+      storage: {{ .Values.api.artifacts.persistence.size | quote }}
+  {{- if .Values.api.artifacts.persistence.storageClassName }}
+  storageClassName: {{ .Values.api.artifacts.persistence.storageClassName | quote }}
+  {{- end }}
+{{- end }}

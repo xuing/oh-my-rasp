@@ -1,0 +1,24 @@
+archive/
+
+# JavaScript
+node_modules/
+dist/
+.vite/
+test-results/
+playwright-report/
+coverage/
+
+# Go
+bin/
+tmp/
+
+# Java / Gradle
+.gradle/
+build/
+logs/
+
+# Local/editor files
+.DS_Store
+*.log
+.env.local
+.env.*.local

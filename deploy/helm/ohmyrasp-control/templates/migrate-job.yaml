@@ -1,0 +1,77 @@
+{{- if .Values.migrations.enabled }}
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: ohmyrasp-migrate
+  labels:
+    app.kubernetes.io/name: ohmyrasp-migrate
+  annotations:
+    "helm.sh/hook": pre-install,pre-upgrade
+    "helm.sh/hook-delete-policy": before-hook-creation,hook-succeeded
+spec:
+  backoffLimit: {{ .Values.migrations.backoffLimit }}
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: ohmyrasp-migrate
+        {{- with .Values.migrations.podLabels }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+      {{- with .Values.migrations.podAnnotations }}
+      annotations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+    spec:
+      restartPolicy: OnFailure
+      serviceAccountName: {{ include "ohmyrasp.serviceAccountName" . }}
+      automountServiceAccountToken: {{ .Values.serviceAccount.automountServiceAccountToken }}
+      {{- with .Values.podSecurityContext }}
+      securityContext:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.migrations.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.migrations.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.migrations.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      containers:
+        - name: migrate
+          image: "{{ .Values.api.image.repository }}:{{ .Values.api.image.tag }}"
+          command: ["/ohmyrasp-migrate"]
+          securityContext:
+            {{- include "ohmyrasp.containerSecurityContext" (dict "Values" .Values "componentSecurityContext" .Values.migrations.securityContext) | nindent 12 }}
+          env:
+            - name: OHMYRASP_POSTGRES_DSN
+              {{- if include "ohmyrasp.useSecretEnv" . }}
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "ohmyrasp.secretName" . }}
+                  key: OHMYRASP_POSTGRES_DSN
+              {{- else }}
+              value: {{ .Values.api.env.postgresDsn | quote }}
+              {{- end }}
+            - name: OHMYRASP_CLICKHOUSE_DSN
+              {{- if include "ohmyrasp.useSecretEnv" . }}
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "ohmyrasp.secretName" . }}
+                  key: OHMYRASP_CLICKHOUSE_DSN
+              {{- else }}
+              value: {{ .Values.api.env.clickhouseDsn | quote }}
+              {{- end }}
+          {{- with .Values.migrations.resources }}
+          resources:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+{{- end }}

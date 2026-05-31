@@ -1,0 +1,92 @@
+groups:
+  - name: ohmyrasp-control
+    rules:
+      - alert: OhMyRaspAPIDown
+        expr: absent(ohmyrasp_api_up) or ohmyrasp_api_up == 0
+        for: 2m
+        labels:
+          severity: critical
+          service: ohmyrasp-control
+        annotations:
+          summary: OhMyRasp API is down
+          description: Prometheus cannot scrape a healthy OhMyRasp API process.
+
+      - alert: OhMyRaspMetricsScrapeError
+        expr: max(ohmyrasp_metrics_scrape_error) > 0
+        for: 5m
+        labels:
+          severity: warning
+          service: ohmyrasp-control
+        annotations:
+          summary: OhMyRasp metrics scrape is incomplete
+          description: One or more OhMyRasp store-backed metric sources failed during scrape.
+
+      - alert: OhMyRaspNoOnlineAgents
+        expr: ohmyrasp_agents_total > 0 and ohmyrasp_agents_online == 0
+        for: 5m
+        labels:
+          severity: critical
+          service: ohmyrasp-control
+        annotations:
+          summary: No OhMyRasp Agents are online
+          description: Registered Agents exist, but none are currently marked online.
+
+      - alert: OhMyRaspAgentHeartbeatStale
+        expr: ohmyrasp_agents_total > 0 and (time() - max(ohmyrasp_agent_last_seen_timestamp_seconds)) > 300
+        for: 10m
+        labels:
+          severity: warning
+          service: ohmyrasp-control
+        annotations:
+          summary: OhMyRasp Agent heartbeats are stale
+          description: No Agent heartbeat has been seen for more than 5 minutes.
+
+      - alert: OhMyRaspEventIngestStale
+        expr: max by (type) (ohmyrasp_event_ingest_lag_seconds) > 900
+        for: 15m
+        labels:
+          severity: warning
+          service: ohmyrasp-control
+        annotations:
+          summary: OhMyRasp event ingest appears stale
+          description: The newest accepted {{ $labels.type }} event is older than 15 minutes.
+
+      - alert: OhMyRaspPolicyPullLatencyHigh
+        expr: histogram_quantile(0.95, sum by (le) (rate(ohmyrasp_policy_pull_latency_seconds_bucket{status="success"}[5m]))) > 1
+        for: 10m
+        labels:
+          severity: warning
+          service: ohmyrasp-control
+        annotations:
+          summary: OhMyRasp policy pull latency is high
+          description: Agent policy pull p95 latency has exceeded 1 second for 10 minutes.
+
+      - alert: OhMyRaspPolicyPullErrors
+        expr: sum(rate(ohmyrasp_policy_pull_latency_seconds_count{status="error"}[5m])) > 0
+        for: 5m
+        labels:
+          severity: warning
+          service: ohmyrasp-control
+        annotations:
+          summary: OhMyRasp policy pulls are failing
+          description: One or more Agent policy pull requests are returning errors.
+
+      - alert: OhMyRaspHookLatencyHigh
+        expr: max by (hook) (ohmyrasp_hook_latency_p95_seconds) > 0.25
+        for: 10m
+        labels:
+          severity: warning
+          service: ohmyrasp-control
+        annotations:
+          summary: OhMyRasp Hook latency is high
+          description: Hook {{ $labels.hook }} p95 latency has exceeded 250 ms.
+
+      - alert: OhMyRaspRuleEvalLatencyHigh
+        expr: max by (policy_id, policy_version) (ohmyrasp_rule_eval_latency_p95_seconds) > 0.1
+        for: 10m
+        labels:
+          severity: warning
+          service: ohmyrasp-control
+        annotations:
+          summary: OhMyRasp rule evaluation latency is high
+          description: Policy {{ $labels.policy_id }} v{{ $labels.policy_version }} rule evaluation p95 has exceeded 100 ms.

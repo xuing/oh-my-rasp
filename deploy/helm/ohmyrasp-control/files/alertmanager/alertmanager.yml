@@ -1,0 +1,49 @@
+global:
+  resolve_timeout: 5m
+
+templates:
+  - /etc/alertmanager/templates/*.tmpl
+
+route:
+  receiver: local-ohmyrasp-webhook
+  group_by:
+    - alertname
+    - service
+    - severity
+  group_wait: 30s
+  group_interval: 5m
+  repeat_interval: 4h
+  routes:
+    - receiver: local-ohmyrasp-critical
+      matchers:
+        - service="ohmyrasp-control"
+        - severity="critical"
+      group_wait: 10s
+      repeat_interval: 1h
+    - receiver: local-ohmyrasp-webhook
+      matchers:
+        - service="ohmyrasp-control"
+        - severity="warning"
+      repeat_interval: 8h
+
+inhibit_rules:
+  - source_matchers:
+      - service="ohmyrasp-control"
+      - severity="critical"
+    target_matchers:
+      - service="ohmyrasp-control"
+      - severity="warning"
+    equal:
+      - alertname
+
+receivers:
+  - name: local-ohmyrasp-critical
+    webhook_configs:
+      - url: http://127.0.0.1:9/ohmyrasp/critical
+        send_resolved: true
+        max_alerts: 20
+  - name: local-ohmyrasp-webhook
+    webhook_configs:
+      - url: http://127.0.0.1:9/ohmyrasp/warning
+        send_resolved: true
+        max_alerts: 20

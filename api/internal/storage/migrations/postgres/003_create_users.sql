@@ -1,0 +1,11 @@
+CREATE TABLE IF NOT EXISTS users (
+	id TEXT PRIMARY KEY,
+	organization_id TEXT NOT NULL REFERENCES organizations(id) ON DELETE RESTRICT,
+	email CITEXT NOT NULL UNIQUE,
+	name TEXT NOT NULL,
+	password_hash TEXT NOT NULL,
+	roles TEXT[] NOT NULL DEFAULT '{}',
+	disabled_at TIMESTAMPTZ,
+	created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+	updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);

@@ -1,0 +1,139 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ohmyrasp-api
+  labels:
+    app.kubernetes.io/name: ohmyrasp-api
+spec:
+  replicas: {{ .Values.api.replicas }}
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: ohmyrasp-api
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: ohmyrasp-api
+        {{- with .Values.api.podLabels }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+      {{- with .Values.api.podAnnotations }}
+      annotations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+    spec:
+      serviceAccountName: {{ include "ohmyrasp.serviceAccountName" . }}
+      automountServiceAccountToken: {{ .Values.serviceAccount.automountServiceAccountToken }}
+      {{- with .Values.podSecurityContext }}
+      securityContext:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.api.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.api.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.api.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.api.topologySpreadConstraints }}
+      topologySpreadConstraints:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      containers:
+        - name: api
+          image: "{{ .Values.api.image.repository }}:{{ .Values.api.image.tag }}"
+          securityContext:
+            {{- include "ohmyrasp.containerSecurityContext" (dict "Values" .Values "componentSecurityContext" .Values.api.securityContext) | nindent 12 }}
+          ports:
+            - containerPort: 8080
+          env:
+            - name: OHMYRASP_API_ADDR
+              value: ":8080"
+            - name: OHMYRASP_POSTGRES_DSN
+              {{- if include "ohmyrasp.useSecretEnv" . }}
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "ohmyrasp.secretName" . }}
+                  key: OHMYRASP_POSTGRES_DSN
+              {{- else }}
+              value: {{ .Values.api.env.postgresDsn | quote }}
+              {{- end }}
+            - name: OHMYRASP_CLICKHOUSE_DSN
+              {{- if include "ohmyrasp.useSecretEnv" . }}
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "ohmyrasp.secretName" . }}
+                  key: OHMYRASP_CLICKHOUSE_DSN
+              {{- else }}
+              value: {{ .Values.api.env.clickhouseDsn | quote }}
+              {{- end }}
+            - name: OHMYRASP_VALKEY_ADDR
+              {{- if include "ohmyrasp.useSecretEnv" . }}
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "ohmyrasp.secretName" . }}
+                  key: OHMYRASP_VALKEY_ADDR
+              {{- else }}
+              value: {{ .Values.api.env.valkeyAddr | quote }}
+              {{- end }}
+            - name: OHMYRASP_VALKEY_USERNAME
+              {{- if include "ohmyrasp.useSecretEnv" . }}
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "ohmyrasp.secretName" . }}
+                  key: OHMYRASP_VALKEY_USERNAME
+              {{- else }}
+              value: {{ .Values.api.env.valkeyUsername | quote }}
+              {{- end }}
+            - name: OHMYRASP_VALKEY_PASSWORD
+              {{- if include "ohmyrasp.useSecretEnv" . }}
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "ohmyrasp.secretName" . }}
+                  key: OHMYRASP_VALKEY_PASSWORD
+              {{- else }}
+              value: {{ .Values.api.env.valkeyPassword | quote }}
+              {{- end }}
+            - name: OHMYRASP_RATE_LIMIT
+              value: {{ .Values.api.env.rateLimit | quote }}
+            - name: OHMYRASP_RATE_LIMIT_WINDOW
+              value: {{ .Values.api.env.rateLimitWindow | quote }}
+            {{- if .Values.api.artifacts.enabled }}
+            - name: OHMYRASP_AGENT_ARTIFACT_DIR
+              value: {{ .Values.api.artifacts.mountPath | quote }}
+            {{- end }}
+          {{- if .Values.api.artifacts.enabled }}
+          volumeMounts:
+            - name: agent-artifacts
+              mountPath: {{ .Values.api.artifacts.mountPath | quote }}
+          {{- end }}
+          readinessProbe:
+            httpGet:
+              path: /readyz
+              port: 8080
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: 8080
+          {{- with .Values.api.resources }}
+          resources:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+      {{- if .Values.api.artifacts.enabled }}
+      volumes:
+        - name: agent-artifacts
+          {{- if .Values.api.artifacts.persistence.enabled }}
+          persistentVolumeClaim:
+            claimName: {{ default "ohmyrasp-agent-artifacts" .Values.api.artifacts.persistence.existingClaim | quote }}
+          {{- else }}
+          emptyDir: {}
+          {{- end }}
+      {{- end }}

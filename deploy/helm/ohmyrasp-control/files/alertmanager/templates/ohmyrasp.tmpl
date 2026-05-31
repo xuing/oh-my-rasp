@@ -1,0 +1,45 @@
+{{ define "ohmyrasp.title" -}}
+[{{ .Status }}] {{ .CommonLabels.alertname }}{{ if .CommonLabels.severity }} ({{ .CommonLabels.severity }}){{ end }}
+{{- end }}
+
+{{ define "ohmyrasp.text" -}}
+{{- if .CommonAnnotations.summary }}
+Summary: {{ .CommonAnnotations.summary }}
+{{ end -}}
+Status: {{ .Status }}
+Service: {{ .CommonLabels.service }}
+Severity: {{ .CommonLabels.severity }}
+Alerts: {{ len .Alerts }}
+
+{{ range .Alerts -}}
+- {{ .Labels.alertname }}
+  Started: {{ .StartsAt }}
+  Summary: {{ .Annotations.summary }}
+  Description: {{ .Annotations.description }}
+  Runbook: {{ .Annotations.runbook_url }}
+  Source: {{ .GeneratorURL }}
+{{ end -}}
+{{- end }}
+
+{{ define "ohmyrasp.html" -}}
+<h2>{{ template "ohmyrasp.title" . }}</h2>
+{{ if .CommonAnnotations.summary }}<p>{{ .CommonAnnotations.summary }}</p>{{ end }}
+<dl>
+  <dt>Status</dt><dd>{{ .Status }}</dd>
+  <dt>Service</dt><dd>{{ .CommonLabels.service }}</dd>
+  <dt>Severity</dt><dd>{{ .CommonLabels.severity }}</dd>
+  <dt>Alerts</dt><dd>{{ len .Alerts }}</dd>
+</dl>
+<ul>
+{{ range .Alerts }}
+  <li>
+    <strong>{{ .Labels.alertname }}</strong><br>
+    Started: {{ .StartsAt }}<br>
+    Summary: {{ .Annotations.summary }}<br>
+    Description: {{ .Annotations.description }}<br>
+    Runbook: {{ .Annotations.runbook_url }}<br>
+    Source: {{ .GeneratorURL }}
+  </li>
+{{ end }}
+</ul>
+{{- end }}

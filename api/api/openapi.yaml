@@ -1,0 +1,2127 @@
+openapi: 3.1.0
+info:
+  title: OhMyRasp Control Plane API
+  version: 0.1.0
+  summary: Self-hosted single-organization RASP control platform API.
+servers:
+  - url: http://localhost:8080
+security:
+  - bearerAuth: []
+paths:
+  /healthz:
+    get:
+      security: []
+      responses:
+        "200":
+          description: Process liveness.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HealthResponse"
+  /readyz:
+    get:
+      security: []
+      responses:
+        "200":
+          description: Dependency readiness.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ReadyResponse"
+  /metrics:
+    get:
+      security: []
+      responses:
+        "200":
+          description: Prometheus text metrics.
+  /api/v1/auth/login:
+    post:
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/LoginRequest"
+      responses:
+        "200":
+          description: Session and user.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LoginResponse"
+  /api/v1/me:
+    get:
+      responses:
+        "200":
+          description: Current user.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MeResponse"
+  /api/v1/users:
+    get:
+      responses:
+        "200":
+          description: User administration list.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UserList"
+    post:
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UserCreate"
+      responses:
+        "201":
+          description: User created.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/User"
+  /api/v1/users/{userID}:
+    put:
+      parameters:
+        - name: userID
+          in: path
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UserUpdate"
+      responses:
+        "200":
+          description: User updated.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/User"
+  /api/v1/applications:
+    get:
+      responses:
+        "200":
+          description: Application list.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApplicationList"
+    post:
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ApplicationInput"
+      responses:
+        "201":
+          description: Application created.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Application"
+  /api/v1/applications/{appID}/environments:
+    post:
+      parameters:
+        - $ref: "#/components/parameters/AppID"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/EnvironmentInput"
+      responses:
+        "201":
+          description: Environment created.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Environment"
+  /api/v1/applications/{appID}/secret/rotate:
+    post:
+      parameters:
+        - $ref: "#/components/parameters/AppID"
+      responses:
+        "200":
+          description: Application secret rotated.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Application"
+  /api/v1/daemon/token:
+    get:
+      responses:
+        "200":
+          description: Current daemon access token.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DaemonAccessToken"
+  /api/v1/daemon/token/reset:
+    post:
+      responses:
+        "200":
+          description: Daemon access token rotated.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DaemonAccessToken"
+  /api/v1/daemon/workloads:
+    get:
+      responses:
+        "200":
+          description: Daemon-reported process and container workloads.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DaemonWorkloadList"
+  /api/v1/daemon/commands:
+    get:
+      security: []
+      parameters:
+        - name: X-OhMyRasp-Daemon-Token
+          in: header
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: Bound workload install commands grouped by application.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DaemonCommandList"
+  /api/v1/daemon/app:
+    get:
+      security: []
+      parameters:
+        - name: X-OhMyRasp-Daemon-Token
+          in: header
+          required: true
+          schema: { type: string }
+        - name: app_id
+          in: query
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: Daemon-visible application credentials.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DaemonApplication"
+  /api/v1/daemon/artifacts/agent/info:
+    get:
+      security: []
+      parameters:
+        - name: X-OhMyRasp-Daemon-Token
+          in: header
+          required: true
+          schema: { type: string }
+        - name: app_id
+          in: query
+          required: true
+          schema: { type: string }
+        - name: language
+          in: query
+          required: true
+          schema:
+            type: string
+            enum: [java]
+        - name: system_type
+          in: query
+          required: false
+          schema: { type: string, default: linux }
+        - name: language_version
+          in: query
+          required: false
+          schema: { type: string, default: unknown }
+      responses:
+        "200":
+          description: Agent artifact metadata used by daemon-side caching.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AgentArtifactInfo"
+  /api/v1/daemon/artifacts/agent:
+    get:
+      security: []
+      parameters:
+        - name: X-OhMyRasp-Daemon-Token
+          in: header
+          required: true
+          schema: { type: string }
+        - name: app_id
+          in: query
+          required: true
+          schema: { type: string }
+        - name: language
+          in: query
+          required: true
+          schema:
+            type: string
+            enum: [java]
+        - name: system_type
+          in: query
+          required: false
+          schema: { type: string, default: linux }
+        - name: language_version
+          in: query
+          required: false
+          schema: { type: string, default: unknown }
+      responses:
+        "200":
+          description: Agent ZIP artifact for daemon injection.
+          content:
+            application/zip:
+              schema:
+                type: string
+                format: binary
+  /api/v1/agent-artifacts:
+    get:
+      responses:
+        "200":
+          description: Operator-visible Agent artifact package catalog.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AgentArtifactCatalog"
+    post:
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AgentArtifactUpload"
+      responses:
+        "201":
+          description: Agent artifact uploaded to the managed package catalog.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AgentArtifactCatalogItem"
+  /api/v1/daemon/workloads/report:
+    post:
+      security: []
+      parameters:
+        - name: X-OhMyRasp-Daemon-Token
+          in: header
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/DaemonWorkloadReport"
+      responses:
+        "200":
+          description: Daemon workload inventory accepted.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DaemonWorkloadList"
+  /api/v1/daemon/injection-reports:
+    post:
+      security: []
+      parameters:
+        - name: X-OhMyRasp-Daemon-Token
+          in: header
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/DaemonInjectionReport"
+      responses:
+        "200":
+          description: Daemon workload injection outcome accepted.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DaemonWorkload"
+  /api/v1/daemon/workloads/{workloadID}/bind:
+    post:
+      parameters:
+        - $ref: "#/components/parameters/WorkloadID"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/DaemonWorkloadBinding"
+      responses:
+        "200":
+          description: Workload bound to an application.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DaemonWorkload"
+  /api/v1/daemon/workloads/{workloadID}/unbind:
+    post:
+      parameters:
+        - $ref: "#/components/parameters/WorkloadID"
+      responses:
+        "200":
+          description: Workload unbound from any application.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DaemonWorkload"
+  /api/v1/agents:
+    get:
+      responses:
+        "200":
+          description: Agent inventory.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AgentList"
+  /api/v1/agents/register:
+    post:
+      security: []
+      parameters:
+        - name: X-OhMyRasp-App-ID
+          in: header
+          required: true
+          schema: { type: string }
+        - name: X-OhMyRasp-App-Secret
+          in: header
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AgentRegistration"
+      responses:
+        "201":
+          description: Agent registered.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Agent"
+  /api/v1/agents/{agentID}/heartbeat:
+    post:
+      security: []
+      parameters:
+        - $ref: "#/components/parameters/AgentID"
+        - name: X-OhMyRasp-App-ID
+          in: header
+          required: true
+          schema: { type: string }
+        - name: X-OhMyRasp-App-Secret
+          in: header
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AgentHeartbeat"
+      responses:
+        "200":
+          description: Agent heartbeat accepted.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Agent"
+  /api/v1/agents/{agentID}/policy:
+    get:
+      security: []
+      parameters:
+        - $ref: "#/components/parameters/AgentID"
+        - name: X-OhMyRasp-App-ID
+          in: header
+          required: true
+          schema: { type: string }
+        - name: X-OhMyRasp-App-Secret
+          in: header
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: Active or canary policy for the Agent.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PolicyVersion"
+  /api/v1/policies:
+    get:
+      responses:
+        "200":
+          description: Policy set list.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PolicySetList"
+    post:
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PolicySetInput"
+      responses:
+        "201":
+          description: Policy set created.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PolicySet"
+  /api/v1/policies/{policyID}/versions:
+    post:
+      parameters:
+        - $ref: "#/components/parameters/PolicyID"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PolicyVersionInput"
+      responses:
+        "201":
+          description: Policy version created.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PolicySet"
+  /api/v1/policies/{policyID}/versions/{version}/rules:
+    put:
+      parameters:
+        - $ref: "#/components/parameters/PolicyID"
+        - $ref: "#/components/parameters/PolicyVersionNumber"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PolicyVersionInput"
+      responses:
+        "200":
+          description: Draft policy version rules updated.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PolicySet"
+  /api/v1/policies/validate:
+    post:
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RuleListInput"
+      responses:
+        "200":
+          description: Rule validation result.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RuleValidation"
+  /api/v1/policies/test:
+    post:
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RuleTestInput"
+      responses:
+        "200":
+          description: Rule test result.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RuleTestResult"
+  /api/v1/policies/{policyID}/rollout:
+    post:
+      parameters:
+        - $ref: "#/components/parameters/PolicyID"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PolicyRolloutInput"
+      responses:
+        "200":
+          description: Canary or full rollout applied.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PolicySet"
+  /api/v1/policies/{policyID}/rollback:
+    post:
+      parameters:
+        - $ref: "#/components/parameters/PolicyID"
+      responses:
+        "200":
+          description: Rollback applied.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PolicySet"
+  /api/v1/events/attack:
+    get:
+      parameters:
+        - $ref: "#/components/parameters/EventApplicationID"
+        - $ref: "#/components/parameters/EventEnvironmentID"
+        - $ref: "#/components/parameters/EventAgentID"
+        - $ref: "#/components/parameters/EventPolicyID"
+        - $ref: "#/components/parameters/EventSeverity"
+        - $ref: "#/components/parameters/EventHook"
+        - $ref: "#/components/parameters/EventOccurredAfter"
+        - $ref: "#/components/parameters/EventOccurredBefore"
+        - $ref: "#/components/parameters/EventLimit"
+      responses:
+        "200":
+          description: Attack events.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SecurityEventList"
+    post:
+      security: []
+      parameters:
+        - name: X-OhMyRasp-App-ID
+          in: header
+          required: true
+          schema: { type: string }
+        - name: X-OhMyRasp-App-Secret
+          in: header
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SecurityEventInput"
+      responses:
+        "202":
+          description: Attack event accepted.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SecurityEvent"
+  /api/v1/events/hook:
+    get:
+      parameters:
+        - $ref: "#/components/parameters/EventApplicationID"
+        - $ref: "#/components/parameters/EventEnvironmentID"
+        - $ref: "#/components/parameters/EventAgentID"
+        - $ref: "#/components/parameters/EventPolicyID"
+        - $ref: "#/components/parameters/EventSeverity"
+        - $ref: "#/components/parameters/EventHook"
+        - $ref: "#/components/parameters/EventOccurredAfter"
+        - $ref: "#/components/parameters/EventOccurredBefore"
+        - $ref: "#/components/parameters/EventLimit"
+      responses:
+        "200":
+          description: Hook events.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SecurityEventList"
+    post:
+      security: []
+      parameters:
+        - name: X-OhMyRasp-App-ID
+          in: header
+          required: true
+          schema: { type: string }
+        - name: X-OhMyRasp-App-Secret
+          in: header
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SecurityEventInput"
+      responses:
+        "202":
+          description: Hook event accepted.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SecurityEvent"
+  /api/v1/events/performance:
+    get:
+      parameters:
+        - $ref: "#/components/parameters/EventApplicationID"
+        - $ref: "#/components/parameters/EventEnvironmentID"
+        - $ref: "#/components/parameters/EventAgentID"
+        - $ref: "#/components/parameters/EventPolicyID"
+        - $ref: "#/components/parameters/EventSeverity"
+        - $ref: "#/components/parameters/EventHook"
+        - $ref: "#/components/parameters/EventOccurredAfter"
+        - $ref: "#/components/parameters/EventOccurredBefore"
+        - $ref: "#/components/parameters/EventLimit"
+      responses:
+        "200":
+          description: Performance events.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SecurityEventList"
+    post:
+      security: []
+      parameters:
+        - name: X-OhMyRasp-App-ID
+          in: header
+          required: true
+          schema: { type: string }
+        - name: X-OhMyRasp-App-Secret
+          in: header
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SecurityEventInput"
+      responses:
+        "202":
+          description: Performance event accepted.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SecurityEvent"
+  /api/v1/events/crash:
+    get:
+      parameters:
+        - $ref: "#/components/parameters/EventApplicationID"
+        - $ref: "#/components/parameters/EventEnvironmentID"
+        - $ref: "#/components/parameters/EventAgentID"
+        - $ref: "#/components/parameters/EventPolicyID"
+        - $ref: "#/components/parameters/EventSeverity"
+        - $ref: "#/components/parameters/EventHook"
+        - $ref: "#/components/parameters/EventOccurredAfter"
+        - $ref: "#/components/parameters/EventOccurredBefore"
+        - $ref: "#/components/parameters/EventLimit"
+      responses:
+        "200":
+          description: Crash events.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SecurityEventList"
+    post:
+      security: []
+      parameters:
+        - name: X-OhMyRasp-App-ID
+          in: header
+          required: true
+          schema: { type: string }
+        - name: X-OhMyRasp-App-Secret
+          in: header
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SecurityEventInput"
+      responses:
+        "202":
+          description: Crash event accepted.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SecurityEvent"
+  /api/v1/events/recycle-bin:
+    get:
+      parameters:
+        - $ref: "#/components/parameters/EventType"
+        - $ref: "#/components/parameters/EventApplicationID"
+        - $ref: "#/components/parameters/EventEnvironmentID"
+        - $ref: "#/components/parameters/EventAgentID"
+        - $ref: "#/components/parameters/EventPolicyID"
+        - $ref: "#/components/parameters/EventSeverity"
+        - $ref: "#/components/parameters/EventHook"
+        - $ref: "#/components/parameters/EventOccurredAfter"
+        - $ref: "#/components/parameters/EventOccurredBefore"
+        - $ref: "#/components/parameters/EventLimit"
+      responses:
+        "200":
+          description: Deleted security events.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SecurityEventList"
+  /api/v1/events/recycle-bin/delete:
+    post:
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/EventRecycleBinAction"
+      responses:
+        "200":
+          description: Events moved to the recycle bin.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EventRecycleBinReport"
+  /api/v1/events/recycle-bin/restore:
+    post:
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/EventRecycleBinAction"
+      responses:
+        "200":
+          description: Events restored from the recycle bin.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EventRecycleBinReport"
+  /api/v1/events/recycle-bin/purge:
+    post:
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/EventRecycleBinAction"
+      responses:
+        "200":
+          description: Deleted events permanently purged.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EventRecycleBinReport"
+  /api/v1/dependencies:
+    get:
+      parameters:
+        - $ref: "#/components/parameters/DependencyApplicationID"
+        - $ref: "#/components/parameters/DependencyAgentID"
+        - $ref: "#/components/parameters/DependencyName"
+        - $ref: "#/components/parameters/DependencyEcosystem"
+        - $ref: "#/components/parameters/DependencyVulnerabilitySeverity"
+        - $ref: "#/components/parameters/DependencyObservedAfter"
+        - $ref: "#/components/parameters/DependencyObservedBefore"
+        - $ref: "#/components/parameters/DependencyLimit"
+      responses:
+        "200":
+          description: Dependency observations.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DependencyList"
+    post:
+      security: []
+      parameters:
+        - name: X-OhMyRasp-App-ID
+          in: header
+          required: true
+          schema: { type: string }
+        - name: X-OhMyRasp-App-Secret
+          in: header
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/DependencyInput"
+      responses:
+        "202":
+          description: Dependency observation accepted.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Dependency"
+  /api/v1/baseline-findings:
+    get:
+      parameters:
+        - $ref: "#/components/parameters/BaselineApplicationID"
+        - $ref: "#/components/parameters/BaselineEnvironmentID"
+        - $ref: "#/components/parameters/BaselineAgentID"
+        - $ref: "#/components/parameters/BaselineSeverity"
+        - $ref: "#/components/parameters/BaselineStatus"
+        - $ref: "#/components/parameters/BaselineCategory"
+        - $ref: "#/components/parameters/BaselineObservedAfter"
+        - $ref: "#/components/parameters/BaselineObservedBefore"
+        - $ref: "#/components/parameters/BaselineLimit"
+      responses:
+        "200":
+          description: Baseline findings.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BaselineFindingList"
+    post:
+      security: []
+      parameters:
+        - name: X-OhMyRasp-App-ID
+          in: header
+          required: true
+          schema: { type: string }
+        - name: X-OhMyRasp-App-Secret
+          in: header
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/BaselineFindingInput"
+      responses:
+        "202":
+          description: Baseline finding accepted.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BaselineFinding"
+  /api/v1/analytics/overview:
+    get:
+      responses:
+        "200":
+          description: Aggregated control-plane summary.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Overview"
+  /api/v1/analytics/observability:
+    get:
+      parameters:
+        - name: application_id
+          in: query
+          required: false
+          schema: { type: string }
+        - name: policy_id
+          in: query
+          required: false
+          schema: { type: string }
+      responses:
+        "200":
+          description: Aggregated rule, Hook, Agent, and policy performance telemetry.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ObservabilityReport"
+  /api/v1/system-settings:
+    get:
+      responses:
+        "200":
+          description: System setting list.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SystemSettingList"
+  /api/v1/system/edition:
+    get:
+      responses:
+        "200":
+          description: Self-hosted edition and license status.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EditionStatus"
+  /api/v1/system-settings/{key}:
+    put:
+      parameters:
+        - name: key
+          in: path
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SystemSettingUpdate"
+      responses:
+        "200":
+          description: System setting upserted.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SystemSetting"
+  /api/v1/maintenance/cleanup:
+    post:
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/MaintenanceCleanupRequest"
+      responses:
+        "200":
+          description: Operational telemetry cleanup previewed or applied.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MaintenanceCleanupReport"
+  /api/v1/alert-rules:
+    get:
+      responses:
+        "200":
+          description: Alert rule list.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AlertRuleList"
+    post:
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AlertRuleInput"
+      responses:
+        "201":
+          description: Alert rule created.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AlertRule"
+  /api/v1/alert-rules/{alertRuleID}:
+    put:
+      parameters:
+        - name: alertRuleID
+          in: path
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AlertRuleInput"
+      responses:
+        "200":
+          description: Alert rule updated.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AlertRule"
+  /api/v1/alert-deliveries:
+    get:
+      responses:
+        "200":
+          description: Alert delivery history.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AlertDeliveryList"
+  /api/v1/audit-logs:
+    get:
+      responses:
+        "200":
+          description: Operation audit logs.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AuditLogList"
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+  parameters:
+    AppID:
+      name: appID
+      in: path
+      required: true
+      schema: { type: string }
+    AgentID:
+      name: agentID
+      in: path
+      required: true
+      schema: { type: string }
+    PolicyID:
+      name: policyID
+      in: path
+      required: true
+      schema: { type: string }
+    PolicyVersionNumber:
+      name: version
+      in: path
+      required: true
+      schema:
+        type: integer
+        minimum: 1
+    EventType:
+      name: type
+      in: query
+      required: false
+      schema:
+        type: string
+        enum: [attack, hook, performance, crash]
+    EventApplicationID:
+      name: application_id
+      in: query
+      required: false
+      schema: { type: string }
+    EventEnvironmentID:
+      name: environment_id
+      in: query
+      required: false
+      schema: { type: string }
+    EventAgentID:
+      name: agent_id
+      in: query
+      required: false
+      schema: { type: string }
+    EventPolicyID:
+      name: policy_id
+      in: query
+      required: false
+      schema: { type: string }
+    EventSeverity:
+      name: severity
+      in: query
+      required: false
+      schema: { type: string }
+    EventHook:
+      name: hook
+      in: query
+      required: false
+      schema: { type: string }
+    EventOccurredAfter:
+      name: occurred_after
+      in: query
+      required: false
+      schema:
+        type: string
+        format: date-time
+    EventOccurredBefore:
+      name: occurred_before
+      in: query
+      required: false
+      schema:
+        type: string
+        format: date-time
+    EventLimit:
+      name: limit
+      in: query
+      required: false
+      schema:
+        type: integer
+        minimum: 1
+        maximum: 1000
+    DependencyApplicationID:
+      name: application_id
+      in: query
+      required: false
+      schema: { type: string }
+    DependencyAgentID:
+      name: agent_id
+      in: query
+      required: false
+      schema: { type: string }
+    DependencyName:
+      name: name
+      in: query
+      required: false
+      schema: { type: string }
+    DependencyEcosystem:
+      name: ecosystem
+      in: query
+      required: false
+      schema: { type: string }
+    DependencyVulnerabilitySeverity:
+      name: vulnerability_severity
+      in: query
+      required: false
+      schema:
+        type: string
+        enum: [critical, high, medium, low]
+    DependencyObservedAfter:
+      name: observed_after
+      in: query
+      required: false
+      schema:
+        type: string
+        format: date-time
+    DependencyObservedBefore:
+      name: observed_before
+      in: query
+      required: false
+      schema:
+        type: string
+        format: date-time
+    DependencyLimit:
+      name: limit
+      in: query
+      required: false
+      schema:
+        type: integer
+        minimum: 1
+        maximum: 1000
+    BaselineApplicationID:
+      name: application_id
+      in: query
+      required: false
+      schema: { type: string }
+    BaselineEnvironmentID:
+      name: environment_id
+      in: query
+      required: false
+      schema: { type: string }
+    BaselineAgentID:
+      name: agent_id
+      in: query
+      required: false
+      schema: { type: string }
+    BaselineSeverity:
+      name: severity
+      in: query
+      required: false
+      schema:
+        type: string
+        enum: [critical, high, medium, low, info]
+    BaselineStatus:
+      name: status
+      in: query
+      required: false
+      schema:
+        type: string
+        enum: [failed, warning, passed, suppressed]
+    BaselineCategory:
+      name: category
+      in: query
+      required: false
+      schema: { type: string }
+    BaselineObservedAfter:
+      name: observed_after
+      in: query
+      required: false
+      schema:
+        type: string
+        format: date-time
+    BaselineObservedBefore:
+      name: observed_before
+      in: query
+      required: false
+      schema:
+        type: string
+        format: date-time
+    BaselineLimit:
+      name: limit
+      in: query
+      required: false
+      schema:
+        type: integer
+        minimum: 1
+        maximum: 1000
+    WorkloadID:
+      name: workloadID
+      in: path
+      required: true
+      schema: { type: string }
+  schemas:
+    HealthResponse:
+      type: object
+      required: [status]
+      properties:
+        status: { type: string }
+    ReadyResponse:
+      type: object
+      required: [status]
+      properties:
+        status: { type: string }
+    LoginRequest:
+      type: object
+      required: [email, password]
+      properties:
+        email: { type: string, format: email }
+        password: { type: string }
+    LoginResponse:
+      type: object
+      required: [session, user]
+      properties:
+        session:
+          $ref: "#/components/schemas/Session"
+        user:
+          $ref: "#/components/schemas/User"
+    MeResponse:
+      type: object
+      required: [user]
+      properties:
+        user:
+          $ref: "#/components/schemas/User"
+    Session:
+      type: object
+      required: [token, user_id, expires_at]
+      properties:
+        token: { type: string }
+        user_id: { type: string }
+        expires_at: { type: string, format: date-time }
+    UserList:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/User"
+    User:
+      type: object
+      required: [id, email, name, roles, created_at, updated_at]
+      properties:
+        id: { type: string }
+        email: { type: string, format: email }
+        name: { type: string }
+        roles:
+          type: array
+          items:
+            type: string
+            enum: [admin, security_engineer, viewer]
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
+        disabled_at: { type: string, format: date-time }
+    UserCreate:
+      type: object
+      required: [email, name, password, roles]
+      properties:
+        email: { type: string, format: email }
+        name: { type: string }
+        password: { type: string, minLength: 8 }
+        roles:
+          type: array
+          minItems: 1
+          items:
+            type: string
+            enum: [admin, security_engineer, viewer]
+    UserUpdate:
+      type: object
+      required: [name, roles, disabled]
+      properties:
+        name: { type: string }
+        roles:
+          type: array
+          minItems: 1
+          items:
+            type: string
+            enum: [admin, security_engineer, viewer]
+        disabled: { type: boolean }
+    ApplicationList:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/Application"
+    Application:
+      type: object
+      required: [id, name, description, created_at, environment_ids]
+      properties:
+        id: { type: string }
+        name: { type: string }
+        description: { type: string }
+        secret: { type: string }
+        created_at: { type: string, format: date-time }
+        policy_id: { type: string }
+        policy_version: { type: integer }
+        environment_ids:
+          type: array
+          items: { type: string }
+    ApplicationInput:
+      type: object
+      required: [name]
+      properties:
+        name: { type: string }
+        description: { type: string }
+    Environment:
+      type: object
+      required: [id, application_id, name, kind, created_at]
+      properties:
+        id: { type: string }
+        application_id: { type: string }
+        name: { type: string }
+        kind: { type: string }
+        created_at: { type: string, format: date-time }
+        policy_id: { type: string }
+        policy_version: { type: integer }
+    EnvironmentInput:
+      type: object
+      required: [name]
+      properties:
+        name: { type: string }
+        kind: { type: string }
+    AgentList:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/Agent"
+    Agent:
+      type: object
+      required: [id, application_id, environment_id, hostname, runtime, version, status, last_seen_at]
+      properties:
+        id: { type: string }
+        application_id: { type: string }
+        environment_id: { type: string }
+        hostname: { type: string }
+        runtime: { type: string }
+        version: { type: string }
+        status: { type: string }
+        last_seen_at: { type: string, format: date-time }
+        policy_id: { type: string }
+        policy_version: { type: integer }
+    AgentRegistration:
+      type: object
+      required: [environment_id, hostname, version]
+      properties:
+        environment_id: { type: string }
+        hostname: { type: string }
+        runtime: { type: string }
+        version: { type: string }
+    AgentHeartbeat:
+      type: object
+      required: [status]
+      properties:
+        status: { type: string }
+    DaemonAccessToken:
+      type: object
+      required: [access_token, updated_at]
+      properties:
+        access_token: { type: string }
+        updated_at: { type: string, format: date-time }
+    DaemonCommandList:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/DaemonCommandGroup"
+    DaemonCommandGroup:
+      type: object
+      required: [application_id, application_secret, language, workloads]
+      properties:
+        application_id: { type: string }
+        application_secret: { type: string }
+        language:
+          type: string
+          enum: [java]
+        workloads:
+          type: array
+          items:
+            $ref: "#/components/schemas/DaemonWorkload"
+    DaemonApplication:
+      type: object
+      required: [application_id, application_secret, language]
+      properties:
+        application_id: { type: string }
+        application_secret: { type: string }
+        language:
+          type: string
+          enum: [java]
+    AgentArtifactInfo:
+      type: object
+      required: [filename, content_type, md5, size, language, system_type, language_version]
+      properties:
+        filename: { type: string }
+        content_type: { type: string }
+        md5: { type: string }
+        size:
+          type: integer
+          format: int64
+        language:
+          type: string
+          enum: [java]
+        system_type: { type: string }
+        language_version: { type: string }
+    AgentArtifactCatalog:
+      type: object
+      required: [artifact_dir_configured, generated_bootstrap_enabled, items]
+      properties:
+        artifact_dir_configured: { type: boolean }
+        generated_bootstrap_enabled: { type: boolean }
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/AgentArtifactCatalogItem"
+    AgentArtifactCatalogItem:
+      type: object
+      required: [filename, content_type, md5, size, language, system_type, language_version, source, updated_at]
+      properties:
+        filename: { type: string }
+        content_type: { type: string }
+        md5: { type: string }
+        size:
+          type: integer
+          format: int64
+        language: { type: string }
+        system_type: { type: string }
+        language_version: { type: string }
+        source: { type: string }
+        updated_at: { type: string, format: date-time }
+    AgentArtifactUpload:
+      type: object
+      required: [language, system_type, language_version, content_base64]
+      properties:
+        filename:
+          type: string
+          description: Original operator-provided ZIP filename. The server stores artifacts using a canonical name derived from language, system_type, and language_version.
+        language:
+          type: string
+          enum: [java]
+        system_type:
+          type: string
+          examples: [linux]
+        language_version:
+          type: string
+          examples: ["17"]
+        content_base64:
+          type: string
+          description: Base64-encoded Agent ZIP package.
+    DaemonWorkloadList:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/DaemonWorkload"
+    DaemonWorkload:
+      type: object
+      required: [id, node_name, type, observed_at, updated_at]
+      properties:
+        id: { type: string }
+        application_id: { type: string }
+        node_name: { type: string }
+        type:
+          type: string
+          enum: [process, container]
+        pid: { type: integer }
+        cmdline:
+          type: array
+          items: { type: string }
+        container_id: { type: string }
+        container_name: { type: string }
+        image_id: { type: string }
+        image_tag: { type: string }
+        injection_status:
+          type: string
+          enum: [injected, failed, uninstalled]
+        injection_error: { type: string }
+        injection_helper_id: { type: string }
+        injection_helper_version: { type: string }
+        injection_reported_at: { type: string, format: date-time }
+        injection_status_updated_at: { type: string, format: date-time }
+        observed_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
+    DaemonInjectionReport:
+      type: object
+      required: [workload_id, status]
+      properties:
+        workload_id: { type: string }
+        status:
+          type: string
+          enum: [injected, failed, uninstalled]
+        error: { type: string }
+        helper_id: { type: string }
+        helper_version: { type: string }
+        reported_at: { type: string, format: date-time }
+    DaemonWorkloadReport:
+      type: object
+      required: [node_name, workloads]
+      properties:
+        node_name: { type: string }
+        workloads:
+          type: array
+          items:
+            $ref: "#/components/schemas/DaemonWorkloadInput"
+    DaemonWorkloadInput:
+      type: object
+      required: [type]
+      properties:
+        type:
+          type: string
+          enum: [process, container]
+        pid: { type: integer }
+        cmdline:
+          type: array
+          items: { type: string }
+        container_id: { type: string }
+        container_name: { type: string }
+        image_id: { type: string }
+        image_tag: { type: string }
+        observed_at: { type: string, format: date-time }
+    DaemonWorkloadBinding:
+      type: object
+      required: [application_id]
+      properties:
+        application_id: { type: string }
+    PolicySetInput:
+      type: object
+      required: [name]
+      properties:
+        name: { type: string }
+        description: { type: string }
+    PolicySetList:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/PolicySet"
+    PolicySet:
+      type: object
+      required: [id, name, description, created_at, versions]
+      properties:
+        id: { type: string }
+        name: { type: string }
+        description: { type: string }
+        created_at: { type: string, format: date-time }
+        active:
+          $ref: "#/components/schemas/PolicyVersion"
+        versions:
+          type: array
+          items:
+            $ref: "#/components/schemas/PolicyVersion"
+    PolicyVersion:
+      type: object
+      required: [version, status, rules, canary_percent, created_at]
+      properties:
+        version: { type: integer }
+        status: { type: string }
+        rules:
+          type: array
+          items:
+            $ref: "#/components/schemas/Rule"
+        canary_percent: { type: integer }
+        created_at: { type: string, format: date-time }
+        published_at: { type: string, format: date-time }
+    Rule:
+      type: object
+      required: [id, name, hook, algorithm, action, severity, expression, tags, description]
+      properties:
+        id: { type: string }
+        name: { type: string }
+        hook: { type: string }
+        algorithm: { type: string }
+        action: { type: string }
+        severity: { type: string }
+        expression: { type: string }
+        tags:
+          type: array
+          items: { type: string }
+        description: { type: string }
+    PolicyVersionInput:
+      type: object
+      required: [rules]
+      properties:
+        rules:
+          type: array
+          items:
+            $ref: "#/components/schemas/RuleInput"
+    RuleListInput:
+      type: object
+      required: [rules]
+      properties:
+        rules:
+          type: array
+          items:
+            $ref: "#/components/schemas/RuleInput"
+    RuleInput:
+      type: object
+      required: [name, hook, expression]
+      properties:
+        id: { type: string }
+        name: { type: string }
+        hook: { type: string }
+        algorithm: { type: string }
+        action:
+          type: string
+          enum: [log, block, ignore]
+        severity: { type: string }
+        expression: { type: string }
+        tags:
+          type: array
+          items: { type: string }
+        description: { type: string }
+    RuleValidation:
+      type: object
+      required: [valid, errors]
+      properties:
+        valid: { type: boolean }
+        errors:
+          type: array
+          items: { type: string }
+    RuleTestInput:
+      type: object
+      required: [rule, event]
+      properties:
+        rule:
+          $ref: "#/components/schemas/RuleInput"
+        event:
+          $ref: "#/components/schemas/SecurityEventInput"
+    RuleTestResult:
+      type: object
+      required: [matched, action, algorithm, confidence]
+      properties:
+        matched: { type: boolean }
+        action: { type: string }
+        algorithm: { type: string }
+        confidence: { type: integer }
+    PolicyRolloutInput:
+      type: object
+      required: [version, canary_percent]
+      properties:
+        version: { type: integer }
+        canary_percent: { type: integer, minimum: 0, maximum: 100 }
+        application_id: { type: string }
+        environment_id: { type: string }
+    SecurityEventList:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/SecurityEvent"
+    SecurityEvent:
+      type: object
+      required: [id, type, application_id, environment_id, agent_id, severity, message, occurred_at]
+      properties:
+        id: { type: string }
+        type:
+          type: string
+          enum: [attack, hook, performance, crash]
+        application_id: { type: string }
+        environment_id: { type: string }
+        agent_id: { type: string }
+        policy_id: { type: string }
+        policy_version: { type: integer }
+        hook: { type: string }
+        algorithm: { type: string }
+        severity: { type: string }
+        message: { type: string }
+        occurred_at: { type: string, format: date-time }
+        deleted_at: { type: string, format: date-time }
+        deleted_by: { type: string }
+        attributes:
+          type: object
+          additionalProperties: true
+    EventRecycleBinAction:
+      type: object
+      required: [ids]
+      properties:
+        ids:
+          type: array
+          minItems: 1
+          maxItems: 1000
+          items: { type: string }
+    EventRecycleBinReport:
+      type: object
+      required: [ids, count]
+      properties:
+        ids:
+          type: array
+          items: { type: string }
+        count: { type: integer }
+    SecurityEventInput:
+      type: object
+      required: [application_id, environment_id, agent_id, severity, message]
+      properties:
+        application_id: { type: string }
+        environment_id: { type: string }
+        agent_id: { type: string }
+        policy_id: { type: string }
+        policy_version: { type: integer }
+        hook: { type: string }
+        algorithm: { type: string }
+        severity: { type: string }
+        message: { type: string }
+        occurred_at: { type: string, format: date-time }
+        attributes:
+          type: object
+          additionalProperties: true
+    Dependency:
+      type: object
+      required: [id, application_id, agent_id, name, version, ecosystem, observed_at]
+      properties:
+        id: { type: string }
+        application_id: { type: string }
+        agent_id: { type: string }
+        name: { type: string }
+        version: { type: string }
+        ecosystem: { type: string }
+        package_path: { type: string }
+        licenses:
+          type: array
+          items: { type: string }
+        vulnerabilities:
+          type: array
+          items:
+            $ref: "#/components/schemas/DependencyVulnerability"
+        observed_at: { type: string, format: date-time }
+    DependencyVulnerability:
+      type: object
+      required: [id, severity]
+      properties:
+        id: { type: string }
+        severity:
+          type: string
+          enum: [critical, high, medium, low]
+        cvss: { type: number }
+        known_exploited: { type: boolean }
+        fixed_version: { type: string }
+    DependencyList:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/Dependency"
+    DependencyInput:
+      type: object
+      required: [application_id, name]
+      properties:
+        application_id: { type: string }
+        agent_id: { type: string }
+        name: { type: string }
+        version: { type: string }
+        ecosystem: { type: string }
+        package_path: { type: string }
+        licenses:
+          type: array
+          items: { type: string }
+        vulnerabilities:
+          type: array
+          items:
+            $ref: "#/components/schemas/DependencyVulnerability"
+        observed_at: { type: string, format: date-time }
+    BaselineFinding:
+      type: object
+      required: [id, application_id, environment_id, agent_id, check_id, title, category, severity, status, resource, observed_at]
+      properties:
+        id: { type: string }
+        application_id: { type: string }
+        environment_id: { type: string }
+        agent_id: { type: string }
+        check_id: { type: string }
+        title: { type: string }
+        category: { type: string }
+        severity:
+          type: string
+          enum: [critical, high, medium, low, info]
+        status:
+          type: string
+          enum: [failed, warning, passed, suppressed]
+        resource: { type: string }
+        remediation: { type: string }
+        attributes:
+          type: object
+          additionalProperties: true
+        observed_at: { type: string, format: date-time }
+    BaselineFindingInput:
+      type: object
+      required: [application_id, environment_id, agent_id, check_id, title, severity, status]
+      properties:
+        application_id: { type: string }
+        environment_id: { type: string }
+        agent_id: { type: string }
+        check_id: { type: string }
+        title: { type: string }
+        category: { type: string }
+        severity:
+          type: string
+          enum: [critical, high, medium, low, info]
+        status:
+          type: string
+          enum: [failed, warning, passed, suppressed]
+        resource: { type: string }
+        remediation: { type: string }
+        attributes:
+          type: object
+          additionalProperties: true
+        observed_at: { type: string, format: date-time }
+    BaselineFindingList:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/BaselineFinding"
+    Overview:
+      type: object
+      required: [application_count, agent_count, online_agents, event_count, events_by_type, events_by_severity]
+      properties:
+        application_count: { type: integer }
+        agent_count: { type: integer }
+        online_agents: { type: integer }
+        event_count: { type: integer }
+        events_by_type:
+          type: object
+          additionalProperties:
+            type: integer
+        events_by_severity:
+          type: object
+          additionalProperties:
+            type: integer
+    AuditLogList:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/AuditLog"
+    AuditLog:
+      type: object
+      required: [id, actor_id, action, resource, created_at]
+      properties:
+        id: { type: string }
+        actor_id: { type: string }
+        action: { type: string }
+        resource: { type: string }
+        details:
+          type: object
+          additionalProperties: true
+        created_at: { type: string, format: date-time }
+    SystemSettingList:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/SystemSetting"
+    SystemSetting:
+      type: object
+      required: [key, value, updated_at]
+      properties:
+        key: { type: string }
+        value:
+          type: object
+          additionalProperties: true
+        updated_by: { type: string }
+        updated_at: { type: string, format: date-time }
+    SystemSettingUpdate:
+      type: object
+      required: [value]
+      properties:
+        value:
+          type: object
+          additionalProperties: true
+    EditionStatus:
+      type: object
+      required:
+        - edition
+        - display_name
+        - deployment_model
+        - license_required
+        - license_enforcement
+        - license_status
+      properties:
+        edition:
+          type: string
+          enum: [oss_self_hosted]
+        display_name:
+          type: string
+        deployment_model:
+          type: string
+          enum: [single_organization_self_hosted]
+        license_required:
+          type: boolean
+        license_enforcement:
+          type: string
+          enum: [none]
+        license_status:
+          type: string
+          enum: [not_applicable]
+        note:
+          type: string
+    MaintenanceCleanupRequest:
+      type: object
+      required: [before]
+      properties:
+        before:
+          type: string
+          format: date-time
+        application_id:
+          type: string
+          description: Optional application scope. Omit to clean all applications.
+        dry_run:
+          type: boolean
+          default: true
+        include_events:
+          type: boolean
+          default: true
+        include_dependencies:
+          type: boolean
+          default: true
+        include_baseline_findings:
+          type: boolean
+          default: true
+        include_alert_deliveries:
+          type: boolean
+          default: true
+        confirmation:
+          type: string
+          description: Required as CLEAR_OPERATIONAL_DATA when dry_run is false.
+    MaintenanceCleanupReport:
+      type: object
+      required: [dry_run, before, counts]
+      properties:
+        dry_run: { type: boolean }
+        before: { type: string, format: date-time }
+        application_id: { type: string }
+        counts:
+          type: object
+          additionalProperties:
+            type: integer
+    AlertRuleList:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/AlertRule"
+    AlertRule:
+      type: object
+      required: [id, name, description, enabled, event_type, severity, condition, target, created_at, updated_at]
+      properties:
+        id: { type: string }
+        name: { type: string }
+        description: { type: string }
+        enabled: { type: boolean }
+        event_type:
+          type: string
+          enum: [attack, hook, performance, crash, dependency]
+        severity:
+          type: string
+          enum: [critical, high, medium, low]
+        condition: { type: string }
+        target: { type: string }
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
+    AlertRuleInput:
+      type: object
+      required: [name, enabled, event_type, severity, target]
+      properties:
+        name: { type: string }
+        description: { type: string }
+        enabled: { type: boolean }
+        event_type:
+          type: string
+          enum: [attack, hook, performance, crash, dependency]
+        severity:
+          type: string
+          enum: [critical, high, medium, low]
+        condition: { type: string }
+        target: { type: string }
+    AlertDeliveryList:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/AlertDelivery"
+    AlertDelivery:
+      type: object
+      required: [id, alert_rule_id, alert_rule_name, event_id, event_type, severity, target, status, attempts, created_at]
+      properties:
+        id: { type: string }
+        alert_rule_id: { type: string }
+        alert_rule_name: { type: string }
+        event_id: { type: string }
+        event_type:
+          type: string
+          enum: [attack, hook, performance, crash, dependency]
+        severity:
+          type: string
+          enum: [critical, high, medium, low]
+        target: { type: string }
+        status:
+          type: string
+          enum: [queued, delivered, failed]
+        attempts: { type: integer }
+        last_error: { type: string }
+        created_at: { type: string, format: date-time }
+        delivered_at: { type: string, format: date-time }
+    ObservabilityReport:
+      type: object
+      required: [rule_overhead, hook_latency, agent_overhead, policy_performance]
+      properties:
+        rule_overhead:
+          type: array
+          items:
+            $ref: "#/components/schemas/RuleOverhead"
+        hook_latency:
+          type: array
+          items:
+            $ref: "#/components/schemas/HookLatency"
+        agent_overhead:
+          type: array
+          items:
+            $ref: "#/components/schemas/AgentOverhead"
+        policy_performance:
+          type: array
+          items:
+            $ref: "#/components/schemas/PolicyPerformance"
+    RuleOverhead:
+      type: object
+      required: [policy_id, policy_version, rule_id, hook, executions, blocked, average_latency_us, p95_latency_us, max_latency_us]
+      properties:
+        policy_id: { type: string }
+        policy_version: { type: integer }
+        rule_id: { type: string }
+        hook: { type: string }
+        executions: { type: integer }
+        blocked: { type: integer }
+        average_latency_us: { type: number }
+        p95_latency_us: { type: integer }
+        max_latency_us: { type: integer }
+    HookLatency:
+      type: object
+      required: [hook, calls, average_latency_us, p95_latency_us, max_latency_us]
+      properties:
+        hook: { type: string }
+        calls: { type: integer }
+        average_latency_us: { type: number }
+        p95_latency_us: { type: integer }
+        max_latency_us: { type: integer }
+    AgentOverhead:
+      type: object
+      required: [agent_id, samples, cpu_overhead_pct, memory_overhead_bytes, hook_latency_p95_us, rule_eval_p95_us]
+      properties:
+        agent_id: { type: string }
+        samples: { type: integer }
+        cpu_overhead_pct: { type: number }
+        memory_overhead_bytes: { type: integer, format: int64 }
+        hook_latency_p95_us: { type: integer }
+        rule_eval_p95_us: { type: integer }
+    PolicyPerformance:
+      type: object
+      required: [policy_id, policy_version, samples, cpu_overhead_pct, hook_latency_p95_us, rule_eval_p95_us]
+      properties:
+        policy_id: { type: string }
+        policy_version: { type: integer }
+        samples: { type: integer }
+        cpu_overhead_pct: { type: number }
+        hook_latency_p95_us: { type: integer }
+        rule_eval_p95_us: { type: integer }
