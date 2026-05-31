@@ -1,0 +1,137 @@
+name: ohmyrasp-control
+
+services:
+  migrate:
+    build:
+      context: ./api
+    entrypoint: ["/ohmyrasp-migrate"]
+    environment:
+      OHMYRASP_POSTGRES_DSN: postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}?sslmode=disable
+      OHMYRASP_CLICKHOUSE_DSN: clickhouse://${CLICKHOUSE_USER}:${CLICKHOUSE_PASSWORD}@clickhouse:9000?database=${CLICKHOUSE_DB}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      clickhouse:
+        condition: service_healthy
+    restart: "no"
+
+  api:
+    build:
+      context: ./api
+    environment:
+      OHMYRASP_API_ADDR: ${OHMYRASP_API_ADDR}
+      OHMYRASP_POSTGRES_DSN: postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}?sslmode=disable
+      OHMYRASP_CLICKHOUSE_DSN: clickhouse://${CLICKHOUSE_USER}:${CLICKHOUSE_PASSWORD}@clickhouse:9000?database=${CLICKHOUSE_DB}
+      OHMYRASP_VALKEY_ADDR: valkey:6379
+      OHMYRASP_VALKEY_PASSWORD: ${VALKEY_PASSWORD}
+      OHMYRASP_RATE_LIMIT: "600"
+      OHMYRASP_RATE_LIMIT_WINDOW: 1m
+      OHMYRASP_AGENT_ARTIFACT_DIR: /var/lib/ohmyrasp/artifacts
+      OHMYRASP_BOOTSTRAP_ADMIN_EMAIL: ${OHMYRASP_BOOTSTRAP_ADMIN_EMAIL}
+      OHMYRASP_BOOTSTRAP_ADMIN_PASSWORD: ${OHMYRASP_BOOTSTRAP_ADMIN_PASSWORD}
+      OHMYRASP_BOOTSTRAP_ADMIN_NAME: ${OHMYRASP_BOOTSTRAP_ADMIN_NAME}
+    ports:
+      - "0.0.0.0:${API_PORT}:8080"
+    volumes:
+      - agent-artifacts:/var/lib/ohmyrasp/artifacts
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      valkey:
+        condition: service_healthy
+
+  web:
+    build:
+      context: ./web
+    ports:
+      - "0.0.0.0:${WEB_PORT}:8080"
+    depends_on:
+      - api
+
+  postgres:
+    image: postgres:18
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+    ports:
+      - "0.0.0.0:${POSTGRES_PORT}:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U \"$${POSTGRES_USER}\" -d \"$${POSTGRES_DB}\""]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  clickhouse:
+    image: clickhouse/clickhouse-server:latest
+    environment:
+      CLICKHOUSE_DB: ${CLICKHOUSE_DB}
+      CLICKHOUSE_USER: ${CLICKHOUSE_USER}
+      CLICKHOUSE_PASSWORD: ${CLICKHOUSE_PASSWORD}
+    ports:
+      - "0.0.0.0:${CLICKHOUSE_HTTP_PORT}:8123"
+      - "0.0.0.0:${CLICKHOUSE_NATIVE_PORT}:9000"
+    volumes:
+      - clickhouse-data:/var/lib/clickhouse
+    healthcheck:
+      test: ["CMD-SHELL", "clickhouse-client --user \"$${CLICKHOUSE_USER}\" --password \"$${CLICKHOUSE_PASSWORD}\" --query 'SELECT 1'"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  valkey:
+    image: valkey/valkey:9
+    command: ["sh", "-c", "exec valkey-server --requirepass \"$${VALKEY_PASSWORD}\""]
+    environment:
+      VALKEY_PASSWORD: ${VALKEY_PASSWORD}
+    ports:
+      - "0.0.0.0:${VALKEY_PORT}:6379"
+    healthcheck:
+      test: ["CMD-SHELL", "valkey-cli -a \"$${VALKEY_PASSWORD}\" ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  prometheus:
+    image: prom/prometheus:latest
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+    ports:
+      - "0.0.0.0:${PROMETHEUS_PORT}:9090"
+    volumes:
+      - ./deploy/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./deploy/helm/ohmyrasp-control/files/prometheus:/etc/prometheus/rules:ro
+    depends_on:
+      - alertmanager
+
+  alertmanager:
+    image: prom/alertmanager:latest
+    command:
+      - --config.file=/etc/alertmanager/alertmanager.yml
+      - --storage.path=/alertmanager
+    ports:
+      - "0.0.0.0:${ALERTMANAGER_PORT}:9093"
+    volumes:
+      - ./deploy/helm/ohmyrasp-control/files/alertmanager/alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro
+      - ./deploy/helm/ohmyrasp-control/files/alertmanager/templates:/etc/alertmanager/templates:ro
+
+  grafana:
+    image: grafana/grafana-oss:latest
+    environment:
+      GF_AUTH_ANONYMOUS_ENABLED: "true"
+      GF_AUTH_ANONYMOUS_ORG_ROLE: Viewer
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD}
+    ports:
+      - "0.0.0.0:${GRAFANA_PORT}:3000"
+    volumes:
+      - ./deploy/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./deploy/helm/ohmyrasp-control/files/grafana:/var/lib/grafana/dashboards/ohmyrasp:ro
+    depends_on:
+      - prometheus
+
+volumes:
+  postgres-data:
+  clickhouse-data:
+  agent-artifacts:
