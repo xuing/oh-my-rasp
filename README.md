@@ -34,6 +34,27 @@ repository.
 
 ## Architecture
 
+OhMyRASP uses a control-plane architecture. The Go API is the central
+coordination point: it owns authentication, RBAC, application inventory,
+environment inventory, policies, daemon state, agent artifact metadata, audit
+logs, and operational settings through an OpenAPI-defined HTTP surface. The
+React console talks to that API and provides the operator workflow for creating
+applications, managing policies, reviewing telemetry, rotating credentials, and
+monitoring daemon/agent activity.
+
+Runtime data is split by access pattern. PostgreSQL stores authoritative
+control-plane state, ClickHouse stores high-volume event and performance
+telemetry, and Valkey provides session, policy-pull, and rate-limit caching.
+Prometheus scrapes the API and bundled rules, Alertmanager handles alert
+routing, and Grafana provides dashboarding.
+
+The Java side demonstrates the protection path. Agents register against the
+control plane, heartbeat, pull policies, and report runtime observations. The
+daemon-compatible APIs support workload discovery, binding workloads to
+applications, command delivery, artifact download, and injection-result
+reporting. The Java agent proof of concept uses ASM bytecode transformation to
+hook selected runtime call sites inside a comparative Tomcat testbed.
+
 ```text
                  +-------------------+
                  |   Web Console     |
@@ -180,6 +201,18 @@ separate from the control-plane stack.
 Historical upstream and reference material is retained locally under
 `.archive/` for traceability, but it is ignored by Git and is not part of the
 published repository.
+
+## Acknowledgements
+
+OhMyRASP's Java agent proof of concept uses the
+[ASM](https://asm.ow2.io/) bytecode engineering library. We are grateful to the
+ASM project and maintainers for the tooling that makes precise JVM
+instrumentation practical.
+
+We also want to thank the [OpenRASP](https://github.com/baidu/openrasp)
+project. OpenRASP helped define many of the ideas and operational expectations
+around open runtime application self-protection, and it remains an important
+reference point for the ecosystem.
 
 ## Security
 
