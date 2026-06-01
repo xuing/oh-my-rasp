@@ -1,4 +1,5 @@
 import type { HTMLAttributes } from "react";
+import { useUiCopy } from "../../i18n/copy";
 import { cn } from "../../lib/cn";
 
 const tones = {
@@ -11,11 +12,16 @@ const tones = {
 
 export type BadgeTone = keyof typeof tones;
 
-export function Badge({ className, tone = "neutral", ...props }: HTMLAttributes<HTMLSpanElement> & { tone?: BadgeTone }) {
+export function Badge({ children, className, tone = "neutral", ...props }: HTMLAttributes<HTMLSpanElement> & { tone?: BadgeTone }) {
+  const { copyLoose } = useUiCopy();
+  const renderedChildren = typeof children === "string" ? copyLoose(children) : children;
+
   return (
     <span
       className={cn("inline-flex items-center rounded-full border px-2 py-0.5 text-xs font-medium", tones[tone], className)}
       {...props}
-    />
+    >
+      {renderedChildren}
+    </span>
   );
 }

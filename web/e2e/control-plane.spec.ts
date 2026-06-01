@@ -24,6 +24,21 @@ test("logs in through the API-backed form", async ({ page }) => {
   await expect.poll(() => api.authorizedPaths).toContain("/api/v1/analytics/overview");
 });
 
+test("protects authenticated routes and renders explicit fallback pages", async ({ page }) => {
+  await page.goto("/");
+  await expect(page).toHaveURL(/\/login$/);
+  await expect(page.getByRole("heading", { name: "Sign in to OhMyRasp" })).toBeVisible();
+
+  await page.goto("/noaccess");
+  await expect(page.getByRole("heading", { name: "No access" })).toBeVisible();
+  await expect(page.getByText("Your account does not have permission to open this page.")).toBeVisible();
+
+  await page.goto("/does-not-exist");
+  await expect(page.getByRole("heading", { name: "Page not found" })).toBeVisible();
+  await page.getByLabel("Language").selectOption("zh");
+  await expect(page.getByRole("heading", { name: "页面不存在" })).toBeVisible();
+});
+
 test("navigates primary control-plane sections with an authenticated session", async ({ page }) => {
   const api = await mockControlPlaneApi(page);
   await page.addInitScript(() => {

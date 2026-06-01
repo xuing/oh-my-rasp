@@ -26,6 +26,7 @@ describe("session API", () => {
     saveSession(result);
 
     expect(currentSession()).toEqual({
+      roles: ["admin"],
       token: "real-session-token",
       userEmail: "operator@example.test",
       userName: "Operator"

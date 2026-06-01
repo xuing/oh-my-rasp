@@ -508,6 +508,7 @@ export type UserUpdateInput = {
 };
 
 export type SessionSnapshot = {
+  roles: string[];
   token: string;
   userEmail: string;
   userName: string;
@@ -535,18 +536,33 @@ export function saveSession(result: LoginResponse) {
   window.localStorage.setItem("ohmyrasp.session_token", result.session.token);
   window.localStorage.setItem("ohmyrasp.session_user_email", result.user.email);
   window.localStorage.setItem("ohmyrasp.session_user_name", result.user.name);
+  window.localStorage.setItem("ohmyrasp.session_user_roles", JSON.stringify(result.user.roles));
   window.dispatchEvent(new Event("ohmyrasp.session.changed"));
 }
 
 export function currentSession(): SessionSnapshot {
   if (typeof window === "undefined") {
-    return { token: "", userEmail: "", userName: "" };
+    return { roles: [], token: "", userEmail: "", userName: "" };
   }
   return {
+    roles: storedSessionRoles(),
     token: sessionToken(),
     userEmail: window.localStorage.getItem("ohmyrasp.session_user_email") ?? "",
     userName: window.localStorage.getItem("ohmyrasp.session_user_name") ?? ""
   };
+}
+
+function storedSessionRoles() {
+  const raw = window.localStorage.getItem("ohmyrasp.session_user_roles");
+  if (!raw) {
+    return [];
+  }
+  try {
+    const parsed = JSON.parse(raw) as unknown;
+    return Array.isArray(parsed) ? parsed.filter((role): role is string => typeof role === "string") : [];
+  } catch {
+    return [];
+  }
 }
 
 async function fetchJSON<T>(path: string): Promise<T> {

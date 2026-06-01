@@ -24,7 +24,8 @@ import { Button } from "../components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "../components/ui/card";
 import { Table } from "../components/ui/table";
 import { eventPipelines, navigationSections, policyLifecycle } from "../domain/control-plane";
-import { setAppLanguage, supportedLanguages, type SupportedLanguage } from "../i18n";
+import appI18n, { setAppLanguage, supportedLanguages, type SupportedLanguage } from "../i18n";
+import { UiText, UiValue, notice, translateNotice, translateUiCopy, useUiCopy } from "../i18n/copy";
 import {
   bindDaemonWorkload,
   cleanupMaintenanceData,
@@ -121,6 +122,7 @@ const lifecycleKeys = ["draft", "validate", "test", "version", "canary", "promot
 
 export function RootLayout() {
   const { i18n, t } = useTranslation();
+  const { copy } = useUiCopy();
   const [session, setSession] = useState(currentSession);
 
   useEffect(() => {
@@ -194,7 +196,7 @@ export function RootLayout() {
             </div>
           </div>
         </header>
-        <nav aria-label="Primary mobile" className="border-b border-slate-200 bg-white px-4 py-2 lg:hidden">
+        <nav aria-label={copy("Primary mobile")} className="border-b border-slate-200 bg-white px-4 py-2 lg:hidden">
           <div className="flex gap-2 overflow-x-auto">
             {navigationSections.map(section => {
               const navigationKey = navigationKeyByPath[section.path];
@@ -319,6 +321,50 @@ export function LoginPage() {
   );
 }
 
+export function NoAccessPage() {
+  return (
+    <EmptyStatePage
+      title={<UiText k="No access" />}
+      summary={<UiText k="Your account does not have permission to open this page." />}
+      action={<UiText k="Back to overview" />}
+      to="/"
+    />
+  );
+}
+
+export function NotFoundPage() {
+  const session = currentSession();
+  return (
+    <EmptyStatePage
+      title={<UiText k="Page not found" />}
+      summary={<UiText k="The page you requested does not exist." />}
+      action={<UiText k={session.token ? "Back to overview" : "Go to login"} />}
+      to={session.token ? "/" : "/login"}
+    />
+  );
+}
+
+function EmptyStatePage({ action, summary, title, to }: { action: ReactNode; summary: ReactNode; title: ReactNode; to: string }) {
+  return (
+    <div className="mx-auto flex min-h-[calc(100vh-9rem)] max-w-lg items-center">
+      <Card className="w-full">
+        <CardContent className="space-y-4">
+          <div>
+            <h1 className="text-xl font-semibold tracking-normal text-slate-950">{title}</h1>
+            <p className="mt-2 text-sm leading-6 text-slate-600">{summary}</p>
+          </div>
+          <Link
+            to={to}
+            className="inline-flex h-9 items-center justify-center rounded-md border border-slate-900 bg-slate-900 px-3 text-sm font-medium text-white transition-colors hover:bg-slate-800"
+          >
+            {action}
+          </Link>
+        </CardContent>
+      </Card>
+    </div>
+  );
+}
+
 export function OverviewPage() {
   const { t } = useTranslation();
   const overviewQuery = useOverview();
@@ -336,14 +382,14 @@ export function OverviewPage() {
       <QueryStateNotice
         isLoading={overviewQuery.isLoading}
         isError={overviewQuery.isError}
-        loading="Loading overview metrics."
-        error="Overview metrics are unavailable."
+        loading={<UiText k="Loading overview metrics." />}
+        error={<UiText k="Overview metrics are unavailable." />}
       />
       <section className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
         <Metric label={t("overview.metrics.applications")} value={overview.application_count} detail={t("overview.metrics.applicationsDetail")} />
         <Metric label={t("overview.metrics.onlineAgents")} value={`${overview.online_agents}/${overview.agent_count}`} detail={t("overview.metrics.onlineAgentsDetail", { rate: onlineRate })} />
         <Metric label={t("overview.metrics.events")} value={overview.event_count} detail={t("overview.metrics.eventsDetail")} />
-        <Metric label={t("overview.metrics.hookP95")} value="-" detail={overviewQuery.data ? t("overview.metrics.hookP95Detail") : "requires observability data"} />
+        <Metric label={t("overview.metrics.hookP95")} value="-" detail={overviewQuery.data ? t("overview.metrics.hookP95Detail") : <UiText k="requires observability data" />} />
       </section>
       <section className="grid gap-5 xl:grid-cols-[1.15fr_.85fr]">
         <Card>
@@ -382,22 +428,22 @@ export function ApplicationsPage() {
       <QueryStateNotice
         isLoading={applicationsQuery.isLoading}
         isError={applicationsQuery.isError}
-        loading="Loading applications."
-        error="Applications are unavailable."
+        loading={<UiText k="Loading applications." />}
+        error={<UiText k="Applications are unavailable." />}
       />
       <div className="grid gap-3 md:grid-cols-3">
-        <Metric label="Applications" value={applications.length} detail="managed services" />
-        <Metric label="Environments" value={environmentCount} detail="deployment scopes" />
-        <Metric label="Average Scope" value={applications.length > 0 ? (environmentCount / applications.length).toFixed(1) : "0.0"} detail="environments per app" />
+        <Metric label={<UiText k="Applications" />} value={applications.length} detail={<UiText k="managed services" />} />
+        <Metric label={<UiText k="Environments" />} value={environmentCount} detail={<UiText k="deployment scopes" />} />
+        <Metric label={<UiText k="Average Scope" />} value={applications.length > 0 ? (environmentCount / applications.length).toFixed(1) : "0.0"} detail={<UiText k="environments per app" />} />
       </div>
       <ApplicationsWritePanel applications={applications} />
       <Table>
         <thead>
           <tr className="bg-slate-50">
-            <th className="p-3 text-left">Application</th>
-            <th className="p-3 text-left">Environments</th>
-            <th className="p-3 text-left">Description</th>
-            <th className="p-3 text-left">Created</th>
+            <th className="p-3 text-left"><UiText k="Application" /></th>
+            <th className="p-3 text-left"><UiText k="Environments" /></th>
+            <th className="p-3 text-left"><UiText k="Description" /></th>
+            <th className="p-3 text-left"><UiText k="Created" /></th>
           </tr>
         </thead>
         <tbody>
@@ -406,15 +452,14 @@ export function ApplicationsPage() {
               <tr key={app.id} className="border-t border-slate-200">
                 <td className="p-3 font-medium">{app.name}</td>
                 <td className="p-3 text-slate-600">{app.environment_ids.length}</td>
-                <td className="p-3 text-slate-600">{app.description || "No description"}</td>
-                <td className="p-3 text-slate-600">{formatDate(app.created_at)}</td>
+                <td className="p-3 text-slate-600">{app.description || <UiText k="No description" />}</td>
+                <td className="p-3 text-slate-600"><FormattedDate value={app.created_at} /></td>
               </tr>
             ))
           ) : (
             <tr className="border-t border-slate-200">
               <td className="p-3 text-slate-500" colSpan={4}>
-                No applications
-              </td>
+                <UiText k="No applications" /></td>
             </tr>
           )}
         </tbody>
@@ -450,7 +495,7 @@ function ApplicationsWritePanel({ applications }: { applications: Application[] 
     setApplicationMessage({ status: "", error: "" });
     const trimmedName = applicationName.trim();
     if (!trimmedName) {
-      setApplicationMessage({ status: "", error: "Application name is required." });
+      setApplicationMessage({ status: "", error: notice("Application name is required.") });
       return;
     }
     setIsApplicationSubmitting(true);
@@ -460,12 +505,16 @@ function ApplicationsWritePanel({ applications }: { applications: Application[] 
         description: applicationDescription.trim() || undefined
       });
       await queryClient.invalidateQueries({ queryKey: ["applications"] });
-      const secret = created.secret ? ` Secret: ${created.secret}.` : "";
-      setApplicationMessage({ status: `Created application ${created.name}.${secret}`, error: "" });
+      setApplicationMessage({
+        status: created.secret
+          ? notice("Created application {{name}}. Secret: {{secret}}.", { name: created.name, secret: created.secret })
+          : notice("Created application {{name}}.", { name: created.name }),
+        error: ""
+      });
       setApplicationName("");
       setApplicationDescription("");
     } catch {
-      setApplicationMessage({ status: "", error: "Unable to create application." });
+      setApplicationMessage({ status: "", error: notice("Unable to create application.") });
     } finally {
       setIsApplicationSubmitting(false);
     }
@@ -475,12 +524,12 @@ function ApplicationsWritePanel({ applications }: { applications: Application[] 
     event.preventDefault();
     setEnvironmentMessage({ status: "", error: "" });
     if (!selectedApplication) {
-      setEnvironmentMessage({ status: "", error: "Choose an application first." });
+      setEnvironmentMessage({ status: "", error: notice("Choose an application first.") });
       return;
     }
     const trimmedName = environmentName.trim();
     if (!trimmedName) {
-      setEnvironmentMessage({ status: "", error: "Environment name is required." });
+      setEnvironmentMessage({ status: "", error: notice("Environment name is required.") });
       return;
     }
     setIsEnvironmentSubmitting(true);
@@ -490,10 +539,10 @@ function ApplicationsWritePanel({ applications }: { applications: Application[] 
         kind: environmentKind.trim() || undefined
       });
       await queryClient.invalidateQueries({ queryKey: ["applications"] });
-      setEnvironmentMessage({ status: `Created environment ${created.name} for ${selectedApplication.name}.`, error: "" });
+      setEnvironmentMessage({ status: notice("Created environment {{name}} for {{application}}.", { name: created.name, application: selectedApplication.name }), error: "" });
       setEnvironmentName("");
     } catch {
-      setEnvironmentMessage({ status: "", error: "Unable to create environment." });
+      setEnvironmentMessage({ status: "", error: notice("Unable to create environment.") });
     } finally {
       setIsEnvironmentSubmitting(false);
     }
@@ -502,17 +551,21 @@ function ApplicationsWritePanel({ applications }: { applications: Application[] 
   async function handleSecretRotation() {
     setSecretMessage({ status: "", error: "" });
     if (!selectedApplication) {
-      setSecretMessage({ status: "", error: "Choose an application first." });
+      setSecretMessage({ status: "", error: notice("Choose an application first.") });
       return;
     }
     setIsSecretSubmitting(true);
     try {
       const rotated = await rotateApplicationSecret(selectedApplication.id);
       await queryClient.invalidateQueries({ queryKey: ["applications"] });
-      const secret = rotated.secret ? ` Secret: ${rotated.secret}.` : "";
-      setSecretMessage({ status: `Rotated secret for ${rotated.name}.${secret}`, error: "" });
+      setSecretMessage({
+        status: rotated.secret
+          ? notice("Rotated secret for {{name}}. Secret: {{secret}}.", { name: rotated.name, secret: rotated.secret })
+          : notice("Rotated secret for {{name}}.", { name: rotated.name }),
+        error: ""
+      });
     } catch {
-      setSecretMessage({ status: "", error: "Unable to rotate application secret." });
+      setSecretMessage({ status: "", error: notice("Unable to rotate application secret.") });
     } finally {
       setIsSecretSubmitting(false);
     }
@@ -521,16 +574,16 @@ function ApplicationsWritePanel({ applications }: { applications: Application[] 
   return (
     <Card>
       <CardHeader>
-        <CardTitle>Application Scope</CardTitle>
+        <CardTitle><UiText k="Application Scope" /></CardTitle>
       </CardHeader>
       <CardContent className="grid gap-5 xl:grid-cols-2">
         <form className="grid content-start gap-3" onSubmit={handleApplicationSubmit}>
           <label className={fieldGroupClass} htmlFor="application-name">
-            <span className={fieldLabelClass}>Application Name</span>
+            <span className={fieldLabelClass}><UiText k="Application Name" /></span>
             <input id="application-name" className={fieldControlClass} value={applicationName} onChange={event => setApplicationName(event.target.value)} required />
           </label>
           <label className={fieldGroupClass} htmlFor="application-description">
-            <span className={fieldLabelClass}>Description</span>
+            <span className={fieldLabelClass}><UiText k="Description" /></span>
             <input
               id="application-description"
               className={fieldControlClass}
@@ -539,13 +592,13 @@ function ApplicationsWritePanel({ applications }: { applications: Application[] 
             />
           </label>
           <Button disabled={isApplicationSubmitting} type="submit">
-            {isApplicationSubmitting ? "Creating Application" : "Create Application"}
+            <UiText k={isApplicationSubmitting ? "Creating Application" : "Create Application"} />
           </Button>
           <FormMessage error={applicationMessage.error} status={applicationMessage.status} />
         </form>
         <form className="grid content-start gap-3" onSubmit={handleEnvironmentSubmit}>
           <label className={fieldGroupClass} htmlFor="environment-application">
-            <span className={fieldLabelClass}>Application</span>
+            <span className={fieldLabelClass}><UiText k="Application" /></span>
             <select
               id="environment-application"
               className={fieldControlClass}
@@ -560,29 +613,29 @@ function ApplicationsWritePanel({ applications }: { applications: Application[] 
                   </option>
                 ))
               ) : (
-                <option value="">No applications</option>
+                <option value=""><UiText k="No applications" /></option>
               )}
             </select>
           </label>
           <label className={fieldGroupClass} htmlFor="environment-name">
-            <span className={fieldLabelClass}>Environment Name</span>
+            <span className={fieldLabelClass}><UiText k="Environment Name" /></span>
             <input id="environment-name" className={fieldControlClass} value={environmentName} onChange={event => setEnvironmentName(event.target.value)} required />
           </label>
           <label className={fieldGroupClass} htmlFor="environment-kind">
-            <span className={fieldLabelClass}>Kind</span>
+            <span className={fieldLabelClass}><UiText k="Kind" /></span>
             <select id="environment-kind" className={fieldControlClass} value={environmentKind} onChange={event => setEnvironmentKind(event.target.value)}>
-              <option value="production">production</option>
-              <option value="staging">staging</option>
-              <option value="qa">qa</option>
-              <option value="development">development</option>
+              <option value="production"><UiText k="production" /></option>
+              <option value="staging"><UiText k="staging" /></option>
+              <option value="qa"><UiText k="qa" /></option>
+              <option value="development"><UiText k="development" /></option>
             </select>
           </label>
           <Button disabled={isEnvironmentSubmitting || !selectedApplication} type="submit">
-            {isEnvironmentSubmitting ? "Creating Environment" : "Create Environment"}
+            <UiText k={isEnvironmentSubmitting ? "Creating Environment" : "Create Environment"} />
           </Button>
           <FormMessage error={environmentMessage.error} status={environmentMessage.status} />
           <Button disabled={isSecretSubmitting || !selectedApplication} type="button" variant="secondary" onClick={handleSecretRotation}>
-            {isSecretSubmitting ? "Rotating Secret" : "Rotate Secret"}
+            <UiText k={isSecretSubmitting ? "Rotating Secret" : "Rotate Secret"} />
           </Button>
           <FormMessage error={secretMessage.error} status={secretMessage.status} />
         </form>
@@ -618,13 +671,17 @@ export function AgentsPage() {
       <QueryStateNotice
         isLoading={agentsQuery.isLoading || applicationsQuery.isLoading || daemonWorkloadsQuery.isLoading || agentArtifactsQuery.isLoading}
         isError={agentsQuery.isError || applicationsQuery.isError || daemonWorkloadsQuery.isError || agentArtifactsQuery.isError}
-        loading="Loading agent operations data."
-        error="Some agent operations data is unavailable."
+        loading={<UiText k="Loading agent operations data." />}
+        error={<UiText k="Some agent operations data is unavailable." />}
       />
       <div className="grid gap-3 md:grid-cols-3">
-        <Metric label="Online" value={`${onlineAgents}/${agents.length}`} detail="healthy heartbeat" />
-        <Metric label="Drifted" value={driftedAgents} detail={latestVersion ? `latest ${latestVersion}` : "no version baseline"} />
-        <Metric label="Assigned" value={agents.filter(agent => agent.policy_id).length} detail="policy-bound Agents" />
+        <Metric label={<UiText k="Online" />} value={`${onlineAgents}/${agents.length}`} detail={<UiText k="healthy heartbeat" />} />
+        <Metric
+          label={<UiText k="Drifted" />}
+          value={driftedAgents}
+          detail={latestVersion ? <UiText k="latest {{version}}" values={{ version: latestVersion }} /> : <UiText k="no version baseline" />}
+        />
+        <Metric label={<UiText k="Assigned" />} value={agents.filter(agent => agent.policy_id).length} detail={<UiText k="policy-bound Agents" />} />
       </div>
       <AgentsWritePanel applications={applications} onSecretUsed={rememberApplicationSecret} />
       <AgentOperationsPanel agents={agents} applications={applications} applicationSecrets={applicationSecrets} onSecretUsed={rememberApplicationSecret} />
@@ -635,12 +692,12 @@ export function AgentsPage() {
       <Table>
         <thead>
           <tr className="bg-slate-50">
-            <th className="p-3 text-left">Host</th>
-            <th className="p-3 text-left">Runtime</th>
-            <th className="p-3 text-left">Version</th>
-            <th className="p-3 text-left">Policy</th>
-            <th className="p-3 text-left">Status</th>
-            <th className="p-3 text-left">Last Seen</th>
+            <th className="p-3 text-left"><UiText k="Host" /></th>
+            <th className="p-3 text-left"><UiText k="Runtime" /></th>
+            <th className="p-3 text-left"><UiText k="Version" /></th>
+            <th className="p-3 text-left"><UiText k="Policy" /></th>
+            <th className="p-3 text-left"><UiText k="Status" /></th>
+            <th className="p-3 text-left"><UiText k="Last Seen" /></th>
           </tr>
         </thead>
         <tbody>
@@ -650,18 +707,17 @@ export function AgentsPage() {
                 <td className="p-3 font-medium">{agent.hostname}</td>
                 <td className="p-3 text-slate-600">{agent.runtime}</td>
                 <td className="p-3 text-slate-600">{agent.version}</td>
-                <td className="p-3 text-slate-600">{agent.policy_id ? `${agent.policy_id} v${agent.policy_version ?? 0}` : "unassigned"}</td>
+                <td className="p-3 text-slate-600">{agent.policy_id ? `${agent.policy_id} v${agent.policy_version ?? 0}` : <UiText k="unassigned" />}</td>
                 <td className="p-3">
                   <Badge tone={agent.status === "online" ? "green" : "amber"}>{agent.status}</Badge>
                 </td>
-                <td className="p-3 text-slate-600">{formatDate(agent.last_seen_at)}</td>
+                <td className="p-3 text-slate-600"><FormattedDate value={agent.last_seen_at} /></td>
               </tr>
             ))
           ) : (
             <tr className="border-t border-slate-200">
               <td className="p-3 text-slate-500" colSpan={6}>
-                No Agents
-              </td>
+                <UiText k="No Agents" /></td>
             </tr>
           )}
         </tbody>
@@ -711,12 +767,12 @@ function AgentOperationsPanel({
 
   async function handleHeartbeat() {
     if (!selectedAgent) {
-      setMessage({ status: "", error: "Choose an Agent first." });
+      setMessage({ status: "", error: notice("Choose an Agent first.") });
       return;
     }
     const trimmedSecret = applicationSecret.trim();
     if (!trimmedSecret) {
-      setMessage({ status: "", error: "Application secret is required." });
+      setMessage({ status: "", error: notice("Application secret is required.") });
       return;
     }
     setIsSubmitting(true);
@@ -728,9 +784,9 @@ function AgentOperationsPanel({
       });
       onSecretUsed(selectedAgent.application_id, trimmedSecret);
       await queryClient.invalidateQueries({ queryKey: ["agents"] });
-      setMessage({ status: `Heartbeat accepted for ${updated.hostname}: ${updated.status}.`, error: "" });
+      setMessage({ status: notice("Heartbeat accepted for {{hostname}}: {{status}}.", { hostname: updated.hostname, status: updated.status }), error: "" });
     } catch {
-      setMessage({ status: "", error: "Unable to send Agent heartbeat." });
+      setMessage({ status: "", error: notice("Unable to send Agent heartbeat.") });
     } finally {
       setIsSubmitting(false);
     }
@@ -738,12 +794,12 @@ function AgentOperationsPanel({
 
   async function handlePolicyPull() {
     if (!selectedAgent) {
-      setMessage({ status: "", error: "Choose an Agent first." });
+      setMessage({ status: "", error: notice("Choose an Agent first.") });
       return;
     }
     const trimmedSecret = applicationSecret.trim();
     if (!trimmedSecret) {
-      setMessage({ status: "", error: "Application secret is required." });
+      setMessage({ status: "", error: notice("Application secret is required.") });
       return;
     }
     setIsSubmitting(true);
@@ -754,9 +810,17 @@ function AgentOperationsPanel({
         application_secret: trimmedSecret
       });
       onSecretUsed(selectedAgent.application_id, trimmedSecret);
-      setMessage({ status: `Pulled policy version ${policy.version} (${policy.status}) with ${policy.rules.length} rules for ${selectedAgent.hostname}.`, error: "" });
+      setMessage({
+        status: notice("Pulled policy version {{version}} ({{status}}) with {{rules}} rules for {{hostname}}.", {
+          version: policy.version,
+          status: policy.status,
+          rules: policy.rules.length,
+          hostname: selectedAgent.hostname
+        }),
+        error: ""
+      });
     } catch {
-      setMessage({ status: "", error: "Unable to pull Agent policy." });
+      setMessage({ status: "", error: notice("Unable to pull Agent policy.") });
     } finally {
       setIsSubmitting(false);
     }
@@ -765,12 +829,12 @@ function AgentOperationsPanel({
   return (
     <Card>
       <CardHeader>
-        <CardTitle>Agent Operations</CardTitle>
+        <CardTitle><UiText k="Agent Operations" /></CardTitle>
       </CardHeader>
       <CardContent>
         <div className="grid gap-3 md:grid-cols-[1.2fr_.9fr_.7fr_auto_auto] md:items-end">
           <label className={fieldGroupClass} htmlFor="agent-operation-agent">
-            <span className={fieldLabelClass}>Agent</span>
+            <span className={fieldLabelClass}><UiText k="Agent" /></span>
             <select
               id="agent-operation-agent"
               className={fieldControlClass}
@@ -785,12 +849,12 @@ function AgentOperationsPanel({
                   </option>
                 ))
               ) : (
-                <option value="">No Agents</option>
+                <option value=""><UiText k="No Agents" /></option>
               )}
             </select>
           </label>
           <label className={fieldGroupClass} htmlFor="agent-operation-secret">
-            <span className={fieldLabelClass}>Operation Secret</span>
+            <span className={fieldLabelClass}><UiText k="Operation Secret" /></span>
             <input
               id="agent-operation-secret"
               autoComplete="off"
@@ -801,18 +865,16 @@ function AgentOperationsPanel({
             />
           </label>
           <label className={fieldGroupClass} htmlFor="heartbeat-status">
-            <span className={fieldLabelClass}>Heartbeat Status</span>
+            <span className={fieldLabelClass}><UiText k="Heartbeat Status" /></span>
             <select id="heartbeat-status" className={fieldControlClass} value={heartbeatStatus} onChange={event => setHeartbeatStatus(event.target.value)}>
-              <option value="online">online</option>
-              <option value="offline">offline</option>
+              <option value="online"><UiText k="online" /></option>
+              <option value="offline"><UiText k="offline" /></option>
             </select>
           </label>
           <Button disabled={isSubmitting || !selectedAgent} type="button" variant="secondary" onClick={handleHeartbeat}>
-            Send Heartbeat
-          </Button>
+            <UiText k="Send Heartbeat" /></Button>
           <Button disabled={isSubmitting || !selectedAgent} type="button" variant="secondary" onClick={handlePolicyPull}>
-            Pull Policy
-          </Button>
+            <UiText k="Pull Policy" /></Button>
           <div className="md:col-span-5">
             <FormMessage error={message.error} status={message.status} />
           </div>
@@ -857,9 +919,9 @@ function DaemonWorkloadPanel({
     try {
       const token = await getDaemonToken();
       onTokenReceived(token.access_token);
-      setMessage({ status: `Daemon token: ${token.access_token}`, error: "" });
+      setMessage({ status: notice("Daemon token: {{token}}", { token: token.access_token }), error: "" });
     } catch {
-      setMessage({ status: "", error: "Unable to reveal daemon token." });
+      setMessage({ status: "", error: notice("Unable to reveal daemon token.") });
     } finally {
       setIsTokenSubmitting(false);
     }
@@ -872,9 +934,9 @@ function DaemonWorkloadPanel({
       const token = await resetDaemonToken();
       onTokenReceived(token.access_token);
       await queryClient.invalidateQueries({ queryKey: ["audit-logs"] });
-      setMessage({ status: `Rotated daemon token: ${token.access_token}`, error: "" });
+      setMessage({ status: notice("Rotated daemon token: {{token}}", { token: token.access_token }), error: "" });
     } catch {
-      setMessage({ status: "", error: "Unable to rotate daemon token." });
+      setMessage({ status: "", error: notice("Unable to rotate daemon token.") });
     } finally {
       setIsTokenSubmitting(false);
     }
@@ -883,7 +945,7 @@ function DaemonWorkloadPanel({
   async function handleBind(workload: DaemonWorkload) {
     const applicationID = bindingApplicationIDs[workload.id] || applications[0]?.id || "";
     if (!applicationID) {
-      setMessage({ status: "", error: "Choose an application before binding." });
+      setMessage({ status: "", error: notice("Choose an application before binding.") });
       return;
     }
     setActiveWorkloadID(workload.id);
@@ -893,9 +955,9 @@ function DaemonWorkloadPanel({
       await queryClient.invalidateQueries({ queryKey: ["daemon-workloads"] });
       await queryClient.invalidateQueries({ queryKey: ["audit-logs"] });
       const app = applications.find(application => application.id === bound.application_id);
-      setMessage({ status: `Bound ${workloadLabel(bound)} to ${app?.name ?? bound.application_id}.`, error: "" });
+      setMessage({ status: notice("Bound {{workload}} to {{application}}.", { workload: workloadLabel(bound), application: app?.name ?? bound.application_id }), error: "" });
     } catch {
-      setMessage({ status: "", error: "Unable to bind workload." });
+      setMessage({ status: "", error: notice("Unable to bind workload.") });
     } finally {
       setActiveWorkloadID("");
     }
@@ -908,9 +970,9 @@ function DaemonWorkloadPanel({
       const unbound = await unbindDaemonWorkload(workload.id);
       await queryClient.invalidateQueries({ queryKey: ["daemon-workloads"] });
       await queryClient.invalidateQueries({ queryKey: ["audit-logs"] });
-      setMessage({ status: `Unbound ${workloadLabel(unbound)}.`, error: "" });
+      setMessage({ status: notice("Unbound {{workload}}.", { workload: workloadLabel(unbound) }), error: "" });
     } catch {
-      setMessage({ status: "", error: "Unable to unbind workload." });
+      setMessage({ status: "", error: notice("Unable to unbind workload.") });
     } finally {
       setActiveWorkloadID("");
     }
@@ -920,16 +982,14 @@ function DaemonWorkloadPanel({
     <Card className="overflow-hidden">
       <CardHeader>
         <div className="flex flex-wrap items-center justify-between gap-3">
-          <CardTitle>Daemon Workloads</CardTitle>
+          <CardTitle><UiText k="Daemon Workloads" /></CardTitle>
           <div className="flex flex-wrap gap-2">
             <Button disabled={isTokenSubmitting} type="button" variant="secondary" onClick={handleTokenReveal}>
               <KeyRound className="h-4 w-4" />
-              Reveal Token
-            </Button>
+              <UiText k="Reveal Token" /></Button>
             <Button disabled={isTokenSubmitting} type="button" variant="secondary" onClick={handleTokenReset}>
               <RefreshCcw className="h-4 w-4" />
-              Reset Token
-            </Button>
+              <UiText k="Reset Token" /></Button>
           </div>
         </div>
         <FormMessage error={message.error} status={message.status} />
@@ -938,13 +998,13 @@ function DaemonWorkloadPanel({
         <Table className="rounded-none border-0">
           <thead>
             <tr className="bg-slate-50">
-              <th className="p-3 text-left">Node</th>
-              <th className="p-3 text-left">Workload</th>
-              <th className="p-3 text-left">Bound App</th>
-              <th className="p-3 text-left">Injection</th>
-              <th className="p-3 text-left">Seen</th>
-              <th className="p-3 text-left">Bind</th>
-              <th className="p-3 text-left">Actions</th>
+              <th className="p-3 text-left"><UiText k="Node" /></th>
+              <th className="p-3 text-left"><UiText k="Workload" /></th>
+              <th className="p-3 text-left"><UiText k="Bound App" /></th>
+              <th className="p-3 text-left"><UiText k="Injection" /></th>
+              <th className="p-3 text-left"><UiText k="Seen" /></th>
+              <th className="p-3 text-left"><UiText k="Bind" /></th>
+              <th className="p-3 text-left"><UiText k="Actions" /></th>
             </tr>
           </thead>
           <tbody>
@@ -961,9 +1021,9 @@ function DaemonWorkloadPanel({
                       <Badge tone={workload.type === "process" ? "blue" : "amber"}>{workload.type}</Badge>
                       <div className="mt-2 text-sm text-slate-600">{workloadDetail(workload)}</div>
                     </td>
-                    <td className="p-3 text-slate-600">{boundApplication?.name ?? workload.application_id ?? "unbound"}</td>
+                    <td className="p-3 text-slate-600">{boundApplication?.name ?? workload.application_id ?? <UiText k="unbound" />}</td>
                     <td className="p-3">{injectionStatusCell(workload)}</td>
-                    <td className="p-3 text-slate-600">{formatDate(workload.updated_at)}</td>
+                    <td className="p-3 text-slate-600"><FormattedDate value={workload.updated_at} /></td>
                     <td className="p-3">
                       <select
                         className={fieldControlClass}
@@ -978,7 +1038,7 @@ function DaemonWorkloadPanel({
                             </option>
                           ))
                         ) : (
-                          <option value="">No applications</option>
+                          <option value=""><UiText k="No applications" /></option>
                         )}
                       </select>
                     </td>
@@ -986,12 +1046,10 @@ function DaemonWorkloadPanel({
                       <div className="flex flex-wrap gap-2">
                         <Button disabled={activeWorkloadID === workload.id || applications.length === 0} type="button" variant="secondary" onClick={() => handleBind(workload)}>
                           <Link2 className="h-4 w-4" />
-                          Bind
-                        </Button>
+                          <UiText k="Bind" /></Button>
                         <Button disabled={activeWorkloadID === workload.id || !workload.application_id} type="button" variant="secondary" onClick={() => handleUnbind(workload)}>
                           <Link2Off className="h-4 w-4" />
-                          Unbind
-                        </Button>
+                          <UiText k="Unbind" /></Button>
                       </div>
                     </td>
                   </tr>
@@ -1000,8 +1058,7 @@ function DaemonWorkloadPanel({
             ) : (
               <tr className="border-t border-slate-200">
                 <td className="p-3 text-slate-500" colSpan={7}>
-                  No daemon workloads
-                </td>
+                  <UiText k="No daemon workloads" /></td>
               </tr>
             )}
           </tbody>
@@ -1026,19 +1083,19 @@ function AgentArtifactUploadPanel({ catalog }: { catalog: AgentArtifactCatalog }
     const normalizedSystemType = systemType.trim();
     const normalizedLanguageVersion = languageVersion.trim();
     if (!uploadAvailable) {
-      setMessage({ status: "", error: "Managed artifact directory is not configured." });
+      setMessage({ status: "", error: notice("Managed artifact directory is not configured.") });
       return;
     }
     if (!file) {
-      setMessage({ status: "", error: "Choose an Agent ZIP package." });
+      setMessage({ status: "", error: notice("Choose an Agent ZIP package.") });
       return;
     }
     if (!file.name.toLowerCase().endsWith(".zip")) {
-      setMessage({ status: "", error: "Agent artifact must be a ZIP package." });
+      setMessage({ status: "", error: notice("Agent artifact must be a ZIP package.") });
       return;
     }
     if (!normalizedSystemType || !normalizedLanguageVersion) {
-      setMessage({ status: "", error: "System type and language version are required." });
+      setMessage({ status: "", error: notice("System type and language version are required.") });
       return;
     }
     setIsSubmitting(true);
@@ -1055,9 +1112,9 @@ function AgentArtifactUploadPanel({ catalog }: { catalog: AgentArtifactCatalog }
         queryClient.invalidateQueries({ queryKey: ["agent-artifacts"] }),
         queryClient.invalidateQueries({ queryKey: ["audit-logs"] })
       ]);
-      setMessage({ status: `Uploaded ${uploaded.filename} (${formatBytes(uploaded.size)}).`, error: "" });
+      setMessage({ status: notice("Uploaded {{filename}} ({{size}}).", { filename: uploaded.filename, size: formatBytes(uploaded.size) }), error: "" });
     } catch {
-      setMessage({ status: "", error: "Unable to upload Agent artifact." });
+      setMessage({ status: "", error: notice("Unable to upload Agent artifact.") });
     } finally {
       setIsSubmitting(false);
     }
@@ -1067,14 +1124,16 @@ function AgentArtifactUploadPanel({ catalog }: { catalog: AgentArtifactCatalog }
     <Card>
       <CardHeader>
         <div className="flex flex-wrap items-center justify-between gap-3">
-          <CardTitle>Agent Artifact Upload</CardTitle>
-          <Badge tone={uploadAvailable ? "green" : "amber"}>{uploadAvailable ? "Managed Storage" : "Storage Unavailable"}</Badge>
+          <CardTitle><UiText k="Agent Artifact Upload" /></CardTitle>
+          <Badge tone={uploadAvailable ? "green" : "amber"}>
+            <UiText k={uploadAvailable ? "Managed Storage" : "Storage Unavailable"} />
+          </Badge>
         </div>
       </CardHeader>
       <CardContent>
         <form className="grid gap-3 md:grid-cols-2 xl:grid-cols-[1.4fr_.7fr_.8fr_auto] xl:items-end" onSubmit={handleUpload}>
           <label className={fieldGroupClass} htmlFor="artifact-upload-file">
-            <span className={fieldLabelClass}>Agent ZIP</span>
+            <span className={fieldLabelClass}><UiText k="Agent ZIP" /></span>
             <input
               id="artifact-upload-file"
               accept=".zip,application/zip,application/x-zip-compressed"
@@ -1085,7 +1144,7 @@ function AgentArtifactUploadPanel({ catalog }: { catalog: AgentArtifactCatalog }
             />
           </label>
           <label className={fieldGroupClass} htmlFor="artifact-upload-system-type">
-            <span className={fieldLabelClass}>Upload System Type</span>
+            <span className={fieldLabelClass}><UiText k="Upload System Type" /></span>
             <select
               id="artifact-upload-system-type"
               className={fieldControlClass}
@@ -1093,12 +1152,12 @@ function AgentArtifactUploadPanel({ catalog }: { catalog: AgentArtifactCatalog }
               value={systemType}
               onChange={event => setSystemType(event.target.value)}
             >
-              <option value="linux">linux</option>
-              <option value="windows">windows</option>
+              <option value="linux"><UiText k="linux" /></option>
+              <option value="windows"><UiText k="windows" /></option>
             </select>
           </label>
           <label className={fieldGroupClass} htmlFor="artifact-upload-language-version">
-            <span className={fieldLabelClass}>Upload Language Version</span>
+            <span className={fieldLabelClass}><UiText k="Upload Language Version" /></span>
             <input
               id="artifact-upload-language-version"
               className={fieldControlClass}
@@ -1109,7 +1168,7 @@ function AgentArtifactUploadPanel({ catalog }: { catalog: AgentArtifactCatalog }
           </label>
           <Button className="gap-2" disabled={!uploadAvailable || isSubmitting} type="submit">
             <Upload className="h-4 w-4" />
-            {isSubmitting ? "Uploading Artifact" : "Upload Artifact"}
+            <UiText k={isSubmitting ? "Uploading Artifact" : "Upload Artifact"} />
           </Button>
           <div className="md:col-span-2 xl:col-span-4">
             <FormMessage error={message.error} status={message.status} />
@@ -1125,10 +1184,14 @@ function AgentArtifactCatalogPanel({ catalog }: { catalog: AgentArtifactCatalog 
     <Card className="overflow-hidden">
       <CardHeader>
         <div className="flex flex-wrap items-center justify-between gap-3">
-          <CardTitle>Agent Artifact Catalog</CardTitle>
+          <CardTitle><UiText k="Agent Artifact Catalog" /></CardTitle>
           <div className="flex flex-wrap gap-2">
-            <Badge tone={catalog.artifact_dir_configured ? "green" : "amber"}>{catalog.artifact_dir_configured ? "Filesystem Pool" : "Generated Bootstrap"}</Badge>
-            <Badge tone={catalog.generated_bootstrap_enabled ? "blue" : "neutral"}>{catalog.generated_bootstrap_enabled ? "Generated Bootstrap" : "Filesystem Only"}</Badge>
+            <Badge tone={catalog.artifact_dir_configured ? "green" : "amber"}>
+              <UiText k={catalog.artifact_dir_configured ? "Filesystem Pool" : "Generated Bootstrap"} />
+            </Badge>
+            <Badge tone={catalog.generated_bootstrap_enabled ? "blue" : "neutral"}>
+              <UiText k={catalog.generated_bootstrap_enabled ? "Generated Bootstrap" : "Filesystem Only"} />
+            </Badge>
           </div>
         </div>
       </CardHeader>
@@ -1136,12 +1199,12 @@ function AgentArtifactCatalogPanel({ catalog }: { catalog: AgentArtifactCatalog 
         <Table className="rounded-none border-0">
           <thead>
             <tr className="bg-slate-50">
-              <th className="p-3 text-left">Package</th>
-              <th className="p-3 text-left">Runtime</th>
-              <th className="p-3 text-left">Checksum</th>
-              <th className="p-3 text-left">Size</th>
-              <th className="p-3 text-left">Source</th>
-              <th className="p-3 text-left">Updated</th>
+              <th className="p-3 text-left"><UiText k="Package" /></th>
+              <th className="p-3 text-left"><UiText k="Runtime" /></th>
+              <th className="p-3 text-left"><UiText k="Checksum" /></th>
+              <th className="p-3 text-left"><UiText k="Size" /></th>
+              <th className="p-3 text-left"><UiText k="Source" /></th>
+              <th className="p-3 text-left"><UiText k="Updated" /></th>
             </tr>
           </thead>
           <tbody>
@@ -1157,13 +1220,13 @@ function AgentArtifactCatalogPanel({ catalog }: { catalog: AgentArtifactCatalog 
                   <td className="p-3">
                     <Badge tone={item.source === "filesystem" ? "green" : "blue"}>{item.source}</Badge>
                   </td>
-                  <td className="p-3 text-slate-600">{formatDate(item.updated_at)}</td>
+                  <td className="p-3 text-slate-600"><FormattedDate value={item.updated_at} /></td>
                 </tr>
               ))
             ) : (
               <tr className="border-t border-slate-200">
                 <td className="p-3 text-slate-500" colSpan={6}>
-                  {catalog.generated_bootstrap_enabled ? "Generated bootstrap artifacts are available per application." : "No Agent artifacts discovered."}
+                  <UiText k={catalog.generated_bootstrap_enabled ? "Generated bootstrap artifacts are available per application." : "No Agent artifacts discovered."} />
                 </td>
               </tr>
             )}
@@ -1216,9 +1279,9 @@ function DaemonArtifactPanel({ applications, daemonToken }: { applications: Appl
         languageVersion: languageVersion.trim() || "unknown"
       });
       setArtifact(info);
-      setMessage({ status: `Artifact ${info.filename} ready for ${selectedApplication.name}.`, error: "" });
+      setMessage({ status: notice("Artifact {{filename}} ready for {{application}}.", { filename: info.filename, application: selectedApplication.name }), error: "" });
     } catch {
-      setMessage({ status: "", error: "Unable to verify Agent artifact." });
+      setMessage({ status: "", error: notice("Unable to verify Agent artifact.") });
     } finally {
       setIsSubmitting(false);
     }
@@ -1242,10 +1305,14 @@ function DaemonArtifactPanel({ applications, daemonToken }: { applications: Appl
         languageVersion: languageVersion.trim() || artifact?.language_version || "unknown"
       });
       triggerBrowserDownload(download.blob, download.filename);
-      const checksum = download.md5 ? ` MD5: ${download.md5}.` : "";
-      setMessage({ status: `Downloaded ${download.filename} (${formatBytes(download.blob.size)}).${checksum}`, error: "" });
+      setMessage({
+        status: download.md5
+          ? notice("Downloaded {{filename}} ({{size}}). MD5: {{md5}}.", { filename: download.filename, size: formatBytes(download.blob.size), md5: download.md5 })
+          : notice("Downloaded {{filename}} ({{size}}).", { filename: download.filename, size: formatBytes(download.blob.size) }),
+        error: ""
+      });
     } catch {
-      setMessage({ status: "", error: "Unable to download Agent artifact." });
+      setMessage({ status: "", error: notice("Unable to download Agent artifact.") });
     } finally {
       setIsDownloading(false);
     }
@@ -1254,12 +1321,12 @@ function DaemonArtifactPanel({ applications, daemonToken }: { applications: Appl
   return (
     <Card>
       <CardHeader>
-        <CardTitle>Agent Bootstrap Artifact</CardTitle>
+        <CardTitle><UiText k="Agent Bootstrap Artifact" /></CardTitle>
       </CardHeader>
       <CardContent className="grid gap-4">
         <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-[1.2fr_1.1fr_.7fr_.8fr_auto_auto] xl:items-end">
           <label className={fieldGroupClass} htmlFor="artifact-application">
-            <span className={fieldLabelClass}>Artifact Application</span>
+            <span className={fieldLabelClass}><UiText k="Artifact Application" /></span>
             <select
               id="artifact-application"
               className={fieldControlClass}
@@ -1274,49 +1341,49 @@ function DaemonArtifactPanel({ applications, daemonToken }: { applications: Appl
                   </option>
                 ))
               ) : (
-                <option value="">No applications</option>
+                <option value=""><UiText k="No applications" /></option>
               )}
             </select>
           </label>
           <label className={fieldGroupClass} htmlFor="artifact-daemon-token">
-            <span className={fieldLabelClass}>Artifact Daemon Token</span>
+            <span className={fieldLabelClass}><UiText k="Artifact Daemon Token" /></span>
             <input id="artifact-daemon-token" autoComplete="off" className={fieldControlClass} type="password" value={token} onChange={event => setToken(event.target.value)} />
           </label>
           <label className={fieldGroupClass} htmlFor="artifact-system-type">
-            <span className={fieldLabelClass}>System Type</span>
+            <span className={fieldLabelClass}><UiText k="System Type" /></span>
             <select id="artifact-system-type" className={fieldControlClass} value={systemType} onChange={event => setSystemType(event.target.value)}>
-              <option value="linux">linux</option>
-              <option value="windows">windows</option>
+              <option value="linux"><UiText k="linux" /></option>
+              <option value="windows"><UiText k="windows" /></option>
             </select>
           </label>
           <label className={fieldGroupClass} htmlFor="artifact-language-version">
-            <span className={fieldLabelClass}>Language Version</span>
+            <span className={fieldLabelClass}><UiText k="Language Version" /></span>
             <input id="artifact-language-version" className={fieldControlClass} value={languageVersion} onChange={event => setLanguageVersion(event.target.value)} />
           </label>
           <Button disabled={isSubmitting || !selectedApplication} type="button" variant="secondary" onClick={handleArtifactCheck}>
-            {isSubmitting ? "Checking Artifact" : "Check Agent Artifact"}
+            <UiText k={isSubmitting ? "Checking Artifact" : "Check Agent Artifact"} />
           </Button>
           <Button disabled={isDownloading || !selectedApplication} type="button" onClick={handleArtifactDownload}>
-            {isDownloading ? "Downloading Artifact" : "Download Agent Artifact"}
+            <UiText k={isDownloading ? "Downloading Artifact" : "Download Agent Artifact"} />
           </Button>
         </div>
         <FormMessage error={message.error} status={message.status} />
         {artifact ? (
           <div className="grid gap-2 rounded-md border border-slate-200 bg-slate-50 p-3 text-sm text-slate-700 md:grid-cols-2 xl:grid-cols-4">
             <div>
-              <span className="block text-xs font-medium text-slate-500">MD5</span>
+              <span className="block text-xs font-medium text-slate-500"><UiText k="MD5" /></span>
               <span className="break-all font-mono text-xs">{artifact.md5}</span>
             </div>
             <div>
-              <span className="block text-xs font-medium text-slate-500">Size</span>
+              <span className="block text-xs font-medium text-slate-500"><UiText k="Size" /></span>
               <span>{formatBytes(artifact.size)}</span>
             </div>
             <div>
-              <span className="block text-xs font-medium text-slate-500">Language</span>
+              <span className="block text-xs font-medium text-slate-500"><UiText k="Language" /></span>
               <span>{artifact.language}</span>
             </div>
             <div>
-              <span className="block text-xs font-medium text-slate-500">System</span>
+              <span className="block text-xs font-medium text-slate-500"><UiText k="System" /></span>
               <span>{artifact.system_type}</span>
             </div>
           </div>
@@ -1328,12 +1395,12 @@ function DaemonArtifactPanel({ applications, daemonToken }: { applications: Appl
 
 function artifactInputError(hasApplication: boolean, token: string) {
   if (!hasApplication) {
-    return "Choose an application first.";
+    return notice("Choose an application first.");
   }
   if (!token) {
-    return "Daemon token is required.";
+    return notice("Daemon token is required.");
   }
-  return "Artifact request is invalid.";
+  return notice("Artifact request is invalid.");
 }
 
 function triggerBrowserDownload(blob: Blob, filename: string) {
@@ -1393,14 +1460,14 @@ function AgentsWritePanel({ applications, onSecretUsed }: { applications: Applic
     event.preventDefault();
     setMessage({ status: "", error: "" });
     if (!selectedApplication || !environmentID) {
-      setMessage({ status: "", error: "Choose an application environment first." });
+      setMessage({ status: "", error: notice("Choose an application environment first.") });
       return;
     }
     const trimmedSecret = applicationSecret.trim();
     const trimmedHostname = hostname.trim();
     const trimmedVersion = version.trim();
     if (!trimmedSecret || !trimmedHostname || !trimmedVersion) {
-      setMessage({ status: "", error: "Application secret, hostname, and version are required." });
+      setMessage({ status: "", error: notice("Application secret, hostname, and version are required.") });
       return;
     }
     setIsSubmitting(true);
@@ -1415,11 +1482,11 @@ function AgentsWritePanel({ applications, onSecretUsed }: { applications: Applic
       });
       onSecretUsed(selectedApplication.id, trimmedSecret);
       await queryClient.invalidateQueries({ queryKey: ["agents"] });
-      setMessage({ status: `Registered Agent ${agent.hostname} as ${agent.id}.`, error: "" });
+      setMessage({ status: notice("Registered Agent {{hostname}} as {{id}}.", { hostname: agent.hostname, id: agent.id }), error: "" });
       setApplicationSecret("");
       setHostname("");
     } catch {
-      setMessage({ status: "", error: "Unable to register Agent." });
+      setMessage({ status: "", error: notice("Unable to register Agent.") });
     } finally {
       setIsSubmitting(false);
     }
@@ -1428,12 +1495,12 @@ function AgentsWritePanel({ applications, onSecretUsed }: { applications: Applic
   return (
     <Card>
       <CardHeader>
-        <CardTitle>Agent Registration</CardTitle>
+        <CardTitle><UiText k="Agent Registration" /></CardTitle>
       </CardHeader>
       <CardContent>
         <form className="grid gap-3 md:grid-cols-2 xl:grid-cols-3" onSubmit={handleSubmit}>
           <label className={fieldGroupClass} htmlFor="agent-application">
-            <span className={fieldLabelClass}>Application</span>
+            <span className={fieldLabelClass}><UiText k="Application" /></span>
             <select
               id="agent-application"
               className={fieldControlClass}
@@ -1448,12 +1515,12 @@ function AgentsWritePanel({ applications, onSecretUsed }: { applications: Applic
                   </option>
                 ))
               ) : (
-                <option value="">No applications</option>
+                <option value=""><UiText k="No applications" /></option>
               )}
             </select>
           </label>
           <label className={fieldGroupClass} htmlFor="agent-environment">
-            <span className={fieldLabelClass}>Environment</span>
+            <span className={fieldLabelClass}><UiText k="Environment" /></span>
             <select
               id="agent-environment"
               className={fieldControlClass}
@@ -1468,12 +1535,12 @@ function AgentsWritePanel({ applications, onSecretUsed }: { applications: Applic
                   </option>
                 ))
               ) : (
-                <option value="">No environments</option>
+                <option value=""><UiText k="No environments" /></option>
               )}
             </select>
           </label>
           <label className={fieldGroupClass} htmlFor="agent-application-secret">
-            <span className={fieldLabelClass}>Application Secret</span>
+            <span className={fieldLabelClass}><UiText k="Application Secret" /></span>
             <input
               id="agent-application-secret"
               autoComplete="off"
@@ -1485,20 +1552,20 @@ function AgentsWritePanel({ applications, onSecretUsed }: { applications: Applic
             />
           </label>
           <label className={fieldGroupClass} htmlFor="agent-hostname">
-            <span className={fieldLabelClass}>Agent Hostname</span>
+            <span className={fieldLabelClass}><UiText k="Agent Hostname" /></span>
             <input id="agent-hostname" className={fieldControlClass} value={hostname} onChange={event => setHostname(event.target.value)} required />
           </label>
           <label className={fieldGroupClass} htmlFor="agent-runtime">
-            <span className={fieldLabelClass}>Agent Runtime</span>
+            <span className={fieldLabelClass}><UiText k="Agent Runtime" /></span>
             <input id="agent-runtime" className={fieldControlClass} value={runtime} onChange={event => setRuntime(event.target.value)} />
           </label>
           <label className={fieldGroupClass} htmlFor="agent-version">
-            <span className={fieldLabelClass}>Agent Version</span>
+            <span className={fieldLabelClass}><UiText k="Agent Version" /></span>
             <input id="agent-version" className={fieldControlClass} value={version} onChange={event => setVersion(event.target.value)} required />
           </label>
           <div className="flex flex-wrap items-center gap-3 md:col-span-2 xl:col-span-3">
             <Button disabled={isSubmitting || !selectedApplication || !environmentID} type="submit">
-              {isSubmitting ? "Registering Agent" : "Register Agent"}
+              <UiText k={isSubmitting ? "Registering Agent" : "Register Agent"} />
             </Button>
             <div className="min-w-72 flex-1">
               <FormMessage error={message.error} status={message.status} />
@@ -1529,13 +1596,13 @@ export function PoliciesPage() {
       <QueryStateNotice
         isLoading={policiesQuery.isLoading || applicationsQuery.isLoading || sampleEventsQuery.isLoading}
         isError={policiesQuery.isError || applicationsQuery.isError || sampleEventsQuery.isError}
-        loading="Loading policies."
-        error="Policies are unavailable."
+        loading={<UiText k="Loading policies." />}
+        error={<UiText k="Policies are unavailable." />}
       />
       <div className="grid gap-3 md:grid-cols-3">
-        <Metric label="Policy Sets" value={policies.length} detail="managed rule groups" />
-        <Metric label="Active" value={activePolicies} detail="serving policy versions" />
-        <Metric label="Active Rules" value={ruleCount} detail="rules in deployed versions" />
+        <Metric label={<UiText k="Policy Sets" />} value={policies.length} detail={<UiText k="managed rule groups" />} />
+        <Metric label={<UiText k="Active" />} value={activePolicies} detail={<UiText k="serving policy versions" />} />
+        <Metric label={<UiText k="Active Rules" />} value={ruleCount} detail={<UiText k="rules in deployed versions" />} />
       </div>
       <PolicySetCreatePanel />
       <PolicyWritePanel applications={applications} policies={policies} sampleEvents={sampleEvents} />
@@ -1544,11 +1611,11 @@ export function PoliciesPage() {
         <Table>
           <thead>
             <tr className="bg-slate-50">
-              <th className="p-3 text-left">Policy</th>
-              <th className="p-3 text-left">Active</th>
-              <th className="p-3 text-right">Versions</th>
-              <th className="p-3 text-right">Rules</th>
-              <th className="p-3 text-left">Created</th>
+              <th className="p-3 text-left"><UiText k="Policy" /></th>
+              <th className="p-3 text-left"><UiText k="Active" /></th>
+              <th className="p-3 text-right"><UiText k="Versions" /></th>
+              <th className="p-3 text-right"><UiText k="Rules" /></th>
+              <th className="p-3 text-left"><UiText k="Created" /></th>
             </tr>
           </thead>
           <tbody>
@@ -1560,18 +1627,17 @@ export function PoliciesPage() {
                     <div className="text-xs text-slate-500">{policy.description || policy.id}</div>
                   </td>
                   <td className="p-3">
-                    {policy.active ? <Badge tone={statusTone(policy.active.status)}>{policy.active.status} v{policy.active.version}</Badge> : <Badge>No active</Badge>}
+                    {policy.active ? <Badge tone={statusTone(policy.active.status)}>{policy.active.status} <UiText k="v" />{policy.active.version}</Badge> : <Badge><UiText k="No active" /></Badge>}
                   </td>
                   <td className="p-3 text-right text-slate-600">{policy.versions.length}</td>
                   <td className="p-3 text-right text-slate-600">{policy.active?.rules.length ?? 0}</td>
-                  <td className="p-3 text-slate-600">{formatDate(policy.created_at)}</td>
+                  <td className="p-3 text-slate-600"><FormattedDate value={policy.created_at} /></td>
                 </tr>
               ))
             ) : (
               <tr className="border-t border-slate-200">
                 <td className="p-3 text-slate-500" colSpan={5}>
-                  No policies
-                </td>
+                  <UiText k="No policies" /></td>
               </tr>
             )}
           </tbody>
@@ -1702,7 +1768,7 @@ export function EventsPage() {
   async function handleRecycleAction(action: "delete" | "restore" | "purge") {
     setRecycleMessage({ status: "", error: "" });
     if (!recycleEventID) {
-      setRecycleMessage({ status: "", error: "Choose an event first." });
+      setRecycleMessage({ status: "", error: notice("Choose an event first.") });
       return;
     }
     setIsRecyclingEvent(true);
@@ -1719,10 +1785,21 @@ export function EventsPage() {
         queryClient.invalidateQueries({ queryKey: ["alert-deliveries"] }),
         queryClient.invalidateQueries({ queryKey: ["audit-logs"] })
       ]);
-      const verb = action === "delete" ? "Moved" : action === "restore" ? "Restored" : "Purged";
-      setRecycleMessage({ status: `${verb} ${report.count} event${report.count === 1 ? "" : "s"}.`, error: "" });
+      const messageKey =
+        action === "delete"
+          ? report.count === 1
+            ? "Moved {{count}} event."
+            : "Moved {{count}} events."
+          : action === "restore"
+            ? report.count === 1
+              ? "Restored {{count}} event."
+              : "Restored {{count}} events."
+            : report.count === 1
+              ? "Purged {{count}} event."
+              : "Purged {{count}} events.";
+      setRecycleMessage({ status: notice(messageKey, { count: report.count }), error: "" });
     } catch {
-      setRecycleMessage({ status: "", error: "Unable to update the event recycle bin." });
+      setRecycleMessage({ status: "", error: notice("Unable to update the event recycle bin.") });
     } finally {
       setIsRecyclingEvent(false);
     }
@@ -1789,22 +1866,22 @@ export function EventsPage() {
           dependenciesQuery.isError ||
           baselineFindingsQuery.isError
         }
-        loading="Loading event and inventory data."
-        error="Some event or inventory data is unavailable."
+        loading={<UiText k="Loading event and inventory data." />}
+        error={<UiText k="Some event or inventory data is unavailable." />}
       />
       <div className="grid gap-3 md:grid-cols-4">
-        <Metric label="Security Events" value={allEvents.length} detail="attack, Hook, performance, crash" />
-        <Metric label="Critical" value={criticalEvents} detail="requires immediate review" />
-        <Metric label="Dependencies" value={dependencies.length} detail={`${highEvents} high event signals`} />
-        <Metric label="Baseline Findings" value={baselineFindings.length} detail={`${failedBaselineFindings} open posture signals`} />
+        <Metric label={<UiText k="Security Events" />} value={allEvents.length} detail={<UiText k="attack, Hook, performance, crash" />} />
+        <Metric label={<UiText k="Critical" />} value={criticalEvents} detail={<UiText k="requires immediate review" />} />
+        <Metric label={<UiText k="Dependencies" />} value={dependencies.length} detail={<UiText k="{{count}} high event signals" values={{ count: highEvents }} />} />
+        <Metric label={<UiText k="Baseline Findings" />} value={baselineFindings.length} detail={<UiText k="{{count}} open posture signals" values={{ count: failedBaselineFindings }} />} />
       </div>
       <Card>
         <CardHeader>
-          <CardTitle>Event Query</CardTitle>
+          <CardTitle><UiText k="Event Query" /></CardTitle>
         </CardHeader>
         <CardContent className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
           <label className={fieldGroupClass} htmlFor="event-application">
-            <span className={fieldLabelClass}>Event Application</span>
+            <span className={fieldLabelClass}><UiText k="Event Application" /></span>
             <select
               id="event-application"
               className={fieldControlClass}
@@ -1815,7 +1892,7 @@ export function EventsPage() {
                 setEventAgentID("");
               }}
             >
-              <option value="">All Applications</option>
+              <option value=""><UiText k="All Applications" /></option>
               {applications.map(application => (
                 <option key={application.id} value={application.id}>
                   {application.name}
@@ -1824,9 +1901,9 @@ export function EventsPage() {
             </select>
           </label>
           <label className={fieldGroupClass} htmlFor="event-environment">
-            <span className={fieldLabelClass}>Event Environment</span>
+            <span className={fieldLabelClass}><UiText k="Event Environment" /></span>
             <select id="event-environment" className={fieldControlClass} value={eventEnvironmentID} onChange={event => setEventEnvironmentID(event.target.value)}>
-              <option value="">All Environments</option>
+              <option value=""><UiText k="All Environments" /></option>
               {eventEnvironmentOptions.map(environmentID => (
                 <option key={environmentID} value={environmentID}>
                   {environmentID}
@@ -1835,9 +1912,9 @@ export function EventsPage() {
             </select>
           </label>
           <label className={fieldGroupClass} htmlFor="event-agent">
-            <span className={fieldLabelClass}>Event Agent</span>
+            <span className={fieldLabelClass}><UiText k="Event Agent" /></span>
             <select id="event-agent" className={fieldControlClass} value={eventAgentID} onChange={event => setEventAgentID(event.target.value)}>
-              <option value="">All Agents</option>
+              <option value=""><UiText k="All Agents" /></option>
               {eventAgents.map(agent => (
                 <option key={agent.id} value={agent.id}>
                   {agent.hostname}
@@ -1846,9 +1923,9 @@ export function EventsPage() {
             </select>
           </label>
           <label className={fieldGroupClass} htmlFor="event-policy">
-            <span className={fieldLabelClass}>Event Policy</span>
+            <span className={fieldLabelClass}><UiText k="Event Policy" /></span>
             <select id="event-policy" className={fieldControlClass} value={eventPolicyID} onChange={event => setEventPolicyID(event.target.value)}>
-              <option value="">All Policies</option>
+              <option value=""><UiText k="All Policies" /></option>
               {policies.map(policy => (
                 <option key={policy.id} value={policy.id}>
                   {policy.name}
@@ -1857,21 +1934,21 @@ export function EventsPage() {
             </select>
           </label>
           <label className={fieldGroupClass} htmlFor="event-severity">
-            <span className={fieldLabelClass}>Event Severity</span>
+            <span className={fieldLabelClass}><UiText k="Event Severity" /></span>
             <select id="event-severity" className={fieldControlClass} value={eventSeverity} onChange={event => setEventSeverity(event.target.value)}>
-              <option value="">All Severities</option>
-              <option value="critical">critical</option>
-              <option value="high">high</option>
-              <option value="medium">medium</option>
-              <option value="low">low</option>
+              <option value=""><UiText k="All Severities" /></option>
+              <option value="critical"><UiText k="critical" /></option>
+              <option value="high"><UiText k="high" /></option>
+              <option value="medium"><UiText k="medium" /></option>
+              <option value="low"><UiText k="low" /></option>
             </select>
           </label>
           <label className={fieldGroupClass} htmlFor="event-hook">
-            <span className={fieldLabelClass}>Event Hook</span>
+            <span className={fieldLabelClass}><UiText k="Event Hook" /></span>
             <input id="event-hook" className={fieldControlClass} value={eventHook} onChange={event => setEventHook(event.target.value)} />
           </label>
           <label className={fieldGroupClass} htmlFor="event-occurred-after">
-            <span className={fieldLabelClass}>Occurred After</span>
+            <span className={fieldLabelClass}><UiText k="Occurred After" /></span>
             <input
               id="event-occurred-after"
               className={fieldControlClass}
@@ -1881,7 +1958,7 @@ export function EventsPage() {
             />
           </label>
           <label className={fieldGroupClass} htmlFor="event-occurred-before">
-            <span className={fieldLabelClass}>Occurred Before</span>
+            <span className={fieldLabelClass}><UiText k="Occurred Before" /></span>
             <input
               id="event-occurred-before"
               className={fieldControlClass}
@@ -1891,7 +1968,7 @@ export function EventsPage() {
             />
           </label>
           <label className={fieldGroupClass} htmlFor="event-limit">
-            <span className={fieldLabelClass}>Event Limit</span>
+            <span className={fieldLabelClass}><UiText k="Event Limit" /></span>
             <input
               id="event-limit"
               className={fieldControlClass}
@@ -1904,8 +1981,7 @@ export function EventsPage() {
           </label>
           <div className="flex items-end">
             <Button className="w-full" type="button" variant="secondary" onClick={clearEventFilters}>
-              Clear Filters
-            </Button>
+              <UiText k="Clear Filters" /></Button>
           </div>
         </CardContent>
       </Card>
@@ -1913,9 +1989,9 @@ export function EventsPage() {
         <Table>
           <thead>
             <tr className="bg-slate-50">
-              <th className="p-3 text-left">Event</th>
-              <th className="p-3 text-left">Storage</th>
-              <th className="p-3 text-left">Use</th>
+              <th className="p-3 text-left"><UiText k="Event" /></th>
+              <th className="p-3 text-left"><UiText k="Storage" /></th>
+              <th className="p-3 text-left"><UiText k="Use" /></th>
             </tr>
           </thead>
           <tbody>
@@ -1931,11 +2007,11 @@ export function EventsPage() {
         <Table>
           <thead>
             <tr className="bg-slate-50">
-              <th className="p-3 text-left">Type</th>
-              <th className="p-3 text-left">Message</th>
-              <th className="p-3 text-left">Hook</th>
-              <th className="p-3 text-left">Severity</th>
-              <th className="p-3 text-left">Occurred</th>
+              <th className="p-3 text-left"><UiText k="Type" /></th>
+              <th className="p-3 text-left"><UiText k="Message" /></th>
+              <th className="p-3 text-left"><UiText k="Hook" /></th>
+              <th className="p-3 text-left"><UiText k="Severity" /></th>
+              <th className="p-3 text-left"><UiText k="Occurred" /></th>
             </tr>
           </thead>
           <tbody>
@@ -1946,18 +2022,17 @@ export function EventsPage() {
                     <Badge tone={eventTypeTone(event.type)}>{event.type}</Badge>
                   </td>
                   <td className="p-3 font-medium">{event.message}</td>
-                  <td className="p-3 text-slate-600">{event.hook || "unknown"}</td>
+                  <td className="p-3 text-slate-600">{event.hook || <UiText k="unknown" />}</td>
                   <td className="p-3">
                     <Badge tone={severityTone(event.severity)}>{event.severity}</Badge>
                   </td>
-                  <td className="p-3 text-slate-600">{formatDate(event.occurred_at)}</td>
+                  <td className="p-3 text-slate-600"><FormattedDate value={event.occurred_at} /></td>
                 </tr>
               ))
             ) : (
               <tr className="border-t border-slate-200">
                 <td className="p-3 text-slate-500" colSpan={5}>
-                  No security events
-                </td>
+                  <UiText k="No security events" /></td>
               </tr>
             )}
           </tbody>
@@ -1965,12 +2040,12 @@ export function EventsPage() {
       </section>
       <Card className="overflow-hidden">
         <CardHeader>
-          <CardTitle>Event Recycle Bin</CardTitle>
+          <CardTitle><UiText k="Event Recycle Bin" /></CardTitle>
         </CardHeader>
         <CardContent className="grid gap-4">
           <div className="grid gap-3 md:grid-cols-[1fr_auto_auto_auto] md:items-end">
             <label className={fieldGroupClass} htmlFor="event-recycle-id">
-              <span className={fieldLabelClass}>Recycle Event ID</span>
+              <span className={fieldLabelClass}><UiText k="Recycle Event ID" /></span>
               <select
                 id="event-recycle-id"
                 className={fieldControlClass}
@@ -1981,32 +2056,29 @@ export function EventsPage() {
                 {recycleEventOptions.length > 0 ? (
                   recycleEventOptions.map(event => (
                     <option key={event.id} value={event.id}>
-                      {event.id} / {event.type} / {event.deleted_at ? "deleted" : "active"}
+                      {event.id} / {event.type} / {event.deleted_at ? translateUiCopy(appI18n.resolvedLanguage ?? appI18n.language, "deleted") : translateUiCopy(appI18n.resolvedLanguage ?? appI18n.language, "active")}
                     </option>
                   ))
                 ) : (
-                  <option value="">No events</option>
+                  <option value=""><UiText k="No events" /></option>
                 )}
               </select>
             </label>
             <Button disabled={isRecyclingEvent || !recycleEventID} type="button" variant="secondary" onClick={() => void handleRecycleAction("delete")}>
-              Move Event To Recycle Bin
-            </Button>
+              <UiText k="Move Event To Recycle Bin" /></Button>
             <Button disabled={isRecyclingEvent || !recycleEventID} type="button" variant="secondary" onClick={() => void handleRecycleAction("restore")}>
-              Restore Event
-            </Button>
+              <UiText k="Restore Event" /></Button>
             <Button disabled={isRecyclingEvent || !recycleEventID} type="button" onClick={() => void handleRecycleAction("purge")}>
-              Permanently Delete Event
-            </Button>
+              <UiText k="Permanently Delete Event" /></Button>
           </div>
           <FormMessage error={recycleMessage.error} status={recycleMessage.status} />
           <Table className="rounded-none border-0">
             <thead>
               <tr className="bg-slate-50">
-                <th className="p-3 text-left">Type</th>
-                <th className="p-3 text-left">Message</th>
-                <th className="p-3 text-left">Deleted</th>
-                <th className="p-3 text-left">Deleted By</th>
+                <th className="p-3 text-left"><UiText k="Type" /></th>
+                <th className="p-3 text-left"><UiText k="Message" /></th>
+                <th className="p-3 text-left"><UiText k="Deleted" /></th>
+                <th className="p-3 text-left"><UiText k="Deleted By" /></th>
               </tr>
             </thead>
             <tbody>
@@ -2020,15 +2092,14 @@ export function EventsPage() {
                       <div className="font-medium">{event.message}</div>
                       <div className="text-xs text-slate-500">{event.id}</div>
                     </td>
-                    <td className="p-3 text-slate-600">{formatDate(event.deleted_at)}</td>
-                    <td className="p-3 text-slate-600">{event.deleted_by || "unknown"}</td>
+                    <td className="p-3 text-slate-600"><FormattedDate value={event.deleted_at} /></td>
+                    <td className="p-3 text-slate-600">{event.deleted_by || <UiText k="unknown" />}</td>
                   </tr>
                 ))
               ) : (
                 <tr className="border-t border-slate-200">
                   <td className="p-3 text-slate-500" colSpan={4}>
-                    No deleted events
-                  </td>
+                    <UiText k="No deleted events" /></td>
                 </tr>
               )}
             </tbody>
@@ -2038,12 +2109,12 @@ export function EventsPage() {
       <section className="grid gap-5">
         <Card className="overflow-hidden">
           <CardHeader>
-            <CardTitle>Dependency Inventory</CardTitle>
+            <CardTitle><UiText k="Dependency Inventory" /></CardTitle>
           </CardHeader>
           <CardContent className="p-0">
             <div className="grid gap-3 border-b border-slate-200 p-4 md:grid-cols-2 xl:grid-cols-4">
               <label className={fieldGroupClass} htmlFor="dependency-application">
-                <span className={fieldLabelClass}>Dependency Application</span>
+                <span className={fieldLabelClass}><UiText k="Dependency Application" /></span>
                 <select
                   id="dependency-application"
                   className={fieldControlClass}
@@ -2053,7 +2124,7 @@ export function EventsPage() {
                     setDependencyAgentID("");
                   }}
                 >
-                  <option value="">All Applications</option>
+                  <option value=""><UiText k="All Applications" /></option>
                   {applications.map(application => (
                     <option key={application.id} value={application.id}>
                       {application.name}
@@ -2062,9 +2133,9 @@ export function EventsPage() {
                 </select>
               </label>
               <label className={fieldGroupClass} htmlFor="dependency-agent">
-                <span className={fieldLabelClass}>Dependency Agent</span>
+                <span className={fieldLabelClass}><UiText k="Dependency Agent" /></span>
                 <select id="dependency-agent" className={fieldControlClass} value={dependencyAgentID} onChange={event => setDependencyAgentID(event.target.value)}>
-                  <option value="">All Agents</option>
+                  <option value=""><UiText k="All Agents" /></option>
                   {dependencyAgents.map(agent => (
                     <option key={agent.id} value={agent.id}>
                       {agent.hostname}
@@ -2073,30 +2144,30 @@ export function EventsPage() {
                 </select>
               </label>
               <label className={fieldGroupClass} htmlFor="dependency-name">
-                <span className={fieldLabelClass}>Dependency Name</span>
+                <span className={fieldLabelClass}><UiText k="Dependency Name" /></span>
                 <input id="dependency-name" className={fieldControlClass} value={dependencyName} onChange={event => setDependencyName(event.target.value)} />
               </label>
               <label className={fieldGroupClass} htmlFor="dependency-ecosystem">
-                <span className={fieldLabelClass}>Dependency Ecosystem</span>
+                <span className={fieldLabelClass}><UiText k="Dependency Ecosystem" /></span>
                 <input id="dependency-ecosystem" className={fieldControlClass} value={dependencyEcosystem} onChange={event => setDependencyEcosystem(event.target.value)} />
               </label>
               <label className={fieldGroupClass} htmlFor="dependency-vulnerability-severity">
-                <span className={fieldLabelClass}>Dependency Severity</span>
+                <span className={fieldLabelClass}><UiText k="Dependency Severity" /></span>
                 <select
                   id="dependency-vulnerability-severity"
                   className={fieldControlClass}
                   value={dependencyVulnerabilitySeverity}
                   onChange={event => setDependencyVulnerabilitySeverity(event.target.value)}
                 >
-                  <option value="">All Severities</option>
-                  <option value="critical">critical</option>
-                  <option value="high">high</option>
-                  <option value="medium">medium</option>
-                  <option value="low">low</option>
+                  <option value=""><UiText k="All Severities" /></option>
+                  <option value="critical"><UiText k="critical" /></option>
+                  <option value="high"><UiText k="high" /></option>
+                  <option value="medium"><UiText k="medium" /></option>
+                  <option value="low"><UiText k="low" /></option>
                 </select>
               </label>
               <label className={fieldGroupClass} htmlFor="dependency-observed-after">
-                <span className={fieldLabelClass}>Observed After</span>
+                <span className={fieldLabelClass}><UiText k="Observed After" /></span>
                 <input
                   id="dependency-observed-after"
                   className={fieldControlClass}
@@ -2106,7 +2177,7 @@ export function EventsPage() {
                 />
               </label>
               <label className={fieldGroupClass} htmlFor="dependency-observed-before">
-                <span className={fieldLabelClass}>Observed Before</span>
+                <span className={fieldLabelClass}><UiText k="Observed Before" /></span>
                 <input
                   id="dependency-observed-before"
                   className={fieldControlClass}
@@ -2116,7 +2187,7 @@ export function EventsPage() {
                 />
               </label>
               <label className={fieldGroupClass} htmlFor="dependency-limit">
-                <span className={fieldLabelClass}>Dependency Limit</span>
+                <span className={fieldLabelClass}><UiText k="Dependency Limit" /></span>
                 <input
                   id="dependency-limit"
                   className={fieldControlClass}
@@ -2129,19 +2200,18 @@ export function EventsPage() {
               </label>
               <div className="flex items-end">
                 <Button className="w-full" type="button" variant="secondary" onClick={clearDependencyFilters}>
-                  Clear Dependency Filters
-                </Button>
+                  <UiText k="Clear Dependency Filters" /></Button>
               </div>
             </div>
             <Table className="rounded-none border-0">
               <thead>
                 <tr className="bg-slate-50">
-                  <th className="p-3 text-left">Dependency</th>
-                  <th className="p-3 text-left">Version</th>
-                  <th className="p-3 text-left">Ecosystem</th>
-                  <th className="p-3 text-left">Licenses</th>
-                  <th className="p-3 text-left">Vulnerabilities</th>
-                  <th className="p-3 text-left">Observed</th>
+                  <th className="p-3 text-left"><UiText k="Dependency" /></th>
+                  <th className="p-3 text-left"><UiText k="Version" /></th>
+                  <th className="p-3 text-left"><UiText k="Ecosystem" /></th>
+                  <th className="p-3 text-left"><UiText k="Licenses" /></th>
+                  <th className="p-3 text-left"><UiText k="Vulnerabilities" /></th>
+                  <th className="p-3 text-left"><UiText k="Observed" /></th>
                 </tr>
               </thead>
               <tbody>
@@ -2150,11 +2220,11 @@ export function EventsPage() {
                     <tr key={dep.id} className="border-t border-slate-200">
                       <td className="p-3">
                         <div className="font-medium">{dep.name}</div>
-                        <div className="max-w-xs truncate text-xs text-slate-500">{dep.package_path || dep.agent_id || "unattributed"}</div>
+                        <div className="max-w-xs truncate text-xs text-slate-500">{dep.package_path || dep.agent_id || <UiText k="unattributed" />}</div>
                       </td>
-                      <td className="p-3 text-slate-600">{dep.version || "unknown"}</td>
-                      <td className="p-3 text-slate-600">{dep.ecosystem || "unknown"}</td>
-                      <td className="p-3 text-slate-600">{dep.licenses?.length ? dep.licenses.join(", ") : "unknown"}</td>
+                      <td className="p-3 text-slate-600">{dep.version || <UiText k="unknown" />}</td>
+                      <td className="p-3 text-slate-600">{dep.ecosystem || <UiText k="unknown" />}</td>
+                      <td className="p-3 text-slate-600">{dep.licenses?.length ? dep.licenses.join(", ") : <UiText k="unknown" />}</td>
                       <td className="p-3">
                         <div className="flex flex-wrap gap-1">
                           {dep.vulnerabilities?.length ? (
@@ -2164,18 +2234,17 @@ export function EventsPage() {
                               </Badge>
                             ))
                           ) : (
-                            <span className="text-slate-500">none</span>
+                            <span className="text-slate-500"><UiText k="none" /></span>
                           )}
                         </div>
                       </td>
-                      <td className="p-3 text-slate-600">{formatDate(dep.observed_at)}</td>
+                      <td className="p-3 text-slate-600"><FormattedDate value={dep.observed_at} /></td>
                     </tr>
                   ))
                 ) : (
                   <tr className="border-t border-slate-200">
                     <td className="p-3 text-slate-500" colSpan={6}>
-                      No dependency observations
-                    </td>
+                      <UiText k="No dependency observations" /></td>
                   </tr>
                 )}
               </tbody>
@@ -2186,12 +2255,12 @@ export function EventsPage() {
       <section className="grid gap-5">
         <Card className="overflow-hidden">
           <CardHeader>
-            <CardTitle>Baseline Findings</CardTitle>
+            <CardTitle><UiText k="Baseline Findings" /></CardTitle>
           </CardHeader>
           <CardContent className="p-0">
             <div className="grid gap-3 border-b border-slate-200 p-4 md:grid-cols-2 xl:grid-cols-4">
               <label className={fieldGroupClass} htmlFor="baseline-application">
-                <span className={fieldLabelClass}>Baseline Application</span>
+                <span className={fieldLabelClass}><UiText k="Baseline Application" /></span>
                 <select
                   id="baseline-application"
                   className={fieldControlClass}
@@ -2202,7 +2271,7 @@ export function EventsPage() {
                     setBaselineAgentID("");
                   }}
                 >
-                  <option value="">All Applications</option>
+                  <option value=""><UiText k="All Applications" /></option>
                   {applications.map(application => (
                     <option key={application.id} value={application.id}>
                       {application.name}
@@ -2211,9 +2280,9 @@ export function EventsPage() {
                 </select>
               </label>
               <label className={fieldGroupClass} htmlFor="baseline-environment">
-                <span className={fieldLabelClass}>Baseline Environment</span>
+                <span className={fieldLabelClass}><UiText k="Baseline Environment" /></span>
                 <select id="baseline-environment" className={fieldControlClass} value={baselineEnvironmentID} onChange={event => setBaselineEnvironmentID(event.target.value)}>
-                  <option value="">All Environments</option>
+                  <option value=""><UiText k="All Environments" /></option>
                   {baselineEnvironmentOptions.map(environmentID => (
                     <option key={environmentID} value={environmentID}>
                       {environmentID}
@@ -2222,9 +2291,9 @@ export function EventsPage() {
                 </select>
               </label>
               <label className={fieldGroupClass} htmlFor="baseline-agent">
-                <span className={fieldLabelClass}>Baseline Agent</span>
+                <span className={fieldLabelClass}><UiText k="Baseline Agent" /></span>
                 <select id="baseline-agent" className={fieldControlClass} value={baselineAgentID} onChange={event => setBaselineAgentID(event.target.value)}>
-                  <option value="">All Agents</option>
+                  <option value=""><UiText k="All Agents" /></option>
                   {baselineAgents.map(agent => (
                     <option key={agent.id} value={agent.id}>
                       {agent.hostname}
@@ -2233,32 +2302,32 @@ export function EventsPage() {
                 </select>
               </label>
               <label className={fieldGroupClass} htmlFor="baseline-severity">
-                <span className={fieldLabelClass}>Baseline Severity</span>
+                <span className={fieldLabelClass}><UiText k="Baseline Severity" /></span>
                 <select id="baseline-severity" className={fieldControlClass} value={baselineSeverity} onChange={event => setBaselineSeverity(event.target.value)}>
-                  <option value="">All Severities</option>
-                  <option value="critical">critical</option>
-                  <option value="high">high</option>
-                  <option value="medium">medium</option>
-                  <option value="low">low</option>
-                  <option value="info">info</option>
+                  <option value=""><UiText k="All Severities" /></option>
+                  <option value="critical"><UiText k="critical" /></option>
+                  <option value="high"><UiText k="high" /></option>
+                  <option value="medium"><UiText k="medium" /></option>
+                  <option value="low"><UiText k="low" /></option>
+                  <option value="info"><UiText k="info" /></option>
                 </select>
               </label>
               <label className={fieldGroupClass} htmlFor="baseline-status">
-                <span className={fieldLabelClass}>Baseline Status</span>
+                <span className={fieldLabelClass}><UiText k="Baseline Status" /></span>
                 <select id="baseline-status" className={fieldControlClass} value={baselineStatus} onChange={event => setBaselineStatus(event.target.value)}>
-                  <option value="">All Statuses</option>
-                  <option value="failed">failed</option>
-                  <option value="warning">warning</option>
-                  <option value="passed">passed</option>
-                  <option value="suppressed">suppressed</option>
+                  <option value=""><UiText k="All Statuses" /></option>
+                  <option value="failed"><UiText k="failed" /></option>
+                  <option value="warning"><UiText k="warning" /></option>
+                  <option value="passed"><UiText k="passed" /></option>
+                  <option value="suppressed"><UiText k="suppressed" /></option>
                 </select>
               </label>
               <label className={fieldGroupClass} htmlFor="baseline-category">
-                <span className={fieldLabelClass}>Baseline Category</span>
+                <span className={fieldLabelClass}><UiText k="Baseline Category" /></span>
                 <input id="baseline-category" className={fieldControlClass} value={baselineCategory} onChange={event => setBaselineCategory(event.target.value)} />
               </label>
               <label className={fieldGroupClass} htmlFor="baseline-observed-after">
-                <span className={fieldLabelClass}>Baseline Observed After</span>
+                <span className={fieldLabelClass}><UiText k="Baseline Observed After" /></span>
                 <input
                   id="baseline-observed-after"
                   className={fieldControlClass}
@@ -2268,7 +2337,7 @@ export function EventsPage() {
                 />
               </label>
               <label className={fieldGroupClass} htmlFor="baseline-observed-before">
-                <span className={fieldLabelClass}>Baseline Observed Before</span>
+                <span className={fieldLabelClass}><UiText k="Baseline Observed Before" /></span>
                 <input
                   id="baseline-observed-before"
                   className={fieldControlClass}
@@ -2278,7 +2347,7 @@ export function EventsPage() {
                 />
               </label>
               <label className={fieldGroupClass} htmlFor="baseline-limit">
-                <span className={fieldLabelClass}>Baseline Limit</span>
+                <span className={fieldLabelClass}><UiText k="Baseline Limit" /></span>
                 <input
                   id="baseline-limit"
                   className={fieldControlClass}
@@ -2291,19 +2360,18 @@ export function EventsPage() {
               </label>
               <div className="flex items-end">
                 <Button className="w-full" type="button" variant="secondary" onClick={clearBaselineFilters}>
-                  Clear Baseline Filters
-                </Button>
+                  <UiText k="Clear Baseline Filters" /></Button>
               </div>
             </div>
             <Table className="rounded-none border-0">
               <thead>
                 <tr className="bg-slate-50">
-                  <th className="p-3 text-left">Finding</th>
-                  <th className="p-3 text-left">Category</th>
-                  <th className="p-3 text-left">Severity</th>
-                  <th className="p-3 text-left">Status</th>
-                  <th className="p-3 text-left">Resource</th>
-                  <th className="p-3 text-left">Observed</th>
+                  <th className="p-3 text-left"><UiText k="Finding" /></th>
+                  <th className="p-3 text-left"><UiText k="Category" /></th>
+                  <th className="p-3 text-left"><UiText k="Severity" /></th>
+                  <th className="p-3 text-left"><UiText k="Status" /></th>
+                  <th className="p-3 text-left"><UiText k="Resource" /></th>
+                  <th className="p-3 text-left"><UiText k="Observed" /></th>
                 </tr>
               </thead>
               <tbody>
@@ -2314,7 +2382,7 @@ export function EventsPage() {
                         <div className="font-medium">{finding.title}</div>
                         <div className="text-xs text-slate-500">{finding.check_id}</div>
                       </td>
-                      <td className="p-3 text-slate-600">{finding.category || "runtime"}</td>
+                      <td className="p-3 text-slate-600">{finding.category ? <UiValue value={finding.category} /> : <UiText k="runtime" />}</td>
                       <td className="p-3">
                         <Badge tone={severityTone(finding.severity)}>{finding.severity}</Badge>
                       </td>
@@ -2322,14 +2390,13 @@ export function EventsPage() {
                         <Badge tone={baselineStatusTone(finding.status)}>{finding.status}</Badge>
                       </td>
                       <td className="p-3 text-slate-600">{finding.resource || finding.agent_id}</td>
-                      <td className="p-3 text-slate-600">{formatDate(finding.observed_at)}</td>
+                      <td className="p-3 text-slate-600"><FormattedDate value={finding.observed_at} /></td>
                     </tr>
                   ))
                 ) : (
                   <tr className="border-t border-slate-200">
                     <td className="p-3 text-slate-500" colSpan={6}>
-                      No baseline findings
-                    </td>
+                      <UiText k="No baseline findings" /></td>
                   </tr>
                 )}
               </tbody>
@@ -2371,29 +2438,37 @@ export function ObservabilityPage() {
       <QueryStateNotice
         isLoading={applicationsQuery.isLoading || policiesQuery.isLoading || observabilityQuery.isLoading}
         isError={applicationsQuery.isError || policiesQuery.isError || observabilityQuery.isError}
-        loading="Loading observability data."
-        error="Observability data is unavailable."
+        loading={<UiText k="Loading observability data." />}
+        error={<UiText k="Observability data is unavailable." />}
       />
       <div className="grid gap-3 md:grid-cols-4">
-        <Metric label="Hook p95" value={formatLatency(topHook?.p95_latency_us)} detail={topHook ? `${topHook.hook} hook` : "no samples"} />
-        <Metric label="Rule p95" value={formatLatency(topRule?.p95_latency_us)} detail={topRule ? `${topRule.rule_id} on ${topRule.hook}` : "no samples"} />
-        <Metric label="Agent CPU" value={formatPercent(topAgent?.cpu_overhead_pct)} detail={topAgent ? `${topAgent.agent_id} median` : "no samples"} />
-        <Metric label="Rule Eval" value={formatLatency(topPolicy?.rule_eval_p95_us)} detail={topPolicy ? `${topPolicy.policy_id} v${topPolicy.policy_version}` : "no samples"} />
+        <Metric label={<UiText k="Hook p95" />} value={formatLatency(topHook?.p95_latency_us)} detail={topHook ? <UiText k="{{hook}} hook" values={{ hook: topHook.hook }} /> : <UiText k="no samples" />} />
+        <Metric
+          label={<UiText k="Rule p95" />}
+          value={formatLatency(topRule?.p95_latency_us)}
+          detail={topRule ? <UiText k="{{rule}} on {{hook}}" values={{ rule: topRule.rule_id, hook: topRule.hook }} /> : <UiText k="no samples" />}
+        />
+        <Metric label={<UiText k="Agent CPU" />} value={formatPercent(topAgent?.cpu_overhead_pct)} detail={topAgent ? <UiText k="{{agent}} median" values={{ agent: topAgent.agent_id }} /> : <UiText k="no samples" />} />
+        <Metric
+          label={<UiText k="Rule Eval" />}
+          value={formatLatency(topPolicy?.rule_eval_p95_us)}
+          detail={topPolicy ? <UiText k="{{policy}} v{{version}}" values={{ policy: topPolicy.policy_id, version: topPolicy.policy_version }} /> : <UiText k="no samples" />}
+        />
       </div>
       <Card>
         <CardHeader>
-          <CardTitle>Observability Filters</CardTitle>
+          <CardTitle><UiText k="Observability Filters" /></CardTitle>
         </CardHeader>
         <CardContent className="grid gap-3 md:grid-cols-3">
           <label className={fieldGroupClass} htmlFor="observability-application">
-            <span className={fieldLabelClass}>Observability Application</span>
+            <span className={fieldLabelClass}><UiText k="Observability Application" /></span>
             <select
               id="observability-application"
               className={fieldControlClass}
               value={observabilityApplicationID}
               onChange={event => setObservabilityApplicationID(event.target.value)}
             >
-              <option value="">All Applications</option>
+              <option value=""><UiText k="All Applications" /></option>
               {applications.map(application => (
                 <option key={application.id} value={application.id}>
                   {application.name}
@@ -2402,9 +2477,9 @@ export function ObservabilityPage() {
             </select>
           </label>
           <label className={fieldGroupClass} htmlFor="observability-policy">
-            <span className={fieldLabelClass}>Observability Policy</span>
+            <span className={fieldLabelClass}><UiText k="Observability Policy" /></span>
             <select id="observability-policy" className={fieldControlClass} value={observabilityPolicyID} onChange={event => setObservabilityPolicyID(event.target.value)}>
-              <option value="">All Policies</option>
+              <option value=""><UiText k="All Policies" /></option>
               {policies.map(policy => (
                 <option key={policy.id} value={policy.id}>
                   {policy.name}
@@ -2414,25 +2489,24 @@ export function ObservabilityPage() {
           </label>
           <div className="flex items-end">
             <Button className="w-full" type="button" variant="secondary" onClick={clearObservabilityFilters}>
-              Clear Observability Filters
-            </Button>
+              <UiText k="Clear Observability Filters" /></Button>
           </div>
         </CardContent>
       </Card>
       <div className="grid gap-5 xl:grid-cols-2">
         <Card className="overflow-hidden">
           <CardHeader>
-            <CardTitle>Rule Overhead</CardTitle>
+            <CardTitle><UiText k="Rule Overhead" /></CardTitle>
           </CardHeader>
           <CardContent className="p-0">
             <Table className="rounded-none border-0">
               <thead>
                 <tr className="bg-slate-50">
-                  <th className="p-3 text-left">Rule</th>
-                  <th className="p-3 text-left">Hook</th>
-                  <th className="p-3 text-right">Exec</th>
-                  <th className="p-3 text-right">Blocked</th>
-                  <th className="p-3 text-right">p95</th>
+                  <th className="p-3 text-left"><UiText k="Rule" /></th>
+                  <th className="p-3 text-left"><UiText k="Hook" /></th>
+                  <th className="p-3 text-right"><UiText k="Exec" /></th>
+                  <th className="p-3 text-right"><UiText k="Blocked" /></th>
+                  <th className="p-3 text-right"><UiText k="p95" /></th>
                 </tr>
               </thead>
               <tbody>
@@ -2449,8 +2523,7 @@ export function ObservabilityPage() {
                 ) : (
                   <tr className="border-t border-slate-200">
                     <td className="p-3 text-slate-500" colSpan={5}>
-                      No samples
-                    </td>
+                      <UiText k="No samples" /></td>
                   </tr>
                 )}
               </tbody>
@@ -2460,17 +2533,17 @@ export function ObservabilityPage() {
 
         <Card className="overflow-hidden">
           <CardHeader>
-            <CardTitle>Hook Latency</CardTitle>
+            <CardTitle><UiText k="Hook Latency" /></CardTitle>
           </CardHeader>
           <CardContent className="p-0">
             <Table className="rounded-none border-0">
               <thead>
                 <tr className="bg-slate-50">
-                  <th className="p-3 text-left">Hook</th>
-                  <th className="p-3 text-right">Calls</th>
-                  <th className="p-3 text-right">Avg</th>
-                  <th className="p-3 text-right">p95</th>
-                  <th className="p-3 text-right">Max</th>
+                  <th className="p-3 text-left"><UiText k="Hook" /></th>
+                  <th className="p-3 text-right"><UiText k="Calls" /></th>
+                  <th className="p-3 text-right"><UiText k="Avg" /></th>
+                  <th className="p-3 text-right"><UiText k="p95" /></th>
+                  <th className="p-3 text-right"><UiText k="Max" /></th>
                 </tr>
               </thead>
               <tbody>
@@ -2487,8 +2560,7 @@ export function ObservabilityPage() {
                 ) : (
                   <tr className="border-t border-slate-200">
                     <td className="p-3 text-slate-500" colSpan={5}>
-                      No samples
-                    </td>
+                      <UiText k="No samples" /></td>
                   </tr>
                 )}
               </tbody>
@@ -2498,17 +2570,17 @@ export function ObservabilityPage() {
 
         <Card className="overflow-hidden">
           <CardHeader>
-            <CardTitle>Agent Overhead</CardTitle>
+            <CardTitle><UiText k="Agent Overhead" /></CardTitle>
           </CardHeader>
           <CardContent className="p-0">
             <Table className="rounded-none border-0">
               <thead>
                 <tr className="bg-slate-50">
-                  <th className="p-3 text-left">Agent</th>
-                  <th className="p-3 text-right">Samples</th>
-                  <th className="p-3 text-right">CPU</th>
-                  <th className="p-3 text-right">Memory</th>
-                  <th className="p-3 text-right">Rule p95</th>
+                  <th className="p-3 text-left"><UiText k="Agent" /></th>
+                  <th className="p-3 text-right"><UiText k="Samples" /></th>
+                  <th className="p-3 text-right"><UiText k="CPU" /></th>
+                  <th className="p-3 text-right"><UiText k="Memory" /></th>
+                  <th className="p-3 text-right"><UiText k="Rule p95" /></th>
                 </tr>
               </thead>
               <tbody>
@@ -2525,8 +2597,7 @@ export function ObservabilityPage() {
                 ) : (
                   <tr className="border-t border-slate-200">
                     <td className="p-3 text-slate-500" colSpan={5}>
-                      No samples
-                    </td>
+                      <UiText k="No samples" /></td>
                   </tr>
                 )}
               </tbody>
@@ -2536,17 +2607,17 @@ export function ObservabilityPage() {
 
         <Card className="overflow-hidden">
           <CardHeader>
-            <CardTitle>Policy Impact</CardTitle>
+            <CardTitle><UiText k="Policy Impact" /></CardTitle>
           </CardHeader>
           <CardContent className="p-0">
             <Table className="rounded-none border-0">
               <thead>
                 <tr className="bg-slate-50">
-                  <th className="p-3 text-left">Policy</th>
-                  <th className="p-3 text-right">Version</th>
-                  <th className="p-3 text-right">Samples</th>
-                  <th className="p-3 text-right">CPU</th>
-                  <th className="p-3 text-right">Hook p95</th>
+                  <th className="p-3 text-left"><UiText k="Policy" /></th>
+                  <th className="p-3 text-right"><UiText k="Version" /></th>
+                  <th className="p-3 text-right"><UiText k="Samples" /></th>
+                  <th className="p-3 text-right"><UiText k="CPU" /></th>
+                  <th className="p-3 text-right"><UiText k="Hook p95" /></th>
                 </tr>
               </thead>
               <tbody>
@@ -2563,8 +2634,7 @@ export function ObservabilityPage() {
                 ) : (
                   <tr className="border-t border-slate-200">
                     <td className="p-3 text-slate-500" colSpan={5}>
-                      No samples
-                    </td>
+                      <UiText k="No samples" /></td>
                   </tr>
                 )}
               </tbody>
@@ -2599,8 +2669,8 @@ export function AccessPage() {
       <QueryStateNotice
         isLoading={auditQuery.isLoading || settingsQuery.isLoading || editionQuery.isLoading || alertRulesQuery.isLoading || alertDeliveriesQuery.isLoading || usersQuery.isLoading}
         isError={auditQuery.isError || settingsQuery.isError || editionQuery.isError || alertRulesQuery.isError || alertDeliveriesQuery.isError || usersQuery.isError}
-        loading="Loading access and audit data."
-        error="Some access and audit data is unavailable."
+        loading={<UiText k="Loading access and audit data." />}
+        error={<UiText k="Some access and audit data is unavailable." />}
       />
       <div className="grid gap-3 md:grid-cols-3">
         {[
@@ -2625,16 +2695,16 @@ export function AccessPage() {
       <section className="grid gap-5">
         <Card className="overflow-hidden">
           <CardHeader>
-            <CardTitle>User Administration</CardTitle>
+            <CardTitle><UiText k="User Administration" /></CardTitle>
           </CardHeader>
           <CardContent className="p-0">
             <Table className="rounded-none border-0">
               <thead>
                 <tr className="bg-slate-50">
-                  <th className="p-3 text-left">User</th>
-                  <th className="p-3 text-left">Roles</th>
-                  <th className="p-3 text-left">Status</th>
-                  <th className="p-3 text-left">Updated</th>
+                  <th className="p-3 text-left"><UiText k="User" /></th>
+                  <th className="p-3 text-left"><UiText k="Roles" /></th>
+                  <th className="p-3 text-left"><UiText k="Status" /></th>
+                  <th className="p-3 text-left"><UiText k="Updated" /></th>
                 </tr>
               </thead>
               <tbody>
@@ -2655,16 +2725,17 @@ export function AccessPage() {
                         </div>
                       </td>
                       <td className="p-3">
-                        <Badge tone={user.disabled_at ? "neutral" : "green"}>{user.disabled_at ? "disabled" : "active"}</Badge>
+                        <Badge tone={user.disabled_at ? "neutral" : "green"}>
+                          <UiText k={user.disabled_at ? "disabled" : "active"} />
+                        </Badge>
                       </td>
-                      <td className="p-3 text-slate-600">{formatDate(user.updated_at)}</td>
+                      <td className="p-3 text-slate-600"><FormattedDate value={user.updated_at} /></td>
                     </tr>
                   ))
                 ) : (
                   <tr className="border-t border-slate-200">
                     <td className="p-3 text-slate-500" colSpan={4}>
-                      No users
-                    </td>
+                      <UiText k="No users" /></td>
                   </tr>
                 )}
               </tbody>
@@ -2675,15 +2746,15 @@ export function AccessPage() {
       <section className="grid gap-5 xl:grid-cols-[.9fr_1.1fr]">
         <Card className="overflow-hidden">
           <CardHeader>
-            <CardTitle>System Settings</CardTitle>
+            <CardTitle><UiText k="System Settings" /></CardTitle>
           </CardHeader>
           <CardContent className="p-0">
             <Table className="rounded-none border-0">
               <thead>
                 <tr className="bg-slate-50">
-                  <th className="p-3 text-left">Key</th>
-                  <th className="p-3 text-left">Value</th>
-                  <th className="p-3 text-left">Updated</th>
+                  <th className="p-3 text-left"><UiText k="Key" /></th>
+                  <th className="p-3 text-left"><UiText k="Value" /></th>
+                  <th className="p-3 text-left"><UiText k="Updated" /></th>
                 </tr>
               </thead>
               <tbody>
@@ -2692,14 +2763,13 @@ export function AccessPage() {
                     <tr key={setting.key} className="border-t border-slate-200">
                       <td className="p-3 font-medium">{setting.key}</td>
                       <td className="p-3 text-slate-600">{formatDetails(setting.value)}</td>
-                      <td className="p-3 text-slate-600">{formatDate(setting.updated_at)}</td>
+                      <td className="p-3 text-slate-600"><FormattedDate value={setting.updated_at} /></td>
                     </tr>
                   ))
                 ) : (
                   <tr className="border-t border-slate-200">
                     <td className="p-3 text-slate-500" colSpan={3}>
-                      No settings
-                    </td>
+                      <UiText k="No settings" /></td>
                   </tr>
                 )}
               </tbody>
@@ -2708,17 +2778,17 @@ export function AccessPage() {
         </Card>
         <Card className="overflow-hidden">
           <CardHeader>
-            <CardTitle>Alert Rules</CardTitle>
+            <CardTitle><UiText k="Alert Rules" /></CardTitle>
           </CardHeader>
           <CardContent className="p-0">
             <Table className="rounded-none border-0">
               <thead>
                 <tr className="bg-slate-50">
-                  <th className="p-3 text-left">Rule</th>
-                  <th className="p-3 text-left">Event</th>
-                  <th className="p-3 text-left">Severity</th>
-                  <th className="p-3 text-left">Target</th>
-                  <th className="p-3 text-left">Status</th>
+                  <th className="p-3 text-left"><UiText k="Rule" /></th>
+                  <th className="p-3 text-left"><UiText k="Event" /></th>
+                  <th className="p-3 text-left"><UiText k="Severity" /></th>
+                  <th className="p-3 text-left"><UiText k="Target" /></th>
+                  <th className="p-3 text-left"><UiText k="Status" /></th>
                 </tr>
               </thead>
               <tbody>
@@ -2735,15 +2805,16 @@ export function AccessPage() {
                       </td>
                       <td className="p-3 text-slate-600">{rule.target}</td>
                       <td className="p-3">
-                        <Badge tone={rule.enabled ? "green" : "neutral"}>{rule.enabled ? "enabled" : "disabled"}</Badge>
+                        <Badge tone={rule.enabled ? "green" : "neutral"}>
+                          <UiText k={rule.enabled ? "enabled" : "disabled"} />
+                        </Badge>
                       </td>
                     </tr>
                   ))
                 ) : (
                   <tr className="border-t border-slate-200">
                     <td className="p-3 text-slate-500" colSpan={5}>
-                      No alert rules
-                    </td>
+                      <UiText k="No alert rules" /></td>
                   </tr>
                 )}
               </tbody>
@@ -2754,18 +2825,18 @@ export function AccessPage() {
       <section className="grid gap-5">
         <Card className="overflow-hidden">
           <CardHeader>
-            <CardTitle>Alert Delivery History</CardTitle>
+            <CardTitle><UiText k="Alert Delivery History" /></CardTitle>
           </CardHeader>
           <CardContent className="p-0">
             <Table className="rounded-none border-0">
               <thead>
                 <tr className="bg-slate-50">
-                  <th className="p-3 text-left">Alert</th>
-                  <th className="p-3 text-left">Event</th>
-                  <th className="p-3 text-left">Severity</th>
-                  <th className="p-3 text-left">Target</th>
-                  <th className="p-3 text-left">Status</th>
-                  <th className="p-3 text-left">Created</th>
+                  <th className="p-3 text-left"><UiText k="Alert" /></th>
+                  <th className="p-3 text-left"><UiText k="Event" /></th>
+                  <th className="p-3 text-left"><UiText k="Severity" /></th>
+                  <th className="p-3 text-left"><UiText k="Target" /></th>
+                  <th className="p-3 text-left"><UiText k="Status" /></th>
+                  <th className="p-3 text-left"><UiText k="Created" /></th>
                 </tr>
               </thead>
               <tbody>
@@ -2784,14 +2855,13 @@ export function AccessPage() {
                       <td className="p-3">
                         <Badge tone={deliveryStatusTone(delivery.status)}>{delivery.status}</Badge>
                       </td>
-                      <td className="p-3 text-slate-600">{formatDate(delivery.created_at)}</td>
+                      <td className="p-3 text-slate-600"><FormattedDate value={delivery.created_at} /></td>
                     </tr>
                   ))
                 ) : (
                   <tr className="border-t border-slate-200">
                     <td className="p-3 text-slate-500" colSpan={6}>
-                      No alert deliveries
-                    </td>
+                      <UiText k="No alert deliveries" /></td>
                   </tr>
                 )}
               </tbody>
@@ -2802,16 +2872,16 @@ export function AccessPage() {
       <section className="grid gap-5">
         <Card className="overflow-hidden">
           <CardHeader>
-            <CardTitle>Audit Log</CardTitle>
+            <CardTitle><UiText k="Audit Log" /></CardTitle>
           </CardHeader>
           <CardContent className="p-0">
             <Table className="rounded-none border-0">
               <thead>
                 <tr className="bg-slate-50">
-                  <th className="p-3 text-left">Action</th>
-                  <th className="p-3 text-left">Actor</th>
-                  <th className="p-3 text-left">Resource</th>
-                  <th className="p-3 text-left">Created</th>
+                  <th className="p-3 text-left"><UiText k="Action" /></th>
+                  <th className="p-3 text-left"><UiText k="Actor" /></th>
+                  <th className="p-3 text-left"><UiText k="Resource" /></th>
+                  <th className="p-3 text-left"><UiText k="Created" /></th>
                 </tr>
               </thead>
               <tbody>
@@ -2819,16 +2889,15 @@ export function AccessPage() {
                   auditLogs.map(log => (
                     <tr key={log.id} className="border-t border-slate-200">
                       <td className="p-3 font-medium">{log.action}</td>
-                      <td className="p-3 text-slate-600">{log.actor_id || "system"}</td>
+                      <td className="p-3 text-slate-600">{log.actor_id || <UiText k="system" />}</td>
                       <td className="p-3 text-slate-600">{log.resource}</td>
-                      <td className="p-3 text-slate-600">{formatDate(log.created_at)}</td>
+                      <td className="p-3 text-slate-600"><FormattedDate value={log.created_at} /></td>
                     </tr>
                   ))
                 ) : (
                   <tr className="border-t border-slate-200">
                     <td className="p-3 text-slate-500" colSpan={4}>
-                      No audit logs
-                    </td>
+                      <UiText k="No audit logs" /></td>
                   </tr>
                 )}
               </tbody>
@@ -2844,30 +2913,33 @@ function EditionStatusPanel({ edition }: { edition: EditionStatus }) {
   return (
     <Card>
       <CardHeader>
-        <CardTitle>Edition Status</CardTitle>
+        <CardTitle><UiText k="Edition Status" /></CardTitle>
       </CardHeader>
       <CardContent>
         <div className="grid gap-4 md:grid-cols-4">
           <div>
-            <span className="block text-xs font-medium text-slate-500">Edition</span>
-            <span className="mt-1 block font-medium text-slate-950">{edition.display_name}</span>
+            <span className="block text-xs font-medium text-slate-500"><UiText k="Edition" /></span>
+            <span className="mt-1 block font-medium text-slate-950">{edition.display_name || <UiText k="Unavailable" />}</span>
           </div>
           <div>
-            <span className="block text-xs font-medium text-slate-500">Deployment</span>
-            <span className="mt-1 block font-medium text-slate-950">{formatLabel(edition.deployment_model)}</span>
+            <span className="block text-xs font-medium text-slate-500"><UiText k="Deployment" /></span>
+            <span className="mt-1 block font-medium text-slate-950"><UiValue value={edition.deployment_model} /></span>
           </div>
           <div>
-            <span className="block text-xs font-medium text-slate-500">License</span>
-            <span className="mt-1 block font-medium text-slate-950">{edition.license_required ? "Required" : "Not required"}</span>
+            <span className="block text-xs font-medium text-slate-500"><UiText k="License" /></span>
+            <span className="mt-1 block font-medium text-slate-950">
+              <UiText k={edition.license_required ? "Required" : "Not required"} />
+            </span>
           </div>
           <div>
-            <span className="block text-xs font-medium text-slate-500">Enforcement</span>
+            <span className="block text-xs font-medium text-slate-500"><UiText k="Enforcement" /></span>
             <Badge className="mt-1" tone={edition.license_enforcement === "none" ? "green" : "amber"}>
-              {formatLabel(edition.license_enforcement)}
+              <UiValue value={edition.license_enforcement} />
             </Badge>
           </div>
         </div>
         {edition.note ? <p className="mt-4 text-sm leading-6 text-slate-600">{edition.note}</p> : null}
+        {!edition.display_name ? <p className="mt-4 text-sm leading-6 text-slate-600"><UiText k="Edition status is unavailable." /></p> : null}
       </CardContent>
     </Card>
   );
@@ -2921,13 +2993,13 @@ function AlertRuleLifecyclePanel({ alertRules }: { alertRules: AlertRule[] }) {
     event.preventDefault();
     setMessage({ status: "", error: "" });
     if (!selectedRule) {
-      setMessage({ status: "", error: "Choose an alert rule first." });
+      setMessage({ status: "", error: notice("Choose an alert rule first.") });
       return;
     }
     const trimmedName = name.trim();
     const trimmedTarget = target.trim();
     if (!trimmedName || !trimmedTarget) {
-      setMessage({ status: "", error: "Alert name and target are required." });
+      setMessage({ status: "", error: notice("Alert name and target are required.") });
       return;
     }
     setIsSubmitting(true);
@@ -2942,9 +3014,9 @@ function AlertRuleLifecyclePanel({ alertRules }: { alertRules: AlertRule[] }) {
         target: trimmedTarget
       });
       await queryClient.invalidateQueries({ queryKey: ["alert-rules"] });
-      setMessage({ status: `Updated alert rule ${updated.name}.`, error: "" });
+      setMessage({ status: notice("Updated alert rule {{name}}.", { name: updated.name }), error: "" });
     } catch {
-      setMessage({ status: "", error: "Unable to update alert rule." });
+      setMessage({ status: "", error: notice("Unable to update alert rule.") });
     } finally {
       setIsSubmitting(false);
     }
@@ -2953,12 +3025,12 @@ function AlertRuleLifecyclePanel({ alertRules }: { alertRules: AlertRule[] }) {
   return (
     <Card>
       <CardHeader>
-        <CardTitle>Alert Lifecycle</CardTitle>
+        <CardTitle><UiText k="Alert Lifecycle" /></CardTitle>
       </CardHeader>
       <CardContent>
         <form className="grid gap-3 md:grid-cols-2 xl:grid-cols-4" onSubmit={handleSubmit}>
           <label className={fieldGroupClass} htmlFor="alert-lifecycle-rule">
-            <span className={fieldLabelClass}>Alert Rule</span>
+            <span className={fieldLabelClass}><UiText k="Alert Rule" /></span>
             <select
               id="alert-lifecycle-rule"
               className={fieldControlClass}
@@ -2973,43 +3045,43 @@ function AlertRuleLifecyclePanel({ alertRules }: { alertRules: AlertRule[] }) {
                   </option>
                 ))
               ) : (
-                <option value="">No alert rules</option>
+                <option value=""><UiText k="No alert rules" /></option>
               )}
             </select>
           </label>
           <label className={fieldGroupClass} htmlFor="alert-lifecycle-name">
-            <span className={fieldLabelClass}>Alert Name</span>
+            <span className={fieldLabelClass}><UiText k="Alert Name" /></span>
             <input id="alert-lifecycle-name" className={fieldControlClass} value={name} onChange={event => setName(event.target.value)} required />
           </label>
           <label className={fieldGroupClass} htmlFor="alert-lifecycle-event-type">
-            <span className={fieldLabelClass}>Alert Event Type</span>
+            <span className={fieldLabelClass}><UiText k="Alert Event Type" /></span>
             <select id="alert-lifecycle-event-type" className={fieldControlClass} value={eventType} onChange={event => setEventType(event.target.value)}>
-              <option value="attack">attack</option>
-              <option value="hook">hook</option>
-              <option value="performance">performance</option>
-              <option value="crash">crash</option>
-              <option value="dependency">dependency</option>
+              <option value="attack"><UiText k="attack" /></option>
+              <option value="hook"><UiText k="hook" /></option>
+              <option value="performance"><UiText k="performance" /></option>
+              <option value="crash"><UiText k="crash" /></option>
+              <option value="dependency"><UiText k="dependency" /></option>
             </select>
           </label>
           <label className={fieldGroupClass} htmlFor="alert-lifecycle-severity">
-            <span className={fieldLabelClass}>Alert Severity</span>
+            <span className={fieldLabelClass}><UiText k="Alert Severity" /></span>
             <select id="alert-lifecycle-severity" className={fieldControlClass} value={severity} onChange={event => setSeverity(event.target.value)}>
-              <option value="critical">critical</option>
-              <option value="high">high</option>
-              <option value="medium">medium</option>
-              <option value="low">low</option>
+              <option value="critical"><UiText k="critical" /></option>
+              <option value="high"><UiText k="high" /></option>
+              <option value="medium"><UiText k="medium" /></option>
+              <option value="low"><UiText k="low" /></option>
             </select>
           </label>
           <label className={fieldGroupClass} htmlFor="alert-lifecycle-description">
-            <span className={fieldLabelClass}>Alert Description</span>
+            <span className={fieldLabelClass}><UiText k="Alert Description" /></span>
             <input id="alert-lifecycle-description" className={fieldControlClass} value={description} onChange={event => setDescription(event.target.value)} />
           </label>
           <label className={fieldGroupClass} htmlFor="alert-lifecycle-condition">
-            <span className={fieldLabelClass}>Alert Condition</span>
+            <span className={fieldLabelClass}><UiText k="Alert Condition" /></span>
             <input id="alert-lifecycle-condition" className={fieldControlClass} value={condition} onChange={event => setCondition(event.target.value)} />
           </label>
           <label className={fieldGroupClass} htmlFor="alert-lifecycle-target">
-            <span className={fieldLabelClass}>Alert Target</span>
+            <span className={fieldLabelClass}><UiText k="Alert Target" /></span>
             <input id="alert-lifecycle-target" className={fieldControlClass} value={target} onChange={event => setTarget(event.target.value)} required />
           </label>
           <label className="flex min-h-10 items-center gap-2 text-sm font-medium text-slate-700 xl:mt-6" htmlFor="alert-lifecycle-enabled">
@@ -3020,11 +3092,10 @@ function AlertRuleLifecyclePanel({ alertRules }: { alertRules: AlertRule[] }) {
               checked={enabled}
               onChange={event => setEnabled(event.target.checked)}
             />
-            Enable Alert Rule
-          </label>
+            <UiText k="Enable Alert Rule" /></label>
           <div className="flex flex-wrap items-center gap-3 md:col-span-2 xl:col-span-4">
             <Button disabled={isSubmitting || !selectedRule} type="submit">
-              {isSubmitting ? "Updating Alert Rule" : "Update Alert Rule"}
+              <UiText k={isSubmitting ? "Updating Alert Rule" : "Update Alert Rule"} />
             </Button>
             <div className="min-w-72 flex-1">
               <FormMessage error={message.error} status={message.status} />
@@ -3072,12 +3143,12 @@ function UserLifecyclePanel({ users }: { users: User[] }) {
     event.preventDefault();
     setMessage({ status: "", error: "" });
     if (!selectedUser) {
-      setMessage({ status: "", error: "Choose a user first." });
+      setMessage({ status: "", error: notice("Choose a user first.") });
       return;
     }
     const trimmedName = name.trim();
     if (!trimmedName) {
-      setMessage({ status: "", error: "User display name is required." });
+      setMessage({ status: "", error: notice("User display name is required.") });
       return;
     }
     setIsSubmitting(true);
@@ -3088,9 +3159,9 @@ function UserLifecyclePanel({ users }: { users: User[] }) {
         disabled
       });
       await queryClient.invalidateQueries({ queryKey: ["users"] });
-      setMessage({ status: `Updated user ${updated.email}.`, error: "" });
+      setMessage({ status: notice("Updated user {{email}}.", { email: updated.email }), error: "" });
     } catch {
-      setMessage({ status: "", error: "Unable to update user." });
+      setMessage({ status: "", error: notice("Unable to update user.") });
     } finally {
       setIsSubmitting(false);
     }
@@ -3099,12 +3170,12 @@ function UserLifecyclePanel({ users }: { users: User[] }) {
   return (
     <Card>
       <CardHeader>
-        <CardTitle>User Lifecycle</CardTitle>
+        <CardTitle><UiText k="User Lifecycle" /></CardTitle>
       </CardHeader>
       <CardContent>
         <form className="grid gap-3 md:grid-cols-[1.2fr_1fr_.8fr_auto] md:items-end" onSubmit={handleSubmit}>
           <label className={fieldGroupClass} htmlFor="user-lifecycle-user">
-            <span className={fieldLabelClass}>User Account</span>
+            <span className={fieldLabelClass}><UiText k="User Account" /></span>
             <select
               id="user-lifecycle-user"
               className={fieldControlClass}
@@ -3119,20 +3190,20 @@ function UserLifecyclePanel({ users }: { users: User[] }) {
                   </option>
                 ))
               ) : (
-                <option value="">No users</option>
+                <option value=""><UiText k="No users" /></option>
               )}
             </select>
           </label>
           <label className={fieldGroupClass} htmlFor="user-lifecycle-name">
-            <span className={fieldLabelClass}>User Display Name</span>
+            <span className={fieldLabelClass}><UiText k="User Display Name" /></span>
             <input id="user-lifecycle-name" className={fieldControlClass} value={name} onChange={event => setName(event.target.value)} required />
           </label>
           <label className={fieldGroupClass} htmlFor="user-lifecycle-role">
-            <span className={fieldLabelClass}>User Role</span>
+            <span className={fieldLabelClass}><UiText k="User Role" /></span>
             <select id="user-lifecycle-role" className={fieldControlClass} value={role} onChange={event => setRole(event.target.value as UserRole)}>
-              <option value="admin">Admin</option>
-              <option value="security_engineer">Security Engineer</option>
-              <option value="viewer">Viewer</option>
+              <option value="admin"><UiText k="Admin" /></option>
+              <option value="security_engineer"><UiText k="Security Engineer" /></option>
+              <option value="viewer"><UiText k="Viewer" /></option>
             </select>
           </label>
           <label className="flex min-h-10 items-center gap-2 text-sm font-medium text-slate-700" htmlFor="user-lifecycle-disabled">
@@ -3143,11 +3214,10 @@ function UserLifecyclePanel({ users }: { users: User[] }) {
               checked={disabled}
               onChange={event => setDisabled(event.target.checked)}
             />
-            Disable User
-          </label>
+            <UiText k="Disable User" /></label>
           <div className="flex flex-wrap items-center gap-3 md:col-span-4">
             <Button disabled={isSubmitting || !selectedUser} type="submit">
-              {isSubmitting ? "Updating User" : "Update User"}
+              <UiText k={isSubmitting ? "Updating User" : "Update User"} />
             </Button>
             <div className="min-w-72 flex-1">
               <FormMessage error={message.error} status={message.status} />
@@ -3171,7 +3241,7 @@ function PolicySetCreatePanel() {
     setMessage({ status: "", error: "" });
     const trimmedName = name.trim();
     if (!trimmedName) {
-      setMessage({ status: "", error: "Policy set name is required." });
+      setMessage({ status: "", error: notice("Policy set name is required.") });
       return;
     }
     setIsSubmitting(true);
@@ -3181,11 +3251,11 @@ function PolicySetCreatePanel() {
         description: description.trim() || undefined
       });
       await queryClient.invalidateQueries({ queryKey: ["policies"] });
-      setMessage({ status: `Created policy set ${policy.name}.`, error: "" });
+      setMessage({ status: notice("Created policy set {{name}}.", { name: policy.name }), error: "" });
       setName("");
       setDescription("");
     } catch {
-      setMessage({ status: "", error: "Unable to create policy set." });
+      setMessage({ status: "", error: notice("Unable to create policy set.") });
     } finally {
       setIsSubmitting(false);
     }
@@ -3194,20 +3264,20 @@ function PolicySetCreatePanel() {
   return (
     <Card>
       <CardHeader>
-        <CardTitle>Policy Set</CardTitle>
+        <CardTitle><UiText k="Policy Set" /></CardTitle>
       </CardHeader>
       <CardContent>
         <form className="grid gap-3 md:grid-cols-[1fr_1.4fr_auto] md:items-end" onSubmit={handleSubmit}>
           <label className={fieldGroupClass} htmlFor="policy-set-name">
-            <span className={fieldLabelClass}>Policy Set Name</span>
+            <span className={fieldLabelClass}><UiText k="Policy Set Name" /></span>
             <input id="policy-set-name" className={fieldControlClass} value={name} onChange={event => setName(event.target.value)} required />
           </label>
           <label className={fieldGroupClass} htmlFor="policy-set-description">
-            <span className={fieldLabelClass}>Policy Description</span>
+            <span className={fieldLabelClass}><UiText k="Policy Description" /></span>
             <input id="policy-set-description" className={fieldControlClass} value={description} onChange={event => setDescription(event.target.value)} />
           </label>
           <Button disabled={isSubmitting} type="submit">
-            {isSubmitting ? "Creating Policy Set" : "Create Policy Set"}
+            <UiText k={isSubmitting ? "Creating Policy Set" : "Create Policy Set"} />
           </Button>
           <div className="md:col-span-3">
             <FormMessage error={message.error} status={message.status} />
@@ -3220,6 +3290,7 @@ function PolicySetCreatePanel() {
 
 function PolicyWritePanel({ applications, policies, sampleEvents }: { applications: Application[]; policies: PolicySet[]; sampleEvents: SecurityEvent[] }) {
   const queryClient = useQueryClient();
+  const { copy } = useUiCopy();
   const [policyID, setPolicyID] = useState(policies[0]?.id ?? "");
   const [ruleName, setRuleName] = useState("");
   const [hook, setHook] = useState("process");
@@ -3235,7 +3306,7 @@ function PolicyWritePanel({ applications, policies, sampleEvents }: { applicatio
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   const selectedPolicy = policies.find(policy => policy.id === policyID) ?? policies[0];
-  const rolloutScopeOptions = policyRolloutScopeOptions(applications);
+  const rolloutScopeOptions = policyRolloutScopeOptions(applications, copy);
   const selectedVersion = selectedPolicy?.versions.find(version => version.version === targetVersion);
 
   useEffect(() => {
@@ -3287,12 +3358,12 @@ function PolicyWritePanel({ applications, policies, sampleEvents }: { applicatio
       const latestVersion = latestPolicyVersion(updated);
       if (latestVersion) {
         setTargetVersion(latestVersion.version);
-        setStatus(`Created policy version ${latestVersion.version}.`);
+        setStatus(notice("Created policy version {{version}}.", { version: latestVersion.version }));
       } else {
-        setStatus("Created policy version.");
+        setStatus(notice("Created policy version."));
       }
     } catch {
-      setError("Unable to create policy version.");
+      setError(notice("Unable to create policy version."));
     } finally {
       setIsSubmitting(false);
     }
@@ -3303,7 +3374,7 @@ function PolicyWritePanel({ applications, policies, sampleEvents }: { applicatio
       return;
     }
     if (!Number.isInteger(targetVersion) || targetVersion <= 0) {
-      setError("Choose a draft policy version.");
+      setError(notice("Choose a draft policy version."));
       return;
     }
     setIsSubmitting(true);
@@ -3312,9 +3383,9 @@ function PolicyWritePanel({ applications, policies, sampleEvents }: { applicatio
     try {
       await updatePolicyVersionRules(selectedPolicy.id, targetVersion, [draftRule(selectedVersion?.status === "draft" ? selectedVersion.rules[0]?.id : undefined)]);
       await queryClient.invalidateQueries({ queryKey: ["policies"] });
-      setStatus(`Updated policy version ${targetVersion}.`);
+      setStatus(notice("Updated policy version {{version}}.", { version: targetVersion }));
     } catch {
-      setError("Unable to update draft version.");
+      setError(notice("Unable to update draft version."));
     } finally {
       setIsSubmitting(false);
     }
@@ -3330,12 +3401,12 @@ function PolicyWritePanel({ applications, policies, sampleEvents }: { applicatio
     try {
       const validation = await validateRules([draftRule()]);
       if (validation.valid) {
-        setStatus("Rule validation passed.");
+        setStatus(notice("Rule validation passed."));
       } else {
-        setError(validation.errors.join("; ") || "Rule validation failed.");
+        setError(notice("Rule validation failed: {{message}}", { message: validation.errors.join("; ") || "" }));
       }
     } catch {
-      setError("Unable to validate rule.");
+      setError(notice("Unable to validate rule."));
     } finally {
       setIsSubmitting(false);
     }
@@ -3347,7 +3418,7 @@ function PolicyWritePanel({ applications, policies, sampleEvents }: { applicatio
     }
     const sampleEvent = sampleEvents.find(event => !event.hook || !hook || event.hook === hook) ?? sampleEvents[0];
     if (!sampleEvent) {
-      setError("Ingest at least one attack event before testing a rule.");
+      setError(notice("Ingest at least one attack event before testing a rule."));
       return;
     }
     setIsSubmitting(true);
@@ -3368,9 +3439,13 @@ function PolicyWritePanel({ applications, policies, sampleEvents }: { applicatio
         occurred_at: sampleEvent.occurred_at,
         attributes: sampleEvent.attributes
       });
-      setStatus(result.matched ? `Rule test matched: ${result.action || "no action"} at ${result.confidence}% confidence.` : "Rule test did not match the sample event.");
+      setStatus(
+        result.matched
+          ? notice("Rule test matched: {{action}} at {{confidence}}% confidence.", { action: result.action || "no action", confidence: result.confidence })
+          : notice("Rule test did not match the sample event.")
+      );
     } catch {
-      setError("Unable to test rule.");
+      setError(notice("Unable to test rule."));
     } finally {
       setIsSubmitting(false);
     }
@@ -3389,9 +3464,15 @@ function PolicyWritePanel({ applications, policies, sampleEvents }: { applicatio
       await queryClient.invalidateQueries({ queryKey: ["policies"] });
       await queryClient.invalidateQueries({ queryKey: ["agents"] });
       await queryClient.invalidateQueries({ queryKey: ["applications"] });
-      setStatus(`Rolled out version ${targetVersion} to ${canaryPercent}% ${policyRolloutScopeStatus(rolloutScope, rolloutScopeOptions)}.`);
+      setStatus(
+        notice("Rolled out version {{version}} to {{percent}}% for {{scope}}.", {
+          version: targetVersion,
+          percent: canaryPercent,
+          scope: policyRolloutScopeStatus(rolloutScope, rolloutScopeOptions)
+        })
+      );
     } catch {
-      setError("Unable to roll out policy version.");
+      setError(notice("Unable to roll out policy version."));
     } finally {
       setIsSubmitting(false);
     }
@@ -3407,9 +3488,9 @@ function PolicyWritePanel({ applications, policies, sampleEvents }: { applicatio
     try {
       await rollbackPolicy(selectedPolicy.id);
       await queryClient.invalidateQueries({ queryKey: ["policies"] });
-      setStatus("Rollback requested.");
+      setStatus(notice("Rollback requested."));
     } catch {
-      setError("Unable to roll back policy.");
+      setError(notice("Unable to roll back policy."));
     } finally {
       setIsSubmitting(false);
     }
@@ -3432,12 +3513,12 @@ function PolicyWritePanel({ applications, policies, sampleEvents }: { applicatio
   return (
     <Card>
       <CardHeader>
-        <CardTitle>Policy Change</CardTitle>
+        <CardTitle><UiText k="Policy Change" /></CardTitle>
       </CardHeader>
       <CardContent className="grid gap-5 xl:grid-cols-[1.1fr_.9fr]">
         <form className="grid gap-3 md:grid-cols-2" onSubmit={handleCreateVersion}>
           <label className={fieldGroupClass} htmlFor="policy-id">
-            <span className={fieldLabelClass}>Policy</span>
+            <span className={fieldLabelClass}><UiText k="Policy" /></span>
             <select id="policy-id" className={fieldControlClass} value={selectedPolicy?.id ?? ""} onChange={event => setPolicyID(event.target.value)}>
               {policies.map(policy => (
                 <option key={policy.id} value={policy.id}>
@@ -3447,58 +3528,54 @@ function PolicyWritePanel({ applications, policies, sampleEvents }: { applicatio
             </select>
           </label>
           <label className={fieldGroupClass} htmlFor="rule-name">
-            <span className={fieldLabelClass}>Rule Name</span>
+            <span className={fieldLabelClass}><UiText k="Rule Name" /></span>
             <input id="rule-name" className={fieldControlClass} value={ruleName} onChange={event => setRuleName(event.target.value)} required />
           </label>
           <label className={fieldGroupClass} htmlFor="rule-hook">
-            <span className={fieldLabelClass}>Hook</span>
+            <span className={fieldLabelClass}><UiText k="Hook" /></span>
             <input id="rule-hook" className={fieldControlClass} value={hook} onChange={event => setHook(event.target.value)} required />
           </label>
           <label className={fieldGroupClass} htmlFor="rule-expression">
-            <span className={fieldLabelClass}>Expression</span>
+            <span className={fieldLabelClass}><UiText k="Expression" /></span>
             <input id="rule-expression" className={fieldControlClass} value={expression} onChange={event => setExpression(event.target.value)} required />
           </label>
           <label className={fieldGroupClass} htmlFor="rule-action">
-            <span className={fieldLabelClass}>Action</span>
+            <span className={fieldLabelClass}><UiText k="Action" /></span>
             <select id="rule-action" className={fieldControlClass} value={action} onChange={event => setAction(event.target.value)}>
-              <option value="block">block</option>
-              <option value="log">log</option>
-              <option value="ignore">ignore</option>
+              <option value="block"><UiText k="block" /></option>
+              <option value="log"><UiText k="log" /></option>
+              <option value="ignore"><UiText k="ignore" /></option>
             </select>
           </label>
           <label className={fieldGroupClass} htmlFor="rule-severity">
-            <span className={fieldLabelClass}>Severity</span>
+            <span className={fieldLabelClass}><UiText k="Severity" /></span>
             <select id="rule-severity" className={fieldControlClass} value={severity} onChange={event => setSeverity(event.target.value)}>
-              <option value="critical">critical</option>
-              <option value="high">high</option>
-              <option value="medium">medium</option>
-              <option value="low">low</option>
+              <option value="critical"><UiText k="critical" /></option>
+              <option value="high"><UiText k="high" /></option>
+              <option value="medium"><UiText k="medium" /></option>
+              <option value="low"><UiText k="low" /></option>
             </select>
           </label>
           <label className={`${fieldGroupClass} md:col-span-2`} htmlFor="rule-tags">
-            <span className={fieldLabelClass}>Tags</span>
+            <span className={fieldLabelClass}><UiText k="Tags" /></span>
             <input id="rule-tags" className={fieldControlClass} value={tags} onChange={event => setTags(event.target.value)} />
           </label>
           <div className="md:col-span-2">
             <div className="flex flex-wrap gap-2">
               <Button disabled={isSubmitting || !selectedPolicy} type="button" variant="secondary" onClick={handleValidateDraft}>
-                Validate Draft
-              </Button>
+                <UiText k="Validate Draft" /></Button>
               <Button disabled={isSubmitting || !selectedPolicy} type="button" variant="secondary" onClick={handleTestDraft}>
-                Test Draft
-              </Button>
+                <UiText k="Test Draft" /></Button>
               <Button disabled={isSubmitting || !selectedPolicy} type="button" variant="secondary" onClick={handleUpdateDraft}>
-                Update Draft
-              </Button>
+                <UiText k="Update Draft" /></Button>
               <Button disabled={isSubmitting || !selectedPolicy} type="submit">
-                Create Version
-              </Button>
+                <UiText k="Create Version" /></Button>
             </div>
           </div>
         </form>
         <form className="grid content-start gap-3" onSubmit={handleRollout}>
           <label className={fieldGroupClass} htmlFor="rollout-scope">
-            <span className={fieldLabelClass}>Rollout Scope</span>
+            <span className={fieldLabelClass}><UiText k="Rollout Scope" /></span>
             <select id="rollout-scope" className={fieldControlClass} value={rolloutScope} onChange={event => setRolloutScope(event.target.value)}>
               {rolloutScopeOptions.map(option => (
                 <option key={option.value} value={option.value}>
@@ -3508,7 +3585,7 @@ function PolicyWritePanel({ applications, policies, sampleEvents }: { applicatio
             </select>
           </label>
           <label className={fieldGroupClass} htmlFor="rollout-version">
-            <span className={fieldLabelClass}>Version</span>
+            <span className={fieldLabelClass}><UiText k="Version" /></span>
             <input
               id="rollout-version"
               className={fieldControlClass}
@@ -3520,7 +3597,7 @@ function PolicyWritePanel({ applications, policies, sampleEvents }: { applicatio
             />
           </label>
           <label className={fieldGroupClass} htmlFor="canary-percent">
-            <span className={fieldLabelClass}>Canary Percent</span>
+            <span className={fieldLabelClass}><UiText k="Canary Percent" /></span>
             <input
               id="canary-percent"
               className={fieldControlClass}
@@ -3534,11 +3611,9 @@ function PolicyWritePanel({ applications, policies, sampleEvents }: { applicatio
           </label>
           <div className="flex flex-wrap gap-2">
             <Button disabled={isSubmitting || !selectedPolicy} type="submit">
-              Roll Out Version
-            </Button>
+              <UiText k="Roll Out Version" /></Button>
             <Button disabled={isSubmitting || !selectedPolicy} type="button" variant="secondary" onClick={handleRollback}>
-              Rollback
-            </Button>
+              <UiText k="Rollback" /></Button>
           </div>
           <FormMessage error={error} status={status} />
         </form>
@@ -3617,9 +3692,9 @@ function ProtectionConfigurationPanel({ settings }: { settings: SystemSetting[] 
       ]);
       await queryClient.invalidateQueries({ queryKey: ["system-settings"] });
       await queryClient.invalidateQueries({ queryKey: ["audit-logs"] });
-      setMessage({ status: "Protection configuration saved.", error: "" });
+      setMessage({ status: notice("Protection configuration saved."), error: "" });
     } catch {
-      setMessage({ status: "", error: "Unable to save protection configuration." });
+      setMessage({ status: "", error: notice("Unable to save protection configuration.") });
     } finally {
       setIsSubmitting(false);
     }
@@ -3628,7 +3703,7 @@ function ProtectionConfigurationPanel({ settings }: { settings: SystemSetting[] 
   return (
     <Card>
       <CardHeader>
-        <CardTitle>Protection Configuration</CardTitle>
+        <CardTitle><UiText k="Protection Configuration" /></CardTitle>
       </CardHeader>
       <CardContent>
         <form className="grid gap-4" onSubmit={handleSubmit}>
@@ -3641,29 +3716,28 @@ function ProtectionConfigurationPanel({ settings }: { settings: SystemSetting[] 
                 checked={allowlistEnabled}
                 onChange={event => setAllowlistEnabled(event.target.checked)}
               />
-              Allowlist Enabled
-            </label>
+              <UiText k="Allowlist Enabled" /></label>
             <label className={fieldGroupClass} htmlFor="protection-allowlist-mode">
-              <span className={fieldLabelClass}>Allowlist Mode</span>
+              <span className={fieldLabelClass}><UiText k="Allowlist Mode" /></span>
               <select id="protection-allowlist-mode" className={fieldControlClass} value={allowlistMode} onChange={event => setAllowlistMode(event.target.value)}>
-                <option value="monitor">monitor</option>
-                <option value="enforce">enforce</option>
+                <option value="monitor"><UiText k="monitor" /></option>
+                <option value="enforce"><UiText k="enforce" /></option>
               </select>
             </label>
             <label className={fieldGroupClass} htmlFor="protection-hardening-mode">
-              <span className={fieldLabelClass}>Hardening Mode</span>
+              <span className={fieldLabelClass}><UiText k="Hardening Mode" /></span>
               <select id="protection-hardening-mode" className={fieldControlClass} value={hardeningMode} onChange={event => setHardeningMode(event.target.value)}>
-                <option value="monitor">monitor</option>
-                <option value="enforce">enforce</option>
+                <option value="monitor"><UiText k="monitor" /></option>
+                <option value="enforce"><UiText k="enforce" /></option>
               </select>
             </label>
             <label className={fieldGroupClass} htmlFor="protection-vulnerability-threshold">
-              <span className={fieldLabelClass}>Vulnerability Threshold</span>
+              <span className={fieldLabelClass}><UiText k="Vulnerability Threshold" /></span>
               <select id="protection-vulnerability-threshold" className={fieldControlClass} value={vulnerabilitySeverity} onChange={event => setVulnerabilitySeverity(event.target.value)}>
-                <option value="critical">critical</option>
-                <option value="high">high</option>
-                <option value="medium">medium</option>
-                <option value="low">low</option>
+                <option value="critical"><UiText k="critical" /></option>
+                <option value="high"><UiText k="high" /></option>
+                <option value="medium"><UiText k="medium" /></option>
+                <option value="low"><UiText k="low" /></option>
               </select>
             </label>
           </div>
@@ -3676,8 +3750,7 @@ function ProtectionConfigurationPanel({ settings }: { settings: SystemSetting[] 
                 checked={blockReflectionAbuse}
                 onChange={event => setBlockReflectionAbuse(event.target.checked)}
               />
-              Block Reflection Abuse
-            </label>
+              <UiText k="Block Reflection Abuse" /></label>
             <label className="flex min-h-10 items-center gap-2 text-sm font-medium text-slate-700" htmlFor="protection-block-process">
               <input
                 id="protection-block-process"
@@ -3686,8 +3759,7 @@ function ProtectionConfigurationPanel({ settings }: { settings: SystemSetting[] 
                 checked={blockProcessExecution}
                 onChange={event => setBlockProcessExecution(event.target.checked)}
               />
-              Block Process Execution
-            </label>
+              <UiText k="Block Process Execution" /></label>
             <label className="flex min-h-10 items-center gap-2 text-sm font-medium text-slate-700" htmlFor="protection-block-known-exploited">
               <input
                 id="protection-block-known-exploited"
@@ -3696,11 +3768,10 @@ function ProtectionConfigurationPanel({ settings }: { settings: SystemSetting[] 
                 checked={blockKnownExploited}
                 onChange={event => setBlockKnownExploited(event.target.checked)}
               />
-              Block Known Exploited
-            </label>
+              <UiText k="Block Known Exploited" /></label>
           </div>
           <label className={fieldGroupClass} htmlFor="protection-allowlist-entries">
-            <span className={fieldLabelClass}>Allowlist Entries</span>
+            <span className={fieldLabelClass}><UiText k="Allowlist Entries" /></span>
             <textarea
               id="protection-allowlist-entries"
               className={`${fieldControlClass} min-h-24 py-2`}
@@ -3710,11 +3781,11 @@ function ProtectionConfigurationPanel({ settings }: { settings: SystemSetting[] 
           </label>
           <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
             <label className={fieldGroupClass} htmlFor="retention-attack-days">
-              <span className={fieldLabelClass}>Attack Retention Days</span>
+              <span className={fieldLabelClass}><UiText k="Attack Retention Days" /></span>
               <input id="retention-attack-days" className={fieldControlClass} min={1} type="number" value={attackRetentionDays} onChange={event => setAttackRetentionDays(Number(event.target.value))} />
             </label>
             <label className={fieldGroupClass} htmlFor="retention-performance-days">
-              <span className={fieldLabelClass}>Performance Retention Days</span>
+              <span className={fieldLabelClass}><UiText k="Performance Retention Days" /></span>
               <input
                 id="retention-performance-days"
                 className={fieldControlClass}
@@ -3725,7 +3796,7 @@ function ProtectionConfigurationPanel({ settings }: { settings: SystemSetting[] 
               />
             </label>
             <label className={fieldGroupClass} htmlFor="retention-dependency-days">
-              <span className={fieldLabelClass}>Dependency Retention Days</span>
+              <span className={fieldLabelClass}><UiText k="Dependency Retention Days" /></span>
               <input
                 id="retention-dependency-days"
                 className={fieldControlClass}
@@ -3736,13 +3807,13 @@ function ProtectionConfigurationPanel({ settings }: { settings: SystemSetting[] 
               />
             </label>
             <label className={fieldGroupClass} htmlFor="retention-audit-days">
-              <span className={fieldLabelClass}>Audit Retention Days</span>
+              <span className={fieldLabelClass}><UiText k="Audit Retention Days" /></span>
               <input id="retention-audit-days" className={fieldControlClass} min={1} type="number" value={auditRetentionDays} onChange={event => setAuditRetentionDays(Number(event.target.value))} />
             </label>
           </div>
           <div className="flex flex-wrap items-center gap-3">
             <Button disabled={isSubmitting} type="submit">
-              {isSubmitting ? "Saving Protection Configuration" : "Save Protection Configuration"}
+              <UiText k={isSubmitting ? "Saving Protection Configuration" : "Save Protection Configuration"} />
             </Button>
             <div className="min-w-72 flex-1">
               <FormMessage error={message.error} status={message.status} />
@@ -3773,11 +3844,11 @@ function MaintenanceCleanupPanel() {
   async function runCleanup(dryRun: boolean) {
     setMessage({ status: "", error: "" });
     if (!beforeDate) {
-      setMessage({ status: "", error: "Cleanup cutoff date is required." });
+      setMessage({ status: "", error: notice("Cleanup cutoff date is required.") });
       return;
     }
     if (!dryRun && confirmation !== "CLEAR_OPERATIONAL_DATA") {
-      setMessage({ status: "", error: "Type CLEAR_OPERATIONAL_DATA before applying cleanup." });
+      setMessage({ status: "", error: notice("Type CLEAR_OPERATIONAL_DATA before applying cleanup.") });
       return;
     }
     setIsSubmitting(true);
@@ -3802,9 +3873,14 @@ function MaintenanceCleanupPanel() {
         queryClient.invalidateQueries({ queryKey: ["alert-deliveries"] }),
         queryClient.invalidateQueries({ queryKey: ["audit-logs"] })
       ]);
-      setMessage({ status: `${dryRun ? "Previewed" : "Applied"} cleanup for ${formatCleanupCount(report.counts)} records.`, error: "" });
+      setMessage({
+        status: notice(dryRun ? "Previewed cleanup for {{count}} records." : "Applied cleanup for {{count}} records.", {
+          count: formatCleanupCount(report.counts)
+        }),
+        error: ""
+      });
     } catch {
-      setMessage({ status: "", error: "Unable to run maintenance cleanup." });
+      setMessage({ status: "", error: notice("Unable to run maintenance cleanup.") });
     } finally {
       setIsSubmitting(false);
     }
@@ -3813,20 +3889,20 @@ function MaintenanceCleanupPanel() {
   return (
     <Card>
       <CardHeader>
-        <CardTitle>Maintenance Cleanup</CardTitle>
+        <CardTitle><UiText k="Maintenance Cleanup" /></CardTitle>
       </CardHeader>
       <CardContent className="grid gap-4">
         <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-[.8fr_1fr_1.2fr_auto_auto] xl:items-end">
           <label className={fieldGroupClass} htmlFor="maintenance-cleanup-before">
-            <span className={fieldLabelClass}>Cleanup Before</span>
+            <span className={fieldLabelClass}><UiText k="Cleanup Before" /></span>
             <input id="maintenance-cleanup-before" className={fieldControlClass} type="date" value={beforeDate} onChange={event => setBeforeDate(event.target.value)} />
           </label>
           <label className={fieldGroupClass} htmlFor="maintenance-cleanup-application">
-            <span className={fieldLabelClass}>Cleanup Application ID</span>
+            <span className={fieldLabelClass}><UiText k="Cleanup Application ID" /></span>
             <input id="maintenance-cleanup-application" className={fieldControlClass} value={applicationID} onChange={event => setApplicationID(event.target.value)} />
           </label>
           <label className={fieldGroupClass} htmlFor="maintenance-cleanup-confirmation">
-            <span className={fieldLabelClass}>Cleanup Confirmation</span>
+            <span className={fieldLabelClass}><UiText k="Cleanup Confirmation" /></span>
             <input
               id="maintenance-cleanup-confirmation"
               className={fieldControlClass}
@@ -3835,36 +3911,30 @@ function MaintenanceCleanupPanel() {
             />
           </label>
           <Button disabled={isSubmitting} type="button" variant="secondary" onClick={() => void runCleanup(true)}>
-            Preview Cleanup
-          </Button>
+            <UiText k="Preview Cleanup" /></Button>
           <Button disabled={isSubmitting} type="button" onClick={() => void runCleanup(false)}>
-            Apply Cleanup
-          </Button>
+            <UiText k="Apply Cleanup" /></Button>
         </div>
         <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
           <label className="flex min-h-10 items-center gap-2 text-sm font-medium text-slate-700" htmlFor="maintenance-cleanup-events">
             <input id="maintenance-cleanup-events" className="h-4 w-4 rounded border-slate-300 text-slate-900" type="checkbox" checked={includeEvents} onChange={event => setIncludeEvents(event.target.checked)} />
-            Events
-          </label>
+            <UiText k="Events" /></label>
           <label className="flex min-h-10 items-center gap-2 text-sm font-medium text-slate-700" htmlFor="maintenance-cleanup-dependencies">
             <input id="maintenance-cleanup-dependencies" className="h-4 w-4 rounded border-slate-300 text-slate-900" type="checkbox" checked={includeDependencies} onChange={event => setIncludeDependencies(event.target.checked)} />
-            Dependencies
-          </label>
+            <UiText k="Dependencies" /></label>
           <label className="flex min-h-10 items-center gap-2 text-sm font-medium text-slate-700" htmlFor="maintenance-cleanup-baseline">
             <input id="maintenance-cleanup-baseline" className="h-4 w-4 rounded border-slate-300 text-slate-900" type="checkbox" checked={includeBaselineFindings} onChange={event => setIncludeBaselineFindings(event.target.checked)} />
-            Baseline Findings
-          </label>
+            <UiText k="Baseline Findings" /></label>
           <label className="flex min-h-10 items-center gap-2 text-sm font-medium text-slate-700" htmlFor="maintenance-cleanup-alerts">
             <input id="maintenance-cleanup-alerts" className="h-4 w-4 rounded border-slate-300 text-slate-900" type="checkbox" checked={includeAlertDeliveries} onChange={event => setIncludeAlertDeliveries(event.target.checked)} />
-            Alert Deliveries
-          </label>
+            <UiText k="Alert Deliveries" /></label>
         </div>
         <FormMessage error={message.error} status={message.status} />
         {Object.keys(lastCounts).length > 0 ? (
           <div className="grid gap-2 rounded-md border border-slate-200 bg-slate-50 p-3 text-sm text-slate-700 md:grid-cols-2 xl:grid-cols-4">
             {Object.entries(lastCounts).map(([key, value]) => (
               <div key={key}>
-                <span className="block text-xs font-medium text-slate-500">{formatCleanupKey(key)}</span>
+                <span className="block text-xs font-medium text-slate-500"><UiValue value={formatCleanupKey(key)} /></span>
                 <span className="font-mono text-sm">{value}</span>
               </div>
             ))}
@@ -3901,9 +3971,9 @@ function AccessWritePanel() {
       }
       await updateSystemSetting(settingKey, parsed as Record<string, unknown>);
       await queryClient.invalidateQueries({ queryKey: ["system-settings"] });
-      setSettingMessage({ status: "Setting saved.", error: "" });
+      setSettingMessage({ status: notice("Setting saved."), error: "" });
     } catch {
-      setSettingMessage({ status: "", error: "Unable to save setting." });
+      setSettingMessage({ status: "", error: notice("Unable to save setting.") });
     }
   }
 
@@ -3921,9 +3991,9 @@ function AccessWritePanel() {
         target: alertTarget
       });
       await queryClient.invalidateQueries({ queryKey: ["alert-rules"] });
-      setAlertMessage({ status: "Alert rule created.", error: "" });
+      setAlertMessage({ status: notice("Alert rule created."), error: "" });
     } catch {
-      setAlertMessage({ status: "", error: "Unable to create alert rule." });
+      setAlertMessage({ status: "", error: notice("Unable to create alert rule.") });
     }
   }
 
@@ -3938,9 +4008,9 @@ function AccessWritePanel() {
         roles: [userRole as "admin" | "security_engineer" | "viewer"]
       });
       await queryClient.invalidateQueries({ queryKey: ["users"] });
-      setUserMessage({ status: "User created.", error: "" });
+      setUserMessage({ status: notice("User created."), error: "" });
     } catch {
-      setUserMessage({ status: "", error: "Unable to create user." });
+      setUserMessage({ status: "", error: notice("Unable to create user.") });
     }
   }
 
@@ -3948,16 +4018,16 @@ function AccessWritePanel() {
     <section className="grid gap-5 xl:grid-cols-3">
       <Card>
         <CardHeader>
-          <CardTitle>Setting Change</CardTitle>
+          <CardTitle><UiText k="Setting Change" /></CardTitle>
         </CardHeader>
         <CardContent>
           <form className="grid gap-3" onSubmit={handleSettingSubmit}>
             <label className={fieldGroupClass} htmlFor="setting-key">
-              <span className={fieldLabelClass}>Key</span>
+              <span className={fieldLabelClass}><UiText k="Key" /></span>
               <input id="setting-key" className={fieldControlClass} value={settingKey} onChange={event => setSettingKey(event.target.value)} required />
             </label>
             <label className={fieldGroupClass} htmlFor="setting-value">
-              <span className={fieldLabelClass}>Value JSON</span>
+              <span className={fieldLabelClass}><UiText k="Value JSON" /></span>
               <textarea
                 id="setting-value"
                 className={`${fieldControlClass} min-h-24 py-2`}
@@ -3966,70 +4036,69 @@ function AccessWritePanel() {
                 required
               />
             </label>
-            <Button type="submit">Save Setting</Button>
+            <Button type="submit"><UiText k="Save Setting" /></Button>
             <FormMessage error={settingMessage.error} status={settingMessage.status} />
           </form>
         </CardContent>
       </Card>
       <Card>
         <CardHeader>
-          <CardTitle>Alert Rule</CardTitle>
+          <CardTitle><UiText k="Alert Rule" /></CardTitle>
         </CardHeader>
         <CardContent>
           <form className="grid gap-3" onSubmit={handleAlertSubmit}>
             <label className={fieldGroupClass} htmlFor="alert-name">
-              <span className={fieldLabelClass}>Name</span>
+              <span className={fieldLabelClass}><UiText k="Name" /></span>
               <input id="alert-name" className={fieldControlClass} value={alertName} onChange={event => setAlertName(event.target.value)} required />
             </label>
             <label className={fieldGroupClass} htmlFor="alert-severity">
-              <span className={fieldLabelClass}>Severity</span>
+              <span className={fieldLabelClass}><UiText k="Severity" /></span>
               <select id="alert-severity" className={fieldControlClass} value={alertSeverity} onChange={event => setAlertSeverity(event.target.value)}>
-                <option value="critical">critical</option>
-                <option value="high">high</option>
-                <option value="medium">medium</option>
-                <option value="low">low</option>
+                <option value="critical"><UiText k="critical" /></option>
+                <option value="high"><UiText k="high" /></option>
+                <option value="medium"><UiText k="medium" /></option>
+                <option value="low"><UiText k="low" /></option>
               </select>
             </label>
             <label className={fieldGroupClass} htmlFor="alert-target">
-              <span className={fieldLabelClass}>Target</span>
+              <span className={fieldLabelClass}><UiText k="Target" /></span>
               <input id="alert-target" className={fieldControlClass} value={alertTarget} onChange={event => setAlertTarget(event.target.value)} required />
             </label>
             <label className="flex items-center gap-2 text-sm font-medium text-slate-700" htmlFor="alert-enabled">
               <input id="alert-enabled" checked={alertEnabled} type="checkbox" onChange={event => setAlertEnabled(event.target.checked)} />
-              Enabled
-            </label>
-            <Button type="submit">Create Alert Rule</Button>
+              <UiText k="Enabled" /></label>
+            <Button type="submit"><UiText k="Create Alert Rule" /></Button>
             <FormMessage error={alertMessage.error} status={alertMessage.status} />
           </form>
         </CardContent>
       </Card>
       <Card>
         <CardHeader>
-          <CardTitle>User Invite</CardTitle>
+          <CardTitle><UiText k="User Invite" /></CardTitle>
         </CardHeader>
         <CardContent>
           <form className="grid gap-3" onSubmit={handleUserSubmit}>
             <label className={fieldGroupClass} htmlFor="user-email">
-              <span className={fieldLabelClass}>Email</span>
+              <span className={fieldLabelClass}><UiText k="Email" /></span>
               <input id="user-email" className={fieldControlClass} type="email" value={userEmail} onChange={event => setUserEmail(event.target.value)} required />
             </label>
             <label className={fieldGroupClass} htmlFor="user-name">
-              <span className={fieldLabelClass}>Name</span>
+              <span className={fieldLabelClass}><UiText k="Name" /></span>
               <input id="user-name" className={fieldControlClass} value={userName} onChange={event => setUserName(event.target.value)} required />
             </label>
             <label className={fieldGroupClass} htmlFor="user-password">
-              <span className={fieldLabelClass}>Password</span>
+              <span className={fieldLabelClass}><UiText k="Password" /></span>
               <input id="user-password" className={fieldControlClass} type="password" value={userPassword} onChange={event => setUserPassword(event.target.value)} required />
             </label>
             <label className={fieldGroupClass} htmlFor="user-role">
-              <span className={fieldLabelClass}>Role</span>
+              <span className={fieldLabelClass}><UiText k="Role" /></span>
               <select id="user-role" className={fieldControlClass} value={userRole} onChange={event => setUserRole(event.target.value)}>
-                <option value="admin">Admin</option>
-                <option value="security_engineer">Security Engineer</option>
-                <option value="viewer">Viewer</option>
+                <option value="admin"><UiText k="Admin" /></option>
+                <option value="security_engineer"><UiText k="Security Engineer" /></option>
+                <option value="viewer"><UiText k="Viewer" /></option>
               </select>
             </label>
-            <Button type="submit">Create User</Button>
+            <Button type="submit"><UiText k="Create User" /></Button>
             <FormMessage error={userMessage.error} status={userMessage.status} />
           </form>
         </CardContent>
@@ -4039,24 +4108,25 @@ function AccessWritePanel() {
 }
 
 function FormMessage({ error, status }: { error: string; status: string }) {
+  const { i18n } = useTranslation();
   if (error) {
     return (
       <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700" role="alert">
-        {error}
+        {translateNotice(i18n.resolvedLanguage ?? i18n.language, error)}
       </div>
     );
   }
   if (status) {
     return (
       <div className="rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-700" role="status">
-        {status}
+        {translateNotice(i18n.resolvedLanguage ?? i18n.language, status)}
       </div>
     );
   }
   return null;
 }
 
-function QueryStateNotice({ isLoading, isError, loading, error }: { isLoading: boolean; isError: boolean; loading: string; error: string }) {
+function QueryStateNotice({ isLoading, isError, loading, error }: { isLoading: boolean; isError: boolean; loading: ReactNode; error: ReactNode }) {
   if (isError) {
     return (
       <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700" role="alert">
@@ -4094,12 +4164,12 @@ function emptyObservabilityReport() {
 function emptyEditionStatus(): EditionStatus {
   return {
     edition: "",
-    display_name: "Unavailable",
+    display_name: "",
     deployment_model: "",
     license_required: false,
     license_enforcement: "",
     license_status: "",
-    note: "Edition status is unavailable."
+    note: ""
   };
 }
 
@@ -4119,8 +4189,8 @@ type RolloutScopeOption = {
   value: string;
 };
 
-function policyRolloutScopeOptions(applications: Application[]): RolloutScopeOption[] {
-  const options: RolloutScopeOption[] = [{ label: "All Applications", value: "global" }];
+function policyRolloutScopeOptions(applications: Application[], copy: (key: "All Applications") => string): RolloutScopeOption[] {
+  const options: RolloutScopeOption[] = [{ label: copy("All Applications"), value: "global" }];
   applications.forEach(application => {
     options.push({ label: application.name, value: `application:${application.id}` });
     application.environment_ids.forEach(environmentID => {
@@ -4143,10 +4213,7 @@ function policyRolloutScopePayload(scope: string): PolicyRolloutScope {
 
 function policyRolloutScopeStatus(scope: string, options: RolloutScopeOption[]) {
   const option = options.find(candidate => candidate.value === scope);
-  if (!option || option.value === "global") {
-    return "for all applications";
-  }
-  return `for ${option.label}`;
+  return option?.label ?? "All Applications";
 }
 
 const fieldGroupClass = "grid gap-1";
@@ -4243,7 +4310,7 @@ function workloadDetail(workload: DaemonWorkload) {
 
 function injectionStatusCell(workload: DaemonWorkload) {
   if (!workload.injection_status) {
-    return <span className="text-slate-500">pending</span>;
+    return <span className="text-slate-500"><UiText k="pending" /></span>;
   }
   return (
     <div className="space-y-1">
@@ -4267,15 +4334,20 @@ function injectionStatusTone(status: string): BadgeTone {
   return "amber";
 }
 
-function formatDate(value?: string) {
+function FormattedDate({ value }: { value?: string }) {
+  const { i18n } = useTranslation();
+  return <>{formatDate(value, i18n.resolvedLanguage ?? i18n.language)}</>;
+}
+
+function formatDate(value?: string, language = "en") {
   if (!value) {
-    return "unknown";
+    return translateUiCopy(language, "unknown");
   }
   const parsed = new Date(value);
   if (Number.isNaN(parsed.getTime())) {
     return value;
   }
-  return new Intl.DateTimeFormat("en-US", {
+  return new Intl.DateTimeFormat(language, {
     month: "short",
     day: "numeric",
     hour: "2-digit",
@@ -4409,10 +4481,10 @@ function formatBytes(value?: number) {
 }
 
 function formatNumber(value: number) {
-  return new Intl.NumberFormat("en-US").format(value);
+  return new Intl.NumberFormat(appI18n.resolvedLanguage ?? appI18n.language).format(value);
 }
 
-function Metric({ label, value, detail }: { label: string; value: string | number; detail: string }) {
+function Metric({ label, value, detail }: { label: ReactNode; value: string | number; detail: ReactNode }) {
   return (
     <Card>
       <CardContent>

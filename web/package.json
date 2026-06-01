@@ -5,7 +5,8 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "tsc --noEmit && vite build",
+    "i18n:audit": "node scripts/i18n-audit.mjs",
+    "build": "npm run i18n:audit && tsc --noEmit && vite build",
     "test": "vitest run",
     "test:ui": "vitest",
     "e2e:install": "PLAYWRIGHT_HOST_PLATFORM_OVERRIDE=ubuntu24.04-x64 playwright install chromium",

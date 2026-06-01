@@ -46,12 +46,13 @@ function syncDocumentLanguage(language: string) {
 void i18n.use(initReactI18next).init({
   resources,
   lng: detectInitialLanguage(),
-  fallbackLng: "en",
+  fallbackLng: false,
   supportedLngs: supportedLanguageCodes,
   interpolation: {
     escapeValue: false
   },
-  returnNull: false
+  returnNull: false,
+  parseMissingKeyHandler: key => `__MISSING_TRANSLATION:${key}__`
 });
 
 i18n.on("languageChanged", language => {
