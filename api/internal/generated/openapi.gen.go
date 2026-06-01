@@ -834,16 +834,23 @@ func (e GetApiV1EventsRecycleBinParamsType) Valid() bool {
 
 // Agent defines model for Agent.
 type Agent struct {
-	ApplicationId string    `json:"application_id"`
-	EnvironmentId string    `json:"environment_id"`
-	Hostname      string    `json:"hostname"`
-	Id            string    `json:"id"`
-	LastSeenAt    time.Time `json:"last_seen_at"`
-	PolicyId      *string   `json:"policy_id,omitempty"`
-	PolicyVersion *int      `json:"policy_version,omitempty"`
-	Runtime       string    `json:"runtime"`
-	Status        string    `json:"status"`
-	Version       string    `json:"version"`
+	Alias         *string    `json:"alias,omitempty"`
+	ApplicationId string     `json:"application_id"`
+	EnvironmentId string     `json:"environment_id"`
+	Hostname      string     `json:"hostname"`
+	Id            string     `json:"id"`
+	IgnoredAt     *time.Time `json:"ignored_at,omitempty"`
+	LastSeenAt    time.Time  `json:"last_seen_at"`
+	PolicyId      *string    `json:"policy_id,omitempty"`
+	PolicyVersion *int       `json:"policy_version,omitempty"`
+	Runtime       string     `json:"runtime"`
+	Status        string     `json:"status"`
+	Version       string     `json:"version"`
+}
+
+// AgentAliasUpdate defines model for AgentAliasUpdate.
+type AgentAliasUpdate struct {
+	Alias string `json:"alias"`
 }
 
 // AgentArtifactCatalog defines model for AgentArtifactCatalog.
@@ -895,9 +902,25 @@ type AgentArtifactUpload struct {
 // AgentArtifactUploadLanguage defines model for AgentArtifactUpload.Language.
 type AgentArtifactUploadLanguage string
 
+// AgentBatchOperationReport defines model for AgentBatchOperationReport.
+type AgentBatchOperationReport struct {
+	Count int      `json:"count"`
+	Ids   []string `json:"ids"`
+}
+
+// AgentBatchOperationRequest defines model for AgentBatchOperationRequest.
+type AgentBatchOperationRequest struct {
+	Ids []string `json:"ids"`
+}
+
 // AgentHeartbeat defines model for AgentHeartbeat.
 type AgentHeartbeat struct {
 	Status string `json:"status"`
+}
+
+// AgentIgnoreUpdate defines model for AgentIgnoreUpdate.
+type AgentIgnoreUpdate struct {
+	Ignored bool `json:"ignored"`
 }
 
 // AgentList defines model for AgentList.
@@ -1925,11 +1948,20 @@ type GetApiV1EventsRecycleBinParamsType string
 // PostApiV1AgentArtifactsJSONRequestBody defines body for PostApiV1AgentArtifacts for application/json ContentType.
 type PostApiV1AgentArtifactsJSONRequestBody = AgentArtifactUpload
 
+// PostApiV1AgentsBatchDeleteJSONRequestBody defines body for PostApiV1AgentsBatchDelete for application/json ContentType.
+type PostApiV1AgentsBatchDeleteJSONRequestBody = AgentBatchOperationRequest
+
 // PostApiV1AgentsRegisterJSONRequestBody defines body for PostApiV1AgentsRegister for application/json ContentType.
 type PostApiV1AgentsRegisterJSONRequestBody = AgentRegistration
 
+// PutApiV1AgentsAgentIDAliasJSONRequestBody defines body for PutApiV1AgentsAgentIDAlias for application/json ContentType.
+type PutApiV1AgentsAgentIDAliasJSONRequestBody = AgentAliasUpdate
+
 // PostApiV1AgentsAgentIDHeartbeatJSONRequestBody defines body for PostApiV1AgentsAgentIDHeartbeat for application/json ContentType.
 type PostApiV1AgentsAgentIDHeartbeatJSONRequestBody = AgentHeartbeat
+
+// PostApiV1AgentsAgentIDIgnoreJSONRequestBody defines body for PostApiV1AgentsAgentIDIgnore for application/json ContentType.
+type PostApiV1AgentsAgentIDIgnoreJSONRequestBody = AgentIgnoreUpdate
 
 // PostApiV1AlertRulesJSONRequestBody defines body for PostApiV1AlertRules for application/json ContentType.
 type PostApiV1AlertRulesJSONRequestBody = AlertRuleInput
@@ -2024,11 +2056,23 @@ type ServerInterface interface {
 	// (GET /api/v1/agents)
 	GetApiV1Agents(w http.ResponseWriter, r *http.Request)
 
+	// (POST /api/v1/agents/batch-delete)
+	PostApiV1AgentsBatchDelete(w http.ResponseWriter, r *http.Request)
+
 	// (POST /api/v1/agents/register)
 	PostApiV1AgentsRegister(w http.ResponseWriter, r *http.Request, params PostApiV1AgentsRegisterParams)
 
+	// (DELETE /api/v1/agents/{agentID})
+	DeleteApiV1AgentsAgentID(w http.ResponseWriter, r *http.Request, agentID AgentID)
+
+	// (PUT /api/v1/agents/{agentID}/alias)
+	PutApiV1AgentsAgentIDAlias(w http.ResponseWriter, r *http.Request, agentID AgentID)
+
 	// (POST /api/v1/agents/{agentID}/heartbeat)
 	PostApiV1AgentsAgentIDHeartbeat(w http.ResponseWriter, r *http.Request, agentID AgentID, params PostApiV1AgentsAgentIDHeartbeatParams)
+
+	// (POST /api/v1/agents/{agentID}/ignore)
+	PostApiV1AgentsAgentIDIgnore(w http.ResponseWriter, r *http.Request, agentID AgentID)
 
 	// (GET /api/v1/agents/{agentID}/policy)
 	GetApiV1AgentsAgentIDPolicy(w http.ResponseWriter, r *http.Request, agentID AgentID, params GetApiV1AgentsAgentIDPolicyParams)
@@ -2245,13 +2289,33 @@ func (_ Unimplemented) GetApiV1Agents(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
+// (POST /api/v1/agents/batch-delete)
+func (_ Unimplemented) PostApiV1AgentsBatchDelete(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
 // (POST /api/v1/agents/register)
 func (_ Unimplemented) PostApiV1AgentsRegister(w http.ResponseWriter, r *http.Request, params PostApiV1AgentsRegisterParams) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
+// (DELETE /api/v1/agents/{agentID})
+func (_ Unimplemented) DeleteApiV1AgentsAgentID(w http.ResponseWriter, r *http.Request, agentID AgentID) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// (PUT /api/v1/agents/{agentID}/alias)
+func (_ Unimplemented) PutApiV1AgentsAgentIDAlias(w http.ResponseWriter, r *http.Request, agentID AgentID) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
 // (POST /api/v1/agents/{agentID}/heartbeat)
 func (_ Unimplemented) PostApiV1AgentsAgentIDHeartbeat(w http.ResponseWriter, r *http.Request, agentID AgentID, params PostApiV1AgentsAgentIDHeartbeatParams) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// (POST /api/v1/agents/{agentID}/ignore)
+func (_ Unimplemented) PostApiV1AgentsAgentIDIgnore(w http.ResponseWriter, r *http.Request, agentID AgentID) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
@@ -2649,6 +2713,26 @@ func (siw *ServerInterfaceWrapper) GetApiV1Agents(w http.ResponseWriter, r *http
 	handler.ServeHTTP(w, r)
 }
 
+// PostApiV1AgentsBatchDelete operation middleware
+func (siw *ServerInterfaceWrapper) PostApiV1AgentsBatchDelete(w http.ResponseWriter, r *http.Request) {
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, BearerAuthScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.PostApiV1AgentsBatchDelete(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // PostApiV1AgentsRegister operation middleware
 func (siw *ServerInterfaceWrapper) PostApiV1AgentsRegister(w http.ResponseWriter, r *http.Request) {
 
@@ -2708,6 +2792,70 @@ func (siw *ServerInterfaceWrapper) PostApiV1AgentsRegister(w http.ResponseWriter
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.PostApiV1AgentsRegister(w, r, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// DeleteApiV1AgentsAgentID operation middleware
+func (siw *ServerInterfaceWrapper) DeleteApiV1AgentsAgentID(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "agentID" -------------
+	var agentID AgentID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "agentID", chi.URLParam(r, "agentID"), &agentID, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "agentID", Err: err})
+		return
+	}
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, BearerAuthScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.DeleteApiV1AgentsAgentID(w, r, agentID)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// PutApiV1AgentsAgentIDAlias operation middleware
+func (siw *ServerInterfaceWrapper) PutApiV1AgentsAgentIDAlias(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "agentID" -------------
+	var agentID AgentID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "agentID", chi.URLParam(r, "agentID"), &agentID, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "agentID", Err: err})
+		return
+	}
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, BearerAuthScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.PutApiV1AgentsAgentIDAlias(w, r, agentID)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -2785,6 +2933,38 @@ func (siw *ServerInterfaceWrapper) PostApiV1AgentsAgentIDHeartbeat(w http.Respon
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.PostApiV1AgentsAgentIDHeartbeat(w, r, agentID, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// PostApiV1AgentsAgentIDIgnore operation middleware
+func (siw *ServerInterfaceWrapper) PostApiV1AgentsAgentIDIgnore(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "agentID" -------------
+	var agentID AgentID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "agentID", chi.URLParam(r, "agentID"), &agentID, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "agentID", Err: err})
+		return
+	}
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, BearerAuthScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.PostApiV1AgentsAgentIDIgnore(w, r, agentID)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -5863,10 +6043,22 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 		r.Get(options.BaseURL+"/api/v1/agents", wrapper.GetApiV1Agents)
 	})
 	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/api/v1/agents/batch-delete", wrapper.PostApiV1AgentsBatchDelete)
+	})
+	r.Group(func(r chi.Router) {
 		r.Post(options.BaseURL+"/api/v1/agents/register", wrapper.PostApiV1AgentsRegister)
 	})
 	r.Group(func(r chi.Router) {
+		r.Delete(options.BaseURL+"/api/v1/agents/{agentID}", wrapper.DeleteApiV1AgentsAgentID)
+	})
+	r.Group(func(r chi.Router) {
+		r.Put(options.BaseURL+"/api/v1/agents/{agentID}/alias", wrapper.PutApiV1AgentsAgentIDAlias)
+	})
+	r.Group(func(r chi.Router) {
 		r.Post(options.BaseURL+"/api/v1/agents/{agentID}/heartbeat", wrapper.PostApiV1AgentsAgentIDHeartbeat)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/api/v1/agents/{agentID}/ignore", wrapper.PostApiV1AgentsAgentIDIgnore)
 	})
 	r.Group(func(r chi.Router) {
 		r.Get(options.BaseURL+"/api/v1/agents/{agentID}/policy", wrapper.GetApiV1AgentsAgentIDPolicy)
@@ -6131,6 +6323,28 @@ func (response GetApiV1Agents200JSONResponse) VisitGetApiV1AgentsResponse(w http
 	return err
 }
 
+type PostApiV1AgentsBatchDeleteRequestObject struct {
+	Body *PostApiV1AgentsBatchDeleteJSONRequestBody
+}
+
+type PostApiV1AgentsBatchDeleteResponseObject interface {
+	VisitPostApiV1AgentsBatchDeleteResponse(w http.ResponseWriter) error
+}
+
+type PostApiV1AgentsBatchDelete200JSONResponse AgentBatchOperationReport
+
+func (response PostApiV1AgentsBatchDelete200JSONResponse) VisitPostApiV1AgentsBatchDeleteResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type PostApiV1AgentsRegisterRequestObject struct {
 	Params PostApiV1AgentsRegisterParams
 	Body   *PostApiV1AgentsRegisterJSONRequestBody
@@ -6154,6 +6368,51 @@ func (response PostApiV1AgentsRegister201JSONResponse) VisitPostApiV1AgentsRegis
 	return err
 }
 
+type DeleteApiV1AgentsAgentIDRequestObject struct {
+	AgentID AgentID `json:"agentID"`
+}
+
+type DeleteApiV1AgentsAgentIDResponseObject interface {
+	VisitDeleteApiV1AgentsAgentIDResponse(w http.ResponseWriter) error
+}
+
+type DeleteApiV1AgentsAgentID200JSONResponse AgentBatchOperationReport
+
+func (response DeleteApiV1AgentsAgentID200JSONResponse) VisitDeleteApiV1AgentsAgentIDResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PutApiV1AgentsAgentIDAliasRequestObject struct {
+	AgentID AgentID `json:"agentID"`
+	Body    *PutApiV1AgentsAgentIDAliasJSONRequestBody
+}
+
+type PutApiV1AgentsAgentIDAliasResponseObject interface {
+	VisitPutApiV1AgentsAgentIDAliasResponse(w http.ResponseWriter) error
+}
+
+type PutApiV1AgentsAgentIDAlias200JSONResponse Agent
+
+func (response PutApiV1AgentsAgentIDAlias200JSONResponse) VisitPutApiV1AgentsAgentIDAliasResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type PostApiV1AgentsAgentIDHeartbeatRequestObject struct {
 	AgentID AgentID `json:"agentID"`
 	Params  PostApiV1AgentsAgentIDHeartbeatParams
@@ -6167,6 +6426,29 @@ type PostApiV1AgentsAgentIDHeartbeatResponseObject interface {
 type PostApiV1AgentsAgentIDHeartbeat200JSONResponse Agent
 
 func (response PostApiV1AgentsAgentIDHeartbeat200JSONResponse) VisitPostApiV1AgentsAgentIDHeartbeatResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostApiV1AgentsAgentIDIgnoreRequestObject struct {
+	AgentID AgentID `json:"agentID"`
+	Body    *PostApiV1AgentsAgentIDIgnoreJSONRequestBody
+}
+
+type PostApiV1AgentsAgentIDIgnoreResponseObject interface {
+	VisitPostApiV1AgentsAgentIDIgnoreResponse(w http.ResponseWriter) error
+}
+
+type PostApiV1AgentsAgentIDIgnore200JSONResponse Agent
+
+func (response PostApiV1AgentsAgentIDIgnore200JSONResponse) VisitPostApiV1AgentsAgentIDIgnoreResponse(w http.ResponseWriter) error {
 
 	var buf bytes.Buffer
 	if err := json.NewEncoder(&buf).Encode(response); err != nil {
@@ -7612,11 +7894,23 @@ type StrictServerInterface interface {
 	// (GET /api/v1/agents)
 	GetApiV1Agents(ctx context.Context, request GetApiV1AgentsRequestObject) (GetApiV1AgentsResponseObject, error)
 
+	// (POST /api/v1/agents/batch-delete)
+	PostApiV1AgentsBatchDelete(ctx context.Context, request PostApiV1AgentsBatchDeleteRequestObject) (PostApiV1AgentsBatchDeleteResponseObject, error)
+
 	// (POST /api/v1/agents/register)
 	PostApiV1AgentsRegister(ctx context.Context, request PostApiV1AgentsRegisterRequestObject) (PostApiV1AgentsRegisterResponseObject, error)
 
+	// (DELETE /api/v1/agents/{agentID})
+	DeleteApiV1AgentsAgentID(ctx context.Context, request DeleteApiV1AgentsAgentIDRequestObject) (DeleteApiV1AgentsAgentIDResponseObject, error)
+
+	// (PUT /api/v1/agents/{agentID}/alias)
+	PutApiV1AgentsAgentIDAlias(ctx context.Context, request PutApiV1AgentsAgentIDAliasRequestObject) (PutApiV1AgentsAgentIDAliasResponseObject, error)
+
 	// (POST /api/v1/agents/{agentID}/heartbeat)
 	PostApiV1AgentsAgentIDHeartbeat(ctx context.Context, request PostApiV1AgentsAgentIDHeartbeatRequestObject) (PostApiV1AgentsAgentIDHeartbeatResponseObject, error)
+
+	// (POST /api/v1/agents/{agentID}/ignore)
+	PostApiV1AgentsAgentIDIgnore(ctx context.Context, request PostApiV1AgentsAgentIDIgnoreRequestObject) (PostApiV1AgentsAgentIDIgnoreResponseObject, error)
 
 	// (GET /api/v1/agents/{agentID}/policy)
 	GetApiV1AgentsAgentIDPolicy(ctx context.Context, request GetApiV1AgentsAgentIDPolicyRequestObject) (GetApiV1AgentsAgentIDPolicyResponseObject, error)
@@ -7922,6 +8216,37 @@ func (sh *strictHandler) GetApiV1Agents(w http.ResponseWriter, r *http.Request) 
 	}
 }
 
+// PostApiV1AgentsBatchDelete operation middleware
+func (sh *strictHandler) PostApiV1AgentsBatchDelete(w http.ResponseWriter, r *http.Request) {
+	var request PostApiV1AgentsBatchDeleteRequestObject
+
+	var body PostApiV1AgentsBatchDeleteJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.PostApiV1AgentsBatchDelete(ctx, request.(PostApiV1AgentsBatchDeleteRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "PostApiV1AgentsBatchDelete")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(PostApiV1AgentsBatchDeleteResponseObject); ok {
+		if err := validResponse.VisitPostApiV1AgentsBatchDeleteResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
 // PostApiV1AgentsRegister operation middleware
 func (sh *strictHandler) PostApiV1AgentsRegister(w http.ResponseWriter, r *http.Request, params PostApiV1AgentsRegisterParams) {
 	var request PostApiV1AgentsRegisterRequestObject
@@ -7948,6 +8273,65 @@ func (sh *strictHandler) PostApiV1AgentsRegister(w http.ResponseWriter, r *http.
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(PostApiV1AgentsRegisterResponseObject); ok {
 		if err := validResponse.VisitPostApiV1AgentsRegisterResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// DeleteApiV1AgentsAgentID operation middleware
+func (sh *strictHandler) DeleteApiV1AgentsAgentID(w http.ResponseWriter, r *http.Request, agentID AgentID) {
+	var request DeleteApiV1AgentsAgentIDRequestObject
+
+	request.AgentID = agentID
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.DeleteApiV1AgentsAgentID(ctx, request.(DeleteApiV1AgentsAgentIDRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "DeleteApiV1AgentsAgentID")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(DeleteApiV1AgentsAgentIDResponseObject); ok {
+		if err := validResponse.VisitDeleteApiV1AgentsAgentIDResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// PutApiV1AgentsAgentIDAlias operation middleware
+func (sh *strictHandler) PutApiV1AgentsAgentIDAlias(w http.ResponseWriter, r *http.Request, agentID AgentID) {
+	var request PutApiV1AgentsAgentIDAliasRequestObject
+
+	request.AgentID = agentID
+
+	var body PutApiV1AgentsAgentIDAliasJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.PutApiV1AgentsAgentIDAlias(ctx, request.(PutApiV1AgentsAgentIDAliasRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "PutApiV1AgentsAgentIDAlias")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(PutApiV1AgentsAgentIDAliasResponseObject); ok {
+		if err := validResponse.VisitPutApiV1AgentsAgentIDAliasResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {
@@ -7982,6 +8366,39 @@ func (sh *strictHandler) PostApiV1AgentsAgentIDHeartbeat(w http.ResponseWriter, 
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(PostApiV1AgentsAgentIDHeartbeatResponseObject); ok {
 		if err := validResponse.VisitPostApiV1AgentsAgentIDHeartbeatResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// PostApiV1AgentsAgentIDIgnore operation middleware
+func (sh *strictHandler) PostApiV1AgentsAgentIDIgnore(w http.ResponseWriter, r *http.Request, agentID AgentID) {
+	var request PostApiV1AgentsAgentIDIgnoreRequestObject
+
+	request.AgentID = agentID
+
+	var body PostApiV1AgentsAgentIDIgnoreJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.PostApiV1AgentsAgentIDIgnore(ctx, request.(PostApiV1AgentsAgentIDIgnoreRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "PostApiV1AgentsAgentIDIgnore")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(PostApiV1AgentsAgentIDIgnoreResponseObject); ok {
+		if err := validResponse.VisitPostApiV1AgentsAgentIDIgnoreResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {

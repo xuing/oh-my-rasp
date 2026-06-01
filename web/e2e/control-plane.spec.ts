@@ -175,9 +175,26 @@ test("submits application, environment, Agent operations, policy, setting, alert
   await page.getByLabel("Application Secret").fill("rotated-managed-secret");
   await page.getByLabel("Agent Hostname").fill("api-2");
   await page.getByLabel("Agent Runtime").fill("java");
-  await page.getByLabel("Agent Version").fill("1.0.1");
+  await page.getByRole("textbox", { name: "Agent Version", exact: true }).fill("1.0.1");
   await page.getByRole("button", { name: "Register Agent" }).click();
   await expect(page.getByText("Registered Agent api-2 as agt_api_2.")).toBeVisible();
+  await expect(page.getByText("Agent Inventory")).toBeVisible();
+  await page.getByLabel("Agent Search").fill("api-1");
+  await page.getByLabel("Agent Remark api-1").fill("production primary");
+  await page.getByRole("button", { name: "Save Remark" }).click();
+  await expect(page.getByText("Saved remark for production primary (api-1).")).toBeVisible();
+  await page.getByRole("button", { name: "Ignore Agent" }).click();
+  await expect(page.getByText("Ignored production primary (api-1).")).toBeVisible();
+  await page.getByRole("button", { name: "Restore Agent" }).click();
+  await expect(page.getByText("Restored production primary (api-1).")).toBeVisible();
+  const agentCsvDownload = page.waitForEvent("download");
+  await page.getByRole("button", { name: "Export Agent CSV" }).click();
+  await agentCsvDownload;
+  await page.getByLabel("Agent Search").fill("api-2");
+  await page.getByLabel("Select api-2").check();
+  await page.getByRole("button", { name: "Batch Delete Agents" }).click();
+  await expect(page.getByText("Deleted 1 Agents.")).toBeVisible();
+  await page.getByLabel("Agent Search").fill("");
   await page.getByLabel("Heartbeat Status").selectOption("offline");
   await page.getByRole("button", { name: "Send Heartbeat" }).click();
   await expect(page.getByText("Heartbeat accepted for api-1: offline.")).toBeVisible();
@@ -334,6 +351,30 @@ test("submits application, environment, Agent operations, policy, setting, alert
         method: "POST",
         path: "/api/v1/agents/register",
         body: { environment_id: "env_prod", hostname: "api-2", runtime: "java", version: "1.0.1" }
+      }),
+      expect.objectContaining({
+        authorization: "Bearer e2e-token",
+        method: "PUT",
+        path: "/api/v1/agents/agt_api_1/alias",
+        body: { alias: "production primary" }
+      }),
+      expect.objectContaining({
+        authorization: "Bearer e2e-token",
+        method: "POST",
+        path: "/api/v1/agents/agt_api_1/ignore",
+        body: { ignored: true }
+      }),
+      expect.objectContaining({
+        authorization: "Bearer e2e-token",
+        method: "POST",
+        path: "/api/v1/agents/agt_api_1/ignore",
+        body: { ignored: false }
+      }),
+      expect.objectContaining({
+        authorization: "Bearer e2e-token",
+        method: "POST",
+        path: "/api/v1/agents/batch-delete",
+        body: { ids: ["agt_api_2"] }
       }),
       expect.objectContaining({
         applicationID: "app_managed",
@@ -663,19 +704,67 @@ async function fulfillWrite(route: Route, path: string, method: string, body: Re
   }
 
   if (method === "POST" && path === "/api/v1/agents/register") {
+    const agent = {
+      id: "agt_api_2",
+      application_id: "app_managed",
+      environment_id: body.environment_id,
+      hostname: body.hostname,
+      runtime: body.runtime,
+      version: body.version,
+      status: "online",
+      last_seen_at: "2026-05-31T01:00:00Z"
+    };
+    const agents = apiFixtures["/api/v1/agents"] as { items: Array<Record<string, unknown>> };
+    if (!agents.items.some(item => item.id === agent.id)) {
+      agents.items.push(agent);
+    }
     await route.fulfill({
       status: 201,
       contentType: "application/json",
-      body: JSON.stringify({
-        id: "agt_api_2",
-        application_id: "app_managed",
-        environment_id: body.environment_id,
-        hostname: body.hostname,
-        runtime: body.runtime,
-        version: body.version,
-        status: "online",
-        last_seen_at: "2026-05-31T01:00:00Z"
-      })
+      body: JSON.stringify(agent)
+    });
+    return;
+  }
+
+  if (method === "PUT" && path === "/api/v1/agents/agt_api_1/alias") {
+    const agents = apiFixtures["/api/v1/agents"] as { items: Array<Record<string, unknown>> };
+    const agent = agents.items.find(item => item.id === "agt_api_1");
+    if (agent) {
+      agent.alias = body.alias;
+    }
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify(agent)
+    });
+    return;
+  }
+
+  if (method === "POST" && path === "/api/v1/agents/agt_api_1/ignore") {
+    const agents = apiFixtures["/api/v1/agents"] as { items: Array<Record<string, unknown>> };
+    const agent = agents.items.find(item => item.id === "agt_api_1");
+    if (agent && body.ignored) {
+      agent.ignored_at = "2026-05-31T01:00:00Z";
+    } else if (agent) {
+      delete agent.ignored_at;
+    }
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify(agent)
+    });
+    return;
+  }
+
+  if (method === "POST" && path === "/api/v1/agents/batch-delete") {
+    const ids = body.ids as string[];
+    const agents = apiFixtures["/api/v1/agents"] as { items: Array<Record<string, unknown>> };
+    const before = agents.items.length;
+    agents.items = agents.items.filter(item => !ids.includes(String(item.id)));
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({ ids, count: before - agents.items.length })
     });
     return;
   }

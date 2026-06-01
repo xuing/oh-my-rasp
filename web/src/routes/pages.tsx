@@ -30,6 +30,7 @@ import appI18n, { setAppLanguage, supportedLanguages, type SupportedLanguage } f
 import { UiText, UiValue, notice, translateNotice, translateUiCopy, useUiCopy } from "../i18n/copy";
 import {
   bindDaemonWorkload,
+  batchDeleteAgents,
   cleanupMaintenanceData,
   createAlertRule,
   createApplication,
@@ -38,6 +39,7 @@ import {
   createPolicyVersion,
   createUser,
   currentSession,
+  deleteAgent,
   deleteApplication,
   downloadAgentArtifact,
   exportApplications,
@@ -78,9 +80,11 @@ import {
   saveSession,
   testRule,
   updateAlertRule,
+  updateAgentAlias,
   uploadAgentArtifact,
   updatePolicyVersionRules,
   unbindDaemonWorkload,
+  setAgentIgnored,
   updateUser,
   updateSystemSetting,
   useAgents,
@@ -799,40 +803,262 @@ export function AgentsPage() {
       <AgentArtifactUploadPanel catalog={agentArtifactCatalog} />
       <AgentArtifactCatalogPanel catalog={agentArtifactCatalog} />
       <DaemonArtifactPanel applications={applications} daemonToken={daemonToken} />
-      <Table>
-        <thead>
-          <tr className="bg-slate-50">
-            <th className="p-3 text-left"><UiText k="Host" /></th>
-            <th className="p-3 text-left"><UiText k="Runtime" /></th>
-            <th className="p-3 text-left"><UiText k="Version" /></th>
-            <th className="p-3 text-left"><UiText k="Policy" /></th>
-            <th className="p-3 text-left"><UiText k="Status" /></th>
-            <th className="p-3 text-left"><UiText k="Last Seen" /></th>
-          </tr>
-        </thead>
-        <tbody>
-          {agents.length > 0 ? (
-            agents.map(agent => (
-              <tr key={agent.id} className="border-t border-slate-200">
-                <td className="p-3 font-medium">{agent.hostname}</td>
-                <td className="p-3 text-slate-600">{agent.runtime}</td>
-                <td className="p-3 text-slate-600">{agent.version}</td>
-                <td className="p-3 text-slate-600">{agent.policy_id ? `${agent.policy_id} v${agent.policy_version ?? 0}` : <UiText k="unassigned" />}</td>
-                <td className="p-3">
-                  <Badge tone={agent.status === "online" ? "green" : "amber"}>{agent.status}</Badge>
-                </td>
-                <td className="p-3 text-slate-600"><FormattedDate value={agent.last_seen_at} /></td>
-              </tr>
-            ))
-          ) : (
-            <tr className="border-t border-slate-200">
-              <td className="p-3 text-slate-500" colSpan={6}>
-                <UiText k="No Agents" /></td>
-            </tr>
-          )}
-        </tbody>
-      </Table>
+      <AgentInventoryPanel agents={agents} applications={applications} />
     </SectionPage>
+  );
+}
+
+function AgentInventoryPanel({ agents, applications }: { agents: Agent[]; applications: Application[] }) {
+  const queryClient = useQueryClient();
+  const { copy } = useUiCopy();
+  const [query, setQuery] = useState("");
+  const [statusFilter, setStatusFilter] = useState("");
+  const [versionFilter, setVersionFilter] = useState("");
+  const [applicationFilter, setApplicationFilter] = useState("");
+  const [showIgnored, setShowIgnored] = useState(true);
+  const [selectedIDs, setSelectedIDs] = useState<string[]>([]);
+  const [aliasDrafts, setAliasDrafts] = useState<Record<string, string>>({});
+  const [message, setMessage] = useState({ status: "", error: "" });
+  const [activeAgentID, setActiveAgentID] = useState("");
+
+  const versions = Array.from(new Set(agents.map(agent => agent.version).filter(Boolean))).sort((a, b) => b.localeCompare(a, undefined, { numeric: true }));
+  const filteredAgents = agents.filter(agent => agentMatchesFilters(agent, { applicationFilter, query, showIgnored, statusFilter, versionFilter }));
+  const selectedVisibleCount = filteredAgents.filter(agent => selectedIDs.includes(agent.id)).length;
+
+  useEffect(() => {
+    setAliasDrafts(current => {
+      const next = { ...current };
+      let changed = false;
+      for (const agent of agents) {
+        if (!(agent.id in next)) {
+          next[agent.id] = agent.alias ?? "";
+          changed = true;
+        }
+      }
+      return changed ? next : current;
+    });
+  }, [agents]);
+
+  useEffect(() => {
+    setSelectedIDs(current => current.filter(id => agents.some(agent => agent.id === id)));
+  }, [agents]);
+
+  async function refreshAgentInventory() {
+    await Promise.all([
+      queryClient.invalidateQueries({ queryKey: ["agents"] }),
+      queryClient.invalidateQueries({ queryKey: ["audit-logs"] }),
+      queryClient.invalidateQueries({ queryKey: ["overview"] })
+    ]);
+  }
+
+  async function handleAliasSave(agent: Agent) {
+    setActiveAgentID(agent.id);
+    setMessage({ status: "", error: "" });
+    try {
+      const updated = await updateAgentAlias(agent.id, aliasDrafts[agent.id] ?? "");
+      setAliasDrafts(current => ({ ...current, [updated.id]: updated.alias ?? "" }));
+      await refreshAgentInventory();
+      setMessage({ status: notice("Saved remark for {{agent}}.", { agent: agentDisplayName(updated) }), error: "" });
+    } catch {
+      setMessage({ status: "", error: notice("Unable to save Agent remark.") });
+    } finally {
+      setActiveAgentID("");
+    }
+  }
+
+  async function handleIgnore(agent: Agent) {
+    const ignored = !agent.ignored_at;
+    setActiveAgentID(agent.id);
+    setMessage({ status: "", error: "" });
+    try {
+      const updated = await setAgentIgnored(agent.id, ignored);
+      await refreshAgentInventory();
+      setMessage({ status: notice(ignored ? "Ignored {{agent}}." : "Restored {{agent}}.", { agent: agentDisplayName(updated) }), error: "" });
+    } catch {
+      setMessage({ status: "", error: notice("Unable to update Agent ignore state.") });
+    } finally {
+      setActiveAgentID("");
+    }
+  }
+
+  async function handleDelete(agent: Agent) {
+    setActiveAgentID(agent.id);
+    setMessage({ status: "", error: "" });
+    try {
+      const report = await deleteAgent(agent.id);
+      setSelectedIDs(current => current.filter(id => id !== agent.id));
+      await refreshAgentInventory();
+      setMessage({ status: notice("Deleted {{count}} Agent.", { count: report.count }), error: "" });
+    } catch {
+      setMessage({ status: "", error: notice("Unable to delete Agent.") });
+    } finally {
+      setActiveAgentID("");
+    }
+  }
+
+  async function handleBatchDelete() {
+    if (selectedIDs.length === 0) {
+      setMessage({ status: "", error: notice("Select at least one Agent.") });
+      return;
+    }
+    setActiveAgentID("batch");
+    setMessage({ status: "", error: "" });
+    try {
+      const report = await batchDeleteAgents(selectedIDs);
+      setSelectedIDs([]);
+      await refreshAgentInventory();
+      setMessage({ status: notice("Deleted {{count}} Agents.", { count: report.count }), error: "" });
+    } catch {
+      setMessage({ status: "", error: notice("Unable to delete selected Agents.") });
+    } finally {
+      setActiveAgentID("");
+    }
+  }
+
+  function toggleVisibleSelection(checked: boolean) {
+    const visibleIDs = filteredAgents.map(agent => agent.id);
+    setSelectedIDs(current => checked ? Array.from(new Set([...current, ...visibleIDs])) : current.filter(id => !visibleIDs.includes(id)));
+  }
+
+  return (
+    <Card className="overflow-hidden">
+      <CardHeader>
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <CardTitle><UiText k="Agent Inventory" /></CardTitle>
+          <div className="flex flex-wrap gap-2">
+            <Button type="button" variant="secondary" onClick={() => exportAgentCSV(filteredAgents, applications)}>
+              <Download className="h-4 w-4" />
+              <UiText k="Export Agent CSV" /></Button>
+            <Button disabled={activeAgentID === "batch" || selectedIDs.length === 0} type="button" variant="secondary" onClick={handleBatchDelete}>
+              <Trash2 className="h-4 w-4" />
+              <UiText k="Batch Delete Agents" /></Button>
+          </div>
+        </div>
+        <FormMessage error={message.error} status={message.status} />
+      </CardHeader>
+      <CardContent className="grid gap-4 p-4">
+        <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-[1.2fr_.8fr_.8fr_.8fr_auto] xl:items-end">
+          <label className={fieldGroupClass} htmlFor="agent-search">
+            <span className={fieldLabelClass}><UiText k="Agent Search" /></span>
+            <input id="agent-search" className={fieldControlClass} value={query} onChange={event => setQuery(event.target.value)} />
+          </label>
+          <label className={fieldGroupClass} htmlFor="agent-application-filter">
+            <span className={fieldLabelClass}><UiText k="Agent Application" /></span>
+            <select id="agent-application-filter" className={fieldControlClass} value={applicationFilter} onChange={event => setApplicationFilter(event.target.value)}>
+              <option value=""><UiText k="All applications" /></option>
+              {applications.map(application => (
+                <option key={application.id} value={application.id}>{application.name}</option>
+              ))}
+            </select>
+          </label>
+          <label className={fieldGroupClass} htmlFor="agent-status-filter">
+            <span className={fieldLabelClass}><UiText k="Agent Status" /></span>
+            <select id="agent-status-filter" className={fieldControlClass} value={statusFilter} onChange={event => setStatusFilter(event.target.value)}>
+              <option value=""><UiText k="All statuses" /></option>
+              <option value="online"><UiText k="online" /></option>
+              <option value="offline"><UiText k="offline" /></option>
+              <option value="degraded"><UiText k="degraded" /></option>
+              <option value="disabled"><UiText k="disabled" /></option>
+            </select>
+          </label>
+          <label className={fieldGroupClass} htmlFor="agent-version-filter">
+            <span className={fieldLabelClass}><UiText k="Agent Version Filter" /></span>
+            <select id="agent-version-filter" className={fieldControlClass} value={versionFilter} onChange={event => setVersionFilter(event.target.value)}>
+              <option value=""><UiText k="All versions" /></option>
+              {versions.map(version => (
+                <option key={version} value={version}>{version}</option>
+              ))}
+            </select>
+          </label>
+          <label className="flex min-h-10 items-center gap-2 text-sm font-medium text-slate-700" htmlFor="agent-show-ignored">
+            <input id="agent-show-ignored" className="h-4 w-4 rounded border-slate-300 text-slate-900" type="checkbox" checked={showIgnored} onChange={event => setShowIgnored(event.target.checked)} />
+            <UiText k="Show Ignored" /></label>
+        </div>
+        <Table className="rounded-none border-0">
+          <thead>
+            <tr className="bg-slate-50">
+              <th className="p-3 text-left">
+                <input
+                  aria-label={copy("Select Visible Agents")}
+                  className="h-4 w-4 rounded border-slate-300 text-slate-900"
+                  type="checkbox"
+                  checked={filteredAgents.length > 0 && selectedVisibleCount === filteredAgents.length}
+                  onChange={event => toggleVisibleSelection(event.target.checked)}
+                />
+              </th>
+              <th className="p-3 text-left"><UiText k="Host" /></th>
+              <th className="p-3 text-left"><UiText k="Remark" /></th>
+              <th className="p-3 text-left"><UiText k="Runtime" /></th>
+              <th className="p-3 text-left"><UiText k="Version" /></th>
+              <th className="p-3 text-left"><UiText k="Policy" /></th>
+              <th className="p-3 text-left"><UiText k="Status" /></th>
+              <th className="p-3 text-left"><UiText k="Last Seen" /></th>
+              <th className="p-3 text-left"><UiText k="Actions" /></th>
+            </tr>
+          </thead>
+          <tbody>
+            {filteredAgents.length > 0 ? (
+              filteredAgents.map(agent => {
+                const app = applications.find(application => application.id === agent.application_id);
+                const selected = selectedIDs.includes(agent.id);
+                return (
+                  <tr key={agent.id} className="border-t border-slate-200 align-top">
+                    <td className="p-3">
+                      <input
+                        aria-label={copy("Select {{agent}}", { agent: agentDisplayName(agent) })}
+                        className="h-4 w-4 rounded border-slate-300 text-slate-900"
+                        type="checkbox"
+                        checked={selected}
+                        onChange={event => setSelectedIDs(current => event.target.checked ? Array.from(new Set([...current, agent.id])) : current.filter(id => id !== agent.id))}
+                      />
+                    </td>
+                    <td className="p-3">
+                      <div className="font-medium text-slate-950">{agent.hostname}</div>
+                      <div className="mt-1 text-xs text-slate-500">{agent.id}</div>
+                      <div className="mt-1 text-xs text-slate-500">{app?.name ?? agent.application_id}</div>
+                    </td>
+                    <td className="p-3">
+                      <input
+                        aria-label={copy("Agent Remark {{agent}}", { agent: agent.hostname })}
+                        className={fieldControlClass}
+                        value={aliasDrafts[agent.id] ?? ""}
+                        onChange={event => setAliasDrafts(current => ({ ...current, [agent.id]: event.target.value }))}
+                      />
+                    </td>
+                    <td className="p-3 text-slate-600">{agent.runtime}</td>
+                    <td className="p-3 text-slate-600">{agent.version}</td>
+                    <td className="p-3 text-slate-600">{agent.policy_id ? `${agent.policy_id} v${agent.policy_version ?? 0}` : <UiText k="unassigned" />}</td>
+                    <td className="p-3">
+                      <div className="flex flex-wrap gap-2">
+                        <Badge tone={agentStatusTone(agent)}>{agent.status}</Badge>
+                        {agent.ignored_at ? <Badge tone="neutral"><UiText k="ignored" /></Badge> : null}
+                      </div>
+                    </td>
+                    <td className="p-3 text-slate-600"><FormattedDate value={agent.last_seen_at} /></td>
+                    <td className="p-3">
+                      <div className="flex flex-wrap gap-2">
+                        <Button disabled={activeAgentID === agent.id} type="button" variant="secondary" onClick={() => handleAliasSave(agent)}>
+                          <UiText k="Save Remark" /></Button>
+                        <Button disabled={activeAgentID === agent.id} type="button" variant="secondary" onClick={() => handleIgnore(agent)}>
+                          <UiText k={agent.ignored_at ? "Restore Agent" : "Ignore Agent"} /></Button>
+                        <Button disabled={activeAgentID === agent.id} type="button" variant="secondary" onClick={() => handleDelete(agent)}>
+                          <Trash2 className="h-4 w-4" />
+                          <UiText k="Delete Agent" /></Button>
+                      </div>
+                    </td>
+                  </tr>
+                );
+              })
+            ) : (
+              <tr className="border-t border-slate-200">
+                <td className="p-3 text-slate-500" colSpan={9}>
+                  <UiText k="No Agents" /></td>
+              </tr>
+            )}
+          </tbody>
+        </Table>
+      </CardContent>
+    </Card>
   );
 }
 
@@ -4529,6 +4755,92 @@ const fieldControlClass = "min-h-10 w-full rounded-md border border-slate-300 bg
 
 function latestAgentVersion(versions: string[]) {
   return versions.filter(Boolean).sort((left, right) => right.localeCompare(left, undefined, { numeric: true, sensitivity: "base" }))[0] ?? "";
+}
+
+function agentDisplayName(agent: Agent) {
+  return agent.alias ? `${agent.alias} (${agent.hostname})` : agent.hostname;
+}
+
+function agentStatusTone(agent: Agent): BadgeTone {
+  if (agent.ignored_at) {
+    return "neutral";
+  }
+  if (agent.status === "online") {
+    return "green";
+  }
+  if (agent.status === "degraded") {
+    return "amber";
+  }
+  if (agent.status === "disabled") {
+    return "neutral";
+  }
+  return "amber";
+}
+
+function agentMatchesFilters(
+  agent: Agent,
+  filters: {
+    applicationFilter: string;
+    query: string;
+    showIgnored: boolean;
+    statusFilter: string;
+    versionFilter: string;
+  }
+) {
+  if (!filters.showIgnored && agent.ignored_at) {
+    return false;
+  }
+  if (filters.applicationFilter && agent.application_id !== filters.applicationFilter) {
+    return false;
+  }
+  if (filters.statusFilter && agent.status !== filters.statusFilter) {
+    return false;
+  }
+  if (filters.versionFilter && agent.version !== filters.versionFilter) {
+    return false;
+  }
+  const query = filters.query.trim().toLowerCase();
+  if (!query) {
+    return true;
+  }
+  return [agent.id, agent.hostname, agent.alias ?? "", agent.runtime, agent.version, agent.status, agent.application_id, agent.environment_id]
+    .join(" ")
+    .toLowerCase()
+    .includes(query);
+}
+
+function exportAgentCSV(agents: Agent[], applications: Application[]) {
+  if (typeof document === "undefined") {
+    return;
+  }
+  const rows = [
+    ["id", "application", "environment_id", "hostname", "alias", "runtime", "version", "status", "policy", "ignored_at", "last_seen_at"],
+    ...agents.map(agent => {
+      const app = applications.find(application => application.id === agent.application_id);
+      return [
+        agent.id,
+        app?.name ?? agent.application_id,
+        agent.environment_id,
+        agent.hostname,
+        agent.alias ?? "",
+        agent.runtime,
+        agent.version,
+        agent.status,
+        agent.policy_id ? `${agent.policy_id} v${agent.policy_version ?? 0}` : "",
+        agent.ignored_at ?? "",
+        agent.last_seen_at
+      ];
+    })
+  ];
+  const csv = rows.map(row => row.map(csvCell).join(",")).join("\n");
+  triggerBrowserDownload(new Blob([csv], { type: "text/csv;charset=utf-8" }), `ohmyrasp-agents-${new Date().toISOString().slice(0, 10)}.csv`);
+}
+
+function csvCell(value: string) {
+  if (/[",\n\r]/.test(value)) {
+    return `"${value.replace(/"/g, "\"\"")}"`;
+  }
+  return value;
 }
 
 function statusTone(status: string): BadgeTone {

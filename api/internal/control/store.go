@@ -43,6 +43,9 @@ type Store interface {
 	BindDaemonWorkload(ctx context.Context, actorID string, workloadID string, applicationID string) (DaemonWorkload, error)
 	UnbindDaemonWorkload(ctx context.Context, actorID string, workloadID string) (DaemonWorkload, error)
 	ListAgents(ctx context.Context) ([]Agent, error)
+	UpdateAgentAlias(ctx context.Context, actorID string, agentID string, alias string) (Agent, error)
+	SetAgentIgnored(ctx context.Context, actorID string, agentID string, ignored bool) (Agent, error)
+	DeleteAgents(ctx context.Context, actorID string, agentIDs []string) (AgentBatchOperationReport, error)
 	RegisterAgent(ctx context.Context, appID string, appSecret string, input Agent) (Agent, error)
 	AuthorizeAgent(ctx context.Context, appID string, appSecret string, environmentID string, agentID string) error
 	HeartbeatAgent(ctx context.Context, agentID string, status string) (Agent, error)
@@ -614,6 +617,58 @@ func (s *MemoryStore) ListAgents(_ context.Context) ([]Agent, error) {
 	}
 	sort.Slice(agents, func(i, j int) bool { return agents[i].LastSeenAt.After(agents[j].LastSeenAt) })
 	return agents, nil
+}
+
+func (s *MemoryStore) UpdateAgentAlias(_ context.Context, actorID string, agentID string, alias string) (Agent, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	agent, ok := s.agents[agentID]
+	if !ok {
+		return Agent{}, ErrNotFound
+	}
+	agent.Alias = strings.TrimSpace(alias)
+	s.agents[agentID] = agent
+	s.audit(actorID, "agent.alias.update", agentID, map[string]any{"alias": agent.Alias})
+	return agent, nil
+}
+
+func (s *MemoryStore) SetAgentIgnored(_ context.Context, actorID string, agentID string, ignored bool) (Agent, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	agent, ok := s.agents[agentID]
+	if !ok {
+		return Agent{}, ErrNotFound
+	}
+	if ignored {
+		agent.IgnoredAt = s.now().UTC()
+	} else {
+		agent.IgnoredAt = time.Time{}
+	}
+	s.agents[agentID] = agent
+	s.audit(actorID, "agent.ignore.update", agentID, map[string]any{"ignored": ignored})
+	return agent, nil
+}
+
+func (s *MemoryStore) DeleteAgents(_ context.Context, actorID string, agentIDs []string) (AgentBatchOperationReport, error) {
+	ids := NormalizeAgentIDs(agentIDs)
+	if len(ids) == 0 {
+		return AgentBatchOperationReport{}, fmt.Errorf("%w: agent ids are required", ErrInvalid)
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	deleted := make([]string, 0, len(ids))
+	for _, id := range ids {
+		if _, ok := s.agents[id]; !ok {
+			continue
+		}
+		delete(s.agents, id)
+		deleted = append(deleted, id)
+	}
+	if len(deleted) == 0 {
+		return AgentBatchOperationReport{}, ErrNotFound
+	}
+	s.audit(actorID, "agent.delete", "agents", map[string]any{"ids": deleted, "count": len(deleted)})
+	return AgentBatchOperationReport{IDs: deleted, Count: len(deleted)}, nil
 }
 
 func (s *MemoryStore) RegisterAgent(_ context.Context, appID string, appSecret string, input Agent) (Agent, error) {
@@ -2487,6 +2542,23 @@ func prepareDaemonWorkload(nodeName string, input DaemonWorkloadInput, now time.
 		return DaemonWorkload{}, fmt.Errorf("%w: container workload requires container id or name", ErrInvalid)
 	}
 	return PrepareDaemonWorkload(nodeName, input, now), nil
+}
+
+func NormalizeAgentIDs(ids []string) []string {
+	seen := map[string]struct{}{}
+	result := make([]string, 0, len(ids))
+	for _, id := range ids {
+		id = strings.TrimSpace(id)
+		if id == "" {
+			continue
+		}
+		if _, ok := seen[id]; ok {
+			continue
+		}
+		seen[id] = struct{}{}
+		result = append(result, id)
+	}
+	return result
 }
 
 func newID(prefix string) string {

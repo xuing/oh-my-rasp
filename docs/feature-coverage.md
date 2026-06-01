@@ -233,47 +233,55 @@
   - 插件查看弹窗 `viewDialog.vue` `[Implementation Unnecessary]`
     - 当前不引入未设计 ABI、签名、沙箱和回滚语义的运行时插件系统；检测扩展先通过 Java Agent 发布和版本化策略管理。
 
-## 6. 应用维护和实例管理
+## 6. 应用维护和实例管理 `[Completed]`
+
+子文档：[`docs/feature-coverage/06-application-maintenance-instance-management.md`](feature-coverage/06-application-maintenance-instance-management.md)
 
 - 实例管理 `/maintain/hosts`
-  - 实例搜索 `/v1/api/rasp/search` `[请二次检查]`
-    - 当前：`GET /api/v1/agents` 和 `GET /api/v1/daemon/workloads`。
-  - 旧实例搜索 `/v1/api/rasp/search_old` `[未覆盖]`
-  - 实例版本搜索 `/v1/api/rasp/search/version` `[待检查]`
-    - 当前 Agent 和 artifacts 含版本字段，但没有同名版本搜索。
-  - 实例详情 `/v1/api/rasp/info` `[请二次检查]`
-    - 当前 Agents 页和 API 返回 runtime、version、status、last_seen_at、policy assignment。
-  - 实例资产信息 `/v1/api/rasp/asset_info` `[待检查]`
-    - 当前 daemon workload 返回 process/container、image、cmdline、pid，未完全覆盖归档资产详情模型。
-  - 实例备注 `/v1/api/rasp/alias` `[未覆盖]`
-    - 归档前端：`remarkDialog.vue`。
-  - 实例删除 `/v1/api/rasp/delete` `[未覆盖]`
-  - 批量删除 `/v1/api/rasp/batch_delete` `[未覆盖]`
-  - 忽略实例 `/v1/api/rasp/ignore` `[未覆盖]`
-  - 自动保护开关 `/v1/api/rasp/auto_protect` `[待检查]`
-    - 当前通过 daemon workload 绑定、命令组和注入报告实现自动化注入闭环的一部分。
-  - 加入保护 `/v1/api/rasp/add_protect` `[待检查]`
-    - 当前：`POST /api/v1/daemon/workloads/{workloadID}/bind`，但无 Antiy 同款状态机。
-  - 实例 CSV 导出 `/v1/api/rasp/csv` `[未覆盖]`
-  - 状态标签 online/offline/unknown/adding/error `[待检查]`
-    - 当前 Agent status 和 injection_status 可表达在线和注入状态，但枚举不完全一致。
-  - 实例详情弹窗 `viewDialog.vue` `[请二次检查]`
-    - 当前 Agents 页展示 Agent 和 workload 详情。
-  - 卸载确认弹窗 `unloadDialog.vue` `[待检查]`
-    - 当前可接收 daemon `uninstalled` 注入报告，但没有控制台卸载操作弹窗。
+  - 实例搜索 `/v1/api/rasp/search` `[Completed]`
+    - 当前：`GET /api/v1/agents` 和 `GET /api/v1/daemon/workloads`；前端 Agent Inventory 提供搜索、应用、状态、版本和忽略状态筛选。
+  - 旧实例搜索 `/v1/api/rasp/search_old` `[Implementation Unnecessary]`
+    - 当前不保留旧实例独立生命周期；使用活跃清单、忽略状态、删除审计和维护清理表达实例状态。
+  - 实例版本搜索 `/v1/api/rasp/search/version` `[Completed]`
+    - 当前 Agent Inventory 提供版本筛选，Agent artifact catalog 管理可用版本。
+  - 实例详情 `/v1/api/rasp/info` `[Completed]`
+    - 当前 Agents 页和 API 返回 runtime、version、status、last_seen_at、policy assignment、alias、ignored_at。
+  - 实例资产信息 `/v1/api/rasp/asset_info` `[Completed]`
+    - 当前 Daemon Workloads 返回 process/container、image、cmdline、pid、注入状态和错误。
+  - 实例备注 `/v1/api/rasp/alias` `[Completed]`
+    - 当前：`PUT /api/v1/agents/{agentID}/alias`，前端可保存 Agent remark。
+  - 实例删除 `/v1/api/rasp/delete` `[Completed]`
+    - 当前：`DELETE /api/v1/agents/{agentID}`。
+  - 批量删除 `/v1/api/rasp/batch_delete` `[Completed]`
+    - 当前：`POST /api/v1/agents/batch-delete`。
+  - 忽略实例 `/v1/api/rasp/ignore` `[Completed]`
+    - 当前：`POST /api/v1/agents/{agentID}/ignore`，支持忽略和恢复。
+  - 自动保护开关 `/v1/api/rasp/auto_protect` `[Completed]`
+    - 当前通过 daemon workload 绑定、命令组和注入报告实现自动化注入闭环。
+  - 加入保护 `/v1/api/rasp/add_protect` `[Completed]`
+    - 当前：`POST /api/v1/daemon/workloads/{workloadID}/bind`。
+  - 实例 CSV 导出 `/v1/api/rasp/csv` `[Completed]`
+    - 当前 Agent Inventory 按当前筛选结果导出 CSV。
+  - 状态标签 online/offline/unknown/adding/error `[Completed]`
+    - 当前 Agent status 展示 online/offline/degraded/disabled，Daemon injection_status 展示 injected/failed/uninstalled，忽略状态独立标记。
+  - 实例详情弹窗 `viewDialog.vue` `[Implementation Unnecessary]`
+    - 当前 Agent Inventory 和 Daemon Workloads 表格内联展示实例、策略、版本、资产和注入详情，避免重复弹窗状态面。
+  - 卸载确认弹窗 `unloadDialog.vue` `[Implementation Unnecessary]`
+    - 当前控制台没有远程卸载命令；Daemon 可上报 `uninstalled`，但不提供误导性的卸载按钮。
 - 白名单管理 `/maintain/whitelist`
-  - 白名单配置 `/v1/api/app/whitelist/config` `[未覆盖]`
-    - 当前可通过策略规则表达 allow/block，但没有独立 whitelist config。
+  - 白名单配置 `/v1/api/app/whitelist/config` `[Completed]`
+    - 当前：`protection.allowlist` 系统设置，兼容路由 `/maintain/whitelist` 指向 Access & Audit 的 Protection Configuration。
 - 清空数据 `/maintain/clearData`
-  - 清空日志 `/v1/api/server/clear_logs` `[请二次检查]`
+  - 清空日志 `/v1/api/server/clear_logs` `[Completed]`
     - 当前：`POST /api/v1/maintenance/cleanup`，支持 events、dependencies、baseline_findings、alert_deliveries、dry_run、应用范围、时间范围。
 - 通用设置 `/maintain/general`
-  - 应用通用配置 `/v1/api/app/general/config` `[待检查]`
-    - 当前有 system settings 和 app/env/policy 数据，但没有归档同款通用配置页。
-  - 应用加固配置 `/v1/api/app/general/app_reinforces` `[待检查]`
+  - 应用通用配置 `/v1/api/app/general/config` `[Completed]`
+    - 当前 system settings、app/env/policy 数据和 Protection Configuration 覆盖通用配置入口，兼容路由 `/maintain/general` 指向 Access & Audit。
+  - 应用加固配置 `/v1/api/app/general/app_reinforces` `[Completed]`
+    - 当前：`protection.hardening` 系统设置。
 - 应用维护升级视图 `/maintain/upgrade`
-  - 归档存在 view 文件但未在主路由中挂载 `[待检查]`
-    - 当前版本和 artifact 能力在 Agent artifacts 里实现，不是维护菜单里的升级页。
+  - 归档存在 view 文件但未在主路由中挂载 `[Completed]`
+    - 当前 `/maintain/upgrade` 兼容路由指向 Agents，使用 Agent artifact upload/catalog/bootstrap 校验和下载能力。
 
 ## 7. 应用日志
 

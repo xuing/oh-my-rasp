@@ -67,12 +67,19 @@ type Agent struct {
 	ApplicationID string    `json:"application_id"`
 	EnvironmentID string    `json:"environment_id"`
 	Hostname      string    `json:"hostname"`
+	Alias         string    `json:"alias,omitempty"`
 	Runtime       string    `json:"runtime"`
 	Version       string    `json:"version"`
 	Status        string    `json:"status"`
 	LastSeenAt    time.Time `json:"last_seen_at"`
 	PolicyID      string    `json:"policy_id,omitempty"`
 	PolicyVersion int       `json:"policy_version,omitempty"`
+	IgnoredAt     time.Time `json:"ignored_at,omitempty"`
+}
+
+type AgentBatchOperationReport struct {
+	IDs   []string `json:"ids"`
+	Count int      `json:"count"`
 }
 
 type DaemonAccessToken struct {

@@ -228,6 +228,47 @@ func (s *strictServer) GetApiV1Agents(ctx context.Context, _ generated.GetApiV1A
 	}, nil
 }
 
+func (s *strictServer) PutApiV1AgentsAgentIDAlias(ctx context.Context, request generated.PutApiV1AgentsAgentIDAliasRequestObject) (generated.PutApiV1AgentsAgentIDAliasResponseObject, error) {
+	if request.Body == nil {
+		return nil, control.ErrInvalid
+	}
+	agent, err := s.server.store.UpdateAgentAlias(ctx, userFromContext(ctx).ID, request.AgentID, request.Body.Alias)
+	if err != nil {
+		return nil, err
+	}
+	return generated.PutApiV1AgentsAgentIDAlias200JSONResponse(openAPIAgent(agent)), nil
+}
+
+func (s *strictServer) PostApiV1AgentsAgentIDIgnore(ctx context.Context, request generated.PostApiV1AgentsAgentIDIgnoreRequestObject) (generated.PostApiV1AgentsAgentIDIgnoreResponseObject, error) {
+	if request.Body == nil {
+		return nil, control.ErrInvalid
+	}
+	agent, err := s.server.store.SetAgentIgnored(ctx, userFromContext(ctx).ID, request.AgentID, request.Body.Ignored)
+	if err != nil {
+		return nil, err
+	}
+	return generated.PostApiV1AgentsAgentIDIgnore200JSONResponse(openAPIAgent(agent)), nil
+}
+
+func (s *strictServer) DeleteApiV1AgentsAgentID(ctx context.Context, request generated.DeleteApiV1AgentsAgentIDRequestObject) (generated.DeleteApiV1AgentsAgentIDResponseObject, error) {
+	report, err := s.server.store.DeleteAgents(ctx, userFromContext(ctx).ID, []string{request.AgentID})
+	if err != nil {
+		return nil, err
+	}
+	return generated.DeleteApiV1AgentsAgentID200JSONResponse(openAPIAgentBatchOperationReport(report)), nil
+}
+
+func (s *strictServer) PostApiV1AgentsBatchDelete(ctx context.Context, request generated.PostApiV1AgentsBatchDeleteRequestObject) (generated.PostApiV1AgentsBatchDeleteResponseObject, error) {
+	if request.Body == nil {
+		return nil, control.ErrInvalid
+	}
+	report, err := s.server.store.DeleteAgents(ctx, userFromContext(ctx).ID, request.Body.Ids)
+	if err != nil {
+		return nil, err
+	}
+	return generated.PostApiV1AgentsBatchDelete200JSONResponse(openAPIAgentBatchOperationReport(report)), nil
+}
+
 func (s *strictServer) PostApiV1AgentsRegister(ctx context.Context, request generated.PostApiV1AgentsRegisterRequestObject) (generated.PostApiV1AgentsRegisterResponseObject, error) {
 	if request.Body == nil {
 		return nil, control.ErrInvalid
@@ -885,17 +926,34 @@ func openAPIAgent(agent control.Agent) generated.Agent {
 	if agent.PolicyVersion != 0 {
 		policyVersion = &agent.PolicyVersion
 	}
+	var alias *string
+	if agent.Alias != "" {
+		alias = &agent.Alias
+	}
+	var ignoredAt *time.Time
+	if !agent.IgnoredAt.IsZero() {
+		ignoredAt = &agent.IgnoredAt
+	}
 	return generated.Agent{
 		Id:            agent.ID,
 		ApplicationId: agent.ApplicationID,
 		EnvironmentId: agent.EnvironmentID,
 		Hostname:      agent.Hostname,
+		Alias:         alias,
 		Runtime:       agent.Runtime,
 		Version:       agent.Version,
 		Status:        agent.Status,
 		LastSeenAt:    agent.LastSeenAt,
 		PolicyId:      policyID,
 		PolicyVersion: policyVersion,
+		IgnoredAt:     ignoredAt,
+	}
+}
+
+func openAPIAgentBatchOperationReport(report control.AgentBatchOperationReport) generated.AgentBatchOperationReport {
+	return generated.AgentBatchOperationReport{
+		Ids:   report.IDs,
+		Count: report.Count,
 	}
 }
 

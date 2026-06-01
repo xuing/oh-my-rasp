@@ -46,6 +46,48 @@ const agentsRoute = createRoute({
   component: AgentsPage
 });
 
+const maintainHostsRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/maintain/hosts",
+  beforeLoad: requireSession,
+  component: AgentsPage
+});
+
+const addInstanceRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/addInstance",
+  beforeLoad: requireSession,
+  component: AgentsPage
+});
+
+const maintainWhitelistRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/maintain/whitelist",
+  beforeLoad: requireSession,
+  component: AccessPage
+});
+
+const maintainClearDataRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/maintain/clearData",
+  beforeLoad: requireSession,
+  component: AccessPage
+});
+
+const maintainGeneralRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/maintain/general",
+  beforeLoad: requireSession,
+  component: AccessPage
+});
+
+const maintainUpgradeRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/maintain/upgrade",
+  beforeLoad: requireSession,
+  component: AgentsPage
+});
+
 const policiesRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/policies",
@@ -118,6 +160,12 @@ export const routeTree = rootRoute.addChildren([
   indexRoute,
   applicationsRoute,
   agentsRoute,
+  maintainHostsRoute,
+  addInstanceRoute,
+  maintainWhitelistRoute,
+  maintainClearDataRoute,
+  maintainGeneralRoute,
+  maintainUpgradeRoute,
   policiesRoute,
   algorithmRoute,
   algorithmAlgorithmRoute,

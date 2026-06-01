@@ -119,6 +119,79 @@ func TestAgentRegistrationHeartbeatAndPolicyPull(t *testing.T) {
 	}
 }
 
+func TestAgentMaintenanceRemarkIgnoreAndDelete(t *testing.T) {
+	client := newTestClient(t)
+	token := client.login(t)
+
+	app := client.request(t, http.MethodPost, "/api/v1/applications", token, map[string]any{
+		"name": "Maintained API",
+	})
+	appID := stringValue(t, app, "id")
+	appSecret := stringValue(t, app, "secret")
+	appAuth := appHeaders(appID, appSecret)
+	env := client.request(t, http.MethodPost, "/api/v1/applications/"+appID+"/environments", token, map[string]any{
+		"name": "production",
+		"kind": "production",
+	})
+	envID := stringValue(t, env, "id")
+
+	agentA := client.requestWithHeaders(t, http.MethodPost, "/api/v1/agents/register", appAuth, map[string]any{
+		"environment_id": envID,
+		"hostname":       "maintained-a",
+		"runtime":        "java",
+		"version":        "1.0.0",
+	})
+	agentAID := stringValue(t, agentA, "id")
+	agentB := client.requestWithHeaders(t, http.MethodPost, "/api/v1/agents/register", appAuth, map[string]any{
+		"environment_id": envID,
+		"hostname":       "maintained-b",
+		"runtime":        "java",
+		"version":        "1.0.1",
+	})
+	agentBID := stringValue(t, agentB, "id")
+
+	remarked := client.request(t, http.MethodPut, "/api/v1/agents/"+agentAID+"/alias", token, map[string]any{
+		"alias": "checkout primary",
+	})
+	if stringValue(t, remarked, "alias") != "checkout primary" {
+		t.Fatalf("expected alias to be updated, got %#v", remarked)
+	}
+	ignored := client.request(t, http.MethodPost, "/api/v1/agents/"+agentAID+"/ignore", token, map[string]any{
+		"ignored": true,
+	})
+	if stringValue(t, ignored, "ignored_at") == "" {
+		t.Fatalf("expected ignored_at to be set, got %#v", ignored)
+	}
+	restored := client.request(t, http.MethodPost, "/api/v1/agents/"+agentAID+"/ignore", token, map[string]any{
+		"ignored": false,
+	})
+	if _, ok := restored["ignored_at"]; ok {
+		t.Fatalf("expected ignored_at to be omitted after restore, got %#v", restored)
+	}
+
+	deletedA := client.request(t, http.MethodDelete, "/api/v1/agents/"+agentAID, token, nil)
+	if deletedA["count"].(float64) != 1 {
+		t.Fatalf("expected single agent delete report, got %#v", deletedA)
+	}
+	deletedB := client.request(t, http.MethodPost, "/api/v1/agents/batch-delete", token, map[string]any{
+		"ids": []string{agentBID},
+	})
+	if deletedB["count"].(float64) != 1 {
+		t.Fatalf("expected batch agent delete report, got %#v", deletedB)
+	}
+	listed := client.request(t, http.MethodGet, "/api/v1/agents", token, nil)
+	if containsAgentID(arrayValue(t, listed, "items"), agentAID) || containsAgentID(arrayValue(t, listed, "items"), agentBID) {
+		t.Fatalf("expected deleted agents to be absent, got %#v", listed)
+	}
+	audit := client.request(t, http.MethodGet, "/api/v1/audit-logs", token, nil)
+	items := arrayValue(t, audit, "items")
+	for _, action := range []string{"agent.alias.update", "agent.ignore.update", "agent.delete"} {
+		if !containsAuditAction(items, action) {
+			t.Fatalf("expected %s audit entry, got %#v", action, items)
+		}
+	}
+}
+
 func TestApplicationExportAndDelete(t *testing.T) {
 	client := newTestClient(t)
 	token := client.login(t)
@@ -1907,6 +1980,16 @@ func containsPolicyRule(items []any, hook string, algorithm string) bool {
 }
 
 func containsApplicationID(items []any, id string) bool {
+	for _, item := range items {
+		raw, ok := item.(map[string]any)
+		if ok && raw["id"] == id {
+			return true
+		}
+	}
+	return false
+}
+
+func containsAgentID(items []any, id string) bool {
 	for _, item := range items {
 		raw, ok := item.(map[string]any)
 		if ok && raw["id"] == id {

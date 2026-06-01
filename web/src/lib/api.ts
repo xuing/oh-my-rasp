@@ -59,12 +59,14 @@ export type Agent = {
   application_id: string;
   environment_id: string;
   hostname: string;
+  alias?: string;
   runtime: string;
   version: string;
   status: string;
   last_seen_at: string;
   policy_id?: string;
   policy_version?: number;
+  ignored_at?: string;
 };
 
 export type AgentRegistrationInput = {
@@ -79,6 +81,11 @@ export type AgentRegistrationInput = {
 export type AgentCredentialInput = {
   application_id: string;
   application_secret: string;
+};
+
+export type AgentBatchOperationReport = {
+  ids: string[];
+  count: number;
 };
 
 export type DaemonAccessToken = {
@@ -702,6 +709,29 @@ export function exportApplications() {
 
 export function deleteApplication(appID: string) {
   return deleteJSON(`/api/v1/applications/${encodeURIComponent(appID)}`);
+}
+
+export function updateAgentAlias(agentID: string, alias: string) {
+  return sendJSON<Agent>(`/api/v1/agents/${encodeURIComponent(agentID)}/alias`, "PUT", { alias });
+}
+
+export function setAgentIgnored(agentID: string, ignored: boolean) {
+  return sendJSON<Agent>(`/api/v1/agents/${encodeURIComponent(agentID)}/ignore`, "POST", { ignored });
+}
+
+export async function deleteAgent(agentID: string) {
+  const response = await fetch(`/api/v1/agents/${encodeURIComponent(agentID)}`, {
+    method: "DELETE",
+    headers: requestHeaders()
+  });
+  if (!response.ok) {
+    throw new Error(`${response.status} ${response.statusText}`);
+  }
+  return response.json() as Promise<AgentBatchOperationReport>;
+}
+
+export function batchDeleteAgents(ids: string[]) {
+  return sendJSON<AgentBatchOperationReport>("/api/v1/agents/batch-delete", "POST", { ids });
 }
 
 export function createEnvironment(appID: string, input: EnvironmentCreateInput) {

@@ -10,8 +10,8 @@ func TestPostgresMigrationsAreSequentialAndCoverControlPlaneTables(t *testing.T)
 	if err != nil {
 		t.Fatalf("list postgres migrations: %v", err)
 	}
-	if len(got) != 30 {
-		t.Fatalf("expected 30 postgres migrations, got %d", len(got))
+	if len(got) != 31 {
+		t.Fatalf("expected 31 postgres migrations, got %d", len(got))
 	}
 	combined := combineSQL(got)
 	required := []string{
@@ -55,6 +55,8 @@ func TestPostgresMigrationsAreSequentialAndCoverControlPlaneTables(t *testing.T)
 		"idx_baseline_findings_scope_status",
 		"deleted_at TIMESTAMPTZ",
 		"idx_event_ingest_outbox_deleted_time",
+		"ignored_at TIMESTAMPTZ",
+		"idx_agents_ignored_last_seen",
 	}
 	for _, fragment := range required {
 		if !strings.Contains(combined, fragment) {

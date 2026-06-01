@@ -399,6 +399,66 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/AgentList"
+  /api/v1/agents/batch-delete:
+    post:
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AgentBatchOperationRequest"
+      responses:
+        "200":
+          description: Agents removed from active inventory.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AgentBatchOperationReport"
+  /api/v1/agents/{agentID}:
+    delete:
+      parameters:
+        - $ref: "#/components/parameters/AgentID"
+      responses:
+        "200":
+          description: Agent removed from active inventory.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AgentBatchOperationReport"
+  /api/v1/agents/{agentID}/alias:
+    put:
+      parameters:
+        - $ref: "#/components/parameters/AgentID"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AgentAliasUpdate"
+      responses:
+        "200":
+          description: Agent operator remark updated.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Agent"
+  /api/v1/agents/{agentID}/ignore:
+    post:
+      parameters:
+        - $ref: "#/components/parameters/AgentID"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AgentIgnoreUpdate"
+      responses:
+        "200":
+          description: Agent ignored state updated.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Agent"
   /api/v1/agents/register:
     post:
       security: []
@@ -1431,12 +1491,39 @@ components:
         application_id: { type: string }
         environment_id: { type: string }
         hostname: { type: string }
+        alias: { type: string }
         runtime: { type: string }
         version: { type: string }
         status: { type: string }
         last_seen_at: { type: string, format: date-time }
         policy_id: { type: string }
         policy_version: { type: integer }
+        ignored_at: { type: string, format: date-time }
+    AgentAliasUpdate:
+      type: object
+      required: [alias]
+      properties:
+        alias: { type: string }
+    AgentIgnoreUpdate:
+      type: object
+      required: [ignored]
+      properties:
+        ignored: { type: boolean }
+    AgentBatchOperationRequest:
+      type: object
+      required: [ids]
+      properties:
+        ids:
+          type: array
+          items: { type: string }
+    AgentBatchOperationReport:
+      type: object
+      required: [ids, count]
+      properties:
+        ids:
+          type: array
+          items: { type: string }
+        count: { type: integer }
     AgentRegistration:
       type: object
       required: [environment_id, hostname, version]

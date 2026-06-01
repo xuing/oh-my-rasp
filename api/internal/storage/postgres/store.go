@@ -924,8 +924,8 @@ func (s *Store) daemonAccessToken(ctx context.Context, q queryer) (control.Daemo
 
 func (s *Store) ListAgents(ctx context.Context) ([]control.Agent, error) {
 	rows, err := s.db.QueryContext(ctx, `
-		SELECT id, application_id, environment_id, hostname, runtime, version, status, last_seen_at,
-			COALESCE(policy_id, ''), COALESCE(policy_version, 0)
+		SELECT id, application_id, environment_id, hostname, COALESCE(alias, ''), runtime, version, status, last_seen_at,
+			COALESCE(policy_id, ''), COALESCE(policy_version, 0), ignored_at
 		FROM agents
 		ORDER BY last_seen_at DESC
 	`)
@@ -942,6 +942,117 @@ func (s *Store) ListAgents(ctx context.Context) ([]control.Agent, error) {
 		agents = append(agents, agent)
 	}
 	return agents, rows.Err()
+}
+
+func (s *Store) UpdateAgentAlias(ctx context.Context, actorID string, agentID string, alias string) (control.Agent, error) {
+	alias = strings.TrimSpace(alias)
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return control.Agent{}, err
+	}
+	defer rollback(tx)
+	row := tx.QueryRowContext(ctx, `
+		UPDATE agents
+		SET alias = $2, updated_at = $3
+		WHERE id = $1
+		RETURNING id, application_id, environment_id, hostname, COALESCE(alias, ''), runtime, version, status, last_seen_at,
+			COALESCE(policy_id, ''), COALESCE(policy_version, 0), ignored_at
+	`, agentID, alias, s.now().UTC())
+	agent, err := scanAgent(row)
+	if errors.Is(err, sql.ErrNoRows) {
+		return control.Agent{}, control.ErrNotFound
+	}
+	if err != nil {
+		return control.Agent{}, err
+	}
+	if err := s.audit(ctx, tx, actorID, "agent.alias.update", agentID, map[string]any{"alias": alias}); err != nil {
+		return control.Agent{}, err
+	}
+	if err := tx.Commit(); err != nil {
+		return control.Agent{}, err
+	}
+	return agent, nil
+}
+
+func (s *Store) SetAgentIgnored(ctx context.Context, actorID string, agentID string, ignored bool) (control.Agent, error) {
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return control.Agent{}, err
+	}
+	defer rollback(tx)
+	var ignoredAt any
+	if ignored {
+		ignoredAt = s.now().UTC()
+	}
+	row := tx.QueryRowContext(ctx, `
+		UPDATE agents
+		SET ignored_at = $2, updated_at = $3
+		WHERE id = $1
+		RETURNING id, application_id, environment_id, hostname, COALESCE(alias, ''), runtime, version, status, last_seen_at,
+			COALESCE(policy_id, ''), COALESCE(policy_version, 0), ignored_at
+	`, agentID, ignoredAt, s.now().UTC())
+	agent, err := scanAgent(row)
+	if errors.Is(err, sql.ErrNoRows) {
+		return control.Agent{}, control.ErrNotFound
+	}
+	if err != nil {
+		return control.Agent{}, err
+	}
+	if err := s.audit(ctx, tx, actorID, "agent.ignore.update", agentID, map[string]any{"ignored": ignored}); err != nil {
+		return control.Agent{}, err
+	}
+	if err := tx.Commit(); err != nil {
+		return control.Agent{}, err
+	}
+	return agent, nil
+}
+
+func (s *Store) DeleteAgents(ctx context.Context, actorID string, agentIDs []string) (control.AgentBatchOperationReport, error) {
+	ids := control.NormalizeAgentIDs(agentIDs)
+	if len(ids) == 0 {
+		return control.AgentBatchOperationReport{}, fmt.Errorf("%w: agent ids are required", control.ErrInvalid)
+	}
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return control.AgentBatchOperationReport{}, err
+	}
+	defer rollback(tx)
+	placeholders := make([]string, 0, len(ids))
+	args := make([]any, 0, len(ids))
+	for i, id := range ids {
+		placeholders = append(placeholders, fmt.Sprintf("$%d", i+1))
+		args = append(args, id)
+	}
+	rows, err := tx.QueryContext(ctx, fmt.Sprintf(`
+		DELETE FROM agents
+		WHERE id IN (%s)
+		RETURNING id
+	`, strings.Join(placeholders, ",")), args...)
+	if err != nil {
+		return control.AgentBatchOperationReport{}, err
+	}
+	defer rows.Close()
+	deleted := make([]string, 0, len(ids))
+	for rows.Next() {
+		var id string
+		if err := rows.Scan(&id); err != nil {
+			return control.AgentBatchOperationReport{}, err
+		}
+		deleted = append(deleted, id)
+	}
+	if err := rows.Err(); err != nil {
+		return control.AgentBatchOperationReport{}, err
+	}
+	if len(deleted) == 0 {
+		return control.AgentBatchOperationReport{}, control.ErrNotFound
+	}
+	if err := s.audit(ctx, tx, actorID, "agent.delete", "agents", map[string]any{"ids": deleted, "count": len(deleted)}); err != nil {
+		return control.AgentBatchOperationReport{}, err
+	}
+	if err := tx.Commit(); err != nil {
+		return control.AgentBatchOperationReport{}, err
+	}
+	return control.AgentBatchOperationReport{IDs: deleted, Count: len(deleted)}, nil
 }
 
 func (s *Store) RegisterAgent(ctx context.Context, appID string, appSecret string, input control.Agent) (control.Agent, error) {
@@ -1083,8 +1194,8 @@ func (s *Store) HeartbeatAgent(ctx context.Context, agentID string, status strin
 		UPDATE agents
 		SET status = $2, last_seen_at = $3, updated_at = $3
 		WHERE id = $1
-		RETURNING id, application_id, environment_id, hostname, runtime, version, status, last_seen_at,
-			COALESCE(policy_id, ''), COALESCE(policy_version, 0)
+		RETURNING id, application_id, environment_id, hostname, COALESCE(alias, ''), runtime, version, status, last_seen_at,
+			COALESCE(policy_id, ''), COALESCE(policy_version, 0), ignored_at
 	`, agentID, status, s.now().UTC())
 	agent, err := scanAgent(row)
 	if errors.Is(err, sql.ErrNoRows) {
@@ -2843,18 +2954,24 @@ func scanAgent(row interface {
 	Scan(...any) error
 }) (control.Agent, error) {
 	var agent control.Agent
+	var ignoredAt sql.NullTime
 	err := row.Scan(
 		&agent.ID,
 		&agent.ApplicationID,
 		&agent.EnvironmentID,
 		&agent.Hostname,
+		&agent.Alias,
 		&agent.Runtime,
 		&agent.Version,
 		&agent.Status,
 		&agent.LastSeenAt,
 		&agent.PolicyID,
 		&agent.PolicyVersion,
+		&ignoredAt,
 	)
+	if ignoredAt.Valid {
+		agent.IgnoredAt = ignoredAt.Time
+	}
 	return agent, err
 }
 

@@ -284,6 +284,7 @@ func (s *Server) Routes() http.Handler {
 			private.With(s.requirePermission(permissionReadApplications)).Get("/applications", strict.GetApiV1Applications)
 			private.With(s.requirePermission(permissionReadApplications)).Get("/applications/export", strict.GetApiV1ApplicationsExport)
 			private.With(s.requirePermission(permissionReadAgents)).Get("/agents", strict.GetApiV1Agents)
+			private.With(s.requirePermission(permissionManageAgents)).Post("/agents/batch-delete", strict.PostApiV1AgentsBatchDelete)
 			private.With(s.requirePermission(permissionReadDaemon)).Get("/agent-artifacts", strict.GetApiV1AgentArtifacts)
 			private.With(s.requirePermission(permissionManageDaemon)).Post("/agent-artifacts", strict.PostApiV1AgentArtifacts)
 			private.With(s.requirePermission(permissionManageDaemon)).Get("/daemon/token", strict.GetApiV1DaemonToken)
@@ -379,6 +380,15 @@ func (s *Server) Routes() http.Handler {
 			})
 			private.With(s.requirePermission(permissionManageApplications)).Post("/applications/{appID}/secret/rotate", func(w http.ResponseWriter, r *http.Request) {
 				strict.PostApiV1ApplicationsAppIDSecretRotate(w, r, chi.URLParam(r, "appID"))
+			})
+			private.With(s.requirePermission(permissionManageAgents)).Delete("/agents/{agentID}", func(w http.ResponseWriter, r *http.Request) {
+				strict.DeleteApiV1AgentsAgentID(w, r, chi.URLParam(r, "agentID"))
+			})
+			private.With(s.requirePermission(permissionManageAgents)).Put("/agents/{agentID}/alias", func(w http.ResponseWriter, r *http.Request) {
+				strict.PutApiV1AgentsAgentIDAlias(w, r, chi.URLParam(r, "agentID"))
+			})
+			private.With(s.requirePermission(permissionManageAgents)).Post("/agents/{agentID}/ignore", func(w http.ResponseWriter, r *http.Request) {
+				strict.PostApiV1AgentsAgentIDIgnore(w, r, chi.URLParam(r, "agentID"))
 			})
 			private.With(s.requirePermission(permissionManageDaemon)).Post("/daemon/workloads/{workloadID}/bind", func(w http.ResponseWriter, r *http.Request) {
 				strict.PostApiV1DaemonWorkloadsWorkloadIDBind(w, r, chi.URLParam(r, "workloadID"))

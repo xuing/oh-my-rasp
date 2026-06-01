@@ -11,6 +11,7 @@ const (
 	permissionReadApplications    permission = "applications:read"
 	permissionManageApplications  permission = "applications:manage"
 	permissionReadAgents          permission = "agents:read"
+	permissionManageAgents        permission = "agents:manage"
 	permissionReadDaemon          permission = "daemon:read"
 	permissionManageDaemon        permission = "daemon:manage"
 	permissionReadPolicies        permission = "policies:read"
@@ -34,6 +35,7 @@ var permissionMatrix = map[permission][]control.Role{
 	permissionReadApplications:    allHumanRoles(),
 	permissionManageApplications:  {control.RoleAdmin, control.RoleSecurityEngineer},
 	permissionReadAgents:          allHumanRoles(),
+	permissionManageAgents:        {control.RoleAdmin, control.RoleSecurityEngineer},
 	permissionReadDaemon:          allHumanRoles(),
 	permissionManageDaemon:        {control.RoleAdmin, control.RoleSecurityEngineer},
 	permissionReadPolicies:        allHumanRoles(),
