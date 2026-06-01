@@ -18,8 +18,15 @@ function rootEnv(name: string): string | undefined {
 
 test("logs in, creates application scope, operates an Agent, manages access, and reads primary pages through the live Compose web proxy", async ({ page }) => {
   test.setTimeout(60_000);
-  const email = process.env.OHMYRASP_E2E_ADMIN_EMAIL ?? rootEnv("OHMYRASP_BOOTSTRAP_ADMIN_EMAIL") ?? "admin@ohmyrasp.local";
-  const password = process.env.OHMYRASP_E2E_ADMIN_PASSWORD ?? rootEnv("OHMYRASP_BOOTSTRAP_ADMIN_PASSWORD");
+  const email =
+    process.env.OHMYRASP_E2E_ADMIN_EMAIL ??
+    process.env.OHMYRASP_BOOTSTRAP_ADMIN_EMAIL ??
+    rootEnv("OHMYRASP_BOOTSTRAP_ADMIN_EMAIL") ??
+    "admin@ohmyrasp.local";
+  const password =
+    process.env.OHMYRASP_E2E_ADMIN_PASSWORD ??
+    process.env.OHMYRASP_BOOTSTRAP_ADMIN_PASSWORD ??
+    rootEnv("OHMYRASP_BOOTSTRAP_ADMIN_PASSWORD");
   if (!password) {
     throw new Error("Set OHMYRASP_E2E_ADMIN_PASSWORD or OHMYRASP_BOOTSTRAP_ADMIN_PASSWORD before running live e2e tests.");
   }
@@ -74,9 +81,12 @@ test("logs in, creates application scope, operates an Agent, manages access, and
   await expect(page.getByText(policyName).first()).toBeVisible();
   await expect(page.locator("#policy-id")).toContainText(policyName);
   await page.locator("#policy-id").selectOption({ label: policyName });
+  await page.getByLabel("Rule Name").fill(`Live draft rule ${suffix}`);
+  await page.getByLabel("Expression").fill(`/live/${suffix}`);
   await page.getByRole("button", { name: "Create Version" }).click();
   await expect(page.getByText("Created policy version 1.")).toBeVisible();
   await page.getByLabel("Rule Name").fill(`Live edited rule ${suffix}`);
+  await page.getByLabel("Expression").fill(`/live/${suffix}/edited`);
   await page.getByRole("button", { name: "Update Draft" }).click();
   await expect(page.getByText("Updated policy version 1.")).toBeVisible();
   await page.locator("#rollout-scope").selectOption({ label: appName });
@@ -232,6 +242,7 @@ test("logs in, creates application scope, operates an Agent, manages access, and
   const userEmail = `live-user-${suffix}@ohmyrasp.local`;
   await page.getByLabel("Email").fill(userEmail);
   await page.getByLabel("Name").nth(1).fill(`Live User ${suffix}`);
+  await page.locator("#user-password").fill(`live-user-${suffix}-password`);
   await page.getByRole("button", { name: "Create User" }).click();
   await expect(page.getByText("User created.")).toBeVisible();
   await expect(page.locator("#user-lifecycle-user")).toContainText(`Live User ${suffix}`);
