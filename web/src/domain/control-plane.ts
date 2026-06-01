@@ -56,7 +56,7 @@ export const navigationSections: NavigationSection[] = [
   {
     path: "/events",
     label: "Events",
-    description: "Attack, Hook, crash, performance, and dependency reports with queryable timeline.",
+    description: "Attack, Hook, performance, crash, error, and dependency reports with queryable timeline.",
     capabilities: ["event-reporting", "event-analysis"],
     icon: "event"
   },
@@ -83,5 +83,6 @@ export const eventPipelines = [
   { type: "hook", target: "ClickHouse", retention: "rule and hook execution detail" },
   { type: "performance", target: "ClickHouse", retention: "latency and overhead time series" },
   { type: "crash", target: "PostgreSQL + ClickHouse", retention: "incident workflow and analytics" },
+  { type: "error", target: "PostgreSQL + ClickHouse", retention: "exception and Agent error diagnostics" },
   { type: "dependency", target: "PostgreSQL", retention: "application software bill of materials" }
 ] as const;

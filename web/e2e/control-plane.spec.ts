@@ -119,6 +119,17 @@ test("navigates primary control-plane sections with an authenticated session", a
       await expect(page.getByText("Not required")).toBeVisible();
     }
   }
+
+  for (const legacyRoute of [
+    { path: "/log/exceptions", heading: "Events", evidence: "Unhandled exception captured" },
+    { path: "/log/crash", heading: "Events", evidence: "Agent crash captured" },
+    { path: "/log/audit", heading: "Access & Audit", evidence: "auth.login" }
+  ]) {
+    await page.goto(legacyRoute.path);
+    await expect(page).toHaveURL(new RegExp(`${legacyRoute.path}$`));
+    await expect(page.getByRole("heading", { name: legacyRoute.heading, level: 1 })).toBeVisible();
+    await expect(page.getByText(legacyRoute.evidence).first()).toBeVisible();
+  }
 });
 
 test("supports header shortcuts and mobile primary navigation", async ({ page }) => {
@@ -1013,7 +1024,7 @@ async function fulfillWrite(route: Route, path: string, method: string, body: Re
     const ids = body.ids as string[];
     const deleted = apiFixtures["/api/v1/events/recycle-bin"] as { items: Array<Record<string, unknown>> };
     for (const id of ids) {
-      for (const eventPath of ["/api/v1/events/attack", "/api/v1/events/hook", "/api/v1/events/performance", "/api/v1/events/crash"]) {
+      for (const eventPath of ["/api/v1/events/attack", "/api/v1/events/hook", "/api/v1/events/performance", "/api/v1/events/crash", "/api/v1/events/error"]) {
         const active = apiFixtures[eventPath] as { items: Array<Record<string, unknown>> };
         const index = active.items.findIndex(item => item.id === id);
         if (index >= 0) {
@@ -1332,6 +1343,25 @@ const apiFixtures: Record<string, unknown> = {
         severity: "high",
         message: "Agent crash captured",
         occurred_at: "2026-05-31T00:00:00Z"
+      }
+    ]
+  },
+  "/api/v1/events/error": {
+    items: [
+      {
+        id: "evt_error_1",
+        type: "error",
+        application_id: "app_managed",
+        environment_id: "env_prod",
+        agent_id: "agt_api_1",
+        hook: "servlet",
+        severity: "high",
+        message: "Unhandled exception captured",
+        occurred_at: "2026-05-31T00:00:00Z",
+        attributes: {
+          exception_class: "java.lang.IllegalStateException",
+          stack: "CheckoutController.checkout:42"
+        }
       }
     ]
   },

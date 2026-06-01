@@ -2078,6 +2078,7 @@ export function EventsPage() {
   const hookQuery = useSecurityEvents("hook", eventQuery);
   const performanceQuery = useSecurityEvents("performance", eventQuery);
   const crashQuery = useSecurityEvents("crash", eventQuery);
+  const errorQuery = useSecurityEvents("error", eventQuery);
   const deletedEventsQuery = useDeletedSecurityEvents(eventQuery);
   const dependenciesQuery = useDependencies(dependencyQuery);
   const dependencySummaryQuery = useDependencySummary();
@@ -2086,6 +2087,7 @@ export function EventsPage() {
   const hookEvents = hookQuery.data?.items ?? [];
   const performanceEvents = performanceQuery.data?.items ?? [];
   const crashEvents = crashQuery.data?.items ?? [];
+  const errorEvents = errorQuery.data?.items ?? [];
   const deletedEvents = deletedEventsQuery.data?.items ?? [];
   const dependencies = dependenciesQuery.data?.items ?? [];
   const dependencySummary = dependencySummaryQuery.data ?? {
@@ -2096,7 +2098,7 @@ export function EventsPage() {
     vulnerabilities_by_severity: {}
   };
   const baselineFindings = baselineFindingsQuery.data?.items ?? [];
-  const allEvents = [...attackEvents, ...hookEvents, ...performanceEvents, ...crashEvents].sort((a, b) => Date.parse(b.occurred_at) - Date.parse(a.occurred_at));
+  const allEvents = [...attackEvents, ...hookEvents, ...performanceEvents, ...crashEvents, ...errorEvents].sort((a, b) => Date.parse(b.occurred_at) - Date.parse(a.occurred_at));
   const recycleEventOptions = uniqueEventsByID([...allEvents, ...deletedEvents]).sort((a, b) => Date.parse(b.occurred_at) - Date.parse(a.occurred_at));
   const recycleEventIDs = recycleEventOptions.map(event => event.id).join("|");
   const criticalEvents = allEvents.filter(event => event.severity === "critical").length;
@@ -2215,6 +2217,7 @@ export function EventsPage() {
           hookQuery.isLoading ||
           performanceQuery.isLoading ||
           crashQuery.isLoading ||
+          errorQuery.isLoading ||
           dependenciesQuery.isLoading ||
           dependencySummaryQuery.isLoading ||
           baselineFindingsQuery.isLoading
@@ -2227,6 +2230,7 @@ export function EventsPage() {
           hookQuery.isError ||
           performanceQuery.isError ||
           crashQuery.isError ||
+          errorQuery.isError ||
           dependenciesQuery.isError ||
           dependencySummaryQuery.isError ||
           baselineFindingsQuery.isError
@@ -2235,7 +2239,7 @@ export function EventsPage() {
         error={<UiText k="Some event or inventory data is unavailable." />}
       />
       <div className="grid gap-3 md:grid-cols-4">
-        <Metric label={<UiText k="Security Events" />} value={allEvents.length} detail={<UiText k="attack, Hook, performance, crash" />} />
+        <Metric label={<UiText k="Security Events" />} value={allEvents.length} detail={<UiText k="attack, Hook, performance, crash, error" />} />
         <Metric label={<UiText k="Critical" />} value={criticalEvents} detail={<UiText k="requires immediate review" />} />
         <Metric label={<UiText k="Dependencies" />} value={dependencies.length} detail={<UiText k="{{count}} high event signals" values={{ count: highEvents }} />} />
         <Metric label={<UiText k="Baseline Findings" />} value={baselineFindings.length} detail={<UiText k="{{count}} open posture signals" values={{ count: failedBaselineFindings }} />} />
@@ -3470,6 +3474,7 @@ function AlertRuleLifecyclePanel({ alertRules }: { alertRules: AlertRule[] }) {
               <option value="hook"><UiText k="hook" /></option>
               <option value="performance"><UiText k="performance" /></option>
               <option value="crash"><UiText k="crash" /></option>
+              <option value="error"><UiText k="error" /></option>
               <option value="dependency"><UiText k="dependency" /></option>
             </select>
           </label>
@@ -4867,7 +4872,7 @@ function severityTone(severity: string): BadgeTone {
 }
 
 function eventTypeTone(eventType: string): BadgeTone {
-	if (eventType === "attack" || eventType === "crash") {
+	if (eventType === "attack" || eventType === "crash" || eventType === "error") {
 		return "red";
 	}
 	if (eventType === "performance") {

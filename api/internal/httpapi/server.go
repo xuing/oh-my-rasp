@@ -209,7 +209,7 @@ func eventTypeQueryParam(raw string) (*generated.GetApiV1EventsRecycleBinParamsT
 	}
 	value := generated.GetApiV1EventsRecycleBinParamsType(strings.ToLower(strings.TrimSpace(raw)))
 	if !value.Valid() {
-		return nil, fmt.Errorf("%w: type must be one of attack, hook, performance, crash", control.ErrInvalid)
+		return nil, fmt.Errorf("%w: type must be one of attack, hook, performance, crash, error", control.ErrInvalid)
 	}
 	return &value, nil
 }
@@ -323,6 +323,14 @@ func (s *Server) Routes() http.Handler {
 					return
 				}
 				strict.GetApiV1EventsCrash(w, r, generated.GetApiV1EventsCrashParams(params))
+			})
+			private.With(s.requirePermission(permissionReadEvents)).Get("/events/error", func(w http.ResponseWriter, r *http.Request) {
+				params, err := eventQueryParams(r)
+				if err != nil {
+					writeError(w, err)
+					return
+				}
+				strict.GetApiV1EventsError(w, r, generated.GetApiV1EventsErrorParams(params))
 			})
 			private.With(s.requirePermission(permissionReadEvents)).Get("/events/recycle-bin", func(w http.ResponseWriter, r *http.Request) {
 				params, err := eventRecycleBinQueryParams(r)
@@ -488,6 +496,12 @@ func (s *Server) Routes() http.Handler {
 		})
 		api.Post("/events/crash", func(w http.ResponseWriter, r *http.Request) {
 			strict.PostApiV1EventsCrash(w, r, generated.PostApiV1EventsCrashParams{
+				XOhMyRaspAppID:     r.Header.Get("X-OhMyRasp-App-ID"),
+				XOhMyRaspAppSecret: r.Header.Get("X-OhMyRasp-App-Secret"),
+			})
+		})
+		api.Post("/events/error", func(w http.ResponseWriter, r *http.Request) {
+			strict.PostApiV1EventsError(w, r, generated.PostApiV1EventsErrorParams{
 				XOhMyRaspAppID:     r.Header.Get("X-OhMyRasp-App-ID"),
 				XOhMyRaspAppSecret: r.Header.Get("X-OhMyRasp-App-Secret"),
 			})

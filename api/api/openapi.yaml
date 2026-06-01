@@ -838,6 +838,49 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/SecurityEvent"
+  /api/v1/events/error:
+    get:
+      parameters:
+        - $ref: "#/components/parameters/EventApplicationID"
+        - $ref: "#/components/parameters/EventEnvironmentID"
+        - $ref: "#/components/parameters/EventAgentID"
+        - $ref: "#/components/parameters/EventPolicyID"
+        - $ref: "#/components/parameters/EventSeverity"
+        - $ref: "#/components/parameters/EventHook"
+        - $ref: "#/components/parameters/EventOccurredAfter"
+        - $ref: "#/components/parameters/EventOccurredBefore"
+        - $ref: "#/components/parameters/EventLimit"
+      responses:
+        "200":
+          description: Error events.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SecurityEventList"
+    post:
+      security: []
+      parameters:
+        - name: X-OhMyRasp-App-ID
+          in: header
+          required: true
+          schema: { type: string }
+        - name: X-OhMyRasp-App-Secret
+          in: header
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SecurityEventInput"
+      responses:
+        "202":
+          description: Error event accepted.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SecurityEvent"
   /api/v1/events/recycle-bin:
     get:
       parameters:
@@ -1181,7 +1224,7 @@ components:
       required: false
       schema:
         type: string
-        enum: [attack, hook, performance, crash]
+        enum: [attack, hook, performance, crash, error]
     EventApplicationID:
       name: application_id
       in: query
@@ -1862,7 +1905,7 @@ components:
         id: { type: string }
         type:
           type: string
-          enum: [attack, hook, performance, crash]
+          enum: [attack, hook, performance, crash, error]
         application_id: { type: string }
         environment_id: { type: string }
         agent_id: { type: string }
@@ -2208,7 +2251,7 @@ components:
         enabled: { type: boolean }
         event_type:
           type: string
-          enum: [attack, hook, performance, crash, dependency]
+          enum: [attack, hook, performance, crash, error, dependency]
         severity:
           type: string
           enum: [critical, high, medium, low]
@@ -2225,7 +2268,7 @@ components:
         enabled: { type: boolean }
         event_type:
           type: string
-          enum: [attack, hook, performance, crash, dependency]
+          enum: [attack, hook, performance, crash, error, dependency]
         severity:
           type: string
           enum: [critical, high, medium, low]
@@ -2249,7 +2292,7 @@ components:
         event_id: { type: string }
         event_type:
           type: string
-          enum: [attack, hook, performance, crash, dependency]
+          enum: [attack, hook, performance, crash, error, dependency]
         severity:
           type: string
           enum: [critical, high, medium, low]

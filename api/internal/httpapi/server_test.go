@@ -1311,14 +1311,25 @@ func TestEventAggregationAndAuditLog(t *testing.T) {
 		"severity":       "low",
 		"message":        "agent crashed",
 	})
+	client.requestWithHeaders(t, http.MethodPost, "/api/v1/events/error", defaultAppHeaders(), map[string]any{
+		"application_id": "app_default",
+		"environment_id": "env_default",
+		"agent_id":       agentID,
+		"hook":           "servlet",
+		"severity":       "high",
+		"message":        "unhandled exception captured",
+		"attributes": map[string]any{
+			"exception_class": "java.lang.IllegalStateException",
+		},
+	})
 
 	overview := client.request(t, http.MethodGet, "/api/v1/analytics/overview", token, nil)
-	if overview["event_count"].(float64) != 2 {
-		t.Fatalf("expected two events, got %#v", overview)
+	if overview["event_count"].(float64) != 3 {
+		t.Fatalf("expected three events, got %#v", overview)
 	}
 	byType := objectValue(t, overview, "events_by_type")
-	if byType["attack"].(float64) != 1 || byType["crash"].(float64) != 1 {
-		t.Fatalf("expected attack aggregate, got %#v", byType)
+	if byType["attack"].(float64) != 1 || byType["crash"].(float64) != 1 || byType["error"].(float64) != 1 {
+		t.Fatalf("expected attack, crash, and error aggregates, got %#v", byType)
 	}
 	if overview["crash_count"].(float64) != 1 {
 		t.Fatalf("expected crash aggregate, got %#v", overview)
@@ -1351,6 +1362,19 @@ func TestEventAggregationAndAuditLog(t *testing.T) {
 	emptyFiltered := client.request(t, http.MethodGet, "/api/v1/events/attack?severity=low", token, nil)
 	if items := arrayValue(t, emptyFiltered, "items"); len(items) != 0 {
 		t.Fatalf("expected low-severity filter to return no attack events, got %#v", emptyFiltered)
+	}
+	errorFiltered := client.request(t, http.MethodGet, "/api/v1/events/error?severity=high&hook=servlet", token, nil)
+	errorItems := arrayValue(t, errorFiltered, "items")
+	if len(errorItems) != 1 {
+		t.Fatalf("expected one filtered error event, got %#v", errorFiltered)
+	}
+	errorEvent := errorItems[0].(map[string]any)
+	if errorEvent["type"] != "error" || errorEvent["message"] != "unhandled exception captured" {
+		t.Fatalf("unexpected error event: %#v", errorEvent)
+	}
+	errorAttributes := objectValue(t, errorEvent, "attributes")
+	if errorAttributes["exception_class"] != "java.lang.IllegalStateException" {
+		t.Fatalf("expected exception attributes, got %#v", errorAttributes)
 	}
 	badLimit := client.raw(t, http.MethodGet, "/api/v1/events/attack?limit=1001", token, nil, nil)
 	if badLimit.Code != http.StatusBadRequest {

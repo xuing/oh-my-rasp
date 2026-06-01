@@ -283,25 +283,28 @@
   - 归档存在 view 文件但未在主路由中挂载 `[Completed]`
     - 当前 `/maintain/upgrade` 兼容路由指向 Agents，使用 Agent artifact upload/catalog/bootstrap 校验和下载能力。
 
-## 7. 应用日志
+## 7. 应用日志 `[Completed]`
 
 - 异常日志 `/log/exceptions`
-  - Agent error log 上报 `/v1/agent/log/error` `[待检查]`
-    - 当前有 hook/performance/crash/attack 事件，没有独立 error log 类型。
-  - 异常日志搜索 `/v1/api/log/error/search` `[待检查]`
-    - 当前可在事件/审计/可观测性中排查，但无同名异常日志搜索。
-  - 异常详情弹窗 `viewDialog.vue` `[待检查]`
+  - Agent error log 上报 `/v1/agent/log/error` `[Completed]`
+    - 当前：`POST /api/v1/events/error`，由 Agent 凭应用凭据上报异常和 error log。
+  - 异常日志搜索 `/v1/api/log/error/search` `[Completed]`
+    - 当前：`GET /api/v1/events/error`，支持 application、environment、agent、severity、hook、policy、time range、limit 等筛选。
+  - 异常详情弹窗 `viewDialog.vue` `[Implementation Unnecessary]`
+    - 当前 Events 表格行内展示 ID、消息、Hook、等级、策略、算法和 `attributes` 结构化异常参数，无需复刻旧组件名。
 - 崩溃信息 `/log/crash`
-  - 崩溃上报 `/v1/agent/crash/report` `[请二次检查]`
+  - 崩溃上报 `/v1/agent/crash/report` `[Completed]`
     - 当前：`POST /api/v1/events/crash`。
-  - 崩溃搜索 `/v1/api/log/crash/search` `[请二次检查]`
+  - 崩溃搜索 `/v1/api/log/crash/search` `[Completed]`
     - 当前：`GET /api/v1/events/crash`。
-  - 崩溃详情弹窗 `viewDialog.vue` `[请二次检查]`
+  - 崩溃详情弹窗 `viewDialog.vue` `[Implementation Unnecessary]`
+    - 当前 Events 表格行内展示崩溃详情和结构化参数。
 - 操作审计 `/log/audit`
-  - 操作审计搜索 `/v1/api/operation/search` `[请二次检查]`
+  - 操作审计搜索 `/v1/api/operation/search` `[Completed]`
     - 当前：`GET /api/v1/audit-logs`。
-  - 登录、用户、应用、Agent、策略、事件回收站、维护、告警规则操作记录 `[请二次检查]`
-  - 审计详情弹窗 `viewDialog.vue` `[待检查]`
+  - 登录、用户、应用、Agent、策略、事件回收站、维护、告警规则操作记录 `[Completed]`
+  - 审计详情弹窗 `viewDialog.vue` `[Implementation Unnecessary]`
+    - 当前 Access & Audit 表格行内展示 actor、action、resource、time 和 JSON details。
 
 ## 8. 企业管理、平台管理和用户管理
 

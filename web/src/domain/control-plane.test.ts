@@ -29,6 +29,6 @@ describe("control-plane navigation model", () => {
   });
 
   it("models all event ingestion families named in the backend objective", () => {
-    expect(eventPipelines.map(pipeline => pipeline.type)).toEqual(["attack", "hook", "performance", "crash", "dependency"]);
+    expect(eventPipelines.map(pipeline => pipeline.type)).toEqual(["attack", "hook", "performance", "crash", "error", "dependency"]);
   });
 });

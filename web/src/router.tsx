@@ -130,6 +130,27 @@ const eventsRoute = createRoute({
   component: EventsPage
 });
 
+const logExceptionsRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/log/exceptions",
+  beforeLoad: requireSession,
+  component: EventsPage
+});
+
+const logCrashRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/log/crash",
+  beforeLoad: requireSession,
+  component: EventsPage
+});
+
+const logAuditRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/log/audit",
+  beforeLoad: requireSession,
+  component: AccessPage
+});
+
 const observabilityRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/observability",
@@ -172,6 +193,9 @@ export const routeTree = rootRoute.addChildren([
   algorithmHardeningRoute,
   algorithmAlarmRoute,
   eventsRoute,
+  logExceptionsRoute,
+  logCrashRoute,
+  logAuditRoute,
   observabilityRoute,
   accessRoute,
   loginRoute,

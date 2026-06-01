@@ -296,7 +296,7 @@ export type SecurityEvent = {
   deleted_by?: string;
 };
 
-export type SecurityEventType = "attack" | "hook" | "performance" | "crash";
+export type SecurityEventType = "attack" | "hook" | "performance" | "crash" | "error";
 
 export type SecurityEventRecycleBinQuery = SecurityEventQuery & {
   type?: SecurityEventType;

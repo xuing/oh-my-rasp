@@ -44,7 +44,7 @@ export const resources = {
         },
         events: {
           label: "Events",
-          description: "Attack, Hook, crash, performance, and dependency reports with queryable timeline."
+          description: "Attack, Hook, performance, crash, error, and dependency reports with queryable timeline."
         },
         observability: {
           label: "Observability",
@@ -70,7 +70,7 @@ export const resources = {
         },
         events: {
           title: "Events",
-          summary: "Attack, Hook, performance, crash, and dependency reports are split between transactional storage and analytical ClickHouse pipelines."
+          summary: "Attack, Hook, performance, crash, error, and dependency reports are split between transactional storage and analytical ClickHouse pipelines."
         },
         observability: {
           title: "Observability",
@@ -168,7 +168,7 @@ export const resources = {
         },
         events: {
           label: "事件",
-          description: "攻击、Hook、崩溃、性能和依赖报告，并支持时间线查询。"
+          description: "攻击、Hook、性能、崩溃、异常和依赖报告，并支持时间线查询。"
         },
         observability: {
           label: "可观测性",
@@ -194,7 +194,7 @@ export const resources = {
         },
         events: {
           title: "事件",
-          summary: "攻击、Hook、性能、崩溃和依赖报告分别进入事务型存储与 ClickHouse 分析管线。"
+          summary: "攻击、Hook、性能、崩溃、异常和依赖报告分别进入事务型存储与 ClickHouse 分析管线。"
         },
         observability: {
           title: "可观测性",
@@ -292,7 +292,7 @@ export const resources = {
         },
         events: {
           label: "イベント",
-          description: "攻撃、Hook、クラッシュ、性能、依存関係レポートを検索可能なタイムラインで扱います。"
+          description: "攻撃、Hook、性能、クラッシュ、エラー、依存関係レポートを検索可能なタイムラインで扱います。"
         },
         observability: {
           label: "可観測性",
@@ -318,7 +318,7 @@ export const resources = {
         },
         events: {
           title: "イベント",
-          summary: "攻撃、Hook、性能、クラッシュ、依存関係レポートをトランザクションストアと ClickHouse 分析パイプラインに分離します。"
+          summary: "攻撃、Hook、性能、クラッシュ、エラー、依存関係レポートをトランザクションストアと ClickHouse 分析パイプラインに分離します。"
         },
         observability: {
           title: "可観測性",

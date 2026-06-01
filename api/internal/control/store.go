@@ -2462,7 +2462,7 @@ func PrepareAlertRule(input AlertRule, now time.Time) (AlertRule, error) {
 	if input.EventType == "" {
 		return AlertRule{}, fmt.Errorf("%w: alert rule event type is required", ErrInvalid)
 	}
-	if !contains([]string{"attack", "hook", "performance", "crash", "dependency"}, input.EventType) {
+	if !contains([]string{"attack", "hook", "performance", "crash", "error", "dependency"}, input.EventType) {
 		return AlertRule{}, fmt.Errorf("%w: alert rule event type is not supported", ErrInvalid)
 	}
 	if input.Severity == "" {

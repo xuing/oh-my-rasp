@@ -57,6 +57,7 @@ const (
 	AlertDeliveryEventTypeAttack      AlertDeliveryEventType = "attack"
 	AlertDeliveryEventTypeCrash       AlertDeliveryEventType = "crash"
 	AlertDeliveryEventTypeDependency  AlertDeliveryEventType = "dependency"
+	AlertDeliveryEventTypeError       AlertDeliveryEventType = "error"
 	AlertDeliveryEventTypeHook        AlertDeliveryEventType = "hook"
 	AlertDeliveryEventTypePerformance AlertDeliveryEventType = "performance"
 )
@@ -69,6 +70,8 @@ func (e AlertDeliveryEventType) Valid() bool {
 	case AlertDeliveryEventTypeCrash:
 		return true
 	case AlertDeliveryEventTypeDependency:
+		return true
+	case AlertDeliveryEventTypeError:
 		return true
 	case AlertDeliveryEventTypeHook:
 		return true
@@ -129,6 +132,7 @@ const (
 	AlertRuleEventTypeAttack      AlertRuleEventType = "attack"
 	AlertRuleEventTypeCrash       AlertRuleEventType = "crash"
 	AlertRuleEventTypeDependency  AlertRuleEventType = "dependency"
+	AlertRuleEventTypeError       AlertRuleEventType = "error"
 	AlertRuleEventTypeHook        AlertRuleEventType = "hook"
 	AlertRuleEventTypePerformance AlertRuleEventType = "performance"
 )
@@ -141,6 +145,8 @@ func (e AlertRuleEventType) Valid() bool {
 	case AlertRuleEventTypeCrash:
 		return true
 	case AlertRuleEventTypeDependency:
+		return true
+	case AlertRuleEventTypeError:
 		return true
 	case AlertRuleEventTypeHook:
 		return true
@@ -180,6 +186,7 @@ const (
 	AlertRuleInputEventTypeAttack      AlertRuleInputEventType = "attack"
 	AlertRuleInputEventTypeCrash       AlertRuleInputEventType = "crash"
 	AlertRuleInputEventTypeDependency  AlertRuleInputEventType = "dependency"
+	AlertRuleInputEventTypeError       AlertRuleInputEventType = "error"
 	AlertRuleInputEventTypeHook        AlertRuleInputEventType = "hook"
 	AlertRuleInputEventTypePerformance AlertRuleInputEventType = "performance"
 )
@@ -192,6 +199,8 @@ func (e AlertRuleInputEventType) Valid() bool {
 	case AlertRuleInputEventTypeCrash:
 		return true
 	case AlertRuleInputEventTypeDependency:
+		return true
+	case AlertRuleInputEventTypeError:
 		return true
 	case AlertRuleInputEventTypeHook:
 		return true
@@ -545,6 +554,7 @@ func (e RuleInputAction) Valid() bool {
 const (
 	SecurityEventTypeAttack      SecurityEventType = "attack"
 	SecurityEventTypeCrash       SecurityEventType = "crash"
+	SecurityEventTypeError       SecurityEventType = "error"
 	SecurityEventTypeHook        SecurityEventType = "hook"
 	SecurityEventTypePerformance SecurityEventType = "performance"
 )
@@ -555,6 +565,8 @@ func (e SecurityEventType) Valid() bool {
 	case SecurityEventTypeAttack:
 		return true
 	case SecurityEventTypeCrash:
+		return true
+	case SecurityEventTypeError:
 		return true
 	case SecurityEventTypeHook:
 		return true
@@ -683,6 +695,7 @@ func (e BaselineStatus) Valid() bool {
 const (
 	EventTypeAttack      EventType = "attack"
 	EventTypeCrash       EventType = "crash"
+	EventTypeError       EventType = "error"
 	EventTypeHook        EventType = "hook"
 	EventTypePerformance EventType = "performance"
 )
@@ -693,6 +706,8 @@ func (e EventType) Valid() bool {
 	case EventTypeAttack:
 		return true
 	case EventTypeCrash:
+		return true
+	case EventTypeError:
 		return true
 	case EventTypeHook:
 		return true
@@ -812,6 +827,7 @@ func (e GetApiV1DependenciesParamsVulnerabilitySeverity) Valid() bool {
 const (
 	GetApiV1EventsRecycleBinParamsTypeAttack      GetApiV1EventsRecycleBinParamsType = "attack"
 	GetApiV1EventsRecycleBinParamsTypeCrash       GetApiV1EventsRecycleBinParamsType = "crash"
+	GetApiV1EventsRecycleBinParamsTypeError       GetApiV1EventsRecycleBinParamsType = "error"
 	GetApiV1EventsRecycleBinParamsTypeHook        GetApiV1EventsRecycleBinParamsType = "hook"
 	GetApiV1EventsRecycleBinParamsTypePerformance GetApiV1EventsRecycleBinParamsType = "performance"
 )
@@ -822,6 +838,8 @@ func (e GetApiV1EventsRecycleBinParamsType) Valid() bool {
 	case GetApiV1EventsRecycleBinParamsTypeAttack:
 		return true
 	case GetApiV1EventsRecycleBinParamsTypeCrash:
+		return true
+	case GetApiV1EventsRecycleBinParamsTypeError:
 		return true
 	case GetApiV1EventsRecycleBinParamsTypeHook:
 		return true
@@ -1890,6 +1908,25 @@ type PostApiV1EventsCrashParams struct {
 	XOhMyRaspAppSecret string `json:"X-OhMyRasp-App-Secret"`
 }
 
+// GetApiV1EventsErrorParams defines parameters for GetApiV1EventsError.
+type GetApiV1EventsErrorParams struct {
+	ApplicationId  *EventApplicationID  `form:"application_id,omitempty" json:"application_id,omitempty"`
+	EnvironmentId  *EventEnvironmentID  `form:"environment_id,omitempty" json:"environment_id,omitempty"`
+	AgentId        *EventAgentID        `form:"agent_id,omitempty" json:"agent_id,omitempty"`
+	PolicyId       *EventPolicyID       `form:"policy_id,omitempty" json:"policy_id,omitempty"`
+	Severity       *EventSeverity       `form:"severity,omitempty" json:"severity,omitempty"`
+	Hook           *EventHook           `form:"hook,omitempty" json:"hook,omitempty"`
+	OccurredAfter  *EventOccurredAfter  `form:"occurred_after,omitempty" json:"occurred_after,omitempty"`
+	OccurredBefore *EventOccurredBefore `form:"occurred_before,omitempty" json:"occurred_before,omitempty"`
+	Limit          *EventLimit          `form:"limit,omitempty" json:"limit,omitempty"`
+}
+
+// PostApiV1EventsErrorParams defines parameters for PostApiV1EventsError.
+type PostApiV1EventsErrorParams struct {
+	XOhMyRaspAppID     string `json:"X-OhMyRasp-App-ID"`
+	XOhMyRaspAppSecret string `json:"X-OhMyRasp-App-Secret"`
+}
+
 // GetApiV1EventsHookParams defines parameters for GetApiV1EventsHook.
 type GetApiV1EventsHookParams struct {
 	ApplicationId  *EventApplicationID  `form:"application_id,omitempty" json:"application_id,omitempty"`
@@ -1998,6 +2035,9 @@ type PostApiV1EventsAttackJSONRequestBody = SecurityEventInput
 
 // PostApiV1EventsCrashJSONRequestBody defines body for PostApiV1EventsCrash for application/json ContentType.
 type PostApiV1EventsCrashJSONRequestBody = SecurityEventInput
+
+// PostApiV1EventsErrorJSONRequestBody defines body for PostApiV1EventsError for application/json ContentType.
+type PostApiV1EventsErrorJSONRequestBody = SecurityEventInput
 
 // PostApiV1EventsHookJSONRequestBody defines body for PostApiV1EventsHook for application/json ContentType.
 type PostApiV1EventsHookJSONRequestBody = SecurityEventInput
@@ -2181,6 +2221,12 @@ type ServerInterface interface {
 
 	// (POST /api/v1/events/crash)
 	PostApiV1EventsCrash(w http.ResponseWriter, r *http.Request, params PostApiV1EventsCrashParams)
+
+	// (GET /api/v1/events/error)
+	GetApiV1EventsError(w http.ResponseWriter, r *http.Request, params GetApiV1EventsErrorParams)
+
+	// (POST /api/v1/events/error)
+	PostApiV1EventsError(w http.ResponseWriter, r *http.Request, params PostApiV1EventsErrorParams)
 
 	// (GET /api/v1/events/hook)
 	GetApiV1EventsHook(w http.ResponseWriter, r *http.Request, params GetApiV1EventsHookParams)
@@ -2496,6 +2542,16 @@ func (_ Unimplemented) GetApiV1EventsCrash(w http.ResponseWriter, r *http.Reques
 
 // (POST /api/v1/events/crash)
 func (_ Unimplemented) PostApiV1EventsCrash(w http.ResponseWriter, r *http.Request, params PostApiV1EventsCrashParams) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// (GET /api/v1/events/error)
+func (_ Unimplemented) GetApiV1EventsError(w http.ResponseWriter, r *http.Request, params GetApiV1EventsErrorParams) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// (POST /api/v1/events/error)
+func (_ Unimplemented) PostApiV1EventsError(w http.ResponseWriter, r *http.Request, params PostApiV1EventsErrorParams) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
@@ -4787,6 +4843,217 @@ func (siw *ServerInterfaceWrapper) PostApiV1EventsCrash(w http.ResponseWriter, r
 	handler.ServeHTTP(w, r)
 }
 
+// GetApiV1EventsError operation middleware
+func (siw *ServerInterfaceWrapper) GetApiV1EventsError(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, BearerAuthScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params GetApiV1EventsErrorParams
+
+	// ------------- Optional query parameter "application_id" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "application_id", r.URL.Query(), &params.ApplicationId, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "application_id"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "application_id", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "environment_id" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "environment_id", r.URL.Query(), &params.EnvironmentId, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "environment_id"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "environment_id", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "agent_id" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "agent_id", r.URL.Query(), &params.AgentId, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "agent_id"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "agent_id", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "policy_id" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "policy_id", r.URL.Query(), &params.PolicyId, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "policy_id"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "policy_id", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "severity" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "severity", r.URL.Query(), &params.Severity, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "severity"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "severity", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "hook" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "hook", r.URL.Query(), &params.Hook, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "hook"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "hook", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "occurred_after" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "occurred_after", r.URL.Query(), &params.OccurredAfter, runtime.BindQueryParameterOptions{Type: "string", Format: "date-time"})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "occurred_after"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "occurred_after", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "occurred_before" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "occurred_before", r.URL.Query(), &params.OccurredBefore, runtime.BindQueryParameterOptions{Type: "string", Format: "date-time"})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "occurred_before"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "occurred_before", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "limit" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "limit", r.URL.Query(), &params.Limit, runtime.BindQueryParameterOptions{Type: "integer", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "limit"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "limit", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetApiV1EventsError(w, r, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// PostApiV1EventsError operation middleware
+func (siw *ServerInterfaceWrapper) PostApiV1EventsError(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params PostApiV1EventsErrorParams
+
+	headers := r.Header
+
+	// ------------- Required header parameter "X-OhMyRasp-App-ID" -------------
+	if valueList, found := headers[http.CanonicalHeaderKey("X-OhMyRasp-App-ID")]; found {
+		var XOhMyRaspAppID string
+		n := len(valueList)
+		if n != 1 {
+			siw.ErrorHandlerFunc(w, r, &TooManyValuesForParamError{ParamName: "X-OhMyRasp-App-ID", Count: n})
+			return
+		}
+
+		err = runtime.BindStyledParameterWithOptions("simple", "X-OhMyRasp-App-ID", valueList[0], &XOhMyRaspAppID, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: true, Type: "string", Format: ""})
+		if err != nil {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "X-OhMyRasp-App-ID", Err: err})
+			return
+		}
+
+		params.XOhMyRaspAppID = XOhMyRaspAppID
+
+	} else {
+		err := fmt.Errorf("Header parameter X-OhMyRasp-App-ID is required, but not found")
+		siw.ErrorHandlerFunc(w, r, &RequiredHeaderError{ParamName: "X-OhMyRasp-App-ID", Err: err})
+		return
+	}
+
+	// ------------- Required header parameter "X-OhMyRasp-App-Secret" -------------
+	if valueList, found := headers[http.CanonicalHeaderKey("X-OhMyRasp-App-Secret")]; found {
+		var XOhMyRaspAppSecret string
+		n := len(valueList)
+		if n != 1 {
+			siw.ErrorHandlerFunc(w, r, &TooManyValuesForParamError{ParamName: "X-OhMyRasp-App-Secret", Count: n})
+			return
+		}
+
+		err = runtime.BindStyledParameterWithOptions("simple", "X-OhMyRasp-App-Secret", valueList[0], &XOhMyRaspAppSecret, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: true, Type: "string", Format: ""})
+		if err != nil {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "X-OhMyRasp-App-Secret", Err: err})
+			return
+		}
+
+		params.XOhMyRaspAppSecret = XOhMyRaspAppSecret
+
+	} else {
+		err := fmt.Errorf("Header parameter X-OhMyRasp-App-Secret is required, but not found")
+		siw.ErrorHandlerFunc(w, r, &RequiredHeaderError{ParamName: "X-OhMyRasp-App-Secret", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.PostApiV1EventsError(w, r, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // GetApiV1EventsHook operation middleware
 func (siw *ServerInterfaceWrapper) GetApiV1EventsHook(w http.ResponseWriter, r *http.Request) {
 
@@ -6169,6 +6436,12 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 		r.Post(options.BaseURL+"/api/v1/events/crash", wrapper.PostApiV1EventsCrash)
 	})
 	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/api/v1/events/error", wrapper.GetApiV1EventsError)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/api/v1/events/error", wrapper.PostApiV1EventsError)
+	})
+	r.Group(func(r chi.Router) {
 		r.Get(options.BaseURL+"/api/v1/events/hook", wrapper.GetApiV1EventsHook)
 	})
 	r.Group(func(r chi.Router) {
@@ -7251,6 +7524,51 @@ func (response PostApiV1EventsCrash202JSONResponse) VisitPostApiV1EventsCrashRes
 	return err
 }
 
+type GetApiV1EventsErrorRequestObject struct {
+	Params GetApiV1EventsErrorParams
+}
+
+type GetApiV1EventsErrorResponseObject interface {
+	VisitGetApiV1EventsErrorResponse(w http.ResponseWriter) error
+}
+
+type GetApiV1EventsError200JSONResponse SecurityEventList
+
+func (response GetApiV1EventsError200JSONResponse) VisitGetApiV1EventsErrorResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostApiV1EventsErrorRequestObject struct {
+	Params PostApiV1EventsErrorParams
+	Body   *PostApiV1EventsErrorJSONRequestBody
+}
+
+type PostApiV1EventsErrorResponseObject interface {
+	VisitPostApiV1EventsErrorResponse(w http.ResponseWriter) error
+}
+
+type PostApiV1EventsError202JSONResponse SecurityEvent
+
+func (response PostApiV1EventsError202JSONResponse) VisitPostApiV1EventsErrorResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(202)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type GetApiV1EventsHookRequestObject struct {
 	Params GetApiV1EventsHookParams
 }
@@ -8019,6 +8337,12 @@ type StrictServerInterface interface {
 
 	// (POST /api/v1/events/crash)
 	PostApiV1EventsCrash(ctx context.Context, request PostApiV1EventsCrashRequestObject) (PostApiV1EventsCrashResponseObject, error)
+
+	// (GET /api/v1/events/error)
+	GetApiV1EventsError(ctx context.Context, request GetApiV1EventsErrorRequestObject) (GetApiV1EventsErrorResponseObject, error)
+
+	// (POST /api/v1/events/error)
+	PostApiV1EventsError(ctx context.Context, request PostApiV1EventsErrorRequestObject) (PostApiV1EventsErrorResponseObject, error)
 
 	// (GET /api/v1/events/hook)
 	GetApiV1EventsHook(ctx context.Context, request GetApiV1EventsHookRequestObject) (GetApiV1EventsHookResponseObject, error)
@@ -9392,6 +9716,65 @@ func (sh *strictHandler) PostApiV1EventsCrash(w http.ResponseWriter, r *http.Req
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(PostApiV1EventsCrashResponseObject); ok {
 		if err := validResponse.VisitPostApiV1EventsCrashResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetApiV1EventsError operation middleware
+func (sh *strictHandler) GetApiV1EventsError(w http.ResponseWriter, r *http.Request, params GetApiV1EventsErrorParams) {
+	var request GetApiV1EventsErrorRequestObject
+
+	request.Params = params
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetApiV1EventsError(ctx, request.(GetApiV1EventsErrorRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetApiV1EventsError")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetApiV1EventsErrorResponseObject); ok {
+		if err := validResponse.VisitGetApiV1EventsErrorResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// PostApiV1EventsError operation middleware
+func (sh *strictHandler) PostApiV1EventsError(w http.ResponseWriter, r *http.Request, params PostApiV1EventsErrorParams) {
+	var request PostApiV1EventsErrorRequestObject
+
+	request.Params = params
+
+	var body PostApiV1EventsErrorJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.PostApiV1EventsError(ctx, request.(PostApiV1EventsErrorRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "PostApiV1EventsError")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(PostApiV1EventsErrorResponseObject); ok {
+		if err := validResponse.VisitPostApiV1EventsErrorResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {

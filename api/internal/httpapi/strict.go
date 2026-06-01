@@ -460,6 +460,16 @@ func (s *strictServer) GetApiV1EventsCrash(ctx context.Context, request generate
 	}, nil
 }
 
+func (s *strictServer) GetApiV1EventsError(ctx context.Context, request generated.GetApiV1EventsErrorRequestObject) (generated.GetApiV1EventsErrorResponseObject, error) {
+	events, err := s.server.store.ListEvents(ctx, controlSecurityEventQueryFromParams("error", eventQueryParameterSet(request.Params)))
+	if err != nil {
+		return nil, err
+	}
+	return generated.GetApiV1EventsError200JSONResponse{
+		Items: openAPISecurityEvents(events),
+	}, nil
+}
+
 func (s *strictServer) GetApiV1EventsRecycleBin(ctx context.Context, request generated.GetApiV1EventsRecycleBinRequestObject) (generated.GetApiV1EventsRecycleBinResponseObject, error) {
 	events, err := s.server.store.ListEvents(ctx, controlRecycleBinEventQueryFromParams(request.Params))
 	if err != nil {
@@ -561,6 +571,21 @@ func (s *strictServer) PostApiV1EventsCrash(ctx context.Context, request generat
 		return nil, err
 	}
 	return generated.PostApiV1EventsCrash202JSONResponse(openAPISecurityEvent(event)), nil
+}
+
+func (s *strictServer) PostApiV1EventsError(ctx context.Context, request generated.PostApiV1EventsErrorRequestObject) (generated.PostApiV1EventsErrorResponseObject, error) {
+	if request.Body == nil {
+		return nil, control.ErrInvalid
+	}
+	input := controlSecurityEventFromOpenAPI(*request.Body, "error")
+	if err := s.authorizeAgentReport(ctx, request.Params.XOhMyRaspAppID, request.Params.XOhMyRaspAppSecret, input.ApplicationID, input.EnvironmentID, input.AgentID); err != nil {
+		return nil, err
+	}
+	event, err := s.server.store.IngestEvent(ctx, input)
+	if err != nil {
+		return nil, err
+	}
+	return generated.PostApiV1EventsError202JSONResponse(openAPISecurityEvent(event)), nil
 }
 
 func (s *strictServer) GetApiV1Dependencies(ctx context.Context, request generated.GetApiV1DependenciesRequestObject) (generated.GetApiV1DependenciesResponseObject, error) {
