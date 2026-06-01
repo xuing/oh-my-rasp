@@ -2652,6 +2652,58 @@ func (s *Store) ListAlertDeliveries(ctx context.Context) ([]control.AlertDeliver
 	return deliveries, rows.Err()
 }
 
+func (s *Store) ListQueuedAlertDeliveries(ctx context.Context, limit int) ([]control.AlertDelivery, error) {
+	if limit <= 0 {
+		limit = 50
+	}
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT id, alert_rule_id, alert_rule_name, event_id, event_type, severity,
+			target, status, attempts, last_error, created_at, delivered_at
+		FROM alert_deliveries
+		WHERE organization_id = $1 AND status = 'queued'
+		ORDER BY created_at ASC
+		LIMIT $2
+	`, s.organizationID, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var deliveries []control.AlertDelivery
+	for rows.Next() {
+		delivery, err := scanAlertDeliveryRows(rows)
+		if err != nil {
+			return nil, err
+		}
+		deliveries = append(deliveries, delivery)
+	}
+	return deliveries, rows.Err()
+}
+
+func (s *Store) RecordAlertDeliveryAttempt(ctx context.Context, deliveryID string, status string, lastError string, deliveredAt *time.Time) (control.AlertDelivery, error) {
+	if status != "delivered" && status != "failed" {
+		return control.AlertDelivery{}, fmt.Errorf("%w: alert delivery status is not supported", control.ErrInvalid)
+	}
+	var deliveredValue any
+	if deliveredAt != nil {
+		deliveredValue = deliveredAt.UTC()
+	}
+	row := s.db.QueryRowContext(ctx, `
+		UPDATE alert_deliveries
+		SET status = $3,
+			attempts = attempts + 1,
+			last_error = $4,
+			delivered_at = $5
+		WHERE id = $1 AND organization_id = $2
+		RETURNING id, alert_rule_id, alert_rule_name, event_id, event_type, severity,
+			target, status, attempts, last_error, created_at, delivered_at
+	`, deliveryID, s.organizationID, status, strings.TrimSpace(lastError), deliveredValue)
+	delivery, err := scanAlertDelivery(row)
+	if errors.Is(err, sql.ErrNoRows) {
+		return control.AlertDelivery{}, control.ErrNotFound
+	}
+	return delivery, err
+}
+
 func (s *Store) ListAuditLogs(ctx context.Context) ([]control.AuditLog, error) {
 	rows, err := s.db.QueryContext(ctx, `
 		SELECT id, COALESCE(actor_id, ''), action, resource, details::text, created_at

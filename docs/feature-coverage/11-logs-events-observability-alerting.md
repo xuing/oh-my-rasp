@@ -37,6 +37,7 @@
   - `POST /api/v1/alert-rules`
   - `PUT /api/v1/alert-rules/{alertRuleID}`
   - `GET /api/v1/alert-deliveries`
+  - 后端 alert delivery worker 会投递 HTTP/HTTPS webhook target，并把不支持或失败的 target 标记为 `failed`。
 
 ## 任务拆分
 
@@ -52,7 +53,8 @@
 - OpenAPI 的 `HookLatency` schema 增加 `p50_latency_us`。
 - MemoryStore 和 ClickHouse analytics 都返回 hook latency p50/p95。
 - ClickHouse 继续使用 `hook_events` 和 `performance_events` 作为可观测性聚合来源。
-- 事件写入后会按 enabled alert rule 匹配并创建 alert delivery 记录。
+- 事件写入后会按 enabled alert rule 匹配并创建 alert delivery 记录；worker 周期性处理 queued delivery。
+- HTTP/HTTPS webhook target 会收到 JSON payload，成功后状态变为 `delivered`；不支持的 target scheme 或 HTTP 失败会记录为 `failed`、递增 attempts 并写入 `last_error`。
 - API 测试覆盖事件写入、recycle bin、observability、metrics、alert rule lifecycle 和 alert deliveries。
 
 ### 前端侧
@@ -65,7 +67,7 @@
 ## 不复刻的旧功能
 
 - 归档 Dashboard ECharts 图形不逐项复刻。当前 React 页面已经用表格、指标块和过滤器覆盖同一数据面，继续复制旧图表布局会增加维护面，且不改变控制面能力。
-- 邮件服务配置和测试暂不实现。当前告警能力以规则和 delivery record 为核心，未接入真实 SMTP 或第三方通知 provider；提供假邮件测试会造成误导。后续接入实际投递后再增加 provider settings 和 test delivery。
+- 邮件服务配置和测试暂不实现。当前已支持 HTTP/HTTPS webhook 投递；SMTP 或第三方通知 provider 需要独立凭据、重试策略和密钥管理，后续接入真实 provider 后再增加 provider settings 和 test delivery。
 
 ## 验证
 
@@ -80,3 +82,4 @@
   - observability report returns hook latency `p50_latency_us` and `p95_latency_us`
   - `/metrics` returns Prometheus metrics
   - alert rule match creates alert delivery records
+  - HTTP webhook alert target becomes `delivered`; unsupported target becomes `failed` with `attempts` and `last_error`

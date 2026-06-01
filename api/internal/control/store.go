@@ -78,6 +78,8 @@ type Store interface {
 	CreateAlertRule(ctx context.Context, actorID string, input AlertRule) (AlertRule, error)
 	UpdateAlertRule(ctx context.Context, actorID string, alertRuleID string, input AlertRule) (AlertRule, error)
 	ListAlertDeliveries(ctx context.Context) ([]AlertDelivery, error)
+	ListQueuedAlertDeliveries(ctx context.Context, limit int) ([]AlertDelivery, error)
+	RecordAlertDeliveryAttempt(ctx context.Context, deliveryID string, status string, lastError string, deliveredAt *time.Time) (AlertDelivery, error)
 	RecordAuditLog(ctx context.Context, actorID string, action string, resource string, details map[string]any) error
 	ListAuditLogs(ctx context.Context) ([]AuditLog, error)
 }
@@ -2270,6 +2272,43 @@ func (s *MemoryStore) ListAlertDeliveries(_ context.Context) ([]AlertDelivery, e
 	}
 	sort.Slice(deliveries, func(i, j int) bool { return deliveries[i].CreatedAt.After(deliveries[j].CreatedAt) })
 	return deliveries, nil
+}
+
+func (s *MemoryStore) ListQueuedAlertDeliveries(_ context.Context, limit int) ([]AlertDelivery, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	if limit <= 0 {
+		limit = 50
+	}
+	deliveries := make([]AlertDelivery, 0, len(s.alertDeliveries))
+	for _, delivery := range s.alertDeliveries {
+		if delivery.Status == "queued" {
+			deliveries = append(deliveries, delivery)
+		}
+	}
+	sort.Slice(deliveries, func(i, j int) bool { return deliveries[i].CreatedAt.Before(deliveries[j].CreatedAt) })
+	if len(deliveries) > limit {
+		deliveries = deliveries[:limit]
+	}
+	return deliveries, nil
+}
+
+func (s *MemoryStore) RecordAlertDeliveryAttempt(_ context.Context, deliveryID string, status string, lastError string, deliveredAt *time.Time) (AlertDelivery, error) {
+	if !contains([]string{"delivered", "failed"}, status) {
+		return AlertDelivery{}, fmt.Errorf("%w: alert delivery status is not supported", ErrInvalid)
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	delivery, ok := s.alertDeliveries[deliveryID]
+	if !ok {
+		return AlertDelivery{}, ErrNotFound
+	}
+	delivery.Status = status
+	delivery.Attempts++
+	delivery.LastError = strings.TrimSpace(lastError)
+	delivery.DeliveredAt = deliveredAt
+	s.alertDeliveries[deliveryID] = delivery
+	return delivery, nil
 }
 
 func (s *MemoryStore) ListAuditLogs(_ context.Context) ([]AuditLog, error) {

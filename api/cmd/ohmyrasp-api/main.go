@@ -41,6 +41,17 @@ func main() {
 			envDuration("OHMYRASP_RATE_LIMIT_WINDOW", time.Minute),
 		)
 	}
+	workerCtx, stopAlertWorker := context.WithCancel(context.Background())
+	if envBool("OHMYRASP_ALERT_DELIVERY_ENABLED", true) {
+		worker := httpapi.NewAlertDeliveryWorker(store, logger, httpapi.AlertDeliveryWorkerOptions{
+			Interval:       envDuration("OHMYRASP_ALERT_DELIVERY_INTERVAL", 10*time.Second),
+			RequestTimeout: envDuration("OHMYRASP_ALERT_DELIVERY_TIMEOUT", 5*time.Second),
+			BatchSize:      envInt("OHMYRASP_ALERT_DELIVERY_BATCH_SIZE", 50),
+		})
+		go worker.Run(workerCtx)
+		logger.Info("alert delivery worker enabled")
+	}
+	defer stopAlertWorker()
 
 	addr := env("OHMYRASP_API_ADDR", ":8080")
 	httpServer := &http.Server{
@@ -232,6 +243,18 @@ func envInt64(name string, fallback int64) int64 {
 		return fallback
 	}
 	parsed, err := strconv.ParseInt(value, 10, 64)
+	if err != nil {
+		return fallback
+	}
+	return parsed
+}
+
+func envInt(name string, fallback int) int {
+	value := os.Getenv(name)
+	if value == "" {
+		return fallback
+	}
+	parsed, err := strconv.Atoi(value)
 	if err != nil {
 		return fallback
 	}
