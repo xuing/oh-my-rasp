@@ -1007,6 +1007,7 @@ type AgentRegistration struct {
 type AlertDelivery struct {
 	AlertRuleId   string                 `json:"alert_rule_id"`
 	AlertRuleName string                 `json:"alert_rule_name"`
+	ApplicationId *string                `json:"application_id,omitempty"`
 	Attempts      int                    `json:"attempts"`
 	CreatedAt     time.Time              `json:"created_at"`
 	DeliveredAt   *time.Time             `json:"delivered_at,omitempty"`
@@ -1035,16 +1036,17 @@ type AlertDeliveryList struct {
 
 // AlertRule defines model for AlertRule.
 type AlertRule struct {
-	Condition   string             `json:"condition"`
-	CreatedAt   time.Time          `json:"created_at"`
-	Description string             `json:"description"`
-	Enabled     bool               `json:"enabled"`
-	EventType   AlertRuleEventType `json:"event_type"`
-	Id          string             `json:"id"`
-	Name        string             `json:"name"`
-	Severity    AlertRuleSeverity  `json:"severity"`
-	Target      string             `json:"target"`
-	UpdatedAt   time.Time          `json:"updated_at"`
+	ApplicationId *string            `json:"application_id,omitempty"`
+	Condition     string             `json:"condition"`
+	CreatedAt     time.Time          `json:"created_at"`
+	Description   string             `json:"description"`
+	Enabled       bool               `json:"enabled"`
+	EventType     AlertRuleEventType `json:"event_type"`
+	Id            string             `json:"id"`
+	Name          string             `json:"name"`
+	Severity      AlertRuleSeverity  `json:"severity"`
+	Target        string             `json:"target"`
+	UpdatedAt     time.Time          `json:"updated_at"`
 }
 
 // AlertRuleEventType defines model for AlertRule.EventType.
@@ -1055,13 +1057,14 @@ type AlertRuleSeverity string
 
 // AlertRuleInput defines model for AlertRuleInput.
 type AlertRuleInput struct {
-	Condition   *string                 `json:"condition,omitempty"`
-	Description *string                 `json:"description,omitempty"`
-	Enabled     bool                    `json:"enabled"`
-	EventType   AlertRuleInputEventType `json:"event_type"`
-	Name        string                  `json:"name"`
-	Severity    AlertRuleInputSeverity  `json:"severity"`
-	Target      string                  `json:"target"`
+	ApplicationId *string                 `json:"application_id,omitempty"`
+	Condition     *string                 `json:"condition,omitempty"`
+	Description   *string                 `json:"description,omitempty"`
+	Enabled       bool                    `json:"enabled"`
+	EventType     AlertRuleInputEventType `json:"event_type"`
+	Name          string                  `json:"name"`
+	Severity      AlertRuleInputSeverity  `json:"severity"`
+	Target        string                  `json:"target"`
 }
 
 // AlertRuleInputEventType defines model for AlertRuleInput.EventType.
@@ -1087,6 +1090,14 @@ type Application struct {
 	Secret         *string   `json:"secret,omitempty"`
 }
 
+// ApplicationConfig defines model for ApplicationConfig.
+type ApplicationConfig struct {
+	AlertDelivery                 map[string]interface{} `json:"alert_delivery"`
+	Allowlist                     map[string]interface{} `json:"allowlist"`
+	DependencyVulnerabilityPolicy map[string]interface{} `json:"dependency_vulnerability_policy"`
+	Hardening                     map[string]interface{} `json:"hardening"`
+}
+
 // ApplicationInput defines model for ApplicationInput.
 type ApplicationInput struct {
 	Description *string `json:"description,omitempty"`
@@ -1096,6 +1107,27 @@ type ApplicationInput struct {
 // ApplicationList defines model for ApplicationList.
 type ApplicationList struct {
 	Items []Application `json:"items"`
+}
+
+// ApplicationSetting defines model for ApplicationSetting.
+type ApplicationSetting struct {
+	ApplicationId string                 `json:"application_id"`
+	EnvironmentId *string                `json:"environment_id,omitempty"`
+	Key           string                 `json:"key"`
+	UpdatedAt     time.Time              `json:"updated_at"`
+	UpdatedBy     *string                `json:"updated_by,omitempty"`
+	Value         map[string]interface{} `json:"value"`
+}
+
+// ApplicationSettingList defines model for ApplicationSettingList.
+type ApplicationSettingList struct {
+	Items []ApplicationSetting `json:"items"`
+}
+
+// ApplicationSettingUpdate defines model for ApplicationSettingUpdate.
+type ApplicationSettingUpdate struct {
+	Key   string                 `json:"key"`
+	Value map[string]interface{} `json:"value"`
 }
 
 // AuditLog defines model for AuditLog.
@@ -1501,12 +1533,13 @@ type PolicySetList struct {
 
 // PolicyVersion defines model for PolicyVersion.
 type PolicyVersion struct {
-	CanaryPercent int        `json:"canary_percent"`
-	CreatedAt     time.Time  `json:"created_at"`
-	PublishedAt   *time.Time `json:"published_at,omitempty"`
-	Rules         []Rule     `json:"rules"`
-	Status        string     `json:"status"`
-	Version       int        `json:"version"`
+	CanaryPercent int                `json:"canary_percent"`
+	Config        *ApplicationConfig `json:"config,omitempty"`
+	CreatedAt     time.Time          `json:"created_at"`
+	PublishedAt   *time.Time         `json:"published_at,omitempty"`
+	Rules         []Rule             `json:"rules"`
+	Status        string             `json:"status"`
+	Version       int                `json:"version"`
 }
 
 // PolicyVersionInput defines model for PolicyVersionInput.
@@ -1762,6 +1795,9 @@ type DependencyObservedAfter = time.Time
 // DependencyObservedBefore defines model for DependencyObservedBefore.
 type DependencyObservedBefore = time.Time
 
+// EnvironmentID defines model for EnvironmentID.
+type EnvironmentID = string
+
 // EventAgentID defines model for EventAgentID.
 type EventAgentID = string
 
@@ -1804,6 +1840,12 @@ type WorkloadID = string
 // bearerAuthContextKey is the context key for bearerAuth security scheme
 type bearerAuthContextKey string
 
+// GetApiV1AgentsParams defines parameters for GetApiV1Agents.
+type GetApiV1AgentsParams struct {
+	ApplicationId *string `form:"application_id,omitempty" json:"application_id,omitempty"`
+	EnvironmentId *string `form:"environment_id,omitempty" json:"environment_id,omitempty"`
+}
+
 // PostApiV1AgentsRegisterParams defines parameters for PostApiV1AgentsRegister.
 type PostApiV1AgentsRegisterParams struct {
 	XOhMyRaspAppID     string `json:"X-OhMyRasp-App-ID"`
@@ -1822,10 +1864,26 @@ type GetApiV1AgentsAgentIDPolicyParams struct {
 	XOhMyRaspAppSecret string `json:"X-OhMyRasp-App-Secret"`
 }
 
+// GetApiV1AlertDeliveriesParams defines parameters for GetApiV1AlertDeliveries.
+type GetApiV1AlertDeliveriesParams struct {
+	ApplicationId *string `form:"application_id,omitempty" json:"application_id,omitempty"`
+}
+
+// GetApiV1AlertRulesParams defines parameters for GetApiV1AlertRules.
+type GetApiV1AlertRulesParams struct {
+	ApplicationId *string `form:"application_id,omitempty" json:"application_id,omitempty"`
+}
+
 // GetApiV1AnalyticsObservabilityParams defines parameters for GetApiV1AnalyticsObservability.
 type GetApiV1AnalyticsObservabilityParams struct {
 	ApplicationId *string `form:"application_id,omitempty" json:"application_id,omitempty"`
 	PolicyId      *string `form:"policy_id,omitempty" json:"policy_id,omitempty"`
+}
+
+// GetApiV1AnalyticsOverviewParams defines parameters for GetApiV1AnalyticsOverview.
+type GetApiV1AnalyticsOverviewParams struct {
+	ApplicationId *string `form:"application_id,omitempty" json:"application_id,omitempty"`
+	EnvironmentId *string `form:"environment_id,omitempty" json:"environment_id,omitempty"`
 }
 
 // GetApiV1BaselineFindingsParams defines parameters for GetApiV1BaselineFindings.
@@ -1917,6 +1975,12 @@ type GetApiV1DependenciesParamsVulnerabilitySeverity string
 type PostApiV1DependenciesParams struct {
 	XOhMyRaspAppID     string `json:"X-OhMyRasp-App-ID"`
 	XOhMyRaspAppSecret string `json:"X-OhMyRasp-App-Secret"`
+}
+
+// GetApiV1DependenciesSummaryParams defines parameters for GetApiV1DependenciesSummary.
+type GetApiV1DependenciesSummaryParams struct {
+	ApplicationId *DependencyApplicationID `form:"application_id,omitempty" json:"application_id,omitempty"`
+	AgentId       *DependencyAgentID       `form:"agent_id,omitempty" json:"agent_id,omitempty"`
 }
 
 // GetApiV1EventsAttackParams defines parameters for GetApiV1EventsAttack.
@@ -2074,6 +2138,12 @@ type PostApiV1ApplicationsJSONRequestBody = ApplicationInput
 // PostApiV1ApplicationsAppIDEnvironmentsJSONRequestBody defines body for PostApiV1ApplicationsAppIDEnvironments for application/json ContentType.
 type PostApiV1ApplicationsAppIDEnvironmentsJSONRequestBody = EnvironmentInput
 
+// PutApiV1ApplicationsAppIDEnvironmentsEnvIDSettingsJSONRequestBody defines body for PutApiV1ApplicationsAppIDEnvironmentsEnvIDSettings for application/json ContentType.
+type PutApiV1ApplicationsAppIDEnvironmentsEnvIDSettingsJSONRequestBody = ApplicationSettingUpdate
+
+// PutApiV1ApplicationsAppIDSettingsJSONRequestBody defines body for PutApiV1ApplicationsAppIDSettings for application/json ContentType.
+type PutApiV1ApplicationsAppIDSettingsJSONRequestBody = ApplicationSettingUpdate
+
 // PostApiV1AuthLoginJSONRequestBody defines body for PostApiV1AuthLogin for application/json ContentType.
 type PostApiV1AuthLoginJSONRequestBody = LoginRequest
 
@@ -2156,7 +2226,7 @@ type ServerInterface interface {
 	PostApiV1AgentArtifacts(w http.ResponseWriter, r *http.Request)
 
 	// (GET /api/v1/agents)
-	GetApiV1Agents(w http.ResponseWriter, r *http.Request)
+	GetApiV1Agents(w http.ResponseWriter, r *http.Request, params GetApiV1AgentsParams)
 
 	// (POST /api/v1/agents/batch-delete)
 	PostApiV1AgentsBatchDelete(w http.ResponseWriter, r *http.Request)
@@ -2180,10 +2250,10 @@ type ServerInterface interface {
 	GetApiV1AgentsAgentIDPolicy(w http.ResponseWriter, r *http.Request, agentID AgentID, params GetApiV1AgentsAgentIDPolicyParams)
 
 	// (GET /api/v1/alert-deliveries)
-	GetApiV1AlertDeliveries(w http.ResponseWriter, r *http.Request)
+	GetApiV1AlertDeliveries(w http.ResponseWriter, r *http.Request, params GetApiV1AlertDeliveriesParams)
 
 	// (GET /api/v1/alert-rules)
-	GetApiV1AlertRules(w http.ResponseWriter, r *http.Request)
+	GetApiV1AlertRules(w http.ResponseWriter, r *http.Request, params GetApiV1AlertRulesParams)
 
 	// (POST /api/v1/alert-rules)
 	PostApiV1AlertRules(w http.ResponseWriter, r *http.Request)
@@ -2195,7 +2265,7 @@ type ServerInterface interface {
 	GetApiV1AnalyticsObservability(w http.ResponseWriter, r *http.Request, params GetApiV1AnalyticsObservabilityParams)
 
 	// (GET /api/v1/analytics/overview)
-	GetApiV1AnalyticsOverview(w http.ResponseWriter, r *http.Request)
+	GetApiV1AnalyticsOverview(w http.ResponseWriter, r *http.Request, params GetApiV1AnalyticsOverviewParams)
 
 	// (GET /api/v1/applications)
 	GetApiV1Applications(w http.ResponseWriter, r *http.Request)
@@ -2212,8 +2282,20 @@ type ServerInterface interface {
 	// (POST /api/v1/applications/{appID}/environments)
 	PostApiV1ApplicationsAppIDEnvironments(w http.ResponseWriter, r *http.Request, appID AppID)
 
+	// (GET /api/v1/applications/{appID}/environments/{envID}/settings)
+	GetApiV1ApplicationsAppIDEnvironmentsEnvIDSettings(w http.ResponseWriter, r *http.Request, appID AppID, envID EnvironmentID)
+
+	// (PUT /api/v1/applications/{appID}/environments/{envID}/settings)
+	PutApiV1ApplicationsAppIDEnvironmentsEnvIDSettings(w http.ResponseWriter, r *http.Request, appID AppID, envID EnvironmentID)
+
 	// (POST /api/v1/applications/{appID}/secret/rotate)
 	PostApiV1ApplicationsAppIDSecretRotate(w http.ResponseWriter, r *http.Request, appID AppID)
+
+	// (GET /api/v1/applications/{appID}/settings)
+	GetApiV1ApplicationsAppIDSettings(w http.ResponseWriter, r *http.Request, appID AppID)
+
+	// (PUT /api/v1/applications/{appID}/settings)
+	PutApiV1ApplicationsAppIDSettings(w http.ResponseWriter, r *http.Request, appID AppID)
 
 	// (GET /api/v1/audit-logs)
 	GetApiV1AuditLogs(w http.ResponseWriter, r *http.Request)
@@ -2270,7 +2352,7 @@ type ServerInterface interface {
 	GetApiV1DependenciesExport(w http.ResponseWriter, r *http.Request)
 
 	// (GET /api/v1/dependencies/summary)
-	GetApiV1DependenciesSummary(w http.ResponseWriter, r *http.Request)
+	GetApiV1DependenciesSummary(w http.ResponseWriter, r *http.Request, params GetApiV1DependenciesSummaryParams)
 
 	// (GET /api/v1/events/attack)
 	GetApiV1EventsAttack(w http.ResponseWriter, r *http.Request, params GetApiV1EventsAttackParams)
@@ -2399,7 +2481,7 @@ func (_ Unimplemented) PostApiV1AgentArtifacts(w http.ResponseWriter, r *http.Re
 }
 
 // (GET /api/v1/agents)
-func (_ Unimplemented) GetApiV1Agents(w http.ResponseWriter, r *http.Request) {
+func (_ Unimplemented) GetApiV1Agents(w http.ResponseWriter, r *http.Request, params GetApiV1AgentsParams) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
@@ -2439,12 +2521,12 @@ func (_ Unimplemented) GetApiV1AgentsAgentIDPolicy(w http.ResponseWriter, r *htt
 }
 
 // (GET /api/v1/alert-deliveries)
-func (_ Unimplemented) GetApiV1AlertDeliveries(w http.ResponseWriter, r *http.Request) {
+func (_ Unimplemented) GetApiV1AlertDeliveries(w http.ResponseWriter, r *http.Request, params GetApiV1AlertDeliveriesParams) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
 // (GET /api/v1/alert-rules)
-func (_ Unimplemented) GetApiV1AlertRules(w http.ResponseWriter, r *http.Request) {
+func (_ Unimplemented) GetApiV1AlertRules(w http.ResponseWriter, r *http.Request, params GetApiV1AlertRulesParams) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
@@ -2464,7 +2546,7 @@ func (_ Unimplemented) GetApiV1AnalyticsObservability(w http.ResponseWriter, r *
 }
 
 // (GET /api/v1/analytics/overview)
-func (_ Unimplemented) GetApiV1AnalyticsOverview(w http.ResponseWriter, r *http.Request) {
+func (_ Unimplemented) GetApiV1AnalyticsOverview(w http.ResponseWriter, r *http.Request, params GetApiV1AnalyticsOverviewParams) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
@@ -2493,8 +2575,28 @@ func (_ Unimplemented) PostApiV1ApplicationsAppIDEnvironments(w http.ResponseWri
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
+// (GET /api/v1/applications/{appID}/environments/{envID}/settings)
+func (_ Unimplemented) GetApiV1ApplicationsAppIDEnvironmentsEnvIDSettings(w http.ResponseWriter, r *http.Request, appID AppID, envID EnvironmentID) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// (PUT /api/v1/applications/{appID}/environments/{envID}/settings)
+func (_ Unimplemented) PutApiV1ApplicationsAppIDEnvironmentsEnvIDSettings(w http.ResponseWriter, r *http.Request, appID AppID, envID EnvironmentID) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
 // (POST /api/v1/applications/{appID}/secret/rotate)
 func (_ Unimplemented) PostApiV1ApplicationsAppIDSecretRotate(w http.ResponseWriter, r *http.Request, appID AppID) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// (GET /api/v1/applications/{appID}/settings)
+func (_ Unimplemented) GetApiV1ApplicationsAppIDSettings(w http.ResponseWriter, r *http.Request, appID AppID) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// (PUT /api/v1/applications/{appID}/settings)
+func (_ Unimplemented) PutApiV1ApplicationsAppIDSettings(w http.ResponseWriter, r *http.Request, appID AppID) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
@@ -2589,7 +2691,7 @@ func (_ Unimplemented) GetApiV1DependenciesExport(w http.ResponseWriter, r *http
 }
 
 // (GET /api/v1/dependencies/summary)
-func (_ Unimplemented) GetApiV1DependenciesSummary(w http.ResponseWriter, r *http.Request) {
+func (_ Unimplemented) GetApiV1DependenciesSummary(w http.ResponseWriter, r *http.Request, params GetApiV1DependenciesSummaryParams) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
@@ -2830,14 +2932,46 @@ func (siw *ServerInterfaceWrapper) PostApiV1AgentArtifacts(w http.ResponseWriter
 // GetApiV1Agents operation middleware
 func (siw *ServerInterfaceWrapper) GetApiV1Agents(w http.ResponseWriter, r *http.Request) {
 
+	var err error
+	_ = err
+
 	ctx := r.Context()
 
 	ctx = context.WithValue(ctx, BearerAuthScopes, []string{})
 
 	r = r.WithContext(ctx)
 
+	// Parameter object where we will unmarshal all parameters from the context
+	var params GetApiV1AgentsParams
+
+	// ------------- Optional query parameter "application_id" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "application_id", r.URL.Query(), &params.ApplicationId, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "application_id"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "application_id", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "environment_id" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "environment_id", r.URL.Query(), &params.EnvironmentId, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "environment_id"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "environment_id", Err: err})
+		}
+		return
+	}
+
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		siw.Handler.GetApiV1Agents(w, r)
+		siw.Handler.GetApiV1Agents(w, r, params)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -3188,14 +3322,33 @@ func (siw *ServerInterfaceWrapper) GetApiV1AgentsAgentIDPolicy(w http.ResponseWr
 // GetApiV1AlertDeliveries operation middleware
 func (siw *ServerInterfaceWrapper) GetApiV1AlertDeliveries(w http.ResponseWriter, r *http.Request) {
 
+	var err error
+	_ = err
+
 	ctx := r.Context()
 
 	ctx = context.WithValue(ctx, BearerAuthScopes, []string{})
 
 	r = r.WithContext(ctx)
 
+	// Parameter object where we will unmarshal all parameters from the context
+	var params GetApiV1AlertDeliveriesParams
+
+	// ------------- Optional query parameter "application_id" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "application_id", r.URL.Query(), &params.ApplicationId, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "application_id"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "application_id", Err: err})
+		}
+		return
+	}
+
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		siw.Handler.GetApiV1AlertDeliveries(w, r)
+		siw.Handler.GetApiV1AlertDeliveries(w, r, params)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -3208,14 +3361,33 @@ func (siw *ServerInterfaceWrapper) GetApiV1AlertDeliveries(w http.ResponseWriter
 // GetApiV1AlertRules operation middleware
 func (siw *ServerInterfaceWrapper) GetApiV1AlertRules(w http.ResponseWriter, r *http.Request) {
 
+	var err error
+	_ = err
+
 	ctx := r.Context()
 
 	ctx = context.WithValue(ctx, BearerAuthScopes, []string{})
 
 	r = r.WithContext(ctx)
 
+	// Parameter object where we will unmarshal all parameters from the context
+	var params GetApiV1AlertRulesParams
+
+	// ------------- Optional query parameter "application_id" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "application_id", r.URL.Query(), &params.ApplicationId, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "application_id"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "application_id", Err: err})
+		}
+		return
+	}
+
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		siw.Handler.GetApiV1AlertRules(w, r)
+		siw.Handler.GetApiV1AlertRules(w, r, params)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -3332,14 +3504,46 @@ func (siw *ServerInterfaceWrapper) GetApiV1AnalyticsObservability(w http.Respons
 // GetApiV1AnalyticsOverview operation middleware
 func (siw *ServerInterfaceWrapper) GetApiV1AnalyticsOverview(w http.ResponseWriter, r *http.Request) {
 
+	var err error
+	_ = err
+
 	ctx := r.Context()
 
 	ctx = context.WithValue(ctx, BearerAuthScopes, []string{})
 
 	r = r.WithContext(ctx)
 
+	// Parameter object where we will unmarshal all parameters from the context
+	var params GetApiV1AnalyticsOverviewParams
+
+	// ------------- Optional query parameter "application_id" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "application_id", r.URL.Query(), &params.ApplicationId, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "application_id"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "application_id", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "environment_id" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "environment_id", r.URL.Query(), &params.EnvironmentId, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "environment_id"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "environment_id", Err: err})
+		}
+		return
+	}
+
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		siw.Handler.GetApiV1AnalyticsOverview(w, r)
+		siw.Handler.GetApiV1AnalyticsOverview(w, r, params)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -3473,6 +3677,88 @@ func (siw *ServerInterfaceWrapper) PostApiV1ApplicationsAppIDEnvironments(w http
 	handler.ServeHTTP(w, r)
 }
 
+// GetApiV1ApplicationsAppIDEnvironmentsEnvIDSettings operation middleware
+func (siw *ServerInterfaceWrapper) GetApiV1ApplicationsAppIDEnvironmentsEnvIDSettings(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "appID" -------------
+	var appID AppID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "appID", chi.URLParam(r, "appID"), &appID, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "appID", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "envID" -------------
+	var envID EnvironmentID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "envID", chi.URLParam(r, "envID"), &envID, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "envID", Err: err})
+		return
+	}
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, BearerAuthScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetApiV1ApplicationsAppIDEnvironmentsEnvIDSettings(w, r, appID, envID)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// PutApiV1ApplicationsAppIDEnvironmentsEnvIDSettings operation middleware
+func (siw *ServerInterfaceWrapper) PutApiV1ApplicationsAppIDEnvironmentsEnvIDSettings(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "appID" -------------
+	var appID AppID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "appID", chi.URLParam(r, "appID"), &appID, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "appID", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "envID" -------------
+	var envID EnvironmentID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "envID", chi.URLParam(r, "envID"), &envID, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "envID", Err: err})
+		return
+	}
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, BearerAuthScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.PutApiV1ApplicationsAppIDEnvironmentsEnvIDSettings(w, r, appID, envID)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // PostApiV1ApplicationsAppIDSecretRotate operation middleware
 func (siw *ServerInterfaceWrapper) PostApiV1ApplicationsAppIDSecretRotate(w http.ResponseWriter, r *http.Request) {
 
@@ -3496,6 +3782,70 @@ func (siw *ServerInterfaceWrapper) PostApiV1ApplicationsAppIDSecretRotate(w http
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.PostApiV1ApplicationsAppIDSecretRotate(w, r, appID)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetApiV1ApplicationsAppIDSettings operation middleware
+func (siw *ServerInterfaceWrapper) GetApiV1ApplicationsAppIDSettings(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "appID" -------------
+	var appID AppID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "appID", chi.URLParam(r, "appID"), &appID, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "appID", Err: err})
+		return
+	}
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, BearerAuthScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetApiV1ApplicationsAppIDSettings(w, r, appID)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// PutApiV1ApplicationsAppIDSettings operation middleware
+func (siw *ServerInterfaceWrapper) PutApiV1ApplicationsAppIDSettings(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "appID" -------------
+	var appID AppID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "appID", chi.URLParam(r, "appID"), &appID, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "appID", Err: err})
+		return
+	}
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, BearerAuthScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.PutApiV1ApplicationsAppIDSettings(w, r, appID)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -4482,14 +4832,46 @@ func (siw *ServerInterfaceWrapper) GetApiV1DependenciesExport(w http.ResponseWri
 // GetApiV1DependenciesSummary operation middleware
 func (siw *ServerInterfaceWrapper) GetApiV1DependenciesSummary(w http.ResponseWriter, r *http.Request) {
 
+	var err error
+	_ = err
+
 	ctx := r.Context()
 
 	ctx = context.WithValue(ctx, BearerAuthScopes, []string{})
 
 	r = r.WithContext(ctx)
 
+	// Parameter object where we will unmarshal all parameters from the context
+	var params GetApiV1DependenciesSummaryParams
+
+	// ------------- Optional query parameter "application_id" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "application_id", r.URL.Query(), &params.ApplicationId, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "application_id"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "application_id", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "agent_id" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "agent_id", r.URL.Query(), &params.AgentId, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "agent_id"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "agent_id", Err: err})
+		}
+		return
+	}
+
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		siw.Handler.GetApiV1DependenciesSummary(w, r)
+		siw.Handler.GetApiV1DependenciesSummary(w, r, params)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -6521,7 +6903,19 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 		r.Post(options.BaseURL+"/api/v1/applications/{appID}/environments", wrapper.PostApiV1ApplicationsAppIDEnvironments)
 	})
 	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/api/v1/applications/{appID}/environments/{envID}/settings", wrapper.GetApiV1ApplicationsAppIDEnvironmentsEnvIDSettings)
+	})
+	r.Group(func(r chi.Router) {
+		r.Put(options.BaseURL+"/api/v1/applications/{appID}/environments/{envID}/settings", wrapper.PutApiV1ApplicationsAppIDEnvironmentsEnvIDSettings)
+	})
+	r.Group(func(r chi.Router) {
 		r.Post(options.BaseURL+"/api/v1/applications/{appID}/secret/rotate", wrapper.PostApiV1ApplicationsAppIDSecretRotate)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/api/v1/applications/{appID}/settings", wrapper.GetApiV1ApplicationsAppIDSettings)
+	})
+	r.Group(func(r chi.Router) {
+		r.Put(options.BaseURL+"/api/v1/applications/{appID}/settings", wrapper.PutApiV1ApplicationsAppIDSettings)
 	})
 	r.Group(func(r chi.Router) {
 		r.Get(options.BaseURL+"/api/v1/audit-logs", wrapper.GetApiV1AuditLogs)
@@ -6739,6 +7133,7 @@ func (response PostApiV1AgentArtifacts201JSONResponse) VisitPostApiV1AgentArtifa
 }
 
 type GetApiV1AgentsRequestObject struct {
+	Params GetApiV1AgentsParams
 }
 
 type GetApiV1AgentsResponseObject interface {
@@ -6920,6 +7315,7 @@ func (response GetApiV1AgentsAgentIDPolicy200JSONResponse) VisitGetApiV1AgentsAg
 }
 
 type GetApiV1AlertDeliveriesRequestObject struct {
+	Params GetApiV1AlertDeliveriesParams
 }
 
 type GetApiV1AlertDeliveriesResponseObject interface {
@@ -6941,6 +7337,7 @@ func (response GetApiV1AlertDeliveries200JSONResponse) VisitGetApiV1AlertDeliver
 }
 
 type GetApiV1AlertRulesRequestObject struct {
+	Params GetApiV1AlertRulesParams
 }
 
 type GetApiV1AlertRulesResponseObject interface {
@@ -7029,6 +7426,7 @@ func (response GetApiV1AnalyticsObservability200JSONResponse) VisitGetApiV1Analy
 }
 
 type GetApiV1AnalyticsOverviewRequestObject struct {
+	Params GetApiV1AnalyticsOverviewParams
 }
 
 type GetApiV1AnalyticsOverviewResponseObject interface {
@@ -7152,6 +7550,53 @@ func (response PostApiV1ApplicationsAppIDEnvironments201JSONResponse) VisitPostA
 	return err
 }
 
+type GetApiV1ApplicationsAppIDEnvironmentsEnvIDSettingsRequestObject struct {
+	AppID AppID         `json:"appID"`
+	EnvID EnvironmentID `json:"envID"`
+}
+
+type GetApiV1ApplicationsAppIDEnvironmentsEnvIDSettingsResponseObject interface {
+	VisitGetApiV1ApplicationsAppIDEnvironmentsEnvIDSettingsResponse(w http.ResponseWriter) error
+}
+
+type GetApiV1ApplicationsAppIDEnvironmentsEnvIDSettings200JSONResponse ApplicationSettingList
+
+func (response GetApiV1ApplicationsAppIDEnvironmentsEnvIDSettings200JSONResponse) VisitGetApiV1ApplicationsAppIDEnvironmentsEnvIDSettingsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PutApiV1ApplicationsAppIDEnvironmentsEnvIDSettingsRequestObject struct {
+	AppID AppID         `json:"appID"`
+	EnvID EnvironmentID `json:"envID"`
+	Body  *PutApiV1ApplicationsAppIDEnvironmentsEnvIDSettingsJSONRequestBody
+}
+
+type PutApiV1ApplicationsAppIDEnvironmentsEnvIDSettingsResponseObject interface {
+	VisitPutApiV1ApplicationsAppIDEnvironmentsEnvIDSettingsResponse(w http.ResponseWriter) error
+}
+
+type PutApiV1ApplicationsAppIDEnvironmentsEnvIDSettings200JSONResponse ApplicationSetting
+
+func (response PutApiV1ApplicationsAppIDEnvironmentsEnvIDSettings200JSONResponse) VisitPutApiV1ApplicationsAppIDEnvironmentsEnvIDSettingsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type PostApiV1ApplicationsAppIDSecretRotateRequestObject struct {
 	AppID AppID `json:"appID"`
 }
@@ -7163,6 +7608,51 @@ type PostApiV1ApplicationsAppIDSecretRotateResponseObject interface {
 type PostApiV1ApplicationsAppIDSecretRotate200JSONResponse Application
 
 func (response PostApiV1ApplicationsAppIDSecretRotate200JSONResponse) VisitPostApiV1ApplicationsAppIDSecretRotateResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetApiV1ApplicationsAppIDSettingsRequestObject struct {
+	AppID AppID `json:"appID"`
+}
+
+type GetApiV1ApplicationsAppIDSettingsResponseObject interface {
+	VisitGetApiV1ApplicationsAppIDSettingsResponse(w http.ResponseWriter) error
+}
+
+type GetApiV1ApplicationsAppIDSettings200JSONResponse ApplicationSettingList
+
+func (response GetApiV1ApplicationsAppIDSettings200JSONResponse) VisitGetApiV1ApplicationsAppIDSettingsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PutApiV1ApplicationsAppIDSettingsRequestObject struct {
+	AppID AppID `json:"appID"`
+	Body  *PutApiV1ApplicationsAppIDSettingsJSONRequestBody
+}
+
+type PutApiV1ApplicationsAppIDSettingsResponseObject interface {
+	VisitPutApiV1ApplicationsAppIDSettingsResponse(w http.ResponseWriter) error
+}
+
+type PutApiV1ApplicationsAppIDSettings200JSONResponse ApplicationSetting
+
+func (response PutApiV1ApplicationsAppIDSettings200JSONResponse) VisitPutApiV1ApplicationsAppIDSettingsResponse(w http.ResponseWriter) error {
 
 	var buf bytes.Buffer
 	if err := json.NewEncoder(&buf).Encode(response); err != nil {
@@ -7577,6 +8067,7 @@ func (response GetApiV1DependenciesExport200JSONResponse) VisitGetApiV1Dependenc
 }
 
 type GetApiV1DependenciesSummaryRequestObject struct {
+	Params GetApiV1DependenciesSummaryParams
 }
 
 type GetApiV1DependenciesSummaryResponseObject interface {
@@ -8472,8 +8963,20 @@ type StrictServerInterface interface {
 	// (POST /api/v1/applications/{appID}/environments)
 	PostApiV1ApplicationsAppIDEnvironments(ctx context.Context, request PostApiV1ApplicationsAppIDEnvironmentsRequestObject) (PostApiV1ApplicationsAppIDEnvironmentsResponseObject, error)
 
+	// (GET /api/v1/applications/{appID}/environments/{envID}/settings)
+	GetApiV1ApplicationsAppIDEnvironmentsEnvIDSettings(ctx context.Context, request GetApiV1ApplicationsAppIDEnvironmentsEnvIDSettingsRequestObject) (GetApiV1ApplicationsAppIDEnvironmentsEnvIDSettingsResponseObject, error)
+
+	// (PUT /api/v1/applications/{appID}/environments/{envID}/settings)
+	PutApiV1ApplicationsAppIDEnvironmentsEnvIDSettings(ctx context.Context, request PutApiV1ApplicationsAppIDEnvironmentsEnvIDSettingsRequestObject) (PutApiV1ApplicationsAppIDEnvironmentsEnvIDSettingsResponseObject, error)
+
 	// (POST /api/v1/applications/{appID}/secret/rotate)
 	PostApiV1ApplicationsAppIDSecretRotate(ctx context.Context, request PostApiV1ApplicationsAppIDSecretRotateRequestObject) (PostApiV1ApplicationsAppIDSecretRotateResponseObject, error)
+
+	// (GET /api/v1/applications/{appID}/settings)
+	GetApiV1ApplicationsAppIDSettings(ctx context.Context, request GetApiV1ApplicationsAppIDSettingsRequestObject) (GetApiV1ApplicationsAppIDSettingsResponseObject, error)
+
+	// (PUT /api/v1/applications/{appID}/settings)
+	PutApiV1ApplicationsAppIDSettings(ctx context.Context, request PutApiV1ApplicationsAppIDSettingsRequestObject) (PutApiV1ApplicationsAppIDSettingsResponseObject, error)
 
 	// (GET /api/v1/audit-logs)
 	GetApiV1AuditLogs(ctx context.Context, request GetApiV1AuditLogsRequestObject) (GetApiV1AuditLogsResponseObject, error)
@@ -8729,8 +9232,10 @@ func (sh *strictHandler) PostApiV1AgentArtifacts(w http.ResponseWriter, r *http.
 }
 
 // GetApiV1Agents operation middleware
-func (sh *strictHandler) GetApiV1Agents(w http.ResponseWriter, r *http.Request) {
+func (sh *strictHandler) GetApiV1Agents(w http.ResponseWriter, r *http.Request, params GetApiV1AgentsParams) {
 	var request GetApiV1AgentsRequestObject
+
+	request.Params = params
 
 	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
 		return sh.ssi.GetApiV1Agents(ctx, request.(GetApiV1AgentsRequestObject))
@@ -8970,8 +9475,10 @@ func (sh *strictHandler) GetApiV1AgentsAgentIDPolicy(w http.ResponseWriter, r *h
 }
 
 // GetApiV1AlertDeliveries operation middleware
-func (sh *strictHandler) GetApiV1AlertDeliveries(w http.ResponseWriter, r *http.Request) {
+func (sh *strictHandler) GetApiV1AlertDeliveries(w http.ResponseWriter, r *http.Request, params GetApiV1AlertDeliveriesParams) {
 	var request GetApiV1AlertDeliveriesRequestObject
+
+	request.Params = params
 
 	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
 		return sh.ssi.GetApiV1AlertDeliveries(ctx, request.(GetApiV1AlertDeliveriesRequestObject))
@@ -8994,8 +9501,10 @@ func (sh *strictHandler) GetApiV1AlertDeliveries(w http.ResponseWriter, r *http.
 }
 
 // GetApiV1AlertRules operation middleware
-func (sh *strictHandler) GetApiV1AlertRules(w http.ResponseWriter, r *http.Request) {
+func (sh *strictHandler) GetApiV1AlertRules(w http.ResponseWriter, r *http.Request, params GetApiV1AlertRulesParams) {
 	var request GetApiV1AlertRulesRequestObject
+
+	request.Params = params
 
 	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
 		return sh.ssi.GetApiV1AlertRules(ctx, request.(GetApiV1AlertRulesRequestObject))
@@ -9108,8 +9617,10 @@ func (sh *strictHandler) GetApiV1AnalyticsObservability(w http.ResponseWriter, r
 }
 
 // GetApiV1AnalyticsOverview operation middleware
-func (sh *strictHandler) GetApiV1AnalyticsOverview(w http.ResponseWriter, r *http.Request) {
+func (sh *strictHandler) GetApiV1AnalyticsOverview(w http.ResponseWriter, r *http.Request, params GetApiV1AnalyticsOverviewParams) {
 	var request GetApiV1AnalyticsOverviewRequestObject
+
+	request.Params = params
 
 	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
 		return sh.ssi.GetApiV1AnalyticsOverview(ctx, request.(GetApiV1AnalyticsOverviewRequestObject))
@@ -9269,6 +9780,67 @@ func (sh *strictHandler) PostApiV1ApplicationsAppIDEnvironments(w http.ResponseW
 	}
 }
 
+// GetApiV1ApplicationsAppIDEnvironmentsEnvIDSettings operation middleware
+func (sh *strictHandler) GetApiV1ApplicationsAppIDEnvironmentsEnvIDSettings(w http.ResponseWriter, r *http.Request, appID AppID, envID EnvironmentID) {
+	var request GetApiV1ApplicationsAppIDEnvironmentsEnvIDSettingsRequestObject
+
+	request.AppID = appID
+	request.EnvID = envID
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetApiV1ApplicationsAppIDEnvironmentsEnvIDSettings(ctx, request.(GetApiV1ApplicationsAppIDEnvironmentsEnvIDSettingsRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetApiV1ApplicationsAppIDEnvironmentsEnvIDSettings")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetApiV1ApplicationsAppIDEnvironmentsEnvIDSettingsResponseObject); ok {
+		if err := validResponse.VisitGetApiV1ApplicationsAppIDEnvironmentsEnvIDSettingsResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// PutApiV1ApplicationsAppIDEnvironmentsEnvIDSettings operation middleware
+func (sh *strictHandler) PutApiV1ApplicationsAppIDEnvironmentsEnvIDSettings(w http.ResponseWriter, r *http.Request, appID AppID, envID EnvironmentID) {
+	var request PutApiV1ApplicationsAppIDEnvironmentsEnvIDSettingsRequestObject
+
+	request.AppID = appID
+	request.EnvID = envID
+
+	var body PutApiV1ApplicationsAppIDEnvironmentsEnvIDSettingsJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.PutApiV1ApplicationsAppIDEnvironmentsEnvIDSettings(ctx, request.(PutApiV1ApplicationsAppIDEnvironmentsEnvIDSettingsRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "PutApiV1ApplicationsAppIDEnvironmentsEnvIDSettings")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(PutApiV1ApplicationsAppIDEnvironmentsEnvIDSettingsResponseObject); ok {
+		if err := validResponse.VisitPutApiV1ApplicationsAppIDEnvironmentsEnvIDSettingsResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
 // PostApiV1ApplicationsAppIDSecretRotate operation middleware
 func (sh *strictHandler) PostApiV1ApplicationsAppIDSecretRotate(w http.ResponseWriter, r *http.Request, appID AppID) {
 	var request PostApiV1ApplicationsAppIDSecretRotateRequestObject
@@ -9288,6 +9860,65 @@ func (sh *strictHandler) PostApiV1ApplicationsAppIDSecretRotate(w http.ResponseW
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(PostApiV1ApplicationsAppIDSecretRotateResponseObject); ok {
 		if err := validResponse.VisitPostApiV1ApplicationsAppIDSecretRotateResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetApiV1ApplicationsAppIDSettings operation middleware
+func (sh *strictHandler) GetApiV1ApplicationsAppIDSettings(w http.ResponseWriter, r *http.Request, appID AppID) {
+	var request GetApiV1ApplicationsAppIDSettingsRequestObject
+
+	request.AppID = appID
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetApiV1ApplicationsAppIDSettings(ctx, request.(GetApiV1ApplicationsAppIDSettingsRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetApiV1ApplicationsAppIDSettings")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetApiV1ApplicationsAppIDSettingsResponseObject); ok {
+		if err := validResponse.VisitGetApiV1ApplicationsAppIDSettingsResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// PutApiV1ApplicationsAppIDSettings operation middleware
+func (sh *strictHandler) PutApiV1ApplicationsAppIDSettings(w http.ResponseWriter, r *http.Request, appID AppID) {
+	var request PutApiV1ApplicationsAppIDSettingsRequestObject
+
+	request.AppID = appID
+
+	var body PutApiV1ApplicationsAppIDSettingsJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.PutApiV1ApplicationsAppIDSettings(ctx, request.(PutApiV1ApplicationsAppIDSettingsRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "PutApiV1ApplicationsAppIDSettings")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(PutApiV1ApplicationsAppIDSettingsResponseObject); ok {
+		if err := validResponse.VisitPutApiV1ApplicationsAppIDSettingsResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {
@@ -9794,8 +10425,10 @@ func (sh *strictHandler) GetApiV1DependenciesExport(w http.ResponseWriter, r *ht
 }
 
 // GetApiV1DependenciesSummary operation middleware
-func (sh *strictHandler) GetApiV1DependenciesSummary(w http.ResponseWriter, r *http.Request) {
+func (sh *strictHandler) GetApiV1DependenciesSummary(w http.ResponseWriter, r *http.Request, params GetApiV1DependenciesSummaryParams) {
 	var request GetApiV1DependenciesSummaryRequestObject
+
+	request.Params = params
 
 	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
 		return sh.ssi.GetApiV1DependenciesSummary(ctx, request.(GetApiV1DependenciesSummaryRequestObject))

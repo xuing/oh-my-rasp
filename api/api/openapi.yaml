@@ -185,6 +185,62 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Environment"
+  /api/v1/applications/{appID}/settings:
+    get:
+      parameters:
+        - $ref: "#/components/parameters/AppID"
+      responses:
+        "200":
+          description: Effective application settings.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApplicationSettingList"
+    put:
+      parameters:
+        - $ref: "#/components/parameters/AppID"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ApplicationSettingUpdate"
+      responses:
+        "200":
+          description: Application setting upserted.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApplicationSetting"
+  /api/v1/applications/{appID}/environments/{envID}/settings:
+    get:
+      parameters:
+        - $ref: "#/components/parameters/AppID"
+        - $ref: "#/components/parameters/EnvironmentID"
+      responses:
+        "200":
+          description: Effective environment override settings.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApplicationSettingList"
+    put:
+      parameters:
+        - $ref: "#/components/parameters/AppID"
+        - $ref: "#/components/parameters/EnvironmentID"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ApplicationSettingUpdate"
+      responses:
+        "200":
+          description: Environment setting upserted.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApplicationSetting"
   /api/v1/applications/{appID}/secret/rotate:
     post:
       parameters:
@@ -419,6 +475,15 @@ paths:
                 $ref: "#/components/schemas/DaemonWorkload"
   /api/v1/agents:
     get:
+      parameters:
+        - name: application_id
+          in: query
+          required: false
+          schema: { type: string }
+        - name: environment_id
+          in: query
+          required: false
+          schema: { type: string }
       responses:
         "200":
           description: Agent inventory.
@@ -1026,6 +1091,9 @@ paths:
                 $ref: "#/components/schemas/DependencyList"
   /api/v1/dependencies/summary:
     get:
+      parameters:
+        - $ref: "#/components/parameters/DependencyApplicationID"
+        - $ref: "#/components/parameters/DependencyAgentID"
       responses:
         "200":
           description: Dependency aggregate summary.
@@ -1078,6 +1146,15 @@ paths:
                 $ref: "#/components/schemas/BaselineFinding"
   /api/v1/analytics/overview:
     get:
+      parameters:
+        - name: application_id
+          in: query
+          required: false
+          schema: { type: string }
+        - name: environment_id
+          in: query
+          required: false
+          schema: { type: string }
       responses:
         "200":
           description: Aggregated control-plane summary.
@@ -1167,6 +1244,11 @@ paths:
                 $ref: "#/components/schemas/MaintenanceCleanupReport"
   /api/v1/alert-rules:
     get:
+      parameters:
+        - name: application_id
+          in: query
+          required: false
+          schema: { type: string }
       responses:
         "200":
           description: Alert rule list.
@@ -1210,6 +1292,11 @@ paths:
                 $ref: "#/components/schemas/AlertRule"
   /api/v1/alert-deliveries:
     get:
+      parameters:
+        - name: application_id
+          in: query
+          required: false
+          schema: { type: string }
       responses:
         "200":
           description: Alert delivery history.
@@ -1234,6 +1321,11 @@ components:
   parameters:
     AppID:
       name: appID
+      in: path
+      required: true
+      schema: { type: string }
+    EnvironmentID:
+      name: envID
       in: path
       required: true
       schema: { type: string }
@@ -1846,6 +1938,8 @@ components:
         canary_percent: { type: integer }
         created_at: { type: string, format: date-time }
         published_at: { type: string, format: date-time }
+        config:
+          $ref: "#/components/schemas/ApplicationConfig"
     Rule:
       type: object
       required: [id, name, hook, algorithm, action, severity, expression, tags, description]
@@ -2202,6 +2296,50 @@ components:
         value:
           type: object
           additionalProperties: true
+    ApplicationSettingList:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/ApplicationSetting"
+    ApplicationSetting:
+      type: object
+      required: [application_id, key, value, updated_at]
+      properties:
+        application_id: { type: string }
+        environment_id: { type: string }
+        key: { type: string }
+        value:
+          type: object
+          additionalProperties: true
+        updated_by: { type: string }
+        updated_at: { type: string, format: date-time }
+    ApplicationSettingUpdate:
+      type: object
+      required: [key, value]
+      properties:
+        key: { type: string }
+        value:
+          type: object
+          additionalProperties: true
+    ApplicationConfig:
+      type: object
+      required: [allowlist, hardening, alert_delivery, dependency_vulnerability_policy]
+      properties:
+        allowlist:
+          type: object
+          additionalProperties: true
+        hardening:
+          type: object
+          additionalProperties: true
+        alert_delivery:
+          type: object
+          additionalProperties: true
+        dependency_vulnerability_policy:
+          type: object
+          additionalProperties: true
     SystemVersion:
       type: object
       required: [component, version, commit, build_time, go_version]
@@ -2296,6 +2434,7 @@ components:
       required: [id, name, description, enabled, event_type, severity, condition, target, created_at, updated_at]
       properties:
         id: { type: string }
+        application_id: { type: string }
         name: { type: string }
         description: { type: string }
         enabled: { type: boolean }
@@ -2313,6 +2452,7 @@ components:
       type: object
       required: [name, enabled, event_type, severity, target]
       properties:
+        application_id: { type: string }
         name: { type: string }
         description: { type: string }
         enabled: { type: boolean }
@@ -2337,6 +2477,7 @@ components:
       required: [id, alert_rule_id, alert_rule_name, event_id, event_type, severity, target, status, attempts, created_at]
       properties:
         id: { type: string }
+        application_id: { type: string }
         alert_rule_id: { type: string }
         alert_rule_name: { type: string }
         event_id: { type: string }

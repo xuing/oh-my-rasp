@@ -172,6 +172,19 @@ func (s *Store) EnsureSeedData(ctx context.Context) error {
 			return err
 		}
 	}
+	for _, setting := range control.DefaultApplicationSettings(defaultAppID, "", s.now().UTC()) {
+		body, err := json.Marshal(setting.Value)
+		if err != nil {
+			return err
+		}
+		if _, err := s.db.ExecContext(ctx, `
+			INSERT INTO application_settings (application_id, environment_id, key, value, updated_by, updated_at)
+			VALUES ($1, NULLIF($2, ''), $3, $4::jsonb, $5, $6)
+			ON CONFLICT (application_id, key) WHERE environment_id IS NULL DO NOTHING
+		`, setting.ApplicationID, setting.EnvironmentID, setting.Key, string(body), defaultAdminID, setting.UpdatedAt.UTC()); err != nil {
+			return err
+		}
+	}
 	for _, alertRule := range control.DefaultAlertRules(s.now().UTC()) {
 		if _, err := s.db.ExecContext(ctx, `
 			INSERT INTO alert_rules (
@@ -470,6 +483,19 @@ func (s *Store) CreateApplication(ctx context.Context, actorID string, input con
 		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $8)
 	`, app.ID, s.organizationID, app.Name, app.Description, hashSecret(app.Secret), secretPreview(app.Secret), app.Secret, app.CreatedAt); err != nil {
 		return control.Application{}, mapConstraintError(err)
+	}
+	for _, setting := range control.DefaultApplicationSettings(app.ID, "", app.CreatedAt) {
+		body, err := json.Marshal(setting.Value)
+		if err != nil {
+			return control.Application{}, err
+		}
+		if _, err := tx.ExecContext(ctx, `
+			INSERT INTO application_settings (application_id, environment_id, key, value, updated_by, updated_at)
+			VALUES ($1, NULLIF($2, ''), $3, $4::jsonb, $5, $6)
+			ON CONFLICT (application_id, key) WHERE environment_id IS NULL DO NOTHING
+		`, setting.ApplicationID, setting.EnvironmentID, setting.Key, string(body), actorID, setting.UpdatedAt.UTC()); err != nil {
+			return control.Application{}, err
+		}
 	}
 	if err := s.audit(ctx, tx, actorID, "application.create", app.ID, map[string]any{"name": app.Name}); err != nil {
 		return control.Application{}, err
@@ -946,13 +972,28 @@ func (s *Store) daemonAccessToken(ctx context.Context, q queryer) (control.Daemo
 	return result, nil
 }
 
-func (s *Store) ListAgents(ctx context.Context) ([]control.Agent, error) {
-	rows, err := s.db.QueryContext(ctx, `
+func (s *Store) ListAgents(ctx context.Context, queries ...control.AgentQuery) ([]control.Agent, error) {
+	query := control.NormalizeAgentQuery(firstAgentQuery(queries))
+	sqlQuery := `
 		SELECT id, application_id, environment_id, hostname, COALESCE(alias, ''), runtime, version, status, last_seen_at,
 			COALESCE(policy_id, ''), COALESCE(policy_version, 0), ignored_at
 		FROM agents
-		ORDER BY last_seen_at DESC
-	`)
+	`
+	args := []any{}
+	where := []string{}
+	if query.ApplicationID != "" {
+		args = append(args, query.ApplicationID)
+		where = append(where, fmt.Sprintf("application_id = $%d", len(args)))
+	}
+	if query.EnvironmentID != "" {
+		args = append(args, query.EnvironmentID)
+		where = append(where, fmt.Sprintf("environment_id = $%d", len(args)))
+	}
+	if len(where) > 0 {
+		sqlQuery += " WHERE " + strings.Join(where, " AND ")
+	}
+	sqlQuery += " ORDER BY last_seen_at DESC"
+	rows, err := s.db.QueryContext(ctx, sqlQuery, args...)
 	if err != nil {
 		return nil, err
 	}
@@ -1240,20 +1281,26 @@ func (s *Store) HeartbeatAgent(ctx context.Context, agentID string, status strin
 func (s *Store) GetAgentPolicy(ctx context.Context, agentID string) (control.PolicyVersion, error) {
 	if s.agentPolicyCache != nil {
 		policy, found, err := s.agentPolicyCache.GetAgentPolicy(ctx, agentID)
-		if err == nil && found {
+		if err == nil && found && policy.Config != nil {
 			return policy, nil
 		}
 	}
 	var policyID string
 	var policyVersion int
+	var applicationID string
+	var environmentID string
 	if err := s.db.QueryRowContext(ctx, `
-		SELECT COALESCE(policy_id, ''), COALESCE(policy_version, 0)
+		SELECT application_id, environment_id, COALESCE(policy_id, ''), COALESCE(policy_version, 0)
 		FROM agents
 		WHERE id = $1
-	`, agentID).Scan(&policyID, &policyVersion); err != nil {
+	`, agentID).Scan(&applicationID, &environmentID, &policyID, &policyVersion); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return control.PolicyVersion{}, control.ErrNotFound
 		}
+		return control.PolicyVersion{}, err
+	}
+	config, err := s.ResolveApplicationConfig(ctx, applicationID, environmentID)
+	if err != nil {
 		return control.PolicyVersion{}, err
 	}
 	if policyID == "" || policyVersion == 0 {
@@ -1266,7 +1313,7 @@ func (s *Store) GetAgentPolicy(ctx context.Context, agentID string) (control.Pol
 		}
 	}
 	if policyID == "" || policyVersion == 0 {
-		empty := control.PolicyVersion{Version: 0, Status: "empty", Rules: []control.Rule{}}
+		empty := control.PolicyVersion{Version: 0, Status: "empty", Rules: []control.Rule{}, Config: &config}
 		if s.agentPolicyCache != nil {
 			_ = s.agentPolicyCache.SetAgentPolicy(ctx, agentID, empty, time.Minute)
 		}
@@ -1274,11 +1321,14 @@ func (s *Store) GetAgentPolicy(ctx context.Context, agentID string) (control.Pol
 	}
 	version, err := s.activePolicyVersion(ctx, policyID, policyVersion)
 	if errors.Is(err, sql.ErrNoRows) {
-		empty := control.PolicyVersion{Version: 0, Status: "empty", Rules: []control.Rule{}}
+		empty := control.PolicyVersion{Version: 0, Status: "empty", Rules: []control.Rule{}, Config: &config}
 		if s.agentPolicyCache != nil {
 			_ = s.agentPolicyCache.SetAgentPolicy(ctx, agentID, empty, time.Minute)
 		}
 		return empty, nil
+	}
+	if err == nil {
+		version.Config = &config
 	}
 	if err == nil && s.agentPolicyCache != nil {
 		_ = s.agentPolicyCache.SetAgentPolicy(ctx, agentID, version, time.Minute)
@@ -1757,7 +1807,7 @@ func (s *Store) IngestEvent(ctx context.Context, event control.SecurityEvent) (c
 	`, event.ID, event.Type, event.ApplicationID, event.EnvironmentID, event.AgentID, event.PolicyID, event.PolicyVersion, event.Hook, event.Algorithm, event.Severity, event.Message, string(attrs), event.OccurredAt.UTC(), s.now().UTC()); err != nil {
 		return control.SecurityEvent{}, mapConstraintError(err)
 	}
-	rules, err := s.listEnabledAlertRulesForEvent(ctx, tx, event.Type)
+	rules, err := s.listEnabledAlertRulesForEvent(ctx, tx, event.Type, event.ApplicationID)
 	if err != nil {
 		return control.SecurityEvent{}, err
 	}
@@ -1773,12 +1823,12 @@ func (s *Store) IngestEvent(ctx context.Context, event control.SecurityEvent) (c
 		}
 		if _, err := tx.ExecContext(ctx, `
 			INSERT INTO alert_deliveries (
-				id, organization_id, alert_rule_id, alert_rule_name, event_id, event_type,
+				id, organization_id, application_id, alert_rule_id, alert_rule_name, event_id, event_type,
 				severity, target, status, attempts, last_error, created_at, delivered_at
 			)
-			VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
+			VALUES ($1, $2, NULLIF($3, ''), $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
 			ON CONFLICT (alert_rule_id, event_id) DO NOTHING
-			`, delivery.ID, s.organizationID, delivery.AlertRuleID, delivery.AlertRuleName, delivery.EventID, delivery.EventType, delivery.Severity, delivery.Target, delivery.Status, delivery.Attempts, delivery.LastError, delivery.CreatedAt.UTC(), deliveredAt); err != nil {
+			`, delivery.ID, s.organizationID, delivery.ApplicationID, delivery.AlertRuleID, delivery.AlertRuleName, delivery.EventID, delivery.EventType, delivery.Severity, delivery.Target, delivery.Status, delivery.Attempts, delivery.LastError, delivery.CreatedAt.UTC(), deliveredAt); err != nil {
 			return control.SecurityEvent{}, err
 		}
 	}
@@ -2175,40 +2225,45 @@ func (s *Store) ListDependencies(ctx context.Context, query control.DependencyQu
 	return dependencies, rows.Err()
 }
 
-func (s *Store) DependencySummary(ctx context.Context) (control.DependencySummary, error) {
+func (s *Store) DependencySummary(ctx context.Context, queries ...control.DependencyQuery) (control.DependencySummary, error) {
+	query := control.NormalizeDependencyQuery(firstDependencyQuery(queries))
 	summary := control.DependencySummary{
 		DependenciesByEcosystem:   map[string]int{},
 		VulnerabilitiesBySeverity: map[string]int{},
 	}
-	if err := s.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM dependency_inventory`).Scan(&summary.DependencyCount); err != nil {
+	where, args := dependencySummaryScopeWhere(query)
+	if err := s.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM dependency_inventory`+where, args...).Scan(&summary.DependencyCount); err != nil {
 		return control.DependencySummary{}, err
 	}
-	if err := s.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM dependency_inventory WHERE jsonb_array_length(vulnerabilities) > 0`).Scan(&summary.VulnerableDependencyCount); err != nil {
+	vulnerableWhere := whereClauseWith(where, "jsonb_array_length(vulnerabilities) > 0")
+	if err := s.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM dependency_inventory`+vulnerableWhere, args...).Scan(&summary.VulnerableDependencyCount); err != nil {
 		return control.DependencySummary{}, err
 	}
+	knownExploitedWhere := whereClauseWith(where, "COALESCE((vulnerability->>'known_exploited')::boolean, false)")
 	if err := s.db.QueryRowContext(ctx, `
 		SELECT COUNT(*)
 		FROM dependency_inventory, jsonb_array_elements(vulnerabilities) AS vulnerability
-		WHERE COALESCE((vulnerability->>'known_exploited')::boolean, false)
-	`).Scan(&summary.KnownExploitedCount); err != nil {
+	`+knownExploitedWhere, args...).Scan(&summary.KnownExploitedCount); err != nil {
 		return control.DependencySummary{}, err
 	}
+	ecosystemWhere := whereClauseWith(where, "ecosystem <> ''")
 	if err := scanCounts(ctx, s.db, `
 		SELECT ecosystem, COUNT(*)
 		FROM dependency_inventory
-		WHERE ecosystem <> ''
+	`+ecosystemWhere+`
 		GROUP BY ecosystem
 		ORDER BY COUNT(*) DESC, ecosystem ASC
-	`, summary.DependenciesByEcosystem); err != nil {
+	`, summary.DependenciesByEcosystem, args...); err != nil {
 		return control.DependencySummary{}, err
 	}
+	vulnerabilityWhere := whereClauseWith(where, "COALESCE(vulnerability->>'severity', '') <> ''")
 	if err := scanCounts(ctx, s.db, `
 		SELECT vulnerability->>'severity', COUNT(*)
 		FROM dependency_inventory, jsonb_array_elements(vulnerabilities) AS vulnerability
-		WHERE COALESCE(vulnerability->>'severity', '') <> ''
+	`+vulnerabilityWhere+`
 		GROUP BY vulnerability->>'severity'
 		ORDER BY COUNT(*) DESC, vulnerability->>'severity' ASC
-	`, summary.VulnerabilitiesBySeverity); err != nil {
+	`, summary.VulnerabilitiesBySeverity, args...); err != nil {
 		return control.DependencySummary{}, err
 	}
 	return summary, nil
@@ -2274,7 +2329,8 @@ func (s *Store) ListBaselineFindings(ctx context.Context, query control.Baseline
 	return findings, rows.Err()
 }
 
-func (s *Store) Overview(ctx context.Context) (control.Overview, error) {
+func (s *Store) Overview(ctx context.Context, queries ...control.OverviewQuery) (control.Overview, error) {
+	query := control.NormalizeOverviewQuery(firstOverviewQuery(queries))
 	overview := control.Overview{
 		EventsByType:       map[string]int{},
 		EventsBySeverity:   map[string]int{},
@@ -2283,34 +2339,43 @@ func (s *Store) Overview(ctx context.Context) (control.Overview, error) {
 		AttacksByAlgorithm: map[string]int{},
 		AttacksByUserAgent: map[string]int{},
 	}
-	if err := s.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM applications WHERE organization_id = $1 AND deleted_at IS NULL`, s.organizationID).Scan(&overview.ApplicationCount); err != nil {
+	applicationWhere := "WHERE organization_id = $1 AND deleted_at IS NULL"
+	applicationArgs := []any{s.organizationID}
+	if query.ApplicationID != "" {
+		applicationArgs = append(applicationArgs, query.ApplicationID)
+		applicationWhere += fmt.Sprintf(" AND id = $%d", len(applicationArgs))
+	}
+	if err := s.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM applications `+applicationWhere, applicationArgs...).Scan(&overview.ApplicationCount); err != nil {
 		return control.Overview{}, err
 	}
-	if err := s.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM agents`).Scan(&overview.AgentCount); err != nil {
+	agentWhere, agentArgs := overviewAgentWhere(query)
+	if err := s.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM agents`+agentWhere, agentArgs...).Scan(&overview.AgentCount); err != nil {
 		return control.Overview{}, err
 	}
-	if err := s.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM agents WHERE status = 'online'`).Scan(&overview.OnlineAgents); err != nil {
+	if err := s.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM agents`+whereClauseWith(agentWhere, "status = 'online'"), agentArgs...).Scan(&overview.OnlineAgents); err != nil {
 		return control.Overview{}, err
 	}
-	if err := s.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM event_ingest_outbox WHERE deleted_at IS NULL`).Scan(&overview.EventCount); err != nil {
+	eventWhere, eventArgs := overviewEventWhere(query)
+	activeEventWhere := whereClauseWith(eventWhere, "deleted_at IS NULL")
+	if err := s.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM event_ingest_outbox`+activeEventWhere, eventArgs...).Scan(&overview.EventCount); err != nil {
 		return control.Overview{}, err
 	}
-	if err := scanCounts(ctx, s.db, `SELECT type, COUNT(*) FROM event_ingest_outbox WHERE deleted_at IS NULL GROUP BY type`, overview.EventsByType); err != nil {
+	if err := scanCounts(ctx, s.db, `SELECT type, COUNT(*) FROM event_ingest_outbox`+activeEventWhere+` GROUP BY type`, overview.EventsByType, eventArgs...); err != nil {
 		return control.Overview{}, err
 	}
-	if err := scanCounts(ctx, s.db, `SELECT severity, COUNT(*) FROM event_ingest_outbox WHERE deleted_at IS NULL GROUP BY severity`, overview.EventsBySeverity); err != nil {
+	if err := scanCounts(ctx, s.db, `SELECT severity, COUNT(*) FROM event_ingest_outbox`+activeEventWhere+` GROUP BY severity`, overview.EventsBySeverity, eventArgs...); err != nil {
 		return control.Overview{}, err
 	}
-	if err := s.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM event_ingest_outbox WHERE deleted_at IS NULL AND type = 'crash'`).Scan(&overview.CrashCount); err != nil {
+	if err := s.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM event_ingest_outbox`+whereClauseWith(activeEventWhere, "type = 'crash'"), eventArgs...).Scan(&overview.CrashCount); err != nil {
 		return control.Overview{}, err
 	}
 	attackTrend, err := scanTrendPoints(ctx, s.db, `
 		SELECT date_trunc('day', occurred_at) AS bucket_start, COUNT(*)
 		FROM event_ingest_outbox
-		WHERE deleted_at IS NULL AND type = 'attack'
+	`+whereClauseWith(activeEventWhere, "type = 'attack'")+`
 		GROUP BY bucket_start
 		ORDER BY bucket_start ASC
-	`)
+	`, eventArgs...)
 	if err != nil {
 		return control.Overview{}, err
 	}
@@ -2318,21 +2383,21 @@ func (s *Store) Overview(ctx context.Context) (control.Overview, error) {
 	if err := scanCounts(ctx, s.db, `
 		SELECT hook, COUNT(*)
 		FROM event_ingest_outbox
-		WHERE deleted_at IS NULL AND type = 'attack' AND hook <> ''
+	`+whereClauseWith(activeEventWhere, "type = 'attack' AND hook <> ''")+`
 		GROUP BY hook
 		ORDER BY COUNT(*) DESC, hook ASC
 		LIMIT 10
-	`, overview.AttacksByHook); err != nil {
+	`, overview.AttacksByHook, eventArgs...); err != nil {
 		return control.Overview{}, err
 	}
 	if err := scanCounts(ctx, s.db, `
 		SELECT algorithm, COUNT(*)
 		FROM event_ingest_outbox
-		WHERE deleted_at IS NULL AND type = 'attack' AND algorithm <> ''
+	`+whereClauseWith(activeEventWhere, "type = 'attack' AND algorithm <> ''")+`
 		GROUP BY algorithm
 		ORDER BY COUNT(*) DESC, algorithm ASC
 		LIMIT 10
-	`, overview.AttacksByAlgorithm); err != nil {
+	`, overview.AttacksByAlgorithm, eventArgs...); err != nil {
 		return control.Overview{}, err
 	}
 	if err := scanCounts(ctx, s.db, `
@@ -2352,24 +2417,26 @@ func (s *Store) Overview(ctx context.Context) (control.Overview, error) {
 				'unknown'
 			) AS user_agent
 			FROM event_ingest_outbox
-			WHERE deleted_at IS NULL AND type = 'attack'
+	`+whereClauseWith(activeEventWhere, "type = 'attack'")+`
 		) AS user_agents
 		GROUP BY user_agent
 		ORDER BY COUNT(*) DESC, user_agent ASC
 		LIMIT 10
-	`, overview.AttacksByUserAgent); err != nil {
+	`, overview.AttacksByUserAgent, eventArgs...); err != nil {
 		return control.Overview{}, err
 	}
-	var deletedCount int
-	if err := s.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM event_ingest_outbox WHERE deleted_at IS NOT NULL`).Scan(&deletedCount); err != nil {
-		return control.Overview{}, err
-	}
-	if s.analytics != nil && deletedCount == 0 {
-		eventOverview, err := s.analytics.EventOverview(ctx)
-		if err == nil {
-			overview.EventCount = eventOverview.EventCount
-			overview.EventsByType = eventOverview.EventsByType
-			overview.EventsBySeverity = eventOverview.EventsBySeverity
+	if s.analytics != nil && query.ApplicationID == "" && query.EnvironmentID == "" {
+		var deletedCount int
+		if err := s.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM event_ingest_outbox WHERE deleted_at IS NOT NULL`).Scan(&deletedCount); err != nil {
+			return control.Overview{}, err
+		}
+		if deletedCount == 0 {
+			eventOverview, err := s.analytics.EventOverview(ctx)
+			if err == nil {
+				overview.EventCount = eventOverview.EventCount
+				overview.EventsByType = eventOverview.EventsByType
+				overview.EventsBySeverity = eventOverview.EventsBySeverity
+			}
 		}
 	}
 	return overview, nil
@@ -2447,6 +2514,160 @@ func (s *Store) UpsertSystemSetting(ctx context.Context, actorID string, setting
 		return control.SystemSetting{}, err
 	}
 	return updated, nil
+}
+
+func (s *Store) ListApplicationSettings(ctx context.Context, appID string, environmentID string) ([]control.ApplicationSetting, error) {
+	appID = strings.TrimSpace(appID)
+	environmentID = strings.TrimSpace(environmentID)
+	if appID == "" {
+		return nil, fmt.Errorf("%w: application id is required", control.ErrInvalid)
+	}
+	if err := s.validateApplicationSettingScope(ctx, s.db, appID, environmentID); err != nil {
+		return nil, err
+	}
+	settings := make([]control.ApplicationSetting, 0, len(control.MovedApplicationSettingKeys()))
+	for _, key := range control.MovedApplicationSettingKeys() {
+		setting, err := s.effectiveApplicationSetting(ctx, s.db, appID, environmentID, key)
+		if err != nil {
+			return nil, err
+		}
+		settings = append(settings, setting)
+	}
+	return settings, nil
+}
+
+func (s *Store) UpsertApplicationSetting(ctx context.Context, actorID string, setting control.ApplicationSetting) (control.ApplicationSetting, error) {
+	setting.ApplicationID = strings.TrimSpace(setting.ApplicationID)
+	setting.EnvironmentID = strings.TrimSpace(setting.EnvironmentID)
+	setting.Key = normalizeSettingKey(setting.Key)
+	if setting.ApplicationID == "" {
+		return control.ApplicationSetting{}, fmt.Errorf("%w: application id is required", control.ErrInvalid)
+	}
+	if !control.IsApplicationScopedSetting(setting.Key) {
+		return control.ApplicationSetting{}, fmt.Errorf("%w: setting key is not application-scoped", control.ErrInvalid)
+	}
+	if setting.Value == nil {
+		return control.ApplicationSetting{}, fmt.Errorf("%w: setting value is required", control.ErrInvalid)
+	}
+	body, err := json.Marshal(setting.Value)
+	if err != nil {
+		return control.ApplicationSetting{}, err
+	}
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return control.ApplicationSetting{}, err
+	}
+	defer rollback(tx)
+	if err := s.validateApplicationSettingScope(ctx, tx, setting.ApplicationID, setting.EnvironmentID); err != nil {
+		return control.ApplicationSetting{}, err
+	}
+	row := tx.QueryRowContext(ctx, `
+		INSERT INTO application_settings (application_id, environment_id, key, value, updated_by, updated_at)
+		VALUES ($1, NULLIF($2, ''), $3, $4::jsonb, NULLIF($5, ''), $6)
+		ON CONFLICT (application_id, key) WHERE environment_id IS NULL
+		DO UPDATE SET value = EXCLUDED.value, updated_by = EXCLUDED.updated_by, updated_at = EXCLUDED.updated_at
+		RETURNING application_id, COALESCE(environment_id, ''), key, value::text, COALESCE(updated_by, ''), updated_at
+	`, setting.ApplicationID, setting.EnvironmentID, setting.Key, string(body), actorID, s.now().UTC())
+	if setting.EnvironmentID != "" {
+		row = tx.QueryRowContext(ctx, `
+			INSERT INTO application_settings (application_id, environment_id, key, value, updated_by, updated_at)
+			VALUES ($1, $2, $3, $4::jsonb, NULLIF($5, ''), $6)
+			ON CONFLICT (application_id, environment_id, key) WHERE environment_id IS NOT NULL
+			DO UPDATE SET value = EXCLUDED.value, updated_by = EXCLUDED.updated_by, updated_at = EXCLUDED.updated_at
+			RETURNING application_id, COALESCE(environment_id, ''), key, value::text, COALESCE(updated_by, ''), updated_at
+		`, setting.ApplicationID, setting.EnvironmentID, setting.Key, string(body), actorID, s.now().UTC())
+	}
+	updated, err := scanApplicationSetting(row)
+	if err != nil {
+		return control.ApplicationSetting{}, err
+	}
+	if err := s.audit(ctx, tx, actorID, "application_settings.upsert", updated.ApplicationID, map[string]any{"environment_id": updated.EnvironmentID, "key": updated.Key}); err != nil {
+		return control.ApplicationSetting{}, err
+	}
+	if err := tx.Commit(); err != nil {
+		return control.ApplicationSetting{}, err
+	}
+	if s.agentPolicyCache != nil {
+		_ = s.agentPolicyCache.InvalidateAgentPolicies(ctx)
+	}
+	return updated, nil
+}
+
+func (s *Store) ResolveApplicationConfig(ctx context.Context, appID string, environmentID string) (control.ApplicationConfig, error) {
+	appID = strings.TrimSpace(appID)
+	environmentID = strings.TrimSpace(environmentID)
+	if appID == "" {
+		return control.ApplicationConfig{}, fmt.Errorf("%w: application id is required", control.ErrInvalid)
+	}
+	if err := s.validateApplicationSettingScope(ctx, s.db, appID, environmentID); err != nil {
+		return control.ApplicationConfig{}, err
+	}
+	settings := map[string]control.ApplicationSetting{}
+	for _, key := range control.MovedApplicationSettingKeys() {
+		setting, err := s.effectiveApplicationSetting(ctx, s.db, appID, environmentID, key)
+		if err != nil {
+			return control.ApplicationConfig{}, err
+		}
+		settings[key] = setting
+	}
+	return control.ApplicationConfigFromSettings(settings), nil
+}
+
+func (s *Store) validateApplicationSettingScope(ctx context.Context, q queryer, appID string, environmentID string) error {
+	exists, err := rowExists(ctx, q, `SELECT 1 FROM applications WHERE id = $1 AND organization_id = $2 AND deleted_at IS NULL`, appID, s.organizationID)
+	if err != nil {
+		return err
+	}
+	if !exists {
+		return control.ErrNotFound
+	}
+	if environmentID == "" {
+		return nil
+	}
+	exists, err = rowExists(ctx, q, `SELECT 1 FROM environments WHERE id = $1 AND application_id = $2`, environmentID, appID)
+	if err != nil {
+		return err
+	}
+	if !exists {
+		return control.ErrNotFound
+	}
+	return nil
+}
+
+func (s *Store) effectiveApplicationSetting(ctx context.Context, q queryer, appID string, environmentID string, key string) (control.ApplicationSetting, error) {
+	if environmentID != "" {
+		setting, err := s.applicationSettingByScope(ctx, q, appID, environmentID, key)
+		if err == nil {
+			return setting, nil
+		}
+		if !errors.Is(err, sql.ErrNoRows) {
+			return control.ApplicationSetting{}, err
+		}
+	}
+	setting, err := s.applicationSettingByScope(ctx, q, appID, "", key)
+	if err == nil {
+		return setting, nil
+	}
+	if errors.Is(err, sql.ErrNoRows) {
+		return control.DefaultApplicationSetting(appID, environmentID, key, s.now().UTC()), nil
+	}
+	return control.ApplicationSetting{}, err
+}
+
+func (s *Store) applicationSettingByScope(ctx context.Context, q queryer, appID string, environmentID string, key string) (control.ApplicationSetting, error) {
+	row := q.QueryRowContext(ctx, `
+		SELECT application_id, COALESCE(environment_id, ''), key, value::text, COALESCE(updated_by, ''), updated_at
+		FROM application_settings
+		WHERE application_id = $1 AND key = $2 AND environment_id IS NULL
+	`, appID, normalizeSettingKey(key))
+	if environmentID != "" {
+		row = q.QueryRowContext(ctx, `
+			SELECT application_id, COALESCE(environment_id, ''), key, value::text, COALESCE(updated_by, ''), updated_at
+			FROM application_settings
+			WHERE application_id = $1 AND key = $2 AND environment_id = $3
+		`, appID, normalizeSettingKey(key), environmentID)
+	}
+	return scanApplicationSetting(row)
 }
 
 func (s *Store) MaintenanceCleanup(ctx context.Context, actorID string, request control.MaintenanceCleanupRequest) (control.MaintenanceCleanupReport, error) {
@@ -2541,13 +2762,20 @@ func (s *Store) MaintenanceCleanup(ctx context.Context, actorID string, request 
 	return report, nil
 }
 
-func (s *Store) ListAlertRules(ctx context.Context) ([]control.AlertRule, error) {
-	rows, err := s.db.QueryContext(ctx, `
-		SELECT id, name, description, enabled, event_type, severity, condition, target, created_at, updated_at
+func (s *Store) ListAlertRules(ctx context.Context, queries ...control.AlertRuleQuery) ([]control.AlertRule, error) {
+	query := firstAlertRuleQuery(queries)
+	sqlQuery := `
+		SELECT id, COALESCE(application_id, ''), name, description, enabled, event_type, severity, condition, target, created_at, updated_at
 		FROM alert_rules
 		WHERE organization_id = $1
-		ORDER BY name
-	`, s.organizationID)
+	`
+	args := []any{s.organizationID}
+	if query.ApplicationID != "" {
+		args = append(args, strings.TrimSpace(query.ApplicationID))
+		sqlQuery += fmt.Sprintf(" AND (application_id IS NULL OR application_id = $%d)", len(args))
+	}
+	sqlQuery += " ORDER BY name"
+	rows, err := s.db.QueryContext(ctx, sqlQuery, args...)
 	if err != nil {
 		return nil, err
 	}
@@ -2574,14 +2802,23 @@ func (s *Store) CreateAlertRule(ctx context.Context, actorID string, input contr
 		return control.AlertRule{}, err
 	}
 	defer rollback(tx)
+	if rule.ApplicationID != "" {
+		exists, err := rowExists(ctx, tx, `SELECT 1 FROM applications WHERE id = $1 AND organization_id = $2 AND deleted_at IS NULL`, rule.ApplicationID, s.organizationID)
+		if err != nil {
+			return control.AlertRule{}, err
+		}
+		if !exists {
+			return control.AlertRule{}, control.ErrNotFound
+		}
+	}
 	row := tx.QueryRowContext(ctx, `
 		INSERT INTO alert_rules (
-			id, organization_id, name, description, enabled, event_type, severity,
+			id, organization_id, application_id, name, description, enabled, event_type, severity,
 			condition, target, created_by, created_at, updated_at
 		)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, NULLIF($10, ''), $11, $12)
-		RETURNING id, name, description, enabled, event_type, severity, condition, target, created_at, updated_at
-	`, rule.ID, s.organizationID, rule.Name, rule.Description, rule.Enabled, rule.EventType, rule.Severity, rule.Condition, rule.Target, actorID, rule.CreatedAt.UTC(), rule.UpdatedAt.UTC())
+		VALUES ($1, $2, NULLIF($3, ''), $4, $5, $6, $7, $8, $9, $10, NULLIF($11, ''), $12, $13)
+		RETURNING id, COALESCE(application_id, ''), name, description, enabled, event_type, severity, condition, target, created_at, updated_at
+	`, rule.ID, s.organizationID, rule.ApplicationID, rule.Name, rule.Description, rule.Enabled, rule.EventType, rule.Severity, rule.Condition, rule.Target, actorID, rule.CreatedAt.UTC(), rule.UpdatedAt.UTC())
 	created, err := scanAlertRule(row)
 	if err != nil {
 		return control.AlertRule{}, err
@@ -2605,13 +2842,22 @@ func (s *Store) UpdateAlertRule(ctx context.Context, actorID string, alertRuleID
 		return control.AlertRule{}, err
 	}
 	defer rollback(tx)
+	if rule.ApplicationID != "" {
+		exists, err := rowExists(ctx, tx, `SELECT 1 FROM applications WHERE id = $1 AND organization_id = $2 AND deleted_at IS NULL`, rule.ApplicationID, s.organizationID)
+		if err != nil {
+			return control.AlertRule{}, err
+		}
+		if !exists {
+			return control.AlertRule{}, control.ErrNotFound
+		}
+	}
 	row := tx.QueryRowContext(ctx, `
 		UPDATE alert_rules
-		SET name = $3, description = $4, enabled = $5, event_type = $6,
-			severity = $7, condition = $8, target = $9, updated_at = $10
+		SET application_id = NULLIF($3, ''), name = $4, description = $5, enabled = $6, event_type = $7,
+			severity = $8, condition = $9, target = $10, updated_at = $11
 		WHERE id = $1 AND organization_id = $2
-		RETURNING id, name, description, enabled, event_type, severity, condition, target, created_at, updated_at
-	`, alertRuleID, s.organizationID, rule.Name, rule.Description, rule.Enabled, rule.EventType, rule.Severity, rule.Condition, rule.Target, rule.UpdatedAt.UTC())
+		RETURNING id, COALESCE(application_id, ''), name, description, enabled, event_type, severity, condition, target, created_at, updated_at
+	`, alertRuleID, s.organizationID, rule.ApplicationID, rule.Name, rule.Description, rule.Enabled, rule.EventType, rule.Severity, rule.Condition, rule.Target, rule.UpdatedAt.UTC())
 	updated, err := scanAlertRule(row)
 	if errors.Is(err, sql.ErrNoRows) {
 		return control.AlertRule{}, control.ErrNotFound
@@ -2628,15 +2874,21 @@ func (s *Store) UpdateAlertRule(ctx context.Context, actorID string, alertRuleID
 	return updated, nil
 }
 
-func (s *Store) ListAlertDeliveries(ctx context.Context) ([]control.AlertDelivery, error) {
-	rows, err := s.db.QueryContext(ctx, `
-		SELECT id, alert_rule_id, alert_rule_name, event_id, event_type, severity,
+func (s *Store) ListAlertDeliveries(ctx context.Context, queries ...control.AlertDeliveryQuery) ([]control.AlertDelivery, error) {
+	query := firstAlertDeliveryQuery(queries)
+	sqlQuery := `
+		SELECT id, COALESCE(application_id, ''), alert_rule_id, alert_rule_name, event_id, event_type, severity,
 			target, status, attempts, last_error, created_at, delivered_at
 		FROM alert_deliveries
 		WHERE organization_id = $1
-		ORDER BY created_at DESC
-		LIMIT 500
-	`, s.organizationID)
+	`
+	args := []any{s.organizationID}
+	if query.ApplicationID != "" {
+		args = append(args, strings.TrimSpace(query.ApplicationID))
+		sqlQuery += fmt.Sprintf(" AND application_id = $%d", len(args))
+	}
+	sqlQuery += " ORDER BY created_at DESC LIMIT 500"
+	rows, err := s.db.QueryContext(ctx, sqlQuery, args...)
 	if err != nil {
 		return nil, err
 	}
@@ -2657,7 +2909,7 @@ func (s *Store) ListQueuedAlertDeliveries(ctx context.Context, limit int) ([]con
 		limit = 50
 	}
 	rows, err := s.db.QueryContext(ctx, `
-		SELECT id, alert_rule_id, alert_rule_name, event_id, event_type, severity,
+		SELECT id, COALESCE(application_id, ''), alert_rule_id, alert_rule_name, event_id, event_type, severity,
 			target, status, attempts, last_error, created_at, delivered_at
 		FROM alert_deliveries
 		WHERE organization_id = $1 AND status = 'queued'
@@ -2694,7 +2946,7 @@ func (s *Store) RecordAlertDeliveryAttempt(ctx context.Context, deliveryID strin
 			last_error = $4,
 			delivered_at = $5
 		WHERE id = $1 AND organization_id = $2
-		RETURNING id, alert_rule_id, alert_rule_name, event_id, event_type, severity,
+		RETURNING id, COALESCE(application_id, ''), alert_rule_id, alert_rule_name, event_id, event_type, severity,
 			target, status, attempts, last_error, created_at, delivered_at
 	`, deliveryID, s.organizationID, status, strings.TrimSpace(lastError), deliveredValue)
 	delivery, err := scanAlertDelivery(row)
@@ -2794,13 +3046,16 @@ func (s *Store) userByEmail(ctx context.Context, email string) (control.User, er
 	return scanUser(row)
 }
 
-func (s *Store) listEnabledAlertRulesForEvent(ctx context.Context, q queryer, eventType string) ([]control.AlertRule, error) {
+func (s *Store) listEnabledAlertRulesForEvent(ctx context.Context, q queryer, eventType string, applicationID string) ([]control.AlertRule, error) {
 	rows, err := q.QueryContext(ctx, `
-		SELECT id, name, description, enabled, event_type, severity, condition, target, created_at, updated_at
+		SELECT id, COALESCE(application_id, ''), name, description, enabled, event_type, severity, condition, target, created_at, updated_at
 		FROM alert_rules
-		WHERE organization_id = $1 AND enabled = true AND event_type = $2
+		WHERE organization_id = $1
+			AND enabled = true
+			AND event_type = $2
+			AND (application_id IS NULL OR application_id = $3)
 		ORDER BY name
-	`, s.organizationID, eventType)
+	`, s.organizationID, eventType, strings.TrimSpace(applicationID))
 	if err != nil {
 		return nil, err
 	}
@@ -3096,12 +3351,27 @@ func scanSystemSettingRows(rows *sql.Rows) (control.SystemSetting, error) {
 	return scanSystemSetting(rows)
 }
 
+func scanApplicationSetting(row interface {
+	Scan(...any) error
+}) (control.ApplicationSetting, error) {
+	var setting control.ApplicationSetting
+	var valueJSON string
+	if err := row.Scan(&setting.ApplicationID, &setting.EnvironmentID, &setting.Key, &valueJSON, &setting.UpdatedBy, &setting.UpdatedAt); err != nil {
+		return control.ApplicationSetting{}, err
+	}
+	if err := json.Unmarshal([]byte(valueJSON), &setting.Value); err != nil {
+		return control.ApplicationSetting{}, err
+	}
+	return setting, nil
+}
+
 func scanAlertRule(row interface {
 	Scan(...any) error
 }) (control.AlertRule, error) {
 	var rule control.AlertRule
 	err := row.Scan(
 		&rule.ID,
+		&rule.ApplicationID,
 		&rule.Name,
 		&rule.Description,
 		&rule.Enabled,
@@ -3126,6 +3396,7 @@ func scanAlertDelivery(row interface {
 	var deliveredAt sql.NullTime
 	err := row.Scan(
 		&delivery.ID,
+		&delivery.ApplicationID,
 		&delivery.AlertRuleID,
 		&delivery.AlertRuleName,
 		&delivery.EventID,
@@ -3330,6 +3601,64 @@ func scanCounts(ctx context.Context, q queryer, query string, target map[string]
 	return rows.Err()
 }
 
+func dependencySummaryScopeWhere(query control.DependencyQuery) (string, []any) {
+	args := []any{}
+	clauses := []string{}
+	if query.ApplicationID != "" {
+		args = append(args, query.ApplicationID)
+		clauses = append(clauses, fmt.Sprintf("application_id = $%d", len(args)))
+	}
+	if query.AgentID != "" {
+		args = append(args, query.AgentID)
+		clauses = append(clauses, fmt.Sprintf("agent_id = $%d", len(args)))
+	}
+	if len(clauses) == 0 {
+		return "", args
+	}
+	return " WHERE " + strings.Join(clauses, " AND "), args
+}
+
+func whereClauseWith(where string, clause string) string {
+	if strings.TrimSpace(where) == "" {
+		return " WHERE " + clause
+	}
+	return where + " AND " + clause
+}
+
+func overviewAgentWhere(query control.OverviewQuery) (string, []any) {
+	args := []any{}
+	clauses := []string{}
+	if query.ApplicationID != "" {
+		args = append(args, query.ApplicationID)
+		clauses = append(clauses, fmt.Sprintf("application_id = $%d", len(args)))
+	}
+	if query.EnvironmentID != "" {
+		args = append(args, query.EnvironmentID)
+		clauses = append(clauses, fmt.Sprintf("environment_id = $%d", len(args)))
+	}
+	if len(clauses) == 0 {
+		return "", args
+	}
+	return " WHERE " + strings.Join(clauses, " AND "), args
+}
+
+func overviewEventWhere(query control.OverviewQuery) (string, []any) {
+	args := []any{}
+	clauses := []string{}
+	if query.ApplicationID != "" {
+		args = append(args, query.ApplicationID)
+		clauses = append(clauses, fmt.Sprintf("application_id = $%d", len(args)))
+	}
+	if query.EnvironmentID != "" {
+		args = append(args, query.EnvironmentID)
+		clauses = append(clauses, fmt.Sprintf("environment_id = $%d", len(args)))
+	}
+	if len(clauses) == 0 {
+		return "", args
+	}
+	return " WHERE " + strings.Join(clauses, " AND "), args
+}
+
 func scanTrendPoints(ctx context.Context, q queryer, query string, args ...any) ([]control.TrendPoint, error) {
 	rows, err := q.QueryContext(ctx, query, args...)
 	if err != nil {
@@ -3381,6 +3710,41 @@ func nullIfEmpty(value string) any {
 		return nil
 	}
 	return value
+}
+
+func firstAgentQuery(queries []control.AgentQuery) control.AgentQuery {
+	if len(queries) == 0 {
+		return control.AgentQuery{}
+	}
+	return queries[0]
+}
+
+func firstOverviewQuery(queries []control.OverviewQuery) control.OverviewQuery {
+	if len(queries) == 0 {
+		return control.OverviewQuery{}
+	}
+	return queries[0]
+}
+
+func firstDependencyQuery(queries []control.DependencyQuery) control.DependencyQuery {
+	if len(queries) == 0 {
+		return control.DependencyQuery{}
+	}
+	return queries[0]
+}
+
+func firstAlertRuleQuery(queries []control.AlertRuleQuery) control.AlertRuleQuery {
+	if len(queries) == 0 {
+		return control.AlertRuleQuery{}
+	}
+	return queries[0]
+}
+
+func firstAlertDeliveryQuery(queries []control.AlertDeliveryQuery) control.AlertDeliveryQuery {
+	if len(queries) == 0 {
+		return control.AlertDeliveryQuery{}
+	}
+	return queries[0]
 }
 
 func mapConstraintError(err error) error {

@@ -44,7 +44,7 @@ type Store interface {
 	ReportDaemonInjection(ctx context.Context, accessToken string, report DaemonInjectionReport) (DaemonWorkload, error)
 	BindDaemonWorkload(ctx context.Context, actorID string, workloadID string, applicationID string) (DaemonWorkload, error)
 	UnbindDaemonWorkload(ctx context.Context, actorID string, workloadID string) (DaemonWorkload, error)
-	ListAgents(ctx context.Context) ([]Agent, error)
+	ListAgents(ctx context.Context, queries ...AgentQuery) ([]Agent, error)
 	UpdateAgentAlias(ctx context.Context, actorID string, agentID string, alias string) (Agent, error)
 	SetAgentIgnored(ctx context.Context, actorID string, agentID string, ignored bool) (Agent, error)
 	DeleteAgents(ctx context.Context, actorID string, agentIDs []string) (AgentBatchOperationReport, error)
@@ -69,17 +69,20 @@ type Store interface {
 	RestoreDeletedEvents(ctx context.Context, actorID string, request EventRecycleBinRequest) (EventRecycleBinReport, error)
 	PurgeDeletedEvents(ctx context.Context, actorID string, request EventRecycleBinRequest) (EventRecycleBinReport, error)
 	ListDependencies(ctx context.Context, query DependencyQuery) ([]Dependency, error)
-	DependencySummary(ctx context.Context) (DependencySummary, error)
+	DependencySummary(ctx context.Context, queries ...DependencyQuery) (DependencySummary, error)
 	ListBaselineFindings(ctx context.Context, query BaselineFindingQuery) ([]BaselineFinding, error)
-	Overview(ctx context.Context) (Overview, error)
+	Overview(ctx context.Context, queries ...OverviewQuery) (Overview, error)
 	Observability(ctx context.Context, query ObservabilityQuery) (ObservabilityReport, error)
 	ListSystemSettings(ctx context.Context) ([]SystemSetting, error)
 	UpsertSystemSetting(ctx context.Context, actorID string, setting SystemSetting) (SystemSetting, error)
+	ListApplicationSettings(ctx context.Context, appID string, environmentID string) ([]ApplicationSetting, error)
+	UpsertApplicationSetting(ctx context.Context, actorID string, setting ApplicationSetting) (ApplicationSetting, error)
+	ResolveApplicationConfig(ctx context.Context, appID string, environmentID string) (ApplicationConfig, error)
 	MaintenanceCleanup(ctx context.Context, actorID string, request MaintenanceCleanupRequest) (MaintenanceCleanupReport, error)
-	ListAlertRules(ctx context.Context) ([]AlertRule, error)
+	ListAlertRules(ctx context.Context, queries ...AlertRuleQuery) ([]AlertRule, error)
 	CreateAlertRule(ctx context.Context, actorID string, input AlertRule) (AlertRule, error)
 	UpdateAlertRule(ctx context.Context, actorID string, alertRuleID string, input AlertRule) (AlertRule, error)
-	ListAlertDeliveries(ctx context.Context) ([]AlertDelivery, error)
+	ListAlertDeliveries(ctx context.Context, queries ...AlertDeliveryQuery) ([]AlertDelivery, error)
 	ListQueuedAlertDeliveries(ctx context.Context, limit int) ([]AlertDelivery, error)
 	RecordAlertDeliveryAttempt(ctx context.Context, deliveryID string, status string, lastError string, deliveredAt *time.Time) (AlertDelivery, error)
 	RecordAuditLog(ctx context.Context, actorID string, action string, resource string, details map[string]any) error
@@ -87,24 +90,25 @@ type Store interface {
 }
 
 type MemoryStore struct {
-	mu               sync.RWMutex
-	now              func() time.Time
-	organization     Organization
-	users            map[string]User
-	sessions         map[string]Session
-	applications     map[string]Application
-	environments     map[string]Environment
-	daemonToken      DaemonAccessToken
-	workloads        map[string]DaemonWorkload
-	agents           map[string]Agent
-	policies         map[string]PolicySet
-	events           map[string]SecurityEvent
-	dependencies     map[string]Dependency
-	baselineFindings map[string]BaselineFinding
-	settings         map[string]SystemSetting
-	alertRules       map[string]AlertRule
-	alertDeliveries  map[string]AlertDelivery
-	auditLogs        []AuditLog
+	mu                  sync.RWMutex
+	now                 func() time.Time
+	organization        Organization
+	users               map[string]User
+	sessions            map[string]Session
+	applications        map[string]Application
+	environments        map[string]Environment
+	daemonToken         DaemonAccessToken
+	workloads           map[string]DaemonWorkload
+	agents              map[string]Agent
+	policies            map[string]PolicySet
+	events              map[string]SecurityEvent
+	dependencies        map[string]Dependency
+	baselineFindings    map[string]BaselineFinding
+	settings            map[string]SystemSetting
+	applicationSettings map[string]ApplicationSetting
+	alertRules          map[string]AlertRule
+	alertDeliveries     map[string]AlertDelivery
+	auditLogs           []AuditLog
 }
 
 type MemorySeed struct {
@@ -130,21 +134,22 @@ func NewMemoryStoreWithSeed(now func() time.Time, seed MemorySeed) *MemoryStore 
 	}
 	seed = normalizeMemorySeed(seed)
 	store := &MemoryStore{
-		now:              now,
-		organization:     Organization{ID: "org_default", Name: "Default Organization"},
-		users:            make(map[string]User),
-		sessions:         make(map[string]Session),
-		applications:     make(map[string]Application),
-		environments:     make(map[string]Environment),
-		workloads:        make(map[string]DaemonWorkload),
-		agents:           make(map[string]Agent),
-		policies:         make(map[string]PolicySet),
-		events:           make(map[string]SecurityEvent),
-		dependencies:     make(map[string]Dependency),
-		baselineFindings: make(map[string]BaselineFinding),
-		settings:         make(map[string]SystemSetting),
-		alertRules:       make(map[string]AlertRule),
-		alertDeliveries:  make(map[string]AlertDelivery),
+		now:                 now,
+		organization:        Organization{ID: "org_default", Name: "Default Organization"},
+		users:               make(map[string]User),
+		sessions:            make(map[string]Session),
+		applications:        make(map[string]Application),
+		environments:        make(map[string]Environment),
+		workloads:           make(map[string]DaemonWorkload),
+		agents:              make(map[string]Agent),
+		policies:            make(map[string]PolicySet),
+		events:              make(map[string]SecurityEvent),
+		dependencies:        make(map[string]Dependency),
+		baselineFindings:    make(map[string]BaselineFinding),
+		settings:            make(map[string]SystemSetting),
+		applicationSettings: make(map[string]ApplicationSetting),
+		alertRules:          make(map[string]AlertRule),
+		alertDeliveries:     make(map[string]AlertDelivery),
 	}
 	admin := User{
 		ID:           "usr_admin",
@@ -177,6 +182,7 @@ func NewMemoryStoreWithSeed(now func() time.Time, seed MemorySeed) *MemoryStore 
 	for _, setting := range DefaultSystemSettings(now()) {
 		store.settings[setting.Key] = setting
 	}
+	store.seedApplicationSettings(app.ID, "", now())
 	for _, alertRule := range DefaultAlertRules(now()) {
 		store.alertRules[alertRule.ID] = alertRule
 	}
@@ -215,6 +221,12 @@ func normalizeMemorySeed(seed MemorySeed) MemorySeed {
 		seed.EnvironmentKind = "production"
 	}
 	return seed
+}
+
+func (s *MemoryStore) seedApplicationSettings(appID string, environmentID string, updatedAt time.Time) {
+	for _, setting := range DefaultApplicationSettings(appID, environmentID, updatedAt) {
+		s.applicationSettings[applicationSettingMapKey(setting.ApplicationID, setting.EnvironmentID, setting.Key)] = setting
+	}
 }
 
 func (s *MemoryStore) Login(_ context.Context, email string, password string) (Session, User, error) {
@@ -347,6 +359,7 @@ func (s *MemoryStore) CreateApplication(_ context.Context, actorID string, input
 	input.CreatedAt = s.now()
 	input.EnvironmentIDs = []string{}
 	s.applications[input.ID] = input
+	s.seedApplicationSettings(input.ID, "", input.CreatedAt)
 	s.audit(actorID, "application.create", input.ID, map[string]any{"name": input.Name})
 	return input, nil
 }
@@ -390,6 +403,21 @@ func (s *MemoryStore) DeleteApplication(_ context.Context, actorID string, appID
 	for id, finding := range s.baselineFindings {
 		if finding.ApplicationID == appID {
 			delete(s.baselineFindings, id)
+		}
+	}
+	for id, setting := range s.applicationSettings {
+		if setting.ApplicationID == appID {
+			delete(s.applicationSettings, id)
+		}
+	}
+	for id, rule := range s.alertRules {
+		if rule.ApplicationID == appID {
+			delete(s.alertRules, id)
+		}
+	}
+	for id, delivery := range s.alertDeliveries {
+		if delivery.ApplicationID == appID {
+			delete(s.alertDeliveries, id)
 		}
 	}
 	for id, workload := range s.workloads {
@@ -623,11 +651,18 @@ func (s *MemoryStore) UnbindDaemonWorkload(_ context.Context, actorID string, wo
 	return workload, nil
 }
 
-func (s *MemoryStore) ListAgents(_ context.Context) ([]Agent, error) {
+func (s *MemoryStore) ListAgents(_ context.Context, queries ...AgentQuery) ([]Agent, error) {
+	query := firstAgentQuery(queries)
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	agents := make([]Agent, 0, len(s.agents))
 	for _, agent := range s.agents {
+		if query.ApplicationID != "" && agent.ApplicationID != query.ApplicationID {
+			continue
+		}
+		if query.EnvironmentID != "" && agent.EnvironmentID != query.EnvironmentID {
+			continue
+		}
 		agents = append(agents, agent)
 	}
 	sort.Slice(agents, func(i, j int) bool { return agents[i].LastSeenAt.After(agents[j].LastSeenAt) })
@@ -781,14 +816,20 @@ func (s *MemoryStore) GetAgentPolicy(_ context.Context, agentID string) (PolicyV
 		policy := s.policies[policyID]
 		for _, version := range policy.Versions {
 			if version.Version == policyVersion {
+				config := s.resolveApplicationConfigLocked(agent.ApplicationID, agent.EnvironmentID)
+				version.Config = &config
 				return version, nil
 			}
 		}
 		if policy.Active != nil {
-			return *policy.Active, nil
+			version := *policy.Active
+			config := s.resolveApplicationConfigLocked(agent.ApplicationID, agent.EnvironmentID)
+			version.Config = &config
+			return version, nil
 		}
 	}
-	return PolicyVersion{Version: 0, Status: "empty", Rules: []Rule{}}, nil
+	config := s.resolveApplicationConfigLocked(agent.ApplicationID, agent.EnvironmentID)
+	return PolicyVersion{Version: 0, Status: "empty", Rules: []Rule{}, Config: &config}, nil
 }
 
 func (s *MemoryStore) ListPolicies(_ context.Context) ([]PolicySet, error) {
@@ -1617,7 +1658,8 @@ func (s *MemoryStore) ListDependencies(_ context.Context, query DependencyQuery)
 	return dependencies, nil
 }
 
-func (s *MemoryStore) DependencySummary(_ context.Context) (DependencySummary, error) {
+func (s *MemoryStore) DependencySummary(_ context.Context, queries ...DependencyQuery) (DependencySummary, error) {
+	query := firstDependencyQuery(queries)
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	summary := DependencySummary{
@@ -1625,6 +1667,12 @@ func (s *MemoryStore) DependencySummary(_ context.Context) (DependencySummary, e
 		VulnerabilitiesBySeverity: map[string]int{},
 	}
 	for _, dep := range s.dependencies {
+		if query.ApplicationID != "" && dep.ApplicationID != query.ApplicationID {
+			continue
+		}
+		if query.AgentID != "" && dep.AgentID != query.AgentID {
+			continue
+		}
 		summary.DependencyCount++
 		incrementIfPresent(summary.DependenciesByEcosystem, dep.Ecosystem)
 		if len(dep.Vulnerabilities) > 0 {
@@ -1641,6 +1689,8 @@ func (s *MemoryStore) DependencySummary(_ context.Context) (DependencySummary, e
 }
 
 func NormalizeDependencyQuery(query DependencyQuery) DependencyQuery {
+	query.ApplicationID = strings.TrimSpace(query.ApplicationID)
+	query.AgentID = strings.TrimSpace(query.AgentID)
 	query.VulnerabilitySeverity = strings.ToLower(strings.TrimSpace(query.VulnerabilitySeverity))
 	if query.Limit <= 0 {
 		query.Limit = 500
@@ -1649,6 +1699,13 @@ func NormalizeDependencyQuery(query DependencyQuery) DependencyQuery {
 		query.Limit = 1000
 	}
 	return query
+}
+
+func firstDependencyQuery(queries []DependencyQuery) DependencyQuery {
+	if len(queries) == 0 {
+		return NormalizeDependencyQuery(DependencyQuery{})
+	}
+	return NormalizeDependencyQuery(queries[0])
 }
 
 func DependencyMatchesQuery(dep Dependency, query DependencyQuery) bool {
@@ -1674,6 +1731,19 @@ func DependencyMatchesQuery(dep Dependency, query DependencyQuery) bool {
 		return false
 	}
 	return true
+}
+
+func NormalizeAgentQuery(query AgentQuery) AgentQuery {
+	query.ApplicationID = strings.TrimSpace(query.ApplicationID)
+	query.EnvironmentID = strings.TrimSpace(query.EnvironmentID)
+	return query
+}
+
+func firstAgentQuery(queries []AgentQuery) AgentQuery {
+	if len(queries) == 0 {
+		return NormalizeAgentQuery(AgentQuery{})
+	}
+	return NormalizeAgentQuery(queries[0])
 }
 
 func (s *MemoryStore) ListBaselineFindings(_ context.Context, query BaselineFindingQuery) ([]BaselineFinding, error) {
@@ -1813,19 +1883,28 @@ func normalizeStringList(values []string) []string {
 	return result
 }
 
-func (s *MemoryStore) Overview(_ context.Context) (Overview, error) {
+func (s *MemoryStore) Overview(_ context.Context, queries ...OverviewQuery) (Overview, error) {
+	query := firstOverviewQuery(queries)
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	overview := Overview{
-		ApplicationCount:   len(s.applications),
-		AgentCount:         len(s.agents),
 		EventsByType:       map[string]int{},
 		EventsBySeverity:   map[string]int{},
 		AttacksByHook:      map[string]int{},
 		AttacksByAlgorithm: map[string]int{},
 		AttacksByUserAgent: map[string]int{},
 	}
+	for _, app := range s.applications {
+		if query.ApplicationID != "" && app.ID != query.ApplicationID {
+			continue
+		}
+		overview.ApplicationCount++
+	}
 	for _, agent := range s.agents {
+		if !overviewAgentMatches(agent, query) {
+			continue
+		}
+		overview.AgentCount++
 		if agent.Status == "online" {
 			overview.OnlineAgents++
 		}
@@ -1833,6 +1912,9 @@ func (s *MemoryStore) Overview(_ context.Context) (Overview, error) {
 	attackBuckets := map[time.Time]int{}
 	for _, event := range s.events {
 		if event.DeletedAt != nil {
+			continue
+		}
+		if !overviewEventMatches(event, query) {
 			continue
 		}
 		overview.EventCount++
@@ -1875,6 +1957,39 @@ func incrementIfPresent(target map[string]int, value string) {
 		return
 	}
 	target[value]++
+}
+
+func NormalizeOverviewQuery(query OverviewQuery) OverviewQuery {
+	query.ApplicationID = strings.TrimSpace(query.ApplicationID)
+	query.EnvironmentID = strings.TrimSpace(query.EnvironmentID)
+	return query
+}
+
+func firstOverviewQuery(queries []OverviewQuery) OverviewQuery {
+	if len(queries) == 0 {
+		return NormalizeOverviewQuery(OverviewQuery{})
+	}
+	return NormalizeOverviewQuery(queries[0])
+}
+
+func overviewAgentMatches(agent Agent, query OverviewQuery) bool {
+	if query.ApplicationID != "" && agent.ApplicationID != query.ApplicationID {
+		return false
+	}
+	if query.EnvironmentID != "" && agent.EnvironmentID != query.EnvironmentID {
+		return false
+	}
+	return true
+}
+
+func overviewEventMatches(event SecurityEvent, query OverviewQuery) bool {
+	if query.ApplicationID != "" && event.ApplicationID != query.ApplicationID {
+		return false
+	}
+	if query.EnvironmentID != "" && event.EnvironmentID != query.EnvironmentID {
+		return false
+	}
+	return true
 }
 
 func userAgentFromAttributes(attributes map[string]any) string {
@@ -2156,6 +2271,107 @@ func (s *MemoryStore) UpsertSystemSetting(_ context.Context, actorID string, set
 	return setting, nil
 }
 
+func (s *MemoryStore) ListApplicationSettings(_ context.Context, appID string, environmentID string) ([]ApplicationSetting, error) {
+	appID = strings.TrimSpace(appID)
+	environmentID = strings.TrimSpace(environmentID)
+	if appID == "" {
+		return nil, fmt.Errorf("%w: application id is required", ErrInvalid)
+	}
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	if _, ok := s.applications[appID]; !ok {
+		return nil, ErrNotFound
+	}
+	if environmentID != "" {
+		env, ok := s.environments[environmentID]
+		if !ok || env.ApplicationID != appID {
+			return nil, ErrNotFound
+		}
+	}
+	settings := make([]ApplicationSetting, 0, len(MovedApplicationSettingKeys()))
+	for _, key := range MovedApplicationSettingKeys() {
+		setting := s.effectiveApplicationSettingLocked(appID, environmentID, key)
+		settings = append(settings, setting)
+	}
+	sort.Slice(settings, func(i, j int) bool { return settings[i].Key < settings[j].Key })
+	return settings, nil
+}
+
+func (s *MemoryStore) UpsertApplicationSetting(_ context.Context, actorID string, setting ApplicationSetting) (ApplicationSetting, error) {
+	setting.ApplicationID = strings.TrimSpace(setting.ApplicationID)
+	setting.EnvironmentID = strings.TrimSpace(setting.EnvironmentID)
+	setting.Key = normalizeSettingKey(setting.Key)
+	if setting.ApplicationID == "" {
+		return ApplicationSetting{}, fmt.Errorf("%w: application id is required", ErrInvalid)
+	}
+	if !isApplicationScopedSetting(setting.Key) {
+		return ApplicationSetting{}, fmt.Errorf("%w: setting key is not application-scoped", ErrInvalid)
+	}
+	if setting.Value == nil {
+		return ApplicationSetting{}, fmt.Errorf("%w: setting value is required", ErrInvalid)
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if _, ok := s.applications[setting.ApplicationID]; !ok {
+		return ApplicationSetting{}, ErrNotFound
+	}
+	if setting.EnvironmentID != "" {
+		env, ok := s.environments[setting.EnvironmentID]
+		if !ok || env.ApplicationID != setting.ApplicationID {
+			return ApplicationSetting{}, ErrNotFound
+		}
+	}
+	setting.Value = copyStringAnyMap(setting.Value)
+	setting.UpdatedBy = actorID
+	setting.UpdatedAt = s.now()
+	s.applicationSettings[applicationSettingMapKey(setting.ApplicationID, setting.EnvironmentID, setting.Key)] = setting
+	s.audit(actorID, "application_settings.upsert", setting.ApplicationID, map[string]any{"environment_id": setting.EnvironmentID, "key": setting.Key})
+	return setting, nil
+}
+
+func (s *MemoryStore) ResolveApplicationConfig(_ context.Context, appID string, environmentID string) (ApplicationConfig, error) {
+	appID = strings.TrimSpace(appID)
+	environmentID = strings.TrimSpace(environmentID)
+	if appID == "" {
+		return ApplicationConfig{}, fmt.Errorf("%w: application id is required", ErrInvalid)
+	}
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	if _, ok := s.applications[appID]; !ok {
+		return ApplicationConfig{}, ErrNotFound
+	}
+	if environmentID != "" {
+		env, ok := s.environments[environmentID]
+		if !ok || env.ApplicationID != appID {
+			return ApplicationConfig{}, ErrNotFound
+		}
+	}
+	return s.resolveApplicationConfigLocked(appID, environmentID), nil
+}
+
+func (s *MemoryStore) resolveApplicationConfigLocked(appID string, environmentID string) ApplicationConfig {
+	return ApplicationConfigFromSettings(map[string]ApplicationSetting{
+		"protection.allowlist":            s.effectiveApplicationSettingLocked(appID, environmentID, "protection.allowlist"),
+		"protection.hardening":            s.effectiveApplicationSettingLocked(appID, environmentID, "protection.hardening"),
+		"alerts.delivery":                 s.effectiveApplicationSettingLocked(appID, environmentID, "alerts.delivery"),
+		"dependency.vulnerability_policy": s.effectiveApplicationSettingLocked(appID, environmentID, "dependency.vulnerability_policy"),
+	})
+}
+
+func (s *MemoryStore) effectiveApplicationSettingLocked(appID string, environmentID string, key string) ApplicationSetting {
+	if environmentID != "" {
+		if setting, ok := s.applicationSettings[applicationSettingMapKey(appID, environmentID, key)]; ok {
+			setting.Value = copyStringAnyMap(setting.Value)
+			return setting
+		}
+	}
+	if setting, ok := s.applicationSettings[applicationSettingMapKey(appID, "", key)]; ok {
+		setting.Value = copyStringAnyMap(setting.Value)
+		return setting
+	}
+	return DefaultApplicationSetting(appID, environmentID, key, s.now())
+}
+
 func (s *MemoryStore) MaintenanceCleanup(_ context.Context, actorID string, request MaintenanceCleanupRequest) (MaintenanceCleanupReport, error) {
 	request, err := NormalizeMaintenanceCleanupRequest(request)
 	if err != nil {
@@ -2227,11 +2443,15 @@ func (s *MemoryStore) MaintenanceCleanup(_ context.Context, actorID string, requ
 	return report, nil
 }
 
-func (s *MemoryStore) ListAlertRules(_ context.Context) ([]AlertRule, error) {
+func (s *MemoryStore) ListAlertRules(_ context.Context, queries ...AlertRuleQuery) ([]AlertRule, error) {
+	query := firstAlertRuleQuery(queries)
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	rules := make([]AlertRule, 0, len(s.alertRules))
 	for _, rule := range s.alertRules {
+		if !alertRuleMatchesQuery(rule, query) {
+			continue
+		}
 		rules = append(rules, rule)
 	}
 	sort.Slice(rules, func(i, j int) bool { return rules[i].Name < rules[j].Name })
@@ -2246,6 +2466,11 @@ func (s *MemoryStore) CreateAlertRule(_ context.Context, actorID string, input A
 	rule.ID = newID("alr")
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	if rule.ApplicationID != "" {
+		if _, ok := s.applications[rule.ApplicationID]; !ok {
+			return AlertRule{}, ErrNotFound
+		}
+	}
 	s.alertRules[rule.ID] = rule
 	s.audit(actorID, "alert_rule.create", rule.ID, map[string]any{"name": rule.Name})
 	return rule, nil
@@ -2262,6 +2487,11 @@ func (s *MemoryStore) UpdateAlertRule(_ context.Context, actorID string, alertRu
 	if !ok {
 		return AlertRule{}, ErrNotFound
 	}
+	if rule.ApplicationID != "" {
+		if _, ok := s.applications[rule.ApplicationID]; !ok {
+			return AlertRule{}, ErrNotFound
+		}
+	}
 	rule.ID = alertRuleID
 	rule.CreatedAt = current.CreatedAt
 	s.alertRules[alertRuleID] = rule
@@ -2269,11 +2499,15 @@ func (s *MemoryStore) UpdateAlertRule(_ context.Context, actorID string, alertRu
 	return rule, nil
 }
 
-func (s *MemoryStore) ListAlertDeliveries(_ context.Context) ([]AlertDelivery, error) {
+func (s *MemoryStore) ListAlertDeliveries(_ context.Context, queries ...AlertDeliveryQuery) ([]AlertDelivery, error) {
+	query := firstAlertDeliveryQuery(queries)
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	deliveries := make([]AlertDelivery, 0, len(s.alertDeliveries))
 	for _, delivery := range s.alertDeliveries {
+		if query.ApplicationID != "" && delivery.ApplicationID != query.ApplicationID {
+			continue
+		}
 		deliveries = append(deliveries, delivery)
 	}
 	sort.Slice(deliveries, func(i, j int) bool { return deliveries[i].CreatedAt.After(deliveries[j].CreatedAt) })
@@ -2356,13 +2590,94 @@ func DefaultSystemSettings(now time.Time) []SystemSetting {
 	return []SystemSetting{
 		{Key: "server.public_url", Value: map[string]any{"url": ""}, UpdatedBy: "system", UpdatedAt: now},
 		{Key: "agent.minimum_version", Value: map[string]any{"version": "1.0.0", "enforcement": "warn"}, UpdatedBy: "system", UpdatedAt: now},
-		{Key: "alerts.delivery", Value: map[string]any{"interval_seconds": 300}, UpdatedBy: "system", UpdatedAt: now},
 		{Key: "events.retention", Value: map[string]any{"attack_days": 180, "performance_days": 30, "dependency_days": 365, "audit_days": 365}, UpdatedBy: "system", UpdatedAt: now},
 		{Key: "policy.canary", Value: map[string]any{"default_percent": 25, "auto_promote": false}, UpdatedBy: "system", UpdatedAt: now},
-		{Key: "protection.allowlist", Value: map[string]any{"enabled": false, "mode": "monitor", "entries": []string{}}, UpdatedBy: "system", UpdatedAt: now},
-		{Key: "protection.hardening", Value: map[string]any{"mode": "monitor", "block_reflection_abuse": true, "block_process_execution": true}, UpdatedBy: "system", UpdatedAt: now},
-		{Key: "dependency.vulnerability_policy", Value: map[string]any{"fail_on_severity": "critical", "block_known_exploited": true}, UpdatedBy: "system", UpdatedAt: now},
 	}
+}
+
+func MovedApplicationSettingKeys() []string {
+	return []string{
+		"alerts.delivery",
+		"dependency.vulnerability_policy",
+		"protection.allowlist",
+		"protection.hardening",
+	}
+}
+
+func DefaultApplicationSettings(appID string, environmentID string, now time.Time) []ApplicationSetting {
+	settings := make([]ApplicationSetting, 0, len(MovedApplicationSettingKeys()))
+	for _, key := range MovedApplicationSettingKeys() {
+		settings = append(settings, DefaultApplicationSetting(appID, environmentID, key, now))
+	}
+	return settings
+}
+
+func DefaultApplicationSetting(appID string, environmentID string, key string, now time.Time) ApplicationSetting {
+	return ApplicationSetting{
+		ApplicationID: strings.TrimSpace(appID),
+		EnvironmentID: strings.TrimSpace(environmentID),
+		Key:           normalizeSettingKey(key),
+		Value:         DefaultApplicationSettingValue(key),
+		UpdatedBy:     "system",
+		UpdatedAt:     now,
+	}
+}
+
+func DefaultApplicationSettingValue(key string) map[string]any {
+	switch normalizeSettingKey(key) {
+	case "alerts.delivery":
+		return map[string]any{"interval_seconds": 300}
+	case "dependency.vulnerability_policy":
+		return map[string]any{"fail_on_severity": "critical", "block_known_exploited": true}
+	case "protection.allowlist":
+		return map[string]any{"enabled": false, "mode": "monitor", "entries": []string{}}
+	case "protection.hardening":
+		return map[string]any{"mode": "monitor", "block_reflection_abuse": true, "block_process_execution": true}
+	default:
+		return map[string]any{}
+	}
+}
+
+func ApplicationConfigFromSettings(settings map[string]ApplicationSetting) ApplicationConfig {
+	return ApplicationConfig{
+		Allowlist:                     valueForApplicationConfig(settings, "protection.allowlist"),
+		Hardening:                     valueForApplicationConfig(settings, "protection.hardening"),
+		AlertDelivery:                 valueForApplicationConfig(settings, "alerts.delivery"),
+		DependencyVulnerabilityPolicy: valueForApplicationConfig(settings, "dependency.vulnerability_policy"),
+	}
+}
+
+func valueForApplicationConfig(settings map[string]ApplicationSetting, key string) map[string]any {
+	if setting, ok := settings[normalizeSettingKey(key)]; ok && setting.Value != nil {
+		return copyStringAnyMap(setting.Value)
+	}
+	return DefaultApplicationSettingValue(key)
+}
+
+func isApplicationScopedSetting(key string) bool {
+	key = normalizeSettingKey(key)
+	for _, candidate := range MovedApplicationSettingKeys() {
+		if key == candidate {
+			return true
+		}
+	}
+	return false
+}
+
+func IsApplicationScopedSetting(key string) bool {
+	return isApplicationScopedSetting(key)
+}
+
+func applicationSettingMapKey(appID string, environmentID string, key string) string {
+	return strings.TrimSpace(appID) + "\x00" + strings.TrimSpace(environmentID) + "\x00" + normalizeSettingKey(key)
+}
+
+func copyStringAnyMap(values map[string]any) map[string]any {
+	copied := make(map[string]any, len(values))
+	for key, value := range values {
+		copied[key] = value
+	}
+	return copied
 }
 
 func NormalizeMaintenanceCleanupRequest(request MaintenanceCleanupRequest) (MaintenanceCleanupRequest, error) {
@@ -2573,6 +2888,7 @@ func actorIDForAgent(agentID string) string {
 }
 
 func PrepareAlertRule(input AlertRule, now time.Time) (AlertRule, error) {
+	input.ApplicationID = strings.TrimSpace(input.ApplicationID)
 	input.Name = strings.TrimSpace(input.Name)
 	input.EventType = strings.ToLower(strings.TrimSpace(input.EventType))
 	input.Severity = strings.ToLower(strings.TrimSpace(input.Severity))
@@ -2606,8 +2922,34 @@ func PrepareAlertRule(input AlertRule, now time.Time) (AlertRule, error) {
 	return input, nil
 }
 
+func firstAlertRuleQuery(queries []AlertRuleQuery) AlertRuleQuery {
+	if len(queries) == 0 {
+		return AlertRuleQuery{}
+	}
+	queries[0].ApplicationID = strings.TrimSpace(queries[0].ApplicationID)
+	return queries[0]
+}
+
+func alertRuleMatchesQuery(rule AlertRule, query AlertRuleQuery) bool {
+	if query.ApplicationID == "" {
+		return true
+	}
+	return rule.ApplicationID == "" || rule.ApplicationID == query.ApplicationID
+}
+
+func firstAlertDeliveryQuery(queries []AlertDeliveryQuery) AlertDeliveryQuery {
+	if len(queries) == 0 {
+		return AlertDeliveryQuery{}
+	}
+	queries[0].ApplicationID = strings.TrimSpace(queries[0].ApplicationID)
+	return queries[0]
+}
+
 func MatchAlertRule(rule AlertRule, event SecurityEvent) bool {
 	if !rule.Enabled || rule.EventType != event.Type {
+		return false
+	}
+	if rule.ApplicationID != "" && rule.ApplicationID != event.ApplicationID {
 		return false
 	}
 	condition := strings.ToLower(strings.TrimSpace(rule.Condition))
@@ -2636,6 +2978,7 @@ func MatchAlertRule(rule AlertRule, event SecurityEvent) bool {
 
 func NewAlertDelivery(rule AlertRule, event SecurityEvent, now time.Time) AlertDelivery {
 	return AlertDelivery{
+		ApplicationID: event.ApplicationID,
 		AlertRuleID:   rule.ID,
 		AlertRuleName: rule.Name,
 		EventID:       event.ID,

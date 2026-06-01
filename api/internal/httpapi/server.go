@@ -57,6 +57,42 @@ type eventQueryParameterSet generated.GetApiV1EventsAttackParams
 type dependencyQueryParameterSet generated.GetApiV1DependenciesParams
 type baselineFindingQueryParameterSet generated.GetApiV1BaselineFindingsParams
 
+func agentQueryParams(r *http.Request) generated.GetApiV1AgentsParams {
+	values := r.URL.Query()
+	return generated.GetApiV1AgentsParams{
+		ApplicationId: optionalString(values.Get("application_id")),
+		EnvironmentId: optionalString(values.Get("environment_id")),
+	}
+}
+
+func dependencySummaryQueryParams(r *http.Request) generated.GetApiV1DependenciesSummaryParams {
+	values := r.URL.Query()
+	return generated.GetApiV1DependenciesSummaryParams{
+		ApplicationId: optionalString(values.Get("application_id")),
+		AgentId:       optionalString(values.Get("agent_id")),
+	}
+}
+
+func overviewQueryParams(r *http.Request) generated.GetApiV1AnalyticsOverviewParams {
+	values := r.URL.Query()
+	return generated.GetApiV1AnalyticsOverviewParams{
+		ApplicationId: optionalString(values.Get("application_id")),
+		EnvironmentId: optionalString(values.Get("environment_id")),
+	}
+}
+
+func alertRuleQueryParams(r *http.Request) generated.GetApiV1AlertRulesParams {
+	return generated.GetApiV1AlertRulesParams{
+		ApplicationId: optionalString(r.URL.Query().Get("application_id")),
+	}
+}
+
+func alertDeliveryQueryParams(r *http.Request) generated.GetApiV1AlertDeliveriesParams {
+	return generated.GetApiV1AlertDeliveriesParams{
+		ApplicationId: optionalString(r.URL.Query().Get("application_id")),
+	}
+}
+
 func userQueryParams(r *http.Request) (generated.GetApiV1UsersParams, error) {
 	values := r.URL.Query()
 	role, err := userRoleQueryParam(values.Get("role"))
@@ -325,7 +361,9 @@ func (s *Server) Routes() http.Handler {
 			private.With(s.requirePermission(permissionReadProfile)).Get("/me", strict.GetApiV1Me)
 			private.With(s.requirePermission(permissionReadApplications)).Get("/applications", strict.GetApiV1Applications)
 			private.With(s.requirePermission(permissionReadApplications)).Get("/applications/export", strict.GetApiV1ApplicationsExport)
-			private.With(s.requirePermission(permissionReadAgents)).Get("/agents", strict.GetApiV1Agents)
+			private.With(s.requirePermission(permissionReadAgents)).Get("/agents", func(w http.ResponseWriter, r *http.Request) {
+				strict.GetApiV1Agents(w, r, agentQueryParams(r))
+			})
 			private.With(s.requirePermission(permissionManageAgents)).Post("/agents/batch-delete", strict.PostApiV1AgentsBatchDelete)
 			private.With(s.requirePermission(permissionReadDaemon)).Get("/agent-artifacts", strict.GetApiV1AgentArtifacts)
 			private.With(s.requirePermission(permissionManageDaemon)).Post("/agent-artifacts", strict.PostApiV1AgentArtifacts)
@@ -391,7 +429,9 @@ func (s *Server) Routes() http.Handler {
 				strict.GetApiV1Dependencies(w, r, generated.GetApiV1DependenciesParams(params))
 			})
 			private.With(s.requirePermission(permissionReadEvents)).Get("/dependencies/export", strict.GetApiV1DependenciesExport)
-			private.With(s.requirePermission(permissionReadEvents)).Get("/dependencies/summary", strict.GetApiV1DependenciesSummary)
+			private.With(s.requirePermission(permissionReadEvents)).Get("/dependencies/summary", func(w http.ResponseWriter, r *http.Request) {
+				strict.GetApiV1DependenciesSummary(w, r, dependencySummaryQueryParams(r))
+			})
 			private.With(s.requirePermission(permissionReadEvents)).Get("/baseline-findings", func(w http.ResponseWriter, r *http.Request) {
 				params, err := baselineFindingQueryParams(r)
 				if err != nil {
@@ -400,7 +440,9 @@ func (s *Server) Routes() http.Handler {
 				}
 				strict.GetApiV1BaselineFindings(w, r, generated.GetApiV1BaselineFindingsParams(params))
 			})
-			private.With(s.requirePermission(permissionReadAnalytics)).Get("/analytics/overview", strict.GetApiV1AnalyticsOverview)
+			private.With(s.requirePermission(permissionReadAnalytics)).Get("/analytics/overview", func(w http.ResponseWriter, r *http.Request) {
+				strict.GetApiV1AnalyticsOverview(w, r, overviewQueryParams(r))
+			})
 			private.With(s.requirePermission(permissionReadAnalytics)).Get("/analytics/observability", func(w http.ResponseWriter, r *http.Request) {
 				params := generated.GetApiV1AnalyticsObservabilityParams{}
 				if applicationID := r.URL.Query().Get("application_id"); applicationID != "" {
@@ -414,8 +456,18 @@ func (s *Server) Routes() http.Handler {
 			private.With(s.requirePermission(permissionReadSettings)).Get("/system-settings", strict.GetApiV1SystemSettings)
 			private.With(s.requirePermission(permissionReadSettings)).Get("/system/edition", strict.GetApiV1SystemEdition)
 			private.With(s.requirePermission(permissionReadSettings)).Get("/system/version", strict.GetApiV1SystemVersion)
-			private.With(s.requirePermission(permissionReadAlertRules)).Get("/alert-rules", strict.GetApiV1AlertRules)
-			private.With(s.requirePermission(permissionReadAlertDeliveries)).Get("/alert-deliveries", strict.GetApiV1AlertDeliveries)
+			private.With(s.requirePermission(permissionReadSettings)).Get("/applications/{appID}/settings", func(w http.ResponseWriter, r *http.Request) {
+				strict.GetApiV1ApplicationsAppIDSettings(w, r, chi.URLParam(r, "appID"))
+			})
+			private.With(s.requirePermission(permissionReadSettings)).Get("/applications/{appID}/environments/{envID}/settings", func(w http.ResponseWriter, r *http.Request) {
+				strict.GetApiV1ApplicationsAppIDEnvironmentsEnvIDSettings(w, r, chi.URLParam(r, "appID"), chi.URLParam(r, "envID"))
+			})
+			private.With(s.requirePermission(permissionReadAlertRules)).Get("/alert-rules", func(w http.ResponseWriter, r *http.Request) {
+				strict.GetApiV1AlertRules(w, r, alertRuleQueryParams(r))
+			})
+			private.With(s.requirePermission(permissionReadAlertDeliveries)).Get("/alert-deliveries", func(w http.ResponseWriter, r *http.Request) {
+				strict.GetApiV1AlertDeliveries(w, r, alertDeliveryQueryParams(r))
+			})
 			private.With(s.requirePermission(permissionReadAuditLogs)).Get("/audit-logs", strict.GetApiV1AuditLogs)
 			private.With(s.requirePermission(permissionReadUsers)).Get("/users", func(w http.ResponseWriter, r *http.Request) {
 				params, err := userQueryParams(r)
@@ -479,6 +531,12 @@ func (s *Server) Routes() http.Handler {
 			})
 			private.With(s.requirePermission(permissionManageSettings)).Put("/system-settings/{key}", func(w http.ResponseWriter, r *http.Request) {
 				strict.PutApiV1SystemSettingsKey(w, r, chi.URLParam(r, "key"))
+			})
+			private.With(s.requirePermission(permissionManageSettings)).Put("/applications/{appID}/settings", func(w http.ResponseWriter, r *http.Request) {
+				strict.PutApiV1ApplicationsAppIDSettings(w, r, chi.URLParam(r, "appID"))
+			})
+			private.With(s.requirePermission(permissionManageSettings)).Put("/applications/{appID}/environments/{envID}/settings", func(w http.ResponseWriter, r *http.Request) {
+				strict.PutApiV1ApplicationsAppIDEnvironmentsEnvIDSettings(w, r, chi.URLParam(r, "appID"), chi.URLParam(r, "envID"))
 			})
 			private.With(s.requirePermission(permissionManageSettings)).Post("/maintenance/cleanup", strict.PostApiV1MaintenanceCleanup)
 			private.With(s.requirePermission(permissionManageEvents)).Post("/events/recycle-bin/delete", strict.PostApiV1EventsRecycleBinDelete)

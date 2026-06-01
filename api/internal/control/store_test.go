@@ -154,3 +154,135 @@ func TestMemoryStoreHashesPasswords(t *testing.T) {
 		t.Fatal("stored password hash should not authenticate as the created user's plaintext password")
 	}
 }
+
+func TestMemoryStoreApplicationSettingsAreScoped(t *testing.T) {
+	ctx := context.Background()
+	now := func() time.Time { return time.Unix(1700000000, 0).UTC() }
+	store := NewMemoryStoreWithSeed(now, MemorySeed{})
+	appB, err := store.CreateApplication(ctx, "usr_admin", Application{Name: "Second App"})
+	if err != nil {
+		t.Fatalf("create second app: %v", err)
+	}
+
+	updated, err := store.UpsertApplicationSetting(ctx, "usr_admin", ApplicationSetting{
+		ApplicationID: "app_default",
+		Key:           "protection.allowlist",
+		Value: map[string]any{
+			"enabled": true,
+			"mode":    "enforce",
+			"entries": []string{"/checkout/*"},
+		},
+	})
+	if err != nil {
+		t.Fatalf("upsert app setting: %v", err)
+	}
+	if updated.ApplicationID != "app_default" {
+		t.Fatalf("unexpected updated scope: %#v", updated)
+	}
+	configA, err := store.ResolveApplicationConfig(ctx, "app_default", "env_default")
+	if err != nil {
+		t.Fatalf("resolve app A config: %v", err)
+	}
+	configB, err := store.ResolveApplicationConfig(ctx, appB.ID, "")
+	if err != nil {
+		t.Fatalf("resolve app B config: %v", err)
+	}
+	if configA.Allowlist["enabled"] != true {
+		t.Fatalf("expected app A allowlist enabled, got %#v", configA.Allowlist)
+	}
+	if configB.Allowlist["enabled"] == true {
+		t.Fatalf("app B inherited app A allowlist: %#v", configB.Allowlist)
+	}
+
+	policy, err := store.CreatePolicy(ctx, "usr_admin", PolicySet{Name: "Scoped Policy"})
+	if err != nil {
+		t.Fatalf("create policy: %v", err)
+	}
+	policy, err = store.AddPolicyVersion(ctx, "usr_admin", policy.ID, []Rule{{
+		Name:       "SQL",
+		Hook:       "sql",
+		Algorithm:  "sql_userinput",
+		Action:     "block",
+		Severity:   "high",
+		Expression: `algorithm == "sql_userinput"`,
+	}})
+	if err != nil {
+		t.Fatalf("create policy version: %v", err)
+	}
+	if _, err := store.RolloutPolicy(ctx, "usr_admin", policy.ID, PolicyRollout{Version: 1, CanaryPercent: 100, ApplicationID: "app_default"}); err != nil {
+		t.Fatalf("roll out policy: %v", err)
+	}
+	agent, err := store.RegisterAgent(ctx, "app_default", store.applications["app_default"].Secret, Agent{
+		EnvironmentID: "env_default",
+		Hostname:      "api-1",
+		Runtime:       "java",
+		Version:       "1.0.0",
+	})
+	if err != nil {
+		t.Fatalf("register agent: %v", err)
+	}
+	pulled, err := store.GetAgentPolicy(ctx, agent.ID)
+	if err != nil {
+		t.Fatalf("get agent policy: %v", err)
+	}
+	if pulled.Config == nil || pulled.Config.Allowlist["enabled"] != true {
+		t.Fatalf("agent did not receive app-scoped config: %#v", pulled.Config)
+	}
+}
+
+func TestMemoryStoreAlertRulesAreApplicationScoped(t *testing.T) {
+	ctx := context.Background()
+	now := func() time.Time { return time.Unix(1700000000, 0).UTC() }
+	store := NewMemoryStoreWithSeed(now, MemorySeed{})
+	appB, err := store.CreateApplication(ctx, "usr_admin", Application{Name: "Second App"})
+	if err != nil {
+		t.Fatalf("create second app: %v", err)
+	}
+	rule, err := store.CreateAlertRule(ctx, "usr_admin", AlertRule{
+		ApplicationID: "app_default",
+		Name:          "App A critical attack",
+		Enabled:       true,
+		EventType:     "attack",
+		Severity:      "critical",
+		Condition:     "severity == critical",
+		Target:        "secops",
+	})
+	if err != nil {
+		t.Fatalf("create alert rule: %v", err)
+	}
+	if rule.ApplicationID != "app_default" {
+		t.Fatalf("expected app-scoped rule, got %#v", rule)
+	}
+	for _, event := range []SecurityEvent{
+		{ID: "evt_a", Type: "attack", ApplicationID: "app_default", EnvironmentID: "env_default", AgentID: "agt_a", Severity: "critical", Message: "A"},
+		{ID: "evt_b", Type: "attack", ApplicationID: appB.ID, EnvironmentID: "env_b", AgentID: "agt_b", Severity: "critical", Message: "B"},
+	} {
+		if _, err := store.IngestEvent(ctx, event); err != nil {
+			t.Fatalf("ingest event %s: %v", event.ID, err)
+		}
+	}
+	aDeliveries, err := store.ListAlertDeliveries(ctx, AlertDeliveryQuery{ApplicationID: "app_default"})
+	if err != nil {
+		t.Fatalf("list A deliveries: %v", err)
+	}
+	bDeliveries, err := store.ListAlertDeliveries(ctx, AlertDeliveryQuery{ApplicationID: appB.ID})
+	if err != nil {
+		t.Fatalf("list B deliveries: %v", err)
+	}
+	if got := countDeliveriesForRule(aDeliveries, rule.ID); got != 1 {
+		t.Fatalf("expected one A delivery for scoped rule, got %d in %#v", got, aDeliveries)
+	}
+	if got := countDeliveriesForRule(bDeliveries, rule.ID); got != 0 {
+		t.Fatalf("expected no B deliveries from A rule, got %d in %#v", got, bDeliveries)
+	}
+}
+
+func countDeliveriesForRule(deliveries []AlertDelivery, ruleID string) int {
+	var count int
+	for _, delivery := range deliveries {
+		if delivery.AlertRuleID == ruleID {
+			count++
+		}
+	}
+	return count
+}

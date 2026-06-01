@@ -83,6 +83,11 @@ type Agent struct {
 	IgnoredAt     time.Time `json:"ignored_at,omitempty"`
 }
 
+type AgentQuery struct {
+	ApplicationID string `json:"application_id,omitempty"`
+	EnvironmentID string `json:"environment_id,omitempty"`
+}
+
 type AgentBatchOperationReport struct {
 	IDs   []string `json:"ids"`
 	Count int      `json:"count"`
@@ -265,12 +270,13 @@ type PolicySet struct {
 }
 
 type PolicyVersion struct {
-	Version       int       `json:"version"`
-	Status        string    `json:"status"`
-	Rules         []Rule    `json:"rules"`
-	CanaryPercent int       `json:"canary_percent"`
-	CreatedAt     time.Time `json:"created_at"`
-	PublishedAt   time.Time `json:"published_at,omitempty"`
+	Version       int                `json:"version"`
+	Status        string             `json:"status"`
+	Rules         []Rule             `json:"rules"`
+	CanaryPercent int                `json:"canary_percent"`
+	CreatedAt     time.Time          `json:"created_at"`
+	PublishedAt   time.Time          `json:"published_at,omitempty"`
+	Config        *ApplicationConfig `json:"config,omitempty"`
 }
 
 type PolicyRollout struct {
@@ -415,6 +421,22 @@ type SystemSetting struct {
 	UpdatedAt time.Time      `json:"updated_at"`
 }
 
+type ApplicationSetting struct {
+	ApplicationID string         `json:"application_id"`
+	EnvironmentID string         `json:"environment_id,omitempty"`
+	Key           string         `json:"key"`
+	Value         map[string]any `json:"value"`
+	UpdatedBy     string         `json:"updated_by,omitempty"`
+	UpdatedAt     time.Time      `json:"updated_at"`
+}
+
+type ApplicationConfig struct {
+	Allowlist                     map[string]any `json:"allowlist"`
+	Hardening                     map[string]any `json:"hardening"`
+	AlertDelivery                 map[string]any `json:"alert_delivery"`
+	DependencyVulnerabilityPolicy map[string]any `json:"dependency_vulnerability_policy"`
+}
+
 type MaintenanceCleanupRequest struct {
 	ApplicationID           string    `json:"application_id,omitempty"`
 	Before                  time.Time `json:"before"`
@@ -434,20 +456,26 @@ type MaintenanceCleanupReport struct {
 }
 
 type AlertRule struct {
-	ID          string    `json:"id"`
-	Name        string    `json:"name"`
-	Description string    `json:"description"`
-	Enabled     bool      `json:"enabled"`
-	EventType   string    `json:"event_type"`
-	Severity    string    `json:"severity"`
-	Condition   string    `json:"condition"`
-	Target      string    `json:"target"`
-	CreatedAt   time.Time `json:"created_at"`
-	UpdatedAt   time.Time `json:"updated_at"`
+	ID            string    `json:"id"`
+	ApplicationID string    `json:"application_id,omitempty"`
+	Name          string    `json:"name"`
+	Description   string    `json:"description"`
+	Enabled       bool      `json:"enabled"`
+	EventType     string    `json:"event_type"`
+	Severity      string    `json:"severity"`
+	Condition     string    `json:"condition"`
+	Target        string    `json:"target"`
+	CreatedAt     time.Time `json:"created_at"`
+	UpdatedAt     time.Time `json:"updated_at"`
+}
+
+type AlertRuleQuery struct {
+	ApplicationID string `json:"application_id,omitempty"`
 }
 
 type AlertDelivery struct {
 	ID            string     `json:"id"`
+	ApplicationID string     `json:"application_id,omitempty"`
 	AlertRuleID   string     `json:"alert_rule_id"`
 	AlertRuleName string     `json:"alert_rule_name"`
 	EventID       string     `json:"event_id"`
@@ -459,6 +487,10 @@ type AlertDelivery struct {
 	LastError     string     `json:"last_error,omitempty"`
 	CreatedAt     time.Time  `json:"created_at"`
 	DeliveredAt   *time.Time `json:"delivered_at,omitempty"`
+}
+
+type AlertDeliveryQuery struct {
+	ApplicationID string `json:"application_id,omitempty"`
 }
 
 type Overview struct {
@@ -473,6 +505,11 @@ type Overview struct {
 	AttacksByAlgorithm map[string]int `json:"attacks_by_algorithm"`
 	AttacksByUserAgent map[string]int `json:"attacks_by_user_agent"`
 	CrashCount         int            `json:"crash_count"`
+}
+
+type OverviewQuery struct {
+	ApplicationID string `json:"application_id,omitempty"`
+	EnvironmentID string `json:"environment_id,omitempty"`
 }
 
 type EventOverview struct {

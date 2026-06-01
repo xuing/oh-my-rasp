@@ -1589,9 +1589,16 @@ func TestSystemSettingsAreListedAndAudited(t *testing.T) {
 	if len(defaults) == 0 {
 		t.Fatalf("expected default system settings, got %#v", settings)
 	}
-	for _, key := range []string{"server.public_url", "agent.minimum_version", "alerts.delivery", "events.retention", "protection.allowlist", "protection.hardening", "dependency.vulnerability_policy"} {
+	for _, key := range []string{"server.public_url", "agent.minimum_version", "events.retention", "policy.canary"} {
 		if !containsSettingKey(defaults, key) {
 			t.Fatalf("expected default setting %s in %#v", key, settings)
+		}
+	}
+	applicationSettings := client.request(t, http.MethodGet, "/api/v1/applications/app_default/settings", token, nil)
+	applicationDefaults := arrayValue(t, applicationSettings, "items")
+	for _, key := range []string{"alerts.delivery", "protection.allowlist", "protection.hardening", "dependency.vulnerability_policy"} {
+		if !containsSettingKey(applicationDefaults, key) {
+			t.Fatalf("expected default application setting %s in %#v", key, applicationSettings)
 		}
 	}
 	edition := client.request(t, http.MethodGet, "/api/v1/system/edition", token, nil)
@@ -1603,7 +1610,8 @@ func TestSystemSettingsAreListedAndAudited(t *testing.T) {
 		t.Fatalf("expected authenticated version metadata, got %#v", version)
 	}
 
-	updated := client.request(t, http.MethodPut, "/api/v1/system-settings/alerts.delivery", token, map[string]any{
+	updated := client.request(t, http.MethodPut, "/api/v1/applications/app_default/settings", token, map[string]any{
+		"key": "alerts.delivery",
 		"value": map[string]any{
 			"email_enabled": true,
 			"severity":      "high",
@@ -1615,7 +1623,7 @@ func TestSystemSettingsAreListedAndAudited(t *testing.T) {
 
 	audit := client.request(t, http.MethodGet, "/api/v1/audit-logs", token, nil)
 	items := arrayValue(t, audit, "items")
-	if !containsAuditResource(items, "alerts.delivery") {
+	if !containsAuditAction(items, "application_settings.upsert") {
 		t.Fatalf("expected settings audit entry, got %#v", items)
 	}
 }

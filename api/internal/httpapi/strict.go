@@ -119,6 +119,44 @@ func (s *strictServer) PostApiV1ApplicationsAppIDEnvironments(ctx context.Contex
 	return generated.PostApiV1ApplicationsAppIDEnvironments201JSONResponse(openAPIEnvironment(environment)), nil
 }
 
+func (s *strictServer) GetApiV1ApplicationsAppIDSettings(ctx context.Context, request generated.GetApiV1ApplicationsAppIDSettingsRequestObject) (generated.GetApiV1ApplicationsAppIDSettingsResponseObject, error) {
+	settings, err := s.server.store.ListApplicationSettings(ctx, request.AppID, "")
+	if err != nil {
+		return nil, err
+	}
+	return generated.GetApiV1ApplicationsAppIDSettings200JSONResponse{Items: openAPIApplicationSettings(settings)}, nil
+}
+
+func (s *strictServer) PutApiV1ApplicationsAppIDSettings(ctx context.Context, request generated.PutApiV1ApplicationsAppIDSettingsRequestObject) (generated.PutApiV1ApplicationsAppIDSettingsResponseObject, error) {
+	if request.Body == nil {
+		return nil, control.ErrInvalid
+	}
+	setting, err := s.server.store.UpsertApplicationSetting(ctx, userFromContext(ctx).ID, controlApplicationSettingFromOpenAPI(request.AppID, "", *request.Body))
+	if err != nil {
+		return nil, err
+	}
+	return generated.PutApiV1ApplicationsAppIDSettings200JSONResponse(openAPIApplicationSetting(setting)), nil
+}
+
+func (s *strictServer) GetApiV1ApplicationsAppIDEnvironmentsEnvIDSettings(ctx context.Context, request generated.GetApiV1ApplicationsAppIDEnvironmentsEnvIDSettingsRequestObject) (generated.GetApiV1ApplicationsAppIDEnvironmentsEnvIDSettingsResponseObject, error) {
+	settings, err := s.server.store.ListApplicationSettings(ctx, request.AppID, request.EnvID)
+	if err != nil {
+		return nil, err
+	}
+	return generated.GetApiV1ApplicationsAppIDEnvironmentsEnvIDSettings200JSONResponse{Items: openAPIApplicationSettings(settings)}, nil
+}
+
+func (s *strictServer) PutApiV1ApplicationsAppIDEnvironmentsEnvIDSettings(ctx context.Context, request generated.PutApiV1ApplicationsAppIDEnvironmentsEnvIDSettingsRequestObject) (generated.PutApiV1ApplicationsAppIDEnvironmentsEnvIDSettingsResponseObject, error) {
+	if request.Body == nil {
+		return nil, control.ErrInvalid
+	}
+	setting, err := s.server.store.UpsertApplicationSetting(ctx, userFromContext(ctx).ID, controlApplicationSettingFromOpenAPI(request.AppID, request.EnvID, *request.Body))
+	if err != nil {
+		return nil, err
+	}
+	return generated.PutApiV1ApplicationsAppIDEnvironmentsEnvIDSettings200JSONResponse(openAPIApplicationSetting(setting)), nil
+}
+
 func (s *strictServer) PostApiV1ApplicationsAppIDSecretRotate(ctx context.Context, request generated.PostApiV1ApplicationsAppIDSecretRotateRequestObject) (generated.PostApiV1ApplicationsAppIDSecretRotateResponseObject, error) {
 	application, err := s.server.store.RotateApplicationSecret(ctx, userFromContext(ctx).ID, request.AppID)
 	if err != nil {
@@ -226,8 +264,11 @@ func (s *strictServer) PostApiV1DaemonWorkloadsWorkloadIDUnbind(ctx context.Cont
 	return generated.PostApiV1DaemonWorkloadsWorkloadIDUnbind200JSONResponse(openAPIDaemonWorkload(workload)), nil
 }
 
-func (s *strictServer) GetApiV1Agents(ctx context.Context, _ generated.GetApiV1AgentsRequestObject) (generated.GetApiV1AgentsResponseObject, error) {
-	agents, err := s.server.store.ListAgents(ctx)
+func (s *strictServer) GetApiV1Agents(ctx context.Context, request generated.GetApiV1AgentsRequestObject) (generated.GetApiV1AgentsResponseObject, error) {
+	agents, err := s.server.store.ListAgents(ctx, control.AgentQuery{
+		ApplicationID: stringFromPointer(request.Params.ApplicationId),
+		EnvironmentID: stringFromPointer(request.Params.EnvironmentId),
+	})
 	if err != nil {
 		return nil, err
 	}
@@ -616,8 +657,11 @@ func (s *strictServer) GetApiV1DependenciesExport(ctx context.Context, _ generat
 	}, nil
 }
 
-func (s *strictServer) GetApiV1DependenciesSummary(ctx context.Context, _ generated.GetApiV1DependenciesSummaryRequestObject) (generated.GetApiV1DependenciesSummaryResponseObject, error) {
-	summary, err := s.server.store.DependencySummary(ctx)
+func (s *strictServer) GetApiV1DependenciesSummary(ctx context.Context, request generated.GetApiV1DependenciesSummaryRequestObject) (generated.GetApiV1DependenciesSummaryResponseObject, error) {
+	summary, err := s.server.store.DependencySummary(ctx, control.DependencyQuery{
+		ApplicationID: stringFromPointer(request.Params.ApplicationId),
+		AgentID:       stringFromPointer(request.Params.AgentId),
+	})
 	if err != nil {
 		return nil, err
 	}
@@ -678,8 +722,11 @@ func (s *strictServer) authorizeAgent(ctx context.Context, appID string, appSecr
 	return s.server.store.AuthorizeAgent(ctx, appID, appSecret, environmentID, agentID)
 }
 
-func (s *strictServer) GetApiV1AnalyticsOverview(ctx context.Context, _ generated.GetApiV1AnalyticsOverviewRequestObject) (generated.GetApiV1AnalyticsOverviewResponseObject, error) {
-	overview, err := s.server.store.Overview(ctx)
+func (s *strictServer) GetApiV1AnalyticsOverview(ctx context.Context, request generated.GetApiV1AnalyticsOverviewRequestObject) (generated.GetApiV1AnalyticsOverviewResponseObject, error) {
+	overview, err := s.server.store.Overview(ctx, control.OverviewQuery{
+		ApplicationID: stringFromPointer(request.Params.ApplicationId),
+		EnvironmentID: stringFromPointer(request.Params.EnvironmentId),
+	})
 	if err != nil {
 		return nil, err
 	}
@@ -748,8 +795,8 @@ func (s *strictServer) PostApiV1MaintenanceCleanup(ctx context.Context, request 
 	return generated.PostApiV1MaintenanceCleanup200JSONResponse(openAPIMaintenanceCleanupReport(report)), nil
 }
 
-func (s *strictServer) GetApiV1AlertRules(ctx context.Context, _ generated.GetApiV1AlertRulesRequestObject) (generated.GetApiV1AlertRulesResponseObject, error) {
-	rules, err := s.server.store.ListAlertRules(ctx)
+func (s *strictServer) GetApiV1AlertRules(ctx context.Context, request generated.GetApiV1AlertRulesRequestObject) (generated.GetApiV1AlertRulesResponseObject, error) {
+	rules, err := s.server.store.ListAlertRules(ctx, control.AlertRuleQuery{ApplicationID: stringFromPointer(request.Params.ApplicationId)})
 	if err != nil {
 		return nil, err
 	}
@@ -778,8 +825,8 @@ func (s *strictServer) PutApiV1AlertRulesAlertRuleID(ctx context.Context, reques
 	return generated.PutApiV1AlertRulesAlertRuleID200JSONResponse(openAPIAlertRule(rule)), nil
 }
 
-func (s *strictServer) GetApiV1AlertDeliveries(ctx context.Context, _ generated.GetApiV1AlertDeliveriesRequestObject) (generated.GetApiV1AlertDeliveriesResponseObject, error) {
-	deliveries, err := s.server.store.ListAlertDeliveries(ctx)
+func (s *strictServer) GetApiV1AlertDeliveries(ctx context.Context, request generated.GetApiV1AlertDeliveriesRequestObject) (generated.GetApiV1AlertDeliveriesResponseObject, error) {
+	deliveries, err := s.server.store.ListAlertDeliveries(ctx, control.AlertDeliveryQuery{ApplicationID: stringFromPointer(request.Params.ApplicationId)})
 	if err != nil {
 		return nil, err
 	}
@@ -1213,6 +1260,11 @@ func openAPIPolicyVersion(version control.PolicyVersion) generated.PolicyVersion
 	if !version.PublishedAt.IsZero() {
 		publishedAt = &version.PublishedAt
 	}
+	var config *generated.ApplicationConfig
+	if version.Config != nil {
+		converted := openAPIApplicationConfig(*version.Config)
+		config = &converted
+	}
 	return generated.PolicyVersion{
 		Version:       version.Version,
 		Status:        version.Status,
@@ -1220,6 +1272,7 @@ func openAPIPolicyVersion(version control.PolicyVersion) generated.PolicyVersion
 		CanaryPercent: version.CanaryPercent,
 		CreatedAt:     version.CreatedAt,
 		PublishedAt:   publishedAt,
+		Config:        config,
 	}
 }
 
@@ -1838,6 +1891,51 @@ func openAPISystemSetting(setting control.SystemSetting) generated.SystemSetting
 	}
 }
 
+func openAPIApplicationSettings(settings []control.ApplicationSetting) []generated.ApplicationSetting {
+	result := make([]generated.ApplicationSetting, 0, len(settings))
+	for _, setting := range settings {
+		result = append(result, openAPIApplicationSetting(setting))
+	}
+	return result
+}
+
+func openAPIApplicationSetting(setting control.ApplicationSetting) generated.ApplicationSetting {
+	var environmentID *string
+	if setting.EnvironmentID != "" {
+		environmentID = &setting.EnvironmentID
+	}
+	var updatedBy *string
+	if setting.UpdatedBy != "" {
+		updatedBy = &setting.UpdatedBy
+	}
+	return generated.ApplicationSetting{
+		ApplicationId: setting.ApplicationID,
+		EnvironmentId: environmentID,
+		Key:           setting.Key,
+		Value:         copyStringAnyMap(setting.Value),
+		UpdatedBy:     updatedBy,
+		UpdatedAt:     setting.UpdatedAt,
+	}
+}
+
+func controlApplicationSettingFromOpenAPI(appID string, environmentID string, input generated.ApplicationSettingUpdate) control.ApplicationSetting {
+	return control.ApplicationSetting{
+		ApplicationID: appID,
+		EnvironmentID: environmentID,
+		Key:           input.Key,
+		Value:         copyStringAnyMap(input.Value),
+	}
+}
+
+func openAPIApplicationConfig(config control.ApplicationConfig) generated.ApplicationConfig {
+	return generated.ApplicationConfig{
+		Allowlist:                     copyStringAnyMap(config.Allowlist),
+		Hardening:                     copyStringAnyMap(config.Hardening),
+		AlertDelivery:                 copyStringAnyMap(config.AlertDelivery),
+		DependencyVulnerabilityPolicy: copyStringAnyMap(config.DependencyVulnerabilityPolicy),
+	}
+}
+
 func openAPIEditionStatus() generated.EditionStatus {
 	note := "Open-source self-hosted deployments do not require a license key and do not enforce license limits."
 	return generated.EditionStatus{
@@ -1890,17 +1988,22 @@ func openAPIAlertRules(rules []control.AlertRule) []generated.AlertRule {
 }
 
 func openAPIAlertRule(rule control.AlertRule) generated.AlertRule {
+	var applicationID *string
+	if rule.ApplicationID != "" {
+		applicationID = &rule.ApplicationID
+	}
 	return generated.AlertRule{
-		Id:          rule.ID,
-		Name:        rule.Name,
-		Description: rule.Description,
-		Enabled:     rule.Enabled,
-		EventType:   generated.AlertRuleEventType(rule.EventType),
-		Severity:    generated.AlertRuleSeverity(rule.Severity),
-		Condition:   rule.Condition,
-		Target:      rule.Target,
-		CreatedAt:   rule.CreatedAt,
-		UpdatedAt:   rule.UpdatedAt,
+		Id:            rule.ID,
+		ApplicationId: applicationID,
+		Name:          rule.Name,
+		Description:   rule.Description,
+		Enabled:       rule.Enabled,
+		EventType:     generated.AlertRuleEventType(rule.EventType),
+		Severity:      generated.AlertRuleSeverity(rule.Severity),
+		Condition:     rule.Condition,
+		Target:        rule.Target,
+		CreatedAt:     rule.CreatedAt,
+		UpdatedAt:     rule.UpdatedAt,
 	}
 }
 
@@ -1911,6 +2014,9 @@ func controlAlertRuleFromOpenAPI(rule generated.AlertRuleInput) control.AlertRul
 		EventType: string(rule.EventType),
 		Severity:  string(rule.Severity),
 		Target:    rule.Target,
+	}
+	if rule.ApplicationId != nil {
+		output.ApplicationID = *rule.ApplicationId
 	}
 	if rule.Description != nil {
 		output.Description = *rule.Description
@@ -1934,8 +2040,13 @@ func openAPIAlertDelivery(delivery control.AlertDelivery) generated.AlertDeliver
 	if delivery.LastError != "" {
 		lastError = &delivery.LastError
 	}
+	var applicationID *string
+	if delivery.ApplicationID != "" {
+		applicationID = &delivery.ApplicationID
+	}
 	return generated.AlertDelivery{
 		Id:            delivery.ID,
+		ApplicationId: applicationID,
 		AlertRuleId:   delivery.AlertRuleID,
 		AlertRuleName: delivery.AlertRuleName,
 		EventId:       delivery.EventID,

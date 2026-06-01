@@ -10,8 +10,8 @@ func TestPostgresMigrationsAreSequentialAndCoverControlPlaneTables(t *testing.T)
 	if err != nil {
 		t.Fatalf("list postgres migrations: %v", err)
 	}
-	if len(got) != 32 {
-		t.Fatalf("expected 32 postgres migrations, got %d", len(got))
+	if len(got) != 34 {
+		t.Fatalf("expected 34 postgres migrations, got %d", len(got))
 	}
 	combined := combineSQL(got)
 	required := []string{
@@ -59,6 +59,13 @@ func TestPostgresMigrationsAreSequentialAndCoverControlPlaneTables(t *testing.T)
 		"idx_agents_ignored_last_seen",
 		"alert_rules_event_type_check",
 		"'error'",
+		"CREATE TABLE IF NOT EXISTS application_settings",
+		"idx_application_settings_app_key",
+		"idx_application_settings_environment_key",
+		"DELETE FROM system_settings",
+		"ADD COLUMN IF NOT EXISTS application_id TEXT REFERENCES applications(id) ON DELETE CASCADE",
+		"idx_alert_rules_application_enabled",
+		"idx_alert_deliveries_application_created",
 	}
 	for _, fragment := range required {
 		if !strings.Contains(combined, fragment) {
@@ -92,6 +99,34 @@ func TestClickHouseMigrationsCoverEventAndOverheadPipelines(t *testing.T) {
 	for _, fragment := range required {
 		if !strings.Contains(combined, fragment) {
 			t.Fatalf("clickhouse migrations missing %q", fragment)
+		}
+	}
+}
+
+func TestApplicationSettingsMigrationBackfillsMovedGlobalSettings(t *testing.T) {
+	got, err := List(Postgres)
+	if err != nil {
+		t.Fatalf("list postgres migrations: %v", err)
+	}
+	migration := got[32]
+	if migration.Name != "033_create_application_settings.sql" {
+		t.Fatalf("expected application settings migration at 033, got %s", migration.Name)
+	}
+	required := []string{
+		"CREATE TABLE IF NOT EXISTS application_settings",
+		"CROSS JOIN moved_settings",
+		"LEFT JOIN system_settings s ON s.key = m.key",
+		"COALESCE(s.value, m.default_value)",
+		"ON CONFLICT (application_id, key) WHERE environment_id IS NULL DO NOTHING",
+		"DELETE FROM system_settings",
+		"'alerts.delivery'",
+		"'dependency.vulnerability_policy'",
+		"'protection.allowlist'",
+		"'protection.hardening'",
+	}
+	for _, fragment := range required {
+		if !strings.Contains(migration.SQL, fragment) {
+			t.Fatalf("application settings migration missing %q", fragment)
 		}
 	}
 }
