@@ -121,7 +121,72 @@ final class AgentPolicyTest {
     assertEquals("log", evaluation.detection().action());
   }
 
+  @Test
+  void appliesResolvedApplicationAllowlist() {
+    AgentPolicy policy =
+        AgentPolicy.parse(
+            """
+            {
+              "version": 2,
+              "status": "active",
+              "canary_percent": 100,
+              "config": {
+                "allowlist": {
+                  "enabled": true,
+                  "mode": "enforce",
+                  "entries": ["/admin/*"]
+                }
+              },
+              "rules": [
+                {
+                  "name": "SQL block",
+                  "hook": "sql",
+                  "algorithm": "sql_userinput",
+                  "action": "block",
+                  "expression": "algorithm == \\"sql_userinput\\""
+                }
+              ]
+            }
+            """);
+
+    PolicyEvaluation evaluation = policy.evaluate(sqlDetection("/admin/search"), "agent-one");
+
+    assertTrue(policy.config().allowlistEnabled());
+    assertTrue(evaluation.ignored());
+  }
+
+  @Test
+  void hardeningEnforcementCanPromoteProcessDetectionToBlock() {
+    AgentPolicy policy =
+        AgentPolicy.parse(
+            """
+            {
+              "version": 2,
+              "status": "active",
+              "canary_percent": 100,
+              "config": {
+                "hardening": {
+                  "mode": "enforce",
+                  "block_process_execution": true,
+                  "block_reflection_abuse": false
+                }
+              },
+              "rules": []
+            }
+            """);
+
+    PolicyEvaluation evaluation = policy.evaluate(commandDetection(), "agent-one");
+
+    assertTrue(evaluation.controlled());
+    assertFalse(evaluation.ignored());
+    assertEquals("block", evaluation.detection().action());
+  }
+
   private static Detection sqlDetection() {
+    return sqlDetection("/login");
+  }
+
+  private static Detection sqlDetection(String uri) {
     return new Detection(
         Instant.parse("2026-06-01T00:00:00Z"),
         "sql",
@@ -129,7 +194,19 @@ final class AgentPolicyTest {
         "log",
         95,
         "SQL query structure appears altered by request input",
-        new RequestContext("GET", "/login", "value=x", Map.of("value", List.of("' OR '1'='1")), Map.of()),
+        new RequestContext("GET", uri, "value=x", Map.of("value", List.of("' OR '1'='1")), Map.of()),
         Map.of("query", "select * from users where name = '' OR '1'='1'"));
+  }
+
+  private static Detection commandDetection() {
+    return new Detection(
+        Instant.parse("2026-06-01T00:00:00Z"),
+        "command",
+        "command_common",
+        "log",
+        90,
+        "Command execution observed",
+        new RequestContext("POST", "/run", "", Map.of(), Map.of()),
+        Map.of("command", "sh -c id"));
   }
 }

@@ -38,6 +38,14 @@ final class OhMyRaspHooksPolicyTest {
   }
 
   @Test
+  void applicationAllowlistSuppressesPolicyBlock() {
+    OhMyRaspHooks.installPolicy(allowlistPolicy(), "agent-one");
+    enterSqlRequest();
+
+    assertDoesNotThrow(() -> OhMyRaspHooks.beforeSql(vulnerableSql()));
+  }
+
+  @Test
   void emptyPolicySuppressesStandaloneDetectorAction() {
     System.setProperty("ohmyrasp.block", "true");
     OhMyRaspHooks.installPolicy(AgentPolicy.empty(), "agent-one");
@@ -66,6 +74,34 @@ final class OhMyRaspHooksPolicyTest {
         }
         """
             .formatted(action));
+  }
+
+  private static AgentPolicy allowlistPolicy() {
+    return AgentPolicy.parse(
+        """
+        {
+          "version": 4,
+          "status": "active",
+          "canary_percent": 100,
+          "config": {
+            "allowlist": {
+              "enabled": true,
+              "mode": "enforce",
+              "entries": ["/login"]
+            }
+          },
+          "rules": [
+            {
+              "name": "SQL policy action",
+              "hook": "sql",
+              "algorithm": "sql_userinput",
+              "action": "block",
+              "severity": "critical",
+              "expression": "algorithm == \\"sql_userinput\\""
+            }
+          ]
+        }
+        """);
   }
 
   private static void enterSqlRequest() {
