@@ -1,0 +1,56 @@
+{
+  "source": ".archive/source-drop-1-rasp/java-cyber-ranges",
+  "description": "Logical catalog for the archived Java target labs. The archive currently preserves the original lab names and top-level structure; runnable lab images can be attached to these stable ids as they are restored or rebuilt.",
+  "groups": [
+    {
+      "id": "expression-injection",
+      "label": "Expression and template injection",
+      "mechanics": ["OGNL evaluation", "Spring expression evaluation", "template expression evaluation"],
+      "labs": [
+        {"id": "s2-001", "name": "S2-001", "path": "S2-001", "hooks": ["ognl", "command"]},
+        {"id": "s2-007", "name": "S2-007", "path": "S2-007", "hooks": ["ognl", "command"]},
+        {"id": "s2-008", "name": "S2-008", "path": "S2-008", "hooks": ["ognl", "command"]},
+        {"id": "s2-012", "name": "S2-012", "path": "S2-012", "hooks": ["ognl", "command"]},
+        {"id": "s2-013", "name": "S2-013", "path": "S2-013", "hooks": ["ognl", "command"]},
+        {"id": "s2-015", "name": "S2-015", "path": "S2-015", "hooks": ["ognl", "command"]},
+        {"id": "s2-016", "name": "S2-016", "path": "S2-016", "hooks": ["ognl", "command", "redirect"]},
+        {"id": "s2-029", "name": "S2-029", "path": "S2-029", "hooks": ["ognl", "command"]},
+        {"id": "s2-032", "name": "S2-032", "path": "S2-032", "hooks": ["ognl", "command"]},
+        {"id": "spel", "name": "SpEL", "path": "spel", "hooks": ["eval", "command"]},
+        {"id": "freemarker", "name": "FreeMarker", "path": "freemarker", "hooks": ["eval", "file", "command"]}
+      ]
+    },
+    {
+      "id": "deserialization",
+      "label": "Deserialization and gadget loading",
+      "mechanics": ["Java object deserialization", "JSON auto-type loading", "RPC payload decoding"],
+      "labs": [
+        {"id": "fastjson", "name": "Fastjson", "path": "fastjson", "hooks": ["deserialization", "jndi"]},
+        {"id": "fastjson-1-2-60", "name": "Fastjson 1.2.60", "path": "fastjson-1.2.60", "hooks": ["deserialization", "jndi"]},
+        {"id": "cve-2019-12384", "name": "CVE-2019-12384", "path": "CVE-2019-12384", "hooks": ["deserialization", "command"]},
+        {"id": "dubbo-demo", "name": "Dubbo demo", "path": "dubbo-demo", "hooks": ["dubbo", "deserialization"]}
+      ]
+    },
+    {
+      "id": "xml-and-ssrf",
+      "label": "XML entity and outbound request abuse",
+      "mechanics": ["XXE", "SSRF", "DNS callback"],
+      "labs": [
+        {"id": "wxpay-xxe", "name": "WeChat Pay XXE", "path": "wxpay-xxe", "hooks": ["xxe", "readFile"]},
+        {"id": "cve-2019-10173", "name": "CVE-2019-10173", "path": "CVE-2019-10173", "hooks": ["ssrf", "dns", "readFile"]},
+        {"id": "rmi-server", "name": "RMI server", "path": "rmi-server", "hooks": ["jndi", "dns", "ssrf"]}
+      ]
+    },
+    {
+      "id": "sql-and-webshell",
+      "label": "SQL injection, file write, and webshell mechanics",
+      "mechanics": ["SQL string execution", "server-side file write", "webshell execution"],
+      "labs": [
+        {"id": "sqlcase", "name": "SQL case", "path": "sqlcase", "hooks": ["sql"]},
+        {"id": "vulns", "name": "Vulns", "path": "vulns", "hooks": ["command", "file", "ssrf", "sql"]},
+        {"id": "vulns-servlet", "name": "Servlet vulns", "path": "vulns-servlet", "hooks": ["command", "file", "directory", "sql"]},
+        {"id": "springboot-vulns", "name": "Spring Boot vulns", "path": "springboot-vulns", "hooks": ["command", "file", "ssrf", "spel"]}
+      ]
+    }
+  ]
+}

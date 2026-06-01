@@ -86,8 +86,46 @@
     .overview {
       display: grid;
       gap: 14px;
-      grid-template-columns: repeat(3, minmax(0, 1fr));
+      grid-template-columns: repeat(6, minmax(0, 1fr));
       margin-bottom: 18px;
+    }
+
+    .labs {
+      display: grid;
+      gap: 12px;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      margin-bottom: 18px;
+    }
+
+    .lab {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 14px;
+    }
+
+    .lab h3 {
+      font-size: 15px;
+      line-height: 1.25;
+      margin: 0 0 7px;
+    }
+
+    .lab p {
+      color: var(--muted);
+      font-size: 13px;
+      line-height: 1.4;
+      margin: 0 0 9px;
+    }
+
+    .lab code {
+      background: #eef2f8;
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      display: block;
+      font-size: 12px;
+      line-height: 1.5;
+      overflow-wrap: anywhere;
+      padding: 8px;
     }
 
     .env {
@@ -117,6 +155,25 @@
       color: var(--muted);
       font-size: 13px;
       min-height: 18px;
+    }
+
+    .section-title {
+      align-items: end;
+      display: flex;
+      gap: 12px;
+      justify-content: space-between;
+      margin: 20px 0 10px;
+    }
+
+    .section-title h2 {
+      font-size: 18px;
+      letter-spacing: 0;
+      margin: 0;
+    }
+
+    .section-title span {
+      color: var(--muted);
+      font-size: 13px;
     }
 
     table {
@@ -149,13 +206,57 @@
       border-bottom: 0;
     }
 
+    td code {
+      background: #eef2f8;
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      display: inline-block;
+      max-width: 520px;
+      overflow-wrap: anywhere;
+      padding: 5px 7px;
+    }
+
+    td a {
+      color: #0f766e;
+      font-weight: 700;
+      text-decoration: none;
+    }
+
+    .pill {
+      border-radius: 999px;
+      color: #ffffff;
+      display: inline-block;
+      font-size: 12px;
+      font-weight: 700;
+      min-width: 74px;
+      padding: 4px 8px;
+      text-align: center;
+    }
+
+    .pill.baseline {
+      background: var(--baseline);
+    }
+
+    .pill.protected {
+      background: var(--protected);
+    }
+
     @media (max-width: 860px) {
       main {
         padding: 14px;
       }
 
       .overview {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+      }
+
+      .labs {
         grid-template-columns: 1fr;
+      }
+
+      th:nth-child(3),
+      td:nth-child(3) {
+        display: none;
       }
     }
   </style>
@@ -175,69 +276,124 @@
     </nav>
 
     <section class="overview" aria-label="Environment URLs">
-      <article class="env">
-        <h2>Current Service</h2>
-        <code id="currentUrl">/rasp/ui</code>
-        <div class="status" id="currentStatus">checking health</div>
-      </article>
-      <article class="env">
-        <h2>Baseline</h2>
-        <code id="baselineUrl">http://localhost:18080/rasp/ui</code>
-        <div class="status">no Java agent</div>
-      </article>
-      <article class="env">
-        <h2>Protected</h2>
-        <code id="protectedUrl">http://localhost:18081/rasp/ui</code>
-        <div class="status">blocking mode on port 18081</div>
-      </article>
+      <article class="env"><h2>Tomcat 9</h2><code id="tomcat9BaselineUrl"></code><div class="status">baseline</div></article>
+      <article class="env"><h2>Tomcat 9</h2><code id="tomcat9ProtectedUrl"></code><div class="status">protected</div></article>
+      <article class="env"><h2>Tomcat 10</h2><code id="tomcat10BaselineUrl"></code><div class="status">baseline</div></article>
+      <article class="env"><h2>Tomcat 10</h2><code id="tomcat10ProtectedUrl"></code><div class="status">protected</div></article>
+      <article class="env"><h2>Tomcat 11</h2><code id="tomcat11BaselineUrl"></code><div class="status">baseline</div></article>
+      <article class="env"><h2>Tomcat 11</h2><code id="tomcat11ProtectedUrl"></code><div class="status">protected</div></article>
     </section>
 
+    <div class="section-title">
+      <h2>Archived Java Lab Catalog</h2>
+      <span id="labStatus">loading</span>
+    </div>
+    <section class="labs" id="labGroups" aria-label="Archived Java lab catalog"></section>
+
+    <div class="section-title">
+      <h2>Runnable Test Cases</h2>
+      <span id="caseStatus">loading</span>
+    </div>
     <table>
       <thead>
         <tr>
-          <th>Route</th>
-          <th>Purpose</th>
-          <th>Open</th>
+          <th>Category</th>
+          <th>Case</th>
+          <th>Endpoint</th>
+          <th>Baseline</th>
+          <th>Protected</th>
         </tr>
       </thead>
-      <tbody>
-        <tr>
-          <td><code>/rasp/ui</code></td>
-          <td>Clickable test runner; baseline controls call :18080 and protected controls call :18081</td>
-          <td><a href="/rasp/ui">Open</a></td>
-        </tr>
-        <tr>
-          <td><code>/rasp/cases</code></td>
-          <td>JSON catalog for clickable API cases</td>
-          <td><a href="/rasp/cases">Open</a></td>
-        </tr>
-        <tr>
-          <td><code>/rasp/blocked</code></td>
-          <td>Protected interception destination</td>
-          <td><a href="/rasp/blocked?hook=demo&amp;algorithm=demo&amp;message=demo">Open</a></td>
-        </tr>
-      </tbody>
+      <tbody id="caseRows"></tbody>
     </table>
   </main>
 
   <script>
     const host = location.hostname || 'localhost';
-    const baselineBase = `${location.protocol}//${host}:18080`;
-    const protectedBase = `${location.protocol}//${host}:18081`;
+    const environments = {
+      tomcat9Baseline: `${location.protocol}//${host}:18080`,
+      tomcat9Protected: `${location.protocol}//${host}:18081`,
+      tomcat10Baseline: `${location.protocol}//${host}:18082`,
+      tomcat10Protected: `${location.protocol}//${host}:18083`,
+      tomcat11Baseline: `${location.protocol}//${host}:18084`,
+      tomcat11Protected: `${location.protocol}//${host}:18085`
+    };
 
-    currentUrl.textContent = `${location.origin}/rasp/ui`;
-    baselineUrl.textContent = `${baselineBase}/rasp/ui`;
-    protectedUrl.textContent = `${protectedBase}/rasp/ui`;
-    baselineUi.href = `${baselineBase}/rasp/ui`;
-    protectedUi.href = `${protectedBase}/rasp/ui`;
+    tomcat9BaselineUrl.textContent = `${environments.tomcat9Baseline}/rasp/ui`;
+    tomcat9ProtectedUrl.textContent = `${environments.tomcat9Protected}/rasp/ui`;
+    tomcat10BaselineUrl.textContent = `${environments.tomcat10Baseline}/rasp/ui`;
+    tomcat10ProtectedUrl.textContent = `${environments.tomcat10Protected}/rasp/ui`;
+    tomcat11BaselineUrl.textContent = `${environments.tomcat11Baseline}/rasp/ui`;
+    tomcat11ProtectedUrl.textContent = `${environments.tomcat11Protected}/rasp/ui`;
+    baselineUi.href = `${environments.tomcat9Baseline}/rasp/ui`;
+    protectedUi.href = `${environments.tomcat9Protected}/rasp/ui`;
 
     fetch('/rasp/health')
       .then(response => {
-        currentStatus.textContent = response.ok ? 'healthy' : `status ${response.status}`;
+        caseStatus.textContent = response.ok ? 'service healthy' : `status ${response.status}`;
       })
       .catch(error => {
-        currentStatus.textContent = String(error);
+        caseStatus.textContent = String(error);
       });
+
+    fetch('/rasp/labs')
+      .then(response => response.json())
+      .then(catalog => {
+        labGroups.innerHTML = '';
+        const groups = catalog.groups || [];
+        let labCount = 0;
+        for (const group of groups) {
+          const labs = group.labs || [];
+          labCount += labs.length;
+          const hooks = [...new Set(labs.flatMap(lab => lab.hooks || []))];
+          const article = document.createElement('article');
+          article.className = 'lab';
+          article.innerHTML = `
+            <h3>${escapeHtml(group.label)}</h3>
+            <p>${escapeHtml((group.mechanics || []).join(' / '))}</p>
+            <code>${escapeHtml(labs.map(lab => lab.name).join(', '))}</code>
+            <p>${escapeHtml(hooks.join(' / '))}</p>
+          `;
+          labGroups.appendChild(article);
+        }
+        labStatus.textContent = `${labCount} labs / ${groups.length} groups`;
+      })
+      .catch(error => {
+        labStatus.textContent = String(error);
+      });
+
+    fetch('/rasp/cases')
+      .then(response => response.json())
+      .then(cases => {
+        caseRows.innerHTML = '';
+        for (const item of cases) {
+          const row = document.createElement('tr');
+          const baselineHref = `${environments.tomcat9Baseline}${item.path}`;
+          const protectedHref = `${environments.tomcat9Protected}${item.path}`;
+          row.innerHTML = `
+            <td>${escapeHtml(item.category)}</td>
+            <td>${escapeHtml(item.name)}</td>
+            <td><code>${escapeHtml(item.path)}</code></td>
+            <td><a class="pill baseline" href="${baselineHref}">Open</a></td>
+            <td><a class="pill protected" href="${protectedHref}">Open</a></td>
+          `;
+          caseRows.appendChild(row);
+        }
+        caseStatus.textContent = `${cases.length} cases`;
+      })
+      .catch(error => {
+        caseStatus.textContent = String(error);
+      });
+
+    function escapeHtml(value) {
+      return String(value).replace(/[&<>"']/g, ch => ({
+        '&': '&amp;',
+        '<': '&lt;',
+        '>': '&gt;',
+        '"': '&quot;',
+        "'": '&#39;'
+      }[ch]));
+    }
   </script>
 </body>
 </html>

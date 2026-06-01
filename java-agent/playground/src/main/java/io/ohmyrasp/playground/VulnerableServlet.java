@@ -45,12 +45,18 @@ public final class VulnerableServlet extends HttpServlet {
     response.setHeader("Access-Control-Allow-Headers", "Content-Type, User-Agent");
     response.setContentType("text/plain");
     String action = request.getPathInfo() == null ? "/ui" : request.getPathInfo();
+    boolean agentRequestEntered = false;
     try {
+      if (!action.equals("/blocked")) {
+        agentRequestEntered = enterAgentRequest(request, response);
+      }
       String result =
           switch (action) {
             case "/", "/ui" -> renderUi(request);
             case "/blocked" -> renderBlocked(request);
             case "/cases" -> testCasesJson();
+            case "/environments" -> environmentsJson();
+            case "/labs" -> LabCatalog.json();
             case "/health" -> "ok";
             case "/request" -> "request inspected";
             case "/command" -> runCommand(request);
@@ -59,8 +65,8 @@ public final class VulnerableServlet extends HttpServlet {
             case "/command/dnslog" -> runCommandLiteral(List.of("echo", "curl http://probe.dnslog.cn/a"));
             case "/command/reflect" -> runCommandReflect();
             case "/file/read" -> readFile(request);
-            case "/file/read-sensitive" -> firstLine(Files.readString(Path.of("/etc/passwd")));
-            case "/file/read-outside" -> firstLine(Files.readString(Path.of("/etc/hosts")));
+            case "/file/read-sensitive" -> readFilePath(Path.of("/etc/passwd"));
+            case "/file/read-outside" -> readFilePath(Path.of("/etc/hosts"));
             case "/file/write" -> writeFile(request);
             case "/file/write-reflect" -> writeFileReflect();
             case "/file/delete" -> deleteFile(request);
@@ -81,7 +87,7 @@ public final class VulnerableServlet extends HttpServlet {
           };
       if (action.equals("/") || action.equals("/ui") || action.equals("/blocked")) {
         response.setContentType("text/html");
-      } else if (action.equals("/cases")) {
+      } else if (action.equals("/cases") || action.equals("/environments") || action.equals("/labs")) {
         response.setContentType("application/json");
       }
       try (PrintWriter writer = response.getWriter()) {
@@ -94,6 +100,10 @@ public final class VulnerableServlet extends HttpServlet {
       response.setStatus(500);
       try (PrintWriter writer = response.getWriter()) {
         writer.println(e.getClass().getName() + ": " + e.getMessage());
+      }
+    } finally {
+      if (agentRequestEntered) {
+        exitAgentRequest();
       }
     }
   }
@@ -113,14 +123,26 @@ public final class VulnerableServlet extends HttpServlet {
     if (args != null) {
       command.addAll(List.of(args));
     }
-    Process process = new ProcessBuilder(command).redirectErrorStream(true).start();
+    ProcessBuilder processBuilder = new ProcessBuilder(command).redirectErrorStream(true);
+    hook(
+        "beforeProcessBuilderStart",
+        new Class<?>[] {ProcessBuilder.class, List.class},
+        processBuilder,
+        List.of());
+    Process process = processBuilder.start();
     boolean finished = process.waitFor(2, TimeUnit.SECONDS);
     String output = new String(process.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
     return "finished=" + finished + " output=" + firstLine(output);
   }
 
   private static String runCommandLiteral(List<String> command) throws Exception {
-    Process process = new ProcessBuilder(command).redirectErrorStream(true).start();
+    ProcessBuilder processBuilder = new ProcessBuilder(command).redirectErrorStream(true);
+    hook(
+        "beforeProcessBuilderStart",
+        new Class<?>[] {ProcessBuilder.class, List.class},
+        processBuilder,
+        List.of());
+    Process process = processBuilder.start();
     boolean finished = process.waitFor(2, TimeUnit.SECONDS);
     String output = new String(process.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
     return "finished=" + finished + " output=" + firstLine(output);
@@ -128,6 +150,11 @@ public final class VulnerableServlet extends HttpServlet {
 
   private static String runCommandReflect() throws Exception {
     ProcessBuilder processBuilder = new ProcessBuilder("id").redirectErrorStream(true);
+    hook(
+        "beforeProcessBuilderStart",
+        new Class<?>[] {ProcessBuilder.class, List.class},
+        processBuilder,
+        List.of("java.lang.reflect.Method", "io.ohmyrasp.playground.VulnerableServlet"));
     Method start = ProcessBuilder.class.getMethod("start");
     Process process = (Process) start.invoke(processBuilder);
     boolean finished = process.waitFor(2, TimeUnit.SECONDS);
@@ -137,11 +164,29 @@ public final class VulnerableServlet extends HttpServlet {
 
   private static String readFile(HttpServletRequest request) throws IOException {
     Path path = Path.of(value(request, "path", "/etc/passwd"));
+    return readFilePath(path);
+  }
+
+  private static String readFilePath(Path path) throws IOException {
+    try {
+      hook("beforePathRead", new Class<?>[] {Object.class}, path);
+    } catch (Exception e) {
+      if (isOhMyRaspBlock(e) && e instanceof RuntimeException runtimeException) {
+        throw runtimeException;
+      }
+    }
     return firstLine(Files.readString(path));
   }
 
   private static String writeFile(HttpServletRequest request) throws IOException {
     Path path = Path.of(value(request, "path", "/usr/local/tomcat/webapps/ROOT/uploaded.jsp"));
+    try {
+      hook("beforePathWrite", new Class<?>[] {Object.class, List.class}, path, List.of());
+    } catch (Exception e) {
+      if (isOhMyRaspBlock(e) && e instanceof RuntimeException runtimeException) {
+        throw runtimeException;
+      }
+    }
     Files.createDirectories(path.getParent());
     Files.writeString(path, value(request, "content", "<% out.println(\"ohmyrasp\"); %>"));
     return "wrote " + path;
@@ -149,6 +194,11 @@ public final class VulnerableServlet extends HttpServlet {
 
   private static String writeFileReflect() throws Exception {
     String path = "/usr/local/tomcat/webapps/ROOT/reflect.jsp";
+    hook(
+        "beforeFileWrite",
+        new Class<?>[] {String.class, List.class},
+        path,
+        List.of("java.lang.reflect.Method", "io.ohmyrasp.playground.VulnerableServlet"));
     Constructor<FileOutputStream> constructor = FileOutputStream.class.getConstructor(String.class);
     try (OutputStream output = constructor.newInstance(path)) {
       output.write("<% out.println(\"reflect\"); %>".getBytes(StandardCharsets.UTF_8));
@@ -161,6 +211,13 @@ public final class VulnerableServlet extends HttpServlet {
     if (Boolean.parseBoolean(value(request, "touch", "true"))) {
       Files.writeString(path, "delete target");
     }
+    try {
+      hook("beforePathDelete", new Class<?>[] {Object.class}, path);
+    } catch (Exception e) {
+      if (isOhMyRaspBlock(e) && e instanceof RuntimeException runtimeException) {
+        throw runtimeException;
+      }
+    }
     return "deleted=" + path.toFile().delete();
   }
 
@@ -169,12 +226,26 @@ public final class VulnerableServlet extends HttpServlet {
   }
 
   private static String listDirectoryPath(String path) {
+    try {
+      hook("beforeDirectoryList", new Class<?>[] {Object.class, List.class}, path, List.of());
+    } catch (Exception e) {
+      if (isOhMyRaspBlock(e) && e instanceof RuntimeException runtimeException) {
+        throw runtimeException;
+      }
+    }
     File[] files = new File(path).listFiles();
     return "entries=" + (files == null ? 0 : files.length);
   }
 
   private static String outboundUrl(HttpServletRequest request) throws IOException {
     URL url = URI.create(value(request, "url", "http://169.254.169.254/latest/meta-data/")).toURL();
+    try {
+      hook("beforeUrlOpen", new Class<?>[] {Object.class}, url);
+    } catch (Exception e) {
+      if (isOhMyRaspBlock(e) && e instanceof RuntimeException runtimeException) {
+        throw runtimeException;
+      }
+    }
     var connection = url.openConnection();
     connection.setConnectTimeout(200);
     connection.setReadTimeout(200);
@@ -186,7 +257,15 @@ public final class VulnerableServlet extends HttpServlet {
   }
 
   private static String dnsLookup(HttpServletRequest request) throws IOException {
-    InetAddress[] addresses = InetAddress.getAllByName(value(request, "host", "probe.dnslog.cn"));
+    String host = value(request, "host", "probe.dnslog.cn");
+    try {
+      hook("beforeDnsLookup", new Class<?>[] {String.class}, host);
+    } catch (Exception e) {
+      if (isOhMyRaspBlock(e) && e instanceof RuntimeException runtimeException) {
+        throw runtimeException;
+      }
+    }
+    InetAddress[] addresses = InetAddress.getAllByName(host);
     return "addresses=" + addresses.length;
   }
 
@@ -212,8 +291,9 @@ public final class VulnerableServlet extends HttpServlet {
         var statement = connection.createStatement()) {
       statement.execute("create table if not exists users(id int primary key, name varchar(80))");
       statement.execute("merge into users key(id) values(1, 'alice')");
-      try (var resultSet =
-          statement.executeQuery("select * from users where name = '" + value + "'")) {
+      String query = "select * from users where name = '" + value + "'";
+      hook("beforeSql", new Class<?>[] {String.class}, query);
+      try (var resultSet = statement.executeQuery(query)) {
         int count = 0;
         while (resultSet.next()) {
           count++;
@@ -423,6 +503,39 @@ public final class VulnerableServlet extends HttpServlet {
     }
   }
 
+  private static boolean enterAgentRequest(HttpServletRequest request, HttpServletResponse response)
+      throws Exception {
+    try {
+      Class<?> hooks = Class.forName("io.ohmyrasp.agent.hook.OhMyRaspHooks");
+      hooks
+          .getMethod("enterHttpRequest", Object.class, Object.class)
+          .invoke(null, request, response);
+      return true;
+    } catch (ClassNotFoundException noAgent) {
+      return false;
+    } catch (InvocationTargetException e) {
+      Throwable cause = e.getCause();
+      if (isOhMyRaspBlock(cause) && cause instanceof RuntimeException runtimeException) {
+        throw runtimeException;
+      }
+      if (cause instanceof Exception exception) {
+        throw exception;
+      }
+      if (cause instanceof Error error) {
+        throw error;
+      }
+      throw e;
+    }
+  }
+
+  private static void exitAgentRequest() {
+    try {
+      hook("exitHttpRequest", new Class<?>[] {});
+    } catch (Exception ignored) {
+      // Request teardown should never mask the playground response.
+    }
+  }
+
   private static boolean isOhMyRaspBlock(Throwable throwable) {
     Throwable current = throwable;
     while (current != null) {
@@ -483,21 +596,24 @@ public final class VulnerableServlet extends HttpServlet {
           <meta name="viewport" content="width=device-width, initial-scale=1">
           <title>OhMyRasp Testbed</title>
           <style>
-            :root{color-scheme:light;--ink:#172033;--muted:#5d667a;--line:#d8dde8;--bg:#f5f7fb;--panel:#fff;--base:#2563eb;--prot:#b42318}
+            :root{color-scheme:light;--ink:#172033;--muted:#5d667a;--line:#d8dde8;--bg:#f5f7fb;--panel:#fff;--base:#2563eb;--prot:#b42318;--accent:#6d28d9}
             *{box-sizing:border-box}body{margin:0;font-family:Arial,Helvetica,sans-serif;background:var(--bg);color:var(--ink)}
             header{background:#0f172a;color:#fff;padding:18px 24px;border-bottom:4px solid #2dd4bf}
             header h1{margin:0;font-size:24px;letter-spacing:0}header p{margin:6px 0 0;color:#cbd5e1}
             main{padding:18px 24px;max-width:1440px;margin:0 auto}
             .toolbar{display:flex;flex-wrap:wrap;gap:10px;align-items:center;margin-bottom:16px}
-            .toolbar code{background:#e8edf6;border:1px solid var(--line);border-radius:6px;padding:7px 9px}
+            .toolbar code,.toolbar select{background:#e8edf6;border:1px solid var(--line);border-radius:6px;padding:7px 9px}
             .grid{display:grid;grid-template-columns:minmax(520px,1.1fr) minmax(420px,.9fr);gap:16px}
             table{width:100%%;border-collapse:collapse;background:var(--panel);border:1px solid var(--line);border-radius:8px;overflow:hidden}
             th,td{border-bottom:1px solid var(--line);padding:10px;text-align:left;vertical-align:middle;font-size:14px}
             th{background:#eef2f8;color:#334155;font-size:12px;text-transform:uppercase;letter-spacing:.04em}
             tr:last-child td{border-bottom:0}.category{color:var(--muted);font-size:12px}
             button{border:1px solid transparent;border-radius:6px;padding:8px 10px;color:#fff;cursor:pointer;min-width:96px}
-            button.base{background:var(--base)}button.protected{background:var(--prot)}button.all{background:#0f766e}
+            button.base{background:var(--base)}button.protected{background:var(--prot)}button.all{background:#0f766e}button.env{background:var(--accent)}
             button:disabled{opacity:.5;cursor:wait}
+            .labs{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:10px;margin:0 0 16px}
+            .lab{background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:12px}
+            .lab h2{font-size:15px;margin:0 0 6px}.lab p{font-size:13px;color:var(--muted);margin:0 0 8px}.lab code{font-size:12px}
             .result{background:var(--panel);border:1px solid var(--line);border-radius:8px;min-height:520px;padding:14px}
             .result h2{margin:0 0 12px;font-size:18px}.entry{border-top:1px solid var(--line);padding:10px 0}
             .entry:first-of-type{border-top:0}.tag{display:inline-block;border-radius:999px;padding:2px 8px;font-size:12px;color:#fff}
@@ -509,15 +625,17 @@ public final class VulnerableServlet extends HttpServlet {
         <body>
           <header>
             <h1>OhMyRasp Comparative Testbed</h1>
-            <p>Baseline Tomcat runs without the agent on :18080; red protected controls intentionally call :18081.</p>
+            <p>Tomcat 9, 10, and 11 run as paired baseline and protected environments.</p>
           </header>
           <main>
             <div class="toolbar">
-              <code id="baselineUrl"></code>
-              <code id="protectedUrl"></code>
-              <button class="base" id="runBaseline">Run baseline set (:18080)</button>
-              <button class="all" id="runProtected">Run protected set (:18081)</button>
+              <select id="environmentSelect"></select>
+              <code id="environmentUrl"></code>
+              <button class="env" id="runSelected">Run selected environment</button>
+              <button class="base" id="runBaselines">Run all baselines</button>
+              <button class="all" id="runProtected">Run all protected</button>
             </div>
+            <section class="labs" id="labs"></section>
             <div class="grid">
               <table>
                 <thead><tr><th>Case</th><th>Endpoint</th><th>Run</th></tr></thead>
@@ -531,32 +649,54 @@ public final class VulnerableServlet extends HttpServlet {
           </main>
           <script>
             const cases = %s;
+            const environments = %s;
+            const labCatalog = %s;
             const host = location.hostname || 'localhost';
-            const baselineBase = `${location.protocol}//${host}:18080`;
-            const protectedBase = `${location.protocol}//${host}:18081`;
-            baselineUrl.textContent = `baseline: ${baselineBase}`;
-            protectedUrl.textContent = `protected: ${protectedBase}`;
+            for (const env of environments) {
+              env.base = `${location.protocol}//${host}:${env.port}`;
+              const option = document.createElement('option');
+              option.value = env.id;
+              option.textContent = env.label;
+              environmentSelect.appendChild(option);
+            }
+            function selectedEnvironment() {
+              return environments.find(env => env.id === environmentSelect.value) || environments[0];
+            }
+            function updateEnvironmentUrl() {
+              const env = selectedEnvironment();
+              environmentUrl.textContent = `${env.kind}: ${env.base}`;
+            }
+            environmentSelect.onchange = updateEnvironmentUrl;
+            updateEnvironmentUrl();
+            const labsContainer = document.getElementById('labs');
+            for (const group of labCatalog.groups || []) {
+              const article = document.createElement('article');
+              article.className = 'lab';
+              article.innerHTML = `<h2>${escapeHtml(group.label)}</h2><p>${escapeHtml((group.mechanics || []).join(' / '))}</p><code>${(group.labs || []).map(lab => escapeHtml(lab.name)).join(', ')}</code>`;
+              labsContainer.appendChild(article);
+            }
             const tbody = document.getElementById('cases');
             for (const item of cases) {
               const tr = document.createElement('tr');
-              tr.innerHTML = `<td><strong>${item.name}</strong><div class="category">${item.category}</div></td><td><code>${item.path}</code></td><td><button class="base">Baseline :18080</button> <button class="protected">Protected :18081</button></td>`;
-              tr.querySelector('.base').onclick = () => runCase(item, 'baseline');
-              tr.querySelector('.protected').onclick = () => runCase(item, 'protected');
+              tr.innerHTML = `<td><strong>${item.name}</strong><div class="category">${item.category}</div></td><td><code>${item.path}</code></td><td><button class="env">Run selected</button></td>`;
+              tr.querySelector('.env').onclick = () => runCase(item, selectedEnvironment());
               tbody.appendChild(tr);
             }
-            runBaseline.onclick = () => runSet('baseline', runBaseline);
-            runProtected.onclick = () => runSet('protected', runProtected);
-            async function runSet(env, button) {
+            runSelected.onclick = () => runSet([selectedEnvironment()], runSelected);
+            runBaselines.onclick = () => runSet(environments.filter(env => env.kind === 'baseline'), runBaselines);
+            runProtected.onclick = () => runSet(environments.filter(env => env.kind === 'protected'), runProtected);
+            async function runSet(selected, button) {
               button.disabled = true;
-              for (const item of cases) await runCase(item, env);
+              for (const env of selected) {
+                for (const item of cases) await runCase(item, env);
+              }
               button.disabled = false;
             }
             async function runCase(item, env) {
-              const base = env === 'baseline' ? baselineBase : protectedBase;
               const started = performance.now();
               let status = 'error', finalUrl = '', body = '';
               try {
-                const response = await fetch(base + item.path, {redirect:'follow'});
+                const response = await fetch(env.base + item.path, {redirect:'follow'});
                 status = String(response.status);
                 finalUrl = response.url;
                 body = await response.text();
@@ -566,7 +706,7 @@ public final class VulnerableServlet extends HttpServlet {
               const elapsed = Math.round(performance.now() - started);
               const entry = document.createElement('div');
               entry.className = 'entry';
-              entry.innerHTML = `<span class="tag ${env}">${env}</span> <strong>${item.name}</strong> <span>${status} / ${elapsed}ms</span><div><small>${finalUrl}</small></div><pre>${escapeHtml(body.slice(0, 1200))}</pre>`;
+              entry.innerHTML = `<span class="tag ${env.kind}">${env.label}</span> <strong>${item.name}</strong> <span>${status} / ${elapsed}ms</span><div><small>${finalUrl}</small></div><pre>${escapeHtml(body.slice(0, 1200))}</pre>`;
               results.prepend(entry);
             }
             function escapeHtml(value) {
@@ -576,7 +716,7 @@ public final class VulnerableServlet extends HttpServlet {
         </body>
         </html>
         """
-        .formatted(testCasesJson());
+        .formatted(testCasesJson(), environmentsJson(), LabCatalog.json());
   }
 
   private static String testCasesJson() {
@@ -584,23 +724,84 @@ public final class VulnerableServlet extends HttpServlet {
         [
           {"category":"request","name":"Scanner user agent","path":"/rasp/request"},
           {"category":"request","name":"XSS parameter","path":"/rasp/request?q=%3Cscript%3Ealert(1)%3C/script%3E"},
+
           {"category":"command","name":"Command user input","path":"/rasp/command?cmd=sh&arg=-c&arg=cat%20/etc/passwd%3B%20id"},
           {"category":"command","name":"Command common payload","path":"/rasp/command/common"},
+          {"category":"command","name":"Command syntax error","path":"/rasp/command/error"},
+          {"category":"command","name":"Command DNS callback payload","path":"/rasp/command/dnslog"},
+          {"category":"command","name":"Reflective command execution","path":"/rasp/command/reflect"},
+
           {"category":"file","name":"Sensitive file read","path":"/rasp/file/read?path=/etc/passwd"},
+          {"category":"file","name":"Hardcoded sensitive file read","path":"/rasp/file/read-sensitive"},
+          {"category":"file","name":"Read outside application","path":"/rasp/file/read-outside"},
           {"category":"file","name":"Script file write","path":"/rasp/file/write?path=/usr/local/tomcat/webapps/ROOT/shell.jsp"},
+          {"category":"file","name":"Reflective script file write","path":"/rasp/file/write-reflect"},
           {"category":"file","name":"File delete","path":"/rasp/file/delete?path=/tmp/ohmyrasp-delete-target.txt"},
+
           {"category":"directory","name":"Directory listing","path":"/rasp/directory?path=/etc"},
+          {"category":"directory","name":"Root directory listing","path":"/rasp/directory/root"},
+          {"category":"directory","name":"Reflective directory listing policy","path":"/rasp/policy/directory-reflect"},
+
           {"category":"network","name":"SSRF metadata","path":"/rasp/ssrf?url=http%3A%2F%2F169.254.169.254%2Flatest%2Fmeta-data%2F"},
           {"category":"network","name":"DNS callback","path":"/rasp/dns?host=probe.dnslog.cn"},
+          {"category":"network","name":"SSRF user input policy","path":"/rasp/policy/ssrf-userinput?url=http%3A%2F%2F127.0.0.1%2Fadmin"},
+          {"category":"network","name":"SSRF common callback policy","path":"/rasp/policy/ssrf-common"},
+          {"category":"network","name":"SSRF protocol policy","path":"/rasp/policy/ssrf-protocol"},
+          {"category":"network","name":"SSRF obfuscated localhost policy","path":"/rasp/policy/ssrf-obfuscate"},
+
           {"category":"jndi","name":"JNDI LDAP lookup","path":"/rasp/jndi?name=ldap%3A%2F%2F127.0.0.1%3A1389%2Fa"},
+
           {"category":"sql","name":"SQL injection","path":"/rasp/sql?value=%27%20OR%20%271%27%3D%271"},
+          {"category":"sql","name":"SQL exception policy","path":"/rasp/policy/sql-exception"},
+          {"category":"sql","name":"SQL policy rule","path":"/rasp/policy/sql-policy"},
+          {"category":"sql","name":"SQL regex policy","path":"/rasp/policy/sql-regex"},
+
           {"category":"java","name":"Deserialization","path":"/rasp/deserialize"},
+
           {"category":"xml","name":"XXE file entity","path":"/rasp/xxe?entity=file%3A%2F%2F%2Fetc%2Fpasswd"},
+          {"category":"xml","name":"XXE protocol policy","path":"/rasp/policy/xxe-protocol"},
           {"category":"xml","name":"XXE file detector","path":"/rasp/policy/xxe-file"},
-          {"category":"policy","name":"Multipart script upload","path":"/rasp/policy/upload-script"},
-          {"category":"policy","name":"OGNL blacklist","path":"/rasp/policy/ognl"},
-          {"category":"policy","name":"Response PII leak","path":"/rasp/policy/response"},
-          {"category":"policy","name":"Webshell eval","path":"/rasp/policy/webshell-eval?code=system('id')"}
+
+          {"category":"read","name":"Remote file read policy","path":"/rasp/policy/read-http?file=http%3A%2F%2F127.0.0.1%2Finternal"},
+          {"category":"read","name":"Unwanted file read policy","path":"/rasp/policy/read-unwanted?file=file%3A%2F%2F%2Fetc%2Fpasswd"},
+
+          {"category":"include","name":"Include user input policy","path":"/rasp/policy/include-userinput?file=/etc/passwd"},
+          {"category":"include","name":"Include protocol policy","path":"/rasp/policy/include-protocol"},
+
+          {"category":"upload","name":"Multipart script upload","path":"/rasp/policy/upload-script"},
+          {"category":"upload","name":"Multipart HTML upload","path":"/rasp/policy/upload-html"},
+          {"category":"upload","name":"Executable upload","path":"/rasp/policy/upload-exe"},
+          {"category":"upload","name":"WebDAV upload rename","path":"/rasp/policy/webdav"},
+          {"category":"upload","name":"Dangerous rename","path":"/rasp/policy/rename"},
+          {"category":"upload","name":"Dangerous hard link","path":"/rasp/policy/link"},
+
+          {"category":"expression","name":"OGNL blacklist","path":"/rasp/policy/ognl"},
+          {"category":"expression","name":"OGNL length limit","path":"/rasp/policy/ognl-length"},
+          {"category":"expression","name":"Dynamic eval policy","path":"/rasp/policy/eval"},
+
+          {"category":"native","name":"Native library load policy","path":"/rasp/policy/loadlib"},
+
+          {"category":"response","name":"Response PII leak","path":"/rasp/policy/response"},
+          {"category":"response","name":"Reflected XSS response","path":"/rasp/policy/xss-echo?q=%3Cscript%3Ealert(1)%3C/script%3E"},
+
+          {"category":"webshell","name":"Webshell eval","path":"/rasp/policy/webshell-eval?code=system('id')"},
+          {"category":"webshell","name":"Webshell command","path":"/rasp/policy/webshell-command?cmd=sh%20-c%20id"},
+          {"category":"webshell","name":"Webshell file write","path":"/rasp/policy/webshell-file?file=shell.jsp&content=%3C%25%20out.println(1)%3B%20%25%3E"},
+          {"category":"webshell","name":"Webshell callable","path":"/rasp/policy/webshell-callable"},
+          {"category":"webshell","name":"Webshell LD_PRELOAD","path":"/rasp/policy/webshell-ld"}
+        ]
+        """;
+  }
+
+  private static String environmentsJson() {
+    return """
+        [
+          {"id":"tomcat9-baseline","label":"Tomcat 9 baseline","kind":"baseline","port":18080},
+          {"id":"tomcat9-protected","label":"Tomcat 9 protected","kind":"protected","port":18081},
+          {"id":"tomcat10-baseline","label":"Tomcat 10 baseline","kind":"baseline","port":18082},
+          {"id":"tomcat10-protected","label":"Tomcat 10 protected","kind":"protected","port":18083},
+          {"id":"tomcat11-baseline","label":"Tomcat 11 baseline","kind":"baseline","port":18084},
+          {"id":"tomcat11-protected","label":"Tomcat 11 protected","kind":"protected","port":18085}
         ]
         """;
   }
