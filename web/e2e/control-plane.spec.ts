@@ -134,6 +134,7 @@ test("navigates primary control-plane sections with an authenticated session", a
   }
 
   for (const legacyRoute of [
+    { path: "/addInstance", heading: "Agents", evidence: "Daemon Workloads" },
     { path: "/log/exceptions", heading: "Events", evidence: "Unhandled exception captured" },
     { path: "/log/crash", heading: "Events", evidence: "Agent crash captured" },
     { path: "/log/audit", heading: "Access & Audit", evidence: "auth.login" },

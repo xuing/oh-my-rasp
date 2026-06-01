@@ -448,22 +448,24 @@
 
 ## 12. 前端页面覆盖
 
-- 当前已实现页面
-  - 登录 `/login` `[请二次检查]`
-  - 概览 `/` `[待检查]`
-  - 应用 `/applications` `[待检查]`
-  - Agent `/agents` `[待检查]`
-  - 策略 `/policies` `[请二次检查]`
-  - 事件 `/events` `[请二次检查]`
-  - 可观测性 `/observability` `[请二次检查]`
-  - 访问与审计 `/access` `[待检查]`
+- 当前已实现页面 `[Completed]`
+  - 登录 `/login` `[Completed]`
+  - 概览 `/` `[Completed]`
+  - 应用 `/applications` `[Completed]`
+  - Agent `/agents` `[Completed]`
+  - 策略 `/policies` `[Completed]`
+  - 事件 `/events` `[Completed]`
+  - 可观测性 `/observability` `[Completed]`
+  - 访问与审计 `/access` `[Completed]`
 - 归档页面未完全复刻
-  - 添加实例向导 `/addInstance` `[待检查]`
+  - 添加实例向导 `/addInstance` `[Implementation Unnecessary]`
     - 归档细分：手动添加、自动添加、Docker、Kubernetes、Windows、PHP、客户端安装弹窗。
     - 当前有 Agent artifact、daemon workload 绑定和注入状态，但没有完整向导 UI。
-  - 平台管理 `/platform` `[未覆盖]`
-  - 系统设置 `/settings/*` `[待检查]`
-  - noaccess/404 专页 `[待检查]`
+  - 平台管理 `/platform` `[Completed]`
+  - 系统设置 `/settings/*` `[Completed]`
+  - noaccess/404 专页 `[Completed]`
+
+详见：[12. 前端页面覆盖](feature-coverage/12-frontend-page-coverage.md)
 
 ## 15. 主要差距汇总
 
