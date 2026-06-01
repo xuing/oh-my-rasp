@@ -312,8 +312,10 @@ func (s *Server) Routes() http.Handler {
 	})
 	router.Get("/v1/service/app/get", s.legacyDaemonApplication)
 	router.Get("/v1/service/command", s.legacyDaemonCommandWebsocket)
+	router.Post("/v1/service/command/daemon_set/inject", s.legacyDaemonSetInject)
 	router.Get("/v1/service/dl/agent/info", s.legacyDaemonArtifactInfo)
 	router.Get("/v1/service/dl/agent", s.daemonArtifactDownload)
+	router.Get("/v2/service/dl/agent", s.daemonArtifactDownload)
 
 	router.Route("/api/v1", func(api chi.Router) {
 		api.Post("/auth/login", strict.PostApiV1AuthLogin)

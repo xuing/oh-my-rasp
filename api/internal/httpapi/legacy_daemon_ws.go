@@ -116,6 +116,32 @@ func (s *Server) legacyDaemonCommandWebsocket(w http.ResponseWriter, r *http.Req
 	}
 }
 
+func (s *Server) legacyDaemonSetInject(w http.ResponseWriter, r *http.Request) {
+	token := daemonRequestToken(r)
+	if token == "" {
+		writeError(w, control.ErrUnauthorized)
+		return
+	}
+	payload, err := io.ReadAll(io.LimitReader(r.Body, maxLegacyDaemonFrameBytes+1))
+	if err != nil {
+		writeError(w, err)
+		return
+	}
+	if len(payload) > maxLegacyDaemonFrameBytes {
+		writeError(w, fmt.Errorf("%w: legacy daemon message exceeds maximum size", control.ErrInvalid))
+		return
+	}
+	if _, err := s.handleLegacyDaemonMessage(r.Context(), token, websocket.TextMessage, payload); err != nil {
+		writeError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{
+		"data":        "success",
+		"description": "ok",
+		"status":      0,
+	})
+}
+
 func (s *Server) handleLegacyDaemonMessage(ctx context.Context, token string, messageType int, payload []byte) ([]control.DaemonCommandGroup, error) {
 	raw, err := decodeLegacyDaemonPayload(messageType, payload)
 	if err != nil {

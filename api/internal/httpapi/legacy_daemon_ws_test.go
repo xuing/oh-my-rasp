@@ -89,6 +89,27 @@ func TestLegacyDaemonCommandWebSocketLifecycle(t *testing.T) {
 	legacyDaemonTestWaitForInjection(t, client, adminToken, processID, "failed")
 }
 
+func TestLegacyDaemonSetInjectHTTPReport(t *testing.T) {
+	client := newTestClient(t)
+	adminToken := client.login(t)
+	daemonToken := stringValue(t, client.request(t, http.MethodGet, "/api/v1/daemon/token", adminToken, nil), "access_token")
+
+	update := legacyDaemonTestUpdateProcess("legacy-k8s-node")
+	update["cmd"] = "UpdateK8S"
+	unauthorized := client.raw(t, http.MethodPost, "/v1/service/command/daemon_set/inject", "", legacyDaemonHeaders("wrong-token"), update)
+	if unauthorized.Code != http.StatusUnauthorized {
+		t.Fatalf("expected legacy daemon set report with wrong token to fail, got %d: %s", unauthorized.Code, unauthorized.Body.String())
+	}
+	response := client.raw(t, http.MethodPost, "/v1/service/command/daemon_set/inject", "", legacyDaemonHeaders(daemonToken), update)
+	if response.Code != http.StatusOK {
+		t.Fatalf("expected legacy daemon set report to succeed, got %d: %s", response.Code, response.Body.String())
+	}
+	processID := legacyDaemonTestWaitForWorkloadID(t, client, adminToken, "process")
+	if processID == "" {
+		t.Fatalf("expected legacy daemon set report to create a process workload")
+	}
+}
+
 func legacyDaemonTestUpdateProcess(nodeName string) map[string]any {
 	return map[string]any{
 		"cmd":       "UpdateProcess",

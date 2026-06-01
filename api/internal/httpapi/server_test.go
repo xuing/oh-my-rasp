@@ -911,6 +911,10 @@ func TestDaemonWorkloadInventoryTokenAndBinding(t *testing.T) {
 	if legacyDownload.Code != http.StatusOK || fmt.Sprintf("%x", md5.Sum(legacyDownload.Body.Bytes())) != artifactMD5 {
 		t.Fatalf("unexpected legacy daemon artifact download %d: headers=%#v", legacyDownload.Code, legacyDownload.Header())
 	}
+	legacyV2Download := client.raw(t, http.MethodGet, "/v2/service/dl/agent?appId=app_default&language=java&systemType=linux&languageVersion=17", "", legacyDaemonHeaders(daemonToken), nil)
+	if legacyV2Download.Code != http.StatusOK || fmt.Sprintf("%x", md5.Sum(legacyV2Download.Body.Bytes())) != artifactMD5 {
+		t.Fatalf("unexpected legacy v2 daemon artifact download %d: headers=%#v", legacyV2Download.Code, legacyV2Download.Header())
+	}
 	catalogDir := t.TempDir()
 	catalogBytes := []byte("agent package zip fixture")
 	if err := os.WriteFile(filepath.Join(catalogDir, "agent-java-linux-17.zip"), catalogBytes, 0o600); err != nil {

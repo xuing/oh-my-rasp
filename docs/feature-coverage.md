@@ -364,51 +364,58 @@
   - 版本编辑弹窗 `editDialog.vue` `[Implementation Unnecessary]`
     - 当前 artifact 上传表单和 catalog 表格覆盖必要能力，避免重复弹窗状态。
 
-## 10. Agent、服务端和下载通道
+## 10. Agent、服务端和下载通道 `[Completed]`
+
+子文档：[`docs/feature-coverage/10-agent-service-download-channel.md`](feature-coverage/10-agent-service-download-channel.md)
 
 - Agent 生命周期
-  - Agent 注册 `/v1/agent/rasp` `[请二次检查]`
-    - 当前：`POST /api/v1/agents/register`。
-  - Agent 心跳 `/v1/agent/heartbeat` `[请二次检查]`
+  - Agent 注册 `/v1/agent/rasp` `[Completed]`
+    - 当前：`POST /api/v1/agents/register`，Java Agent 客户端已使用现代 API。
+  - Agent 心跳 `/v1/agent/heartbeat` `[Completed]`
     - 当前：`POST /api/v1/agents/{agentID}/heartbeat`。
-  - Agent 报告 `/v1/agent/report` `[待检查]`
-    - 当前拆分为 events、dependencies、baseline findings、heartbeat。
-  - Agent 策略拉取 `[请二次检查]`
+  - Agent 报告 `/v1/agent/report` `[Completed]`
+    - 当前拆分为 events、dependencies、baseline findings、heartbeat，避免一个混合端点承载不同数据保留和查询语义。
+  - Agent 策略拉取 `[Completed]`
     - 当前：`GET /api/v1/agents/{agentID}/policy`。
-  - Agent attack log `/v1/agent/log/attack` `[请二次检查]`
-  - Agent policy log `/v1/agent/log/policy` `[待检查]`
-    - 当前改为 baseline findings。
-  - Agent error log `/v1/agent/log/error` `[待检查]`
-  - Agent dependency `/v1/agent/dependency` `[请二次检查]`
-  - Agent crash `/v1/agent/crash/report` `[请二次检查]`
+  - Agent attack log `/v1/agent/log/attack` `[Completed]`
+    - 当前：`POST /api/v1/events/attack`。
+  - Agent policy log `/v1/agent/log/policy` `[Completed]`
+    - 当前改为 `POST /api/v1/baseline-findings` 和 observability/performance events。
+  - Agent error log `/v1/agent/log/error` `[Completed]`
+    - 当前：`POST /api/v1/events/error`。
+  - Agent dependency `/v1/agent/dependency` `[Completed]`
+    - 当前：`POST /api/v1/dependencies`。
+  - Agent crash `/v1/agent/crash/report` `[Completed]`
+    - 当前：`POST /api/v1/events/crash`。
 - 下载服务
-  - 下载 Agent `/v1/service/dl/agent`, `/v2/service/dl/agent` `[请二次检查]`
-    - 当前：`GET /api/v1/daemon/artifacts/agent`, `GET /api/v1/agent-artifacts`。
-  - Agent 下载信息 `/v1/service/dl/agent/info` `[请二次检查]`
+  - 下载 Agent `/v1/service/dl/agent`, `/v2/service/dl/agent` `[Completed]`
+    - 当前：`GET /api/v1/daemon/artifacts/agent`，并提供 `/v1/service/dl/agent` 与 `/v2/service/dl/agent` 兼容下载入口。
+  - Agent 下载信息 `/v1/service/dl/agent/info` `[Completed]`
     - 当前：`GET /api/v1/daemon/artifacts/agent/info`。
-  - 下载升级包 `/v1/agent/download_upgrade` `[待检查]`
-  - 下载引擎 `/v1/agent/download_engine` `[待检查]`
-  - 下载 helper `/v1/service/dl/rasp-agent-helper`, `rasp-agent-helper-arm64` `[未覆盖]`
-  - 下载 injector `/v1/service/dl/rasp-injector`, `rasp-injector-arm64` `[未覆盖]`
-  - 安装脚本下载 `/v1/service/dl/install_legacy_helper.sh` `[未覆盖]`
-  - 卸载脚本下载 `/v1/service/dl/uninstall_legacy_helper.sh` `[未覆盖]`
+  - 下载升级包 `/v1/agent/download_upgrade` `[Implementation Unnecessary]`
+  - 下载引擎 `/v1/agent/download_engine` `[Implementation Unnecessary]`
+  - 下载 helper `/v1/service/dl/rasp-agent-helper`, `rasp-agent-helper-arm64` `[Implementation Unnecessary]`
+  - 下载 injector `/v1/service/dl/rasp-injector`, `rasp-injector-arm64` `[Implementation Unnecessary]`
+  - 安装脚本下载 `/v1/service/dl/install_legacy_helper.sh` `[Implementation Unnecessary]`
+  - 卸载脚本下载 `/v1/service/dl/uninstall_legacy_helper.sh` `[Implementation Unnecessary]`
+    - 当前项目只发布 Java Agent artifact，不发布未维护的 helper/injector/engine 二进制和安装脚本。
 - Service 应用接口
-  - Service app 获取 `/v1/service/app/get` `[待检查]`
-    - 当前：`GET /api/v1/daemon/app` 按 app id 返回 app secret 和语言。
+  - Service app 获取 `/v1/service/app/get` `[Completed]`
+    - 当前：`GET /api/v1/daemon/app` 按 app id 返回 app secret 和语言，并提供 `/v1/service/app/get` 兼容响应。
 - Command/Daemon 通道
-  - WebSocket 命令 `/v1/service/command` GET `[待检查]`
-    - 当前：`GET /api/v1/daemon/commands` 轮询式命令组，不是 WebSocket。
-  - DaemonSet 注入信息上传 `/v1/service/command/daemon_set/inject` `[请二次检查]`
-    - 当前：`POST /api/v1/daemon/injection-reports`。
-  - Daemon token 获取 `[请二次检查]`
+  - WebSocket 命令 `/v1/service/command` GET `[Completed]`
+    - 当前：`GET /api/v1/daemon/commands` 轮询式命令组，并提供 `/v1/service/command` 兼容 WebSocket。
+  - DaemonSet 注入信息上传 `/v1/service/command/daemon_set/inject` `[Completed]`
+    - 当前：`POST /api/v1/daemon/workloads/report` 和 `POST /api/v1/daemon/injection-reports`，并提供 legacy DaemonSet HTTP report 兼容入口。
+  - Daemon token 获取 `[Completed]`
     - 当前额外实现：`GET /api/v1/daemon/token`。
-  - Daemon token 重置 `[请二次检查]`
+  - Daemon token 重置 `[Completed]`
     - 当前额外实现：`POST /api/v1/daemon/token/reset`。
-  - Workload 上报 `[请二次检查]`
+  - Workload 上报 `[Completed]`
     - 当前额外实现：`POST /api/v1/daemon/workloads/report`。
-  - Workload 绑定应用 `[请二次检查]`
+  - Workload 绑定应用 `[Completed]`
     - 当前额外实现：`POST /api/v1/daemon/workloads/{workloadID}/bind`。
-  - Workload 解绑应用 `[请二次检查]`
+  - Workload 解绑应用 `[Completed]`
     - 当前额外实现：`POST /api/v1/daemon/workloads/{workloadID}/unbind`。
 
 ## 11. 日志、事件、可观测性和告警
