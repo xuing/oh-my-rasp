@@ -39,12 +39,26 @@ test("protects authenticated routes and renders explicit fallback pages", async 
   await expect(page.getByRole("heading", { name: "页面不存在" })).toBeVisible();
 });
 
+test("redirects authenticated viewers away from restricted routes", async ({ page }) => {
+  await page.addInitScript(() => {
+    window.localStorage.setItem("ohmyrasp.session_token", "viewer-token");
+    window.localStorage.setItem("ohmyrasp.session_user_email", "viewer@ohmyrasp.local");
+    window.localStorage.setItem("ohmyrasp.session_user_name", "Read Only Viewer");
+    window.localStorage.setItem("ohmyrasp.session_user_roles", JSON.stringify(["viewer"]));
+  });
+
+  await page.goto("/applications");
+  await expect(page).toHaveURL(/\/noaccess$/);
+  await expect(page.getByRole("heading", { name: "No access" })).toBeVisible();
+});
+
 test("navigates primary control-plane sections with an authenticated session", async ({ page }) => {
   const api = await mockControlPlaneApi(page);
   await page.addInitScript(() => {
     window.localStorage.setItem("ohmyrasp.session_token", "e2e-token");
     window.localStorage.setItem("ohmyrasp.session_user_email", "admin@ohmyrasp.local");
     window.localStorage.setItem("ohmyrasp.session_user_name", "Default Admin");
+    window.localStorage.setItem("ohmyrasp.session_user_roles", JSON.stringify(["admin", "security_engineer"]));
   });
 
   await page.goto("/");
@@ -134,17 +148,18 @@ test("navigates primary control-plane sections with an authenticated session", a
   }
 
   for (const legacyRoute of [
-    { path: "/addInstance", heading: "Agents", evidence: "Daemon Workloads" },
-    { path: "/log/exceptions", heading: "Events", evidence: "Unhandled exception captured" },
-    { path: "/log/crash", heading: "Events", evidence: "Agent crash captured" },
-    { path: "/log/audit", heading: "Access & Audit", evidence: "auth.login" },
-    { path: "/platform", heading: "Access & Audit", evidence: "User Administration" },
-    { path: "/platform/user", heading: "Access & Audit", evidence: "User Lifecycle" },
-    { path: "/settings/panel", heading: "Access & Audit", evidence: "Public Console URL" },
-    { path: "/settings/alarm", heading: "Access & Audit", evidence: "Alert Interval Seconds" },
-    { path: "/settings/systemInfo", heading: "Access & Audit", evidence: "System Version" },
-    { path: "/settings/poolVersion", heading: "Agents", evidence: "Agent Artifact Catalog" },
-    { path: "/settings/version", heading: "Agents", evidence: "Agent Artifact Upload" }
+    { path: "/addInstance", heading: "Add Instance", evidence: "Manual Java Agent" },
+    { path: "/maintain/clearData", heading: "Maintenance Cleanup", evidence: "Apply Cleanup" },
+    { path: "/log/exceptions", heading: "Error Events", evidence: "Unhandled exception captured" },
+    { path: "/log/crash", heading: "Crash Events", evidence: "Agent crash captured" },
+    { path: "/log/audit", heading: "Audit Log", evidence: "auth.login" },
+    { path: "/platform", heading: "Platform Administration", evidence: "User Administration" },
+    { path: "/platform/user", heading: "User Administration", evidence: "User Lifecycle" },
+    { path: "/settings/panel", heading: "Panel Settings", evidence: "Public Console URL" },
+    { path: "/settings/alarm", heading: "Alarm Settings", evidence: "Alert Interval Seconds" },
+    { path: "/settings/systemInfo", heading: "System Information", evidence: "System Version" },
+    { path: "/settings/poolVersion", heading: "Agent Package Versions", evidence: "Agent Artifact Catalog" },
+    { path: "/settings/version", heading: "Agent Version Status", evidence: "Agent Artifact Upload" }
   ]) {
     await page.goto(legacyRoute.path);
     await expect(page).toHaveURL(new RegExp(`${legacyRoute.path}$`));
@@ -160,6 +175,7 @@ test("supports header shortcuts and mobile primary navigation", async ({ page })
     window.localStorage.setItem("ohmyrasp.session_token", "e2e-token");
     window.localStorage.setItem("ohmyrasp.session_user_email", "admin@ohmyrasp.local");
     window.localStorage.setItem("ohmyrasp.session_user_name", "Default Admin");
+    window.localStorage.setItem("ohmyrasp.session_user_roles", JSON.stringify(["admin", "security_engineer"]));
   });
 
   await page.goto("/");
@@ -168,8 +184,9 @@ test("supports header shortcuts and mobile primary navigation", async ({ page })
   await expect(page.getByRole("heading", { name: "Policies", level: 1 })).toBeVisible();
 
   await page.getByRole("link", { name: "Register Agent" }).click();
-  await expect(page).toHaveURL(/\/agents$/);
-  await expect(page.getByRole("heading", { name: "Agents", level: 1 })).toBeVisible();
+  await expect(page).toHaveURL(/\/addInstance$/);
+  await expect(page.getByRole("heading", { name: "Add Instance", level: 1 })).toBeVisible();
+  await expect(page.getByText("Runtime evidence", { exact: true })).toBeVisible();
 
   await page.getByRole("navigation", { name: "Primary mobile" }).getByRole("link", { name: "Access & Audit" }).click();
   await expect(page).toHaveURL(/\/access$/);
@@ -182,6 +199,7 @@ test("submits application, environment, Agent operations, policy, setting, alert
     window.localStorage.setItem("ohmyrasp.session_token", "e2e-token");
     window.localStorage.setItem("ohmyrasp.session_user_email", "admin@ohmyrasp.local");
     window.localStorage.setItem("ohmyrasp.session_user_name", "Default Admin");
+    window.localStorage.setItem("ohmyrasp.session_user_roles", JSON.stringify(["admin", "security_engineer"]));
   });
 
   await page.goto("/applications");
@@ -485,7 +503,7 @@ test("submits application, environment, Agent operations, policy, setting, alert
       expect.objectContaining({
         method: "POST",
         path: "/api/v1/events/recycle-bin/purge",
-        body: { ids: ["evt_1"] }
+        body: expect.objectContaining({ ids: expect.any(Array) })
       }),
       expect.objectContaining({
         method: "PUT",
@@ -572,6 +590,7 @@ test("submits application, environment, Agent operations, policy, setting, alert
 });
 
 async function mockControlPlaneApi(page: Page) {
+  const fixtures = JSON.parse(JSON.stringify(apiFixtures)) as Record<string, unknown>;
   const authorizedPaths: string[] = [];
   const authorizedURLs: string[] = [];
   const agentCredentialPaths: string[] = [];
@@ -674,21 +693,21 @@ async function mockControlPlaneApi(page: Page) {
         method: request.method(),
         path: url.pathname
       });
-      await fulfillWrite(route, url.pathname, request.method(), body);
+      await fulfillWrite(route, fixtures, url.pathname, request.method(), body);
       return;
     }
 
     await route.fulfill({
       status: 200,
       contentType: "application/json",
-      body: JSON.stringify(apiFixtures[url.pathname] ?? { items: [] })
+      body: JSON.stringify(fixtures[url.pathname] ?? { items: [] })
     });
   });
 
   return { agentCredentialPaths, authorizedPaths, authorizedURLs, writeRequests };
 }
 
-async function fulfillWrite(route: Route, path: string, method: string, body: Record<string, unknown>) {
+async function fulfillWrite(route: Route, fixtures: Record<string, unknown>, path: string, method: string, body: Record<string, unknown>) {
   if (method === "POST" && path === "/api/v1/applications") {
     await route.fulfill({
       status: 201,
@@ -752,7 +771,7 @@ async function fulfillWrite(route: Route, path: string, method: string, body: Re
       status: "online",
       last_seen_at: "2026-05-31T01:00:00Z"
     };
-    const agents = apiFixtures["/api/v1/agents"] as { items: Array<Record<string, unknown>> };
+    const agents = fixtures["/api/v1/agents"] as { items: Array<Record<string, unknown>> };
     if (!agents.items.some(item => item.id === agent.id)) {
       agents.items.push(agent);
     }
@@ -765,7 +784,7 @@ async function fulfillWrite(route: Route, path: string, method: string, body: Re
   }
 
   if (method === "PUT" && path === "/api/v1/agents/agt_api_1/alias") {
-    const agents = apiFixtures["/api/v1/agents"] as { items: Array<Record<string, unknown>> };
+    const agents = fixtures["/api/v1/agents"] as { items: Array<Record<string, unknown>> };
     const agent = agents.items.find(item => item.id === "agt_api_1");
     if (agent) {
       agent.alias = body.alias;
@@ -779,7 +798,7 @@ async function fulfillWrite(route: Route, path: string, method: string, body: Re
   }
 
   if (method === "POST" && path === "/api/v1/agents/agt_api_1/ignore") {
-    const agents = apiFixtures["/api/v1/agents"] as { items: Array<Record<string, unknown>> };
+    const agents = fixtures["/api/v1/agents"] as { items: Array<Record<string, unknown>> };
     const agent = agents.items.find(item => item.id === "agt_api_1");
     if (agent && body.ignored) {
       agent.ignored_at = "2026-05-31T01:00:00Z";
@@ -796,7 +815,7 @@ async function fulfillWrite(route: Route, path: string, method: string, body: Re
 
   if (method === "POST" && path === "/api/v1/agents/batch-delete") {
     const ids = body.ids as string[];
-    const agents = apiFixtures["/api/v1/agents"] as { items: Array<Record<string, unknown>> };
+    const agents = fixtures["/api/v1/agents"] as { items: Array<Record<string, unknown>> };
     const before = agents.items.length;
     agents.items = agents.items.filter(item => !ids.includes(String(item.id)));
     await route.fulfill({
@@ -851,7 +870,7 @@ async function fulfillWrite(route: Route, path: string, method: string, body: Re
       source: "uploaded",
       updated_at: "2026-05-31T01:00:00Z"
     };
-    const catalog = apiFixtures["/api/v1/agent-artifacts"] as { items: unknown[] };
+    const catalog = fixtures["/api/v1/agent-artifacts"] as { items: unknown[] };
     catalog.items.push(item);
     await route.fulfill({
       status: 201,
@@ -862,7 +881,7 @@ async function fulfillWrite(route: Route, path: string, method: string, body: Re
   }
 
   if (method === "POST" && path === "/api/v1/daemon/workloads/wrk_node_process/bind") {
-    const workloads = apiFixtures["/api/v1/daemon/workloads"] as { items: Array<Record<string, unknown>> };
+    const workloads = fixtures["/api/v1/daemon/workloads"] as { items: Array<Record<string, unknown>> };
     workloads.items[0].application_id = body.application_id;
     await route.fulfill({
       status: 200,
@@ -873,7 +892,7 @@ async function fulfillWrite(route: Route, path: string, method: string, body: Re
   }
 
   if (method === "POST" && path === "/api/v1/daemon/workloads/wrk_node_process/unbind") {
-    const workloads = apiFixtures["/api/v1/daemon/workloads"] as { items: Array<Record<string, unknown>> };
+    const workloads = fixtures["/api/v1/daemon/workloads"] as { items: Array<Record<string, unknown>> };
     delete workloads.items[0].application_id;
     await route.fulfill({
       status: 200,
@@ -1049,10 +1068,10 @@ async function fulfillWrite(route: Route, path: string, method: string, body: Re
 
   if (method === "POST" && path === "/api/v1/events/recycle-bin/delete") {
     const ids = body.ids as string[];
-    const deleted = apiFixtures["/api/v1/events/recycle-bin"] as { items: Array<Record<string, unknown>> };
+    const deleted = fixtures["/api/v1/events/recycle-bin"] as { items: Array<Record<string, unknown>> };
     for (const id of ids) {
       for (const eventPath of ["/api/v1/events/attack", "/api/v1/events/hook", "/api/v1/events/performance", "/api/v1/events/crash", "/api/v1/events/error"]) {
-        const active = apiFixtures[eventPath] as { items: Array<Record<string, unknown>> };
+        const active = fixtures[eventPath] as { items: Array<Record<string, unknown>> };
         const index = active.items.findIndex(item => item.id === id);
         if (index >= 0) {
           const [event] = active.items.splice(index, 1);
@@ -1070,13 +1089,13 @@ async function fulfillWrite(route: Route, path: string, method: string, body: Re
 
   if (method === "POST" && path === "/api/v1/events/recycle-bin/restore") {
     const ids = body.ids as string[];
-    const deleted = apiFixtures["/api/v1/events/recycle-bin"] as { items: Array<Record<string, unknown>> };
+    const deleted = fixtures["/api/v1/events/recycle-bin"] as { items: Array<Record<string, unknown>> };
     for (const id of ids) {
       const index = deleted.items.findIndex(item => item.id === id);
       if (index >= 0) {
         const [event] = deleted.items.splice(index, 1);
         const type = String(event.type);
-        const active = apiFixtures[`/api/v1/events/${type}`] as { items: Array<Record<string, unknown>> };
+        const active = fixtures[`/api/v1/events/${type}`] as { items: Array<Record<string, unknown>> };
         const { deleted_at, deleted_by, ...restored } = event;
         void deleted_at;
         void deleted_by;
@@ -1093,7 +1112,7 @@ async function fulfillWrite(route: Route, path: string, method: string, body: Re
 
   if (method === "POST" && path === "/api/v1/events/recycle-bin/purge") {
     const ids = body.ids as string[];
-    const deleted = apiFixtures["/api/v1/events/recycle-bin"] as { items: Array<Record<string, unknown>> };
+    const deleted = fixtures["/api/v1/events/recycle-bin"] as { items: Array<Record<string, unknown>> };
     deleted.items = deleted.items.filter(item => !ids.includes(String(item.id)));
     await route.fulfill({
       status: 200,

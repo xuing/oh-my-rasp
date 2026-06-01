@@ -15,7 +15,8 @@ export const resources = {
         validateRule: "Validate Rule",
         registerAgent: "Register Agent",
         signedIn: "Signed in",
-        signIn: "Sign in"
+        signIn: "Sign in",
+        loadingConsole: "Loading console view."
       },
       login: {
         title: "Sign in to OhMyRasp",
@@ -120,6 +121,100 @@ export const resources = {
         canary: "Canary",
         promote: "Promote",
         rollback: "Rollback"
+      },
+      onboarding: {
+        addInstance: "Add Instance",
+        summary: "Register a workload, install the Java agent, and verify that heartbeats plus runtime evidence arrive in the control plane.",
+        badge: "Agent onboarding",
+        targetScope: "Target Scope",
+        application: "Application",
+        environment: "Environment",
+        defaultApplication: "app_default",
+        applicationUnavailable: "Application metadata is unavailable.",
+        appBadge: "app:",
+        envBadge: "env:",
+        copy: "Copy",
+        heartbeat: "Heartbeat",
+        heartbeatDetail: "Agent status changes to online after registration.",
+        policyPull: "Policy pull",
+        policyPullDetail: "Assigned policy version appears on the Agent row.",
+        runtimeEvidence: "Runtime evidence",
+        runtimeEvidenceDetail: "Dependency, baseline, performance, error, and crash records are produced by the Agent."
+      },
+      legacy: {
+        focusedRoute: "Focused legacy route",
+        maintainHosts: {
+          label: "Host Maintenance",
+          detail: "Agent inventory, ignore state, aliases, and heartbeat operations."
+        },
+        maintainClearData: {
+          label: "Maintenance Cleanup",
+          detail: "Operational data retention, dry-run cleanup, and confirmed purge controls."
+        },
+        maintainWhitelist: {
+          label: "Protection Allowlist",
+          detail: "Hardening settings and exception-oriented policy controls."
+        },
+        maintainGeneral: {
+          label: "General Protection Settings",
+          detail: "System settings, edition status, and control-plane version information."
+        },
+        maintainUpgrade: {
+          label: "Agent Upgrade",
+          detail: "Artifact catalog, daemon download metadata, and version drift checks."
+        },
+        algorithm: {
+          label: "Algorithm Configuration",
+          detail: "Policy versions, rule validation, rollout, rollback, and default rule restoration."
+        },
+        algorithmHardening: {
+          label: "Hardening Configuration",
+          detail: "Runtime hardening settings and system-level protection controls."
+        },
+        algorithmAlarm: {
+          label: "Alarm Configuration",
+          detail: "Alert rules, delivery targets, delivery history, and alert status."
+        },
+        logExceptions: {
+          label: "Error Events",
+          detail: "Agent-produced error events and exception attributes."
+        },
+        logCrash: {
+          label: "Crash Events",
+          detail: "Agent-produced crash events and uncaught exception context."
+        },
+        logAudit: {
+          label: "Audit Log",
+          detail: "Authenticated control-plane audit trail and operational write history."
+        },
+        platform: {
+          label: "Platform Administration",
+          detail: "Users, RBAC, system settings, edition status, and audit trail."
+        },
+        platformUser: {
+          label: "User Administration",
+          detail: "User lifecycle, role assignment, disabling, and filtered user search."
+        },
+        settingsPanel: {
+          label: "Panel Settings",
+          detail: "Console settings, system version, edition state, and operator-facing configuration."
+        },
+        settingsAlarm: {
+          label: "Alarm Settings",
+          detail: "Alert rules, alert deliveries, target status, and notification routing."
+        },
+        settingsSystemInfo: {
+          label: "System Information",
+          detail: "Control-plane version, build metadata, and edition state."
+        },
+        settingsPoolVersion: {
+          label: "Agent Package Versions",
+          detail: "Managed artifact catalog and daemon artifact lookup."
+        },
+        settingsVersion: {
+          label: "Agent Version Status",
+          detail: "Agent inventory versions, drift checks, and upgrade state."
+        }
       }
     }
   },
@@ -139,7 +234,8 @@ export const resources = {
         validateRule: "验证规则",
         registerAgent: "注册 Agent",
         signedIn: "已登录",
-        signIn: "登录"
+        signIn: "登录",
+        loadingConsole: "正在加载控制台视图。"
       },
       login: {
         title: "登录 OhMyRasp",
@@ -244,6 +340,100 @@ export const resources = {
         canary: "灰度",
         promote: "发布",
         rollback: "回滚"
+      },
+      onboarding: {
+        addInstance: "添加实例",
+        summary: "注册工作负载、安装 Java Agent，并确认心跳与运行时证据进入控制平面。",
+        badge: "Agent 接入",
+        targetScope: "目标范围",
+        application: "应用",
+        environment: "环境",
+        defaultApplication: "app_default",
+        applicationUnavailable: "应用元数据不可用。",
+        appBadge: "应用：",
+        envBadge: "环境：",
+        copy: "复制",
+        heartbeat: "心跳",
+        heartbeatDetail: "注册后 Agent 状态变为在线。",
+        policyPull: "策略拉取",
+        policyPullDetail: "Agent 行展示已分配的策略版本。",
+        runtimeEvidence: "运行时证据",
+        runtimeEvidenceDetail: "依赖、基线、性能、异常和崩溃记录由 Agent 产生。"
+      },
+      legacy: {
+        focusedRoute: "已聚焦的旧版入口",
+        maintainHosts: {
+          label: "主机维护",
+          detail: "Agent 清单、忽略状态、别名和心跳操作。"
+        },
+        maintainClearData: {
+          label: "维护清理",
+          detail: "运行数据保留、清理预览和确认清理控制。"
+        },
+        maintainWhitelist: {
+          label: "防护白名单",
+          detail: "加固设置和面向例外的策略控制。"
+        },
+        maintainGeneral: {
+          label: "通用防护设置",
+          detail: "系统设置、版本状态和控制平面版本信息。"
+        },
+        maintainUpgrade: {
+          label: "Agent 升级",
+          detail: "制品目录、Daemon 下载元数据和版本漂移检查。"
+        },
+        algorithm: {
+          label: "算法配置",
+          detail: "策略版本、规则验证、发布、回滚和默认规则恢复。"
+        },
+        algorithmHardening: {
+          label: "加固配置",
+          detail: "运行时加固设置和系统级防护控制。"
+        },
+        algorithmAlarm: {
+          label: "告警配置",
+          detail: "告警规则、投递目标、投递历史和告警状态。"
+        },
+        logExceptions: {
+          label: "异常事件",
+          detail: "Agent 产生的异常事件和异常属性。"
+        },
+        logCrash: {
+          label: "崩溃事件",
+          detail: "Agent 产生的崩溃事件和未捕获异常上下文。"
+        },
+        logAudit: {
+          label: "审计日志",
+          detail: "已认证控制平面审计轨迹和操作写入历史。"
+        },
+        platform: {
+          label: "平台管理",
+          detail: "用户、RBAC、系统设置、版本状态和审计轨迹。"
+        },
+        platformUser: {
+          label: "用户管理",
+          detail: "用户生命周期、角色分配、禁用和筛选搜索。"
+        },
+        settingsPanel: {
+          label: "面板设置",
+          detail: "控制台设置、系统版本、版本状态和运维配置。"
+        },
+        settingsAlarm: {
+          label: "告警设置",
+          detail: "告警规则、告警投递、目标状态和通知路由。"
+        },
+        settingsSystemInfo: {
+          label: "系统信息",
+          detail: "控制平面版本、构建元数据和版本状态。"
+        },
+        settingsPoolVersion: {
+          label: "Agent 包版本",
+          detail: "托管制品目录和 Daemon 制品查询。"
+        },
+        settingsVersion: {
+          label: "Agent 版本状态",
+          detail: "Agent 清单版本、漂移检查和升级状态。"
+        }
       }
     }
   },
@@ -263,7 +453,8 @@ export const resources = {
         validateRule: "ルールを検証",
         registerAgent: "Agent を登録",
         signedIn: "ログイン済み",
-        signIn: "サインイン"
+        signIn: "サインイン",
+        loadingConsole: "コンソールビューを読み込み中。"
       },
       login: {
         title: "OhMyRasp にサインイン",
@@ -368,6 +559,100 @@ export const resources = {
         canary: "カナリア",
         promote: "昇格",
         rollback: "ロールバック"
+      },
+      onboarding: {
+        addInstance: "インスタンスを追加",
+        summary: "ワークロードを登録し、Java Agent をインストールして、ハートビートとランタイム証跡がコントロールプレーンに届くことを確認します。",
+        badge: "Agent オンボーディング",
+        targetScope: "対象スコープ",
+        application: "アプリケーション",
+        environment: "環境",
+        defaultApplication: "app_default",
+        applicationUnavailable: "アプリケーションメタデータを利用できません。",
+        appBadge: "app:",
+        envBadge: "env:",
+        copy: "コピー",
+        heartbeat: "ハートビート",
+        heartbeatDetail: "登録後に Agent ステータスがオンラインへ変わります。",
+        policyPull: "ポリシー取得",
+        policyPullDetail: "割り当て済みポリシーバージョンが Agent 行に表示されます。",
+        runtimeEvidence: "ランタイム証跡",
+        runtimeEvidenceDetail: "依存関係、ベースライン、性能、エラー、クラッシュ記録は Agent が生成します。"
+      },
+      legacy: {
+        focusedRoute: "フォーカス済みレガシールート",
+        maintainHosts: {
+          label: "ホスト保守",
+          detail: "Agent インベントリ、無視状態、エイリアス、ハートビート操作。"
+        },
+        maintainClearData: {
+          label: "保守クリーンアップ",
+          detail: "運用データ保持、ドライラン、確認付き削除操作。"
+        },
+        maintainWhitelist: {
+          label: "保護許可リスト",
+          detail: "強化設定と例外向けポリシー制御。"
+        },
+        maintainGeneral: {
+          label: "一般保護設定",
+          detail: "システム設定、エディション状態、コントロールプレーンバージョン情報。"
+        },
+        maintainUpgrade: {
+          label: "Agent アップグレード",
+          detail: "アーティファクトカタログ、Daemon ダウンロードメタデータ、バージョン差分確認。"
+        },
+        algorithm: {
+          label: "アルゴリズム設定",
+          detail: "ポリシーバージョン、ルール検証、ロールアウト、ロールバック、既定ルール復元。"
+        },
+        algorithmHardening: {
+          label: "強化設定",
+          detail: "ランタイム強化設定とシステムレベルの保護制御。"
+        },
+        algorithmAlarm: {
+          label: "アラーム設定",
+          detail: "アラートルール、配信先、配信履歴、アラート状態。"
+        },
+        logExceptions: {
+          label: "エラーイベント",
+          detail: "Agent が生成したエラーイベントと例外属性。"
+        },
+        logCrash: {
+          label: "クラッシュイベント",
+          detail: "Agent が生成したクラッシュイベントと未捕捉例外コンテキスト。"
+        },
+        logAudit: {
+          label: "監査ログ",
+          detail: "認証済みコントロールプレーン監査証跡と操作履歴。"
+        },
+        platform: {
+          label: "プラットフォーム管理",
+          detail: "ユーザー、RBAC、システム設定、エディション状態、監査証跡。"
+        },
+        platformUser: {
+          label: "ユーザー管理",
+          detail: "ユーザーライフサイクル、ロール割り当て、無効化、フィルター検索。"
+        },
+        settingsPanel: {
+          label: "パネル設定",
+          detail: "コンソール設定、システムバージョン、エディション状態、運用設定。"
+        },
+        settingsAlarm: {
+          label: "アラーム設定",
+          detail: "アラートルール、アラート配信、宛先状態、通知ルーティング。"
+        },
+        settingsSystemInfo: {
+          label: "システム情報",
+          detail: "コントロールプレーンバージョン、ビルドメタデータ、エディション状態。"
+        },
+        settingsPoolVersion: {
+          label: "Agent パッケージバージョン",
+          detail: "管理対象アーティファクトカタログと Daemon アーティファクト検索。"
+        },
+        settingsVersion: {
+          label: "Agent バージョン状態",
+          detail: "Agent インベントリバージョン、差分確認、アップグレード状態。"
+        }
       }
     }
   }
