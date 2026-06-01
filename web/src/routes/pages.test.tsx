@@ -1,17 +1,27 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { render, screen } from "@testing-library/react";
+import { render, screen, waitFor } from "@testing-library/react";
 import type { ReactElement } from "react";
-import { describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import i18n from "../i18n";
 import { AccessPage, AgentsPage, ApplicationsPage, EventsPage, ObservabilityPage, OverviewPage, PoliciesPage } from "./pages";
 
+beforeEach(() => {
+  vi.stubGlobal("fetch", vi.fn(mockFetch));
+});
+
+afterEach(() => {
+  vi.unstubAllGlobals();
+});
+
 describe("OverviewPage", () => {
-  it("renders the control-plane dashboard shell", async () => {
+  it("renders dashboard metrics from the API response", async () => {
     renderWithQueryClient(<OverviewPage />);
 
+    await waitFor(() => expect(screen.getByText("3/4")).toBeTruthy());
     expect(screen.getByText("Control Domains")).toBeTruthy();
     expect(screen.getByText("Policy Lifecycle")).toBeTruthy();
     expect(screen.getByText("Online Agents")).toBeTruthy();
+    expect(screen.queryByText("132/141")).toBeNull();
   });
 
   it("renders localized dashboard labels in Chinese and Japanese", async () => {
@@ -33,9 +43,10 @@ describe("OverviewPage", () => {
 });
 
 describe("ObservabilityPage", () => {
-  it("renders telemetry tables from the fallback report", () => {
+  it("renders empty telemetry tables instead of seeded samples", async () => {
     renderWithQueryClient(<ObservabilityPage />);
 
+    await waitFor(() => expect(screen.getAllByText("No samples").length).toBeGreaterThan(0));
     expect(screen.getByText("Rule Overhead")).toBeTruthy();
     expect(screen.getByText("Hook Latency")).toBeTruthy();
     expect(screen.getByText("Agent Overhead")).toBeTruthy();
@@ -43,12 +54,13 @@ describe("ObservabilityPage", () => {
     expect(screen.getByText("Observability Filters")).toBeTruthy();
     expect(screen.getByLabelText("Observability Application")).toBeTruthy();
     expect(screen.getByLabelText("Observability Policy")).toBeTruthy();
-    expect(screen.getByRole("button", { name: "Clear Observability Filters" })).toBeTruthy();
+    expect(screen.queryByText("pol_demo")).toBeNull();
+    expect(screen.queryByText("agt_demo_1")).toBeNull();
   });
 });
 
 describe("Live data pages", () => {
-  it("renders fallback application, Agent, policy, event, and audit views", () => {
+  it("renders empty operational states without fallback records", async () => {
     renderWithQueryClient(
       <>
         <ApplicationsPage />
@@ -59,101 +71,22 @@ describe("Live data pages", () => {
       </>
     );
 
-    expect(screen.getAllByText("Payments API").length).toBeGreaterThan(0);
-    expect(screen.getByRole("button", { name: "Create Application" })).toBeTruthy();
-    expect(screen.getByRole("button", { name: "Create Environment" })).toBeTruthy();
-    expect(screen.getAllByText("payments-1").length).toBeGreaterThan(0);
-    expect(screen.getByRole("button", { name: "Register Agent" })).toBeTruthy();
-    expect(screen.getByRole("button", { name: "Send Heartbeat" })).toBeTruthy();
-    expect(screen.getByRole("button", { name: "Pull Policy" })).toBeTruthy();
-    expect(screen.getByText("Daemon Workloads")).toBeTruthy();
-    expect(screen.getByRole("button", { name: "Reveal Token" })).toBeTruthy();
-    expect(screen.getByRole("button", { name: "Reset Token" })).toBeTruthy();
-    expect(screen.getByText("Agent Artifact Upload")).toBeTruthy();
-    expect(screen.getByLabelText("Agent ZIP")).toBeTruthy();
-    expect(screen.getByLabelText("Upload System Type")).toBeTruthy();
-    expect(screen.getByLabelText("Upload Language Version")).toBeTruthy();
-    expect(screen.getByRole("button", { name: "Upload Artifact" })).toBeTruthy();
-    expect(screen.getByText("Agent Artifact Catalog")).toBeTruthy();
-    expect(screen.getByText("agent-java-linux-17.zip")).toBeTruthy();
-    expect(screen.getByText("Generated Bootstrap")).toBeTruthy();
-    expect(screen.getByText("Agent Bootstrap Artifact")).toBeTruthy();
-    expect(screen.getByLabelText("Artifact Application")).toBeTruthy();
-    expect(screen.getByLabelText("Artifact Daemon Token")).toBeTruthy();
-    expect(screen.getByRole("button", { name: "Check Agent Artifact" })).toBeTruthy();
-    expect(screen.getByRole("button", { name: "Download Agent Artifact" })).toBeTruthy();
-    expect(screen.getAllByText("Web Protection").length).toBeGreaterThan(0);
-    expect(screen.getByRole("button", { name: "Create Policy Set" })).toBeTruthy();
-    expect(screen.getByLabelText("Rollout Scope")).toBeTruthy();
-    expect(screen.getByRole("button", { name: "Validate Draft" })).toBeTruthy();
-    expect(screen.getByRole("button", { name: "Test Draft" })).toBeTruthy();
-    expect(screen.getByRole("button", { name: "Update Draft" })).toBeTruthy();
-    expect(screen.getByText("SQL tautology detected in checkout search parameter")).toBeTruthy();
-    expect(screen.getByText("Servlet hook completed with 1.7 ms latency")).toBeTruthy();
-    expect(screen.getByText("Agent overhead sample within policy budget")).toBeTruthy();
-    expect(screen.getByText("Agent crash report captured during class transform")).toBeTruthy();
-    expect(screen.getByText("Event Query")).toBeTruthy();
-    expect(screen.getByLabelText("Event Application")).toBeTruthy();
-    expect(screen.getByLabelText("Event Environment")).toBeTruthy();
-    expect(screen.getByLabelText("Event Agent")).toBeTruthy();
-    expect(screen.getByLabelText("Event Policy")).toBeTruthy();
-    expect(screen.getByLabelText("Event Severity")).toBeTruthy();
-    expect(screen.getByLabelText("Event Hook")).toBeTruthy();
-    expect(screen.getByLabelText("Occurred After")).toBeTruthy();
-    expect(screen.getByLabelText("Occurred Before")).toBeTruthy();
-    expect(screen.getByLabelText("Event Limit")).toBeTruthy();
-    expect(screen.getByRole("button", { name: "Clear Filters" })).toBeTruthy();
-    expect(screen.getByText("Event Recycle Bin")).toBeTruthy();
-    expect(screen.getByLabelText("Recycle Event ID")).toBeTruthy();
-    expect(screen.getByRole("button", { name: "Move Event To Recycle Bin" })).toBeTruthy();
-    expect(screen.getByRole("button", { name: "Restore Event" })).toBeTruthy();
-    expect(screen.getByRole("button", { name: "Permanently Delete Event" })).toBeTruthy();
-    expect(screen.getByText("Dependency Inventory")).toBeTruthy();
-    expect(screen.getByLabelText("Dependency Application")).toBeTruthy();
-    expect(screen.getByLabelText("Dependency Agent")).toBeTruthy();
-    expect(screen.getByLabelText("Dependency Name")).toBeTruthy();
-    expect(screen.getByLabelText("Dependency Ecosystem")).toBeTruthy();
-    expect(screen.getByLabelText("Dependency Severity")).toBeTruthy();
-    expect(screen.getByLabelText("Observed After")).toBeTruthy();
-    expect(screen.getByLabelText("Observed Before")).toBeTruthy();
-    expect(screen.getByLabelText("Dependency Limit")).toBeTruthy();
-    expect(screen.getByRole("button", { name: "Clear Dependency Filters" })).toBeTruthy();
-    expect(screen.getByText("spring-web")).toBeTruthy();
-    expect(screen.getAllByText("Baseline Findings").length).toBeGreaterThan(0);
-    expect(screen.getByLabelText("Baseline Application")).toBeTruthy();
-    expect(screen.getByLabelText("Baseline Environment")).toBeTruthy();
-    expect(screen.getByLabelText("Baseline Agent")).toBeTruthy();
-    expect(screen.getByLabelText("Baseline Severity")).toBeTruthy();
-    expect(screen.getByLabelText("Baseline Status")).toBeTruthy();
-    expect(screen.getByLabelText("Baseline Category")).toBeTruthy();
-    expect(screen.getByLabelText("Baseline Limit")).toBeTruthy();
-    expect(screen.getByRole("button", { name: "Clear Baseline Filters" })).toBeTruthy();
-    expect(screen.getByText("User Administration")).toBeTruthy();
-    expect(screen.getByText("User Lifecycle")).toBeTruthy();
-    expect(screen.getByRole("button", { name: "Update User" })).toBeTruthy();
-    expect(screen.getAllByText("Default Admin").length).toBeGreaterThan(0);
-    expect(screen.getByText("Edition Status")).toBeTruthy();
-    expect(screen.getByText("Open Source Self-Hosted")).toBeTruthy();
-    expect(screen.getByText("Not required")).toBeTruthy();
-    expect(screen.getByText("Protection Configuration")).toBeTruthy();
-    expect(screen.getByLabelText("Allowlist Enabled")).toBeTruthy();
-    expect(screen.getByLabelText("Hardening Mode")).toBeTruthy();
-    expect(screen.getByLabelText("Vulnerability Threshold")).toBeTruthy();
-    expect(screen.getByRole("button", { name: "Save Protection Configuration" })).toBeTruthy();
-    expect(screen.getByText("Maintenance Cleanup")).toBeTruthy();
-    expect(screen.getByLabelText("Cleanup Before")).toBeTruthy();
-    expect(screen.getByLabelText("Cleanup Application ID")).toBeTruthy();
-    expect(screen.getByLabelText("Cleanup Confirmation")).toBeTruthy();
-    expect(screen.getByRole("button", { name: "Preview Cleanup" })).toBeTruthy();
-    expect(screen.getByRole("button", { name: "Apply Cleanup" })).toBeTruthy();
-    expect(screen.getByText("System Settings")).toBeTruthy();
-    expect(screen.getByText("agent.minimum_version")).toBeTruthy();
-    expect(screen.getByText("Alert Lifecycle")).toBeTruthy();
-    expect(screen.getByRole("button", { name: "Update Alert Rule" })).toBeTruthy();
-    expect(screen.getByText("Alert Rules")).toBeTruthy();
-    expect(screen.getAllByText("Critical attack event").length).toBeGreaterThan(0);
-    expect(screen.getByText("Alert Delivery History")).toBeTruthy();
-    expect(screen.getByText("policy.rollout")).toBeTruthy();
+    await waitFor(() => expect(screen.getAllByText("No applications").length).toBeGreaterThan(0));
+    expect(screen.getAllByText("No Agents").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("No policies").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("No events").length).toBeGreaterThan(0);
+    expect(screen.getByText("No dependency observations")).toBeTruthy();
+    expect(screen.getByText("No baseline findings")).toBeTruthy();
+    expect(screen.getAllByText("No users").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("No alert rules").length).toBeGreaterThan(0);
+    expect(screen.getByText("No alert deliveries")).toBeTruthy();
+    expect(screen.getByText("No audit logs")).toBeTruthy();
+    expect(screen.queryByText("Payments API")).toBeNull();
+    expect(screen.queryByText("payments-1")).toBeNull();
+    expect(screen.queryByText("Web Protection")).toBeNull();
+    expect(screen.queryByText("SQL tautology detected in checkout search parameter")).toBeNull();
+    expect(screen.queryByText("spring-web")).toBeNull();
+    expect(screen.queryByText("Default Admin")).toBeNull();
   });
 });
 
@@ -167,4 +100,53 @@ function renderWithQueryClient(element: ReactElement) {
   });
 
   return render(<QueryClientProvider client={queryClient}>{element}</QueryClientProvider>);
+}
+
+async function mockFetch(input: RequestInfo | URL) {
+  const url = new URL(typeof input === "string" ? input : input instanceof URL ? input.toString() : input.url, "http://127.0.0.1");
+  const body = responseForPath(url.pathname);
+  return new Response(JSON.stringify(body), {
+    status: 200,
+    headers: { "Content-Type": "application/json" }
+  });
+}
+
+function responseForPath(path: string) {
+  if (path === "/api/v1/analytics/overview") {
+    return {
+      application_count: 4,
+      agent_count: 4,
+      online_agents: 3,
+      event_count: 2,
+      events_by_type: { attack: 1, hook: 1 },
+      events_by_severity: { critical: 1, low: 1 }
+    };
+  }
+  if (path === "/api/v1/analytics/observability") {
+    return {
+      rule_overhead: [],
+      hook_latency: [],
+      agent_overhead: [],
+      policy_performance: []
+    };
+  }
+  if (path === "/api/v1/agent-artifacts") {
+    return {
+      artifact_dir_configured: false,
+      generated_bootstrap_enabled: false,
+      items: []
+    };
+  }
+  if (path === "/api/v1/system/edition") {
+    return {
+      edition: "oss_self_hosted",
+      display_name: "Open Source Self-Hosted",
+      deployment_model: "single_organization_self_hosted",
+      license_required: false,
+      license_enforcement: "none",
+      license_status: "not_applicable",
+      note: ""
+    };
+  }
+  return { items: [] };
 }

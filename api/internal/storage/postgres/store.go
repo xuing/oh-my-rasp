@@ -2,6 +2,7 @@ package postgres
 
 import (
 	"context"
+	"crypto/rand"
 	"crypto/sha256"
 	"database/sql"
 	"encoding/hex"
@@ -20,7 +21,6 @@ const (
 	defaultAdminID        = "usr_admin"
 	defaultAppID          = "app_default"
 	defaultEnvironmentID  = "env_default"
-	defaultAppSecret      = "dev-app-secret"
 )
 
 type Store struct {
@@ -79,7 +79,6 @@ func NewStore(db *sql.DB, now func() time.Time) *Store {
 		now:                 now,
 		organizationID:      defaultOrganizationID,
 		bootstrapAdminEmail: "admin@ohmyrasp.local",
-		bootstrapAdminPass:  "change-me",
 		bootstrapAdminName:  "Default Admin",
 		sessionTTL:          12 * time.Hour,
 	}
@@ -117,6 +116,9 @@ func (s *Store) EnsureSeedData(ctx context.Context) error {
 	if s.db == nil {
 		return errors.New("database is required")
 	}
+	if s.bootstrapAdminPass == "" {
+		return errors.New("bootstrap admin password is required")
+	}
 	passwordHash, err := bcrypt.GenerateFromPassword([]byte(s.bootstrapAdminPass), bcrypt.DefaultCost)
 	if err != nil {
 		return err
@@ -134,6 +136,10 @@ func (s *Store) EnsureSeedData(ctx context.Context) error {
 		VALUES ($1, $2, $3, $4, $5, ARRAY['admin', 'security_engineer'])
 		ON CONFLICT (email) DO NOTHING
 	`, defaultAdminID, s.organizationID, s.bootstrapAdminEmail, s.bootstrapAdminName, string(passwordHash))
+	if err != nil {
+		return err
+	}
+	defaultAppSecret, err := generatedBootstrapSecret()
 	if err != nil {
 		return err
 	}
@@ -179,6 +185,14 @@ func (s *Store) EnsureSeedData(ctx context.Context) error {
 		}
 	}
 	return nil
+}
+
+func generatedBootstrapSecret() (string, error) {
+	var data [32]byte
+	if _, err := rand.Read(data[:]); err != nil {
+		return "", err
+	}
+	return "ohmyrasp_" + hex.EncodeToString(data[:]), nil
 }
 
 func (s *Store) Login(ctx context.Context, email string, password string) (control.Session, control.User, error) {

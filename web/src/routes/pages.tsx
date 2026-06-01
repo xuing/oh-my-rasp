@@ -26,12 +26,7 @@ import { Table } from "../components/ui/table";
 import { eventPipelines, navigationSections, policyLifecycle } from "../domain/control-plane";
 import { setAppLanguage, supportedLanguages, type SupportedLanguage } from "../i18n";
 import {
-  agentsFallback,
-  applicationsFallback,
-  alertDeliveriesFallback,
-  alertRulesFallback,
   bindDaemonWorkload,
-  baselineFindingsFallback,
   cleanupMaintenanceData,
   createAlertRule,
   createApplication,
@@ -39,23 +34,14 @@ import {
   createPolicy,
   createPolicyVersion,
   createUser,
-  agentArtifactsFallback,
-  attackEventsFallback,
-  auditLogsFallback,
   currentSession,
-  daemonWorkloadsFallback,
-  dependenciesFallback,
   downloadAgentArtifact,
-  editionStatusFallback,
-  eventFallbackByType,
   getAgentArtifactInfo,
   getDaemonApplicationCredential,
   getDaemonToken,
   heartbeatAgent,
   loginWithPassword,
   moveEventsToRecycleBin,
-  observabilityFallback,
-  overviewFallback,
   purgeEventsFromRecycleBin,
   type Agent,
   type AgentArtifactCatalog,
@@ -74,7 +60,6 @@ import {
   type SystemSetting,
   type User,
   type UserRole,
-  policiesFallback,
   pullAgentPolicy,
   registerAgent,
   resetDaemonToken,
@@ -83,7 +68,6 @@ import {
   rollbackPolicy,
   rolloutPolicy,
   saveSession,
-  systemSettingsFallback,
   testRule,
   updateAlertRule,
   uploadAgentArtifact,
@@ -91,7 +75,6 @@ import {
   unbindDaemonWorkload,
   updateUser,
   updateSystemSetting,
-  usersFallback,
   useAgents,
   useAgentArtifacts,
   useApplications,
@@ -339,15 +322,28 @@ export function LoginPage() {
 export function OverviewPage() {
   const { t } = useTranslation();
   const overviewQuery = useOverview();
-  const overview = overviewQuery.data ?? overviewFallback();
+  const overview = overviewQuery.data ?? {
+    application_count: 0,
+    agent_count: 0,
+    online_agents: 0,
+    event_count: 0,
+    events_by_type: {},
+    events_by_severity: {}
+  };
   const onlineRate = Math.round((overview.online_agents / Math.max(overview.agent_count, 1)) * 100);
   return (
     <div className="space-y-5">
+      <QueryStateNotice
+        isLoading={overviewQuery.isLoading}
+        isError={overviewQuery.isError}
+        loading="Loading overview metrics."
+        error="Overview metrics are unavailable."
+      />
       <section className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
         <Metric label={t("overview.metrics.applications")} value={overview.application_count} detail={t("overview.metrics.applicationsDetail")} />
         <Metric label={t("overview.metrics.onlineAgents")} value={`${overview.online_agents}/${overview.agent_count}`} detail={t("overview.metrics.onlineAgentsDetail", { rate: onlineRate })} />
         <Metric label={t("overview.metrics.events")} value={overview.event_count} detail={t("overview.metrics.eventsDetail")} />
-        <Metric label={t("overview.metrics.hookP95")} value="1.8 ms" detail={t("overview.metrics.hookP95Detail")} />
+        <Metric label={t("overview.metrics.hookP95")} value="-" detail={overviewQuery.data ? t("overview.metrics.hookP95Detail") : "requires observability data"} />
       </section>
       <section className="grid gap-5 xl:grid-cols-[1.15fr_.85fr]">
         <Card>
@@ -375,7 +371,7 @@ export function OverviewPage() {
 export function ApplicationsPage() {
   const { t } = useTranslation();
   const applicationsQuery = useApplications();
-  const applications = applicationsQuery.data?.items ?? applicationsFallback().items;
+  const applications = applicationsQuery.data?.items ?? [];
   const environmentCount = applications.reduce((count, app) => count + app.environment_ids.length, 0);
 
   return (
@@ -383,6 +379,12 @@ export function ApplicationsPage() {
       title={t("pages.applications.title")}
       summary={t("pages.applications.summary")}
     >
+      <QueryStateNotice
+        isLoading={applicationsQuery.isLoading}
+        isError={applicationsQuery.isError}
+        loading="Loading applications."
+        error="Applications are unavailable."
+      />
       <div className="grid gap-3 md:grid-cols-3">
         <Metric label="Applications" value={applications.length} detail="managed services" />
         <Metric label="Environments" value={environmentCount} detail="deployment scopes" />
@@ -423,8 +425,8 @@ export function ApplicationsPage() {
 
 function ApplicationsWritePanel({ applications }: { applications: Application[] }) {
   const queryClient = useQueryClient();
-  const [applicationName, setApplicationName] = useState("Orders API");
-  const [applicationDescription, setApplicationDescription] = useState("Order processing service");
+  const [applicationName, setApplicationName] = useState("");
+  const [applicationDescription, setApplicationDescription] = useState("");
   const [applicationMessage, setApplicationMessage] = useState({ status: "", error: "" });
   const [isApplicationSubmitting, setIsApplicationSubmitting] = useState(false);
   const [applicationID, setApplicationID] = useState(applications[0]?.id ?? "");
@@ -592,13 +594,13 @@ function ApplicationsWritePanel({ applications }: { applications: Application[] 
 export function AgentsPage() {
   const { t } = useTranslation();
   const agentsQuery = useAgents();
-  const agents = agentsQuery.data?.items ?? agentsFallback().items;
+  const agents = agentsQuery.data?.items ?? [];
   const applicationsQuery = useApplications();
-  const applications = applicationsQuery.data?.items ?? applicationsFallback().items;
+  const applications = applicationsQuery.data?.items ?? [];
   const daemonWorkloadsQuery = useDaemonWorkloads();
-  const daemonWorkloads = daemonWorkloadsQuery.data?.items ?? daemonWorkloadsFallback().items;
+  const daemonWorkloads = daemonWorkloadsQuery.data?.items ?? [];
   const agentArtifactsQuery = useAgentArtifacts();
-  const agentArtifactCatalog = agentArtifactsQuery.data ?? agentArtifactsFallback();
+  const agentArtifactCatalog = agentArtifactsQuery.data ?? emptyAgentArtifactCatalog();
   const [applicationSecrets, setApplicationSecrets] = useState<Record<string, string>>({});
   const [daemonToken, setDaemonToken] = useState("");
   const onlineAgents = agents.filter(agent => agent.status === "online").length;
@@ -613,6 +615,12 @@ export function AgentsPage() {
       title={t("pages.agents.title")}
       summary={t("pages.agents.summary")}
     >
+      <QueryStateNotice
+        isLoading={agentsQuery.isLoading || applicationsQuery.isLoading || daemonWorkloadsQuery.isLoading || agentArtifactsQuery.isLoading}
+        isError={agentsQuery.isError || applicationsQuery.isError || daemonWorkloadsQuery.isError || agentArtifactsQuery.isError}
+        loading="Loading agent operations data."
+        error="Some agent operations data is unavailable."
+      />
       <div className="grid gap-3 md:grid-cols-3">
         <Metric label="Online" value={`${onlineAgents}/${agents.length}`} detail="healthy heartbeat" />
         <Metric label="Drifted" value={driftedAgents} detail={latestVersion ? `latest ${latestVersion}` : "no version baseline"} />
@@ -1120,7 +1128,7 @@ function AgentArtifactCatalogPanel({ catalog }: { catalog: AgentArtifactCatalog 
           <CardTitle>Agent Artifact Catalog</CardTitle>
           <div className="flex flex-wrap gap-2">
             <Badge tone={catalog.artifact_dir_configured ? "green" : "amber"}>{catalog.artifact_dir_configured ? "Filesystem Pool" : "Generated Bootstrap"}</Badge>
-            <Badge tone={catalog.generated_bootstrap_enabled ? "blue" : "neutral"}>{catalog.generated_bootstrap_enabled ? "Fallback Enabled" : "Filesystem Only"}</Badge>
+            <Badge tone={catalog.generated_bootstrap_enabled ? "blue" : "neutral"}>{catalog.generated_bootstrap_enabled ? "Generated Bootstrap" : "Filesystem Only"}</Badge>
           </div>
         </div>
       </CardHeader>
@@ -1357,7 +1365,7 @@ function AgentsWritePanel({ applications, onSecretUsed }: { applications: Applic
   const [applicationID, setApplicationID] = useState(applications.find(application => application.environment_ids.length > 0)?.id ?? applications[0]?.id ?? "");
   const [environmentID, setEnvironmentID] = useState("");
   const [applicationSecret, setApplicationSecret] = useState("");
-  const [hostname, setHostname] = useState("api-2");
+  const [hostname, setHostname] = useState("");
   const [runtime, setRuntime] = useState("java");
   const [version, setVersion] = useState("1.0.0");
   const [message, setMessage] = useState({ status: "", error: "" });
@@ -1505,9 +1513,11 @@ function AgentsWritePanel({ applications, onSecretUsed }: { applications: Applic
 export function PoliciesPage() {
   const { t } = useTranslation();
   const policiesQuery = usePolicies();
-  const policies = policiesQuery.data?.items ?? policiesFallback().items;
+  const policies = policiesQuery.data?.items ?? [];
   const applicationsQuery = useApplications();
-  const applications = applicationsQuery.data?.items ?? applicationsFallback().items;
+  const applications = applicationsQuery.data?.items ?? [];
+  const sampleEventsQuery = useSecurityEvents("attack", { limit: 25 });
+  const sampleEvents = sampleEventsQuery.data?.items ?? [];
   const activePolicies = policies.filter(policy => policy.active).length;
   const ruleCount = policies.reduce((count, policy) => count + (policy.active?.rules.length ?? 0), 0);
 
@@ -1516,13 +1526,19 @@ export function PoliciesPage() {
       title={t("pages.policies.title")}
       summary={t("pages.policies.summary")}
     >
+      <QueryStateNotice
+        isLoading={policiesQuery.isLoading || applicationsQuery.isLoading || sampleEventsQuery.isLoading}
+        isError={policiesQuery.isError || applicationsQuery.isError || sampleEventsQuery.isError}
+        loading="Loading policies."
+        error="Policies are unavailable."
+      />
       <div className="grid gap-3 md:grid-cols-3">
         <Metric label="Policy Sets" value={policies.length} detail="managed rule groups" />
         <Metric label="Active" value={activePolicies} detail="serving policy versions" />
         <Metric label="Active Rules" value={ruleCount} detail="rules in deployed versions" />
       </div>
       <PolicySetCreatePanel />
-      <PolicyWritePanel applications={applications} policies={policies} />
+      <PolicyWritePanel applications={applications} policies={policies} sampleEvents={sampleEvents} />
       <section className="grid gap-5 xl:grid-cols-[.8fr_1.2fr]">
         <PolicyLifecycle />
         <Table>
@@ -1571,9 +1587,9 @@ export function EventsPage() {
   const applicationsQuery = useApplications();
   const agentsQuery = useAgents();
   const policiesQuery = usePolicies();
-  const applications = applicationsQuery.data?.items ?? applicationsFallback().items;
-  const agents = agentsQuery.data?.items ?? agentsFallback().items;
-  const policies = policiesQuery.data?.items ?? policiesFallback().items;
+  const applications = applicationsQuery.data?.items ?? [];
+  const agents = agentsQuery.data?.items ?? [];
+  const policies = policiesQuery.data?.items ?? [];
   const [eventApplicationID, setEventApplicationID] = useState("");
   const [eventEnvironmentID, setEventEnvironmentID] = useState("");
   const [eventAgentID, setEventAgentID] = useState("");
@@ -1659,13 +1675,13 @@ export function EventsPage() {
   const deletedEventsQuery = useDeletedSecurityEvents(eventQuery);
   const dependenciesQuery = useDependencies(dependencyQuery);
   const baselineFindingsQuery = useBaselineFindings(baselineQuery);
-  const attackEvents = attackQuery.data?.items ?? attackEventsFallback().items;
-  const hookEvents = hookQuery.data?.items ?? eventFallbackByType("hook").items;
-  const performanceEvents = performanceQuery.data?.items ?? eventFallbackByType("performance").items;
-  const crashEvents = crashQuery.data?.items ?? eventFallbackByType("crash").items;
+  const attackEvents = attackQuery.data?.items ?? [];
+  const hookEvents = hookQuery.data?.items ?? [];
+  const performanceEvents = performanceQuery.data?.items ?? [];
+  const crashEvents = crashQuery.data?.items ?? [];
   const deletedEvents = deletedEventsQuery.data?.items ?? [];
-  const dependencies = dependenciesQuery.data?.items ?? dependenciesFallback().items;
-  const baselineFindings = baselineFindingsQuery.data?.items ?? baselineFindingsFallback().items;
+  const dependencies = dependenciesQuery.data?.items ?? [];
+  const baselineFindings = baselineFindingsQuery.data?.items ?? [];
   const allEvents = [...attackEvents, ...hookEvents, ...performanceEvents, ...crashEvents].sort((a, b) => Date.parse(b.occurred_at) - Date.parse(a.occurred_at));
   const recycleEventOptions = uniqueEventsByID([...allEvents, ...deletedEvents]).sort((a, b) => Date.parse(b.occurred_at) - Date.parse(a.occurred_at));
   const recycleEventIDs = recycleEventOptions.map(event => event.id).join("|");
@@ -1750,6 +1766,32 @@ export function EventsPage() {
       title={t("pages.events.title")}
       summary={t("pages.events.summary")}
     >
+      <QueryStateNotice
+        isLoading={
+          applicationsQuery.isLoading ||
+          agentsQuery.isLoading ||
+          policiesQuery.isLoading ||
+          attackQuery.isLoading ||
+          hookQuery.isLoading ||
+          performanceQuery.isLoading ||
+          crashQuery.isLoading ||
+          dependenciesQuery.isLoading ||
+          baselineFindingsQuery.isLoading
+        }
+        isError={
+          applicationsQuery.isError ||
+          agentsQuery.isError ||
+          policiesQuery.isError ||
+          attackQuery.isError ||
+          hookQuery.isError ||
+          performanceQuery.isError ||
+          crashQuery.isError ||
+          dependenciesQuery.isError ||
+          baselineFindingsQuery.isError
+        }
+        loading="Loading event and inventory data."
+        error="Some event or inventory data is unavailable."
+      />
       <div className="grid gap-3 md:grid-cols-4">
         <Metric label="Security Events" value={allEvents.length} detail="attack, Hook, performance, crash" />
         <Metric label="Critical" value={criticalEvents} detail="requires immediate review" />
@@ -2303,15 +2345,15 @@ export function ObservabilityPage() {
   const { t } = useTranslation();
   const applicationsQuery = useApplications();
   const policiesQuery = usePolicies();
-  const applications = applicationsQuery.data?.items ?? applicationsFallback().items;
-  const policies = policiesQuery.data?.items ?? policiesFallback().items;
+  const applications = applicationsQuery.data?.items ?? [];
+  const policies = policiesQuery.data?.items ?? [];
   const [observabilityApplicationID, setObservabilityApplicationID] = useState("");
   const [observabilityPolicyID, setObservabilityPolicyID] = useState("");
   const observabilityQuery = useObservability({
     applicationID: observabilityApplicationID || undefined,
     policyID: observabilityPolicyID || undefined
   });
-  const report = observabilityQuery.data ?? observabilityFallback();
+  const report = observabilityQuery.data ?? emptyObservabilityReport();
   const topHook = report.hook_latency[0];
   const topRule = report.rule_overhead[0];
   const topAgent = report.agent_overhead[0];
@@ -2326,6 +2368,12 @@ export function ObservabilityPage() {
       title={t("pages.observability.title")}
       summary={t("pages.observability.summary")}
     >
+      <QueryStateNotice
+        isLoading={applicationsQuery.isLoading || policiesQuery.isLoading || observabilityQuery.isLoading}
+        isError={applicationsQuery.isError || policiesQuery.isError || observabilityQuery.isError}
+        loading="Loading observability data."
+        error="Observability data is unavailable."
+      />
       <div className="grid gap-3 md:grid-cols-4">
         <Metric label="Hook p95" value={formatLatency(topHook?.p95_latency_us)} detail={topHook ? `${topHook.hook} hook` : "no samples"} />
         <Metric label="Rule p95" value={formatLatency(topRule?.p95_latency_us)} detail={topRule ? `${topRule.rule_id} on ${topRule.hook}` : "no samples"} />
@@ -2531,23 +2579,29 @@ export function ObservabilityPage() {
 export function AccessPage() {
   const { t } = useTranslation();
   const auditQuery = useAuditLogs();
-  const auditLogs = auditQuery.data?.items ?? auditLogsFallback().items;
+  const auditLogs = auditQuery.data?.items ?? [];
   const settingsQuery = useSystemSettings();
-  const settings = settingsQuery.data?.items ?? systemSettingsFallback().items;
+  const settings = settingsQuery.data?.items ?? [];
   const editionQuery = useEditionStatus();
-  const edition = editionQuery.data ?? editionStatusFallback();
+  const edition = editionQuery.data ?? emptyEditionStatus();
   const alertRulesQuery = useAlertRules();
-  const alertRules = alertRulesQuery.data?.items ?? alertRulesFallback().items;
+  const alertRules = alertRulesQuery.data?.items ?? [];
   const alertDeliveriesQuery = useAlertDeliveries();
-  const alertDeliveries = alertDeliveriesQuery.data?.items ?? alertDeliveriesFallback().items;
+  const alertDeliveries = alertDeliveriesQuery.data?.items ?? [];
   const usersQuery = useUsers();
-  const users = usersQuery.data?.items ?? usersFallback().items;
+  const users = usersQuery.data?.items ?? [];
 
   return (
     <SectionPage
       title={t("pages.access.title")}
       summary={t("pages.access.summary")}
     >
+      <QueryStateNotice
+        isLoading={auditQuery.isLoading || settingsQuery.isLoading || editionQuery.isLoading || alertRulesQuery.isLoading || alertDeliveriesQuery.isLoading || usersQuery.isLoading}
+        isError={auditQuery.isError || settingsQuery.isError || editionQuery.isError || alertRulesQuery.isError || alertDeliveriesQuery.isError || usersQuery.isError}
+        loading="Loading access and audit data."
+        error="Some access and audit data is unavailable."
+      />
       <div className="grid gap-3 md:grid-cols-3">
         {[
           ["Admin", "full system and policy administration"],
@@ -3107,8 +3161,8 @@ function UserLifecyclePanel({ users }: { users: User[] }) {
 
 function PolicySetCreatePanel() {
   const queryClient = useQueryClient();
-  const [name, setName] = useState("Runtime Protection");
-  const [description, setDescription] = useState("Application-specific Java RASP policy set");
+  const [name, setName] = useState("");
+  const [description, setDescription] = useState("");
   const [message, setMessage] = useState({ status: "", error: "" });
   const [isSubmitting, setIsSubmitting] = useState(false);
 
@@ -3164,15 +3218,15 @@ function PolicySetCreatePanel() {
   );
 }
 
-function PolicyWritePanel({ applications, policies }: { applications: Application[]; policies: PolicySet[] }) {
+function PolicyWritePanel({ applications, policies, sampleEvents }: { applications: Application[]; policies: PolicySet[]; sampleEvents: SecurityEvent[] }) {
   const queryClient = useQueryClient();
   const [policyID, setPolicyID] = useState(policies[0]?.id ?? "");
-  const [ruleName, setRuleName] = useState("Block suspicious command");
+  const [ruleName, setRuleName] = useState("");
   const [hook, setHook] = useState("process");
-  const [expression, setExpression] = useState("Runtime.exec");
+  const [expression, setExpression] = useState("");
   const [action, setAction] = useState("block");
   const [severity, setSeverity] = useState("high");
-  const [tags, setTags] = useState("command, runtime");
+  const [tags, setTags] = useState("");
   const [targetVersion, setTargetVersion] = useState(1);
   const [canaryPercent, setCanaryPercent] = useState(25);
   const [rolloutScope, setRolloutScope] = useState("global");
@@ -3291,22 +3345,28 @@ function PolicyWritePanel({ applications, policies }: { applications: Applicatio
     if (!selectedPolicy) {
       return;
     }
+    const sampleEvent = sampleEvents.find(event => !event.hook || !hook || event.hook === hook) ?? sampleEvents[0];
+    if (!sampleEvent) {
+      setError("Ingest at least one attack event before testing a rule.");
+      return;
+    }
     setIsSubmitting(true);
     setStatus("");
     setError("");
     try {
       const rule = draftRule();
       const result = await testRule(rule, {
-        application_id: "app_console_test",
-        environment_id: "env_console_test",
-        agent_id: "agt_console_test",
+        application_id: sampleEvent.application_id,
+        environment_id: sampleEvent.environment_id,
+        agent_id: sampleEvent.agent_id,
         policy_id: selectedPolicy.id,
         policy_version: targetVersion,
-        hook: rule.hook,
-        algorithm: rule.algorithm,
-        severity,
-        message: `Console simulation for ${rule.expression}`,
-        attributes: { source: "policy-console" }
+        hook: sampleEvent.hook,
+        algorithm: sampleEvent.algorithm,
+        severity: sampleEvent.severity,
+        message: sampleEvent.message,
+        occurred_at: sampleEvent.occurred_at,
+        attributes: sampleEvent.attributes
       });
       setStatus(result.matched ? `Rule test matched: ${result.action || "no action"} at ${result.confidence}% confidence.` : "Rule test did not match the sample event.");
     } catch {
@@ -3820,14 +3880,14 @@ function AccessWritePanel() {
   const [settingKey, setSettingKey] = useState("agent.minimum_version");
   const [settingValue, setSettingValue] = useState('{"version":"1.1.0"}');
   const [settingMessage, setSettingMessage] = useState({ status: "", error: "" });
-  const [alertName, setAlertName] = useState("Repeated critical attacks");
+  const [alertName, setAlertName] = useState("");
   const [alertSeverity, setAlertSeverity] = useState("critical");
-  const [alertTarget, setAlertTarget] = useState("security-operations");
+  const [alertTarget, setAlertTarget] = useState("");
   const [alertEnabled, setAlertEnabled] = useState(true);
   const [alertMessage, setAlertMessage] = useState({ status: "", error: "" });
-  const [userEmail, setUserEmail] = useState("analyst@ohmyrasp.local");
-  const [userName, setUserName] = useState("Security Analyst");
-  const [userPassword, setUserPassword] = useState("change-me-123");
+  const [userEmail, setUserEmail] = useState("");
+  const [userName, setUserName] = useState("");
+  const [userPassword, setUserPassword] = useState("");
   const [userRole, setUserRole] = useState("security_engineer");
   const [userMessage, setUserMessage] = useState({ status: "", error: "" });
 
@@ -3994,6 +4054,53 @@ function FormMessage({ error, status }: { error: string; status: string }) {
     );
   }
   return null;
+}
+
+function QueryStateNotice({ isLoading, isError, loading, error }: { isLoading: boolean; isError: boolean; loading: string; error: string }) {
+  if (isError) {
+    return (
+      <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700" role="alert">
+        {error}
+      </div>
+    );
+  }
+  if (isLoading) {
+    return (
+      <div className="rounded-md border border-slate-200 bg-white px-3 py-2 text-sm text-slate-600" role="status">
+        {loading}
+      </div>
+    );
+  }
+  return null;
+}
+
+function emptyAgentArtifactCatalog(): AgentArtifactCatalog {
+  return {
+    artifact_dir_configured: false,
+    generated_bootstrap_enabled: false,
+    items: []
+  };
+}
+
+function emptyObservabilityReport() {
+  return {
+    rule_overhead: [],
+    hook_latency: [],
+    agent_overhead: [],
+    policy_performance: []
+  };
+}
+
+function emptyEditionStatus(): EditionStatus {
+  return {
+    edition: "",
+    display_name: "Unavailable",
+    deployment_model: "",
+    license_required: false,
+    license_enforcement: "",
+    license_status: "",
+    note: "Edition status is unavailable."
+  };
 }
 
 function latestPolicyVersion(policy?: PolicySet) {

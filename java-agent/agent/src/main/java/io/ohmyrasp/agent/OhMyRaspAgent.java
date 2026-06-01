@@ -1,7 +1,10 @@
 package io.ohmyrasp.agent;
 
 import io.ohmyrasp.agent.asm.OhMyRaspTransformer;
+import io.ohmyrasp.agent.control.ControlPlaneClient;
+import io.ohmyrasp.agent.control.ControlPlaneConfig;
 import io.ohmyrasp.agent.hook.DeserializationGuard;
+import io.ohmyrasp.agent.log.JsonEventLogger;
 import java.io.File;
 import java.io.IOException;
 import java.lang.instrument.Instrumentation;
@@ -19,6 +22,8 @@ public final class OhMyRaspAgent {
   }
 
   private static void start(String agentArgs, Instrumentation instrumentation) {
+    ControlPlaneClient controlPlane = ControlPlaneClient.start(ControlPlaneConfig.load(agentArgs));
+    JsonEventLogger.get().setControlPlaneClient(controlPlane);
     appendSelfToBootstrap(instrumentation);
     DeserializationGuard.install();
     instrumentation.addTransformer(new OhMyRaspTransformer(), true);

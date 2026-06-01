@@ -110,9 +110,30 @@ func buildStore(ctx context.Context, logger *slog.Logger) (control.Store, httpap
 		cleanup = func() { cache.Close() }
 		logger.Info("valkey cache enabled", "addr", valkeyAddr)
 	}
-	if mode == "memory" || postgresDSN == "" {
+	if mode != "" && mode != "memory" && mode != "postgres" {
+		cleanup()
+		return nil, nil, func() {}, errors.New("OHMYRASP_STORE must be 'postgres' or 'memory'")
+	}
+	if mode == "memory" {
+		bootstrapPassword := os.Getenv("OHMYRASP_BOOTSTRAP_ADMIN_PASSWORD")
+		if bootstrapPassword == "" {
+			cleanup()
+			return nil, nil, func() {}, errors.New("OHMYRASP_BOOTSTRAP_ADMIN_PASSWORD is required for memory store bootstrap")
+		}
 		logger.Info("using in-memory store", "reason", memoryReason(mode, postgresDSN))
-		return control.NewMemoryStore(time.Now), limiter, cleanup, nil
+		return control.NewMemoryStoreWithSeed(time.Now, control.MemorySeed{
+			AdminEmail:        env("OHMYRASP_BOOTSTRAP_ADMIN_EMAIL", "admin@ohmyrasp.local"),
+			AdminPassword:     bootstrapPassword,
+			AdminName:         env("OHMYRASP_BOOTSTRAP_ADMIN_NAME", "Default Admin"),
+			ApplicationSecret: os.Getenv("OHMYRASP_BOOTSTRAP_APP_SECRET"),
+			ApplicationName:   env("OHMYRASP_BOOTSTRAP_APP_NAME", "Local Java Service"),
+			EnvironmentName:   env("OHMYRASP_BOOTSTRAP_ENVIRONMENT_NAME", "production"),
+			EnvironmentKind:   env("OHMYRASP_BOOTSTRAP_ENVIRONMENT_KIND", "production"),
+		}), limiter, cleanup, nil
+	}
+	if postgresDSN == "" {
+		cleanup()
+		return nil, nil, func() {}, errors.New("OHMYRASP_POSTGRES_DSN is required unless OHMYRASP_STORE=memory")
 	}
 
 	db, err := sql.Open("pgx", postgresDSN)
@@ -141,9 +162,14 @@ func buildStore(ctx context.Context, logger *slog.Logger) (control.Store, httpap
 		_ = db.Close()
 		previousCleanup()
 	}
+	bootstrapPassword := os.Getenv("OHMYRASP_BOOTSTRAP_ADMIN_PASSWORD")
+	if bootstrapPassword == "" {
+		cleanup()
+		return nil, nil, func() {}, errors.New("OHMYRASP_BOOTSTRAP_ADMIN_PASSWORD is required for postgres store bootstrap")
+	}
 	store := pgstore.NewStore(db, time.Now).WithBootstrapAdmin(
 		env("OHMYRASP_BOOTSTRAP_ADMIN_EMAIL", "admin@ohmyrasp.local"),
-		env("OHMYRASP_BOOTSTRAP_ADMIN_PASSWORD", "change-me"),
+		bootstrapPassword,
 		env("OHMYRASP_BOOTSTRAP_ADMIN_NAME", "Default Admin"),
 	)
 	if valkeyCache != nil {

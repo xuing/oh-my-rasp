@@ -1,5 +1,6 @@
 package io.ohmyrasp.agent.log;
 
+import io.ohmyrasp.agent.control.ControlPlaneClient;
 import io.ohmyrasp.agent.model.Detection;
 import io.ohmyrasp.agent.model.RequestContext;
 import java.io.IOException;
@@ -14,6 +15,7 @@ public final class JsonEventLogger {
   private static final JsonEventLogger INSTANCE = new JsonEventLogger();
 
   private final Path logPath;
+  private volatile ControlPlaneClient controlPlaneClient;
 
   private JsonEventLogger() {
     String configured = System.getProperty("ohmyrasp.log");
@@ -28,6 +30,10 @@ public final class JsonEventLogger {
 
   public static JsonEventLogger get() {
     return INSTANCE;
+  }
+
+  public void setControlPlaneClient(ControlPlaneClient controlPlaneClient) {
+    this.controlPlaneClient = controlPlaneClient;
   }
 
   public synchronized void log(Detection detection) {
@@ -47,6 +53,10 @@ public final class JsonEventLogger {
       System.err.println("[OHMYRASP] failed to write event log: " + e);
     }
     System.out.println("[OHMYRASP] " + json);
+    ControlPlaneClient client = controlPlaneClient;
+    if (client != null) {
+      client.submit(detection);
+    }
   }
 
   private static String toJson(Detection detection) {

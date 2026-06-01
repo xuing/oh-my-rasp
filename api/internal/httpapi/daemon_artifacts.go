@@ -97,7 +97,7 @@ func (s *Server) daemonArtifactDownload(w http.ResponseWriter, r *http.Request) 
 func (s *Server) agentArtifactCatalog() (generated.AgentArtifactCatalog, error) {
 	catalog := generated.AgentArtifactCatalog{
 		ArtifactDirConfigured:     s.agentArtifactDir != "",
-		GeneratedBootstrapEnabled: true,
+		GeneratedBootstrapEnabled: false,
 		Items:                     []generated.AgentArtifactCatalogItem{},
 	}
 	if s.agentArtifactDir == "" {
@@ -256,45 +256,7 @@ func (s *Server) loadAgentArtifact(app control.DaemonApplication, language strin
 			}
 		}
 	}
-	fileName := fmt.Sprintf("ohmyrasp-agent-%s-%s-%s.zip", language, systemType, languageVersion)
-	data, err := generatedAgentArtifact(app, language, systemType, languageVersion)
-	return data, fileName, err
-}
-
-func generatedAgentArtifact(app control.DaemonApplication, language string, systemType string, languageVersion string) ([]byte, error) {
-	var buffer bytes.Buffer
-	writer := zip.NewWriter(&buffer)
-	files := []struct {
-		name    string
-		content string
-	}{
-		{
-			name:    "README.txt",
-			content: "OhMyRasp generated agent bootstrap artifact.\nProvide OHMYRASP_AGENT_ARTIFACT_DIR to serve a production agent ZIP.\n",
-		},
-		{
-			name:    "conf/ohmyrasp-agent.yml",
-			content: fmt.Sprintf("cloud.backend_url: /api/v1\ncloud.app_id: %s\ncloud.app_secret: %s\nagent.language: %s\nagent.system_type: %s\nagent.language_version: %s\n", app.ApplicationID, app.ApplicationSecret, language, systemType, languageVersion),
-		},
-	}
-	for _, entry := range files {
-		header := &zip.FileHeader{
-			Name:     entry.name,
-			Method:   zip.Deflate,
-			Modified: time.Unix(0, 0).UTC(),
-		}
-		file, err := writer.CreateHeader(header)
-		if err != nil {
-			return nil, err
-		}
-		if _, err := file.Write([]byte(entry.content)); err != nil {
-			return nil, err
-		}
-	}
-	if err := writer.Close(); err != nil {
-		return nil, err
-	}
-	return buffer.Bytes(), nil
+	return nil, "", fmt.Errorf("%w: no matching agent artifact found", control.ErrNotFound)
 }
 
 func agentArtifactCandidates(language string, systemType string, languageVersion string) []string {

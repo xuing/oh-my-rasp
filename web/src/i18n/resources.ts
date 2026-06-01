@@ -90,7 +90,7 @@ export const resources = {
           events: "Events",
           eventsDetail: "current query window",
           hookP95: "Hook p95",
-          hookP95Detail: "seed observability target"
+          hookP95Detail: "requires observability data"
         },
         controlDomains: "Control Domains",
         policyLifecycle: "Policy Lifecycle"
@@ -197,7 +197,7 @@ export const resources = {
           events: "事件",
           eventsDetail: "当前查询窗口",
           hookP95: "Hook P95",
-          hookP95Detail: "种子可观测性目标"
+          hookP95Detail: "需要可观测性数据"
         },
         controlDomains: "控制域",
         policyLifecycle: "策略生命周期"
@@ -304,7 +304,7 @@ export const resources = {
           events: "イベント",
           eventsDetail: "現在のクエリ期間",
           hookP95: "Hook p95",
-          hookP95Detail: "シード可観測性ターゲット"
+          hookP95Detail: "可観測性データが必要"
         },
         controlDomains: "制御ドメイン",
         policyLifecycle: "ポリシーライフサイクル"

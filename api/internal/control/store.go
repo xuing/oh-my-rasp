@@ -4,9 +4,12 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"fmt"
+	"regexp"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -94,10 +97,28 @@ type MemoryStore struct {
 	auditLogs        []AuditLog
 }
 
+type MemorySeed struct {
+	AdminEmail             string
+	AdminPassword          string
+	AdminName              string
+	ApplicationID          string
+	ApplicationName        string
+	ApplicationDescription string
+	ApplicationSecret      string
+	EnvironmentID          string
+	EnvironmentName        string
+	EnvironmentKind        string
+}
+
 func NewMemoryStore(now func() time.Time) *MemoryStore {
+	return NewMemoryStoreWithSeed(now, MemorySeed{})
+}
+
+func NewMemoryStoreWithSeed(now func() time.Time, seed MemorySeed) *MemoryStore {
 	if now == nil {
 		now = time.Now
 	}
+	seed = normalizeMemorySeed(seed)
 	store := &MemoryStore{
 		now:              now,
 		organization:     Organization{ID: "org_default", Name: "Default Organization"},
@@ -117,26 +138,26 @@ func NewMemoryStore(now func() time.Time) *MemoryStore {
 	}
 	admin := User{
 		ID:           "usr_admin",
-		Email:        "admin@ohmyrasp.local",
-		Name:         "Default Admin",
-		PasswordHash: "change-me",
+		Email:        seed.AdminEmail,
+		Name:         seed.AdminName,
+		PasswordHash: seed.AdminPassword,
 		Roles:        []Role{RoleAdmin, RoleSecurityEngineer},
 		CreatedAt:    now(),
 		UpdatedAt:    now(),
 	}
 	store.users[admin.ID] = admin
 	app := Application{
-		ID:          "app_default",
-		Name:        "Demo Java Service",
-		Description: "Seed application for local development",
-		Secret:      "dev-app-secret",
+		ID:          seed.ApplicationID,
+		Name:        seed.ApplicationName,
+		Description: seed.ApplicationDescription,
+		Secret:      seed.ApplicationSecret,
 		CreatedAt:   now(),
 	}
 	env := Environment{
-		ID:            "env_default",
+		ID:            seed.EnvironmentID,
 		ApplicationID: app.ID,
-		Name:          "production",
-		Kind:          "production",
+		Name:          seed.EnvironmentName,
+		Kind:          seed.EnvironmentKind,
 		CreatedAt:     now(),
 	}
 	app.EnvironmentIDs = []string{env.ID}
@@ -150,6 +171,40 @@ func NewMemoryStore(now func() time.Time) *MemoryStore {
 		store.alertRules[alertRule.ID] = alertRule
 	}
 	return store
+}
+
+func normalizeMemorySeed(seed MemorySeed) MemorySeed {
+	if strings.TrimSpace(seed.AdminEmail) == "" {
+		seed.AdminEmail = "admin@ohmyrasp.local"
+	}
+	if strings.TrimSpace(seed.AdminName) == "" {
+		seed.AdminName = "Default Admin"
+	}
+	if seed.AdminPassword == "" {
+		seed.AdminPassword = newSecret()
+	}
+	if strings.TrimSpace(seed.ApplicationID) == "" {
+		seed.ApplicationID = "app_default"
+	}
+	if strings.TrimSpace(seed.ApplicationName) == "" {
+		seed.ApplicationName = "Local Java Service"
+	}
+	if strings.TrimSpace(seed.ApplicationDescription) == "" {
+		seed.ApplicationDescription = "Local development application"
+	}
+	if seed.ApplicationSecret == "" {
+		seed.ApplicationSecret = newSecret()
+	}
+	if strings.TrimSpace(seed.EnvironmentID) == "" {
+		seed.EnvironmentID = "env_default"
+	}
+	if strings.TrimSpace(seed.EnvironmentName) == "" {
+		seed.EnvironmentName = "production"
+	}
+	if strings.TrimSpace(seed.EnvironmentKind) == "" {
+		seed.EnvironmentKind = "production"
+	}
+	return seed
 }
 
 func (s *MemoryStore) Login(_ context.Context, email string, password string) (Session, User, error) {
@@ -724,11 +779,22 @@ func ValidateRules(rules []Rule) RuleValidation {
 		if strings.TrimSpace(rule.Hook) == "" {
 			errors = append(errors, fmt.Sprintf("rules[%d].hook is required", i))
 		}
-		if strings.Contains(strings.ToLower(rule.Expression), "while(true)") {
-			errors = append(errors, fmt.Sprintf("rules[%d].expression contains a forbidden endless loop", i))
+		if !isSupportedPolicyHook(rule.Hook) {
+			errors = append(errors, fmt.Sprintf("rules[%d].hook is not supported", i))
+		}
+		if strings.TrimSpace(rule.Expression) == "" {
+			errors = append(errors, fmt.Sprintf("rules[%d].expression is required", i))
+		} else if _, err := compileRuleExpression(rule.Expression); err != nil {
+			errors = append(errors, fmt.Sprintf("rules[%d].expression %s", i, err.Error()))
 		}
 		if rule.Action != "" && !contains([]string{"log", "block", "ignore"}, rule.Action) {
 			errors = append(errors, fmt.Sprintf("rules[%d].action must be log, block, or ignore", i))
+		}
+		if rule.Severity != "" && !contains([]string{"critical", "high", "medium", "low", "info"}, rule.Severity) {
+			errors = append(errors, fmt.Sprintf("rules[%d].severity is not supported", i))
+		}
+		if rule.Algorithm != "" && !isSupportedPolicyAlgorithm(rule.Hook, rule.Algorithm) {
+			errors = append(errors, fmt.Sprintf("rules[%d].algorithm is not supported for hook %s", i, rule.Hook))
 		}
 	}
 	return RuleValidation{Valid: len(errors) == 0, Errors: errors}
@@ -739,12 +805,208 @@ func (s *MemoryStore) TestRule(_ context.Context, rule Rule, event SecurityEvent
 }
 
 func TestRule(rule Rule, event SecurityEvent) RuleTestResult {
-	matched := rule.Hook == "" || strings.EqualFold(rule.Hook, event.Hook) || strings.Contains(strings.ToLower(event.Message), strings.ToLower(rule.Expression))
-	confidence := 0
-	if matched {
-		confidence = 80
+	conditions, err := compileRuleExpression(rule.Expression)
+	if err != nil {
+		return RuleTestResult{Matched: false, Action: rule.Action, Algorithm: rule.Algorithm, Confidence: 0}
 	}
+	matched := ruleMatchesEvent(rule, conditions, event)
+	confidence := ruleMatchConfidence(rule, conditions, event, matched)
 	return RuleTestResult{Matched: matched, Action: rule.Action, Algorithm: rule.Algorithm, Confidence: confidence}
+}
+
+type ruleCondition struct {
+	field    string
+	operator string
+	value    string
+	regex    *regexp.Regexp
+}
+
+var ruleConditionPattern = regexp.MustCompile(`^\s*([a-zA-Z0-9_.-]+)\s*(==|!=|contains|matches)\s*(.+?)\s*$`)
+
+func compileRuleExpression(expression string) ([]ruleCondition, error) {
+	trimmed := strings.TrimSpace(expression)
+	if trimmed == "" {
+		return nil, errors.New("is required")
+	}
+	if strings.Contains(strings.ToLower(strings.ReplaceAll(trimmed, " ", "")), "while(true)") {
+		return nil, errors.New("contains a forbidden endless loop")
+	}
+	parts := strings.Split(trimmed, "&&")
+	conditions := make([]ruleCondition, 0, len(parts))
+	for _, part := range parts {
+		condition, err := compileRuleCondition(part)
+		if err != nil {
+			return nil, err
+		}
+		conditions = append(conditions, condition)
+	}
+	return conditions, nil
+}
+
+func compileRuleCondition(input string) (ruleCondition, error) {
+	trimmed := strings.TrimSpace(input)
+	if trimmed == "" {
+		return ruleCondition{}, errors.New("contains an empty condition")
+	}
+	matches := ruleConditionPattern.FindStringSubmatch(trimmed)
+	if matches == nil {
+		return ruleCondition{field: "any", operator: "contains", value: unquoteRuleValue(trimmed)}, nil
+	}
+	value := unquoteRuleValue(matches[3])
+	if value == "" {
+		return ruleCondition{}, errors.New("condition value is required")
+	}
+	condition := ruleCondition{
+		field:    strings.ToLower(matches[1]),
+		operator: strings.ToLower(matches[2]),
+		value:    value,
+	}
+	if !isSupportedRuleField(condition.field) {
+		return ruleCondition{}, fmt.Errorf("field %q is not supported", condition.field)
+	}
+	if condition.operator == "matches" {
+		regex, err := regexp.Compile(value)
+		if err != nil {
+			return ruleCondition{}, fmt.Errorf("regex is invalid: %v", err)
+		}
+		condition.regex = regex
+	}
+	return condition, nil
+}
+
+func ruleMatchesEvent(rule Rule, conditions []ruleCondition, event SecurityEvent) bool {
+	if rule.Hook != "" && event.Hook != "" && !strings.EqualFold(rule.Hook, event.Hook) {
+		return false
+	}
+	for _, condition := range conditions {
+		if !condition.matches(event) {
+			return false
+		}
+	}
+	return true
+}
+
+func (c ruleCondition) matches(event SecurityEvent) bool {
+	values := ruleEventValues(event, c.field)
+	switch c.operator {
+	case "==":
+		return anyString(values, func(value string) bool { return strings.EqualFold(value, c.value) })
+	case "!=":
+		return !anyString(values, func(value string) bool { return strings.EqualFold(value, c.value) })
+	case "matches":
+		return anyString(values, func(value string) bool { return c.regex.MatchString(value) })
+	default:
+		needle := strings.ToLower(c.value)
+		return anyString(values, func(value string) bool { return strings.Contains(strings.ToLower(value), needle) })
+	}
+}
+
+func ruleEventValues(event SecurityEvent, field string) []string {
+	switch field {
+	case "any":
+		values := []string{event.Message, event.Hook, event.Algorithm, event.Severity}
+		for key, value := range event.Attributes {
+			values = append(values, key, fmt.Sprint(value))
+		}
+		return values
+	case "message", "event.message":
+		return []string{event.Message}
+	case "hook", "event.hook":
+		return []string{event.Hook}
+	case "algorithm", "event.algorithm":
+		return []string{event.Algorithm}
+	case "severity", "event.severity":
+		return []string{event.Severity}
+	default:
+		key := strings.TrimPrefix(field, "attributes.")
+		key = strings.TrimPrefix(key, "event.attributes.")
+		if value, ok := event.Attributes[key]; ok {
+			return []string{fmt.Sprint(value)}
+		}
+		return nil
+	}
+}
+
+func ruleMatchConfidence(rule Rule, conditions []ruleCondition, event SecurityEvent, matched bool) int {
+	if !matched {
+		return 0
+	}
+	if rule.Algorithm != "" && event.Algorithm != "" && strings.EqualFold(rule.Algorithm, event.Algorithm) {
+		return 95
+	}
+	for _, condition := range conditions {
+		if condition.operator == "==" || condition.operator == "matches" {
+			return 90
+		}
+	}
+	return 80
+}
+
+func unquoteRuleValue(value string) string {
+	return strings.Trim(strings.TrimSpace(value), `"'`)
+}
+
+func anyString(values []string, match func(string) bool) bool {
+	for _, value := range values {
+		if match(value) {
+			return true
+		}
+	}
+	return false
+}
+
+func isSupportedRuleField(field string) bool {
+	if strings.HasPrefix(field, "attributes.") || strings.HasPrefix(field, "event.attributes.") {
+		return true
+	}
+	return contains([]string{"any", "message", "event.message", "hook", "event.hook", "algorithm", "event.algorithm", "severity", "event.severity"}, field)
+}
+
+func isSupportedPolicyHook(hook string) bool {
+	return contains([]string{
+		"command", "deletefile", "deserialization", "directory", "dns", "eval", "fileupload", "include", "jndi", "link",
+		"loadlibrary", "ognl", "process", "readfile", "rename", "request", "response", "sql", "sql_exception", "ssrf",
+		"webdav", "webshell", "writefile", "xxe",
+	}, strings.ToLower(strings.TrimSpace(hook)))
+}
+
+func isSupportedPolicyAlgorithm(hook string, algorithm string) bool {
+	normalizedHook := strings.ToLower(strings.TrimSpace(hook))
+	normalizedAlgorithm := strings.ToLower(strings.TrimSpace(algorithm))
+	if normalizedAlgorithm == "" {
+		return true
+	}
+	if normalizedAlgorithm == normalizedHook+"_match" {
+		return true
+	}
+	return supportedPolicyAlgorithms[normalizedHook][normalizedAlgorithm]
+}
+
+var supportedPolicyAlgorithms = map[string]map[string]bool{
+	"command":         {"command_common": true, "command_dnslog": true, "command_error": true, "command_reflect": true, "command_userinput": true},
+	"deletefile":      {"deletefile_userinput": true},
+	"deserialization": {"deserialization_blacklist": true},
+	"directory":       {"directory_reflect": true, "directory_unwanted": true, "directory_userinput": true},
+	"dns":             {"dns_blacklist": true},
+	"eval":            {"eval_regex": true},
+	"fileupload":      {"fileupload_multipart_exe": true, "fileupload_multipart_html": true, "fileupload_multipart_script": true},
+	"include":         {"include_protocol": true, "include_userinput": true},
+	"jndi":            {"jndi_disable_all": true},
+	"link":            {"link_webshell": true},
+	"loadlibrary":     {"loadlibrary_unc": true},
+	"ognl":            {"ognl_blacklist": true, "ognl_length_limit": true},
+	"process":         {"process_match": true},
+	"readfile":        {"readfile_outsidewebroot": true, "readfile_unwanted": true, "readfile_userinput": true, "readfile_userinput_http": true, "readfile_userinput_unwanted": true},
+	"rename":          {"rename_webshell": true},
+	"request":         {"request_scanner": true, "request_unusual": true, "xss_userinput": true},
+	"response":        {"response_dataleak": true, "xss_echo": true},
+	"sql":             {"sql_policy": true, "sql_regex": true, "sql_userinput": true},
+	"sql_exception":   {"sql_exception": true},
+	"ssrf":            {"ssrf_aws": true, "ssrf_common": true, "ssrf_obfuscate": true, "ssrf_protocol": true, "ssrf_userinput": true},
+	"webdav":          {"fileupload_webdav": true},
+	"webshell":        {"webshell_callable": true, "webshell_command": true, "webshell_eval": true, "webshell_file_put_contents": true, "webshell_ld_preload": true},
+	"writefile":       {"writefile_ntfs": true, "writefile_reflect": true, "writefile_script": true},
+	"xxe":             {"xxe_file": true, "xxe_protocol": true},
 }
 
 func (s *MemoryStore) RolloutPolicy(_ context.Context, actorID string, policyID string, rollout PolicyRollout) (PolicySet, error) {
@@ -1360,24 +1622,211 @@ func (s *MemoryStore) Overview(_ context.Context) (Overview, error) {
 	return overview, nil
 }
 
-func (s *MemoryStore) Observability(_ context.Context, _ ObservabilityQuery) (ObservabilityReport, error) {
-	return ObservabilityReport{
-		RuleOverhead: []RuleOverhead{
-			{PolicyID: "pol_demo", PolicyVersion: 18, RuleID: "rul_sql", Hook: "sql", Executions: 12400, Blocked: 31, AverageLatencyUS: 410, P95LatencyUS: 1800, MaxLatencyUS: 4200},
-			{PolicyID: "pol_demo", PolicyVersion: 18, RuleID: "rul_cmd", Hook: "command", Executions: 3200, Blocked: 8, AverageLatencyUS: 760, P95LatencyUS: 2400, MaxLatencyUS: 6100},
-		},
-		HookLatency: []HookLatency{
-			{Hook: "sql", Calls: 12400, AverageLatencyUS: 410, P95LatencyUS: 1800, MaxLatencyUS: 4200},
-			{Hook: "command", Calls: 3200, AverageLatencyUS: 760, P95LatencyUS: 2400, MaxLatencyUS: 6100},
-		},
-		AgentOverhead: []AgentOverhead{
-			{AgentID: "agt_demo_1", Samples: 1440, CPUOverheadPCT: 1.7, MemoryOverheadBytes: 62914560, HookLatencyP95US: 1800, RuleEvalP95US: 950},
-		},
-		PolicyPerformance: []PolicyPerformance{
-			{PolicyID: "pol_demo", PolicyVersion: 18, Samples: 1440, CPUOverheadPCT: 1.7, HookLatencyP95US: 1800, RuleEvalP95US: 950},
-			{PolicyID: "pol_demo", PolicyVersion: 17, Samples: 1440, CPUOverheadPCT: 1.5, HookLatencyP95US: 1500, RuleEvalP95US: 840},
-		},
-	}, nil
+func (s *MemoryStore) Observability(_ context.Context, query ObservabilityQuery) (ObservabilityReport, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	report := ObservabilityReport{
+		RuleOverhead:      []RuleOverhead{},
+		HookLatency:       []HookLatency{},
+		AgentOverhead:     []AgentOverhead{},
+		PolicyPerformance: []PolicyPerformance{},
+	}
+	hooks := map[string]*latencyAccumulator{}
+	agents := map[string]*performanceAccumulator{}
+	policies := map[string]*performanceAccumulator{}
+	for _, event := range s.events {
+		if event.DeletedAt != nil || !observabilityEventMatches(event, query) {
+			continue
+		}
+		if event.Hook != "" {
+			latency := intAttribute(event.Attributes, "latency_us")
+			acc := hooks[event.Hook]
+			if acc == nil {
+				acc = &latencyAccumulator{}
+				hooks[event.Hook] = acc
+			}
+			acc.add(latency)
+		}
+		if event.Type != "performance" {
+			continue
+		}
+		if event.AgentID != "" {
+			acc := agents[event.AgentID]
+			if acc == nil {
+				acc = &performanceAccumulator{}
+				agents[event.AgentID] = acc
+			}
+			acc.add(event)
+		}
+		if event.PolicyID != "" {
+			key := fmt.Sprintf("%s:%d", event.PolicyID, event.PolicyVersion)
+			acc := policies[key]
+			if acc == nil {
+				acc = &performanceAccumulator{policyID: event.PolicyID, policyVersion: event.PolicyVersion}
+				policies[key] = acc
+			}
+			acc.add(event)
+		}
+	}
+	for hook, acc := range hooks {
+		report.HookLatency = append(report.HookLatency, HookLatency{
+			Hook:             hook,
+			Calls:            acc.count,
+			AverageLatencyUS: acc.average(),
+			P95LatencyUS:     acc.p95(),
+			MaxLatencyUS:     acc.max,
+		})
+	}
+	for agentID, acc := range agents {
+		report.AgentOverhead = append(report.AgentOverhead, AgentOverhead{
+			AgentID:             agentID,
+			Samples:             acc.samples,
+			CPUOverheadPCT:      acc.averageCPU(),
+			MemoryOverheadBytes: acc.averageMemory(),
+			HookLatencyP95US:    acc.hookLatency.p95(),
+			RuleEvalP95US:       acc.ruleEval.p95(),
+		})
+	}
+	for _, acc := range policies {
+		report.PolicyPerformance = append(report.PolicyPerformance, PolicyPerformance{
+			PolicyID:         acc.policyID,
+			PolicyVersion:    acc.policyVersion,
+			Samples:          acc.samples,
+			CPUOverheadPCT:   acc.averageCPU(),
+			HookLatencyP95US: acc.hookLatency.p95(),
+			RuleEvalP95US:    acc.ruleEval.p95(),
+		})
+	}
+	sort.Slice(report.HookLatency, func(i, j int) bool { return report.HookLatency[i].P95LatencyUS > report.HookLatency[j].P95LatencyUS })
+	sort.Slice(report.AgentOverhead, func(i, j int) bool {
+		return report.AgentOverhead[i].HookLatencyP95US > report.AgentOverhead[j].HookLatencyP95US
+	})
+	sort.Slice(report.PolicyPerformance, func(i, j int) bool {
+		return report.PolicyPerformance[i].HookLatencyP95US > report.PolicyPerformance[j].HookLatencyP95US
+	})
+	return report, nil
+}
+
+type latencyAccumulator struct {
+	count  int
+	total  int
+	max    int
+	values []int
+}
+
+func (a *latencyAccumulator) add(value int) {
+	if value < 0 {
+		value = 0
+	}
+	a.count++
+	a.total += value
+	if value > a.max {
+		a.max = value
+	}
+	a.values = append(a.values, value)
+}
+
+func (a *latencyAccumulator) average() float64 {
+	if a.count == 0 {
+		return 0
+	}
+	return float64(a.total) / float64(a.count)
+}
+
+func (a *latencyAccumulator) p95() int {
+	if len(a.values) == 0 {
+		return 0
+	}
+	values := append([]int(nil), a.values...)
+	sort.Ints(values)
+	index := int(float64(len(values)-1) * 0.95)
+	return values[index]
+}
+
+type performanceAccumulator struct {
+	policyID      string
+	policyVersion int
+	samples       int
+	cpuTotal      float64
+	memoryTotal   int64
+	hookLatency   latencyAccumulator
+	ruleEval      latencyAccumulator
+}
+
+func (a *performanceAccumulator) add(event SecurityEvent) {
+	a.samples++
+	a.cpuTotal += floatAttribute(event.Attributes, "cpu_overhead_pct")
+	a.memoryTotal += int64Attribute(event.Attributes, "memory_overhead_bytes")
+	a.hookLatency.add(intAttribute(event.Attributes, "hook_latency_p95_us"))
+	a.ruleEval.add(intAttribute(event.Attributes, "rule_eval_p95_us"))
+}
+
+func (a *performanceAccumulator) averageCPU() float64 {
+	if a.samples == 0 {
+		return 0
+	}
+	return a.cpuTotal / float64(a.samples)
+}
+
+func (a *performanceAccumulator) averageMemory() int64 {
+	if a.samples == 0 {
+		return 0
+	}
+	return a.memoryTotal / int64(a.samples)
+}
+
+func observabilityEventMatches(event SecurityEvent, query ObservabilityQuery) bool {
+	if query.ApplicationID != "" && event.ApplicationID != query.ApplicationID {
+		return false
+	}
+	if query.PolicyID != "" && event.PolicyID != query.PolicyID {
+		return false
+	}
+	return true
+}
+
+func intAttribute(attributes map[string]any, key string) int {
+	value := int64Attribute(attributes, key)
+	if value > int64(^uint(0)>>1) {
+		return int(^uint(0) >> 1)
+	}
+	return int(value)
+}
+
+func int64Attribute(attributes map[string]any, key string) int64 {
+	switch value := attributes[key].(type) {
+	case int:
+		return int64(value)
+	case int64:
+		return value
+	case float64:
+		return int64(value)
+	case float32:
+		return int64(value)
+	case json.Number:
+		parsed, _ := strconv.ParseInt(string(value), 10, 64)
+		return parsed
+	default:
+		return 0
+	}
+}
+
+func floatAttribute(attributes map[string]any, key string) float64 {
+	switch value := attributes[key].(type) {
+	case float64:
+		return value
+	case float32:
+		return float64(value)
+	case int:
+		return float64(value)
+	case int64:
+		return float64(value)
+	case json.Number:
+		parsed, _ := strconv.ParseFloat(string(value), 64)
+		return parsed
+	default:
+		return 0
+	}
 }
 
 func (s *MemoryStore) ListSystemSettings(_ context.Context) ([]SystemSetting, error) {

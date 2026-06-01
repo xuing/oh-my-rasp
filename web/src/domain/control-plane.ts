@@ -85,14 +85,3 @@ export const eventPipelines = [
   { type: "crash", target: "PostgreSQL + ClickHouse", retention: "incident workflow and analytics" },
   { type: "dependency", target: "PostgreSQL", retention: "application software bill of materials" }
 ] as const;
-
-export const seededMetrics = {
-  applications: 4,
-  environments: 9,
-  agentsOnline: 132,
-  agentsTotal: 141,
-  attackEvents24h: 37,
-  p95HookLatencyMs: 1.8,
-  policyVersions: 18,
-  openAlerts: 6
-};

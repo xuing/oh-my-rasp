@@ -8,8 +8,9 @@
     "build": "tsc --noEmit && vite build",
     "test": "vitest run",
     "test:ui": "vitest",
-    "e2e": "playwright test",
-    "e2e:live": "playwright test -c playwright.live.config.ts"
+    "e2e:install": "PLAYWRIGHT_HOST_PLATFORM_OVERRIDE=ubuntu24.04-x64 playwright install chromium",
+    "e2e": "PLAYWRIGHT_HOST_PLATFORM_OVERRIDE=ubuntu24.04-x64 playwright test",
+    "e2e:live": "PLAYWRIGHT_HOST_PLATFORM_OVERRIDE=ubuntu24.04-x64 playwright test -c playwright.live.config.ts"
   },
   "dependencies": {
     "@tailwindcss/vite": "4.3.0",

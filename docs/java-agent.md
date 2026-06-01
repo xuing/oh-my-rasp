@@ -1,8 +1,9 @@
 # OhMyRasp
 
 OhMyRasp is a Java-native RASP proof of concept for JDK 25. It uses ASM class
-transformation in a `-javaagent` to intercept risky runtime behavior and emits
-JSONL security events.
+transformation in a `-javaagent` to intercept risky runtime behavior, writes
+local JSONL security events, and can register with the control plane to send
+heartbeats, pull policy metadata, and upload detections through the API.
 
 ## Current PoC Coverage
 
@@ -42,6 +43,18 @@ Protected-agent events are written to:
 ```text
 logs/protected/events.jsonl
 ```
+
+To connect an agent to the control plane, pass arguments to `-javaagent` or set
+the equivalent system properties/environment variables:
+
+```bash
+-javaagent:/opt/ohmyrasp/ohmyrasp-agent.jar=backend_url=http://127.0.0.1:18090,app_id=app_default,app_secret=<secret>,environment_id=env_default
+```
+
+Supported keys are `backend_url`, `app_id`, `app_secret`, `environment_id`,
+`hostname`, `runtime`, and `version`. The matching system properties use the
+`ohmyrasp.` prefix, such as `ohmyrasp.backend_url`; the matching environment
+variables use `OHMYRASP_`, such as `OHMYRASP_BACKEND_URL`.
 
 ## Acceptance
 

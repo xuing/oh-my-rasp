@@ -20,7 +20,7 @@ registration workflows.
 
 The app includes an API-backed login form. The overview, applications, Agents,
 policies, events, observability, and access pages use live API queries with
-deterministic fallback data for local UI development. The applications page can
+explicit loading, error, and empty states when data is unavailable. The applications page can
 rotate application secrets used by Agent operations, and the access page includes
 RBAC roles, user administration, system settings, alert rules, alert delivery
 history, audit logs, the OSS self-hosted edition/license status, and audited

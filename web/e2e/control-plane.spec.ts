@@ -267,6 +267,7 @@ test("submits application, environment, Agent operations, policy, setting, alert
 
   await page.getByLabel("Email").fill("new-analyst@ohmyrasp.local");
   await page.getByLabel("Name").nth(1).fill("New Analyst");
+  await page.getByLabel("Password").fill("new-analyst-password");
   await page.getByRole("button", { name: "Create User" }).click();
   await expect(page.getByText("User created.")).toBeVisible();
 
@@ -346,7 +347,7 @@ test("submits application, environment, Agent operations, policy, setting, alert
         path: "/api/v1/policies/test",
         body: expect.objectContaining({
           rule: expect.objectContaining({ name: "Block command execution", expression: "Runtime.exec" }),
-          event: expect.objectContaining({ hook: "process", message: "Console simulation for Runtime.exec" })
+          event: expect.objectContaining({ hook: "sql", message: "SQL tautology blocked" })
         })
       }),
       expect.objectContaining({
@@ -1059,7 +1060,7 @@ const apiFixtures: Record<string, unknown> = {
   },
   "/api/v1/agent-artifacts": {
     artifact_dir_configured: true,
-    generated_bootstrap_enabled: true,
+    generated_bootstrap_enabled: false,
     items: [
       {
         filename: "agent-java-linux-17.zip",

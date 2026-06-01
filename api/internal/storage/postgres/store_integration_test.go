@@ -36,7 +36,7 @@ func TestStoreIntegrationPostgresWorkflow(t *testing.T) {
 	}
 
 	now := func() time.Time { return time.Date(2026, 5, 31, 12, 0, 0, 0, time.UTC) }
-	store := NewStore(db, now)
+	store := NewStore(db, now).WithBootstrapAdmin("admin@ohmyrasp.local", "postgres-test-admin-password", "Default Admin")
 	var cache *vkstore.Cache
 	if addr := os.Getenv("OHMYRASP_VALKEY_TEST_ADDR"); addr != "" {
 		cache, err = vkstore.New(addr, os.Getenv("OHMYRASP_VALKEY_TEST_USERNAME"), os.Getenv("OHMYRASP_VALKEY_TEST_PASSWORD"))
@@ -66,7 +66,7 @@ func TestStoreIntegrationPostgresWorkflow(t *testing.T) {
 		t.Fatalf("expected seeded alert rules in %#v", defaultAlertRules)
 	}
 
-	session, admin, err := store.Login(ctx, "admin@ohmyrasp.local", "change-me")
+	session, admin, err := store.Login(ctx, "admin@ohmyrasp.local", "postgres-test-admin-password")
 	if err != nil {
 		t.Fatalf("login: %v", err)
 	}

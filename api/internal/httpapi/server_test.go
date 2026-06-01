@@ -300,7 +300,7 @@ func TestMetricsExposeOperationalSignals(t *testing.T) {
 		"severity":       "critical",
 		"message":        "metrics SQL tautology blocked",
 		"occurred_at":    "2026-05-31T00:00:00Z",
-		"attributes":     map[string]any{"path": "/metrics"},
+		"attributes":     map[string]any{"path": "/metrics", "latency_us": 1800},
 	})
 
 	response := client.raw(t, http.MethodGet, "/metrics", "", nil, nil)
@@ -684,7 +684,12 @@ func TestPermissionMatrixEnforcesHumanRoles(t *testing.T) {
 }
 
 func TestDaemonWorkloadInventoryTokenAndBinding(t *testing.T) {
-	client := newTestClient(t)
+	artifactDir := t.TempDir()
+	artifactBytes := agentArtifactZipFixture(t, "conf/ohmyrasp-agent.yml", "cloud.app_secret: dev-app-secret")
+	if err := os.WriteFile(filepath.Join(artifactDir, "agent-java-linux-17.zip"), artifactBytes, 0o600); err != nil {
+		t.Fatalf("write artifact fixture: %v", err)
+	}
+	client := newTestClientWithArtifactDir(t, artifactDir)
 	adminToken := client.login(t)
 
 	tokenResponse := client.request(t, http.MethodGet, "/api/v1/daemon/token", adminToken, nil)
@@ -738,23 +743,15 @@ func TestDaemonWorkloadInventoryTokenAndBinding(t *testing.T) {
 	if legacyDownload.Code != http.StatusOK || fmt.Sprintf("%x", md5.Sum(legacyDownload.Body.Bytes())) != artifactMD5 {
 		t.Fatalf("unexpected legacy daemon artifact download %d: headers=%#v", legacyDownload.Code, legacyDownload.Header())
 	}
-	defaultCatalog := client.request(t, http.MethodGet, "/api/v1/agent-artifacts", adminToken, nil)
-	if defaultCatalog["artifact_dir_configured"].(bool) || !defaultCatalog["generated_bootstrap_enabled"].(bool) {
-		t.Fatalf("expected generated bootstrap catalog fallback, got %#v", defaultCatalog)
-	}
-	if items := arrayValue(t, defaultCatalog, "items"); len(items) != 0 {
-		t.Fatalf("expected no filesystem artifacts without artifact dir, got %#v", defaultCatalog)
-	}
-
-	artifactDir := t.TempDir()
-	artifactBytes := []byte("agent package zip fixture")
-	if err := os.WriteFile(filepath.Join(artifactDir, "agent-java-linux-17.zip"), artifactBytes, 0o600); err != nil {
+	catalogDir := t.TempDir()
+	catalogBytes := []byte("agent package zip fixture")
+	if err := os.WriteFile(filepath.Join(catalogDir, "agent-java-linux-17.zip"), catalogBytes, 0o600); err != nil {
 		t.Fatalf("write artifact fixture: %v", err)
 	}
-	catalogClient := newTestClientWithArtifactDir(t, artifactDir)
+	catalogClient := newTestClientWithArtifactDir(t, catalogDir)
 	catalogToken := catalogClient.login(t)
 	filesystemCatalog := catalogClient.request(t, http.MethodGet, "/api/v1/agent-artifacts", catalogToken, nil)
-	if !filesystemCatalog["artifact_dir_configured"].(bool) || !filesystemCatalog["generated_bootstrap_enabled"].(bool) {
+	if !filesystemCatalog["artifact_dir_configured"].(bool) || filesystemCatalog["generated_bootstrap_enabled"].(bool) {
 		t.Fatalf("expected filesystem artifact catalog, got %#v", filesystemCatalog)
 	}
 	catalogItems := arrayValue(t, filesystemCatalog, "items")
@@ -766,10 +763,12 @@ func TestDaemonWorkloadInventoryTokenAndBinding(t *testing.T) {
 		stringValue(t, catalogItem, "language") != "java" ||
 		stringValue(t, catalogItem, "system_type") != "linux" ||
 		stringValue(t, catalogItem, "language_version") != "17" ||
-		stringValue(t, catalogItem, "md5") != fmt.Sprintf("%x", md5.Sum(artifactBytes)) {
+		stringValue(t, catalogItem, "md5") != fmt.Sprintf("%x", md5.Sum(catalogBytes)) {
 		t.Fatalf("unexpected artifact catalog item: %#v", catalogItem)
 	}
-	noUploadDir := client.raw(t, http.MethodPost, "/api/v1/agent-artifacts", adminToken, nil, map[string]any{
+	noDirClient := newTestClient(t)
+	noDirToken := noDirClient.login(t)
+	noUploadDir := noDirClient.raw(t, http.MethodPost, "/api/v1/agent-artifacts", noDirToken, nil, map[string]any{
 		"language":         "java",
 		"system_type":      "linux",
 		"language_version": "21",
@@ -1007,6 +1006,23 @@ func TestDaemonWorkloadInventoryTokenAndBinding(t *testing.T) {
 		if !containsAuditAction(auditItems, action) {
 			t.Fatalf("expected %s audit entry, got %#v", action, auditItems)
 		}
+	}
+}
+
+func TestAgentArtifactCatalogDisablesGeneratedBootstrapByDefault(t *testing.T) {
+	client := newTestClientWithServer(t, NewServer(testMemoryStore(time.Now), slog.New(slog.NewTextHandler(bytes.NewBuffer(nil), nil))))
+	adminToken := client.login(t)
+
+	catalog := client.request(t, http.MethodGet, "/api/v1/agent-artifacts", adminToken, nil)
+	if catalog["artifact_dir_configured"].(bool) || catalog["generated_bootstrap_enabled"].(bool) {
+		t.Fatalf("expected generated bootstrap to be disabled by default, got %#v", catalog)
+	}
+
+	tokenResponse := client.request(t, http.MethodGet, "/api/v1/daemon/token", adminToken, nil)
+	daemonToken := stringValue(t, tokenResponse, "access_token")
+	download := client.raw(t, http.MethodGet, "/api/v1/daemon/artifacts/agent?app_id=app_default&language=java&system_type=linux&language_version=17", "", daemonHeaders(daemonToken), nil)
+	if download.Code != http.StatusNotFound {
+		t.Fatalf("expected missing artifact without generated bootstrap, got %d: %s", download.Code, download.Body.String())
 	}
 }
 
@@ -1262,13 +1278,42 @@ func TestObservabilityReportRequiresViewerAccess(t *testing.T) {
 		t.Fatalf("expected 401, got %d: %s", blocked.Code, blocked.Body.String())
 	}
 
+	created := client.requestWithHeaders(t, http.MethodPost, "/api/v1/agents/register", appHeaders("app_default", "dev-app-secret"), map[string]any{
+		"environment_id": "env_default",
+		"hostname":       "obs-host",
+		"runtime":        "java",
+		"version":        "1.0.0",
+	})
+	agentID := stringValue(t, created, "id")
+	client.requestWithHeaders(t, http.MethodPost, "/api/v1/events/performance", appHeaders("app_default", "dev-app-secret"), map[string]any{
+		"application_id": "app_default",
+		"environment_id": "env_default",
+		"agent_id":       agentID,
+		"policy_id":      "pol_observed",
+		"policy_version": 1,
+		"hook":           "sql",
+		"algorithm":      "overhead_sample",
+		"severity":       "low",
+		"message":        "observed performance sample",
+		"attributes": map[string]any{
+			"cpu_overhead_pct":      1.2,
+			"memory_overhead_bytes": 1024,
+			"hook_latency_p95_us":   1800,
+			"rule_eval_p95_us":      900,
+			"latency_us":            1700,
+		},
+	})
+
 	report := client.request(t, http.MethodGet, "/api/v1/analytics/observability?application_id=app_default", token, nil)
 	ruleOverhead := arrayValue(t, report, "rule_overhead")
 	hookLatency := arrayValue(t, report, "hook_latency")
 	agentOverhead := arrayValue(t, report, "agent_overhead")
 	policyPerformance := arrayValue(t, report, "policy_performance")
-	if len(ruleOverhead) == 0 || len(hookLatency) == 0 || len(agentOverhead) == 0 || len(policyPerformance) == 0 {
-		t.Fatalf("expected seeded observability report, got %#v", report)
+	if len(ruleOverhead) != 0 {
+		t.Fatalf("expected no synthetic rule overhead without rollup samples, got %#v", report)
+	}
+	if len(hookLatency) == 0 || len(agentOverhead) == 0 || len(policyPerformance) == 0 {
+		t.Fatalf("expected observability report from ingested performance event, got %#v", report)
 	}
 }
 
@@ -1469,11 +1514,31 @@ func newTestClient(t *testing.T) *testClient {
 func newTestClientWithArtifactDir(t *testing.T, artifactDir string) *testClient {
 	t.Helper()
 	now := func() time.Time { return time.Date(2026, 5, 31, 0, 0, 0, 0, time.UTC) }
-	store := control.NewMemoryStore(now)
+	store := testMemoryStore(now)
 	server := NewServer(store, slog.New(slog.NewTextHandler(bytes.NewBuffer(nil), nil)))
 	if artifactDir != "" {
 		server.WithAgentArtifactDir(artifactDir)
 	}
+	return newTestClientWithServer(t, server)
+}
+
+func testMemoryStore(now func() time.Time) *control.MemoryStore {
+	return control.NewMemoryStoreWithSeed(now, control.MemorySeed{
+		AdminEmail:             "admin@ohmyrasp.local",
+		AdminPassword:          "change-me",
+		AdminName:              "Default Admin",
+		ApplicationID:          "app_default",
+		ApplicationName:        "Test Java Service",
+		ApplicationDescription: "Test application",
+		ApplicationSecret:      "dev-app-secret",
+		EnvironmentID:          "env_default",
+		EnvironmentName:        "production",
+		EnvironmentKind:        "production",
+	})
+}
+
+func newTestClientWithServer(t *testing.T, server *Server) *testClient {
+	t.Helper()
 	return &testClient{handler: server.Routes()}
 }
 

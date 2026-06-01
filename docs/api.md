@@ -64,10 +64,11 @@ migration command for the self-hosted deployment path.
 
 Daemon-side agent artifact endpoints use the daemon token and expose both the
 modern `/api/v1/daemon/artifacts/agent` route and legacy-compatible
-`/v1/service/dl/agent` aliases. By default the API returns a generated Java
-bootstrap ZIP for local validation. The authenticated `/api/v1/agent-artifacts`
-route exposes the package catalog to operators and accepts audited Java Agent
-ZIP uploads as base64 JSON when `OHMYRASP_AGENT_ARTIFACT_DIR` is configured.
+`/v1/service/dl/agent` aliases. The API serves uploaded or filesystem Java
+Agent ZIPs; generated bootstrap ZIPs are not created by the API. The
+authenticated `/api/v1/agent-artifacts` route exposes the package catalog to
+operators and accepts audited Java Agent ZIP uploads as base64 JSON when
+`OHMYRASP_AGENT_ARTIFACT_DIR` is configured.
 Uploaded packages are stored with canonical names such as
 `ohmyrasp-agent-java-linux-17.zip`. Existing filesystem packages named
 `agent-java-linux.zip`, `agent-java.zip`, or similarly named ZIPs remain
@@ -201,8 +202,6 @@ docker run --rm --network host \
   go test ./internal/storage/valkey -run TestCacheIntegrationValkeyWorkflow -count=1 -v
 ```
 
-Default local admin:
-
-```text
-admin@ohmyrasp.local / change-me
-```
+For in-memory API experiments, set `OHMYRASP_STORE=memory` and provide
+`OHMYRASP_BOOTSTRAP_ADMIN_PASSWORD`; memory mode does not include a built-in
+default password.

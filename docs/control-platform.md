@@ -79,7 +79,7 @@ The platform is single-organization by default. It uses composition:
   policy-cache invalidation, and fixed-window API rate limiting.
 - Frontend tests cover capability navigation, policy lifecycle order, event
   pipeline coverage, event, event recycle-bin, dependency, baseline, and observability query filters,
-  responsive shell/header navigation, Agent artifact upload, catalog display, and metadata verification, live-query fallback data for the main control pages, page
+  responsive shell/header navigation, Agent artifact upload, catalog display, and metadata verification, live-query loading/error/empty states for the main control pages, page
   rendering, and Playwright browser flows for API-backed login, primary
   control-plane navigation, application/environment creation, Agent
   registration, Agent heartbeat and policy-pull operations, daemon token

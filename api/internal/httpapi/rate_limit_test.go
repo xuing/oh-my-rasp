@@ -13,7 +13,7 @@ import (
 )
 
 func TestRateLimiterRejectsAPIRequests(t *testing.T) {
-	server := NewServer(control.NewMemoryStore(time.Now), slog.Default()).
+	server := NewServer(testMemoryStore(time.Now), slog.Default()).
 		WithRateLimiter(staticLimiter{allowed: false}, 1, time.Minute)
 	response := httptest.NewRecorder()
 	request := httptest.NewRequest(http.MethodPost, "/api/v1/auth/login", strings.NewReader(`{"email":"admin@ohmyrasp.local","password":"change-me"}`))
@@ -30,7 +30,7 @@ func TestRateLimiterRejectsAPIRequests(t *testing.T) {
 }
 
 func TestRateLimiterSkipsHealthEndpoints(t *testing.T) {
-	server := NewServer(control.NewMemoryStore(time.Now), slog.Default()).
+	server := NewServer(testMemoryStore(time.Now), slog.Default()).
 		WithRateLimiter(staticLimiter{allowed: false}, 1, time.Minute)
 	response := httptest.NewRecorder()
 	request := httptest.NewRequest(http.MethodGet, "/healthz", nil)

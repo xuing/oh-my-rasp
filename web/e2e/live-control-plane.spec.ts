@@ -19,7 +19,10 @@ function rootEnv(name: string): string | undefined {
 test("logs in, creates application scope, operates an Agent, manages access, and reads primary pages through the live Compose web proxy", async ({ page }) => {
   test.setTimeout(60_000);
   const email = process.env.OHMYRASP_E2E_ADMIN_EMAIL ?? rootEnv("OHMYRASP_BOOTSTRAP_ADMIN_EMAIL") ?? "admin@ohmyrasp.local";
-  const password = process.env.OHMYRASP_E2E_ADMIN_PASSWORD ?? rootEnv("OHMYRASP_BOOTSTRAP_ADMIN_PASSWORD") ?? "change-me";
+  const password = process.env.OHMYRASP_E2E_ADMIN_PASSWORD ?? rootEnv("OHMYRASP_BOOTSTRAP_ADMIN_PASSWORD");
+  if (!password) {
+    throw new Error("Set OHMYRASP_E2E_ADMIN_PASSWORD or OHMYRASP_BOOTSTRAP_ADMIN_PASSWORD before running live e2e tests.");
+  }
   const suffix = Date.now().toString(36);
   const appName = `Live UI ${suffix}`;
   const environmentName = `live-prod-${suffix}`;
@@ -91,7 +94,7 @@ test("logs in, creates application scope, operates an Agent, manages access, and
   await page.getByRole("button", { name: "Pull Policy" }).click();
   await expect(page.getByText(`Pulled policy version 1 (active) with 1 rules for live-agent-${suffix}.`)).toBeVisible();
   await expect(page.getByText("Agent Artifact Catalog")).toBeVisible();
-  await expect(page.getByText("Fallback Enabled", { exact: true })).toBeVisible();
+  await expect(page.getByText("Filesystem Only", { exact: true })).toBeVisible();
   await expect(page.getByText("Agent Artifact Upload")).toBeVisible();
   await page.getByLabel("Agent ZIP").setInputFiles({
     name: `live-agent-${suffix}.zip`,
