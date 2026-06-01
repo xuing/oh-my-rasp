@@ -6,6 +6,12 @@ test("logs in through the API-backed form", async ({ page }) => {
 
   await page.goto("/login");
   await expect(page.getByRole("heading", { name: "Sign in to OhMyRasp" })).toBeVisible();
+  await page.getByLabel("Language").selectOption("zh");
+  await expect(page.getByRole("heading", { name: "登录 OhMyRasp" })).toBeVisible();
+  await page.locator("select").first().selectOption("ja");
+  await expect(page.getByRole("heading", { name: "OhMyRasp にサインイン" })).toBeVisible();
+  await page.locator("select").first().selectOption("en");
+  await expect(page.getByRole("heading", { name: "Sign in to OhMyRasp" })).toBeVisible();
 
   await page.getByLabel("Email").fill("admin@ohmyrasp.local");
   await page.getByLabel("Password").fill("change-me");

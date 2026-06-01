@@ -2,6 +2,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { render, screen } from "@testing-library/react";
 import type { ReactElement } from "react";
 import { describe, expect, it } from "vitest";
+import i18n from "../i18n";
 import { AccessPage, AgentsPage, ApplicationsPage, EventsPage, ObservabilityPage, OverviewPage, PoliciesPage } from "./pages";
 
 describe("OverviewPage", () => {
@@ -11,6 +12,23 @@ describe("OverviewPage", () => {
     expect(screen.getByText("Control Domains")).toBeTruthy();
     expect(screen.getByText("Policy Lifecycle")).toBeTruthy();
     expect(screen.getByText("Online Agents")).toBeTruthy();
+  });
+
+  it("renders localized dashboard labels in Chinese and Japanese", async () => {
+    await i18n.changeLanguage("zh");
+    const { unmount } = renderWithQueryClient(<OverviewPage />);
+
+    expect(screen.getByText("控制域")).toBeTruthy();
+    expect(screen.getByText("策略生命周期")).toBeTruthy();
+    expect(screen.getByText("在线 Agent")).toBeTruthy();
+
+    unmount();
+    await i18n.changeLanguage("ja");
+    renderWithQueryClient(<OverviewPage />);
+
+    expect(screen.getByText("制御ドメイン")).toBeTruthy();
+    expect(screen.getByText("ポリシーライフサイクル")).toBeTruthy();
+    expect(screen.getByText("オンライン Agent")).toBeTruthy();
   });
 });
 
@@ -148,5 +166,5 @@ function renderWithQueryClient(element: ReactElement) {
     }
   });
 
-  render(<QueryClientProvider client={queryClient}>{element}</QueryClientProvider>);
+  return render(<QueryClientProvider client={queryClient}>{element}</QueryClientProvider>);
 }

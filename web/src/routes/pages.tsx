@@ -5,6 +5,7 @@ import {
   AppWindow,
   ChartNoAxesColumnIncreasing,
   Gauge,
+  Globe2,
   KeyRound,
   LayoutDashboard,
   Link2,
@@ -16,12 +17,14 @@ import {
   Upload
 } from "lucide-react";
 import { type FormEvent, type ReactNode, useEffect, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { Badge } from "../components/ui/badge";
 import type { BadgeTone } from "../components/ui/badge";
 import { Button } from "../components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "../components/ui/card";
 import { Table } from "../components/ui/table";
 import { eventPipelines, navigationSections, policyLifecycle } from "../domain/control-plane";
+import { setAppLanguage, supportedLanguages, type SupportedLanguage } from "../i18n";
 import {
   agentsFallback,
   applicationsFallback,
@@ -121,7 +124,20 @@ const iconMap = {
   shield: Gauge
 };
 
+const navigationKeyByPath = {
+  "/": "overview",
+  "/applications": "applications",
+  "/agents": "agents",
+  "/policies": "policies",
+  "/events": "events",
+  "/observability": "observability",
+  "/access": "access"
+} as const;
+
+const lifecycleKeys = ["draft", "validate", "test", "version", "canary", "promote", "rollback"] as const;
+
 export function RootLayout() {
+  const { i18n, t } = useTranslation();
   const [session, setSession] = useState(currentSession);
 
   useEffect(() => {
@@ -138,12 +154,13 @@ export function RootLayout() {
     <div className="min-h-screen bg-slate-100">
       <aside className="fixed inset-y-0 left-0 hidden w-72 border-r border-slate-200 bg-slate-950 text-white lg:block">
         <div className="border-b border-slate-800 px-5 py-5">
-          <div className="text-lg font-semibold tracking-normal">OhMyRasp Control</div>
-          <div className="mt-1 text-xs text-slate-400">Self-hosted RASP platform</div>
+          <div className="text-lg font-semibold tracking-normal">{t("shell.product")}</div>
+          <div className="mt-1 text-xs text-slate-400">{t("shell.subtitle")}</div>
         </div>
         <nav className="space-y-1 p-3">
           {navigationSections.map(section => {
             const Icon = iconMap[section.icon];
+            const navigationKey = navigationKeyByPath[section.path];
             return (
               <Link
                 key={section.path}
@@ -152,7 +169,7 @@ export function RootLayout() {
                 activeProps={{ className: "bg-slate-800 text-white" }}
               >
                 <Icon className="h-4 w-4" />
-                <span>{section.label}</span>
+                <span>{t(`navigation.${navigationKey}.label`, section.label)}</span>
               </Link>
             );
           })}
@@ -162,32 +179,33 @@ export function RootLayout() {
         <header className="border-b border-slate-200 bg-white px-4 py-4 lg:px-6">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div>
-              <div className="text-xl font-semibold tracking-normal text-slate-950">RASP Control Plane</div>
-              <div className="text-sm text-slate-500">Single organization, multiple apps, environments, Agents, and policies.</div>
+              <div className="text-xl font-semibold tracking-normal text-slate-950">{t("shell.title")}</div>
+              <div className="text-sm text-slate-500">{t("shell.summary")}</div>
             </div>
-            <div className="flex gap-2">
+            <div className="flex flex-wrap items-center gap-2">
+              <LanguageSwitcher language={i18n.resolvedLanguage ?? i18n.language} />
               <Link
                 to="/policies"
                 className="inline-flex h-9 items-center justify-center rounded-md border border-slate-200 bg-white px-3 text-sm font-medium text-slate-900 transition-colors hover:bg-slate-50"
               >
-                Validate Rule
+                {t("shell.validateRule")}
               </Link>
               <Link
                 to="/agents"
                 className="inline-flex h-9 items-center justify-center gap-2 rounded-md border border-slate-900 bg-slate-900 px-3 text-sm font-medium text-white transition-colors hover:bg-slate-800"
               >
-                Register Agent
+                {t("shell.registerAgent")}
               </Link>
               {session.token ? (
                 <div className="inline-flex h-9 items-center rounded-md border border-slate-200 bg-white px-3 text-sm font-medium text-slate-700">
-                  {session.userEmail || session.userName || "Signed in"}
+                  {session.userEmail || session.userName || t("shell.signedIn")}
                 </div>
               ) : (
                 <Link
                   to="/login"
                   className="inline-flex h-9 items-center justify-center rounded-md border border-slate-200 bg-white px-3 text-sm font-medium text-slate-900 hover:bg-slate-50"
                 >
-                  Sign in
+                  {t("shell.signIn")}
                 </Link>
               )}
             </div>
@@ -195,16 +213,19 @@ export function RootLayout() {
         </header>
         <nav aria-label="Primary mobile" className="border-b border-slate-200 bg-white px-4 py-2 lg:hidden">
           <div className="flex gap-2 overflow-x-auto">
-            {navigationSections.map(section => (
-              <Link
-                key={section.path}
-                to={section.path}
-                className="inline-flex h-9 shrink-0 items-center rounded-md px-3 text-sm font-medium text-slate-700 hover:bg-slate-100 hover:text-slate-950"
-                activeProps={{ className: "bg-slate-900 text-white hover:bg-slate-900 hover:text-white" }}
-              >
-                {section.label}
-              </Link>
-            ))}
+            {navigationSections.map(section => {
+              const navigationKey = navigationKeyByPath[section.path];
+              return (
+                <Link
+                  key={section.path}
+                  to={section.path}
+                  className="inline-flex h-9 shrink-0 items-center rounded-md px-3 text-sm font-medium text-slate-700 hover:bg-slate-100 hover:text-slate-950"
+                  activeProps={{ className: "bg-slate-900 text-white hover:bg-slate-900 hover:text-white" }}
+                >
+                  {t(`navigation.${navigationKey}.label`, section.label)}
+                </Link>
+              );
+            })}
           </div>
         </nav>
         <div className="p-4 lg:p-6">
@@ -215,8 +236,33 @@ export function RootLayout() {
   );
 }
 
+function LanguageSwitcher({ language }: { language: string }) {
+  const { t } = useTranslation();
+  const selectedLanguage = supportedLanguages.some(option => option.code === language) ? (language as SupportedLanguage) : "en";
+
+  return (
+    <label className="inline-flex h-9 items-center gap-2 rounded-md border border-slate-200 bg-white px-2 text-sm font-medium text-slate-700">
+      <Globe2 className="h-4 w-4 text-slate-500" />
+      <span className="sr-only">{t("language.label")}</span>
+      <select
+        aria-label={t("language.label")}
+        className="h-7 bg-transparent text-sm outline-none"
+        value={selectedLanguage}
+        onChange={event => void setAppLanguage(event.target.value as SupportedLanguage)}
+      >
+        {supportedLanguages.map(option => (
+          <option key={option.code} value={option.code}>
+            {option.nativeLabel}
+          </option>
+        ))}
+      </select>
+    </label>
+  );
+}
+
 export function LoginPage() {
   const navigate = useNavigate();
+  const { t } = useTranslation();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
@@ -231,7 +277,7 @@ export function LoginPage() {
       saveSession(result);
       await navigate({ to: "/" });
     } catch {
-      setError("Unable to sign in with those credentials.");
+      setError(t("login.error"));
     } finally {
       setIsSubmitting(false);
     }
@@ -241,13 +287,13 @@ export function LoginPage() {
     <div className="mx-auto flex min-h-[calc(100vh-9rem)] max-w-md items-center">
       <Card className="w-full">
         <CardHeader>
-          <CardTitle>Sign in to OhMyRasp</CardTitle>
+          <CardTitle>{t("login.title")}</CardTitle>
         </CardHeader>
         <CardContent>
           <form className="space-y-4" onSubmit={handleSubmit}>
             <div className="space-y-2">
               <label className="text-sm font-medium text-slate-700" htmlFor="email">
-                Email
+                {t("login.email")}
               </label>
               <input
                 id="email"
@@ -262,7 +308,7 @@ export function LoginPage() {
             </div>
             <div className="space-y-2">
               <label className="text-sm font-medium text-slate-700" htmlFor="password">
-                Password
+                {t("login.password")}
               </label>
               <input
                 id="password"
@@ -281,7 +327,7 @@ export function LoginPage() {
               </div>
             ) : null}
             <Button className="w-full" disabled={isSubmitting} type="submit">
-              {isSubmitting ? "Signing in" : "Sign in"}
+              {isSubmitting ? t("login.submitting") : t("login.submit")}
             </Button>
           </form>
         </CardContent>
@@ -291,29 +337,33 @@ export function LoginPage() {
 }
 
 export function OverviewPage() {
+  const { t } = useTranslation();
   const overviewQuery = useOverview();
   const overview = overviewQuery.data ?? overviewFallback();
   const onlineRate = Math.round((overview.online_agents / Math.max(overview.agent_count, 1)) * 100);
   return (
     <div className="space-y-5">
       <section className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
-        <Metric label="Applications" value={overview.application_count} detail="managed services" />
-        <Metric label="Online Agents" value={`${overview.online_agents}/${overview.agent_count}`} detail={`${onlineRate}% reporting`} />
-        <Metric label="Events" value={overview.event_count} detail="current query window" />
-        <Metric label="Hook p95" value="1.8 ms" detail="seed observability target" />
+        <Metric label={t("overview.metrics.applications")} value={overview.application_count} detail={t("overview.metrics.applicationsDetail")} />
+        <Metric label={t("overview.metrics.onlineAgents")} value={`${overview.online_agents}/${overview.agent_count}`} detail={t("overview.metrics.onlineAgentsDetail", { rate: onlineRate })} />
+        <Metric label={t("overview.metrics.events")} value={overview.event_count} detail={t("overview.metrics.eventsDetail")} />
+        <Metric label={t("overview.metrics.hookP95")} value="1.8 ms" detail={t("overview.metrics.hookP95Detail")} />
       </section>
       <section className="grid gap-5 xl:grid-cols-[1.15fr_.85fr]">
         <Card>
           <CardHeader>
-            <CardTitle>Control Domains</CardTitle>
+            <CardTitle>{t("overview.controlDomains")}</CardTitle>
           </CardHeader>
           <CardContent className="grid gap-3 md:grid-cols-2">
-            {navigationSections.slice(1).map(section => (
-              <div key={section.path} className="rounded-md border border-slate-200 p-3">
-                <div className="font-medium text-slate-950">{section.label}</div>
-                <p className="mt-1 text-sm leading-6 text-slate-600">{section.description}</p>
-              </div>
-            ))}
+            {navigationSections.slice(1).map(section => {
+              const navigationKey = navigationKeyByPath[section.path];
+              return (
+                <div key={section.path} className="rounded-md border border-slate-200 p-3">
+                  <div className="font-medium text-slate-950">{t(`navigation.${navigationKey}.label`, section.label)}</div>
+                  <p className="mt-1 text-sm leading-6 text-slate-600">{t(`navigation.${navigationKey}.description`, section.description)}</p>
+                </div>
+              );
+            })}
           </CardContent>
         </Card>
         <PolicyLifecycle />
@@ -323,14 +373,15 @@ export function OverviewPage() {
 }
 
 export function ApplicationsPage() {
+  const { t } = useTranslation();
   const applicationsQuery = useApplications();
   const applications = applicationsQuery.data?.items ?? applicationsFallback().items;
   const environmentCount = applications.reduce((count, app) => count + app.environment_ids.length, 0);
 
   return (
     <SectionPage
-      title="Applications"
-      summary="Application and environment scope replaces the legacy tenant hierarchy. Each application owns its Agent secret, environment inventory, and policy assignment defaults."
+      title={t("pages.applications.title")}
+      summary={t("pages.applications.summary")}
     >
       <div className="grid gap-3 md:grid-cols-3">
         <Metric label="Applications" value={applications.length} detail="managed services" />
@@ -539,6 +590,7 @@ function ApplicationsWritePanel({ applications }: { applications: Application[] 
 }
 
 export function AgentsPage() {
+  const { t } = useTranslation();
   const agentsQuery = useAgents();
   const agents = agentsQuery.data?.items ?? agentsFallback().items;
   const applicationsQuery = useApplications();
@@ -558,8 +610,8 @@ export function AgentsPage() {
 
   return (
     <SectionPage
-      title="Agents"
-      summary="Registration, heartbeat, policy pulls, event reporting, version drift, and runtime metadata are grouped per application and environment."
+      title={t("pages.agents.title")}
+      summary={t("pages.agents.summary")}
     >
       <div className="grid gap-3 md:grid-cols-3">
         <Metric label="Online" value={`${onlineAgents}/${agents.length}`} detail="healthy heartbeat" />
@@ -1451,6 +1503,7 @@ function AgentsWritePanel({ applications, onSecretUsed }: { applications: Applic
 }
 
 export function PoliciesPage() {
+  const { t } = useTranslation();
   const policiesQuery = usePolicies();
   const policies = policiesQuery.data?.items ?? policiesFallback().items;
   const applicationsQuery = useApplications();
@@ -1460,8 +1513,8 @@ export function PoliciesPage() {
 
   return (
     <SectionPage
-      title="Policies"
-      summary="Policy sets are composed from rules and promoted through validation, simulation, versioning, canary release, and rollback."
+      title={t("pages.policies.title")}
+      summary={t("pages.policies.summary")}
     >
       <div className="grid gap-3 md:grid-cols-3">
         <Metric label="Policy Sets" value={policies.length} detail="managed rule groups" />
@@ -1513,6 +1566,7 @@ export function PoliciesPage() {
 }
 
 export function EventsPage() {
+  const { t } = useTranslation();
   const queryClient = useQueryClient();
   const applicationsQuery = useApplications();
   const agentsQuery = useAgents();
@@ -1693,8 +1747,8 @@ export function EventsPage() {
 
   return (
     <SectionPage
-      title="Events"
-      summary="Attack, Hook, performance, crash, and dependency reports are split between transactional storage and analytical ClickHouse pipelines."
+      title={t("pages.events.title")}
+      summary={t("pages.events.summary")}
     >
       <div className="grid gap-3 md:grid-cols-4">
         <Metric label="Security Events" value={allEvents.length} detail="attack, Hook, performance, crash" />
@@ -2246,6 +2300,7 @@ export function EventsPage() {
 }
 
 export function ObservabilityPage() {
+  const { t } = useTranslation();
   const applicationsQuery = useApplications();
   const policiesQuery = usePolicies();
   const applications = applicationsQuery.data?.items ?? applicationsFallback().items;
@@ -2268,8 +2323,8 @@ export function ObservabilityPage() {
 
   return (
     <SectionPage
-      title="Observability"
-      summary="Rule overhead, Hook latency, Agent overhead, and policy-version impact are tracked as first-class performance telemetry."
+      title={t("pages.observability.title")}
+      summary={t("pages.observability.summary")}
     >
       <div className="grid gap-3 md:grid-cols-4">
         <Metric label="Hook p95" value={formatLatency(topHook?.p95_latency_us)} detail={topHook ? `${topHook.hook} hook` : "no samples"} />
@@ -2474,6 +2529,7 @@ export function ObservabilityPage() {
 }
 
 export function AccessPage() {
+  const { t } = useTranslation();
   const auditQuery = useAuditLogs();
   const auditLogs = auditQuery.data?.items ?? auditLogsFallback().items;
   const settingsQuery = useSystemSettings();
@@ -2489,8 +2545,8 @@ export function AccessPage() {
 
   return (
     <SectionPage
-      title="Access & Audit"
-      summary="Enterprise login, RBAC, system settings, alerts, and operation audit logs are modeled for a single self-hosted organization."
+      title={t("pages.access.title")}
+      summary={t("pages.access.summary")}
     >
       <div className="grid gap-3 md:grid-cols-3">
         {[
@@ -4262,16 +4318,17 @@ function Metric({ label, value, detail }: { label: string; value: string | numbe
 }
 
 function PolicyLifecycle() {
+  const { t } = useTranslation();
   return (
     <Card>
       <CardHeader>
-        <CardTitle>Policy Lifecycle</CardTitle>
+        <CardTitle>{t("overview.policyLifecycle")}</CardTitle>
       </CardHeader>
       <CardContent>
         <div className="grid gap-2">
           {policyLifecycle.map((step, index) => (
             <div key={step} className={cn("flex items-center justify-between rounded-md border border-slate-200 p-3", index === 4 && "border-amber-300 bg-amber-50")}>
-              <span className="font-medium text-slate-900">{step}</span>
+              <span className="font-medium text-slate-900">{t(`lifecycle.${lifecycleKeys[index]}`, step)}</span>
               <Badge tone={index < 4 ? "green" : index === 4 ? "amber" : "neutral"}>{index + 1}</Badge>
             </div>
           ))}
