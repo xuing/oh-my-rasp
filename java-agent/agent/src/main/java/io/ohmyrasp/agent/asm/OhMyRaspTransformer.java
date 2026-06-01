@@ -8,6 +8,16 @@ import org.objectweb.asm.ClassWriter;
 import org.objectweb.asm.Opcodes;
 
 public final class OhMyRaspTransformer implements ClassFileTransformer {
+  private final HookRegistry registry;
+
+  public OhMyRaspTransformer() {
+    this(HookRegistry.defaults());
+  }
+
+  public OhMyRaspTransformer(HookRegistry registry) {
+    this.registry = registry;
+  }
+
   @Override
   public byte[] transform(
       Module module,
@@ -23,7 +33,7 @@ public final class OhMyRaspTransformer implements ClassFileTransformer {
       ClassReader reader = new ClassReader(classfileBuffer);
       ClassWriter writer = new ClassWriter(reader, ClassWriter.COMPUTE_MAXS);
       ClassVisitor visitor = new SqlCallsiteClassVisitor(writer);
-      visitor = new HookClassVisitor(className, visitor);
+      visitor = new HookClassVisitor(className, registry, visitor);
       reader.accept(visitor, ClassReader.EXPAND_FRAMES);
       return writer.toByteArray();
     } catch (Throwable throwable) {
@@ -34,7 +44,7 @@ public final class OhMyRaspTransformer implements ClassFileTransformer {
     }
   }
 
-  private static boolean shouldSkip(String className) {
+  private boolean shouldSkip(String className) {
     if (className.startsWith("io/ohmyrasp/agent/")
         || className.startsWith("org/objectweb/asm/")
         || className.startsWith("java/lang/instrument/")
@@ -42,7 +52,7 @@ public final class OhMyRaspTransformer implements ClassFileTransformer {
         || className.startsWith("sun/reflect/")) {
       return true;
     }
-    return isJdkClass(className) && !HookClassVisitor.isDirectTarget(className);
+    return isJdkClass(className) && !registry.isDirectTarget(className);
   }
 
   private static boolean isJdkClass(String className) {

@@ -3,26 +3,38 @@ set -euo pipefail
 
 cd "$(dirname "$0")/.."
 
-BASELINE_URL="http://localhost:${OHMYRASP_BASELINE_PORT:-18080}"
-PROTECTED_URL="http://localhost:${OHMYRASP_PROTECTED_PORT:-18081}"
-PROTECTED_LOG="logs/protected/events.jsonl"
+versions=(9 10 11)
+declare -A baseline_ports=(
+  [9]="${OHMYRASP_TOMCAT9_BASELINE_PORT:-18080}"
+  [10]="${OHMYRASP_TOMCAT10_BASELINE_PORT:-18082}"
+  [11]="${OHMYRASP_TOMCAT11_BASELINE_PORT:-18084}"
+)
+declare -A protected_ports=(
+  [9]="${OHMYRASP_TOMCAT9_PROTECTED_PORT:-18081}"
+  [10]="${OHMYRASP_TOMCAT10_PROTECTED_PORT:-18083}"
+  [11]="${OHMYRASP_TOMCAT11_PROTECTED_PORT:-18085}"
+)
 
-rm -rf logs/baseline logs/protected
-mkdir -p logs/baseline logs/protected
+rm -rf logs/tomcat*-baseline logs/tomcat*-protected
+for version in "${versions[@]}"; do
+  mkdir -p "logs/tomcat${version}-baseline" "logs/tomcat${version}-protected"
+done
 
 docker compose build --pull
 docker compose up -d
 
 cleanup() {
-  docker compose logs --no-color baseline > logs/baseline/tomcat.log || true
-  docker compose logs --no-color protected > logs/protected/tomcat.log || true
+  for version in "${versions[@]}"; do
+    docker compose logs --no-color "tomcat${version}-baseline" > "logs/tomcat${version}-baseline/tomcat.log" || true
+    docker compose logs --no-color "tomcat${version}-protected" > "logs/tomcat${version}-protected/tomcat.log" || true
+  done
 }
 trap cleanup EXIT
 
 wait_for() {
   local name="$1"
   local url="$2"
-  for _ in $(seq 1 90); do
+  for _ in $(seq 1 120); do
     if curl -fsS "${url}/rasp/health" >/dev/null 2>&1; then
       return
     fi
@@ -42,106 +54,124 @@ final_url() {
   curl -sS -L -o "$outfile" -w "%{url_effective}" "$@" 2>"${outfile}.err" || true
 }
 
+expect_body_contains() {
+  local url="$1"
+  local needle="$2"
+  local body
+  body="$(curl -fsS "$url")"
+  if [[ "$body" != *"$needle"* ]]; then
+    echo "expected ${url} to contain ${needle}" >&2
+    exit 1
+  fi
+}
+
 missing_redirect=0
 
 expect_block() {
-  local name="$1"
-  shift
-  local outfile="logs/protected/$(slug "$name").response"
+  local version="$1"
+  local name="$2"
+  shift 2
+  local outfile="logs/tomcat${version}-protected/$(slug "$name").response"
   local final
   final="$(final_url "$outfile" "$@")"
   if [[ "$final" == *"/rasp/blocked"* ]]; then
-    echo "blocked ${name}"
+    echo "blocked tomcat${version} ${name}"
   else
-    echo "missing protected redirect for ${name}; final URL was ${final}" >&2
+    echo "missing protected redirect for tomcat${version} ${name}; final URL was ${final}" >&2
     missing_redirect=1
   fi
 }
 
 expect_not_blocked() {
-  local name="$1"
-  shift
-  local outfile="logs/baseline/$(slug "$name").response"
+  local version="$1"
+  local name="$2"
+  shift 2
+  local outfile="logs/tomcat${version}-baseline/$(slug "$name").response"
   local final
   final="$(final_url "$outfile" "$@")"
   if [[ "$final" == *"/rasp/blocked"* ]]; then
-    echo "baseline unexpectedly redirected for ${name}; final URL was ${final}" >&2
+    echo "baseline tomcat${version} unexpectedly redirected for ${name}; final URL was ${final}" >&2
     missing_redirect=1
   else
-    echo "baseline ${name}"
+    echo "baseline tomcat${version} ${name}"
   fi
 }
 
-wait_for baseline "$BASELINE_URL"
-wait_for protected "$PROTECTED_URL"
+run_version() {
+  local version="$1"
+  local baseline_url="http://localhost:${baseline_ports[$version]}"
+  local protected_url="http://localhost:${protected_ports[$version]}"
 
-curl -fsS "${BASELINE_URL}/" | grep -q "OhMyRasp"
-curl -fsS "${PROTECTED_URL}/" | grep -q "OhMyRasp"
-curl -fsS "${BASELINE_URL}/rasp/ui" | grep -q "OhMyRasp Comparative Testbed"
-curl -fsS "${PROTECTED_URL}/rasp/ui" | grep -q "OhMyRasp Comparative Testbed"
-curl -fsS "${PROTECTED_URL}/rasp/cases" | grep -q "Command user input"
-curl -fsS "${PROTECTED_URL}/rasp/blocked?algorithm=test&hook=test&message=test" | grep -q "Request intercepted"
+  wait_for "tomcat${version}-baseline" "$baseline_url"
+  wait_for "tomcat${version}-protected" "$protected_url"
 
-expect_not_blocked baseline_command -G --data-urlencode "cmd=sh" --data-urlencode "arg=-c" --data-urlencode "arg=cat /etc/passwd; id" "${BASELINE_URL}/rasp/command"
-expect_not_blocked baseline_file_read -G --data-urlencode "path=/etc/passwd" "${BASELINE_URL}/rasp/file/read"
-expect_not_blocked baseline_upload_policy "${BASELINE_URL}/rasp/policy/upload-script"
+  expect_body_contains "${baseline_url}/" "OhMyRasp"
+  expect_body_contains "${protected_url}/" "OhMyRasp"
+  expect_body_contains "${baseline_url}/rasp/ui" "OhMyRasp Comparative Testbed"
+  expect_body_contains "${protected_url}/rasp/ui" "OhMyRasp Comparative Testbed"
+  expect_body_contains "${protected_url}/rasp/cases" "Command user input"
+  expect_body_contains "${protected_url}/rasp/environments" "tomcat${version}-protected"
+  expect_body_contains "${protected_url}/rasp/labs" "expression-injection"
+  expect_body_contains "${protected_url}/rasp/blocked?algorithm=test&hook=test&message=test" "Request intercepted"
 
-expect_block request_scanner -A "sqlmap/1.7" "${PROTECTED_URL}/rasp/request"
-expect_block request_unusual -H "User-Agent:" "${PROTECTED_URL}/rasp/request"
-expect_block xss_userinput -G -A "Mozilla/5.0" --data-urlencode "q=<script>alert(1)</script>" "${PROTECTED_URL}/rasp/request"
-expect_block command_userinput -G --data-urlencode "cmd=sh" --data-urlencode "arg=-c" --data-urlencode "arg=cat /etc/passwd; id" "${PROTECTED_URL}/rasp/command"
-expect_block command_common "${PROTECTED_URL}/rasp/command/common"
-expect_block command_error "${PROTECTED_URL}/rasp/command/error"
-expect_block command_dnslog "${PROTECTED_URL}/rasp/command/dnslog"
-expect_block command_reflect "${PROTECTED_URL}/rasp/command/reflect"
-expect_block readFile_userinput -G --data-urlencode "path=/etc/passwd" "${PROTECTED_URL}/rasp/file/read"
-expect_block readFile_unwanted "${PROTECTED_URL}/rasp/file/read-sensitive"
-expect_block readFile_outsideWebroot "${PROTECTED_URL}/rasp/file/read-outside"
-expect_block readFile_userinput_http -G --data-urlencode "file=http://127.0.0.1/internal" "${PROTECTED_URL}/rasp/policy/read-http"
-expect_block readFile_userinput_unwanted -G --data-urlencode "file=file:///etc/passwd" "${PROTECTED_URL}/rasp/policy/read-unwanted"
-expect_block writeFile_script -G --data-urlencode "path=/usr/local/tomcat/webapps/ROOT/shell.jsp" "${PROTECTED_URL}/rasp/file/write"
-expect_block writeFile_reflect "${PROTECTED_URL}/rasp/file/write-reflect"
-expect_block writeFile_NTFS "${PROTECTED_URL}/rasp/policy/write-ntfs"
-expect_block deleteFile_userinput -G --data-urlencode "path=/tmp/ohmyrasp-delete-target.txt" "${PROTECTED_URL}/rasp/file/delete"
-expect_block directory_userinput -G --data-urlencode "path=/etc" "${PROTECTED_URL}/rasp/directory"
-expect_block directory_unwanted "${PROTECTED_URL}/rasp/directory/root"
-expect_block directory_reflect "${PROTECTED_URL}/rasp/policy/directory-reflect"
-expect_block ssrf_aws -G --max-time 3 --data-urlencode "url=http://169.254.169.254/latest/meta-data/" "${PROTECTED_URL}/rasp/ssrf"
-expect_block ssrf_userinput -G --data-urlencode "url=http://127.0.0.1/admin" "${PROTECTED_URL}/rasp/policy/ssrf-userinput"
-expect_block ssrf_common "${PROTECTED_URL}/rasp/policy/ssrf-common"
-expect_block ssrf_protocol "${PROTECTED_URL}/rasp/policy/ssrf-protocol"
-expect_block ssrf_obfuscate "${PROTECTED_URL}/rasp/policy/ssrf-obfuscate"
-expect_block dns_blacklist -G --max-time 3 --data-urlencode "host=probe.dnslog.cn" "${PROTECTED_URL}/rasp/dns"
-expect_block jndi_disable_all -G --max-time 3 --data-urlencode "name=ldap://127.0.0.1:1389/a" "${PROTECTED_URL}/rasp/jndi"
-expect_block sql_userinput -G --data-urlencode "value=' OR '1'='1" "${PROTECTED_URL}/rasp/sql"
-expect_block sql_policy "${PROTECTED_URL}/rasp/policy/sql-policy"
-expect_block sql_exception "${PROTECTED_URL}/rasp/policy/sql-exception"
-expect_block sql_regex "${PROTECTED_URL}/rasp/policy/sql-regex"
-expect_block deserialization_blacklist "${PROTECTED_URL}/rasp/deserialize"
-expect_block xxe_protocol "${PROTECTED_URL}/rasp/policy/xxe-protocol"
-expect_block xxe_file "${PROTECTED_URL}/rasp/policy/xxe-file"
-expect_block include_userinput -G --data-urlencode "file=/etc/passwd" "${PROTECTED_URL}/rasp/policy/include-userinput"
-expect_block include_protocol "${PROTECTED_URL}/rasp/policy/include-protocol"
-expect_block fileUpload_multipart_script "${PROTECTED_URL}/rasp/policy/upload-script"
-expect_block fileUpload_multipart_html "${PROTECTED_URL}/rasp/policy/upload-html"
-expect_block fileUpload_multipart_exe "${PROTECTED_URL}/rasp/policy/upload-exe"
-expect_block fileUpload_webdav "${PROTECTED_URL}/rasp/policy/webdav"
-expect_block rename_webshell "${PROTECTED_URL}/rasp/policy/rename"
-expect_block link_webshell "${PROTECTED_URL}/rasp/policy/link"
-expect_block ognl_blacklist "${PROTECTED_URL}/rasp/policy/ognl"
-expect_block ognl_length_limit "${PROTECTED_URL}/rasp/policy/ognl-length"
-expect_block eval_regex "${PROTECTED_URL}/rasp/policy/eval"
-expect_block loadLibrary_unc "${PROTECTED_URL}/rasp/policy/loadlib"
-expect_block response_dataLeak "${PROTECTED_URL}/rasp/policy/response"
-expect_block xss_echo "${PROTECTED_URL}/rasp/policy/xss-echo"
-expect_block webshell_eval -G --data-urlencode "code=system('id')" "${PROTECTED_URL}/rasp/policy/webshell-eval"
-expect_block webshell_command -G --data-urlencode "cmd=sh -c id" "${PROTECTED_URL}/rasp/policy/webshell-command"
-expect_block webshell_file_put_contents -G --data-urlencode "file=shell.jsp" "${PROTECTED_URL}/rasp/policy/webshell-file"
-expect_block webshell_callable "${PROTECTED_URL}/rasp/policy/webshell-callable"
-expect_block webshell_ld_preload "${PROTECTED_URL}/rasp/policy/webshell-ld"
+  expect_not_blocked "$version" baseline_command -G --data-urlencode "cmd=sh" --data-urlencode "arg=-c" --data-urlencode "arg=cat /etc/passwd; id" "${baseline_url}/rasp/command"
+  expect_not_blocked "$version" baseline_file_read -G --data-urlencode "path=/etc/passwd" "${baseline_url}/rasp/file/read"
+  expect_not_blocked "$version" baseline_upload_policy "${baseline_url}/rasp/policy/upload-script"
 
-sleep 2
-docker compose exec -T protected sh -c 'chmod 666 /opt/ohmyrasp/logs/events.jsonl' || true
+  expect_block "$version" request_scanner -A "sqlmap/1.7" "${protected_url}/rasp/request"
+  expect_block "$version" request_unusual -H "User-Agent:" "${protected_url}/rasp/request"
+  expect_block "$version" xss_userinput -G -A "Mozilla/5.0" --data-urlencode "q=<script>alert(1)</script>" "${protected_url}/rasp/request"
+  expect_block "$version" command_userinput -G --data-urlencode "cmd=sh" --data-urlencode "arg=-c" --data-urlencode "arg=cat /etc/passwd; id" "${protected_url}/rasp/command"
+  expect_block "$version" command_common "${protected_url}/rasp/command/common"
+  expect_block "$version" command_error "${protected_url}/rasp/command/error"
+  expect_block "$version" command_dnslog "${protected_url}/rasp/command/dnslog"
+  expect_block "$version" command_reflect "${protected_url}/rasp/command/reflect"
+  expect_block "$version" readFile_userinput -G --data-urlencode "path=/etc/passwd" "${protected_url}/rasp/file/read"
+  expect_block "$version" readFile_unwanted "${protected_url}/rasp/file/read-sensitive"
+  expect_block "$version" readFile_outsideWebroot "${protected_url}/rasp/file/read-outside"
+  expect_block "$version" readFile_userinput_http -G --data-urlencode "file=http://127.0.0.1/internal" "${protected_url}/rasp/policy/read-http"
+  expect_block "$version" readFile_userinput_unwanted -G --data-urlencode "file=file:///etc/passwd" "${protected_url}/rasp/policy/read-unwanted"
+  expect_block "$version" writeFile_script -G --data-urlencode "path=/usr/local/tomcat/webapps/ROOT/shell.jsp" "${protected_url}/rasp/file/write"
+  expect_block "$version" writeFile_reflect "${protected_url}/rasp/file/write-reflect"
+  expect_block "$version" writeFile_NTFS "${protected_url}/rasp/policy/write-ntfs"
+  expect_block "$version" deleteFile_userinput -G --data-urlencode "path=/tmp/ohmyrasp-delete-target.txt" "${protected_url}/rasp/file/delete"
+  expect_block "$version" directory_userinput -G --data-urlencode "path=/etc" "${protected_url}/rasp/directory"
+  expect_block "$version" directory_unwanted "${protected_url}/rasp/directory/root"
+  expect_block "$version" directory_reflect "${protected_url}/rasp/policy/directory-reflect"
+  expect_block "$version" ssrf_aws -G --max-time 3 --data-urlencode "url=http://169.254.169.254/latest/meta-data/" "${protected_url}/rasp/ssrf"
+  expect_block "$version" ssrf_userinput -G --data-urlencode "url=http://127.0.0.1/admin" "${protected_url}/rasp/policy/ssrf-userinput"
+  expect_block "$version" ssrf_common "${protected_url}/rasp/policy/ssrf-common"
+  expect_block "$version" ssrf_protocol "${protected_url}/rasp/policy/ssrf-protocol"
+  expect_block "$version" ssrf_obfuscate "${protected_url}/rasp/policy/ssrf-obfuscate"
+  expect_block "$version" dns_blacklist -G --max-time 3 --data-urlencode "host=probe.dnslog.cn" "${protected_url}/rasp/dns"
+  expect_block "$version" jndi_disable_all -G --max-time 3 --data-urlencode "name=ldap://127.0.0.1:1389/a" "${protected_url}/rasp/jndi"
+  expect_block "$version" sql_userinput -G --data-urlencode "value=' OR '1'='1" "${protected_url}/rasp/sql"
+  expect_block "$version" sql_policy "${protected_url}/rasp/policy/sql-policy"
+  expect_block "$version" sql_exception "${protected_url}/rasp/policy/sql-exception"
+  expect_block "$version" sql_regex "${protected_url}/rasp/policy/sql-regex"
+  expect_block "$version" deserialization_blacklist "${protected_url}/rasp/deserialize"
+  expect_block "$version" xxe_protocol "${protected_url}/rasp/policy/xxe-protocol"
+  expect_block "$version" xxe_file "${protected_url}/rasp/policy/xxe-file"
+  expect_block "$version" include_userinput -G --data-urlencode "file=/etc/passwd" "${protected_url}/rasp/policy/include-userinput"
+  expect_block "$version" include_protocol "${protected_url}/rasp/policy/include-protocol"
+  expect_block "$version" fileUpload_multipart_script "${protected_url}/rasp/policy/upload-script"
+  expect_block "$version" fileUpload_multipart_html "${protected_url}/rasp/policy/upload-html"
+  expect_block "$version" fileUpload_multipart_exe "${protected_url}/rasp/policy/upload-exe"
+  expect_block "$version" fileUpload_webdav "${protected_url}/rasp/policy/webdav"
+  expect_block "$version" rename_webshell "${protected_url}/rasp/policy/rename"
+  expect_block "$version" link_webshell "${protected_url}/rasp/policy/link"
+  expect_block "$version" ognl_blacklist "${protected_url}/rasp/policy/ognl"
+  expect_block "$version" ognl_length_limit "${protected_url}/rasp/policy/ognl-length"
+  expect_block "$version" eval_regex "${protected_url}/rasp/policy/eval"
+  expect_block "$version" loadLibrary_unc "${protected_url}/rasp/policy/loadlib"
+  expect_block "$version" response_dataLeak "${protected_url}/rasp/policy/response"
+  expect_block "$version" xss_echo "${protected_url}/rasp/policy/xss-echo"
+  expect_block "$version" webshell_eval -G --data-urlencode "code=system('id')" "${protected_url}/rasp/policy/webshell-eval"
+  expect_block "$version" webshell_command -G --data-urlencode "cmd=sh -c id" "${protected_url}/rasp/policy/webshell-command"
+  expect_block "$version" webshell_file_put_contents -G --data-urlencode "file=shell.jsp" "${protected_url}/rasp/policy/webshell-file"
+  expect_block "$version" webshell_callable "${protected_url}/rasp/policy/webshell-callable"
+  expect_block "$version" webshell_ld_preload "${protected_url}/rasp/policy/webshell-ld"
+}
 
 required_algorithms=(
   request_scanner
@@ -199,19 +229,31 @@ required_algorithms=(
   webshell_ld_preload
 )
 
+for version in "${versions[@]}"; do
+  run_version "$version"
+done
+
+sleep 2
+for version in "${versions[@]}"; do
+  docker compose exec -T "tomcat${version}-protected" sh -c 'chmod 666 /opt/ohmyrasp/logs/events.jsonl' || true
+done
+
 missing=0
-for algorithm in "${required_algorithms[@]}"; do
-  if grep -q "\"algorithm\":\"${algorithm}\"" "$PROTECTED_LOG"; then
-    echo "ok ${algorithm}"
-  else
-    echo "missing ${algorithm}" >&2
-    missing=1
-  fi
+for version in "${versions[@]}"; do
+  protected_log="logs/tomcat${version}-protected/events.jsonl"
+  for algorithm in "${required_algorithms[@]}"; do
+    if grep -q "\"algorithm\":\"${algorithm}\".*\"action\":\"block\"" "$protected_log"; then
+      echo "ok tomcat${version} ${algorithm}"
+    else
+      echo "missing tomcat${version} ${algorithm} block event" >&2
+      missing=1
+    fi
+  done
 done
 
 if [[ "$missing_redirect" -ne 0 || "$missing" -ne 0 ]]; then
-  echo "acceptance failed; see ${PROTECTED_LOG}, logs/baseline/tomcat.log, and logs/protected/tomcat.log" >&2
+  echo "acceptance failed; see logs/tomcat*-protected/events.jsonl and logs/tomcat*/tomcat.log" >&2
   exit 1
 fi
 
-echo "acceptance passed; protected events collected in ${PROTECTED_LOG}"
+echo "acceptance passed across Tomcat 9, 10, and 11"

@@ -58,6 +58,7 @@ import {
   type DaemonWorkload,
   type DependencyQuery,
   type EditionStatus,
+  type PolicyAlgorithm,
   type PolicyRolloutScope,
   type PolicySet,
   type RuleInput,
@@ -70,6 +71,7 @@ import {
   registerAgent,
   resetDaemonToken,
   restoreEventsFromRecycleBin,
+  restoreDefaultPolicy,
   rotateApplicationSecret,
   rollbackPolicy,
   rolloutPolicy,
@@ -96,6 +98,7 @@ import {
   useEditionStatus,
   useObservability,
   useOverview,
+  usePolicyAlgorithms,
   usePolicies,
   useSecurityEvents,
   useSystemSettings,
@@ -1692,6 +1695,8 @@ export function PoliciesPage() {
   const applications = applicationsQuery.data?.items ?? [];
   const sampleEventsQuery = useSecurityEvents("attack", { limit: 25 });
   const sampleEvents = sampleEventsQuery.data?.items ?? [];
+  const algorithmCatalogQuery = usePolicyAlgorithms();
+  const algorithmCatalog = algorithmCatalogQuery.data?.items ?? [];
   const activePolicies = policies.filter(policy => policy.active).length;
   const ruleCount = policies.reduce((count, policy) => count + (policy.active?.rules.length ?? 0), 0);
 
@@ -1701,8 +1706,8 @@ export function PoliciesPage() {
       summary={t("pages.policies.summary")}
     >
       <QueryStateNotice
-        isLoading={policiesQuery.isLoading || applicationsQuery.isLoading || sampleEventsQuery.isLoading}
-        isError={policiesQuery.isError || applicationsQuery.isError || sampleEventsQuery.isError}
+        isLoading={policiesQuery.isLoading || applicationsQuery.isLoading || sampleEventsQuery.isLoading || algorithmCatalogQuery.isLoading}
+        isError={policiesQuery.isError || applicationsQuery.isError || sampleEventsQuery.isError || algorithmCatalogQuery.isError}
         loading={<UiText k="Loading policies." />}
         error={<UiText k="Policies are unavailable." />}
       />
@@ -1712,7 +1717,7 @@ export function PoliciesPage() {
         <Metric label={<UiText k="Active Rules" />} value={ruleCount} detail={<UiText k="rules in deployed versions" />} />
       </div>
       <PolicySetCreatePanel />
-      <PolicyWritePanel applications={applications} policies={policies} sampleEvents={sampleEvents} />
+      <PolicyWritePanel applications={applications} policies={policies} sampleEvents={sampleEvents} algorithmCatalog={algorithmCatalog} />
       <section className="grid gap-5 xl:grid-cols-[.8fr_1.2fr]">
         <PolicyLifecycle />
         <Table>
@@ -3467,12 +3472,23 @@ function PolicySetCreatePanel() {
   );
 }
 
-function PolicyWritePanel({ applications, policies, sampleEvents }: { applications: Application[]; policies: PolicySet[]; sampleEvents: SecurityEvent[] }) {
+function PolicyWritePanel({
+  applications,
+  policies,
+  sampleEvents,
+  algorithmCatalog
+}: {
+  applications: Application[];
+  policies: PolicySet[];
+  sampleEvents: SecurityEvent[];
+  algorithmCatalog: PolicyAlgorithm[];
+}) {
   const queryClient = useQueryClient();
   const { copy } = useUiCopy();
   const [policyID, setPolicyID] = useState(policies[0]?.id ?? "");
   const [ruleName, setRuleName] = useState("");
   const [hook, setHook] = useState("process");
+  const [algorithm, setAlgorithm] = useState("process_match");
   const [expression, setExpression] = useState("");
   const [action, setAction] = useState("block");
   const [severity, setSeverity] = useState("high");
@@ -3487,6 +3503,8 @@ function PolicyWritePanel({ applications, policies, sampleEvents }: { applicatio
   const selectedPolicy = policies.find(policy => policy.id === policyID) ?? policies[0];
   const rolloutScopeOptions = policyRolloutScopeOptions(applications, copy);
   const selectedVersion = selectedPolicy?.versions.find(version => version.version === targetVersion);
+  const selectedHookCatalog = algorithmCatalog.find(item => item.hook === hook);
+  const selectedHookAlgorithms = selectedHookCatalog?.algorithms ?? [];
 
   useEffect(() => {
     if (!policyID && policies[0]?.id) {
@@ -3517,11 +3535,18 @@ function PolicyWritePanel({ applications, policies, sampleEvents }: { applicatio
     }
     setRuleName(rule.name);
     setHook(rule.hook);
+    setAlgorithm(rule.algorithm || defaultAlgorithmForHook(rule.hook, algorithmCatalog));
     setExpression(rule.expression);
     setAction(rule.action || "block");
     setSeverity(rule.severity || "high");
     setTags(Array.isArray(rule.tags) ? rule.tags.join(", ") : "");
-  }, [selectedPolicy?.id, selectedVersion?.version]);
+  }, [algorithmCatalog, selectedPolicy?.id, selectedVersion?.version]);
+
+  useEffect(() => {
+    if (selectedHookAlgorithms.length > 0 && !selectedHookAlgorithms.includes(algorithm)) {
+      setAlgorithm(selectedHookAlgorithms[0]);
+    }
+  }, [algorithm, selectedHookAlgorithms]);
 
   async function handleCreateVersion(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -3675,12 +3700,36 @@ function PolicyWritePanel({ applications, policies, sampleEvents }: { applicatio
     }
   }
 
+  async function handleRestoreDefaults() {
+    if (!selectedPolicy) {
+      return;
+    }
+    setIsSubmitting(true);
+    setStatus("");
+    setError("");
+    try {
+      const updated = await restoreDefaultPolicy(selectedPolicy.id);
+      await queryClient.invalidateQueries({ queryKey: ["policies"] });
+      const latestVersion = latestPolicyVersion(updated);
+      if (latestVersion) {
+        setTargetVersion(latestVersion.version);
+        setStatus(notice("Restored default algorithms as draft version {{version}}.", { version: latestVersion.version }));
+      } else {
+        setStatus(notice("Restored default algorithms."));
+      }
+    } catch {
+      setError(notice("Unable to restore default algorithms."));
+    } finally {
+      setIsSubmitting(false);
+    }
+  }
+
   function draftRule(ruleID?: string): RuleInput {
     return {
       id: ruleID,
       name: ruleName,
       hook,
-      algorithm: `${hook}_match`,
+      algorithm,
       action,
       severity,
       expression,
@@ -3712,7 +3761,41 @@ function PolicyWritePanel({ applications, policies, sampleEvents }: { applicatio
           </label>
           <label className={fieldGroupClass} htmlFor="rule-hook">
             <span className={fieldLabelClass}><UiText k="Hook" /></span>
-            <input id="rule-hook" className={fieldControlClass} value={hook} onChange={event => setHook(event.target.value)} required />
+            <select
+              id="rule-hook"
+              className={fieldControlClass}
+              value={hook}
+              onChange={event => {
+                const nextHook = event.target.value;
+                setHook(nextHook);
+                setAlgorithm(defaultAlgorithmForHook(nextHook, algorithmCatalog));
+              }}
+              required
+            >
+              {algorithmCatalog.length > 0 ? (
+                algorithmCatalog.map(item => (
+                  <option key={item.hook} value={item.hook}>
+                    {item.hook}
+                  </option>
+                ))
+              ) : (
+                <option value={hook}>{hook}</option>
+              )}
+            </select>
+          </label>
+          <label className={fieldGroupClass} htmlFor="rule-algorithm">
+            <span className={fieldLabelClass}><UiText k="Algorithm" /></span>
+            <select id="rule-algorithm" className={fieldControlClass} value={algorithm} onChange={event => setAlgorithm(event.target.value)} required>
+              {selectedHookAlgorithms.length > 0 ? (
+                selectedHookAlgorithms.map(item => (
+                  <option key={item} value={item}>
+                    {item}
+                  </option>
+                ))
+              ) : (
+                <option value={algorithm}>{algorithm}</option>
+              )}
+            </select>
           </label>
           <label className={fieldGroupClass} htmlFor="rule-expression">
             <span className={fieldLabelClass}><UiText k="Expression" /></span>
@@ -3747,6 +3830,8 @@ function PolicyWritePanel({ applications, policies, sampleEvents }: { applicatio
                 <UiText k="Test Draft" /></Button>
               <Button disabled={isSubmitting || !selectedPolicy} type="button" variant="secondary" onClick={handleUpdateDraft}>
                 <UiText k="Update Draft" /></Button>
+              <Button disabled={isSubmitting || !selectedPolicy} type="button" variant="secondary" onClick={handleRestoreDefaults}>
+                <UiText k="Restore Defaults" /></Button>
               <Button disabled={isSubmitting || !selectedPolicy} type="submit">
                 <UiText k="Create Version" /></Button>
             </div>
@@ -3796,6 +3881,28 @@ function PolicyWritePanel({ applications, policies, sampleEvents }: { applicatio
           </div>
           <FormMessage error={error} status={status} />
         </form>
+        <div className="xl:col-span-2">
+          <div className="rounded-md border border-slate-200 bg-slate-50 p-3">
+            <div className="mb-2 flex items-center justify-between gap-3">
+              <h3 className="text-sm font-semibold text-slate-950"><UiText k="Algorithm Catalog" /></h3>
+              <span className="text-xs font-medium text-slate-500">
+                <UiText k="{{count}} hooks" values={{ count: algorithmCatalog.length }} />
+              </span>
+            </div>
+            <div className="grid gap-2 md:grid-cols-2 xl:grid-cols-3">
+              {algorithmCatalog.map(item => (
+                <div key={item.hook} className="rounded-md border border-slate-200 bg-white p-2 text-xs">
+                  <div className="mb-1 font-semibold text-slate-800">{item.hook}</div>
+                  <div className="flex flex-wrap gap-1">
+                    {item.algorithms.map(item => (
+                      <span key={item} className="rounded bg-slate-100 px-1.5 py-0.5 text-slate-600">{item}</span>
+                    ))}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
       </CardContent>
     </Card>
   );
@@ -3811,6 +3918,7 @@ function ProtectionConfigurationPanel({ settings }: { settings: SystemSetting[] 
   const [blockProcessExecution, setBlockProcessExecution] = useState(true);
   const [vulnerabilitySeverity, setVulnerabilitySeverity] = useState("critical");
   const [blockKnownExploited, setBlockKnownExploited] = useState(true);
+  const [alertDeliveryIntervalSeconds, setAlertDeliveryIntervalSeconds] = useState(300);
   const [attackRetentionDays, setAttackRetentionDays] = useState(180);
   const [performanceRetentionDays, setPerformanceRetentionDays] = useState(30);
   const [dependencyRetentionDays, setDependencyRetentionDays] = useState(365);
@@ -3822,6 +3930,7 @@ function ProtectionConfigurationPanel({ settings }: { settings: SystemSetting[] 
     const allowlist = settingRecord(settings, "protection.allowlist");
     const hardening = settingRecord(settings, "protection.hardening");
     const vulnerability = settingRecord(settings, "dependency.vulnerability_policy");
+    const alerts = settingRecord(settings, "alerts.delivery");
     const retention = settingRecord(settings, "events.retention");
 
     setAllowlistEnabled(settingBool(allowlist, "enabled", false));
@@ -3832,6 +3941,7 @@ function ProtectionConfigurationPanel({ settings }: { settings: SystemSetting[] 
     setBlockProcessExecution(settingBool(hardening, "block_process_execution", true));
     setVulnerabilitySeverity(settingString(vulnerability, "fail_on_severity", "critical"));
     setBlockKnownExploited(settingBool(vulnerability, "block_known_exploited", true));
+    setAlertDeliveryIntervalSeconds(settingNumber(alerts, "interval_seconds", 300));
     setAttackRetentionDays(settingNumber(retention, "attack_days", 180));
     setPerformanceRetentionDays(settingNumber(retention, "performance_days", 30));
     setDependencyRetentionDays(settingNumber(retention, "dependency_days", 365));
@@ -3861,6 +3971,9 @@ function ProtectionConfigurationPanel({ settings }: { settings: SystemSetting[] 
         updateSystemSetting("dependency.vulnerability_policy", {
           fail_on_severity: vulnerabilitySeverity,
           block_known_exploited: blockKnownExploited
+        }),
+        updateSystemSetting("alerts.delivery", {
+          interval_seconds: positiveInteger(alertDeliveryIntervalSeconds, 300)
         }),
         updateSystemSetting("events.retention", {
           attack_days: positiveInteger(attackRetentionDays, 180),
@@ -3948,6 +4061,17 @@ function ProtectionConfigurationPanel({ settings }: { settings: SystemSetting[] 
                 onChange={event => setBlockKnownExploited(event.target.checked)}
               />
               <UiText k="Block Known Exploited" /></label>
+            <label className={fieldGroupClass} htmlFor="alert-delivery-interval">
+              <span className={fieldLabelClass}><UiText k="Alert Interval Seconds" /></span>
+              <input
+                id="alert-delivery-interval"
+                className={fieldControlClass}
+                min={1}
+                type="number"
+                value={alertDeliveryIntervalSeconds}
+                onChange={event => setAlertDeliveryIntervalSeconds(Number(event.target.value))}
+              />
+            </label>
           </div>
           <label className={fieldGroupClass} htmlFor="protection-allowlist-entries">
             <span className={fieldLabelClass}><UiText k="Allowlist Entries" /></span>
@@ -4361,6 +4485,10 @@ function latestPolicyVersion(policy?: PolicySet) {
     return undefined;
   }
   return versions.slice(1).reduce((latest, candidate) => (candidate.version > latest.version ? candidate : latest), versions[0]);
+}
+
+function defaultAlgorithmForHook(hook: string, catalog: PolicyAlgorithm[]) {
+  return catalog.find(item => item.hook === hook)?.algorithms[0] ?? `${hook}_match`;
 }
 
 type RolloutScopeOption = {

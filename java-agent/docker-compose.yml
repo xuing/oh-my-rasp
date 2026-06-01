@@ -1,27 +1,112 @@
-name: ohmyrasp
+name: ohmyrasp-java-agent
+
+x-protected-env: &protected-env
+  OHMYRASP_BLOCK: "true"
+  OHMYRASP_BACKEND_URL: "${OHMYRASP_BACKEND_URL:-}"
+  OHMYRASP_APP_ID: "${OHMYRASP_APP_ID:-}"
+  OHMYRASP_APP_SECRET: "${OHMYRASP_APP_SECRET:-}"
+  CATALINA_OPTS: >-
+    -javaagent:/opt/ohmyrasp/ohmyrasp-agent.jar
+    -Dohmyrasp.log=/opt/ohmyrasp/logs/events.jsonl
+    -Dohmyrasp.block=true
+    -Dohmyrasp.debug=${OHMYRASP_AGENT_DEBUG:-false}
+
+x-extra-hosts: &extra-hosts
+  - "host.docker.internal:host-gateway"
 
 services:
-  baseline:
+  tomcat9-baseline:
     build:
       context: .
       pull: true
-    image: ohmyrasp/playground:latest
+      args:
+        TOMCAT_IMAGE: tomcat:9.0-jdk25
+        PLAYGROUND_WAR: playground-javax/build/libs/playground-javax.war
+    image: ohmyrasp/playground:tomcat9
     ports:
-      - "${OHMYRASP_BASELINE_PORT:-18080}:8080"
+      - "${OHMYRASP_TOMCAT9_BASELINE_PORT:-18080}:8080"
     environment:
-      OHMYRASP_ENV: baseline
+      OHMYRASP_ENV: tomcat9-baseline
     volumes:
-      - ./logs/baseline:/opt/ohmyrasp/logs
+      - ./logs/tomcat9-baseline:/opt/ohmyrasp/logs
+    extra_hosts: *extra-hosts
 
-  protected:
-    image: ohmyrasp/playground:latest
+  tomcat9-protected:
+    image: ohmyrasp/playground:tomcat9
     depends_on:
-      - baseline
+      - tomcat9-baseline
     ports:
-      - "${OHMYRASP_PROTECTED_PORT:-18081}:8080"
+      - "${OHMYRASP_TOMCAT9_PROTECTED_PORT:-18081}:8080"
     environment:
+      <<: *protected-env
+      OHMYRASP_ENV: tomcat9-protected
+      OHMYRASP_HOSTNAME: tomcat9-protected
       OHMYRASP_LOG: /opt/ohmyrasp/logs/events.jsonl
-      OHMYRASP_BLOCK: "true"
-      CATALINA_OPTS: "-javaagent:/opt/ohmyrasp/ohmyrasp-agent.jar -Dohmyrasp.log=/opt/ohmyrasp/logs/events.jsonl -Dohmyrasp.block=true"
+      OHMYRASP_ENVIRONMENT_ID: "${OHMYRASP_TOMCAT9_ENVIRONMENT_ID:-${OHMYRASP_ENVIRONMENT_ID:-}}"
     volumes:
-      - ./logs/protected:/opt/ohmyrasp/logs
+      - ./logs/tomcat9-protected:/opt/ohmyrasp/logs
+    extra_hosts: *extra-hosts
+
+  tomcat10-baseline:
+    build:
+      context: .
+      pull: true
+      args:
+        TOMCAT_IMAGE: tomcat:10.1-jdk25
+        PLAYGROUND_WAR: playground/build/libs/playground.war
+    image: ohmyrasp/playground:tomcat10
+    ports:
+      - "${OHMYRASP_TOMCAT10_BASELINE_PORT:-18082}:8080"
+    environment:
+      OHMYRASP_ENV: tomcat10-baseline
+    volumes:
+      - ./logs/tomcat10-baseline:/opt/ohmyrasp/logs
+    extra_hosts: *extra-hosts
+
+  tomcat10-protected:
+    image: ohmyrasp/playground:tomcat10
+    depends_on:
+      - tomcat10-baseline
+    ports:
+      - "${OHMYRASP_TOMCAT10_PROTECTED_PORT:-18083}:8080"
+    environment:
+      <<: *protected-env
+      OHMYRASP_ENV: tomcat10-protected
+      OHMYRASP_HOSTNAME: tomcat10-protected
+      OHMYRASP_LOG: /opt/ohmyrasp/logs/events.jsonl
+      OHMYRASP_ENVIRONMENT_ID: "${OHMYRASP_TOMCAT10_ENVIRONMENT_ID:-${OHMYRASP_ENVIRONMENT_ID:-}}"
+    volumes:
+      - ./logs/tomcat10-protected:/opt/ohmyrasp/logs
+    extra_hosts: *extra-hosts
+
+  tomcat11-baseline:
+    build:
+      context: .
+      pull: true
+      args:
+        TOMCAT_IMAGE: tomcat:11.0-jdk25
+        PLAYGROUND_WAR: playground/build/libs/playground.war
+    image: ohmyrasp/playground:tomcat11
+    ports:
+      - "${OHMYRASP_TOMCAT11_BASELINE_PORT:-18084}:8080"
+    environment:
+      OHMYRASP_ENV: tomcat11-baseline
+    volumes:
+      - ./logs/tomcat11-baseline:/opt/ohmyrasp/logs
+    extra_hosts: *extra-hosts
+
+  tomcat11-protected:
+    image: ohmyrasp/playground:tomcat11
+    depends_on:
+      - tomcat11-baseline
+    ports:
+      - "${OHMYRASP_TOMCAT11_PROTECTED_PORT:-18085}:8080"
+    environment:
+      <<: *protected-env
+      OHMYRASP_ENV: tomcat11-protected
+      OHMYRASP_HOSTNAME: tomcat11-protected
+      OHMYRASP_LOG: /opt/ohmyrasp/logs/events.jsonl
+      OHMYRASP_ENVIRONMENT_ID: "${OHMYRASP_TOMCAT11_ENVIRONMENT_ID:-${OHMYRASP_ENVIRONMENT_ID:-}}"
+    volumes:
+      - ./logs/tomcat11-protected:/opt/ohmyrasp/logs
+    extra_hosts: *extra-hosts

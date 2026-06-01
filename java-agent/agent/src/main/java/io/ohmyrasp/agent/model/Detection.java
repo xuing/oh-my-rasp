@@ -30,4 +30,8 @@ public record Detection(
         request,
         details == null ? Map.of() : Map.copyOf(details));
   }
+
+  public Detection withAction(String action) {
+    return new Detection(timestamp, hook, algorithm, action, confidence, message, request, details);
+  }
 }

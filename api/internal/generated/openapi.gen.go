@@ -1368,6 +1368,17 @@ type Overview struct {
 	OnlineAgents       int            `json:"online_agents"`
 }
 
+// PolicyAlgorithm defines model for PolicyAlgorithm.
+type PolicyAlgorithm struct {
+	Algorithms []string `json:"algorithms"`
+	Hook       string   `json:"hook"`
+}
+
+// PolicyAlgorithmCatalog defines model for PolicyAlgorithmCatalog.
+type PolicyAlgorithmCatalog struct {
+	Items []PolicyAlgorithm `json:"items"`
+}
+
 // PolicyPerformance defines model for PolicyPerformance.
 type PolicyPerformance struct {
 	CpuOverheadPct   float32 `json:"cpu_overhead_pct"`
@@ -2163,11 +2174,17 @@ type ServerInterface interface {
 	// (POST /api/v1/policies)
 	PostApiV1Policies(w http.ResponseWriter, r *http.Request)
 
+	// (GET /api/v1/policies/algorithms)
+	GetApiV1PoliciesAlgorithms(w http.ResponseWriter, r *http.Request)
+
 	// (POST /api/v1/policies/test)
 	PostApiV1PoliciesTest(w http.ResponseWriter, r *http.Request)
 
 	// (POST /api/v1/policies/validate)
 	PostApiV1PoliciesValidate(w http.ResponseWriter, r *http.Request)
+
+	// (POST /api/v1/policies/{policyID}/restore-default)
+	PostApiV1PoliciesPolicyIDRestoreDefault(w http.ResponseWriter, r *http.Request, policyID PolicyID)
 
 	// (POST /api/v1/policies/{policyID}/rollback)
 	PostApiV1PoliciesPolicyIDRollback(w http.ResponseWriter, r *http.Request, policyID PolicyID)
@@ -2478,6 +2495,11 @@ func (_ Unimplemented) PostApiV1Policies(w http.ResponseWriter, r *http.Request)
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
+// (GET /api/v1/policies/algorithms)
+func (_ Unimplemented) GetApiV1PoliciesAlgorithms(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
 // (POST /api/v1/policies/test)
 func (_ Unimplemented) PostApiV1PoliciesTest(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNotImplemented)
@@ -2485,6 +2507,11 @@ func (_ Unimplemented) PostApiV1PoliciesTest(w http.ResponseWriter, r *http.Requ
 
 // (POST /api/v1/policies/validate)
 func (_ Unimplemented) PostApiV1PoliciesValidate(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// (POST /api/v1/policies/{policyID}/restore-default)
+func (_ Unimplemented) PostApiV1PoliciesPolicyIDRestoreDefault(w http.ResponseWriter, r *http.Request, policyID PolicyID) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
@@ -5298,6 +5325,26 @@ func (siw *ServerInterfaceWrapper) PostApiV1Policies(w http.ResponseWriter, r *h
 	handler.ServeHTTP(w, r)
 }
 
+// GetApiV1PoliciesAlgorithms operation middleware
+func (siw *ServerInterfaceWrapper) GetApiV1PoliciesAlgorithms(w http.ResponseWriter, r *http.Request) {
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, BearerAuthScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetApiV1PoliciesAlgorithms(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // PostApiV1PoliciesTest operation middleware
 func (siw *ServerInterfaceWrapper) PostApiV1PoliciesTest(w http.ResponseWriter, r *http.Request) {
 
@@ -5329,6 +5376,38 @@ func (siw *ServerInterfaceWrapper) PostApiV1PoliciesValidate(w http.ResponseWrit
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.PostApiV1PoliciesValidate(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// PostApiV1PoliciesPolicyIDRestoreDefault operation middleware
+func (siw *ServerInterfaceWrapper) PostApiV1PoliciesPolicyIDRestoreDefault(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "policyID" -------------
+	var policyID PolicyID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "policyID", chi.URLParam(r, "policyID"), &policyID, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "policyID", Err: err})
+		return
+	}
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, BearerAuthScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.PostApiV1PoliciesPolicyIDRestoreDefault(w, r, policyID)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -5934,10 +6013,16 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 		r.Post(options.BaseURL+"/api/v1/policies", wrapper.PostApiV1Policies)
 	})
 	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/api/v1/policies/algorithms", wrapper.GetApiV1PoliciesAlgorithms)
+	})
+	r.Group(func(r chi.Router) {
 		r.Post(options.BaseURL+"/api/v1/policies/test", wrapper.PostApiV1PoliciesTest)
 	})
 	r.Group(func(r chi.Router) {
 		r.Post(options.BaseURL+"/api/v1/policies/validate", wrapper.PostApiV1PoliciesValidate)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/api/v1/policies/{policyID}/restore-default", wrapper.PostApiV1PoliciesPolicyIDRestoreDefault)
 	})
 	r.Group(func(r chi.Router) {
 		r.Post(options.BaseURL+"/api/v1/policies/{policyID}/rollback", wrapper.PostApiV1PoliciesPolicyIDRollback)
@@ -7148,6 +7233,27 @@ func (response PostApiV1Policies201JSONResponse) VisitPostApiV1PoliciesResponse(
 	return err
 }
 
+type GetApiV1PoliciesAlgorithmsRequestObject struct {
+}
+
+type GetApiV1PoliciesAlgorithmsResponseObject interface {
+	VisitGetApiV1PoliciesAlgorithmsResponse(w http.ResponseWriter) error
+}
+
+type GetApiV1PoliciesAlgorithms200JSONResponse PolicyAlgorithmCatalog
+
+func (response GetApiV1PoliciesAlgorithms200JSONResponse) VisitGetApiV1PoliciesAlgorithmsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type PostApiV1PoliciesTestRequestObject struct {
 	Body *PostApiV1PoliciesTestJSONRequestBody
 }
@@ -7181,6 +7287,28 @@ type PostApiV1PoliciesValidateResponseObject interface {
 type PostApiV1PoliciesValidate200JSONResponse RuleValidation
 
 func (response PostApiV1PoliciesValidate200JSONResponse) VisitPostApiV1PoliciesValidateResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostApiV1PoliciesPolicyIDRestoreDefaultRequestObject struct {
+	PolicyID PolicyID `json:"policyID"`
+}
+
+type PostApiV1PoliciesPolicyIDRestoreDefaultResponseObject interface {
+	VisitPostApiV1PoliciesPolicyIDRestoreDefaultResponse(w http.ResponseWriter) error
+}
+
+type PostApiV1PoliciesPolicyIDRestoreDefault200JSONResponse PolicySet
+
+func (response PostApiV1PoliciesPolicyIDRestoreDefault200JSONResponse) VisitPostApiV1PoliciesPolicyIDRestoreDefaultResponse(w http.ResponseWriter) error {
 
 	var buf bytes.Buffer
 	if err := json.NewEncoder(&buf).Encode(response); err != nil {
@@ -7634,11 +7762,17 @@ type StrictServerInterface interface {
 	// (POST /api/v1/policies)
 	PostApiV1Policies(ctx context.Context, request PostApiV1PoliciesRequestObject) (PostApiV1PoliciesResponseObject, error)
 
+	// (GET /api/v1/policies/algorithms)
+	GetApiV1PoliciesAlgorithms(ctx context.Context, request GetApiV1PoliciesAlgorithmsRequestObject) (GetApiV1PoliciesAlgorithmsResponseObject, error)
+
 	// (POST /api/v1/policies/test)
 	PostApiV1PoliciesTest(ctx context.Context, request PostApiV1PoliciesTestRequestObject) (PostApiV1PoliciesTestResponseObject, error)
 
 	// (POST /api/v1/policies/validate)
 	PostApiV1PoliciesValidate(ctx context.Context, request PostApiV1PoliciesValidateRequestObject) (PostApiV1PoliciesValidateResponseObject, error)
+
+	// (POST /api/v1/policies/{policyID}/restore-default)
+	PostApiV1PoliciesPolicyIDRestoreDefault(ctx context.Context, request PostApiV1PoliciesPolicyIDRestoreDefaultRequestObject) (PostApiV1PoliciesPolicyIDRestoreDefaultResponseObject, error)
 
 	// (POST /api/v1/policies/{policyID}/rollback)
 	PostApiV1PoliciesPolicyIDRollback(ctx context.Context, request PostApiV1PoliciesPolicyIDRollbackRequestObject) (PostApiV1PoliciesPolicyIDRollbackResponseObject, error)
@@ -9195,6 +9329,30 @@ func (sh *strictHandler) PostApiV1Policies(w http.ResponseWriter, r *http.Reques
 	}
 }
 
+// GetApiV1PoliciesAlgorithms operation middleware
+func (sh *strictHandler) GetApiV1PoliciesAlgorithms(w http.ResponseWriter, r *http.Request) {
+	var request GetApiV1PoliciesAlgorithmsRequestObject
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetApiV1PoliciesAlgorithms(ctx, request.(GetApiV1PoliciesAlgorithmsRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetApiV1PoliciesAlgorithms")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetApiV1PoliciesAlgorithmsResponseObject); ok {
+		if err := validResponse.VisitGetApiV1PoliciesAlgorithmsResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
 // PostApiV1PoliciesTest operation middleware
 func (sh *strictHandler) PostApiV1PoliciesTest(w http.ResponseWriter, r *http.Request) {
 	var request PostApiV1PoliciesTestRequestObject
@@ -9250,6 +9408,32 @@ func (sh *strictHandler) PostApiV1PoliciesValidate(w http.ResponseWriter, r *htt
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(PostApiV1PoliciesValidateResponseObject); ok {
 		if err := validResponse.VisitPostApiV1PoliciesValidateResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// PostApiV1PoliciesPolicyIDRestoreDefault operation middleware
+func (sh *strictHandler) PostApiV1PoliciesPolicyIDRestoreDefault(w http.ResponseWriter, r *http.Request, policyID PolicyID) {
+	var request PostApiV1PoliciesPolicyIDRestoreDefaultRequestObject
+
+	request.PolicyID = policyID
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.PostApiV1PoliciesPolicyIDRestoreDefault(ctx, request.(PostApiV1PoliciesPolicyIDRestoreDefaultRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "PostApiV1PoliciesPolicyIDRestoreDefault")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(PostApiV1PoliciesPolicyIDRestoreDefaultResponseObject); ok {
+		if err := validResponse.VisitPostApiV1PoliciesPolicyIDRestoreDefaultResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {

@@ -235,6 +235,8 @@ test("submits application, environment, Agent operations, policy, setting, alert
   await page.getByLabel("Canary Percent").fill("50");
   await page.getByRole("button", { name: "Roll Out Version" }).click();
   await expect(page.getByText("Rolled out version 4 to 50% for Managed API.")).toBeVisible();
+  await page.getByRole("button", { name: "Restore Defaults" }).click();
+  await expect(page.getByText("Restored default algorithms as draft version 5.")).toBeVisible();
 
   await page.goto("/events");
   await expect(page.getByText("Event Recycle Bin")).toBeVisible();
@@ -393,6 +395,11 @@ test("submits application, environment, Agent operations, policy, setting, alert
       }),
       expect.objectContaining({
         method: "POST",
+        path: "/api/v1/policies/pol_default/restore-default",
+        body: {}
+      }),
+      expect.objectContaining({
+        method: "POST",
         path: "/api/v1/events/recycle-bin/delete",
         body: { ids: ["evt_1"] }
       }),
@@ -420,6 +427,11 @@ test("submits application, environment, Agent operations, policy, setting, alert
         method: "PUT",
         path: "/api/v1/system-settings/dependency.vulnerability_policy",
         body: { value: { fail_on_severity: "high", block_known_exploited: true } }
+      }),
+      expect.objectContaining({
+        method: "PUT",
+        path: "/api/v1/system-settings/alerts.delivery",
+        body: { value: { interval_seconds: 300 } }
       }),
       expect.objectContaining({
         method: "PUT",
@@ -839,6 +851,39 @@ async function fulfillWrite(route: Route, path: string, method: string, body: Re
     return;
   }
 
+  if (method === "POST" && path === "/api/v1/policies/pol_default/restore-default") {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        ...policyFixture(),
+        versions: [
+          policyFixture().active,
+          {
+            version: 5,
+            status: "draft",
+            canary_percent: 0,
+            created_at: "2026-05-31T01:05:00Z",
+            rules: [
+              {
+                id: "rul_default_sql",
+                name: "Default sql userinput",
+                hook: "sql",
+                algorithm: "sql_userinput",
+                action: "block",
+                severity: "critical",
+                expression: "algorithm == \"sql_userinput\"",
+                tags: ["default", "sql"],
+                description: "Built-in default detector rule restored from the algorithm catalog."
+              }
+            ]
+          }
+        ]
+      })
+    });
+    return;
+  }
+
   if (method === "PUT" && path.startsWith("/api/v1/system-settings/")) {
     const key = decodeURIComponent(path.slice("/api/v1/system-settings/".length));
     await route.fulfill({
@@ -1130,6 +1175,14 @@ const apiFixtures: Record<string, unknown> = {
   },
   "/api/v1/policies": {
     items: [policyFixture()]
+  },
+  "/api/v1/policies/algorithms": {
+    items: [
+      { hook: "process", algorithms: ["process_match"] },
+      { hook: "command", algorithms: ["command_common", "command_userinput"] },
+      { hook: "sql", algorithms: ["sql_policy", "sql_regex", "sql_userinput"] },
+      { hook: "jndi", algorithms: ["jndi_disable_all"] }
+    ]
   },
   "/api/v1/events/attack": {
     items: [

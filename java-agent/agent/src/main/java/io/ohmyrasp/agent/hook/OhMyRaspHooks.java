@@ -48,14 +48,35 @@ public final class OhMyRaspHooks {
     }
   }
 
+  public static void beforeSyntheticHttpRequest(
+      String method,
+      String uri,
+      String query,
+      Map<String, List<String>> parameters,
+      Map<String, String> headers) {
+    try {
+      RequestContext context = new RequestContext(method, uri, query, parameters, headers);
+      emit(DETECTORS.detectRequest(context));
+    } catch (OhMyRaspBlockException blocked) {
+      throw blocked;
+    } catch (Throwable throwable) {
+      quiet("beforeSyntheticHttpRequest", throwable);
+    }
+  }
+
   public static void exitHttpRequest() {
     REQUEST.remove();
     RESPONSE.remove();
   }
 
   public static void beforeProcessBuilderStart(ProcessBuilder processBuilder) {
+    beforeProcessBuilderStart(processBuilder, stackTraceClassNames());
+  }
+
+  public static void beforeProcessBuilderStart(
+      ProcessBuilder processBuilder, List<String> stackClassNames) {
     try {
-      emit(DETECTORS.detectCommand(processBuilder.command(), currentRequest(), stackTraceClassNames()));
+      emit(DETECTORS.detectCommand(processBuilder.command(), currentRequest(), stackClassNames));
     } catch (OhMyRaspBlockException blocked) {
       throw blocked;
     } catch (Throwable throwable) {
@@ -142,8 +163,12 @@ public final class OhMyRaspHooks {
   }
 
   public static void beforeFileWrite(String path) {
+    beforeFileWrite(path, stackTraceClassNames());
+  }
+
+  public static void beforeFileWrite(String path, List<String> stackClassNames) {
     try {
-      emit(DETECTORS.detectFileWrite(path, currentRequest(), stackTraceClassNames()));
+      emit(DETECTORS.detectFileWrite(path, currentRequest(), stackClassNames));
     } catch (OhMyRaspBlockException blocked) {
       throw blocked;
     } catch (Throwable throwable) {
@@ -166,8 +191,12 @@ public final class OhMyRaspHooks {
   }
 
   public static void beforeDirectoryList(Object file) {
+    beforeDirectoryList(file, stackTraceClassNames());
+  }
+
+  public static void beforeDirectoryList(Object file, List<String> stackClassNames) {
     try {
-      emit(DETECTORS.detectDirectoryList(pathFrom(file), currentRequest(), stackTraceClassNames()));
+      emit(DETECTORS.detectDirectoryList(pathFrom(file), currentRequest(), stackClassNames));
     } catch (OhMyRaspBlockException blocked) {
       throw blocked;
     } catch (Throwable throwable) {
@@ -231,6 +260,10 @@ public final class OhMyRaspHooks {
 
   public static void beforePathWrite(Object path) {
     beforeFileWrite(pathFrom(path));
+  }
+
+  public static void beforePathWrite(Object path, List<String> stackClassNames) {
+    beforeFileWrite(pathFrom(path), stackClassNames);
   }
 
   public static void beforePathDelete(Object path) {
@@ -491,11 +524,13 @@ public final class OhMyRaspHooks {
       return;
     }
     Detection value = detection.orElseThrow();
-    JsonEventLogger.get().log(value);
-    if (blockEnabled() && value.request() != null && value.request().active()) {
-      redirectToBlockPage(value);
+    boolean willBlock = blockEnabled() && value.request() != null && value.request().active();
+    Detection event = willBlock ? value.withAction("block") : value;
+    JsonEventLogger.get().log(event);
+    if (willBlock) {
+      redirectToBlockPage(event);
       if (throwOnBlock) {
-        throw new OhMyRaspBlockException(value);
+        throw new OhMyRaspBlockException(event);
       }
     }
   }

@@ -208,6 +208,15 @@ export type RuleTestResult = {
   confidence: number;
 };
 
+export type PolicyAlgorithm = {
+  hook: string;
+  algorithms: string[];
+};
+
+export type PolicyAlgorithmCatalog = {
+  items: PolicyAlgorithm[];
+};
+
 export type SecurityEventInput = {
   application_id: string;
   environment_id: string;
@@ -679,6 +688,10 @@ export function rollbackPolicy(policyID: string) {
   return sendJSON<PolicySet>(`/api/v1/policies/${encodeURIComponent(policyID)}/rollback`, "POST", {});
 }
 
+export function restoreDefaultPolicy(policyID: string) {
+  return sendJSON<PolicySet>(`/api/v1/policies/${encodeURIComponent(policyID)}/restore-default`, "POST", {});
+}
+
 export function createApplication(input: ApplicationCreateInput) {
   return sendJSON<Application>("/api/v1/applications", "POST", input);
 }
@@ -954,6 +967,15 @@ export function usePolicies() {
     queryFn: () => fetchJSON<ListResponse<PolicySet>>("/api/v1/policies"),
     retry: false,
     staleTime: 15_000
+  });
+}
+
+export function usePolicyAlgorithms() {
+  return useQuery({
+    queryKey: ["policy-algorithms"],
+    queryFn: () => fetchJSON<PolicyAlgorithmCatalog>("/api/v1/policies/algorithms"),
+    retry: false,
+    staleTime: 60_000
   });
 }
 

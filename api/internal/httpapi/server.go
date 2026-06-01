@@ -290,6 +290,7 @@ func (s *Server) Routes() http.Handler {
 			private.With(s.requirePermission(permissionManageDaemon)).Post("/daemon/token/reset", strict.PostApiV1DaemonTokenReset)
 			private.With(s.requirePermission(permissionReadDaemon)).Get("/daemon/workloads", strict.GetApiV1DaemonWorkloads)
 			private.With(s.requirePermission(permissionReadPolicies)).Get("/policies", strict.GetApiV1Policies)
+			private.With(s.requirePermission(permissionReadPolicies)).Get("/policies/algorithms", strict.GetApiV1PoliciesAlgorithms)
 			private.With(s.requirePermission(permissionReadEvents)).Get("/events/attack", func(w http.ResponseWriter, r *http.Request) {
 				params, err := eventQueryParams(r)
 				if err != nil {
@@ -396,6 +397,9 @@ func (s *Server) Routes() http.Handler {
 					return
 				}
 				strict.PutApiV1PoliciesPolicyIDVersionsVersionRules(w, r, chi.URLParam(r, "policyID"), version)
+			})
+			private.With(s.requirePermission(permissionManagePolicies)).Post("/policies/{policyID}/restore-default", func(w http.ResponseWriter, r *http.Request) {
+				strict.PostApiV1PoliciesPolicyIDRestoreDefault(w, r, chi.URLParam(r, "policyID"))
 			})
 			private.With(s.requirePermission(permissionEvaluatePolicies)).Post("/policies/validate", strict.PostApiV1PoliciesValidate)
 			private.With(s.requirePermission(permissionEvaluatePolicies)).Post("/policies/test", strict.PostApiV1PoliciesTest)

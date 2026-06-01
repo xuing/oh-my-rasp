@@ -65,11 +65,22 @@ so the playground can still verify policy execution and JSONL log collection.
 - `webshell_callable`
 - `webshell_ld_preload`
 
+## Hook Architecture Notes
+
+- The ASM transformer delegates hook selection to `HookRegistry`. Each runtime
+  family has its own small `HookModule`, such as process, file, network, JNDI,
+  SQL, servlet, and XXE. This keeps hook-point expansion modular as more
+  middleware and dynamically deployed policies are added.
+- The servlet hook module supports both `javax.servlet` and `jakarta.servlet`
+  service descriptors, which lets the same detector and policy path run across
+  Tomcat 9, 10, and 11.
+
 ## Notes
 
 - Commented or disabled-by-default policy toggles from the source JavaScript
   catalog, such as broad "log every command" or "log every native library load",
   are intentionally not enabled in acceptance because they are not abnormal
   behavior signals by themselves.
-- Cloud-delivered configuration, dynamic hook delivery, and heartbeat reporting
-  remain out of scope for this PoC, matching the current objective.
+- Dynamic hook delivery is still future work, but the current agent can register
+  with the control plane, report heartbeats, pull policy assignment metadata,
+  and upload attack detections to `/api/v1/events/attack`.

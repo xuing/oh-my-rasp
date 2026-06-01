@@ -285,6 +285,10 @@ func (s *strictServer) GetApiV1Policies(ctx context.Context, _ generated.GetApiV
 	}, nil
 }
 
+func (s *strictServer) GetApiV1PoliciesAlgorithms(context.Context, generated.GetApiV1PoliciesAlgorithmsRequestObject) (generated.GetApiV1PoliciesAlgorithmsResponseObject, error) {
+	return generated.GetApiV1PoliciesAlgorithms200JSONResponse(openAPIPolicyAlgorithmCatalog(control.SupportedPolicyAlgorithmCatalog())), nil
+}
+
 func (s *strictServer) PostApiV1Policies(ctx context.Context, request generated.PostApiV1PoliciesRequestObject) (generated.PostApiV1PoliciesResponseObject, error) {
 	if request.Body == nil {
 		return nil, control.ErrInvalid
@@ -320,6 +324,14 @@ func (s *strictServer) PutApiV1PoliciesPolicyIDVersionsVersionRules(ctx context.
 		return nil, err
 	}
 	return generated.PutApiV1PoliciesPolicyIDVersionsVersionRules200JSONResponse(openAPIPolicySet(policy)), nil
+}
+
+func (s *strictServer) PostApiV1PoliciesPolicyIDRestoreDefault(ctx context.Context, request generated.PostApiV1PoliciesPolicyIDRestoreDefaultRequestObject) (generated.PostApiV1PoliciesPolicyIDRestoreDefaultResponseObject, error) {
+	policy, err := s.server.store.RestoreDefaultPolicy(ctx, userFromContext(ctx).ID, request.PolicyID)
+	if err != nil {
+		return nil, err
+	}
+	return generated.PostApiV1PoliciesPolicyIDRestoreDefault200JSONResponse(openAPIPolicySet(policy)), nil
 }
 
 func (s *strictServer) PostApiV1PoliciesValidate(ctx context.Context, request generated.PostApiV1PoliciesValidateRequestObject) (generated.PostApiV1PoliciesValidateResponseObject, error) {
@@ -1054,6 +1066,17 @@ func openAPIPolicySets(policies []control.PolicySet) []generated.PolicySet {
 		result = append(result, openAPIPolicySet(policy))
 	}
 	return result
+}
+
+func openAPIPolicyAlgorithmCatalog(catalog control.PolicyAlgorithmCatalog) generated.PolicyAlgorithmCatalog {
+	items := make([]generated.PolicyAlgorithm, 0, len(catalog.Items))
+	for _, item := range catalog.Items {
+		items = append(items, generated.PolicyAlgorithm{
+			Hook:       item.Hook,
+			Algorithms: append([]string{}, item.Algorithms...),
+		})
+	}
+	return generated.PolicyAlgorithmCatalog{Items: items}
 }
 
 func openAPIPolicySet(policy control.PolicySet) generated.PolicySet {

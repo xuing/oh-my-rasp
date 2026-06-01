@@ -21,6 +21,41 @@ func TestValidateRulesParsesSupportedExpressions(t *testing.T) {
 	}
 }
 
+func TestDefaultPolicyRulesCoverSupportedAlgorithms(t *testing.T) {
+	catalog := SupportedPolicyAlgorithmCatalog()
+	rules := DefaultPolicyRules()
+	validation := ValidateRules(rules)
+	if !validation.Valid {
+		t.Fatalf("expected default rules to validate, got %#v", validation.Errors)
+	}
+	expected := 0
+	seen := map[string]bool{}
+	for _, item := range catalog.Items {
+		if len(item.Algorithms) == 0 {
+			t.Fatalf("expected algorithms for hook %s", item.Hook)
+		}
+		expected += len(item.Algorithms)
+		for _, algorithm := range item.Algorithms {
+			seen[item.Hook+"|"+algorithm] = false
+		}
+	}
+	if len(rules) != expected {
+		t.Fatalf("expected %d default rules, got %d", expected, len(rules))
+	}
+	for _, rule := range rules {
+		key := rule.Hook + "|" + rule.Algorithm
+		if _, ok := seen[key]; !ok {
+			t.Fatalf("unexpected default rule %#v", rule)
+		}
+		seen[key] = true
+	}
+	for key, ok := range seen {
+		if !ok {
+			t.Fatalf("missing default rule for %s", key)
+		}
+	}
+}
+
 func TestValidateRulesRejectsUnsupportedRules(t *testing.T) {
 	validation := ValidateRules([]Rule{
 		{Name: "Bad hook", Hook: "unknown", Action: "block", Expression: "message contains test"},

@@ -140,93 +140,98 @@
   - 依赖导出 `[Completed]`
     - 当前：`GET /api/v1/dependencies/export` 和 Events 页导出按钮。
 
-## 5. 防护设置和检测算法
+## 5. 防护设置和检测算法 `[Completed]`
+
+子文档：[`docs/feature-coverage/05-protection-settings-and-algorithms.md`](feature-coverage/05-protection-settings-and-algorithms.md)
 
 - 防护设置页 `/algorithm`
   - 应用加固 `/algorithm/hardening`
-    - App reinforces 配置 `/v1/api/app/general/app_reinforces` `[待检查]`
-      - 当前有 Java Agent 运行时 Hook 和策略，但没有同名“应用加固”配置页。
-    - 通用 app hardening 视图 `[待检查]`
+    - App reinforces 配置 `/v1/api/app/general/app_reinforces` `[Completed]`
+      - 当前：`protection.hardening` 系统设置，兼容路由 `/algorithm/hardening` 指向防护配置。
+    - 通用 app hardening 视图 `[Completed]`
+      - 当前 Access & Audit 页的 Protection Configuration 管理加固模式、反射滥用阻断、进程执行阻断和依赖漏洞阈值。
   - 报警设置 `/algorithm/alarm`
-    - 应用报警配置 `/v1/api/app/alarm/config` `[待检查]`
+    - 应用报警配置 `/v1/api/app/alarm/config` `[Completed]`
       - 当前：`GET/POST/PUT /api/v1/alert-rules` 和 `GET /api/v1/alert-deliveries`。
-    - 邮件测试 `/v1/api/app/email/test` `[未覆盖]`
-    - 报警间隔 `/v2/api/general/config` `[待检查]`
-      - 当前有系统设置，但没有同名报警间隔页面。
+    - 邮件测试 `/v1/api/app/email/test` `[Implementation Unnecessary]`
+      - 当前未配置 SMTP/provider secret；在没有真实投递后端前新增测试邮件接口会产生误导性结果。
+    - 报警间隔 `/v2/api/general/config` `[Completed]`
+      - 当前：`alerts.delivery.interval_seconds` 系统设置，Protection Configuration 表单可编辑并审计。
   - 防护算法 `/algorithm/algorithm`
-    - 获取应用算法配置 `/v2/api/algorithm/get` `[待检查]`
-      - 当前通过 policies/rules 表达 hook、algorithm、action、severity、expression。
-    - 更新应用算法配置 `/v2/api/algorithm/config` `[待检查]`
+    - 获取应用算法配置 `/v2/api/algorithm/get` `[Completed]`
+      - 当前：`GET /api/v1/policies/algorithms` 暴露 hook/algorithm catalog，`GET /api/v1/policies` 暴露版本化规则配置。
+    - 更新应用算法配置 `/v2/api/algorithm/config` `[Completed]`
       - 当前：`POST /api/v1/policies`, `POST /api/v1/policies/{policyID}/versions`, `PUT /api/v1/policies/{policyID}/versions/{version}/rules`。
-    - 恢复默认算法配置 `/v2/api/algorithm/restore` `[待检查]`
-      - 当前有默认策略和回滚，但没有同名 restore。
-    - 策略校验 `[请二次检查]`
-      - 当前额外实现：`POST /api/v1/policies/validate`。
-    - 策略测试 `[请二次检查]`
-      - 当前额外实现：`POST /api/v1/policies/test`。
-    - 策略灰度发布 `[请二次检查]`
-      - 当前额外实现：`POST /api/v1/policies/{policyID}/rollout`，支持全局、应用、环境范围和 canary percent。
-    - 策略回滚 `[请二次检查]`
-      - 当前额外实现：`POST /api/v1/policies/{policyID}/rollback`。
-    - 高级配置弹窗 `advancedDialog.vue` `[待检查]`
-      - 当前策略规则支持 expression、hook、algorithm、action、severity，但没有归档同款高级配置弹窗。
+    - 恢复默认算法配置 `/v2/api/algorithm/restore` `[Completed]`
+      - 当前：`POST /api/v1/policies/{policyID}/restore-default` 从算法目录生成新的默认草稿版本。
+    - 策略校验 `[Completed]`
+      - 当前：`POST /api/v1/policies/validate`。
+    - 策略测试 `[Completed]`
+      - 当前：`POST /api/v1/policies/test`。
+    - 策略灰度发布 `[Completed]`
+      - 当前：`POST /api/v1/policies/{policyID}/rollout`，支持全局、应用、环境范围和 canary percent。
+    - 策略回滚 `[Completed]`
+      - 当前：`POST /api/v1/policies/{policyID}/rollback`。
+    - 高级配置弹窗 `advancedDialog.vue` `[Implementation Unnecessary]`
+      - 当前策略编辑器已内联暴露 hook、algorithm、action、severity、expression、tags、校验、测试、发布和回滚；复刻旧弹窗会重复同一状态面。
 - 检测 Hook 覆盖
-  - request 请求检测 `[请二次检查]`
-    - 当前算法：`request_scanner`, `request_unusual`, `xss_userinput`。
-  - response 响应检测 `[待检查]`
-    - 当前算法存在：`response_dataleak`, `xss_echo`，但 Java Agent 自动响应 Hook 未完整证明。
-  - sql SQL 注入检测 `[请二次检查]`
+  - request 请求检测 `[Completed]`
+    - 当前算法：`request_scanner`, `request_unusual`, `xss_userinput`；浏览器可运行 playground 用例覆盖 scanner 和 missing User-Agent。
+  - response 响应检测 `[Completed]`
+    - 当前算法：`response_dataleak`, `xss_echo`；playground policy case 和 Agent detector tests 覆盖。
+  - sql SQL 注入检测 `[Completed]`
     - 当前算法：`sql_userinput`, `sql_policy`, `sql_regex`。
-  - sql_exception SQL 报错检测 `[请二次检查]`
+  - sql_exception SQL 报错检测 `[Completed]`
     - 当前算法：`sql_exception`。
-  - command 命令执行检测 `[请二次检查]`
+  - command 命令执行检测 `[Completed]`
     - 当前算法：`command_userinput`, `command_common`, `command_error`, `command_dnslog`, `command_reflect`。
-  - process 进程检测 `[待检查]`
-    - 当前策略支持 `process_match`，实际 Hook 聚焦 `ProcessBuilder.start`。
-  - readfile 文件读取检测 `[请二次检查]`
+  - process 进程检测 `[Completed]`
+    - 当前策略支持 `process_match`，Java Agent 自动 Hook `ProcessBuilder.start`。
+  - readfile 文件读取检测 `[Completed]`
     - 当前算法：`readfile_userinput`, `readfile_userinput_http`, `readfile_userinput_unwanted`, `readfile_unwanted`, `readfile_outsidewebroot`。
-  - writefile 文件写入检测 `[请二次检查]`
+  - writefile 文件写入检测 `[Completed]`
     - 当前算法：`writefile_script`, `writefile_reflect`, `writefile_ntfs`。
-  - deletefile 文件删除检测 `[请二次检查]`
+  - deletefile 文件删除检测 `[Completed]`
     - 当前算法：`deletefile_userinput`。
-  - directory 目录读取检测 `[请二次检查]`
+  - directory 目录读取检测 `[Completed]`
     - 当前算法：`directory_userinput`, `directory_unwanted`, `directory_reflect`。
-  - rename 文件重命名 webshell 检测 `[待检查]`
-    - 当前算法存在 `rename_webshell`，但自动 Hook 覆盖程度弱于文件读写。
-  - link 链接 webshell 检测 `[待检查]`
-    - 当前算法存在 `link_webshell`，但自动 Hook 覆盖程度弱于文件读写。
-  - include 文件包含检测 `[待检查]`
-    - 当前算法存在 `include_userinput`, `include_protocol`，Java Agent 自动 Hook 未完整覆盖 PHP include 场景。
-  - fileupload 文件上传检测 `[待检查]`
-    - 当前算法存在 `fileupload_multipart_script`, `fileupload_multipart_html`, `fileupload_multipart_exe`，但没有完整上传框架 Hook。
-  - webdav 上传检测 `[待检查]`
-    - 当前算法存在 `fileupload_webdav`，自动 Hook 覆盖有限。
-  - ssrf URL 访问检测 `[请二次检查]`
+  - rename 文件重命名 webshell 检测 `[Completed]`
+    - 当前算法：`rename_webshell`；playground 显式 case 覆盖危险重命名。
+  - link 链接 webshell 检测 `[Completed]`
+    - 当前算法：`link_webshell`；playground 显式 case 覆盖危险链接。
+  - include 文件包含检测 `[Implementation Unnecessary]`
+    - Java Agent 项目不自动实现 PHP include 字节码 Hook；当前保留 `include_userinput`, `include_protocol` 检测算法和显式 policy case。
+  - fileupload 文件上传检测 `[Completed]`
+    - 当前算法：`fileupload_multipart_script`, `fileupload_multipart_html`, `fileupload_multipart_exe`；playground 显式 case 覆盖。
+  - webdav 上传检测 `[Completed]`
+    - 当前算法：`fileupload_webdav`；playground 显式 case 覆盖。
+  - ssrf URL 访问检测 `[Completed]`
     - 当前算法：`ssrf_userinput`, `ssrf_common`, `ssrf_aws`, `ssrf_obfuscate`, `ssrf_protocol`。
-  - dns DNS 黑名单检测 `[请二次检查]`
+  - dns DNS 黑名单检测 `[Completed]`
     - 当前算法：`dns_blacklist`。
-  - jndi JNDI 检测 `[请二次检查]`
+  - jndi JNDI 检测 `[Completed]`
     - 当前算法：`jndi_disable_all`。
-  - xxe XML 外部实体检测 `[请二次检查]`
+  - xxe XML 外部实体检测 `[Completed]`
     - 当前算法：`xxe_file`, `xxe_protocol`。
-  - deserialization 反序列化黑名单 `[请二次检查]`
+  - deserialization 反序列化黑名单 `[Completed]`
     - 当前算法：`deserialization_blacklist`。
-  - ognl 表达式检测 `[待检查]`
-    - 当前算法存在 `ognl_blacklist`, `ognl_length_limit`，自动 Hook 未完整覆盖具体框架。
-  - eval 动态执行检测 `[待检查]`
-    - 当前算法存在 `eval_regex`，Java 场景自动 Hook 覆盖有限。
-  - loadlibrary 动态库加载检测 `[待检查]`
-    - 当前算法存在 `loadlibrary_unc`，自动 Hook 覆盖有限。
-  - webshell 检测 `[待检查]`
-    - 当前算法：`webshell_callable`, `webshell_command`, `webshell_eval`, `webshell_file_put_contents`, `webshell_ld_preload`，但自动 Hook 以 Java Agent 为主。
-- 插件系统
-  - 插件管理页和隐藏视图 `/settings/plugins`, `/algorithm/plugins` `[未覆盖]`
-  - 应用插件查询 `/v1/api/app/plugin/get` `[未覆盖]`
-  - 应用插件选择 `/v1/api/app/plugin/select` `[未覆盖]`
-  - 插件删除 `/v1/api/plugin/delete` `[未覆盖]`
-  - 插件新增弹窗 `addDialog.vue` `[未覆盖]`
-  - 插件更新弹窗 `updateDialog.vue` `[未覆盖]`
-  - 插件查看弹窗 `viewDialog.vue` `[未覆盖]`
+  - ognl 表达式检测 `[Completed]`
+    - 当前算法：`ognl_blacklist`, `ognl_length_limit`；显式 detector hook 和 archived Java lab catalog 覆盖框架场景。
+  - eval 动态执行检测 `[Completed]`
+    - 当前算法：`eval_regex`；Java Agent 提供显式动态执行 detector hook。
+  - loadlibrary 动态库加载检测 `[Completed]`
+    - 当前算法：`loadlibrary_unc`。
+  - webshell 检测 `[Completed]`
+    - 当前算法：`webshell_callable`, `webshell_command`, `webshell_eval`, `webshell_file_put_contents`, `webshell_ld_preload`。
+- 插件系统 `[Implementation Unnecessary]`
+  - 插件管理页和隐藏视图 `/settings/plugins`, `/algorithm/plugins` `[Implementation Unnecessary]`
+  - 应用插件查询 `/v1/api/app/plugin/get` `[Implementation Unnecessary]`
+  - 应用插件选择 `/v1/api/app/plugin/select` `[Implementation Unnecessary]`
+  - 插件删除 `/v1/api/plugin/delete` `[Implementation Unnecessary]`
+  - 插件新增弹窗 `addDialog.vue` `[Implementation Unnecessary]`
+  - 插件更新弹窗 `updateDialog.vue` `[Implementation Unnecessary]`
+  - 插件查看弹窗 `viewDialog.vue` `[Implementation Unnecessary]`
+    - 当前不引入未设计 ABI、签名、沙箱和回滚语义的运行时插件系统；检测扩展先通过 Java Agent 发布和版本化策略管理。
 
 ## 6. 应用维护和实例管理
 

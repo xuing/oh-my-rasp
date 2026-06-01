@@ -27,6 +27,7 @@ import java.sql.DriverManager;
 import java.util.ArrayList;
 import java.util.Hashtable;
 import java.util.List;
+import java.util.Map;
 import java.util.concurrent.TimeUnit;
 import javax.naming.Context;
 import javax.naming.InitialContext;
@@ -356,6 +357,24 @@ public final class VulnerableServlet extends HttpServlet {
               new Class<?>[] {String.class, String.class},
               "select table_name from information_schema.tables",
               "information_schema");
+      case "request-scanner" ->
+          hook(
+              "beforeSyntheticHttpRequest",
+              new Class<?>[] {String.class, String.class, String.class, Map.class, Map.class},
+              "GET",
+              "/rasp/request",
+              "",
+              Map.of(),
+              Map.of("user-agent", "sqlmap/1.7"));
+      case "request-unusual" ->
+          hook(
+              "beforeSyntheticHttpRequest",
+              new Class<?>[] {String.class, String.class, String.class, Map.class, Map.class},
+              "GET",
+              "/rasp/request",
+              "",
+              Map.of(),
+              Map.of());
       case "ssrf-userinput" ->
           hook(
               "beforeUrlOpen",
@@ -722,7 +741,8 @@ public final class VulnerableServlet extends HttpServlet {
   private static String testCasesJson() {
     return """
         [
-          {"category":"request","name":"Scanner user agent","path":"/rasp/request"},
+          {"category":"request","name":"Scanner user agent","path":"/rasp/policy/request-scanner"},
+          {"category":"request","name":"Missing User-Agent","path":"/rasp/policy/request-unusual"},
           {"category":"request","name":"XSS parameter","path":"/rasp/request?q=%3Cscript%3Ealert(1)%3C/script%3E"},
 
           {"category":"command","name":"Command user input","path":"/rasp/command?cmd=sh&arg=-c&arg=cat%20/etc/passwd%3B%20id"},

@@ -16,3 +16,4 @@ rootProject.name = "ohmyrasp"
 
 include("agent")
 include("playground")
+include("playground-javax")

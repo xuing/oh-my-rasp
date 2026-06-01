@@ -267,6 +267,15 @@ type PolicyRollout struct {
 	EnvironmentID string `json:"environment_id,omitempty"`
 }
 
+type PolicyAlgorithm struct {
+	Hook       string   `json:"hook"`
+	Algorithms []string `json:"algorithms"`
+}
+
+type PolicyAlgorithmCatalog struct {
+	Items []PolicyAlgorithm `json:"items"`
+}
+
 type SecurityEvent struct {
 	ID            string         `json:"id"`
 	Type          string         `json:"type"`

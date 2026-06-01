@@ -1,12 +1,12 @@
 package io.ohmyrasp.agent.control;
 
 import io.ohmyrasp.agent.model.Detection;
+import java.io.InputStream;
 import java.io.IOException;
+import java.io.OutputStream;
+import java.net.HttpURLConnection;
 import java.net.URI;
-import java.net.http.HttpClient;
-import java.net.http.HttpRequest;
-import java.net.http.HttpResponse;
-import java.time.Duration;
+import java.nio.charset.StandardCharsets;
 import java.util.Map;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
@@ -14,7 +14,6 @@ import java.util.concurrent.TimeUnit;
 
 public final class ControlPlaneClient implements AutoCloseable {
   private final ControlPlaneConfig config;
-  private final HttpClient http;
   private final ScheduledExecutorService executor;
   private volatile String agentId;
   private volatile String policyId;
@@ -22,12 +21,7 @@ public final class ControlPlaneClient implements AutoCloseable {
   private volatile String cachedPolicy;
 
   public ControlPlaneClient(ControlPlaneConfig config) {
-    this(config, HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(3)).build());
-  }
-
-  ControlPlaneClient(ControlPlaneConfig config, HttpClient http) {
     this.config = config;
-    this.http = http;
     this.executor =
         Executors.newSingleThreadScheduledExecutor(
             task -> {
@@ -86,7 +80,7 @@ public final class ControlPlaneClient implements AutoCloseable {
             + ","
             + field("version", config.version())
             + "}";
-    HttpResponse<String> response = send("POST", "/agents/register", body);
+    Response response = send("POST", "/agents/register", body);
     requireSuccess(response, "register agent");
     String id = extractString(response.body(), "id");
     if (id == null || id.isBlank()) {
@@ -111,14 +105,18 @@ public final class ControlPlaneClient implements AutoCloseable {
 
   private void heartbeat() throws IOException, InterruptedException {
     String id = ensureRegistered();
-    HttpResponse<String> response = send("POST", "/agents/" + encodePath(id) + "/heartbeat", "{" + field("status", "online") + "}");
+    Response response =
+        send(
+            "POST",
+            "/agents/" + encodePath(id) + "/heartbeat",
+            "{" + field("status", "online") + "}");
     requireSuccess(response, "heartbeat");
     updateAgentAssignment(response.body());
   }
 
   private void pullPolicy() throws IOException, InterruptedException {
     String id = ensureRegistered();
-    HttpResponse<String> response = send("GET", "/agents/" + encodePath(id) + "/policy", "");
+    Response response = send("GET", "/agents/" + encodePath(id) + "/policy", "");
     if (response.statusCode() == 404) {
       cachedPolicy = "";
       return;
@@ -161,22 +159,35 @@ public final class ControlPlaneClient implements AutoCloseable {
             + ",\"attributes\":"
             + attributes(detection)
             + "}";
-    HttpResponse<String> response = send("POST", "/events/attack", body);
+    Response response = send("POST", "/events/attack", body);
     requireSuccess(response, "upload event");
   }
 
-  private HttpResponse<String> send(String method, String path, String body)
-      throws IOException, InterruptedException {
-    HttpRequest request =
-        HttpRequest.newBuilder(endpoint(path))
-            .timeout(Duration.ofSeconds(5))
-            .header("Accept", "application/json")
-            .header("Content-Type", "application/json")
-            .header("X-OhMyRasp-App-ID", config.applicationId())
-            .header("X-OhMyRasp-App-Secret", config.applicationSecret())
-            .method(method, body.isEmpty() ? HttpRequest.BodyPublishers.noBody() : HttpRequest.BodyPublishers.ofString(body))
-            .build();
-    return http.send(request, HttpResponse.BodyHandlers.ofString());
+  private Response send(String method, String path, String body) throws IOException {
+    HttpURLConnection connection = (HttpURLConnection) endpoint(path).toURL().openConnection();
+    connection.setConnectTimeout(3_000);
+    connection.setReadTimeout(5_000);
+    connection.setRequestMethod(method);
+    connection.setRequestProperty("Accept", "application/json");
+    connection.setRequestProperty("Content-Type", "application/json");
+    connection.setRequestProperty("X-OhMyRasp-App-ID", config.applicationId());
+    connection.setRequestProperty("X-OhMyRasp-App-Secret", config.applicationSecret());
+    if (!body.isEmpty()) {
+      connection.setDoOutput(true);
+      byte[] data = body.getBytes(StandardCharsets.UTF_8);
+      connection.setFixedLengthStreamingMode(data.length);
+      try (OutputStream output = connection.getOutputStream()) {
+        output.write(data);
+      }
+    }
+    int status = connection.getResponseCode();
+    try (InputStream input = status >= 400 ? connection.getErrorStream() : connection.getInputStream()) {
+      String responseBody =
+          input == null ? "" : new String(input.readAllBytes(), StandardCharsets.UTF_8);
+      return new Response(status, responseBody);
+    } finally {
+      connection.disconnect();
+    }
   }
 
   private URI endpoint(String path) {
@@ -190,12 +201,13 @@ public final class ControlPlaneClient implements AutoCloseable {
     return URI.create(base + path);
   }
 
-  private static void requireSuccess(HttpResponse<String> response, String action)
-      throws IOException {
+  private static void requireSuccess(Response response, String action) throws IOException {
     if (response.statusCode() < 200 || response.statusCode() > 299) {
       throw new IOException(action + " returned " + response.statusCode() + ": " + response.body());
     }
   }
+
+  private record Response(int statusCode, String body) {}
 
   private static String attributes(Detection detection) {
     StringBuilder builder = new StringBuilder(256);

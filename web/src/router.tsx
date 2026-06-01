@@ -53,6 +53,34 @@ const policiesRoute = createRoute({
   component: PoliciesPage
 });
 
+const algorithmRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/algorithm",
+  beforeLoad: requireSession,
+  component: PoliciesPage
+});
+
+const algorithmAlgorithmRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/algorithm/algorithm",
+  beforeLoad: requireSession,
+  component: PoliciesPage
+});
+
+const algorithmHardeningRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/algorithm/hardening",
+  beforeLoad: requireSession,
+  component: AccessPage
+});
+
+const algorithmAlarmRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/algorithm/alarm",
+  beforeLoad: requireSession,
+  component: AccessPage
+});
+
 const eventsRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/events",
@@ -91,6 +119,10 @@ export const routeTree = rootRoute.addChildren([
   applicationsRoute,
   agentsRoute,
   policiesRoute,
+  algorithmRoute,
+  algorithmAlgorithmRoute,
+  algorithmHardeningRoute,
+  algorithmAlarmRoute,
   eventsRoute,
   observabilityRoute,
   accessRoute,

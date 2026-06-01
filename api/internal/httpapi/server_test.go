@@ -202,6 +202,44 @@ func TestPolicyDraftRulesCanBeUpdatedBeforeRollout(t *testing.T) {
 	}
 }
 
+func TestPolicyAlgorithmCatalogAndRestoreDefault(t *testing.T) {
+	client := newTestClient(t)
+	token := client.login(t)
+
+	catalog := client.request(t, http.MethodGet, "/api/v1/policies/algorithms", token, nil)
+	items := arrayValue(t, catalog, "items")
+	if len(items) == 0 {
+		t.Fatalf("expected algorithm catalog items, got %#v", catalog)
+	}
+	if !containsAlgorithmCatalogItem(items, "sql", "sql_userinput") || !containsAlgorithmCatalogItem(items, "command", "command_userinput") {
+		t.Fatalf("expected SQL and command algorithms in catalog, got %#v", items)
+	}
+
+	policy := client.request(t, http.MethodPost, "/api/v1/policies", token, map[string]any{"name": "Restore Defaults Policy"})
+	policyID := stringValue(t, policy, "id")
+	restored := client.request(t, http.MethodPost, "/api/v1/policies/"+policyID+"/restore-default", token, nil)
+	versions := arrayValue(t, restored, "versions")
+	if len(versions) != 1 {
+		t.Fatalf("expected one restored draft version, got %#v", versions)
+	}
+	version := objectFromAny(t, versions[0])
+	if version["status"] != "draft" {
+		t.Fatalf("expected restored version to stay draft, got %#v", version)
+	}
+	rules := arrayValue(t, version, "rules")
+	if len(rules) < len(items) {
+		t.Fatalf("expected restored defaults to include detector rules, got %d rules for %d catalog hooks", len(rules), len(items))
+	}
+	if !containsPolicyRule(rules, "sql", "sql_userinput") || !containsPolicyRule(rules, "jndi", "jndi_disable_all") {
+		t.Fatalf("expected restored default detector rules, got %#v", rules)
+	}
+
+	audit := client.request(t, http.MethodGet, "/api/v1/audit-logs", token, nil)
+	if !containsAuditAction(arrayValue(t, audit, "items"), "policy.restore_default") {
+		t.Fatalf("expected restore-default audit entry, got %#v", audit)
+	}
+}
+
 func TestPolicyRollbackUpdatesAgentAssignmentAndPolicyPull(t *testing.T) {
 	client := newTestClient(t)
 	token := client.login(t)
@@ -1791,6 +1829,15 @@ func objectValue(t *testing.T, value map[string]any, key string) map[string]any 
 	return raw
 }
 
+func objectFromAny(t *testing.T, value any) map[string]any {
+	t.Helper()
+	raw, ok := value.(map[string]any)
+	if !ok {
+		t.Fatalf("expected object in %#v", value)
+	}
+	return raw
+}
+
 func arrayValue(t *testing.T, value map[string]any, key string) []any {
 	t.Helper()
 	raw, ok := value[key].([]any)
@@ -1824,6 +1871,35 @@ func containsAuditAction(items []any, action string) bool {
 	for _, item := range items {
 		raw, ok := item.(map[string]any)
 		if ok && raw["action"] == action {
+			return true
+		}
+	}
+	return false
+}
+
+func containsAlgorithmCatalogItem(items []any, hook string, algorithm string) bool {
+	for _, item := range items {
+		raw, ok := item.(map[string]any)
+		if !ok || raw["hook"] != hook {
+			continue
+		}
+		algorithms, ok := raw["algorithms"].([]any)
+		if !ok {
+			continue
+		}
+		for _, item := range algorithms {
+			if item == algorithm {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+func containsPolicyRule(items []any, hook string, algorithm string) bool {
+	for _, item := range items {
+		raw, ok := item.(map[string]any)
+		if ok && raw["hook"] == hook && raw["algorithm"] == algorithm {
 			return true
 		}
 	}

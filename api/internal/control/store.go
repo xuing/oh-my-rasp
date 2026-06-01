@@ -51,6 +51,7 @@ type Store interface {
 	CreatePolicy(ctx context.Context, actorID string, input PolicySet) (PolicySet, error)
 	AddPolicyVersion(ctx context.Context, actorID string, policyID string, rules []Rule) (PolicySet, error)
 	UpdatePolicyVersionRules(ctx context.Context, actorID string, policyID string, version int, rules []Rule) (PolicySet, error)
+	RestoreDefaultPolicy(ctx context.Context, actorID string, policyID string) (PolicySet, error)
 	ValidateRules(ctx context.Context, rules []Rule) RuleValidation
 	TestRule(ctx context.Context, rule Rule, event SecurityEvent) RuleTestResult
 	RolloutPolicy(ctx context.Context, actorID string, policyID string, rollout PolicyRollout) (PolicySet, error)
@@ -807,6 +808,31 @@ func ensureRuleIDs(rules []Rule) {
 	}
 }
 
+func (s *MemoryStore) RestoreDefaultPolicy(_ context.Context, actorID string, policyID string) (PolicySet, error) {
+	rules := DefaultPolicyRules()
+	validation := ValidateRules(rules)
+	if !validation.Valid {
+		return PolicySet{}, fmt.Errorf("%w: %s", ErrInvalid, strings.Join(validation.Errors, "; "))
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	policy, ok := s.policies[policyID]
+	if !ok {
+		return PolicySet{}, ErrNotFound
+	}
+	ensureRuleIDs(rules)
+	version := PolicyVersion{
+		Version:   len(policy.Versions) + 1,
+		Status:    "draft",
+		Rules:     rules,
+		CreatedAt: s.now(),
+	}
+	policy.Versions = append(policy.Versions, version)
+	s.policies[policyID] = policy
+	s.audit(actorID, "policy.restore_default", policyID, map[string]any{"version": version.Version, "rule_count": len(rules)})
+	return policy, nil
+}
+
 func (s *MemoryStore) ValidateRules(_ context.Context, rules []Rule) RuleValidation {
 	return ValidateRules(rules)
 }
@@ -1004,11 +1030,8 @@ func isSupportedRuleField(field string) bool {
 }
 
 func isSupportedPolicyHook(hook string) bool {
-	return contains([]string{
-		"command", "deletefile", "deserialization", "directory", "dns", "eval", "fileupload", "include", "jndi", "link",
-		"loadlibrary", "ognl", "process", "readfile", "rename", "request", "response", "sql", "sql_exception", "ssrf",
-		"webdav", "webshell", "writefile", "xxe",
-	}, strings.ToLower(strings.TrimSpace(hook)))
+	_, ok := supportedPolicyAlgorithms[strings.ToLower(strings.TrimSpace(hook))]
+	return ok
 }
 
 func isSupportedPolicyAlgorithm(hook string, algorithm string) bool {
@@ -1048,6 +1071,62 @@ var supportedPolicyAlgorithms = map[string]map[string]bool{
 	"webshell":        {"webshell_callable": true, "webshell_command": true, "webshell_eval": true, "webshell_file_put_contents": true, "webshell_ld_preload": true},
 	"writefile":       {"writefile_ntfs": true, "writefile_reflect": true, "writefile_script": true},
 	"xxe":             {"xxe_file": true, "xxe_protocol": true},
+}
+
+func SupportedPolicyAlgorithmCatalog() PolicyAlgorithmCatalog {
+	hooks := make([]string, 0, len(supportedPolicyAlgorithms))
+	for hook := range supportedPolicyAlgorithms {
+		hooks = append(hooks, hook)
+	}
+	sort.Strings(hooks)
+	items := make([]PolicyAlgorithm, 0, len(hooks))
+	for _, hook := range hooks {
+		algorithms := make([]string, 0, len(supportedPolicyAlgorithms[hook]))
+		for algorithm := range supportedPolicyAlgorithms[hook] {
+			algorithms = append(algorithms, algorithm)
+		}
+		sort.Strings(algorithms)
+		items = append(items, PolicyAlgorithm{Hook: hook, Algorithms: algorithms})
+	}
+	return PolicyAlgorithmCatalog{Items: items}
+}
+
+func DefaultPolicyRules() []Rule {
+	catalog := SupportedPolicyAlgorithmCatalog()
+	rules := make([]Rule, 0)
+	for _, item := range catalog.Items {
+		for _, algorithm := range item.Algorithms {
+			rules = append(rules, Rule{
+				Name:        defaultPolicyRuleName(algorithm),
+				Hook:        item.Hook,
+				Algorithm:   algorithm,
+				Action:      "block",
+				Severity:    defaultPolicySeverity(item.Hook),
+				Expression:  fmt.Sprintf(`algorithm == "%s"`, algorithm),
+				Tags:        []string{"default", item.Hook},
+				Description: "Built-in default detector rule restored from the algorithm catalog.",
+			})
+		}
+	}
+	return rules
+}
+
+func defaultPolicyRuleName(algorithm string) string {
+	name := strings.ReplaceAll(algorithm, "_", " ")
+	return "Default " + name
+}
+
+func defaultPolicySeverity(hook string) string {
+	switch hook {
+	case "jndi", "sql", "command", "deserialization", "webshell", "xxe":
+		return "critical"
+	case "ssrf", "fileupload", "include", "writefile", "loadlibrary", "eval", "ognl":
+		return "high"
+	case "request", "response", "readfile", "directory", "dns", "rename", "link", "deletefile":
+		return "medium"
+	default:
+		return "high"
+	}
 }
 
 func (s *MemoryStore) RolloutPolicy(_ context.Context, actorID string, policyID string, rollout PolicyRollout) (PolicySet, error) {

@@ -1310,6 +1310,51 @@ func (s *Store) UpdatePolicyVersionRules(ctx context.Context, actorID string, po
 	return s.policyByID(ctx, s.db, policyID)
 }
 
+func (s *Store) RestoreDefaultPolicy(ctx context.Context, actorID string, policyID string) (control.PolicySet, error) {
+	rules := control.DefaultPolicyRules()
+	validation := control.ValidateRules(rules)
+	if !validation.Valid {
+		return control.PolicySet{}, fmt.Errorf("%w: %s", control.ErrInvalid, strings.Join(validation.Errors, "; "))
+	}
+	ensureRuleIDs(rules)
+	rulesJSON, err := json.Marshal(rules)
+	if err != nil {
+		return control.PolicySet{}, err
+	}
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return control.PolicySet{}, err
+	}
+	defer rollback(tx)
+	exists, err := rowExists(ctx, tx, `SELECT 1 FROM policies WHERE id = $1 AND organization_id = $2`, policyID, s.organizationID)
+	if err != nil {
+		return control.PolicySet{}, err
+	}
+	if !exists {
+		return control.PolicySet{}, control.ErrNotFound
+	}
+	var version int
+	if err := tx.QueryRowContext(ctx, `SELECT COALESCE(MAX(version), 0) + 1 FROM policy_versions WHERE policy_id = $1`, policyID).Scan(&version); err != nil {
+		return control.PolicySet{}, err
+	}
+	if _, err := tx.ExecContext(ctx, `
+		INSERT INTO policy_versions (policy_id, version, status, rules, canary_percent, created_by, created_at)
+		VALUES ($1, $2, 'draft', $3::jsonb, 0, $4, $5)
+	`, policyID, version, string(rulesJSON), nullIfEmpty(actorID), s.now().UTC()); err != nil {
+		return control.PolicySet{}, err
+	}
+	if err := s.audit(ctx, tx, actorID, "policy.restore_default", policyID, map[string]any{"version": version, "rule_count": len(rules)}); err != nil {
+		return control.PolicySet{}, err
+	}
+	if err := tx.Commit(); err != nil {
+		return control.PolicySet{}, err
+	}
+	if s.agentPolicyCache != nil {
+		_ = s.agentPolicyCache.InvalidateAgentPolicies(ctx)
+	}
+	return s.policyByID(ctx, s.db, policyID)
+}
+
 func ensureRuleIDs(rules []control.Rule) {
 	for i := range rules {
 		if rules[i].ID == "" {

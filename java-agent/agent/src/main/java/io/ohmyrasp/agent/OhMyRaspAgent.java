@@ -1,5 +1,6 @@
 package io.ohmyrasp.agent;
 
+import io.ohmyrasp.agent.asm.HookRegistry;
 import io.ohmyrasp.agent.asm.OhMyRaspTransformer;
 import io.ohmyrasp.agent.control.ControlPlaneClient;
 import io.ohmyrasp.agent.control.ControlPlaneConfig;
@@ -22,12 +23,13 @@ public final class OhMyRaspAgent {
   }
 
   private static void start(String agentArgs, Instrumentation instrumentation) {
+    HookRegistry hookRegistry = HookRegistry.defaults();
+    appendSelfToBootstrap(instrumentation);
     ControlPlaneClient controlPlane = ControlPlaneClient.start(ControlPlaneConfig.load(agentArgs));
     JsonEventLogger.get().setControlPlaneClient(controlPlane);
-    appendSelfToBootstrap(instrumentation);
     DeserializationGuard.install();
-    instrumentation.addTransformer(new OhMyRaspTransformer(), true);
-    retransformAlreadyLoadedTargets(instrumentation);
+    instrumentation.addTransformer(new OhMyRaspTransformer(hookRegistry), true);
+    retransformAlreadyLoadedTargets(instrumentation, hookRegistry);
     System.out.println("[OHMYRASP] agent started with ASM transformer, args=" + (agentArgs == null ? "" : agentArgs));
   }
 
@@ -40,7 +42,8 @@ public final class OhMyRaspAgent {
     }
   }
 
-  private static void retransformAlreadyLoadedTargets(Instrumentation instrumentation) {
+  private static void retransformAlreadyLoadedTargets(
+      Instrumentation instrumentation, HookRegistry hookRegistry) {
     if (!instrumentation.isRetransformClassesSupported()) {
       return;
     }
@@ -49,7 +52,7 @@ public final class OhMyRaspAgent {
         continue;
       }
       String name = loaded.getName();
-      if (isBootstrapTarget(name) || "jakarta.servlet.http.HttpServlet".equals(name)) {
+      if (hookRegistry.isRetransformTarget(name)) {
         try {
           instrumentation.retransformClasses(loaded);
         } catch (Throwable throwable) {
@@ -59,17 +62,5 @@ public final class OhMyRaspAgent {
         }
       }
     }
-  }
-
-  private static boolean isBootstrapTarget(String name) {
-    return name.equals("java.lang.ProcessBuilder")
-        || name.equals("java.io.FileInputStream")
-        || name.equals("java.io.FileOutputStream")
-        || name.equals("java.io.File")
-        || name.equals("java.nio.file.Files")
-        || name.equals("java.net.URL")
-        || name.equals("java.net.InetAddress")
-        || name.equals("javax.naming.InitialContext")
-        || name.equals("com.sun.org.apache.xerces.internal.impl.XMLEntityManager");
   }
 }

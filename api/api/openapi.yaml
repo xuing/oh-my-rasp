@@ -493,6 +493,26 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/PolicySet"
+  /api/v1/policies/algorithms:
+    get:
+      responses:
+        "200":
+          description: Supported policy hook and algorithm catalog.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PolicyAlgorithmCatalog"
+  /api/v1/policies/{policyID}/restore-default:
+    post:
+      parameters:
+        - $ref: "#/components/parameters/PolicyID"
+      responses:
+        "200":
+          description: Default policy algorithms restored as a new draft version.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PolicySet"
   /api/v1/policies/{policyID}/versions:
     post:
       parameters:
@@ -1631,6 +1651,22 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/PolicyVersion"
+    PolicyAlgorithmCatalog:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/PolicyAlgorithm"
+    PolicyAlgorithm:
+      type: object
+      required: [hook, algorithms]
+      properties:
+        hook: { type: string }
+        algorithms:
+          type: array
+          items: { type: string }
     PolicyVersion:
       type: object
       required: [version, status, rules, canary_percent, created_at]
