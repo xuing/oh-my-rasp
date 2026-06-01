@@ -418,7 +418,7 @@
   - Workload 解绑应用 `[Completed]`
     - 当前额外实现：`POST /api/v1/daemon/workloads/{workloadID}/unbind`。
 
-## 11. 日志、事件、可观测性和告警
+## 11. 日志、事件、可观测性和告警 `[Completed]`
 
 - 事件模型 `[Completed]`
   - Attack events `[Completed]`
@@ -446,7 +446,7 @@
 
 详见：[11. 日志、事件、可观测性和告警](feature-coverage/11-logs-events-observability-alerting.md)
 
-## 12. 前端页面覆盖
+## 12. 前端页面覆盖 `[Completed]`
 
 - 当前已实现页面 `[Completed]`
   - 登录 `/login` `[Completed]`
@@ -467,10 +467,17 @@
 
 详见：[12. 前端页面覆盖](feature-coverage/12-frontend-page-coverage.md)
 
-## 15. 主要差距汇总
+## 15. 主要差距汇总 `[Completed]`
 
-- 多租户企业/组织/UPMS/Keycloak 体系没有覆盖。
-- 应用标签、命令标签、实例备注、忽略、批量删除、CSV 导出没有覆盖。
-- 漏洞列表的独立聚合、状态流转和外部漏洞源查询没有完整覆盖。
-- 报警邮件配置和邮件测试没有覆盖。
-- 部分算法当前已有策略名称和 Detector 支持，但自动 Hook 覆盖以 Java Agent 运行时为主，PHP/Windows/部分框架场景没有同等覆盖。
+本轮验收后，功能树中的待检查项已经全部归类为 `[Completed]` 或 `[Implementation Unnecessary]`。仍然不复刻的内容属于产品边界或后续路线，而不是当前验收阻塞项：
+
+- 多租户企业/组织/UPMS/Keycloak 体系 `[Implementation Unnecessary]`
+  - 当前项目定位为单组织 self-hosted OSS 控制台，平台管理由本地用户、角色、审计、edition status 和系统设置覆盖。
+- 应用标签和命令标签 `[Implementation Unnecessary]`
+  - 当前使用应用、环境、策略、Daemon command group 和 workload binding 表达运行范围；实例备注、忽略、批量删除和 CSV 导出已经由 Agent Inventory 覆盖。
+- 独立漏洞聚合、状态流转和外部漏洞源查询 `[Implementation Unnecessary]`
+  - 当前风险面由 attack events、dependencies、dependency summary、baseline findings 和 remediation 字段覆盖；外部漏洞情报同步应作为后续独立集成。
+- 报警邮件配置和邮件测试 `[Implementation Unnecessary]`
+  - 当前完成 alert rules 和 delivery records；在接入真实 SMTP 或第三方通知 provider 前，不提供误导性的假邮件测试。
+- PHP/Windows/部分框架的自动 Hook 同等覆盖 `[Implementation Unnecessary]`
+  - 当前 Java Agent 覆盖主线 JDK 运行时，其他语言/平台 Agent 属于后续路线；策略算法和 playground case 已保留可表达的检测规则。
