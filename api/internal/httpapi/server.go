@@ -57,6 +57,23 @@ type eventQueryParameterSet generated.GetApiV1EventsAttackParams
 type dependencyQueryParameterSet generated.GetApiV1DependenciesParams
 type baselineFindingQueryParameterSet generated.GetApiV1BaselineFindingsParams
 
+func userQueryParams(r *http.Request) (generated.GetApiV1UsersParams, error) {
+	values := r.URL.Query()
+	role, err := userRoleQueryParam(values.Get("role"))
+	if err != nil {
+		return generated.GetApiV1UsersParams{}, err
+	}
+	status, err := userStatusQueryParam(values.Get("status"))
+	if err != nil {
+		return generated.GetApiV1UsersParams{}, err
+	}
+	return generated.GetApiV1UsersParams{
+		Search: optionalString(values.Get("search")),
+		Role:   role,
+		Status: status,
+	}, nil
+}
+
 func eventQueryParams(r *http.Request) (eventQueryParameterSet, error) {
 	values := r.URL.Query()
 	occurredAfter, err := eventTimeQueryParam(values.Get("occurred_after"), "occurred_after")
@@ -210,6 +227,28 @@ func eventTypeQueryParam(raw string) (*generated.GetApiV1EventsRecycleBinParamsT
 	value := generated.GetApiV1EventsRecycleBinParamsType(strings.ToLower(strings.TrimSpace(raw)))
 	if !value.Valid() {
 		return nil, fmt.Errorf("%w: type must be one of attack, hook, performance, crash, error", control.ErrInvalid)
+	}
+	return &value, nil
+}
+
+func userRoleQueryParam(raw string) (*generated.GetApiV1UsersParamsRole, error) {
+	if raw == "" {
+		return nil, nil
+	}
+	value := generated.GetApiV1UsersParamsRole(strings.ToLower(strings.TrimSpace(raw)))
+	if !value.Valid() {
+		return nil, fmt.Errorf("%w: role must be one of admin, security_engineer, viewer", control.ErrInvalid)
+	}
+	return &value, nil
+}
+
+func userStatusQueryParam(raw string) (*generated.GetApiV1UsersParamsStatus, error) {
+	if raw == "" {
+		return nil, nil
+	}
+	value := generated.GetApiV1UsersParamsStatus(strings.ToLower(strings.TrimSpace(raw)))
+	if !value.Valid() {
+		return nil, fmt.Errorf("%w: status must be one of active, disabled", control.ErrInvalid)
 	}
 	return &value, nil
 }
@@ -374,7 +413,14 @@ func (s *Server) Routes() http.Handler {
 			private.With(s.requirePermission(permissionReadAlertRules)).Get("/alert-rules", strict.GetApiV1AlertRules)
 			private.With(s.requirePermission(permissionReadAlertDeliveries)).Get("/alert-deliveries", strict.GetApiV1AlertDeliveries)
 			private.With(s.requirePermission(permissionReadAuditLogs)).Get("/audit-logs", strict.GetApiV1AuditLogs)
-			private.With(s.requirePermission(permissionReadUsers)).Get("/users", strict.GetApiV1Users)
+			private.With(s.requirePermission(permissionReadUsers)).Get("/users", func(w http.ResponseWriter, r *http.Request) {
+				params, err := userQueryParams(r)
+				if err != nil {
+					writeError(w, err)
+					return
+				}
+				strict.GetApiV1Users(w, r, params)
+			})
 			private.With(s.requirePermission(permissionManageUsers)).Post("/users", strict.PostApiV1Users)
 			private.With(s.requirePermission(permissionManageUsers)).Put("/users/{userID}", func(w http.ResponseWriter, r *http.Request) {
 				strict.PutApiV1UsersUserID(w, r, chi.URLParam(r, "userID"))

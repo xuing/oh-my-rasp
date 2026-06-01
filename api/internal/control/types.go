@@ -35,6 +35,12 @@ type User struct {
 	DisabledAt   *time.Time `json:"disabled_at,omitempty"`
 }
 
+type UserQuery struct {
+	Search string `json:"search,omitempty"`
+	Role   string `json:"role,omitempty"`
+	Status string `json:"status,omitempty"`
+}
+
 type Session struct {
 	Token     string    `json:"token"`
 	UserID    string    `json:"user_id"`

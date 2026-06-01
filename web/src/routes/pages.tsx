@@ -68,6 +68,7 @@ import {
   type SecurityEventQuery,
   type SystemSetting,
   type User,
+  type UserQuery,
   type UserRole,
   pullAgentPolicy,
   registerAgent,
@@ -3072,8 +3073,21 @@ export function AccessPage() {
   const alertRules = alertRulesQuery.data?.items ?? [];
   const alertDeliveriesQuery = useAlertDeliveries();
   const alertDeliveries = alertDeliveriesQuery.data?.items ?? [];
-  const usersQuery = useUsers();
+  const [userSearch, setUserSearch] = useState("");
+  const [userRoleFilter, setUserRoleFilter] = useState("");
+  const [userStatusFilter, setUserStatusFilter] = useState("");
+  const userQuery: UserQuery = {
+    search: userSearch.trim() || undefined,
+    role: userRoleFilter || undefined,
+    status: userStatusFilter || undefined
+  };
+  const usersQuery = useUsers(userQuery);
   const users = usersQuery.data?.items ?? [];
+  const clearUserFilters = () => {
+    setUserSearch("");
+    setUserRoleFilter("");
+    setUserStatusFilter("");
+  };
 
   return (
     <SectionPage
@@ -3112,6 +3126,31 @@ export function AccessPage() {
             <CardTitle><UiText k="User Administration" /></CardTitle>
           </CardHeader>
           <CardContent className="p-0">
+            <div className="grid gap-3 border-b border-slate-200 p-4 md:grid-cols-[1fr_.8fr_.8fr_auto] md:items-end">
+              <label className={fieldGroupClass} htmlFor="user-search">
+                <span className={fieldLabelClass}><UiText k="User Search" /></span>
+                <input id="user-search" className={fieldControlClass} value={userSearch} onChange={event => setUserSearch(event.target.value)} />
+              </label>
+              <label className={fieldGroupClass} htmlFor="user-role-filter">
+                <span className={fieldLabelClass}><UiText k="Role Filter" /></span>
+                <select id="user-role-filter" className={fieldControlClass} value={userRoleFilter} onChange={event => setUserRoleFilter(event.target.value)}>
+                  <option value=""><UiText k="All Roles" /></option>
+                  <option value="admin"><UiText k="Admin" /></option>
+                  <option value="security_engineer"><UiText k="Security Engineer" /></option>
+                  <option value="viewer"><UiText k="Viewer" /></option>
+                </select>
+              </label>
+              <label className={fieldGroupClass} htmlFor="user-status-filter">
+                <span className={fieldLabelClass}><UiText k="Status Filter" /></span>
+                <select id="user-status-filter" className={fieldControlClass} value={userStatusFilter} onChange={event => setUserStatusFilter(event.target.value)}>
+                  <option value=""><UiText k="All Statuses" /></option>
+                  <option value="active"><UiText k="active" /></option>
+                  <option value="disabled"><UiText k="disabled" /></option>
+                </select>
+              </label>
+              <Button type="button" variant="secondary" onClick={clearUserFilters}>
+                <UiText k="Clear User Filters" /></Button>
+            </div>
             <Table className="rounded-none border-0">
               <thead>
                 <tr className="bg-slate-50">

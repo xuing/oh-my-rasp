@@ -778,8 +778,8 @@ func (s *strictServer) GetApiV1AlertDeliveries(ctx context.Context, _ generated.
 	return generated.GetApiV1AlertDeliveries200JSONResponse{Items: openAPIAlertDeliveries(deliveries)}, nil
 }
 
-func (s *strictServer) GetApiV1Users(ctx context.Context, _ generated.GetApiV1UsersRequestObject) (generated.GetApiV1UsersResponseObject, error) {
-	users, err := s.server.store.ListUsers(ctx)
+func (s *strictServer) GetApiV1Users(ctx context.Context, request generated.GetApiV1UsersRequestObject) (generated.GetApiV1UsersResponseObject, error) {
+	users, err := s.server.store.ListUsers(ctx, controlUserQueryFromParams(request.Params))
 	if err != nil {
 		return nil, err
 	}
@@ -877,6 +877,20 @@ func controlRolesFromUserUpdate(roles []generated.UserUpdateRoles) []control.Rol
 		result = append(result, control.Role(role))
 	}
 	return result
+}
+
+func controlUserQueryFromParams(params generated.GetApiV1UsersParams) control.UserQuery {
+	query := control.UserQuery{}
+	if params.Search != nil {
+		query.Search = *params.Search
+	}
+	if params.Role != nil {
+		query.Role = string(*params.Role)
+	}
+	if params.Status != nil {
+		query.Status = string(*params.Status)
+	}
+	return query
 }
 
 func openAPIApplications(applications []control.Application) []generated.Application {

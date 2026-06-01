@@ -429,6 +429,12 @@ export type User = {
   disabled_at?: string;
 };
 
+export type UserQuery = {
+  search?: string;
+  role?: string;
+  status?: string;
+};
+
 export type AlertRule = {
   id: string;
   name: string;
@@ -1105,10 +1111,11 @@ export function useEditionStatus() {
   });
 }
 
-export function useUsers() {
+export function useUsers(query: UserQuery = {}) {
+  const queryString = apiQueryString(query);
   return useQuery({
-    queryKey: ["users"],
-    queryFn: () => fetchJSON<ListResponse<User>>("/api/v1/users"),
+    queryKey: ["users", query],
+    queryFn: () => fetchJSON<ListResponse<User>>(`/api/v1/users${queryString}`),
     retry: false,
     staleTime: 15_000
   });

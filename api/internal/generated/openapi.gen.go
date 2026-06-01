@@ -621,19 +621,19 @@ func (e UserCreateRoles) Valid() bool {
 
 // Defines values for UserUpdateRoles.
 const (
-	Admin            UserUpdateRoles = "admin"
-	SecurityEngineer UserUpdateRoles = "security_engineer"
-	Viewer           UserUpdateRoles = "viewer"
+	UserUpdateRolesAdmin            UserUpdateRoles = "admin"
+	UserUpdateRolesSecurityEngineer UserUpdateRoles = "security_engineer"
+	UserUpdateRolesViewer           UserUpdateRoles = "viewer"
 )
 
 // Valid indicates whether the value is a known member of the UserUpdateRoles enum.
 func (e UserUpdateRoles) Valid() bool {
 	switch e {
-	case Admin:
+	case UserUpdateRolesAdmin:
 		return true
-	case SecurityEngineer:
+	case UserUpdateRolesSecurityEngineer:
 		return true
-	case Viewer:
+	case UserUpdateRolesViewer:
 		return true
 	default:
 		return false
@@ -844,6 +844,45 @@ func (e GetApiV1EventsRecycleBinParamsType) Valid() bool {
 	case GetApiV1EventsRecycleBinParamsTypeHook:
 		return true
 	case GetApiV1EventsRecycleBinParamsTypePerformance:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for GetApiV1UsersParamsRole.
+const (
+	GetApiV1UsersParamsRoleAdmin            GetApiV1UsersParamsRole = "admin"
+	GetApiV1UsersParamsRoleSecurityEngineer GetApiV1UsersParamsRole = "security_engineer"
+	GetApiV1UsersParamsRoleViewer           GetApiV1UsersParamsRole = "viewer"
+)
+
+// Valid indicates whether the value is a known member of the GetApiV1UsersParamsRole enum.
+func (e GetApiV1UsersParamsRole) Valid() bool {
+	switch e {
+	case GetApiV1UsersParamsRoleAdmin:
+		return true
+	case GetApiV1UsersParamsRoleSecurityEngineer:
+		return true
+	case GetApiV1UsersParamsRoleViewer:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for GetApiV1UsersParamsStatus.
+const (
+	Active   GetApiV1UsersParamsStatus = "active"
+	Disabled GetApiV1UsersParamsStatus = "disabled"
+)
+
+// Valid indicates whether the value is a known member of the GetApiV1UsersParamsStatus enum.
+func (e GetApiV1UsersParamsStatus) Valid() bool {
+	switch e {
+	case Active:
+		return true
+	case Disabled:
 		return true
 	default:
 		return false
@@ -1982,6 +2021,19 @@ type GetApiV1EventsRecycleBinParams struct {
 // GetApiV1EventsRecycleBinParamsType defines parameters for GetApiV1EventsRecycleBin.
 type GetApiV1EventsRecycleBinParamsType string
 
+// GetApiV1UsersParams defines parameters for GetApiV1Users.
+type GetApiV1UsersParams struct {
+	Search *string                    `form:"search,omitempty" json:"search,omitempty"`
+	Role   *GetApiV1UsersParamsRole   `form:"role,omitempty" json:"role,omitempty"`
+	Status *GetApiV1UsersParamsStatus `form:"status,omitempty" json:"status,omitempty"`
+}
+
+// GetApiV1UsersParamsRole defines parameters for GetApiV1Users.
+type GetApiV1UsersParamsRole string
+
+// GetApiV1UsersParamsStatus defines parameters for GetApiV1Users.
+type GetApiV1UsersParamsStatus string
+
 // PostApiV1AgentArtifactsJSONRequestBody defines body for PostApiV1AgentArtifacts for application/json ContentType.
 type PostApiV1AgentArtifactsJSONRequestBody = AgentArtifactUpload
 
@@ -2298,7 +2350,7 @@ type ServerInterface interface {
 	GetApiV1SystemEdition(w http.ResponseWriter, r *http.Request)
 
 	// (GET /api/v1/users)
-	GetApiV1Users(w http.ResponseWriter, r *http.Request)
+	GetApiV1Users(w http.ResponseWriter, r *http.Request, params GetApiV1UsersParams)
 
 	// (POST /api/v1/users)
 	PostApiV1Users(w http.ResponseWriter, r *http.Request)
@@ -2671,7 +2723,7 @@ func (_ Unimplemented) GetApiV1SystemEdition(w http.ResponseWriter, r *http.Requ
 }
 
 // (GET /api/v1/users)
-func (_ Unimplemented) GetApiV1Users(w http.ResponseWriter, r *http.Request) {
+func (_ Unimplemented) GetApiV1Users(w http.ResponseWriter, r *http.Request, params GetApiV1UsersParams) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
@@ -6076,14 +6128,59 @@ func (siw *ServerInterfaceWrapper) GetApiV1SystemEdition(w http.ResponseWriter, 
 // GetApiV1Users operation middleware
 func (siw *ServerInterfaceWrapper) GetApiV1Users(w http.ResponseWriter, r *http.Request) {
 
+	var err error
+	_ = err
+
 	ctx := r.Context()
 
 	ctx = context.WithValue(ctx, BearerAuthScopes, []string{})
 
 	r = r.WithContext(ctx)
 
+	// Parameter object where we will unmarshal all parameters from the context
+	var params GetApiV1UsersParams
+
+	// ------------- Optional query parameter "search" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "search", r.URL.Query(), &params.Search, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "search"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "search", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "role" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "role", r.URL.Query(), &params.Role, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "role"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "role", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "status" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "status", r.URL.Query(), &params.Status, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "status"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "status", Err: err})
+		}
+		return
+	}
+
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		siw.Handler.GetApiV1Users(w, r)
+		siw.Handler.GetApiV1Users(w, r, params)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -8078,6 +8175,7 @@ func (response GetApiV1SystemEdition200JSONResponse) VisitGetApiV1SystemEditionR
 }
 
 type GetApiV1UsersRequestObject struct {
+	Params GetApiV1UsersParams
 }
 
 type GetApiV1UsersResponseObject interface {
@@ -10449,8 +10547,10 @@ func (sh *strictHandler) GetApiV1SystemEdition(w http.ResponseWriter, r *http.Re
 }
 
 // GetApiV1Users operation middleware
-func (sh *strictHandler) GetApiV1Users(w http.ResponseWriter, r *http.Request) {
+func (sh *strictHandler) GetApiV1Users(w http.ResponseWriter, r *http.Request, params GetApiV1UsersParams) {
 	var request GetApiV1UsersRequestObject
+
+	request.Params = params
 
 	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
 		return sh.ssi.GetApiV1Users(ctx, request.(GetApiV1UsersRequestObject))

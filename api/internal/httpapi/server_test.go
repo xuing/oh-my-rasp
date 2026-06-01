@@ -1246,6 +1246,19 @@ func TestUserAdministrationRequiresAdminAndAudits(t *testing.T) {
 	if updated["disabled_at"] == nil {
 		t.Fatalf("expected disabled_at in updated user: %#v", updated)
 	}
+	filteredUsers := client.request(t, http.MethodGet, "/api/v1/users?search=analyst&role=viewer&status=disabled", token, nil)
+	filteredItems := arrayValue(t, filteredUsers, "items")
+	if len(filteredItems) != 1 || filteredItems[0].(map[string]any)["id"] != userID {
+		t.Fatalf("expected disabled analyst user search result, got %#v", filteredUsers)
+	}
+	activeFilteredUsers := client.request(t, http.MethodGet, "/api/v1/users?search=analyst&status=active", token, nil)
+	if items := arrayValue(t, activeFilteredUsers, "items"); len(items) != 0 {
+		t.Fatalf("expected active analyst search to be empty, got %#v", activeFilteredUsers)
+	}
+	badRole := client.raw(t, http.MethodGet, "/api/v1/users?role=owner", token, nil, nil)
+	if badRole.Code != http.StatusBadRequest {
+		t.Fatalf("expected invalid user role filter to be rejected, got %d: %s", badRole.Code, badRole.Body.String())
+	}
 
 	disabledLogin := client.raw(t, http.MethodPost, "/api/v1/auth/login", "", nil, map[string]any{
 		"email":    "analyst@example.test",

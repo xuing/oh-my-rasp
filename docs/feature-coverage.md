@@ -306,22 +306,23 @@
   - 审计详情弹窗 `viewDialog.vue` `[Implementation Unnecessary]`
     - 当前 Access & Audit 表格行内展示 actor、action、resource、time 和 JSON details。
 
-## 8. 企业管理、平台管理和用户管理
+## 8. 企业管理、平台管理和用户管理 `[Completed]`
 
 - 平台管理 `/platform`
-  - 组织管理 `/platform` `[未覆盖]`
-    - 当前仅有默认 Organization 结构，没有 UI/API 做多组织 CRUD。
-  - 平台用户管理 `/platform/user` `[待检查]`
-    - 当前有本地用户和角色，但不是 UPMS 全平台用户。
-  - 用户创建 `/v3/upms/user` `[待检查]`
+  - 组织管理 `/platform` `[Implementation Unnecessary]`
+    - 当前项目是单组织自托管控制台；`/platform` 兼容路由指向 Access & Audit，展示 OSS edition、RBAC、用户、审计和系统设置。
+  - 平台用户管理 `/platform/user` `[Completed]`
+    - 当前有本地用户、角色、禁用状态和审计日志；兼容路由 `/platform/user` 指向 Access & Audit。
+  - 用户创建 `/v3/upms/user` `[Completed]`
     - 当前：`POST /api/v1/users`。
-  - 用户更新 `/v3/upms/user` PUT `[待检查]`
+  - 用户更新 `/v3/upms/user` PUT `[Completed]`
     - 当前：`PUT /api/v1/users/{userID}`。
-  - 用户状态变更 `/v3/upms/user/status` `[待检查]`
-    - 当前 `disabled_at` 支持禁用语义，但没有同名 API。
-  - 用户搜索 `/v3/upms/user/search` `[待检查]`
-    - 当前用户列表未提供完整搜索 API。
-  - 租户创建、更新、删除、搜索 `/v3/upms/tenants*` `[未覆盖]`
+  - 用户状态变更 `/v3/upms/user/status` `[Completed]`
+    - 当前：`PUT /api/v1/users/{userID}` 的 `disabled` 字段，持久化为 `disabled_at` 并使 session 失效。
+  - 用户搜索 `/v3/upms/user/search` `[Completed]`
+    - 当前：`GET /api/v1/users?search=&role=&status=`，支持邮箱/姓名/ID 搜索、角色和 active/disabled 状态筛选。
+  - 租户创建、更新、删除、搜索 `/v3/upms/tenants*` `[Implementation Unnecessary]`
+    - 当前项目不采用多租户模型；应用、环境、Agent 和策略在单组织内组合管理。
 
 ## 9. 系统设置
 

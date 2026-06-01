@@ -165,6 +165,20 @@ const accessRoute = createRoute({
   component: AccessPage
 });
 
+const platformRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/platform",
+  beforeLoad: requireSession,
+  component: AccessPage
+});
+
+const platformUserRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/platform/user",
+  beforeLoad: requireSession,
+  component: AccessPage
+});
+
 const loginRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/login",
@@ -198,6 +212,8 @@ export const routeTree = rootRoute.addChildren([
   logAuditRoute,
   observabilityRoute,
   accessRoute,
+  platformRoute,
+  platformUserRoute,
   loginRoute,
   noAccessRoute
 ]);

@@ -117,13 +117,26 @@ test("navigates primary control-plane sections with an authenticated session", a
     } else if (section.path === "/access") {
       await expect(page.getByText("Open Source Self-Hosted")).toBeVisible();
       await expect(page.getByText("Not required")).toBeVisible();
+      await page.getByLabel("User Search").fill("Default");
+      await page.getByLabel("Role Filter").selectOption("admin");
+      await page.getByLabel("Status Filter").selectOption("active");
+      await expect
+        .poll(() =>
+          api.authorizedURLs.some(
+            path => path.startsWith("/api/v1/users?") && path.includes("search=Default") && path.includes("role=admin") && path.includes("status=active")
+          )
+        )
+        .toBe(true);
+      await page.getByRole("button", { name: "Clear User Filters" }).click();
     }
   }
 
   for (const legacyRoute of [
     { path: "/log/exceptions", heading: "Events", evidence: "Unhandled exception captured" },
     { path: "/log/crash", heading: "Events", evidence: "Agent crash captured" },
-    { path: "/log/audit", heading: "Access & Audit", evidence: "auth.login" }
+    { path: "/log/audit", heading: "Access & Audit", evidence: "auth.login" },
+    { path: "/platform", heading: "Access & Audit", evidence: "User Administration" },
+    { path: "/platform/user", heading: "Access & Audit", evidence: "User Lifecycle" }
   ]) {
     await page.goto(legacyRoute.path);
     await expect(page).toHaveURL(new RegExp(`${legacyRoute.path}$`));

@@ -254,13 +254,37 @@ func (s *Store) UserForToken(ctx context.Context, token string) (control.User, e
 	return user, err
 }
 
-func (s *Store) ListUsers(ctx context.Context) ([]control.User, error) {
-	rows, err := s.db.QueryContext(ctx, `
+func (s *Store) ListUsers(ctx context.Context, queries ...control.UserQuery) ([]control.User, error) {
+	query := control.UserQuery{}
+	if len(queries) > 0 {
+		query = queries[0]
+	}
+	query, err := control.NormalizeUserQuery(query)
+	if err != nil {
+		return nil, err
+	}
+	sqlQuery := `
 		SELECT id, email, name, password_hash, to_json(roles)::text, created_at, updated_at, disabled_at
 		FROM users
-		WHERE organization_id = $1
-		ORDER BY email
-	`, s.organizationID)
+	`
+	args := []any{s.organizationID}
+	where := []string{"organization_id = $1"}
+	if query.Search != "" {
+		args = append(args, "%"+query.Search+"%")
+		where = append(where, fmt.Sprintf("(LOWER(id) LIKE $%d OR LOWER(email) LIKE $%d OR LOWER(name) LIKE $%d)", len(args), len(args), len(args)))
+	}
+	if query.Role != "" {
+		args = append(args, query.Role)
+		where = append(where, fmt.Sprintf("$%d::text = ANY(roles)", len(args)))
+	}
+	if query.Status == "active" {
+		where = append(where, "disabled_at IS NULL")
+	}
+	if query.Status == "disabled" {
+		where = append(where, "disabled_at IS NOT NULL")
+	}
+	sqlQuery += ` WHERE ` + strings.Join(where, " AND ") + ` ORDER BY email`
+	rows, err := s.db.QueryContext(ctx, sqlQuery, args...)
 	if err != nil {
 		return nil, err
 	}

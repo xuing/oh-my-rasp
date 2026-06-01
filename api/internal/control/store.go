@@ -25,7 +25,7 @@ var (
 type Store interface {
 	Login(ctx context.Context, email string, password string) (Session, User, error)
 	UserForToken(ctx context.Context, token string) (User, error)
-	ListUsers(ctx context.Context) ([]User, error)
+	ListUsers(ctx context.Context, queries ...UserQuery) ([]User, error)
 	CreateUser(ctx context.Context, actorID string, input User, password string) (User, error)
 	UpdateUser(ctx context.Context, actorID string, userID string, input User) (User, error)
 	ListApplications(ctx context.Context) ([]Application, error)
@@ -245,11 +245,18 @@ func (s *MemoryStore) UserForToken(_ context.Context, token string) (User, error
 	return user, nil
 }
 
-func (s *MemoryStore) ListUsers(_ context.Context) ([]User, error) {
+func (s *MemoryStore) ListUsers(_ context.Context, queries ...UserQuery) ([]User, error) {
+	query, err := firstUserQuery(queries)
+	if err != nil {
+		return nil, err
+	}
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	users := make([]User, 0, len(s.users))
 	for _, user := range s.users {
+		if !userMatchesQuery(user, query) {
+			continue
+		}
 		users = append(users, publicUser(user))
 	}
 	sort.Slice(users, func(i, j int) bool { return users[i].Email < users[j].Email })
@@ -2415,6 +2422,45 @@ func NormalizeUserRoles(roles []Role) ([]Role, error) {
 		}
 	}
 	return ordered, nil
+}
+
+func NormalizeUserQuery(input UserQuery) (UserQuery, error) {
+	input.Search = strings.ToLower(strings.TrimSpace(input.Search))
+	input.Role = strings.ToLower(strings.TrimSpace(input.Role))
+	input.Status = strings.ToLower(strings.TrimSpace(input.Status))
+	if input.Role != "" && !contains([]string{"admin", "security_engineer", "viewer"}, input.Role) {
+		return UserQuery{}, fmt.Errorf("%w: user role filter is not supported", ErrInvalid)
+	}
+	if input.Status != "" && !contains([]string{"active", "disabled"}, input.Status) {
+		return UserQuery{}, fmt.Errorf("%w: user status filter is not supported", ErrInvalid)
+	}
+	return input, nil
+}
+
+func firstUserQuery(queries []UserQuery) (UserQuery, error) {
+	if len(queries) == 0 {
+		return NormalizeUserQuery(UserQuery{})
+	}
+	return NormalizeUserQuery(queries[0])
+}
+
+func userMatchesQuery(user User, query UserQuery) bool {
+	if query.Search != "" {
+		haystack := strings.ToLower(strings.Join([]string{user.ID, user.Email, user.Name}, " "))
+		if !strings.Contains(haystack, query.Search) {
+			return false
+		}
+	}
+	if query.Role != "" && !hasRole(user.Roles, Role(query.Role)) {
+		return false
+	}
+	if query.Status == "active" && user.DisabledAt != nil {
+		return false
+	}
+	if query.Status == "disabled" && user.DisabledAt == nil {
+		return false
+	}
+	return true
 }
 
 func validHumanRole(role Role) bool {

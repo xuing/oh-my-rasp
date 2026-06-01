@@ -61,6 +61,23 @@ paths:
                 $ref: "#/components/schemas/MeResponse"
   /api/v1/users:
     get:
+      parameters:
+        - name: search
+          in: query
+          required: false
+          schema: { type: string }
+        - name: role
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [admin, security_engineer, viewer]
+        - name: status
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [active, disabled]
       responses:
         "200":
           description: User administration list.

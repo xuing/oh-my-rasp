@@ -119,6 +119,13 @@ func TestStoreIntegrationPostgresWorkflow(t *testing.T) {
 	if disabledAnalyst.DisabledAt == nil {
 		t.Fatalf("expected disabled user timestamp: %#v", disabledAnalyst)
 	}
+	filteredUsers, err := store.ListUsers(ctx, control.UserQuery{Search: "analyst", Role: "viewer", Status: "disabled"})
+	if err != nil {
+		t.Fatalf("filtered users: %v", err)
+	}
+	if !containsUser(filteredUsers, analyst.ID) {
+		t.Fatalf("expected filtered users to include disabled analyst: %#v", filteredUsers)
+	}
 	if _, err := store.UserForToken(ctx, analystSession.Token); !errors.Is(err, control.ErrUnauthorized) {
 		t.Fatalf("expected disabled user token to be unauthorized, got %v", err)
 	}
