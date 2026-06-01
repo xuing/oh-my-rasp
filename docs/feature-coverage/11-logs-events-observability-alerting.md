@@ -25,6 +25,7 @@
   - agent overhead
   - policy performance
   - `GET /api/v1/analytics/observability`
+- 以上运行时事件和可观测性状态已由 Java Agent producer 路径覆盖；fixture/mock 只用于 UI 回归测试，不再作为端到端完成证据。
 - Prometheus 指标已覆盖：
   - `GET /metrics`
   - policy pull latency
@@ -77,6 +78,7 @@
 - `cd web && npm run e2e`
 - `docker compose build api migrate web && docker compose up -d web`
 - `cd web && npm run e2e:live`
+- Java Agent producer acceptance registered `agt_da418d23e6471bcc` against the running API and produced dependency, baseline, hook, performance, error, crash, and observability records without direct fixture POSTs for those records.
 - Live API acceptance:
   - typed event ingest and query return attack/hook/performance/crash/error events
   - observability report returns hook latency `p50_latency_us` and `p95_latency_us`

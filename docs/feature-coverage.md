@@ -11,6 +11,16 @@
 - 当前 Web：`web/src/router.tsx`, `web/src/routes/pages.tsx`, `web/src/lib/api.ts`
 - 当前 Java Agent：`java-agent/agent/src/main/java/io/ohmyrasp/agent/**`
 
+## 证据层级说明
+
+`[Completed]` 不再只表示 endpoint 或页面存在。对运行时安全数据，本文区分三类证据：
+
+- API/UI 覆盖：控制平面可以接收、查询、展示和测试对应数据。
+- Agent-produced 覆盖：Java Agent 会在真实注册、策略拉取或 Hook 执行路径中产生该数据。
+- Live acceptance 覆盖：Docker Compose 或 playground 环境证明数据从 Agent/服务进入控制平面，而不是只由 Playwright/mock fixture 填充。
+
+审计修复明细和逐项证据见 [`docs/architecture-gap-repair-plan.md`](architecture-gap-repair-plan.md)。
+
 ## 1. 门户、认证和初始化 `[Completed]`
 
 子文档：[`docs/feature-coverage/01-portal-auth-initialization.md`](feature-coverage/01-portal-auth-initialization.md)
@@ -120,7 +130,7 @@
     - 当前回收站展示删除状态、事件详情和攻击参数；修复建议不作为回收站特有对象建模。
 - 配置安检 `/safe/baseline`
   - Policy/baseline 日志搜索 `/v1/api/log/policy/search` `[Completed]`
-    - 当前：`GET /api/v1/baseline-findings`, `POST /api/v1/baseline-findings`。
+    - 当前：`GET /api/v1/baseline-findings`, `POST /api/v1/baseline-findings`；Java Agent 已上报 JVM runtime baseline finding，状态不是单纯 endpoint 存在。
   - 检查项、资源、修复建议、状态展示 `[Completed]`
     - 当前 baseline finding 含 check_id、title、category、resource、severity、status、remediation、attributes。
   - 安检参数组件 `baselineParams.vue` `[Completed]`
@@ -128,7 +138,7 @@
     - 当前 baseline findings 已覆盖配置安检日志；不新增 legacy policy alarm 兼容接口。
 - 类库安全 `/safe/dependency`
   - 依赖上报 `/v1/agent/dependency` `[Completed]`
-    - 当前：`POST /api/v1/dependencies`。
+    - 当前：`POST /api/v1/dependencies`；Java Agent 已上报 Java runtime、Agent code source 和 classpath JAR inventory。
   - 依赖搜索 `/v1/api/dependency/search` `[Completed]`
     - 当前：`GET /api/v1/dependencies`。
   - 依赖聚合 `/v1/api/dependency/aggr` `[Completed]`
@@ -431,7 +441,7 @@
   - Event metadata、request、rule、policy、algorithm 字段 `[Completed]`
 - 可观测性 `[Completed]`
   - Hook latency p50/p95、agent performance、policy performance `[Completed]`
-    - 当前：`GET /api/v1/analytics/observability`。
+    - 当前：`GET /api/v1/analytics/observability`；Java Agent 已产生 hook/performance telemetry，报表不再只依赖 fixture 输入。
   - Prometheus metrics `[Completed]`
     - 当前：`GET /metrics`。
   - 归档 Dashboard ECharts 图形复刻 `[Implementation Unnecessary]`
@@ -460,9 +470,8 @@
   - 可观测性 `/observability` `[Completed]`
   - 访问与审计 `/access` `[Completed]`
 - 归档页面未完全复刻
-  - 添加实例向导 `/addInstance` `[Implementation Unnecessary]`
-    - 归档细分：手动添加、自动添加、Docker、Kubernetes、Windows、PHP、客户端安装弹窗。
-    - 当前有 Agent artifact、daemon workload 绑定和注入状态，但没有完整向导 UI。
+  - 添加实例向导 `/addInstance` `[Completed]`
+    - 当前提供专用 Agent onboarding 页面，覆盖应用/环境作用域、手动 Java Agent、Docker、Kubernetes、Daemon managed injection 和运行时证据校验。
   - 平台管理 `/platform` `[Completed]`
   - 系统设置 `/settings/*` `[Completed]`
   - noaccess/404 专页 `[Completed]`

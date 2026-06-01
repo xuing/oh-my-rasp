@@ -44,7 +44,7 @@
   - `/log/exceptions` -> Events
   - `/log/crash` -> Events
   - `/log/audit` -> Access & Audit
-- Playwright fixtures 和 E2E 覆盖异常日志可见性与旧路由访问。
+- Playwright fixtures 和 E2E 覆盖异常日志可见性与旧路由访问；Java Agent producer 测试和 live API acceptance 覆盖真实 Agent error/crash 事件生产。
 
 ## 不复刻的旧功能
 
@@ -54,4 +54,5 @@
 
 ## 验证
 
+- Java Agent producer acceptance 已证明 error/crash 事件由 Agent 侧路径上报到运行中的 API。
 - 待最终验收批次执行全量 Go、Web unit、Playwright E2E、Docker Compose 和 live acceptance。

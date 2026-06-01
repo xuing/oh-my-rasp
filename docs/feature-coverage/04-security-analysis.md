@@ -29,6 +29,7 @@ Status: Completed
 - Dependency export API and frontend JSON download.
 - API tests for dependency export and summary.
 - Web unit/E2E coverage for Events page data flows remains green.
+- Dependency and baseline completion is backed by Java Agent producer evidence, not only by direct API fixture insertion.
 
 ## New Capabilities
 
