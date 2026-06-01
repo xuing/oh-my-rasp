@@ -1220,6 +1220,37 @@ const apiFixtures: Record<string, unknown> = {
       }
     ]
   },
+  "/api/v1/dependencies/export": {
+    items: [
+      {
+        id: "dep_1",
+        application_id: "app_managed",
+        agent_id: "agt_api_1",
+        name: "spring-web",
+        version: "6.2.0",
+        ecosystem: "maven",
+        package_path: "org/springframework/spring-web/6.2.0/spring-web-6.2.0.jar",
+        licenses: ["Apache-2.0"],
+        vulnerabilities: [
+          {
+            id: "CVE-2026-0001",
+            severity: "critical",
+            cvss: 9.1,
+            known_exploited: true,
+            fixed_version: "6.2.1"
+          }
+        ],
+        observed_at: "2026-05-31T00:00:00Z"
+      }
+    ]
+  },
+  "/api/v1/dependencies/summary": {
+    dependency_count: 1,
+    vulnerable_dependency_count: 1,
+    known_exploited_count: 1,
+    dependencies_by_ecosystem: { maven: 1 },
+    vulnerabilities_by_severity: { critical: 1 }
+  },
   "/api/v1/baseline-findings": {
     items: [
       {

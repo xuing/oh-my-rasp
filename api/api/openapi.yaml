@@ -865,6 +865,24 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Dependency"
+  /api/v1/dependencies/export:
+    get:
+      responses:
+        "200":
+          description: Dependency observations export.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DependencyList"
+  /api/v1/dependencies/summary:
+    get:
+      responses:
+        "200":
+          description: Dependency aggregate summary.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DependencySummary"
   /api/v1/baseline-findings:
     get:
       parameters:
@@ -1809,6 +1827,21 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/Dependency"
+    DependencySummary:
+      type: object
+      required: [dependency_count, vulnerable_dependency_count, known_exploited_count, dependencies_by_ecosystem, vulnerabilities_by_severity]
+      properties:
+        dependency_count: { type: integer }
+        vulnerable_dependency_count: { type: integer }
+        known_exploited_count: { type: integer }
+        dependencies_by_ecosystem:
+          type: object
+          additionalProperties:
+            type: integer
+        vulnerabilities_by_severity:
+          type: object
+          additionalProperties:
+            type: integer
     DependencyInput:
       type: object
       required: [application_id, name]

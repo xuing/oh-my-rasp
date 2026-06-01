@@ -1995,6 +1995,45 @@ func (s *Store) ListDependencies(ctx context.Context, query control.DependencyQu
 	return dependencies, rows.Err()
 }
 
+func (s *Store) DependencySummary(ctx context.Context) (control.DependencySummary, error) {
+	summary := control.DependencySummary{
+		DependenciesByEcosystem:   map[string]int{},
+		VulnerabilitiesBySeverity: map[string]int{},
+	}
+	if err := s.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM dependency_inventory`).Scan(&summary.DependencyCount); err != nil {
+		return control.DependencySummary{}, err
+	}
+	if err := s.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM dependency_inventory WHERE jsonb_array_length(vulnerabilities) > 0`).Scan(&summary.VulnerableDependencyCount); err != nil {
+		return control.DependencySummary{}, err
+	}
+	if err := s.db.QueryRowContext(ctx, `
+		SELECT COUNT(*)
+		FROM dependency_inventory, jsonb_array_elements(vulnerabilities) AS vulnerability
+		WHERE COALESCE((vulnerability->>'known_exploited')::boolean, false)
+	`).Scan(&summary.KnownExploitedCount); err != nil {
+		return control.DependencySummary{}, err
+	}
+	if err := scanCounts(ctx, s.db, `
+		SELECT ecosystem, COUNT(*)
+		FROM dependency_inventory
+		WHERE ecosystem <> ''
+		GROUP BY ecosystem
+		ORDER BY COUNT(*) DESC, ecosystem ASC
+	`, summary.DependenciesByEcosystem); err != nil {
+		return control.DependencySummary{}, err
+	}
+	if err := scanCounts(ctx, s.db, `
+		SELECT vulnerability->>'severity', COUNT(*)
+		FROM dependency_inventory, jsonb_array_elements(vulnerabilities) AS vulnerability
+		WHERE COALESCE(vulnerability->>'severity', '') <> ''
+		GROUP BY vulnerability->>'severity'
+		ORDER BY COUNT(*) DESC, vulnerability->>'severity' ASC
+	`, summary.VulnerabilitiesBySeverity); err != nil {
+		return control.DependencySummary{}, err
+	}
+	return summary, nil
+}
+
 func (s *Store) ListBaselineFindings(ctx context.Context, query control.BaselineFindingQuery) ([]control.BaselineFinding, error) {
 	query = control.NormalizeBaselineFindingQuery(query)
 	sqlQuery := `

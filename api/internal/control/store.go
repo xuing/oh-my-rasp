@@ -63,6 +63,7 @@ type Store interface {
 	RestoreDeletedEvents(ctx context.Context, actorID string, request EventRecycleBinRequest) (EventRecycleBinReport, error)
 	PurgeDeletedEvents(ctx context.Context, actorID string, request EventRecycleBinRequest) (EventRecycleBinReport, error)
 	ListDependencies(ctx context.Context, query DependencyQuery) ([]Dependency, error)
+	DependencySummary(ctx context.Context) (DependencySummary, error)
 	ListBaselineFindings(ctx context.Context, query BaselineFindingQuery) ([]BaselineFinding, error)
 	Overview(ctx context.Context) (Overview, error)
 	Observability(ctx context.Context, query ObservabilityQuery) (ObservabilityReport, error)
@@ -1465,6 +1466,29 @@ func (s *MemoryStore) ListDependencies(_ context.Context, query DependencyQuery)
 		dependencies = dependencies[:query.Limit]
 	}
 	return dependencies, nil
+}
+
+func (s *MemoryStore) DependencySummary(_ context.Context) (DependencySummary, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	summary := DependencySummary{
+		DependenciesByEcosystem:   map[string]int{},
+		VulnerabilitiesBySeverity: map[string]int{},
+	}
+	for _, dep := range s.dependencies {
+		summary.DependencyCount++
+		incrementIfPresent(summary.DependenciesByEcosystem, dep.Ecosystem)
+		if len(dep.Vulnerabilities) > 0 {
+			summary.VulnerableDependencyCount++
+		}
+		for _, vulnerability := range dep.Vulnerabilities {
+			incrementIfPresent(summary.VulnerabilitiesBySeverity, vulnerability.Severity)
+			if vulnerability.KnownExploited {
+				summary.KnownExploitedCount++
+			}
+		}
+	}
+	return summary, nil
 }
 
 func NormalizeDependencyQuery(query DependencyQuery) DependencyQuery {

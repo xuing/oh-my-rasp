@@ -82,57 +82,63 @@
   - 漏洞聚合概览 `/v1/api/log/attack/aggr/vuln` `[Implementation Unnecessary]`
     - 当前：不新增独立漏洞实体或旧式聚合接口；总览页以 `attacks_by_hook` 和 `attacks_by_algorithm` 展示风险信号，独立漏洞对象应留给依赖漏洞/安全分析模块建模。
 
-## 4. 安全分析
+## 4. 安全分析 `[Completed]`
 
 - 漏洞列表 `/safe/vulns`
-  - 攻击漏洞聚合 `/v1/api/log/attack/aggr/vuln` `[待检查]`
-    - 当前以事件和策略算法展示攻击面，没有复刻“漏洞列表”聚合实体。
-  - 漏洞状态设置 `/v2/api/vuln/status` `[未覆盖]`
-  - 漏洞详情弹窗 `[待检查]`
-    - 当前事件详情展示 request、metadata、policy、algorithm 等字段，但没有独立 vuln 详情对象。
-  - 攻击参数组件 `attackParams.vue` `[待检查]`
-    - 当前事件详情展示请求上下文和 metadata，但不是同款参数组件。
-  - 修复建议组件 `fixSolutions.vue` `[待检查]`
-    - 当前可在 rule/baseline remediation 中表达修复建议，未实现归档同款漏洞修复建议组件。
+  - 攻击漏洞聚合 `/v1/api/log/attack/aggr/vuln` `[Implementation Unnecessary]`
+    - 当前以事件、Hook、算法、依赖漏洞和 baseline findings 展示风险；不新增独立 legacy vuln 聚合实体。
+  - 漏洞状态设置 `/v2/api/vuln/status` `[Implementation Unnecessary]`
+    - 当前没有独立 vuln 生命周期对象；状态应归属于 baseline finding、dependency vulnerability 或后续专门漏洞管理模块。
+  - 漏洞详情弹窗 `[Implementation Unnecessary]`
+    - 当前不新增独立 vuln 详情对象；Events 页展示事件参数，依赖和 baseline 展示漏洞/修复上下文。
+  - 攻击参数组件 `attackParams.vue` `[Completed]`
+    - 当前 Events 页在事件和回收站行内展示攻击参数/attributes。
+  - 修复建议组件 `fixSolutions.vue` `[Completed]`
+    - 当前 baseline findings 展示 remediation；dependency vulnerabilities 展示 fixed_version/known_exploited 元数据。
 - 攻击事件 `/safe/events`
-  - 攻击事件搜索 `/v1/api/log/attack/search` `[请二次检查]`
+  - 攻击事件搜索 `/v1/api/log/attack/search` `[Completed]`
     - 当前：`GET /api/v1/events/attack`，支持 application、environment、agent、severity、hook、algorithm、limit 等筛选。
-  - 攻击事件上报 `/v1/agent/log/attack` `[请二次检查]`
+  - 攻击事件上报 `/v1/agent/log/attack` `[Completed]`
     - 当前：`POST /api/v1/events/attack`，由 Agent 凭应用凭据上报。
-  - 攻击事件详情弹窗 `[请二次检查]`
-    - 当前 Events 页展示事件主体、request、metadata、rule、policy。
-  - 攻击参数组件 `attackParams.vue` `[待检查]`
-  - 加入白名单弹窗 `addWhiltelist.vue` `[未覆盖]`
-    - 当前没有独立 whitelist 配置模型。
-  - 修复建议组件 `fixSolutions.vue` `[待检查]`
-  - 攻击事件删除到回收站 `/v1/api/log/attack` DELETE `[请二次检查]`
+  - 攻击事件详情弹窗 `[Completed]`
+    - 当前 Events 页展示事件主体、ID、policy、algorithm、hook、severity、occurred_at 和 attributes。
+  - 攻击参数组件 `attackParams.vue` `[Completed]`
+  - 加入白名单弹窗 `addWhiltelist.vue` `[Implementation Unnecessary]`
+    - 当前 allowlist 是集中保护配置，不从单个事件隐式写入。
+  - 修复建议组件 `fixSolutions.vue` `[Implementation Unnecessary]`
+    - 攻击事件是检测事实；修复建议归属于规则、baseline finding 或 dependency vulnerability。
+  - 攻击事件删除到回收站 `/v1/api/log/attack` DELETE `[Completed]`
     - 当前：`POST /api/v1/events/recycle-bin/delete`。
 - 攻击事件回收站 `/safe/recycleBin`
-  - 回收站搜索 `/v1/api/log/attack/trash/search` `[请二次检查]`
+  - 回收站搜索 `/v1/api/log/attack/trash/search` `[Completed]`
     - 当前：`GET /api/v1/events/recycle-bin`。
-  - 回收站恢复 `/v1/api/log/attack/trash/restore` `[请二次检查]`
+  - 回收站恢复 `/v1/api/log/attack/trash/restore` `[Completed]`
     - 当前：`POST /api/v1/events/recycle-bin/restore`。
-  - 回收站永久删除 `/v1/api/log/attack/trash` DELETE `[请二次检查]`
+  - 回收站永久删除 `/v1/api/log/attack/trash` DELETE `[Completed]`
     - 当前：`POST /api/v1/events/recycle-bin/purge`。
-  - 回收站事件详情、攻击参数、修复建议组件 `[待检查]`
-    - 当前回收站复用事件详情和恢复/永久删除操作，但未复刻归档组件拆分。
+  - 回收站事件详情、攻击参数、修复建议组件 `[Completed]`
+    - 当前回收站展示删除状态、事件详情和攻击参数；修复建议不作为回收站特有对象建模。
 - 配置安检 `/safe/baseline`
-  - Policy/baseline 日志搜索 `/v1/api/log/policy/search` `[待检查]`
+  - Policy/baseline 日志搜索 `/v1/api/log/policy/search` `[Completed]`
     - 当前：`GET /api/v1/baseline-findings`, `POST /api/v1/baseline-findings`。
-  - 检查项、资源、修复建议、状态展示 `[请二次检查]`
+  - 检查项、资源、修复建议、状态展示 `[Completed]`
     - 当前 baseline finding 含 check_id、title、category、resource、severity、status、remediation、attributes。
-  - 安检参数组件 `baselineParams.vue` `[待检查]`
-  - 归档的 policy alarm 日志兼容接口 `[未覆盖]`
+  - 安检参数组件 `baselineParams.vue` `[Completed]`
+  - 归档的 policy alarm 日志兼容接口 `[Implementation Unnecessary]`
+    - 当前 baseline findings 已覆盖配置安检日志；不新增 legacy policy alarm 兼容接口。
 - 类库安全 `/safe/dependency`
-  - 依赖上报 `/v1/agent/dependency` `[请二次检查]`
+  - 依赖上报 `/v1/agent/dependency` `[Completed]`
     - 当前：`POST /api/v1/dependencies`。
-  - 依赖搜索 `/v1/api/dependency/search` `[请二次检查]`
+  - 依赖搜索 `/v1/api/dependency/search` `[Completed]`
     - 当前：`GET /api/v1/dependencies`。
-  - 依赖聚合 `/v1/api/dependency/aggr` `[待检查]`
-    - 当前有依赖列表、漏洞元数据和 overview，但没有同名聚合接口。
-  - 依赖删除 `/v1/api/dependency/delete` `[未覆盖]`
-  - 外部漏洞源查询 `/vuln/api/v1/vuln/search_source_vulns` `[未覆盖]`
-  - 依赖导出 `[未覆盖]`
+  - 依赖聚合 `/v1/api/dependency/aggr` `[Completed]`
+    - 当前：`GET /api/v1/dependencies/summary`。
+  - 依赖删除 `/v1/api/dependency/delete` `[Implementation Unnecessary]`
+    - 当前依赖是安全证据和最近观测库存；单条删除容易破坏审计，使用维护清理按范围和时间清除。
+  - 外部漏洞源查询 `/vuln/api/v1/vuln/search_source_vulns` `[Implementation Unnecessary]`
+    - 当前依赖上报携带漏洞元数据；外部源同步应作为后续独立情报集成，而非安全分析基础功能。
+  - 依赖导出 `[Completed]`
+    - 当前：`GET /api/v1/dependencies/export` 和 Events 页导出按钮。
 
 ## 5. 防护设置和检测算法
 

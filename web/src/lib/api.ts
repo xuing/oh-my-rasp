@@ -323,6 +323,14 @@ export type DependencyQuery = {
   limit?: number;
 };
 
+export type DependencySummary = {
+  dependency_count: number;
+  vulnerable_dependency_count: number;
+  known_exploited_count: number;
+  dependencies_by_ecosystem: Record<string, number>;
+  vulnerabilities_by_severity: Record<string, number>;
+};
+
 export type BaselineFinding = {
   id: string;
   application_id: string;
@@ -968,6 +976,19 @@ export function useDeletedSecurityEvents(query: SecurityEventRecycleBinQuery = {
   return useQuery({
     queryKey: ["events", "recycle-bin", query],
     queryFn: () => fetchJSON<ListResponse<SecurityEvent>>(`/api/v1/events/recycle-bin${queryString}`),
+    retry: false,
+    staleTime: 15_000
+  });
+}
+
+export function exportDependencies() {
+  return fetchJSON<ListResponse<Dependency>>("/api/v1/dependencies/export");
+}
+
+export function useDependencySummary() {
+  return useQuery({
+    queryKey: ["dependencies", "summary"],
+    queryFn: () => fetchJSON<DependencySummary>("/api/v1/dependencies/summary"),
     retry: false,
     staleTime: 15_000
   });

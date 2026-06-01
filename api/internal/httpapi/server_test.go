@@ -554,6 +554,22 @@ func TestOpenAPIStrictContractRoutes(t *testing.T) {
 	if len(arrayValue(t, dependencies, "items")) != 1 {
 		t.Fatalf("expected dependency list response, got %#v", dependencies)
 	}
+	dependencyExport := client.request(t, http.MethodGet, "/api/v1/dependencies/export", token, nil)
+	if len(arrayValue(t, dependencyExport, "items")) != 1 {
+		t.Fatalf("expected dependency export response, got %#v", dependencyExport)
+	}
+	dependencySummary := client.request(t, http.MethodGet, "/api/v1/dependencies/summary", token, nil)
+	if dependencySummary["dependency_count"].(float64) != 1 || dependencySummary["vulnerable_dependency_count"].(float64) != 1 || dependencySummary["known_exploited_count"].(float64) != 1 {
+		t.Fatalf("expected dependency summary counts, got %#v", dependencySummary)
+	}
+	byEcosystem := objectValue(t, dependencySummary, "dependencies_by_ecosystem")
+	if byEcosystem["maven"].(float64) != 1 {
+		t.Fatalf("expected dependency ecosystem aggregate, got %#v", byEcosystem)
+	}
+	byVulnerabilitySeverity := objectValue(t, dependencySummary, "vulnerabilities_by_severity")
+	if byVulnerabilitySeverity["critical"].(float64) != 1 {
+		t.Fatalf("expected dependency vulnerability aggregate, got %#v", byVulnerabilitySeverity)
+	}
 	filteredDependencies := client.request(t, http.MethodGet, "/api/v1/dependencies?application_id=app_default&name=log4j-core&ecosystem=maven&vulnerability_severity=critical&observed_after=2026-05-30T00:00:00Z&observed_before=2026-06-01T00:00:00Z&limit=1", token, nil)
 	if len(arrayValue(t, filteredDependencies, "items")) != 1 {
 		t.Fatalf("expected filtered dependency list response, got %#v", filteredDependencies)

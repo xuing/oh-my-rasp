@@ -1219,6 +1219,15 @@ type DependencyList struct {
 	Items []Dependency `json:"items"`
 }
 
+// DependencySummary defines model for DependencySummary.
+type DependencySummary struct {
+	DependenciesByEcosystem   map[string]int `json:"dependencies_by_ecosystem"`
+	DependencyCount           int            `json:"dependency_count"`
+	KnownExploitedCount       int            `json:"known_exploited_count"`
+	VulnerabilitiesBySeverity map[string]int `json:"vulnerabilities_by_severity"`
+	VulnerableDependencyCount int            `json:"vulnerable_dependency_count"`
+}
+
 // DependencyVulnerability defines model for DependencyVulnerability.
 type DependencyVulnerability struct {
 	Cvss           *float32                        `json:"cvss,omitempty"`
@@ -2100,6 +2109,12 @@ type ServerInterface interface {
 	// (POST /api/v1/dependencies)
 	PostApiV1Dependencies(w http.ResponseWriter, r *http.Request, params PostApiV1DependenciesParams)
 
+	// (GET /api/v1/dependencies/export)
+	GetApiV1DependenciesExport(w http.ResponseWriter, r *http.Request)
+
+	// (GET /api/v1/dependencies/summary)
+	GetApiV1DependenciesSummary(w http.ResponseWriter, r *http.Request)
+
 	// (GET /api/v1/events/attack)
 	GetApiV1EventsAttack(w http.ResponseWriter, r *http.Request, params GetApiV1EventsAttackParams)
 
@@ -2370,6 +2385,16 @@ func (_ Unimplemented) GetApiV1Dependencies(w http.ResponseWriter, r *http.Reque
 
 // (POST /api/v1/dependencies)
 func (_ Unimplemented) PostApiV1Dependencies(w http.ResponseWriter, r *http.Request, params PostApiV1DependenciesParams) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// (GET /api/v1/dependencies/export)
+func (_ Unimplemented) GetApiV1DependenciesExport(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// (GET /api/v1/dependencies/summary)
+func (_ Unimplemented) GetApiV1DependenciesSummary(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
@@ -4084,6 +4109,46 @@ func (siw *ServerInterfaceWrapper) PostApiV1Dependencies(w http.ResponseWriter, 
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.PostApiV1Dependencies(w, r, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetApiV1DependenciesExport operation middleware
+func (siw *ServerInterfaceWrapper) GetApiV1DependenciesExport(w http.ResponseWriter, r *http.Request) {
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, BearerAuthScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetApiV1DependenciesExport(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetApiV1DependenciesSummary operation middleware
+func (siw *ServerInterfaceWrapper) GetApiV1DependenciesSummary(w http.ResponseWriter, r *http.Request) {
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, BearerAuthScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetApiV1DependenciesSummary(w, r)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -5815,6 +5880,12 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 		r.Post(options.BaseURL+"/api/v1/dependencies", wrapper.PostApiV1Dependencies)
 	})
 	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/api/v1/dependencies/export", wrapper.GetApiV1DependenciesExport)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/api/v1/dependencies/summary", wrapper.GetApiV1DependenciesSummary)
+	})
+	r.Group(func(r chi.Router) {
 		r.Get(options.BaseURL+"/api/v1/events/attack", wrapper.GetApiV1EventsAttack)
 	})
 	r.Group(func(r chi.Router) {
@@ -6681,6 +6752,48 @@ func (response PostApiV1Dependencies202JSONResponse) VisitPostApiV1DependenciesR
 	return err
 }
 
+type GetApiV1DependenciesExportRequestObject struct {
+}
+
+type GetApiV1DependenciesExportResponseObject interface {
+	VisitGetApiV1DependenciesExportResponse(w http.ResponseWriter) error
+}
+
+type GetApiV1DependenciesExport200JSONResponse DependencyList
+
+func (response GetApiV1DependenciesExport200JSONResponse) VisitGetApiV1DependenciesExportResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetApiV1DependenciesSummaryRequestObject struct {
+}
+
+type GetApiV1DependenciesSummaryResponseObject interface {
+	VisitGetApiV1DependenciesSummaryResponse(w http.ResponseWriter) error
+}
+
+type GetApiV1DependenciesSummary200JSONResponse DependencySummary
+
+func (response GetApiV1DependenciesSummary200JSONResponse) VisitGetApiV1DependenciesSummaryResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type GetApiV1EventsAttackRequestObject struct {
 	Params GetApiV1EventsAttackParams
 }
@@ -7466,6 +7579,12 @@ type StrictServerInterface interface {
 
 	// (POST /api/v1/dependencies)
 	PostApiV1Dependencies(ctx context.Context, request PostApiV1DependenciesRequestObject) (PostApiV1DependenciesResponseObject, error)
+
+	// (GET /api/v1/dependencies/export)
+	GetApiV1DependenciesExport(ctx context.Context, request GetApiV1DependenciesExportRequestObject) (GetApiV1DependenciesExportResponseObject, error)
+
+	// (GET /api/v1/dependencies/summary)
+	GetApiV1DependenciesSummary(ctx context.Context, request GetApiV1DependenciesSummaryRequestObject) (GetApiV1DependenciesSummaryResponseObject, error)
 
 	// (GET /api/v1/events/attack)
 	GetApiV1EventsAttack(ctx context.Context, request GetApiV1EventsAttackRequestObject) (GetApiV1EventsAttackResponseObject, error)
@@ -8556,6 +8675,54 @@ func (sh *strictHandler) PostApiV1Dependencies(w http.ResponseWriter, r *http.Re
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(PostApiV1DependenciesResponseObject); ok {
 		if err := validResponse.VisitPostApiV1DependenciesResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetApiV1DependenciesExport operation middleware
+func (sh *strictHandler) GetApiV1DependenciesExport(w http.ResponseWriter, r *http.Request) {
+	var request GetApiV1DependenciesExportRequestObject
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetApiV1DependenciesExport(ctx, request.(GetApiV1DependenciesExportRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetApiV1DependenciesExport")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetApiV1DependenciesExportResponseObject); ok {
+		if err := validResponse.VisitGetApiV1DependenciesExportResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetApiV1DependenciesSummary operation middleware
+func (sh *strictHandler) GetApiV1DependenciesSummary(w http.ResponseWriter, r *http.Request) {
+	var request GetApiV1DependenciesSummaryRequestObject
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetApiV1DependenciesSummary(ctx, request.(GetApiV1DependenciesSummaryRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetApiV1DependenciesSummary")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetApiV1DependenciesSummaryResponseObject); ok {
+		if err := validResponse.VisitGetApiV1DependenciesSummaryResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {

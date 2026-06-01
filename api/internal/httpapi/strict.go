@@ -520,6 +520,24 @@ func (s *strictServer) GetApiV1Dependencies(ctx context.Context, request generat
 	}, nil
 }
 
+func (s *strictServer) GetApiV1DependenciesExport(ctx context.Context, _ generated.GetApiV1DependenciesExportRequestObject) (generated.GetApiV1DependenciesExportResponseObject, error) {
+	dependencies, err := s.server.store.ListDependencies(ctx, control.DependencyQuery{Limit: 1000})
+	if err != nil {
+		return nil, err
+	}
+	return generated.GetApiV1DependenciesExport200JSONResponse{
+		Items: openAPIDependencies(dependencies),
+	}, nil
+}
+
+func (s *strictServer) GetApiV1DependenciesSummary(ctx context.Context, _ generated.GetApiV1DependenciesSummaryRequestObject) (generated.GetApiV1DependenciesSummaryResponseObject, error) {
+	summary, err := s.server.store.DependencySummary(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return generated.GetApiV1DependenciesSummary200JSONResponse(openAPIDependencySummary(summary)), nil
+}
+
 func (s *strictServer) PostApiV1Dependencies(ctx context.Context, request generated.PostApiV1DependenciesRequestObject) (generated.PostApiV1DependenciesResponseObject, error) {
 	if request.Body == nil {
 		return nil, control.ErrInvalid
@@ -1380,6 +1398,16 @@ func openAPIDependencies(dependencies []control.Dependency) []generated.Dependen
 		result = append(result, openAPIDependency(dependency))
 	}
 	return result
+}
+
+func openAPIDependencySummary(summary control.DependencySummary) generated.DependencySummary {
+	return generated.DependencySummary{
+		DependencyCount:           summary.DependencyCount,
+		VulnerableDependencyCount: summary.VulnerableDependencyCount,
+		KnownExploitedCount:       summary.KnownExploitedCount,
+		DependenciesByEcosystem:   copyStringIntMap(summary.DependenciesByEcosystem),
+		VulnerabilitiesBySeverity: copyStringIntMap(summary.VulnerabilitiesBySeverity),
+	}
 }
 
 func controlBaselineFindingFromOpenAPI(finding generated.BaselineFindingInput) control.BaselineFinding {

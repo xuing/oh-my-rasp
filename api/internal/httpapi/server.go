@@ -338,6 +338,8 @@ func (s *Server) Routes() http.Handler {
 				}
 				strict.GetApiV1Dependencies(w, r, generated.GetApiV1DependenciesParams(params))
 			})
+			private.With(s.requirePermission(permissionReadEvents)).Get("/dependencies/export", strict.GetApiV1DependenciesExport)
+			private.With(s.requirePermission(permissionReadEvents)).Get("/dependencies/summary", strict.GetApiV1DependenciesSummary)
 			private.With(s.requirePermission(permissionReadEvents)).Get("/baseline-findings", func(w http.ResponseWriter, r *http.Request) {
 				params, err := baselineFindingQueryParams(r)
 				if err != nil {

@@ -341,6 +341,14 @@ type DependencyQuery struct {
 	Limit                 int       `json:"limit,omitempty"`
 }
 
+type DependencySummary struct {
+	DependencyCount           int            `json:"dependency_count"`
+	VulnerableDependencyCount int            `json:"vulnerable_dependency_count"`
+	KnownExploitedCount       int            `json:"known_exploited_count"`
+	DependenciesByEcosystem   map[string]int `json:"dependencies_by_ecosystem"`
+	VulnerabilitiesBySeverity map[string]int `json:"vulnerabilities_by_severity"`
+}
+
 type BaselineFinding struct {
 	ID            string         `json:"id"`
 	ApplicationID string         `json:"application_id"`

@@ -41,6 +41,7 @@ import {
   deleteApplication,
   downloadAgentArtifact,
   exportApplications,
+  exportDependencies,
   getAgentArtifactInfo,
   getDaemonApplicationCredential,
   getDaemonToken,
@@ -90,6 +91,7 @@ import {
   useAuditLogs,
   useBaselineFindings,
   useDependencies,
+  useDependencySummary,
   useDeletedSecurityEvents,
   useEditionStatus,
   useObservability,
@@ -1781,6 +1783,8 @@ export function EventsPage() {
   const [dependencyObservedAfter, setDependencyObservedAfter] = useState("");
   const [dependencyObservedBefore, setDependencyObservedBefore] = useState("");
   const [dependencyLimit, setDependencyLimit] = useState("500");
+  const [dependencyExportMessage, setDependencyExportMessage] = useState({ status: "", error: "" });
+  const [isExportingDependencies, setIsExportingDependencies] = useState(false);
   const [baselineApplicationID, setBaselineApplicationID] = useState("");
   const [baselineEnvironmentID, setBaselineEnvironmentID] = useState("");
   const [baselineAgentID, setBaselineAgentID] = useState("");
@@ -1845,6 +1849,7 @@ export function EventsPage() {
   const crashQuery = useSecurityEvents("crash", eventQuery);
   const deletedEventsQuery = useDeletedSecurityEvents(eventQuery);
   const dependenciesQuery = useDependencies(dependencyQuery);
+  const dependencySummaryQuery = useDependencySummary();
   const baselineFindingsQuery = useBaselineFindings(baselineQuery);
   const attackEvents = attackQuery.data?.items ?? [];
   const hookEvents = hookQuery.data?.items ?? [];
@@ -1852,6 +1857,13 @@ export function EventsPage() {
   const crashEvents = crashQuery.data?.items ?? [];
   const deletedEvents = deletedEventsQuery.data?.items ?? [];
   const dependencies = dependenciesQuery.data?.items ?? [];
+  const dependencySummary = dependencySummaryQuery.data ?? {
+    dependency_count: 0,
+    vulnerable_dependency_count: 0,
+    known_exploited_count: 0,
+    dependencies_by_ecosystem: {},
+    vulnerabilities_by_severity: {}
+  };
   const baselineFindings = baselineFindingsQuery.data?.items ?? [];
   const allEvents = [...attackEvents, ...hookEvents, ...performanceEvents, ...crashEvents].sort((a, b) => Date.parse(b.occurred_at) - Date.parse(a.occurred_at));
   const recycleEventOptions = uniqueEventsByID([...allEvents, ...deletedEvents]).sort((a, b) => Date.parse(b.occurred_at) - Date.parse(a.occurred_at));
@@ -1943,6 +1955,21 @@ export function EventsPage() {
     setBaselineLimit("500");
   };
 
+  async function handleDependencyExport() {
+    setDependencyExportMessage({ status: "", error: "" });
+    setIsExportingDependencies(true);
+    try {
+      const exported = await exportDependencies();
+      const blob = new Blob([JSON.stringify(exported, null, 2)], { type: "application/json" });
+      triggerBrowserDownload(blob, `ohmyrasp-dependencies-${new Date().toISOString().slice(0, 10)}.json`);
+      setDependencyExportMessage({ status: notice("Exported {{count}} dependencies.", { count: exported.items.length }), error: "" });
+    } catch {
+      setDependencyExportMessage({ status: "", error: notice("Unable to export dependencies.") });
+    } finally {
+      setIsExportingDependencies(false);
+    }
+  }
+
   return (
     <SectionPage
       title={t("pages.events.title")}
@@ -1958,6 +1985,7 @@ export function EventsPage() {
           performanceQuery.isLoading ||
           crashQuery.isLoading ||
           dependenciesQuery.isLoading ||
+          dependencySummaryQuery.isLoading ||
           baselineFindingsQuery.isLoading
         }
         isError={
@@ -1969,6 +1997,7 @@ export function EventsPage() {
           performanceQuery.isError ||
           crashQuery.isError ||
           dependenciesQuery.isError ||
+          dependencySummaryQuery.isError ||
           baselineFindingsQuery.isError
         }
         loading={<UiText k="Loading event and inventory data." />}
@@ -2126,7 +2155,16 @@ export function EventsPage() {
                   <td className="p-3">
                     <Badge tone={eventTypeTone(event.type)}>{event.type}</Badge>
                   </td>
-                  <td className="p-3 font-medium">{event.message}</td>
+                  <td className="p-3">
+                    <div className="font-medium">{event.message}</div>
+                    <div className="mt-1 max-w-xl text-xs text-slate-500">
+                      {event.id} / <UiText k="Algorithm" />: {event.algorithm || translateUiCopy(appI18n.resolvedLanguage ?? appI18n.language, "unknown")}
+                      {event.policy_id ? ` / policy: ${event.policy_id} v${event.policy_version ?? 0}` : ""}
+                    </div>
+                    <div className="mt-1 max-w-xl truncate text-xs text-slate-500" title={formatDetails(event.attributes)}>
+                      <UiText k="Attack Parameters" />: {formatDetails(event.attributes)}
+                    </div>
+                  </td>
                   <td className="p-3 text-slate-600">{event.hook || <UiText k="unknown" />}</td>
                   <td className="p-3">
                     <Badge tone={severityTone(event.severity)}>{event.severity}</Badge>
@@ -2196,6 +2234,9 @@ export function EventsPage() {
                     <td className="p-3">
                       <div className="font-medium">{event.message}</div>
                       <div className="text-xs text-slate-500">{event.id}</div>
+                      <div className="mt-1 max-w-xl truncate text-xs text-slate-500" title={formatDetails(event.attributes)}>
+                        <UiText k="Attack Parameters" />: {formatDetails(event.attributes)}
+                      </div>
                     </td>
                     <td className="p-3 text-slate-600"><FormattedDate value={event.deleted_at} /></td>
                     <td className="p-3 text-slate-600">{event.deleted_by || <UiText k="unknown" />}</td>
@@ -2213,10 +2254,37 @@ export function EventsPage() {
       </Card>
       <section className="grid gap-5">
         <Card className="overflow-hidden">
-          <CardHeader>
+          <CardHeader className="flex flex-wrap items-center justify-between gap-3">
             <CardTitle><UiText k="Dependency Inventory" /></CardTitle>
+            <Button disabled={isExportingDependencies} type="button" variant="secondary" onClick={() => void handleDependencyExport()}>
+              <Download className="h-4 w-4" />
+              <UiText k={isExportingDependencies ? "Exporting Dependencies" : "Export Dependencies"} />
+            </Button>
           </CardHeader>
           <CardContent className="p-0">
+            <div className="grid gap-3 border-b border-slate-200 p-4 md:grid-cols-3 xl:grid-cols-5">
+              <div className="rounded-md border border-slate-200 px-3 py-2">
+                <div className="text-xs text-slate-500"><UiText k="Dependencies" /></div>
+                <div className="mt-1 text-lg font-semibold tabular-nums text-slate-950">{formatNumber(dependencySummary.dependency_count)}</div>
+              </div>
+              <div className="rounded-md border border-slate-200 px-3 py-2">
+                <div className="text-xs text-slate-500"><UiText k="Vulnerable Dependencies" /></div>
+                <div className="mt-1 text-lg font-semibold tabular-nums text-slate-950">{formatNumber(dependencySummary.vulnerable_dependency_count)}</div>
+              </div>
+              <div className="rounded-md border border-slate-200 px-3 py-2">
+                <div className="text-xs text-slate-500"><UiText k="Known Exploited" /></div>
+                <div className="mt-1 text-lg font-semibold tabular-nums text-slate-950">{formatNumber(dependencySummary.known_exploited_count)}</div>
+              </div>
+              <div className="rounded-md border border-slate-200 px-3 py-2 xl:col-span-2">
+                <div className="text-xs text-slate-500"><UiText k="Top Ecosystems" /></div>
+                <div className="mt-1 truncate text-sm font-medium text-slate-950">
+                  {topEntries(dependencySummary.dependencies_by_ecosystem, 3).map(([name, count]) => `${name} ${formatNumber(count)}`).join(" / ") || <UiText k="No samples" />}
+                </div>
+              </div>
+            </div>
+            <div className="border-b border-slate-200 px-4 py-3">
+              <FormMessage error={dependencyExportMessage.error} status={dependencyExportMessage.status} />
+            </div>
             <div className="grid gap-3 border-b border-slate-200 p-4 md:grid-cols-2 xl:grid-cols-4">
               <label className={fieldGroupClass} htmlFor="dependency-application">
                 <span className={fieldLabelClass}><UiText k="Dependency Application" /></span>
@@ -2486,6 +2554,12 @@ export function EventsPage() {
                       <td className="p-3">
                         <div className="font-medium">{finding.title}</div>
                         <div className="text-xs text-slate-500">{finding.check_id}</div>
+                        <div className="mt-1 max-w-xl truncate text-xs text-slate-500" title={finding.remediation || formatDetails(finding.attributes)}>
+                          <UiText k="Fix Solution" />: {finding.remediation || <UiText k="No remediation" />}
+                        </div>
+                        <div className="mt-1 max-w-xl truncate text-xs text-slate-500" title={formatDetails(finding.attributes)}>
+                          <UiText k="Baseline Parameters" />: {formatDetails(finding.attributes)}
+                        </div>
                       </td>
                       <td className="p-3 text-slate-600">{finding.category ? <UiValue value={finding.category} /> : <UiText k="runtime" />}</td>
                       <td className="p-3">
@@ -4486,8 +4560,18 @@ function formatDetails(details?: Record<string, unknown>) {
     return "-";
   }
   return Object.entries(details)
-    .map(([key, value]) => `${key}=${String(value)}`)
+    .map(([key, value]) => `${key}=${formatDetailValue(value)}`)
     .join(", ");
+}
+
+function formatDetailValue(value: unknown) {
+  if (value === null || value === undefined) {
+    return "";
+  }
+  if (typeof value === "object") {
+    return JSON.stringify(value);
+  }
+  return String(value);
 }
 
 function formatLabel(value?: string) {
@@ -4669,7 +4753,7 @@ function EmptyPanelLabel({ children }: { children: ReactNode }) {
   return <div className="flex min-h-24 items-center justify-center rounded-md border border-dashed border-slate-200 text-sm text-slate-500">{children}</div>;
 }
 
-function topEntries(values: Record<string, number>, limit = 5): [string, number][] {
+function topEntries(values: Record<string, number> = {}, limit = 5): [string, number][] {
   return Object.entries(values)
     .filter(([, count]) => count > 0)
     .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
