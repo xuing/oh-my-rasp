@@ -149,6 +149,98 @@ final class ControlPlaneClientTest {
     assertTrue("agt_policy".equals(installedAgentKey.get()));
   }
 
+  @Test
+  void reportsRuntimeProducersAndOperationalEvents() throws Exception {
+    List<String> requests = new ArrayList<>();
+    HttpServer server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+    server.createContext(
+        "/api/v1/agents/register",
+        exchange -> {
+          record(requests, exchange);
+          respond(exchange, 201, "{\"id\":\"agt_runtime\",\"policy_id\":\"pol_runtime\",\"policy_version\":1}");
+        });
+    server.createContext(
+        "/api/v1/agents/agt_runtime/heartbeat",
+        exchange -> {
+          record(requests, exchange);
+          respond(exchange, 200, "{\"id\":\"agt_runtime\",\"policy_id\":\"pol_runtime\",\"policy_version\":1}");
+        });
+    server.createContext(
+        "/api/v1/agents/agt_runtime/policy",
+        exchange -> {
+          record(requests, exchange);
+          respond(exchange, 404, "{\"error\":\"not_found\"}");
+        });
+    server.createContext(
+        "/api/v1/dependencies",
+        exchange -> {
+          record(requests, exchange);
+          respond(exchange, 202, "{\"id\":\"dep_test\"}");
+        });
+    server.createContext(
+        "/api/v1/baseline-findings",
+        exchange -> {
+          record(requests, exchange);
+          respond(exchange, 202, "{\"id\":\"bsl_test\"}");
+        });
+    server.createContext(
+        "/api/v1/events/hook",
+        exchange -> {
+          record(requests, exchange);
+          respond(exchange, 202, "{\"id\":\"evt_hook\"}");
+        });
+    server.createContext(
+        "/api/v1/events/performance",
+        exchange -> {
+          record(requests, exchange);
+          respond(exchange, 202, "{\"id\":\"evt_perf\"}");
+        });
+    server.createContext(
+        "/api/v1/events/error",
+        exchange -> {
+          record(requests, exchange);
+          respond(exchange, 202, "{\"id\":\"evt_error\"}");
+        });
+    server.createContext(
+        "/api/v1/events/crash",
+        exchange -> {
+          record(requests, exchange);
+          respond(exchange, 202, "{\"id\":\"evt_crash\"}");
+        });
+    server.start();
+    try {
+      ControlPlaneConfig config =
+          new ControlPlaneConfig(
+              "http://127.0.0.1:" + server.getAddress().getPort(),
+              "app_test",
+              "secret_test",
+              "env_test",
+              "node-test",
+              "java",
+              "1.0.0");
+      try (ControlPlaneClient client = ControlPlaneClient.start(config)) {
+        waitForContaining(requests, "POST /api/v1/dependencies");
+        waitForContaining(requests, "\"name\":\"java-runtime\"");
+        waitForContaining(requests, "POST /api/v1/baseline-findings");
+        waitForContaining(requests, "\"check_id\":\"jvm.debug.disabled\"");
+        waitForContaining(requests, "POST /api/v1/events/performance");
+
+        client.submitHookTelemetry(sqlDetection(), 1234, 55);
+        client.submitError("test-hook", "simulated hook error", new IllegalStateException("boom"));
+        client.submitCrash("crash-thread", new RuntimeException("dead"));
+
+        waitForContaining(requests, "POST /api/v1/events/hook");
+        waitForContaining(requests, "\"latency_us\":1234");
+        waitForContaining(requests, "POST /api/v1/events/error");
+        waitForContaining(requests, "\"exception_class\":\"java.lang.IllegalStateException\"");
+        waitForContaining(requests, "POST /api/v1/events/crash");
+        waitForContaining(requests, "\"thread\":\"crash-thread\"");
+      }
+    } finally {
+      server.stop(0);
+    }
+  }
+
   private static void waitFor(List<String> requests, int count) throws InterruptedException {
     long deadline = System.currentTimeMillis() + 3_000;
     while (System.currentTimeMillis() < deadline) {
@@ -171,6 +263,22 @@ final class ControlPlaneClientTest {
       Thread.sleep(25);
     }
     throw new AssertionError("timed out waiting for policy install");
+  }
+
+  private static void waitForContaining(List<String> requests, String needle)
+      throws InterruptedException {
+    long deadline = System.currentTimeMillis() + 3_000;
+    while (System.currentTimeMillis() < deadline) {
+      synchronized (requests) {
+        for (String request : requests) {
+          if (request.contains(needle)) {
+            return;
+          }
+        }
+      }
+      Thread.sleep(25);
+    }
+    throw new AssertionError("timed out waiting for request containing " + needle + ", got " + requests);
   }
 
   private static Detection sqlDetection() {

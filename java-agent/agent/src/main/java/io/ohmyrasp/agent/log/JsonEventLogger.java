@@ -59,6 +59,20 @@ public final class JsonEventLogger {
     }
   }
 
+  public void recordHookTelemetry(Detection detection, long latencyUs, long ruleEvaluationUs) {
+    ControlPlaneClient client = controlPlaneClient;
+    if (client != null) {
+      client.submitHookTelemetry(detection, latencyUs, ruleEvaluationUs);
+    }
+  }
+
+  public void reportError(String hook, Throwable throwable) {
+    ControlPlaneClient client = controlPlaneClient;
+    if (client != null) {
+      client.submitError(hook, "Agent hook failure", throwable);
+    }
+  }
+
   private static String toJson(Detection detection) {
     var builder = new StringBuilder(512);
     builder.append('{');

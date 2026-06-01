@@ -29,10 +29,25 @@ public final class OhMyRaspAgent {
     ControlPlaneClient controlPlane =
         ControlPlaneClient.start(ControlPlaneConfig.load(agentArgs), OhMyRaspHooks::installPolicy);
     JsonEventLogger.get().setControlPlaneClient(controlPlane);
+    installCrashReporter(controlPlane);
     DeserializationGuard.install();
     instrumentation.addTransformer(new OhMyRaspTransformer(hookRegistry), true);
     retransformAlreadyLoadedTargets(instrumentation, hookRegistry);
     System.out.println("[OHMYRASP] agent started with ASM transformer, args=" + (agentArgs == null ? "" : agentArgs));
+  }
+
+  private static void installCrashReporter(ControlPlaneClient controlPlane) {
+    if (controlPlane == null) {
+      return;
+    }
+    Thread.UncaughtExceptionHandler previous = Thread.getDefaultUncaughtExceptionHandler();
+    Thread.setDefaultUncaughtExceptionHandler(
+        (thread, throwable) -> {
+          controlPlane.submitCrash(thread == null ? "" : thread.getName(), throwable);
+          if (previous != null) {
+            previous.uncaughtException(thread, throwable);
+          }
+        });
   }
 
   private static void appendSelfToBootstrap(Instrumentation instrumentation) {

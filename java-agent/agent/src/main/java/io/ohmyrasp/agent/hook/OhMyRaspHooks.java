@@ -532,8 +532,11 @@ public final class OhMyRaspHooks {
     if (detection.isEmpty()) {
       return;
     }
+    long started = System.nanoTime();
     Detection value = detection.orElseThrow();
+    long ruleEvaluationStarted = System.nanoTime();
     PolicyEvaluation policyEvaluation = POLICY.evaluate(value, POLICY_AGENT_KEY);
+    long ruleEvaluationUs = elapsedMicros(ruleEvaluationStarted);
     if (policyEvaluation.ignored()) {
       return;
     }
@@ -546,6 +549,7 @@ public final class OhMyRaspHooks {
     }
     boolean willBlock = "block".equalsIgnoreCase(event.action()) && activeRequest(event);
     JsonEventLogger.get().log(event);
+    JsonEventLogger.get().recordHookTelemetry(event, elapsedMicros(started), ruleEvaluationUs);
     if (willBlock) {
       redirectToBlockPage(event);
       if (throwOnBlock) {
@@ -556,6 +560,10 @@ public final class OhMyRaspHooks {
 
   private static boolean activeRequest(Detection detection) {
     return detection != null && detection.request() != null && detection.request().active();
+  }
+
+  private static long elapsedMicros(long startedNanos) {
+    return Math.max(0, (System.nanoTime() - startedNanos) / 1_000);
   }
 
   private static boolean legacyBlockEnabled() {
@@ -595,6 +603,7 @@ public final class OhMyRaspHooks {
   }
 
   private static void quiet(String hook, Throwable throwable) {
+    JsonEventLogger.get().reportError(hook, throwable);
     if (Boolean.getBoolean("ohmyrasp.debug")) {
       System.err.println("[OHMYRASP] hook failure in " + hook + ": " + throwable);
     }

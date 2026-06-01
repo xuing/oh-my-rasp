@@ -2,22 +2,32 @@ package io.ohmyrasp.agent.control;
 
 import io.ohmyrasp.agent.model.Detection;
 import io.ohmyrasp.agent.policy.AgentPolicy;
+import java.io.File;
 import java.io.InputStream;
 import java.io.IOException;
 import java.io.OutputStream;
+import java.lang.management.ManagementFactory;
+import java.lang.management.RuntimeMXBean;
 import java.net.HttpURLConnection;
 import java.net.URI;
 import java.nio.charset.StandardCharsets;
+import java.security.CodeSource;
+import java.time.Instant;
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.BiConsumer;
 
 public final class ControlPlaneClient implements AutoCloseable {
   private final ControlPlaneConfig config;
   private final ScheduledExecutorService executor;
   private final BiConsumer<AgentPolicy, String> policyInstaller;
+  private final AtomicBoolean initialReportsSent = new AtomicBoolean();
   private volatile String agentId;
   private volatile String policyId;
   private volatile int policyVersion;
@@ -62,6 +72,21 @@ public final class ControlPlaneClient implements AutoCloseable {
     executor.execute(() -> uploadQuietly(detection));
   }
 
+  public void submitHookTelemetry(Detection detection, long latencyUs, long ruleEvaluationUs) {
+    if (detection == null) {
+      return;
+    }
+    executor.execute(() -> uploadHookTelemetryQuietly(detection, latencyUs, ruleEvaluationUs));
+  }
+
+  public void submitError(String hook, String message, Throwable throwable) {
+    executor.execute(() -> uploadErrorQuietly(hook, message, throwable));
+  }
+
+  public void submitCrash(String threadName, Throwable throwable) {
+    executor.execute(() -> uploadCrashQuietly(threadName, throwable));
+  }
+
   @Override
   public void close() {
     executor.shutdownNow();
@@ -72,10 +97,13 @@ public final class ControlPlaneClient implements AutoCloseable {
       ensureRegistered();
       heartbeat();
       pullPolicy();
+      reportInitialRuntimeState();
+      reportPerformanceSample("startup");
     } catch (IOException | InterruptedException e) {
       if (e instanceof InterruptedException) {
         Thread.currentThread().interrupt();
       }
+      uploadErrorQuietly("control-plane.registration", "control-plane registration failed", e);
       System.err.println("[OHMYRASP] control-plane registration failed: " + e);
     }
   }
@@ -109,10 +137,12 @@ public final class ControlPlaneClient implements AutoCloseable {
     try {
       heartbeat();
       pullPolicy();
+      reportPerformanceSample("heartbeat");
     } catch (IOException | InterruptedException e) {
       if (e instanceof InterruptedException) {
         Thread.currentThread().interrupt();
       }
+      uploadErrorQuietly("control-plane.heartbeat", "control-plane heartbeat failed", e);
       System.err.println("[OHMYRASP] control-plane heartbeat failed: " + e);
     }
   }
@@ -141,6 +171,7 @@ public final class ControlPlaneClient implements AutoCloseable {
     try {
       policyInstaller.accept(AgentPolicy.parse(cachedPolicy), id);
     } catch (IllegalArgumentException e) {
+      uploadErrorQuietly("control-plane.policy", "policy parse failed", e);
       System.err.println("[OHMYRASP] policy parse failed: " + e.getMessage());
     }
   }
@@ -181,6 +212,374 @@ public final class ControlPlaneClient implements AutoCloseable {
             + "}";
     Response response = send("POST", "/events/attack", body);
     requireSuccess(response, "upload event");
+  }
+
+  private void uploadHookTelemetryQuietly(
+      Detection detection, long latencyUs, long ruleEvaluationUs) {
+    try {
+      uploadHookTelemetry(detection, latencyUs, ruleEvaluationUs);
+    } catch (IOException | InterruptedException e) {
+      if (e instanceof InterruptedException) {
+        Thread.currentThread().interrupt();
+      }
+      System.err.println("[OHMYRASP] control-plane telemetry upload failed: " + e);
+    }
+  }
+
+  private void uploadHookTelemetry(Detection detection, long latencyUs, long ruleEvaluationUs)
+      throws IOException, InterruptedException {
+    Map<String, Object> attributes = runtimePerformanceAttributes();
+    attributes.put("action", detection.action());
+    attributes.put("latency_us", positive(latencyUs));
+    attributes.put("hook_latency_p50_us", positive(latencyUs));
+    attributes.put("hook_latency_p95_us", positive(latencyUs));
+    attributes.put("rule_eval_p95_us", positive(ruleEvaluationUs));
+    attributes.put("confidence", detection.confidence());
+    attributes.put("message", detection.message());
+
+    uploadEvent(
+        "hook",
+        detection.hook(),
+        detection.algorithm(),
+        "low",
+        "Hook telemetry for " + detection.hook(),
+        attributes,
+        true);
+    uploadEvent(
+        "performance",
+        detection.hook(),
+        detection.algorithm(),
+        "low",
+        "Agent hook performance sample",
+        attributes,
+        true);
+  }
+
+  private void uploadErrorQuietly(String hook, String message, Throwable throwable) {
+    try {
+      Map<String, Object> attributes = throwableAttributes(throwable);
+      attributes.put("stage", hook == null ? "" : hook);
+      uploadEvent("error", hook, "agent_error", "medium", message, attributes, false);
+    } catch (IOException | InterruptedException e) {
+      if (e instanceof InterruptedException) {
+        Thread.currentThread().interrupt();
+      }
+    }
+  }
+
+  private void uploadCrashQuietly(String threadName, Throwable throwable) {
+    try {
+      Map<String, Object> attributes = throwableAttributes(throwable);
+      attributes.put("thread", threadName == null ? "" : threadName);
+      uploadEvent(
+          "crash",
+          "agent",
+          "uncaught_exception",
+          "high",
+          "Uncaught exception observed by OhMyRASP agent",
+          attributes,
+          false);
+    } catch (IOException | InterruptedException e) {
+      if (e instanceof InterruptedException) {
+        Thread.currentThread().interrupt();
+      }
+    }
+  }
+
+  private void reportInitialRuntimeState() {
+    if (!initialReportsSent.compareAndSet(false, true)) {
+      return;
+    }
+    for (Map<String, Object> dependency : runtimeDependencies()) {
+      try {
+        uploadDependency(dependency);
+      } catch (IOException | InterruptedException e) {
+        if (e instanceof InterruptedException) {
+          Thread.currentThread().interrupt();
+        }
+        uploadErrorQuietly("control-plane.dependencies", "dependency report failed", e);
+      }
+    }
+    for (Map<String, Object> finding : runtimeBaselineFindings()) {
+      try {
+        uploadBaselineFinding(finding);
+      } catch (IOException | InterruptedException e) {
+        if (e instanceof InterruptedException) {
+          Thread.currentThread().interrupt();
+        }
+        uploadErrorQuietly("control-plane.baseline", "baseline report failed", e);
+      }
+    }
+  }
+
+  private void reportPerformanceSample(String reason) {
+    try {
+      Map<String, Object> attributes = runtimePerformanceAttributes();
+      attributes.put("reason", reason);
+      attributes.put("latency_us", 0);
+      attributes.put("hook_latency_p50_us", 0);
+      attributes.put("hook_latency_p95_us", 0);
+      attributes.put("rule_eval_p95_us", 0);
+      uploadEvent(
+          "performance",
+          "agent",
+          "runtime_sample",
+          "low",
+          "Agent runtime performance sample",
+          attributes,
+          false);
+    } catch (IOException | InterruptedException e) {
+      if (e instanceof InterruptedException) {
+        Thread.currentThread().interrupt();
+      }
+    }
+  }
+
+  private void uploadDependency(Map<String, Object> dependency)
+      throws IOException, InterruptedException {
+    String id = ensureRegistered();
+    Map<String, Object> body = new LinkedHashMap<>(dependency);
+    body.put("application_id", config.applicationId());
+    body.put("agent_id", id);
+    body.put("observed_at", Instant.now().toString());
+    Response response = send("POST", "/dependencies", object(body));
+    requireSuccess(response, "upload dependency");
+  }
+
+  private void uploadBaselineFinding(Map<String, Object> finding)
+      throws IOException, InterruptedException {
+    String id = ensureRegistered();
+    Map<String, Object> body = new LinkedHashMap<>(finding);
+    body.put("application_id", config.applicationId());
+    body.put("environment_id", config.environmentId());
+    body.put("agent_id", id);
+    body.put("observed_at", Instant.now().toString());
+    Response response = send("POST", "/baseline-findings", object(body));
+    requireSuccess(response, "upload baseline finding");
+  }
+
+  private void uploadEvent(
+      String type,
+      String hook,
+      String algorithm,
+      String severity,
+      String message,
+      Map<String, Object> attributes,
+      boolean requireRegistration)
+      throws IOException, InterruptedException {
+    String id = requireRegistration ? ensureRegistered() : agentId;
+    if (id == null || id.isBlank()) {
+      return;
+    }
+    Map<String, Object> body = new LinkedHashMap<>();
+    body.put("application_id", config.applicationId());
+    body.put("environment_id", config.environmentId());
+    body.put("agent_id", id);
+    if (policyId != null && !policyId.isBlank()) {
+      body.put("policy_id", policyId);
+      if (policyVersion > 0) {
+        body.put("policy_version", policyVersion);
+      }
+    }
+    if (hook != null && !hook.isBlank()) {
+      body.put("hook", hook);
+    }
+    if (algorithm != null && !algorithm.isBlank()) {
+      body.put("algorithm", algorithm);
+    }
+    body.put("severity", severity == null || severity.isBlank() ? "low" : severity);
+    body.put("message", message == null || message.isBlank() ? "agent event" : message);
+    body.put("occurred_at", Instant.now().toString());
+    body.put("attributes", attributes == null ? Map.of() : attributes);
+    Response response = send("POST", "/events/" + type, object(body));
+    requireSuccess(response, "upload " + type + " event");
+  }
+
+  private static List<Map<String, Object>> runtimeDependencies() {
+    List<Map<String, Object>> dependencies = new ArrayList<>();
+    dependencies.add(
+        dependency(
+            "java-runtime",
+            System.getProperty("java.version", "unknown"),
+            "jvm",
+            System.getProperty("java.home", "")));
+    dependencies.add(
+        dependency(
+            "ohmyrasp-agent",
+            ControlPlaneConfig.class.getPackage().getImplementationVersion() == null
+                ? "unknown"
+                : ControlPlaneConfig.class.getPackage().getImplementationVersion(),
+            "java-agent",
+            agentCodeSource()));
+    dependencies.addAll(classPathJarDependencies());
+    return dependencies;
+  }
+
+  private static Map<String, Object> dependency(
+      String name, String version, String ecosystem, String packagePath) {
+    Map<String, Object> dependency = new LinkedHashMap<>();
+    dependency.put("name", name);
+    dependency.put("version", version == null || version.isBlank() ? "unknown" : version);
+    dependency.put("ecosystem", ecosystem);
+    dependency.put("package_path", packagePath == null ? "" : packagePath);
+    dependency.put("licenses", List.of());
+    dependency.put("vulnerabilities", List.of());
+    return dependency;
+  }
+
+  private static List<Map<String, Object>> classPathJarDependencies() {
+    List<Map<String, Object>> dependencies = new ArrayList<>();
+    String classPath = System.getProperty("java.class.path", "");
+    if (classPath.isBlank()) {
+      return dependencies;
+    }
+    String[] entries = classPath.split(File.pathSeparator);
+    for (String entry : entries) {
+      if (dependencies.size() >= 20) {
+        break;
+      }
+      if (entry == null || !entry.toLowerCase().endsWith(".jar")) {
+        continue;
+      }
+      File file = new File(entry);
+      String filename = file.getName();
+      String name = filename.substring(0, filename.length() - 4);
+      dependencies.add(dependency(name, jarVersionFromName(name), "maven", file.getPath()));
+    }
+    return dependencies;
+  }
+
+  private static String jarVersionFromName(String name) {
+    int dash = name.lastIndexOf('-');
+    if (dash < 0 || dash + 1 >= name.length()) {
+      return "unknown";
+    }
+    String suffix = name.substring(dash + 1);
+    return Character.isDigit(suffix.charAt(0)) ? suffix : "unknown";
+  }
+
+  private static List<Map<String, Object>> runtimeBaselineFindings() {
+    List<Map<String, Object>> findings = new ArrayList<>();
+    List<String> inputArguments = jvmInputArguments();
+    boolean debugEnabled = inputArguments.stream().anyMatch(arg -> arg.contains("jdwp"));
+    findings.add(
+        baselineFinding(
+            "jvm.debug.disabled",
+            debugEnabled ? "JVM remote debug transport is enabled" : "JVM remote debug transport is disabled",
+            "runtime",
+            debugEnabled ? "high" : "info",
+            debugEnabled ? "warning" : "passed",
+            "jvm",
+            debugEnabled
+                ? "Disable JDWP or bind it only to trusted administrative interfaces."
+                : "No JDWP transport was observed.",
+            Map.of("input_arguments", inputArguments)));
+
+    int major = javaMajorVersion(System.getProperty("java.version", ""));
+    boolean jdk25 = major == 25;
+    findings.add(
+        baselineFinding(
+            "jvm.version.supported",
+            jdk25 ? "Java runtime is in the primary supported range" : "Java runtime is outside the primary supported range",
+            "runtime",
+            jdk25 ? "info" : "medium",
+            jdk25 ? "passed" : "warning",
+            "java-" + (major == 0 ? "unknown" : major),
+            "Use the agent build matching the runtime LTS line before production rollout.",
+            Map.of(
+                "java_version", System.getProperty("java.version", "unknown"),
+                "java_vendor", System.getProperty("java.vendor", "unknown"))));
+
+    return findings;
+  }
+
+  private static Map<String, Object> baselineFinding(
+      String checkID,
+      String title,
+      String category,
+      String severity,
+      String status,
+      String resource,
+      String remediation,
+      Map<String, Object> attributes) {
+    Map<String, Object> finding = new LinkedHashMap<>();
+    finding.put("check_id", checkID);
+    finding.put("title", title);
+    finding.put("category", category);
+    finding.put("severity", severity);
+    finding.put("status", status);
+    finding.put("resource", resource);
+    finding.put("remediation", remediation);
+    finding.put("attributes", attributes);
+    return finding;
+  }
+
+  private static Map<String, Object> runtimePerformanceAttributes() {
+    Runtime runtime = Runtime.getRuntime();
+    Map<String, Object> attributes = new LinkedHashMap<>();
+    attributes.put("cpu_overhead_pct", 0.0);
+    attributes.put("memory_overhead_bytes", runtime.totalMemory() - runtime.freeMemory());
+    attributes.put("runtime", "java");
+    attributes.put("java_version", System.getProperty("java.version", "unknown"));
+    return attributes;
+  }
+
+  private static Map<String, Object> throwableAttributes(Throwable throwable) {
+    Map<String, Object> attributes = runtimePerformanceAttributes();
+    if (throwable == null) {
+      return attributes;
+    }
+    attributes.put("exception_class", throwable.getClass().getName());
+    attributes.put("exception_message", throwable.getMessage() == null ? "" : throwable.getMessage());
+    StackTraceElement[] stackTrace = throwable.getStackTrace();
+    if (stackTrace.length > 0) {
+      attributes.put("top_frame", stackTrace[0].toString());
+    }
+    return attributes;
+  }
+
+  private static List<String> jvmInputArguments() {
+    try {
+      RuntimeMXBean bean = ManagementFactory.getRuntimeMXBean();
+      return List.copyOf(bean.getInputArguments());
+    } catch (RuntimeException e) {
+      return List.of();
+    }
+  }
+
+  private static int javaMajorVersion(String version) {
+    if (version == null || version.isBlank()) {
+      return 0;
+    }
+    String normalized = version.startsWith("1.") ? version.substring(2) : version;
+    int end = 0;
+    while (end < normalized.length() && Character.isDigit(normalized.charAt(end))) {
+      end++;
+    }
+    if (end == 0) {
+      return 0;
+    }
+    try {
+      return Integer.parseInt(normalized.substring(0, end));
+    } catch (NumberFormatException e) {
+      return 0;
+    }
+  }
+
+  private static String agentCodeSource() {
+    try {
+      CodeSource codeSource = ControlPlaneClient.class.getProtectionDomain().getCodeSource();
+      if (codeSource == null || codeSource.getLocation() == null) {
+        return "";
+      }
+      return codeSource.getLocation().toString();
+    } catch (RuntimeException e) {
+      return "";
+    }
+  }
+
+  private static long positive(long value) {
+    return Math.max(0, value);
   }
 
   private Response send(String method, String path, String body) throws IOException {
@@ -228,6 +627,54 @@ public final class ControlPlaneClient implements AutoCloseable {
   }
 
   private record Response(int statusCode, String body) {}
+
+  private static String object(Map<String, ?> values) {
+    StringBuilder builder = new StringBuilder(256);
+    appendObject(builder, values == null ? Map.of() : values);
+    return builder.toString();
+  }
+
+  private static void appendObject(StringBuilder builder, Map<String, ?> values) {
+    builder.append('{');
+    boolean first = true;
+    for (Map.Entry<String, ?> entry : values.entrySet()) {
+      if (!first) {
+        builder.append(',');
+      }
+      first = false;
+      builder.append('"').append(escape(entry.getKey())).append("\":");
+      appendValue(builder, entry.getValue());
+    }
+    builder.append('}');
+  }
+
+  private static void appendArray(StringBuilder builder, Iterable<?> values) {
+    builder.append('[');
+    boolean first = true;
+    for (Object value : values) {
+      if (!first) {
+        builder.append(',');
+      }
+      first = false;
+      appendValue(builder, value);
+    }
+    builder.append(']');
+  }
+
+  @SuppressWarnings("unchecked")
+  private static void appendValue(StringBuilder builder, Object value) {
+    if (value == null) {
+      builder.append("null");
+    } else if (value instanceof Number || value instanceof Boolean) {
+      builder.append(value);
+    } else if (value instanceof Map<?, ?> map) {
+      appendObject(builder, (Map<String, ?>) map);
+    } else if (value instanceof Iterable<?> iterable) {
+      appendArray(builder, iterable);
+    } else {
+      builder.append('"').append(escape(String.valueOf(value))).append('"');
+    }
+  }
 
   private static String attributes(Detection detection) {
     StringBuilder builder = new StringBuilder(256);
