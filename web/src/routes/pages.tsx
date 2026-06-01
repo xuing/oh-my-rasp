@@ -15,6 +15,7 @@ import type { BadgeTone } from "../components/ui/badge";
 import { Button } from "../components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "../components/ui/card";
 import { Table } from "../components/ui/table";
+import { useApplicationContext } from "../domain/app-context";
 import { eventPipelines, navigationSections, policyLifecycle } from "../domain/control-plane";
 import appI18n from "../i18n";
 import { UiText, UiValue, notice, translateNotice, translateUiCopy, useUiCopy } from "../i18n/copy";
@@ -44,6 +45,7 @@ import {
   type AgentArtifactInfo,
   type AlertRule,
   type Application,
+  type ApplicationSetting,
   type BaselineFindingQuery,
   type DaemonWorkload,
   type DependencyQuery,
@@ -74,11 +76,13 @@ import {
   updatePolicyVersionRules,
   unbindDaemonWorkload,
   setAgentIgnored,
+  updateApplicationSetting,
   updateUser,
   updateSystemSetting,
   useAgents,
   useAgentArtifacts,
   useApplications,
+  useApplicationSettings,
   useDaemonWorkloads,
   useAlertDeliveries,
   useAlertRules,
@@ -394,7 +398,7 @@ function ApplicationsWritePanel({ applications }: { applications: Application[] 
   }
 
   return (
-    <Card>
+    <Card data-app-section="application-scope" tabIndex={-1}>
       <CardHeader>
         <CardTitle><UiText k="Application Scope" /></CardTitle>
       </CardHeader>
@@ -656,7 +660,7 @@ function AgentInventoryPanel({ agents, applications }: { agents: Agent[]; applic
   }
 
   return (
-    <Card className="overflow-hidden">
+    <Card className="overflow-hidden" data-app-section="agent-inventory" tabIndex={-1}>
       <CardHeader>
         <div className="flex flex-wrap items-center justify-between gap-3">
           <CardTitle><UiText k="Agent Inventory" /></CardTitle>
@@ -898,7 +902,7 @@ function AgentOperationsPanel({
   }
 
   return (
-    <Card>
+    <Card data-app-section="agent-operations" tabIndex={-1}>
       <CardHeader>
         <CardTitle><UiText k="Agent Operations" /></CardTitle>
       </CardHeader>
@@ -1050,7 +1054,7 @@ function DaemonWorkloadPanel({
   }
 
   return (
-    <Card className="overflow-hidden">
+    <Card className="overflow-hidden" data-app-section="daemon-workloads" tabIndex={-1}>
       <CardHeader>
         <div className="flex flex-wrap items-center justify-between gap-3">
           <CardTitle><UiText k="Daemon Workloads" /></CardTitle>
@@ -1192,7 +1196,7 @@ function AgentArtifactUploadPanel({ catalog }: { catalog: AgentArtifactCatalog }
   }
 
   return (
-    <Card>
+    <Card data-app-section="agent-artifact-upload" tabIndex={-1}>
       <CardHeader>
         <div className="flex flex-wrap items-center justify-between gap-3">
           <CardTitle><UiText k="Agent Artifact Upload" /></CardTitle>
@@ -1252,7 +1256,7 @@ function AgentArtifactUploadPanel({ catalog }: { catalog: AgentArtifactCatalog }
 
 function AgentArtifactCatalogPanel({ catalog }: { catalog: AgentArtifactCatalog }) {
   return (
-    <Card className="overflow-hidden">
+    <Card className="overflow-hidden" data-app-section="agent-artifact-catalog" tabIndex={-1}>
       <CardHeader>
         <div className="flex flex-wrap items-center justify-between gap-3">
           <CardTitle><UiText k="Agent Artifact Catalog" /></CardTitle>
@@ -1390,7 +1394,7 @@ function DaemonArtifactPanel({ applications, daemonToken }: { applications: Appl
   }
 
   return (
-    <Card>
+    <Card data-app-section="daemon-artifacts" tabIndex={-1}>
       <CardHeader>
         <CardTitle><UiText k="Agent Bootstrap Artifact" /></CardTitle>
       </CardHeader>
@@ -1564,7 +1568,7 @@ function AgentsWritePanel({ applications, onSecretUsed }: { applications: Applic
   }
 
   return (
-    <Card>
+    <Card data-app-section="agent-registration" tabIndex={-1}>
       <CardHeader>
         <CardTitle><UiText k="Agent Registration" /></CardTitle>
       </CardHeader>
@@ -1650,6 +1654,7 @@ function AgentsWritePanel({ applications, onSecretUsed }: { applications: Applic
 
 export function PoliciesPage() {
   const { t } = useTranslation();
+  const appContext = useApplicationContext();
   const policiesQuery = usePolicies();
   const policies = policiesQuery.data?.items ?? [];
   const applicationsQuery = useApplications();
@@ -1660,6 +1665,10 @@ export function PoliciesPage() {
   const algorithmCatalog = algorithmCatalogQuery.data?.items ?? [];
   const activePolicies = policies.filter(policy => policy.active).length;
   const ruleCount = policies.reduce((count, policy) => count + (policy.active?.rules.length ?? 0), 0);
+  const selectedApplication = applications.find(application => application.id === appContext.applicationId) ?? applications[0];
+  const assignedPolicy = policies.find(policy => policy.id === selectedApplication?.policy_id);
+  const assignedPolicyVersion = selectedApplication?.policy_version ?? assignedPolicy?.active?.version;
+  const assignedPolicyAppCount = selectedApplication?.policy_id ? applications.filter(application => application.policy_id === selectedApplication.policy_id).length : 0;
 
   return (
     <SectionPage
@@ -1677,8 +1686,38 @@ export function PoliciesPage() {
         <Metric label={<UiText k="Active" />} value={activePolicies} detail={<UiText k="serving policy versions" />} />
         <Metric label={<UiText k="Active Rules" />} value={ruleCount} detail={<UiText k="rules in deployed versions" />} />
       </div>
+      <Card data-app-section="policy-assignment" tabIndex={-1}>
+        <CardHeader>
+          <CardTitle>{t("policies.selectedApplicationPolicy", "Selected Application Policy")}</CardTitle>
+        </CardHeader>
+        <CardContent>
+          {selectedApplication ? (
+            <div className="grid gap-3 md:grid-cols-3">
+              <div>
+                <span className="block text-xs font-medium text-slate-500"><UiText k="Application" /></span>
+                <span className="mt-1 block font-medium text-slate-950">{selectedApplication.name}</span>
+              </div>
+              <div>
+                <span className="block text-xs font-medium text-slate-500">{t("policies.assignedPolicy", "Assigned Policy")}</span>
+                <span className="mt-1 block font-medium text-slate-950">{assignedPolicy?.name ?? selectedApplication.policy_id ?? <UiText k="No active" />}</span>
+              </div>
+              <div>
+                <span className="block text-xs font-medium text-slate-500">{t("policies.assignedVersion", "Assigned Version")}</span>
+                <span className="mt-1 block font-medium text-slate-950">{assignedPolicyVersion ? `v${assignedPolicyVersion}` : <UiText k="No active" />}</span>
+              </div>
+              {assignedPolicyAppCount > 1 ? (
+                <div className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800 md:col-span-3">
+                  {t("policies.sharedWarning", "This policy is assigned to multiple applications; editing its rules changes every assigned application.")}
+                </div>
+              ) : null}
+            </div>
+          ) : (
+            <p className="text-sm text-slate-600">{t("policies.noApplication", "Create an application before assigning a policy.")}</p>
+          )}
+        </CardContent>
+      </Card>
       <PolicySetCreatePanel />
-      <PolicyWritePanel applications={applications} policies={policies} sampleEvents={sampleEvents} algorithmCatalog={algorithmCatalog} />
+      <PolicyWritePanel selectedApplicationID={selectedApplication?.id ?? ""} applications={applications} policies={policies} sampleEvents={sampleEvents} algorithmCatalog={algorithmCatalog} />
       <section className="grid gap-5 xl:grid-cols-[.8fr_1.2fr]">
         <PolicyLifecycle />
         <Table>
@@ -1979,7 +2018,7 @@ export function EventsPage() {
         <Metric label={<UiText k="Dependencies" />} value={dependencies.length} detail={<UiText k="{{count}} high event signals" values={{ count: highEvents }} />} />
         <Metric label={<UiText k="Baseline Findings" />} value={baselineFindings.length} detail={<UiText k="{{count}} open posture signals" values={{ count: failedBaselineFindings }} />} />
       </div>
-      <Card>
+      <Card data-app-section="event-query" tabIndex={-1}>
         <CardHeader>
           <CardTitle><UiText k="Event Query" /></CardTitle>
         </CardHeader>
@@ -2151,7 +2190,7 @@ export function EventsPage() {
           </tbody>
         </Table>
       </section>
-      <Card className="overflow-hidden">
+      <Card className="overflow-hidden" data-app-section="event-recycle-bin" tabIndex={-1}>
         <CardHeader>
           <CardTitle><UiText k="Event Recycle Bin" /></CardTitle>
         </CardHeader>
@@ -2223,7 +2262,7 @@ export function EventsPage() {
         </CardContent>
       </Card>
       <section className="grid gap-5">
-        <Card className="overflow-hidden">
+        <Card className="overflow-hidden" data-app-section="dependency-inventory" tabIndex={-1}>
           <CardHeader className="flex flex-wrap items-center justify-between gap-3">
             <CardTitle><UiText k="Dependency Inventory" /></CardTitle>
             <Button disabled={isExportingDependencies} type="button" variant="secondary" onClick={() => void handleDependencyExport()}>
@@ -2396,7 +2435,7 @@ export function EventsPage() {
         </Card>
       </section>
       <section className="grid gap-5">
-        <Card className="overflow-hidden">
+        <Card className="overflow-hidden" data-app-section="baseline-findings" tabIndex={-1}>
           <CardHeader>
             <CardTitle><UiText k="Baseline Findings" /></CardTitle>
           </CardHeader>
@@ -2643,7 +2682,7 @@ export function ObservabilityPage() {
         </CardContent>
       </Card>
       <div className="grid gap-5 xl:grid-cols-2">
-        <Card className="overflow-hidden">
+        <Card className="overflow-hidden" data-app-section="rule-overhead" tabIndex={-1}>
           <CardHeader>
             <CardTitle><UiText k="Rule Overhead" /></CardTitle>
           </CardHeader>
@@ -2680,7 +2719,7 @@ export function ObservabilityPage() {
           </CardContent>
         </Card>
 
-        <Card className="overflow-hidden">
+        <Card className="overflow-hidden" data-app-section="hook-latency" tabIndex={-1}>
           <CardHeader>
             <CardTitle><UiText k="Hook Latency" /></CardTitle>
           </CardHeader>
@@ -2719,7 +2758,7 @@ export function ObservabilityPage() {
           </CardContent>
         </Card>
 
-        <Card className="overflow-hidden">
+        <Card className="overflow-hidden" data-app-section="agent-overhead" tabIndex={-1}>
           <CardHeader>
             <CardTitle><UiText k="Agent Overhead" /></CardTitle>
           </CardHeader>
@@ -2756,7 +2795,7 @@ export function ObservabilityPage() {
           </CardContent>
         </Card>
 
-        <Card className="overflow-hidden">
+        <Card className="overflow-hidden" data-app-section="policy-impact" tabIndex={-1}>
           <CardHeader>
             <CardTitle><UiText k="Policy Impact" /></CardTitle>
           </CardHeader>
@@ -2799,10 +2838,17 @@ export function ObservabilityPage() {
 
 export function AccessPage() {
   const { t } = useTranslation();
+  const appContext = useApplicationContext();
+  const applicationsQuery = useApplications();
+  const applications = applicationsQuery.data?.items ?? [];
+  const selectedApplication = applications.find(application => application.id === appContext.applicationId) ?? applications[0];
+  const selectedApplicationID = selectedApplication?.id ?? appContext.applicationId ?? "";
   const auditQuery = useAuditLogs();
   const auditLogs = auditQuery.data?.items ?? [];
   const settingsQuery = useSystemSettings();
   const settings = settingsQuery.data?.items ?? [];
+  const applicationSettingsQuery = useApplicationSettings(selectedApplicationID, appContext.environmentId);
+  const applicationSettings = applicationSettingsQuery.data?.items ?? [];
   const editionQuery = useEditionStatus();
   const edition = editionQuery.data ?? emptyEditionStatus();
   const versionQuery = useSystemVersion();
@@ -2833,8 +2879,28 @@ export function AccessPage() {
       summary={t("pages.access.summary")}
     >
       <QueryStateNotice
-        isLoading={auditQuery.isLoading || settingsQuery.isLoading || editionQuery.isLoading || versionQuery.isLoading || alertRulesQuery.isLoading || alertDeliveriesQuery.isLoading || usersQuery.isLoading}
-        isError={auditQuery.isError || settingsQuery.isError || editionQuery.isError || versionQuery.isError || alertRulesQuery.isError || alertDeliveriesQuery.isError || usersQuery.isError}
+        isLoading={
+          applicationsQuery.isLoading ||
+          auditQuery.isLoading ||
+          settingsQuery.isLoading ||
+          applicationSettingsQuery.isLoading ||
+          editionQuery.isLoading ||
+          versionQuery.isLoading ||
+          alertRulesQuery.isLoading ||
+          alertDeliveriesQuery.isLoading ||
+          usersQuery.isLoading
+        }
+        isError={
+          applicationsQuery.isError ||
+          auditQuery.isError ||
+          settingsQuery.isError ||
+          applicationSettingsQuery.isError ||
+          editionQuery.isError ||
+          versionQuery.isError ||
+          alertRulesQuery.isError ||
+          alertDeliveriesQuery.isError ||
+          usersQuery.isError
+        }
         loading={<UiText k="Loading access and audit data." />}
         error={<UiText k="Some access and audit data is unavailable." />}
       />
@@ -2854,13 +2920,13 @@ export function AccessPage() {
       </div>
       <EditionStatusPanel edition={edition} />
       <SystemVersionPanel version={version} />
-      <ProtectionConfigurationPanel settings={settings} />
+      <ProtectionConfigurationPanel applicationID={selectedApplicationID} applicationSettings={applicationSettings} settings={settings} />
       <MaintenanceCleanupPanel />
-      <AccessWritePanel />
-      <AlertRuleLifecyclePanel alertRules={alertRules} />
+      <AccessWritePanel applicationID={selectedApplicationID} />
+      <AlertRuleLifecyclePanel applicationID={selectedApplicationID} alertRules={alertRules} />
       <UserLifecyclePanel users={users} />
       <section className="grid gap-5">
-        <Card className="overflow-hidden">
+        <Card className="overflow-hidden" data-app-section="user-administration" tabIndex={-1}>
           <CardHeader>
             <CardTitle><UiText k="User Administration" /></CardTitle>
           </CardHeader>
@@ -2936,7 +3002,7 @@ export function AccessPage() {
         </Card>
       </section>
       <section className="grid gap-5 xl:grid-cols-[.9fr_1.1fr]">
-        <Card className="overflow-hidden">
+        <Card className="overflow-hidden" data-app-section="system-settings" tabIndex={-1}>
           <CardHeader>
             <CardTitle><UiText k="System Settings" /></CardTitle>
           </CardHeader>
@@ -2968,7 +3034,7 @@ export function AccessPage() {
             </Table>
           </CardContent>
         </Card>
-        <Card className="overflow-hidden">
+        <Card className="overflow-hidden" data-app-section="alert-rules" tabIndex={-1}>
           <CardHeader>
             <CardTitle><UiText k="Alert Rules" /></CardTitle>
           </CardHeader>
@@ -3015,7 +3081,7 @@ export function AccessPage() {
         </Card>
       </section>
       <section className="grid gap-5">
-        <Card className="overflow-hidden">
+        <Card className="overflow-hidden" data-app-section="alert-deliveries" tabIndex={-1}>
           <CardHeader>
             <CardTitle><UiText k="Alert Delivery History" /></CardTitle>
           </CardHeader>
@@ -3062,7 +3128,7 @@ export function AccessPage() {
         </Card>
       </section>
       <section className="grid gap-5">
-        <Card className="overflow-hidden">
+        <Card className="overflow-hidden" data-app-section="audit-log" tabIndex={-1}>
           <CardHeader>
             <CardTitle><UiText k="Audit Log" /></CardTitle>
           </CardHeader>
@@ -3103,7 +3169,7 @@ export function AccessPage() {
 
 function EditionStatusPanel({ edition }: { edition: EditionStatus }) {
   return (
-    <Card>
+    <Card data-app-section="edition-status" tabIndex={-1}>
       <CardHeader>
         <CardTitle><UiText k="Edition Status" /></CardTitle>
       </CardHeader>
@@ -3139,7 +3205,7 @@ function EditionStatusPanel({ edition }: { edition: EditionStatus }) {
 
 function SystemVersionPanel({ version }: { version: SystemVersion }) {
   return (
-    <Card>
+    <Card data-app-section="system-version" tabIndex={-1}>
       <CardHeader>
         <CardTitle><UiText k="System Version" /></CardTitle>
       </CardHeader>
@@ -3171,7 +3237,7 @@ function SystemVersionPanel({ version }: { version: SystemVersion }) {
   );
 }
 
-function AlertRuleLifecyclePanel({ alertRules }: { alertRules: AlertRule[] }) {
+function AlertRuleLifecyclePanel({ applicationID, alertRules }: { applicationID: string; alertRules: AlertRule[] }) {
   const queryClient = useQueryClient();
   const [alertRuleID, setAlertRuleID] = useState(alertRules[0]?.id ?? "");
   const selectedRule = alertRules.find(rule => rule.id === alertRuleID) ?? alertRules[0];
@@ -3231,6 +3297,7 @@ function AlertRuleLifecyclePanel({ alertRules }: { alertRules: AlertRule[] }) {
     setIsSubmitting(true);
     try {
       const updated = await updateAlertRule(selectedRule.id, {
+        application_id: (selectedRule.application_id ?? applicationID) || undefined,
         name: trimmedName,
         description: description.trim() || undefined,
         enabled,
@@ -3249,7 +3316,7 @@ function AlertRuleLifecyclePanel({ alertRules }: { alertRules: AlertRule[] }) {
   }
 
   return (
-    <Card>
+    <Card data-app-section="alert-lifecycle" tabIndex={-1}>
       <CardHeader>
         <CardTitle><UiText k="Alert Lifecycle" /></CardTitle>
       </CardHeader>
@@ -3395,7 +3462,7 @@ function UserLifecyclePanel({ users }: { users: User[] }) {
   }
 
   return (
-    <Card>
+    <Card data-app-section="user-lifecycle" tabIndex={-1}>
       <CardHeader>
         <CardTitle><UiText k="User Lifecycle" /></CardTitle>
       </CardHeader>
@@ -3489,7 +3556,7 @@ function PolicySetCreatePanel() {
   }
 
   return (
-    <Card>
+    <Card data-app-section="policy-create" tabIndex={-1}>
       <CardHeader>
         <CardTitle><UiText k="Policy Set" /></CardTitle>
       </CardHeader>
@@ -3516,17 +3583,20 @@ function PolicySetCreatePanel() {
 }
 
 function PolicyWritePanel({
+  selectedApplicationID,
   applications,
   policies,
   sampleEvents,
   algorithmCatalog
 }: {
+  selectedApplicationID: string;
   applications: Application[];
   policies: PolicySet[];
   sampleEvents: SecurityEvent[];
   algorithmCatalog: PolicyAlgorithm[];
 }) {
   const queryClient = useQueryClient();
+  const { t } = useTranslation();
   const { copy } = useUiCopy();
   const [policyID, setPolicyID] = useState(policies[0]?.id ?? "");
   const [ruleName, setRuleName] = useState("");
@@ -3538,13 +3608,14 @@ function PolicyWritePanel({
   const [tags, setTags] = useState("");
   const [targetVersion, setTargetVersion] = useState(1);
   const [canaryPercent, setCanaryPercent] = useState(25);
-  const [rolloutScope, setRolloutScope] = useState("global");
+  const [rolloutScope, setRolloutScope] = useState(selectedApplicationID ? `application:${selectedApplicationID}` : "global");
   const [status, setStatus] = useState("");
   const [error, setError] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   const selectedPolicy = policies.find(policy => policy.id === policyID) ?? policies[0];
   const rolloutScopeOptions = policyRolloutScopeOptions(applications, copy);
+  const selectedPolicyAssignedApplications = selectedPolicy ? applications.filter(application => application.policy_id === selectedPolicy.id) : [];
   const selectedVersion = selectedPolicy?.versions.find(version => version.version === targetVersion);
   const selectedHookCatalog = algorithmCatalog.find(item => item.hook === hook);
   const selectedHookAlgorithms = selectedHookCatalog?.algorithms ?? [];
@@ -3564,9 +3635,15 @@ function PolicyWritePanel({
 
   useEffect(() => {
     if (!rolloutScopeOptions.some(option => option.value === rolloutScope)) {
-      setRolloutScope("global");
+      setRolloutScope(selectedApplicationID ? `application:${selectedApplicationID}` : "global");
     }
-  }, [rolloutScope, rolloutScopeOptions]);
+  }, [rolloutScope, rolloutScopeOptions, selectedApplicationID]);
+
+  useEffect(() => {
+    if (selectedApplicationID) {
+      setRolloutScope(`application:${selectedApplicationID}`);
+    }
+  }, [selectedApplicationID]);
 
   useEffect(() => {
     if (selectedVersion?.status !== "draft") {
@@ -3605,7 +3682,14 @@ function PolicyWritePanel({
       const latestVersion = latestPolicyVersion(updated);
       if (latestVersion) {
         setTargetVersion(latestVersion.version);
-        setStatus(notice("Created policy version {{version}}.", { version: latestVersion.version }));
+        if (selectedApplicationID) {
+          await rolloutPolicy(selectedPolicy.id, latestVersion.version, canaryPercent, { application_id: selectedApplicationID });
+          await queryClient.invalidateQueries({ queryKey: ["agents"] });
+          await queryClient.invalidateQueries({ queryKey: ["applications"] });
+          setStatus(notice("Created policy version {{version}}.", { version: latestVersion.version }));
+        } else {
+          setStatus(notice("Created policy version {{version}}.", { version: latestVersion.version }));
+        }
       } else {
         setStatus(notice("Created policy version."));
       }
@@ -3782,11 +3866,16 @@ function PolicyWritePanel({
   }
 
   return (
-    <Card>
+    <Card data-app-section="policy-change" tabIndex={-1}>
       <CardHeader>
         <CardTitle><UiText k="Policy Change" /></CardTitle>
       </CardHeader>
       <CardContent className="grid gap-5 xl:grid-cols-[1.1fr_.9fr]">
+        {selectedPolicyAssignedApplications.length > 1 ? (
+          <div className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800 xl:col-span-2">
+            {t("policies.sharedWarning", "This policy is assigned to multiple applications; editing its rules changes every assigned application.")}
+          </div>
+        ) : null}
         <form className="grid gap-3 md:grid-cols-2" onSubmit={handleCreateVersion}>
           <label className={fieldGroupClass} htmlFor="policy-id">
             <span className={fieldLabelClass}><UiText k="Policy" /></span>
@@ -3951,7 +4040,7 @@ function PolicyWritePanel({
   );
 }
 
-function ProtectionConfigurationPanel({ settings }: { settings: SystemSetting[] }) {
+function ProtectionConfigurationPanel({ applicationID, applicationSettings, settings }: { applicationID: string; applicationSettings: ApplicationSetting[]; settings: SystemSetting[] }) {
   const queryClient = useQueryClient();
   const [publicURL, setPublicURL] = useState("");
   const [allowlistEnabled, setAllowlistEnabled] = useState(false);
@@ -3972,10 +4061,10 @@ function ProtectionConfigurationPanel({ settings }: { settings: SystemSetting[] 
 
   useEffect(() => {
     const serverPublicURL = settingRecord(settings, "server.public_url");
-    const allowlist = settingRecord(settings, "protection.allowlist");
-    const hardening = settingRecord(settings, "protection.hardening");
-    const vulnerability = settingRecord(settings, "dependency.vulnerability_policy");
-    const alerts = settingRecord(settings, "alerts.delivery");
+    const allowlist = settingRecord(applicationSettings, "protection.allowlist");
+    const hardening = settingRecord(applicationSettings, "protection.hardening");
+    const vulnerability = settingRecord(applicationSettings, "dependency.vulnerability_policy");
+    const alerts = settingRecord(applicationSettings, "alerts.delivery");
     const retention = settingRecord(settings, "events.retention");
 
     setPublicURL(settingString(serverPublicURL, "url", ""));
@@ -3992,11 +4081,15 @@ function ProtectionConfigurationPanel({ settings }: { settings: SystemSetting[] 
     setPerformanceRetentionDays(settingNumber(retention, "performance_days", 30));
     setDependencyRetentionDays(settingNumber(retention, "dependency_days", 365));
     setAuditRetentionDays(settingNumber(retention, "audit_days", 365));
-  }, [settings]);
+  }, [applicationSettings, settings]);
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setMessage({ status: "", error: "" });
+    if (!applicationID) {
+      setMessage({ status: "", error: notice("Choose an application first.") });
+      return;
+    }
     setIsSubmitting(true);
     try {
       const entries = allowlistEntries
@@ -4007,22 +4100,34 @@ function ProtectionConfigurationPanel({ settings }: { settings: SystemSetting[] 
         updateSystemSetting("server.public_url", {
           url: publicURL.trim()
         }),
-        updateSystemSetting("protection.allowlist", {
-          enabled: allowlistEnabled,
-          mode: allowlistMode,
-          entries
+        updateApplicationSetting(applicationID, {
+          key: "protection.allowlist",
+          value: {
+            enabled: allowlistEnabled,
+            mode: allowlistMode,
+            entries
+          }
         }),
-        updateSystemSetting("protection.hardening", {
-          mode: hardeningMode,
-          block_reflection_abuse: blockReflectionAbuse,
-          block_process_execution: blockProcessExecution
+        updateApplicationSetting(applicationID, {
+          key: "protection.hardening",
+          value: {
+            mode: hardeningMode,
+            block_reflection_abuse: blockReflectionAbuse,
+            block_process_execution: blockProcessExecution
+          }
         }),
-        updateSystemSetting("dependency.vulnerability_policy", {
-          fail_on_severity: vulnerabilitySeverity,
-          block_known_exploited: blockKnownExploited
+        updateApplicationSetting(applicationID, {
+          key: "dependency.vulnerability_policy",
+          value: {
+            fail_on_severity: vulnerabilitySeverity,
+            block_known_exploited: blockKnownExploited
+          }
         }),
-        updateSystemSetting("alerts.delivery", {
-          interval_seconds: positiveInteger(alertDeliveryIntervalSeconds, 300)
+        updateApplicationSetting(applicationID, {
+          key: "alerts.delivery",
+          value: {
+            interval_seconds: positiveInteger(alertDeliveryIntervalSeconds, 300)
+          }
         }),
         updateSystemSetting("events.retention", {
           attack_days: positiveInteger(attackRetentionDays, 180),
@@ -4032,6 +4137,7 @@ function ProtectionConfigurationPanel({ settings }: { settings: SystemSetting[] 
         })
       ]);
       await queryClient.invalidateQueries({ queryKey: ["system-settings"] });
+      await queryClient.invalidateQueries({ queryKey: ["application-settings"] });
       await queryClient.invalidateQueries({ queryKey: ["audit-logs"] });
       setMessage({ status: notice("Protection configuration saved."), error: "" });
     } catch {
@@ -4042,7 +4148,7 @@ function ProtectionConfigurationPanel({ settings }: { settings: SystemSetting[] 
   }
 
   return (
-    <Card>
+    <Card data-app-section="protection-config" tabIndex={-1}>
       <CardHeader>
         <CardTitle><UiText k="Protection Configuration" /></CardTitle>
       </CardHeader>
@@ -4173,7 +4279,7 @@ function ProtectionConfigurationPanel({ settings }: { settings: SystemSetting[] 
             </label>
           </div>
           <div className="flex flex-wrap items-center gap-3">
-            <Button disabled={isSubmitting} type="submit">
+            <Button disabled={isSubmitting || !applicationID} type="submit">
               <UiText k={isSubmitting ? "Saving Protection Configuration" : "Save Protection Configuration"} />
             </Button>
             <div className="min-w-72 flex-1">
@@ -4248,7 +4354,7 @@ function MaintenanceCleanupPanel() {
   }
 
   return (
-    <Card>
+    <Card data-app-section="maintenance-cleanup" tabIndex={-1}>
       <CardHeader>
         <CardTitle><UiText k="Maintenance Cleanup" /></CardTitle>
       </CardHeader>
@@ -4306,7 +4412,7 @@ function MaintenanceCleanupPanel() {
   );
 }
 
-function AccessWritePanel() {
+function AccessWritePanel({ applicationID }: { applicationID: string }) {
   const queryClient = useQueryClient();
   const [settingKey, setSettingKey] = useState("agent.minimum_version");
   const [settingValue, setSettingValue] = useState('{"version":"1.1.0"}');
@@ -4341,8 +4447,13 @@ function AccessWritePanel() {
   async function handleAlertSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setAlertMessage({ status: "", error: "" });
+    if (!applicationID) {
+      setAlertMessage({ status: "", error: notice("Choose an application first.") });
+      return;
+    }
     try {
       await createAlertRule({
+        application_id: applicationID,
         name: alertName,
         description: `${alertName} managed from the control console`,
         enabled: alertEnabled,
@@ -4377,7 +4488,7 @@ function AccessWritePanel() {
 
   return (
     <section className="grid gap-5 xl:grid-cols-3">
-      <Card>
+      <Card data-app-section="setting-change" tabIndex={-1}>
         <CardHeader>
           <CardTitle><UiText k="Setting Change" /></CardTitle>
         </CardHeader>
@@ -4402,7 +4513,7 @@ function AccessWritePanel() {
           </form>
         </CardContent>
       </Card>
-      <Card>
+      <Card data-app-section="alert-create" tabIndex={-1}>
         <CardHeader>
           <CardTitle><UiText k="Alert Rule" /></CardTitle>
         </CardHeader>
@@ -4867,7 +4978,7 @@ function formatLabel(value?: string) {
     .join(" ");
 }
 
-function settingRecord(settings: SystemSetting[], key: string) {
+function settingRecord(settings: Array<{ key: string; value: Record<string, unknown> }>, key: string) {
   const value = settings.find(setting => setting.key === key)?.value;
   if (!value || Array.isArray(value) || typeof value !== "object") {
     return {};

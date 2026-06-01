@@ -1,4 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
+import { useApplicationContext } from "../domain/app-context";
 
 export type OverviewResponse = {
   application_count: number;
@@ -257,6 +258,7 @@ export type PolicyVersion = {
   canary_percent: number;
   created_at: string;
   published_at?: string;
+  config?: ApplicationConfig;
 };
 
 export type PolicySet = {
@@ -391,6 +393,27 @@ export type SystemSetting = {
   updated_at: string;
 };
 
+export type ApplicationSetting = {
+  application_id: string;
+  environment_id?: string;
+  key: string;
+  value: Record<string, unknown>;
+  updated_by?: string;
+  updated_at: string;
+};
+
+export type ApplicationSettingUpdate = {
+  key: string;
+  value: Record<string, unknown>;
+};
+
+export type ApplicationConfig = {
+  allowlist?: Record<string, unknown>;
+  hardening?: Record<string, unknown>;
+  dependency_vulnerability_policy?: Record<string, unknown>;
+  alerts_delivery?: Record<string, unknown>;
+};
+
 export type EditionStatus = {
   edition: "oss_self_hosted" | string;
   display_name: string;
@@ -445,6 +468,7 @@ export type UserQuery = {
 
 export type AlertRule = {
   id: string;
+  application_id?: string;
   name: string;
   description: string;
   enabled: boolean;
@@ -457,6 +481,7 @@ export type AlertRule = {
 };
 
 export type AlertRuleInput = {
+  application_id?: string;
   name: string;
   description?: string;
   enabled: boolean;
@@ -468,6 +493,7 @@ export type AlertRuleInput = {
 
 export type AlertDelivery = {
   id: string;
+  application_id?: string;
   alert_rule_id: string;
   alert_rule_name: string;
   event_id: string;
@@ -530,6 +556,11 @@ export type ObservabilityResponse = {
 export type ObservabilityFilters = {
   applicationID?: string;
   policyID?: string;
+};
+
+export type AgentQuery = {
+  application_id?: string;
+  environment_id?: string;
 };
 
 export type LoginResponse = {
@@ -911,6 +942,14 @@ export function updateSystemSetting(key: string, value: Record<string, unknown>)
   return sendJSON<SystemSetting>(`/api/v1/system-settings/${encodeURIComponent(key)}`, "PUT", { value });
 }
 
+export function updateApplicationSetting(appID: string, input: ApplicationSettingUpdate, environmentID?: string) {
+  const app = encodeURIComponent(appID);
+  const path = environmentID
+    ? `/api/v1/applications/${app}/environments/${encodeURIComponent(environmentID)}/settings`
+    : `/api/v1/applications/${app}/settings`;
+  return sendJSON<ApplicationSetting>(path, "PUT", input);
+}
+
 export function cleanupMaintenanceData(input: MaintenanceCleanupRequest) {
   return sendJSON<MaintenanceCleanupReport>("/api/v1/maintenance/cleanup", "POST", input);
 }
@@ -962,27 +1001,34 @@ function sessionToken() {
 }
 
 export function useOverview() {
+  const appContext = useApplicationContext();
+  const query = scopedQuery({}, appContext);
+  const queryString = apiQueryString(query);
   return useQuery({
-    queryKey: ["overview"],
-    queryFn: () => fetchJSON<OverviewResponse>("/api/v1/analytics/overview"),
+    queryKey: ["overview", query],
+    queryFn: () => fetchJSON<OverviewResponse>(`/api/v1/analytics/overview${queryString}`),
     retry: false,
     staleTime: 15_000
   });
 }
 
-export function useApplications() {
+export function useApplications(enabled = true) {
   return useQuery({
     queryKey: ["applications"],
     queryFn: () => fetchJSON<ListResponse<Application>>("/api/v1/applications"),
+    enabled,
     retry: false,
     staleTime: 15_000
   });
 }
 
-export function useAgents() {
+export function useAgents(query: AgentQuery = {}) {
+  const appContext = useApplicationContext();
+  const scoped = scopedQuery(query, appContext);
+  const queryString = apiQueryString(scoped);
   return useQuery({
-    queryKey: ["agents"],
-    queryFn: () => fetchJSON<ListResponse<Agent>>("/api/v1/agents"),
+    queryKey: ["agents", scoped],
+    queryFn: () => fetchJSON<ListResponse<Agent>>(`/api/v1/agents${queryString}`),
     retry: false,
     staleTime: 15_000
   });
@@ -1029,9 +1075,11 @@ export function useAttackEvents(query: SecurityEventQuery = {}) {
 }
 
 export function useSecurityEvents(eventType: SecurityEventType, query: SecurityEventQuery = {}) {
-  const queryString = apiQueryString(query);
+  const appContext = useApplicationContext();
+  const scoped = scopedQuery(query, appContext);
+  const queryString = apiQueryString(scoped);
   return useQuery({
-    queryKey: ["events", eventType, query],
+    queryKey: ["events", eventType, scoped],
     queryFn: () => fetchJSON<ListResponse<SecurityEvent>>(`/api/v1/events/${eventType}${queryString}`),
     retry: false,
     staleTime: 15_000
@@ -1039,9 +1087,11 @@ export function useSecurityEvents(eventType: SecurityEventType, query: SecurityE
 }
 
 export function useDeletedSecurityEvents(query: SecurityEventRecycleBinQuery = {}) {
-  const queryString = apiQueryString(query);
+  const appContext = useApplicationContext();
+  const scoped = scopedQuery(query, appContext);
+  const queryString = apiQueryString(scoped);
   return useQuery({
-    queryKey: ["events", "recycle-bin", query],
+    queryKey: ["events", "recycle-bin", scoped],
     queryFn: () => fetchJSON<ListResponse<SecurityEvent>>(`/api/v1/events/recycle-bin${queryString}`),
     retry: false,
     staleTime: 15_000
@@ -1052,10 +1102,13 @@ export function exportDependencies() {
   return fetchJSON<ListResponse<Dependency>>("/api/v1/dependencies/export");
 }
 
-export function useDependencySummary() {
+export function useDependencySummary(query: Pick<DependencyQuery, "application_id" | "agent_id"> = {}) {
+  const appContext = useApplicationContext();
+  const scoped = scopedQuery(query, appContext, false);
+  const queryString = apiQueryString(scoped);
   return useQuery({
-    queryKey: ["dependencies", "summary"],
-    queryFn: () => fetchJSON<DependencySummary>("/api/v1/dependencies/summary"),
+    queryKey: ["dependencies", "summary", scoped],
+    queryFn: () => fetchJSON<DependencySummary>(`/api/v1/dependencies/summary${queryString}`),
     retry: false,
     staleTime: 15_000
   });
@@ -1074,9 +1127,11 @@ function apiQueryString(query: object) {
 }
 
 export function useDependencies(query: DependencyQuery = {}) {
-  const queryString = apiQueryString(query);
+  const appContext = useApplicationContext();
+  const scoped = scopedQuery(query, appContext, false);
+  const queryString = apiQueryString(scoped);
   return useQuery({
-    queryKey: ["dependencies", query],
+    queryKey: ["dependencies", scoped],
     queryFn: () => fetchJSON<ListResponse<Dependency>>(`/api/v1/dependencies${queryString}`),
     retry: false,
     staleTime: 15_000
@@ -1084,9 +1139,11 @@ export function useDependencies(query: DependencyQuery = {}) {
 }
 
 export function useBaselineFindings(query: BaselineFindingQuery = {}) {
-  const queryString = apiQueryString(query);
+  const appContext = useApplicationContext();
+  const scoped = scopedQuery(query, appContext);
+  const queryString = apiQueryString(scoped);
   return useQuery({
-    queryKey: ["baseline-findings", query],
+    queryKey: ["baseline-findings", scoped],
     queryFn: () => fetchJSON<ListResponse<BaselineFinding>>(`/api/v1/baseline-findings${queryString}`),
     retry: false,
     staleTime: 15_000
@@ -1106,6 +1163,21 @@ export function useSystemSettings() {
   return useQuery({
     queryKey: ["system-settings"],
     queryFn: () => fetchJSON<ListResponse<SystemSetting>>("/api/v1/system-settings"),
+    retry: false,
+    staleTime: 15_000
+  });
+}
+
+export function useApplicationSettings(applicationID: string, environmentID?: string | null) {
+  const normalizedEnvironmentID = environmentID || "";
+  const app = encodeURIComponent(applicationID);
+  const path = normalizedEnvironmentID
+    ? `/api/v1/applications/${app}/environments/${encodeURIComponent(normalizedEnvironmentID)}/settings`
+    : `/api/v1/applications/${app}/settings`;
+  return useQuery({
+    queryKey: ["application-settings", applicationID, normalizedEnvironmentID],
+    queryFn: () => fetchJSON<ListResponse<ApplicationSetting>>(path),
+    enabled: Boolean(applicationID),
     retry: false,
     staleTime: 15_000
   });
@@ -1139,28 +1211,36 @@ export function useUsers(query: UserQuery = {}) {
   });
 }
 
-export function useAlertRules() {
+export function useAlertRules(query: { application_id?: string } = {}) {
+  const appContext = useApplicationContext();
+  const scoped = scopedQuery(query, appContext, false);
+  const queryString = apiQueryString(scoped);
   return useQuery({
-    queryKey: ["alert-rules"],
-    queryFn: () => fetchJSON<ListResponse<AlertRule>>("/api/v1/alert-rules"),
+    queryKey: ["alert-rules", scoped],
+    queryFn: () => fetchJSON<ListResponse<AlertRule>>(`/api/v1/alert-rules${queryString}`),
     retry: false,
     staleTime: 15_000
   });
 }
 
-export function useAlertDeliveries() {
+export function useAlertDeliveries(query: { application_id?: string } = {}) {
+  const appContext = useApplicationContext();
+  const scoped = scopedQuery(query, appContext, false);
+  const queryString = apiQueryString(scoped);
   return useQuery({
-    queryKey: ["alert-deliveries"],
-    queryFn: () => fetchJSON<ListResponse<AlertDelivery>>("/api/v1/alert-deliveries"),
+    queryKey: ["alert-deliveries", scoped],
+    queryFn: () => fetchJSON<ListResponse<AlertDelivery>>(`/api/v1/alert-deliveries${queryString}`),
     retry: false,
     staleTime: 15_000
   });
 }
 
 export function useObservability(filters: ObservabilityFilters = {}) {
+  const appContext = useApplicationContext();
   const query = new URLSearchParams();
-  if (filters.applicationID) {
-    query.set("application_id", filters.applicationID);
+  const applicationID = filters.applicationID ?? appContext.applicationId ?? "";
+  if (applicationID) {
+    query.set("application_id", applicationID);
   }
   if (filters.policyID) {
     query.set("policy_id", filters.policyID);
@@ -1168,9 +1248,17 @@ export function useObservability(filters: ObservabilityFilters = {}) {
   const encoded = query.toString();
   const suffix = encoded ? `?${encoded}` : "";
   return useQuery({
-    queryKey: ["observability", filters.applicationID ?? "", filters.policyID ?? ""],
+    queryKey: ["observability", applicationID, filters.policyID ?? ""],
     queryFn: () => fetchJSON<ObservabilityResponse>(`/api/v1/analytics/observability${suffix}`),
     retry: false,
     staleTime: 15_000
   });
+}
+
+function scopedQuery<T extends { application_id?: string; environment_id?: string }>(query: T, context: { applicationId: string | null; environmentId: string | null }, includeEnvironment = true): T {
+  return {
+    ...query,
+    application_id: query.application_id ?? context.applicationId ?? undefined,
+    environment_id: includeEnvironment ? query.environment_id ?? context.environmentId ?? undefined : query.environment_id
+  };
 }

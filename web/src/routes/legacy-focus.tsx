@@ -1,4 +1,4 @@
-import type { ReactNode } from "react";
+import { useEffect, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import { Badge } from "../components/ui/badge";
 import { Card, CardContent } from "../components/ui/card";
@@ -99,9 +99,44 @@ const focusCopy = {
   settingsVersion: ["Agent Version Status", "Agent inventory versions, drift checks, and upgrade state."]
 } as const;
 
+const focusTargetByKey: Record<FocusKey, string> = {
+  maintainHosts: "agent-inventory",
+  maintainClearData: "maintenance-cleanup",
+  maintainWhitelist: "protection-config",
+  maintainGeneral: "system-settings",
+  maintainUpgrade: "agent-artifact-catalog",
+  algorithm: "policy-change",
+  algorithmHardening: "protection-config",
+  algorithmAlarm: "alert-rules",
+  logExceptions: "event-query",
+  logCrash: "event-query",
+  logAudit: "audit-log",
+  platform: "user-administration",
+  platformUser: "user-lifecycle",
+  settingsPanel: "protection-config",
+  settingsAlarm: "alert-rules",
+  settingsSystemInfo: "system-version",
+  settingsPoolVersion: "agent-artifact-catalog",
+  settingsVersion: "agent-inventory"
+};
+
 function FocusedRoute({ focus, page }: { focus: FocusKey; page: ReactNode }) {
   const { t } = useTranslation();
   const [label, detail] = focusCopy[focus];
+
+  useEffect(() => {
+    const target = focusTargetByKey[focus];
+    const timer = window.setTimeout(() => {
+      const element = document.querySelector<HTMLElement>(`[data-app-section="${target}"]`);
+      if (!element) {
+        return;
+      }
+      element.scrollIntoView({ block: "start", behavior: "smooth" });
+      element.focus({ preventScroll: true });
+    }, 100);
+    return () => window.clearTimeout(timer);
+  }, [focus]);
+
   return (
     <div className="space-y-5" data-route-focus={label.toLowerCase().replaceAll(" ", "-")}>
       <Card>

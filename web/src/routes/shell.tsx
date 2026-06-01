@@ -13,10 +13,11 @@ import {
 } from "lucide-react";
 import { Button } from "../components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "../components/ui/card";
+import { setSelectedApplication, setSelectedEnvironment, useApplicationContext } from "../domain/app-context";
 import { navigationSections } from "../domain/control-plane";
 import { setAppLanguage, supportedLanguages, type SupportedLanguage } from "../i18n";
 import { UiText, useUiCopy } from "../i18n/copy";
-import { currentSession, loginWithPassword, saveSession } from "../lib/api";
+import { currentSession, loginWithPassword, saveSession, useApplications } from "../lib/api";
 
 const iconMap: Record<string, LucideIcon> = {
   layout: ChartNoAxesColumnIncreasing,
@@ -88,6 +89,7 @@ export function RootLayout() {
               <div className="text-sm text-slate-500">{t("shell.summary")}</div>
             </div>
             <div className="flex flex-wrap items-center gap-2">
+              {session.token ? <ApplicationContextSwitcher /> : null}
               <LanguageSwitcher language={i18n.resolvedLanguage ?? i18n.language} />
               <Link
                 to="/policies"
@@ -139,6 +141,72 @@ export function RootLayout() {
           </Suspense>
         </div>
       </main>
+    </div>
+  );
+}
+
+function ApplicationContextSwitcher() {
+  const { t } = useTranslation();
+  const appContext = useApplicationContext();
+  const applicationsQuery = useApplications(true);
+  const applications = applicationsQuery.data?.items ?? [];
+  const selectedApplication = applications.find(application => application.id === appContext.applicationId) ?? applications[0];
+  const selectedApplicationID = selectedApplication?.id ?? "";
+  const selectedEnvironmentID = selectedApplication?.environment_ids.includes(appContext.environmentId ?? "") ? appContext.environmentId ?? "" : "";
+
+  useEffect(() => {
+    if (!applications.length) {
+      return;
+    }
+    if (!selectedApplicationID || selectedApplicationID !== appContext.applicationId) {
+      setSelectedApplication(selectedApplicationID);
+      return;
+    }
+    if (appContext.environmentId && !selectedApplication?.environment_ids.includes(appContext.environmentId)) {
+      setSelectedEnvironment(null);
+    }
+  }, [applications, appContext.applicationId, appContext.environmentId, selectedApplication, selectedApplicationID]);
+
+  return (
+    <div className="flex flex-wrap items-center gap-2">
+      <label className="inline-flex h-9 items-center gap-2 rounded-md border border-slate-200 bg-white px-2 text-sm font-medium text-slate-700">
+        <span className="sr-only">{t("applicationContext.label", "Application Context")}</span>
+        <AppWindow className="h-4 w-4 text-slate-500" />
+        <select
+          aria-label={t("applicationContext.label", "Application Context")}
+          className="h-7 max-w-44 bg-transparent text-sm outline-none"
+          disabled={applicationsQuery.isLoading || applications.length === 0}
+          value={selectedApplicationID}
+          onChange={event => setSelectedApplication(event.target.value)}
+        >
+          {applications.length > 0 ? (
+            applications.map(application => (
+              <option key={application.id} value={application.id}>
+                {application.name}
+              </option>
+            ))
+          ) : (
+            <option value="">{t("applicationContext.empty", "No applications")}</option>
+          )}
+        </select>
+      </label>
+      <label className="inline-flex h-9 items-center rounded-md border border-slate-200 bg-white px-2 text-sm font-medium text-slate-700">
+        <span className="sr-only">{t("applicationContext.environment", "Environment Context")}</span>
+        <select
+          aria-label={t("applicationContext.environment", "Environment Context")}
+          className="h-7 max-w-40 bg-transparent text-sm outline-none"
+          disabled={!selectedApplication || selectedApplication.environment_ids.length === 0}
+          value={selectedEnvironmentID}
+          onChange={event => setSelectedEnvironment(event.target.value || null)}
+        >
+          <option value="">{t("applicationContext.allEnvironments", "All environments")}</option>
+          {selectedApplication?.environment_ids.map(environmentID => (
+            <option key={environmentID} value={environmentID}>
+              {environmentID}
+            </option>
+          ))}
+        </select>
+      </label>
     </div>
   );
 }

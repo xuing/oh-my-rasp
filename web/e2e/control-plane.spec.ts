@@ -65,6 +65,16 @@ test("navigates primary control-plane sections with an authenticated session", a
   await expect(page.getByText("Control Domains")).toBeVisible();
   await expect(page.getByText("Attack Trend")).toBeVisible();
   await expect(page.getByText("User-Agent Sources")).toBeVisible();
+  await expect(page.getByLabel("Application Context")).toBeVisible();
+  await page.getByLabel("Application Context").selectOption({ label: "Billing API" });
+  await expect.poll(async () => page.evaluate(() => window.localStorage.getItem("ohmyrasp.app_context"))).toContain("app_billing");
+  await page.goto("/agents");
+  await expect(page.locator("tbody").getByText("billing-1").first()).toBeVisible();
+  await expect(page.locator("tbody").getByText("api-1")).toHaveCount(0);
+  await page.reload();
+  await expect(page.getByLabel("Application Context")).toHaveValue("app_billing");
+  await page.getByLabel("Application Context").selectOption({ label: "Managed API" });
+  await expect.poll(() => api.authorizedURLs.some(path => path.startsWith("/api/v1/agents?") && path.includes("application_id=app_billing"))).toBe(true);
 
   for (const section of [
     { label: "Applications", path: "/applications", heading: "Applications", evidence: "Playwright managed application" },
@@ -217,7 +227,7 @@ test("submits application, environment, Agent operations, policy, setting, alert
   const exportDownload = page.waitForEvent("download");
   await page.getByRole("button", { name: "Export Applications" }).click();
   await exportDownload;
-  await expect(page.getByText("Exported 1 applications.")).toBeVisible();
+  await expect(page.getByText("Exported 2 applications.")).toBeVisible();
   await page.getByRole("button", { name: "Delete Application" }).click();
   await expect(page.getByText("Deleted application Managed API.")).toBeVisible();
 
@@ -512,23 +522,23 @@ test("submits application, environment, Agent operations, policy, setting, alert
       }),
       expect.objectContaining({
         method: "PUT",
-        path: "/api/v1/system-settings/protection.allowlist",
-        body: { value: { enabled: true, mode: "enforce", entries: ["/admin/*", "10.0.0.0/8"] } }
+        path: "/api/v1/applications/app_managed/settings",
+        body: { key: "protection.allowlist", value: { enabled: true, mode: "enforce", entries: ["/admin/*", "10.0.0.0/8"] } }
       }),
       expect.objectContaining({
         method: "PUT",
-        path: "/api/v1/system-settings/protection.hardening",
-        body: { value: { mode: "enforce", block_reflection_abuse: true, block_process_execution: false } }
+        path: "/api/v1/applications/app_managed/settings",
+        body: { key: "protection.hardening", value: { mode: "enforce", block_reflection_abuse: true, block_process_execution: false } }
       }),
       expect.objectContaining({
         method: "PUT",
-        path: "/api/v1/system-settings/dependency.vulnerability_policy",
-        body: { value: { fail_on_severity: "high", block_known_exploited: true } }
+        path: "/api/v1/applications/app_managed/settings",
+        body: { key: "dependency.vulnerability_policy", value: { fail_on_severity: "high", block_known_exploited: true } }
       }),
       expect.objectContaining({
         method: "PUT",
-        path: "/api/v1/system-settings/alerts.delivery",
-        body: { value: { interval_seconds: 300 } }
+        path: "/api/v1/applications/app_managed/settings",
+        body: { key: "alerts.delivery", value: { interval_seconds: 300 } }
       }),
       expect.objectContaining({
         method: "PUT",
@@ -558,7 +568,7 @@ test("submits application, environment, Agent operations, policy, setting, alert
       expect.objectContaining({
         method: "POST",
         path: "/api/v1/alert-rules",
-        body: expect.objectContaining({ name: "Critical attack escalation", target: "secops-pager" })
+        body: expect.objectContaining({ application_id: "app_managed", name: "Critical attack escalation", target: "secops-pager" })
       }),
       expect.objectContaining({
         method: "PUT",
@@ -568,6 +578,7 @@ test("submits application, environment, Agent operations, policy, setting, alert
           description: "Escalate critical and high attacks",
           enabled: false,
           event_type: "attack",
+          application_id: "app_managed",
           severity: "high",
           condition: "severity == high",
           target: "secops-primary"
@@ -700,11 +711,42 @@ async function mockControlPlaneApi(page: Page) {
     await route.fulfill({
       status: 200,
       contentType: "application/json",
-      body: JSON.stringify(fixtures[url.pathname] ?? { items: [] })
+      body: JSON.stringify(responseForFixture(fixtures, url))
     });
   });
 
   return { agentCredentialPaths, authorizedPaths, authorizedURLs, writeRequests };
+}
+
+function responseForFixture(fixtures: Record<string, unknown>, url: URL) {
+  const fixture = fixtures[url.pathname] ?? { items: [] };
+  const applicationID = url.searchParams.get("application_id");
+  if (url.pathname === "/api/v1/analytics/overview" && applicationID === "app_billing") {
+    return {
+      application_count: 1,
+      agent_count: 1,
+      online_agents: 1,
+      event_count: 1,
+      events_by_type: { attack: 1 },
+      events_by_severity: { high: 1 },
+      attack_trend: [{ bucket_start: "2026-05-31T00:00:00Z", count: 1 }],
+      attacks_by_hook: { command: 1 },
+      attacks_by_algorithm: { command_userinput: 1 },
+      attacks_by_user_agent: { "curl/8.0": 1 },
+      crash_count: 0
+    };
+  }
+  if (!applicationID || !fixture || Array.isArray(fixture) || typeof fixture !== "object" || !("items" in fixture)) {
+    return fixture;
+  }
+  const items = (fixture as { items: Array<Record<string, unknown>> }).items;
+  if (!Array.isArray(items)) {
+    return fixture;
+  }
+  return {
+    ...(fixture as Record<string, unknown>),
+    items: items.filter(item => !item.application_id || item.application_id === applicationID)
+  };
 }
 
 async function fulfillWrite(route: Route, fixtures: Record<string, unknown>, path: string, method: string, body: Record<string, unknown>) {
@@ -1045,6 +1087,21 @@ async function fulfillWrite(route: Route, fixtures: Record<string, unknown>, pat
     return;
   }
 
+  if (method === "PUT" && path === "/api/v1/applications/app_managed/settings") {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        application_id: "app_managed",
+        key: body.key,
+        value: body.value,
+        updated_by: "usr_admin",
+        updated_at: "2026-05-31T01:00:00Z"
+      })
+    });
+    return;
+  }
+
   if (method === "POST" && path === "/api/v1/maintenance/cleanup") {
     await route.fulfill({
       status: 200,
@@ -1219,6 +1276,35 @@ function policyFixture() {
   };
 }
 
+function billingPolicyFixture() {
+  return {
+    id: "pol_billing",
+    name: "Billing Protection",
+    description: "Billing command protection",
+    created_at: "2026-05-31T00:00:00Z",
+    active: {
+      version: 1,
+      status: "active",
+      canary_percent: 100,
+      created_at: "2026-05-31T00:00:00Z",
+      rules: [
+        {
+          id: "rul_billing_command",
+          name: "Billing command guard",
+          hook: "command",
+          algorithm: "command_userinput",
+          action: "block",
+          severity: "high",
+          expression: "algorithm == \"command_userinput\"",
+          tags: ["command"],
+          description: "Blocks command execution in billing."
+        }
+      ]
+    },
+    versions: []
+  };
+}
+
 const apiFixtures: Record<string, unknown> = {
   "/api/v1/analytics/overview": {
     application_count: 2,
@@ -1243,7 +1329,18 @@ const apiFixtures: Record<string, unknown> = {
         name: "Managed API",
         description: "Playwright managed application",
         created_at: "2026-05-31T00:00:00Z",
+        policy_id: "pol_default",
+        policy_version: 3,
         environment_ids: ["env_prod", "env_staging"]
+      },
+      {
+        id: "app_billing",
+        name: "Billing API",
+        description: "Billing service",
+        created_at: "2026-05-31T00:00:00Z",
+        policy_id: "pol_billing",
+        policy_version: 1,
+        environment_ids: ["env_billing"]
       }
     ]
   },
@@ -1254,7 +1351,58 @@ const apiFixtures: Record<string, unknown> = {
         name: "Managed API",
         description: "Playwright managed application",
         created_at: "2026-05-31T00:00:00Z",
+        policy_id: "pol_default",
+        policy_version: 3,
         environment_ids: ["env_prod", "env_staging"]
+      },
+      {
+        id: "app_billing",
+        name: "Billing API",
+        description: "Billing service",
+        created_at: "2026-05-31T00:00:00Z",
+        policy_id: "pol_billing",
+        policy_version: 1,
+        environment_ids: ["env_billing"]
+      }
+    ]
+  },
+  "/api/v1/applications/app_managed/settings": {
+    items: [
+      { application_id: "app_managed", key: "alerts.delivery", value: { interval_seconds: 300 }, updated_by: "system", updated_at: "2026-05-31T00:00:00Z" },
+      { application_id: "app_managed", key: "protection.allowlist", value: { enabled: false, mode: "monitor", entries: [] }, updated_by: "system", updated_at: "2026-05-31T00:00:00Z" },
+      {
+        application_id: "app_managed",
+        key: "protection.hardening",
+        value: { mode: "monitor", block_reflection_abuse: true, block_process_execution: true },
+        updated_by: "system",
+        updated_at: "2026-05-31T00:00:00Z"
+      },
+      {
+        application_id: "app_managed",
+        key: "dependency.vulnerability_policy",
+        value: { fail_on_severity: "critical", block_known_exploited: true },
+        updated_by: "system",
+        updated_at: "2026-05-31T00:00:00Z"
+      }
+    ]
+  },
+  "/api/v1/applications/app_billing/settings": {
+    items: [
+      { application_id: "app_billing", key: "alerts.delivery", value: { interval_seconds: 600 }, updated_by: "system", updated_at: "2026-05-31T00:00:00Z" },
+      { application_id: "app_billing", key: "protection.allowlist", value: { enabled: true, mode: "monitor", entries: ["/billing/health"] }, updated_by: "system", updated_at: "2026-05-31T00:00:00Z" },
+      {
+        application_id: "app_billing",
+        key: "protection.hardening",
+        value: { mode: "monitor", block_reflection_abuse: true, block_process_execution: true },
+        updated_by: "system",
+        updated_at: "2026-05-31T00:00:00Z"
+      },
+      {
+        application_id: "app_billing",
+        key: "dependency.vulnerability_policy",
+        value: { fail_on_severity: "high", block_known_exploited: true },
+        updated_by: "system",
+        updated_at: "2026-05-31T00:00:00Z"
       }
     ]
   },
@@ -1271,6 +1419,18 @@ const apiFixtures: Record<string, unknown> = {
         last_seen_at: "2026-05-31T00:00:00Z",
         policy_id: "pol_default",
         policy_version: 3
+      },
+      {
+        id: "agt_billing_1",
+        application_id: "app_billing",
+        environment_id: "env_billing",
+        hostname: "billing-1",
+        runtime: "java",
+        version: "1.0.0",
+        status: "online",
+        last_seen_at: "2026-05-31T00:00:00Z",
+        policy_id: "pol_billing",
+        policy_version: 1
       }
     ]
   },
@@ -1320,7 +1480,7 @@ const apiFixtures: Record<string, unknown> = {
     ]
   },
   "/api/v1/policies": {
-    items: [policyFixture()]
+    items: [policyFixture(), billingPolicyFixture()]
   },
   "/api/v1/policies/algorithms": {
     items: [
@@ -1344,6 +1504,20 @@ const apiFixtures: Record<string, unknown> = {
         algorithm: "sql_userinput",
         severity: "critical",
         message: "SQL tautology blocked",
+        occurred_at: "2026-05-31T00:00:00Z"
+      },
+      {
+        id: "evt_billing_1",
+        type: "attack",
+        application_id: "app_billing",
+        environment_id: "env_billing",
+        agent_id: "agt_billing_1",
+        policy_id: "pol_billing",
+        policy_version: 1,
+        hook: "command",
+        algorithm: "command_userinput",
+        severity: "high",
+        message: "Billing command detected",
         occurred_at: "2026-05-31T00:00:00Z"
       }
     ]
@@ -1435,6 +1609,18 @@ const apiFixtures: Record<string, unknown> = {
           }
         ],
         observed_at: "2026-05-31T00:00:00Z"
+      },
+      {
+        id: "dep_billing_1",
+        application_id: "app_billing",
+        agent_id: "agt_billing_1",
+        name: "stripe-java",
+        version: "27.0.0",
+        ecosystem: "maven",
+        package_path: "com/stripe/stripe-java/27.0.0/stripe-java.jar",
+        licenses: ["MIT"],
+        vulnerabilities: [],
+        observed_at: "2026-05-31T00:00:00Z"
       }
     ]
   },
@@ -1485,6 +1671,21 @@ const apiFixtures: Record<string, unknown> = {
         remediation: "Enable explicit runtime hardening before rollout.",
         attributes: { runtime: "java" },
         observed_at: "2026-05-31T00:00:00Z"
+      },
+      {
+        id: "bsl_billing_1",
+        application_id: "app_billing",
+        environment_id: "env_billing",
+        agent_id: "agt_billing_1",
+        check_id: "jvm.process_guard",
+        title: "Process guard enabled",
+        category: "runtime",
+        severity: "low",
+        status: "passed",
+        resource: "billing-1",
+        remediation: "",
+        attributes: { runtime: "java" },
+        observed_at: "2026-05-31T00:00:00Z"
       }
     ]
   },
@@ -1522,21 +1723,8 @@ const apiFixtures: Record<string, unknown> = {
     items: [
       { key: "server.public_url", value: { url: "" }, updated_by: "system", updated_at: "2026-05-31T00:00:00Z" },
       { key: "agent.minimum_version", value: { version: "1.0.0" }, updated_by: "usr_admin", updated_at: "2026-05-31T00:00:00Z" },
-      { key: "alerts.delivery", value: { interval_seconds: 300 }, updated_by: "system", updated_at: "2026-05-31T00:00:00Z" },
       { key: "events.retention", value: { attack_days: 180, performance_days: 30, dependency_days: 365, audit_days: 365 }, updated_by: "system", updated_at: "2026-05-31T00:00:00Z" },
-      { key: "protection.allowlist", value: { enabled: false, mode: "monitor", entries: [] }, updated_by: "system", updated_at: "2026-05-31T00:00:00Z" },
-      {
-        key: "protection.hardening",
-        value: { mode: "monitor", block_reflection_abuse: true, block_process_execution: true },
-        updated_by: "system",
-        updated_at: "2026-05-31T00:00:00Z"
-      },
-      {
-        key: "dependency.vulnerability_policy",
-        value: { fail_on_severity: "critical", block_known_exploited: true },
-        updated_by: "system",
-        updated_at: "2026-05-31T00:00:00Z"
-      }
+      { key: "policy.canary", value: { default_percent: 25, auto_promote: false }, updated_by: "system", updated_at: "2026-05-31T00:00:00Z" }
     ]
   },
   "/api/v1/system/edition": {
@@ -1571,6 +1759,7 @@ const apiFixtures: Record<string, unknown> = {
     items: [
       {
         id: "alr_critical_attack",
+        application_id: "app_managed",
         name: "Critical attack event",
         description: "Notify on critical attacks",
         enabled: true,
@@ -1587,6 +1776,7 @@ const apiFixtures: Record<string, unknown> = {
     items: [
       {
         id: "adl_1",
+        application_id: "app_managed",
         alert_rule_id: "alr_critical_attack",
         alert_rule_name: "Critical attack event",
         event_id: "evt_1",

@@ -18,6 +18,12 @@ export const resources = {
         signIn: "Sign in",
         loadingConsole: "Loading console view."
       },
+      applicationContext: {
+        label: "Application Context",
+        environment: "Environment Context",
+        empty: "No applications",
+        allEnvironments: "All environments"
+      },
       login: {
         title: "Sign in to OhMyRasp",
         email: "Email",
@@ -237,6 +243,12 @@ export const resources = {
         signIn: "登录",
         loadingConsole: "正在加载控制台视图。"
       },
+      applicationContext: {
+        label: "应用上下文",
+        environment: "环境上下文",
+        empty: "没有应用",
+        allEnvironments: "全部环境"
+      },
       login: {
         title: "登录 OhMyRasp",
         email: "邮箱",
@@ -455,6 +467,12 @@ export const resources = {
         signedIn: "ログイン済み",
         signIn: "サインイン",
         loadingConsole: "コンソールビューを読み込み中。"
+      },
+      applicationContext: {
+        label: "アプリケーションコンテキスト",
+        environment: "環境コンテキスト",
+        empty: "アプリケーションなし",
+        allEnvironments: "すべての環境"
       },
       login: {
         title: "OhMyRasp にサインイン",
