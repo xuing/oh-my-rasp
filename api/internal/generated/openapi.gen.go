@@ -1382,6 +1382,7 @@ type HookLatency struct {
 	Calls            int     `json:"calls"`
 	Hook             string  `json:"hook"`
 	MaxLatencyUs     int     `json:"max_latency_us"`
+	P50LatencyUs     int     `json:"p50_latency_us"`
 	P95LatencyUs     int     `json:"p95_latency_us"`
 }
 

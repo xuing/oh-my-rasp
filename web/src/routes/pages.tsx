@@ -2959,6 +2959,7 @@ export function ObservabilityPage() {
                   <th className="p-3 text-left"><UiText k="Hook" /></th>
                   <th className="p-3 text-right"><UiText k="Calls" /></th>
                   <th className="p-3 text-right"><UiText k="Avg" /></th>
+                  <th className="p-3 text-right"><UiText k="p50" /></th>
                   <th className="p-3 text-right"><UiText k="p95" /></th>
                   <th className="p-3 text-right"><UiText k="Max" /></th>
                 </tr>
@@ -2970,13 +2971,14 @@ export function ObservabilityPage() {
                       <td className="p-3 font-medium">{row.hook}</td>
                       <td className="p-3 text-right text-slate-600">{formatNumber(row.calls)}</td>
                       <td className="p-3 text-right text-slate-600">{formatLatency(row.average_latency_us)}</td>
+                      <td className="p-3 text-right text-slate-600">{formatLatency(row.p50_latency_us)}</td>
                       <td className="p-3 text-right text-slate-600">{formatLatency(row.p95_latency_us)}</td>
                       <td className="p-3 text-right text-slate-600">{formatLatency(row.max_latency_us)}</td>
                     </tr>
                   ))
                 ) : (
                   <tr className="border-t border-slate-200">
-                    <td className="p-3 text-slate-500" colSpan={5}>
+                    <td className="p-3 text-slate-500" colSpan={6}>
                       <UiText k="No samples" /></td>
                   </tr>
                 )}

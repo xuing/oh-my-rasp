@@ -357,12 +357,12 @@ func (a *Analytics) ruleOverhead(ctx context.Context, query control.Observabilit
 
 func (a *Analytics) hookLatency(ctx context.Context, query control.ObservabilityQuery) ([]control.HookLatency, error) {
 	sqlText := `
-		SELECT hook, count(), avg(latency_us), toUInt64(quantile(0.95)(latency_us)), max(latency_us)
+		SELECT hook, count(), avg(latency_us), toUInt64(quantile(0.50)(latency_us)), toUInt64(quantile(0.95)(latency_us)), max(latency_us)
 		FROM hook_events
 	`
 	where, args := observabilityWhere(query)
 	sqlText += where
-	sqlText += ` GROUP BY hook ORDER BY 4 DESC LIMIT 100`
+	sqlText += ` GROUP BY hook ORDER BY 5 DESC LIMIT 100`
 	rows, err := a.db.QueryContext(ctx, sqlText, args...)
 	if err != nil {
 		return nil, err
@@ -372,12 +372,14 @@ func (a *Analytics) hookLatency(ctx context.Context, query control.Observability
 	for rows.Next() {
 		var item control.HookLatency
 		var calls uint64
+		var p50LatencyUS uint64
 		var p95LatencyUS uint64
 		var maxLatencyUS uint64
-		if err := rows.Scan(&item.Hook, &calls, &item.AverageLatencyUS, &p95LatencyUS, &maxLatencyUS); err != nil {
+		if err := rows.Scan(&item.Hook, &calls, &item.AverageLatencyUS, &p50LatencyUS, &p95LatencyUS, &maxLatencyUS); err != nil {
 			return nil, err
 		}
 		item.Calls = intFromUint64(calls)
+		item.P50LatencyUS = intFromUint64(p50LatencyUS)
 		item.P95LatencyUS = intFromUint64(p95LatencyUS)
 		item.MaxLatencyUS = intFromUint64(maxLatencyUS)
 		items = append(items, item)

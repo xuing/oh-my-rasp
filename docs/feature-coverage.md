@@ -420,29 +420,31 @@
 
 ## 11. 日志、事件、可观测性和告警
 
-- 事件模型
-  - Attack events `[请二次检查]`
-  - Hook events `[请二次检查]`
+- 事件模型 `[Completed]`
+  - Attack events `[Completed]`
+  - Hook events `[Completed]`
     - 当前额外实现：`GET/POST /api/v1/events/hook`。
-  - Performance events `[请二次检查]`
+  - Performance events `[Completed]`
     - 当前额外实现：`GET/POST /api/v1/events/performance`。
-  - Crash events `[请二次检查]`
-  - Recycle bin `[请二次检查]`
-  - Event metadata、request、rule、policy、algorithm 字段 `[请二次检查]`
-- 可观测性
-  - Hook latency p50/p95、agent performance、policy performance `[请二次检查]`
+  - Crash events `[Completed]`
+  - Recycle bin `[Completed]`
+  - Event metadata、request、rule、policy、algorithm 字段 `[Completed]`
+- 可观测性 `[Completed]`
+  - Hook latency p50/p95、agent performance、policy performance `[Completed]`
     - 当前：`GET /api/v1/analytics/observability`。
-  - Prometheus metrics `[请二次检查]`
+  - Prometheus metrics `[Completed]`
     - 当前：`GET /metrics`。
-  - 归档 Dashboard ECharts 图形复刻 `[待检查]`
-- 告警
-  - 告警规则列表和创建 `[请二次检查]`
+  - 归档 Dashboard ECharts 图形复刻 `[Implementation Unnecessary]`
+- 告警 `[Completed]`
+  - 告警规则列表和创建 `[Completed]`
     - 当前：`GET/POST /api/v1/alert-rules`。
-  - 告警规则更新 `[请二次检查]`
+  - 告警规则更新 `[Completed]`
     - 当前：`PUT /api/v1/alert-rules/{alertRuleID}`。
-  - 告警投递记录 `[请二次检查]`
+  - 告警投递记录 `[Completed]`
     - 当前：`GET /api/v1/alert-deliveries`。
-  - 邮件服务配置和测试 `[未覆盖]`
+  - 邮件服务配置和测试 `[Implementation Unnecessary]`
+
+详见：[11. 日志、事件、可观测性和告警](feature-coverage/11-logs-events-observability-alerting.md)
 
 ## 12. 前端页面覆盖
 

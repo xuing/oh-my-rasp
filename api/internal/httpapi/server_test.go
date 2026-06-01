@@ -1557,6 +1557,10 @@ func TestObservabilityReportRequiresViewerAccess(t *testing.T) {
 	if len(hookLatency) == 0 || len(agentOverhead) == 0 || len(policyPerformance) == 0 {
 		t.Fatalf("expected observability report from ingested performance event, got %#v", report)
 	}
+	firstHookLatency := objectFromAny(t, hookLatency[0])
+	if firstHookLatency["p50_latency_us"] != float64(1700) || firstHookLatency["p95_latency_us"] != float64(1700) {
+		t.Fatalf("expected p50/p95 hook latency fields from performance event, got %#v", firstHookLatency)
+	}
 }
 
 func TestSystemSettingsAreListedAndAudited(t *testing.T) {

@@ -1954,6 +1954,7 @@ func (s *MemoryStore) Observability(_ context.Context, query ObservabilityQuery)
 			Hook:             hook,
 			Calls:            acc.count,
 			AverageLatencyUS: acc.average(),
+			P50LatencyUS:     acc.p50(),
 			P95LatencyUS:     acc.p95(),
 			MaxLatencyUS:     acc.max,
 		})
@@ -2015,12 +2016,20 @@ func (a *latencyAccumulator) average() float64 {
 }
 
 func (a *latencyAccumulator) p95() int {
+	return a.quantile(0.95)
+}
+
+func (a *latencyAccumulator) p50() int {
+	return a.quantile(0.50)
+}
+
+func (a *latencyAccumulator) quantile(q float64) int {
 	if len(a.values) == 0 {
 		return 0
 	}
 	values := append([]int(nil), a.values...)
 	sort.Ints(values)
-	index := int(float64(len(values)-1) * 0.95)
+	index := int(float64(len(values)-1) * q)
 	return values[index]
 }
 

@@ -2389,11 +2389,12 @@ components:
         max_latency_us: { type: integer }
     HookLatency:
       type: object
-      required: [hook, calls, average_latency_us, p95_latency_us, max_latency_us]
+      required: [hook, calls, average_latency_us, p50_latency_us, p95_latency_us, max_latency_us]
       properties:
         hook: { type: string }
         calls: { type: integer }
         average_latency_us: { type: number }
+        p50_latency_us: { type: integer }
         p95_latency_us: { type: integer }
         max_latency_us: { type: integer }
     AgentOverhead:

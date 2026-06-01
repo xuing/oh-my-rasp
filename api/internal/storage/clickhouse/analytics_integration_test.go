@@ -202,7 +202,7 @@ func TestAnalyticsIntegrationClickHouseWorkflow(t *testing.T) {
 	if len(report.RuleOverhead) != 1 || report.RuleOverhead[0].RuleID != "rul_sql" {
 		t.Fatalf("unexpected rule observability: %#v", report.RuleOverhead)
 	}
-	if len(report.HookLatency) != 1 || report.HookLatency[0].Hook != "command" || report.HookLatency[0].P95LatencyUS != 731 {
+	if len(report.HookLatency) != 1 || report.HookLatency[0].Hook != "command" || report.HookLatency[0].P50LatencyUS != 731 || report.HookLatency[0].P95LatencyUS != 731 {
 		t.Fatalf("unexpected hook observability: %#v", report.HookLatency)
 	}
 	if len(report.AgentOverhead) != 1 || report.AgentOverhead[0].AgentID != agentID || report.AgentOverhead[0].HookLatencyP95US != 240 {

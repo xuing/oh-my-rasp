@@ -497,6 +497,7 @@ export type HookLatency = {
   hook: string;
   calls: number;
   average_latency_us: number;
+  p50_latency_us: number;
   p95_latency_us: number;
   max_latency_us: number;
 };

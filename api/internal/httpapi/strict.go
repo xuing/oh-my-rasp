@@ -1728,6 +1728,7 @@ func openAPIHookLatency(samples []control.HookLatency) []generated.HookLatency {
 			Hook:             sample.Hook,
 			Calls:            sample.Calls,
 			AverageLatencyUs: float32(sample.AverageLatencyUS),
+			P50LatencyUs:     sample.P50LatencyUS,
 			P95LatencyUs:     sample.P95LatencyUS,
 			MaxLatencyUs:     sample.MaxLatencyUS,
 		})
