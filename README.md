@@ -4,6 +4,8 @@ Self-hosted runtime application self-protection for Java services, with a
 control plane, observability stack, daemon-compatible APIs, and a Java agent
 proof of concept.
 
+**Languages:** English | [简体中文](README.zh-CN.md)
+
 [![License](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
 [![Go](https://img.shields.io/badge/Go-1.26-00ADD8?logo=go&logoColor=white)](https://go.dev/)
 [![chi](https://img.shields.io/badge/chi-router-00ADD8?logo=go&logoColor=white)](https://github.com/go-chi/chi)
@@ -32,6 +34,29 @@ plane instead of a black-box security appliance. It combines application and
 agent inventory, policy lifecycle management, runtime telemetry, daemon
 workload reporting, auditability, and an OSS Java agent testbed in one
 repository.
+
+## Project Status
+
+OhMyRASP is currently under active development. The project is still unstable:
+APIs, policy semantics, agent packaging, detector behavior, and deployment
+interfaces may change quickly as the architecture matures. It is suitable for
+experimentation, evaluation, and contribution, but it should not yet be treated
+as a production-ready security boundary.
+
+The near-term roadmap is focused on growing the rule and strategy system:
+
+- Automatically run a large corpus of existing cyber ranges and vulnerable
+  application scenarios, then extract reusable RASP detection rules from the
+  observed attack paths.
+- Use Large Language Models (LLMs) to generate, review, and refine new
+  protection strategies from cyber-range behavior, vulnerability patterns, and
+  runtime evidence.
+- Expand the Java agent line. The current Java agent primarily targets JDK 25;
+  future work will produce corresponding agents for each Java Long-Term Support
+  (LTS) version so runtime coverage can match real-world deployment baselines.
+- Take advantage of larger token budgets and token liberalization to maintain
+  multiple agent variants, richer rule-generation workflows, and broader
+  automated validation across language/runtime combinations.
 
 ## Highlights
 
