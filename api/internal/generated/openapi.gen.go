@@ -1346,12 +1346,17 @@ type ObservabilityReport struct {
 
 // Overview defines model for Overview.
 type Overview struct {
-	AgentCount       int            `json:"agent_count"`
-	ApplicationCount int            `json:"application_count"`
-	EventCount       int            `json:"event_count"`
-	EventsBySeverity map[string]int `json:"events_by_severity"`
-	EventsByType     map[string]int `json:"events_by_type"`
-	OnlineAgents     int            `json:"online_agents"`
+	AgentCount         int            `json:"agent_count"`
+	ApplicationCount   int            `json:"application_count"`
+	AttackTrend        []TrendPoint   `json:"attack_trend"`
+	AttacksByAlgorithm map[string]int `json:"attacks_by_algorithm"`
+	AttacksByHook      map[string]int `json:"attacks_by_hook"`
+	AttacksByUserAgent map[string]int `json:"attacks_by_user_agent"`
+	CrashCount         int            `json:"crash_count"`
+	EventCount         int            `json:"event_count"`
+	EventsBySeverity   map[string]int `json:"events_by_severity"`
+	EventsByType       map[string]int `json:"events_by_type"`
+	OnlineAgents       int            `json:"online_agents"`
 }
 
 // PolicyPerformance defines model for PolicyPerformance.
@@ -1545,6 +1550,12 @@ type SystemSettingList struct {
 // SystemSettingUpdate defines model for SystemSettingUpdate.
 type SystemSettingUpdate struct {
 	Value map[string]interface{} `json:"value"`
+}
+
+// TrendPoint defines model for TrendPoint.
+type TrendPoint struct {
+	BucketStart time.Time `json:"bucket_start"`
+	Count       int       `json:"count"`
 }
 
 // User defines model for User.

@@ -66,20 +66,21 @@
     - 当前有 daemon command group，但没有 Antiy 的命令标签设置模型。
   - 命令设置重置 `/v1/api/command/setting/reset` `[Implementation Unnecessary]`
 
-## 3. 安全总览 Dashboard
+## 3. 安全总览 Dashboard `[Completed]`
 
 - 安全总览页 `/dashboard`
-  - 统计卡片 `[待检查]`
+  - 统计卡片 `[Completed]`
     - 当前：`GET /api/v1/analytics/overview`。
-  - 攻击趋势图 `/v1/api/log/attack/aggr/time` `[待检查]`
-    - 当前能按事件查询和概览统计，但没有同名时间聚合接口。
-  - 攻击类型聚合 `/v1/api/log/attack/aggr/type` `[待检查]`
-    - 当前有 `events_by_type` 和事件查询。
-  - User-Agent 聚合 `/v1/api/log/attack/aggr/ua` `[未覆盖]`
-  - 攻击崩溃概览组件 `[待检查]`
-    - 当前有 crash event ingest/query，但没有归档前端同款 dashboard 组件。
-  - 漏洞聚合概览 `/v1/api/log/attack/aggr/vuln` `[待检查]`
-    - 当前 attack 事件可携带 hook/algorithm/severity，但没有独立漏洞聚合视图。
+  - 攻击趋势图 `/v1/api/log/attack/aggr/time` `[Completed]`
+    - 当前：`GET /api/v1/analytics/overview` 返回 `attack_trend`。
+  - 攻击类型聚合 `/v1/api/log/attack/aggr/type` `[Completed]`
+    - 当前：`events_by_type`、`events_by_severity` 和攻击 Hook/算法聚合共同覆盖总览聚合。
+  - User-Agent 聚合 `/v1/api/log/attack/aggr/ua` `[Completed]`
+    - 当前：`GET /api/v1/analytics/overview` 返回 `attacks_by_user_agent`。
+  - 攻击崩溃概览组件 `[Completed]`
+    - 当前：`GET /api/v1/analytics/overview` 返回 `crash_count`，总览页展示崩溃统计卡片。
+  - 漏洞聚合概览 `/v1/api/log/attack/aggr/vuln` `[Implementation Unnecessary]`
+    - 当前：不新增独立漏洞实体或旧式聚合接口；总览页以 `attacks_by_hook` 和 `attacks_by_algorithm` 展示风险信号，独立漏洞对象应留给依赖漏洞/安全分析模块建模。
 
 ## 4. 安全分析
 

@@ -1882,7 +1882,7 @@ components:
             $ref: "#/components/schemas/BaselineFinding"
     Overview:
       type: object
-      required: [application_count, agent_count, online_agents, event_count, events_by_type, events_by_severity]
+      required: [application_count, agent_count, online_agents, event_count, events_by_type, events_by_severity, attack_trend, attacks_by_hook, attacks_by_algorithm, attacks_by_user_agent, crash_count]
       properties:
         application_count: { type: integer }
         agent_count: { type: integer }
@@ -1896,6 +1896,32 @@ components:
           type: object
           additionalProperties:
             type: integer
+        attack_trend:
+          type: array
+          items:
+            $ref: "#/components/schemas/TrendPoint"
+        attacks_by_hook:
+          type: object
+          additionalProperties:
+            type: integer
+        attacks_by_algorithm:
+          type: object
+          additionalProperties:
+            type: integer
+        attacks_by_user_agent:
+          type: object
+          additionalProperties:
+            type: integer
+        crash_count: { type: integer }
+    TrendPoint:
+      type: object
+      required: [bucket_start, count]
+      properties:
+        bucket_start:
+          type: string
+          format: date-time
+        count:
+          type: integer
     AuditLogList:
       type: object
       required: [items]

@@ -1173,15 +1173,44 @@ func TestEventAggregationAndAuditLog(t *testing.T) {
 		"algorithm":      "command_userinput",
 		"severity":       "critical",
 		"message":        "shell metacharacters detected",
+		"attributes": map[string]any{
+			"user_agent": "curl/8.0",
+		},
+	})
+	client.requestWithHeaders(t, http.MethodPost, "/api/v1/events/crash", defaultAppHeaders(), map[string]any{
+		"application_id": "app_default",
+		"environment_id": "env_default",
+		"agent_id":       agentID,
+		"severity":       "low",
+		"message":        "agent crashed",
 	})
 
 	overview := client.request(t, http.MethodGet, "/api/v1/analytics/overview", token, nil)
-	if overview["event_count"].(float64) != 1 {
-		t.Fatalf("expected one event, got %#v", overview)
+	if overview["event_count"].(float64) != 2 {
+		t.Fatalf("expected two events, got %#v", overview)
 	}
 	byType := objectValue(t, overview, "events_by_type")
-	if byType["attack"].(float64) != 1 {
+	if byType["attack"].(float64) != 1 || byType["crash"].(float64) != 1 {
 		t.Fatalf("expected attack aggregate, got %#v", byType)
+	}
+	if overview["crash_count"].(float64) != 1 {
+		t.Fatalf("expected crash aggregate, got %#v", overview)
+	}
+	attackTrend := arrayValue(t, overview, "attack_trend")
+	if len(attackTrend) != 1 || attackTrend[0].(map[string]any)["count"].(float64) != 1 {
+		t.Fatalf("expected one attack trend bucket, got %#v", attackTrend)
+	}
+	byHook := objectValue(t, overview, "attacks_by_hook")
+	if byHook["command"].(float64) != 1 {
+		t.Fatalf("expected hook aggregate, got %#v", byHook)
+	}
+	byAlgorithm := objectValue(t, overview, "attacks_by_algorithm")
+	if byAlgorithm["command_userinput"].(float64) != 1 {
+		t.Fatalf("expected algorithm aggregate, got %#v", byAlgorithm)
+	}
+	byUserAgent := objectValue(t, overview, "attacks_by_user_agent")
+	if byUserAgent["curl/8.0"].(float64) != 1 {
+		t.Fatalf("expected user-agent aggregate, got %#v", byUserAgent)
 	}
 	filtered := client.request(t, http.MethodGet, "/api/v1/events/attack?application_id=app_default&environment_id=env_default&agent_id="+agentID+"&severity=critical&hook=command&occurred_after=2026-05-30T00:00:00Z&occurred_before=2026-06-01T00:00:00Z&limit=1", token, nil)
 	filteredItems := arrayValue(t, filtered, "items")
@@ -1207,12 +1236,16 @@ func TestEventAggregationAndAuditLog(t *testing.T) {
 	}
 	deliveries := client.request(t, http.MethodGet, "/api/v1/alert-deliveries", token, nil)
 	deliveryItems := arrayValue(t, deliveries, "items")
-	if len(deliveryItems) != 1 {
-		t.Fatalf("expected one alert delivery, got %#v", deliveries)
+	if len(deliveryItems) != 2 {
+		t.Fatalf("expected attack and crash alert deliveries, got %#v", deliveries)
 	}
-	delivery := deliveryItems[0].(map[string]any)
-	if delivery["alert_rule_id"] != "alr_critical_attack" || delivery["status"] != "queued" {
-		t.Fatalf("expected queued critical attack delivery, got %#v", delivery)
+	deliveryStatus := map[string]any{}
+	for _, item := range deliveryItems {
+		delivery := item.(map[string]any)
+		deliveryStatus[delivery["alert_rule_id"].(string)] = delivery["status"]
+	}
+	if deliveryStatus["alr_critical_attack"] != "queued" || deliveryStatus["alr_agent_crash"] != "queued" {
+		t.Fatalf("expected queued attack and crash deliveries, got %#v", deliveries)
 	}
 
 	audit := client.request(t, http.MethodGet, "/api/v1/audit-logs", token, nil)

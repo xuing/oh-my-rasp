@@ -49,6 +49,8 @@ test("navigates primary control-plane sections with an authenticated session", a
 
   await page.goto("/");
   await expect(page.getByText("Control Domains")).toBeVisible();
+  await expect(page.getByText("Attack Trend")).toBeVisible();
+  await expect(page.getByText("User-Agent Sources")).toBeVisible();
 
   for (const section of [
     { label: "Applications", path: "/applications", heading: "Applications", evidence: "Playwright managed application" },
@@ -1033,7 +1035,15 @@ const apiFixtures: Record<string, unknown> = {
     online_agents: 2,
     event_count: 5,
     events_by_type: { attack: 5 },
-    events_by_severity: { critical: 1, high: 4 }
+    events_by_severity: { critical: 1, high: 4 },
+    attack_trend: [
+      { bucket_start: "2026-05-30T00:00:00Z", count: 2 },
+      { bucket_start: "2026-05-31T00:00:00Z", count: 3 }
+    ],
+    attacks_by_hook: { sql: 3, command: 2 },
+    attacks_by_algorithm: { sql_policy: 3, command_userinput: 2 },
+    attacks_by_user_agent: { "curl/8.0": 3, "sqlmap/1.8": 2 },
+    crash_count: 1
   },
   "/api/v1/applications": {
     items: [

@@ -378,9 +378,16 @@ export function OverviewPage() {
     online_agents: 0,
     event_count: 0,
     events_by_type: {},
-    events_by_severity: {}
+    events_by_severity: {},
+    attack_trend: [],
+    attacks_by_hook: {},
+    attacks_by_algorithm: {},
+    attacks_by_user_agent: {},
+    crash_count: 0
   };
   const onlineRate = Math.round((overview.online_agents / Math.max(overview.agent_count, 1)) * 100);
+  const attackCount = overview.events_by_type.attack ?? 0;
+  const criticalCount = overview.events_by_severity.critical ?? 0;
   return (
     <div className="space-y-5">
       <QueryStateNotice
@@ -389,11 +396,37 @@ export function OverviewPage() {
         loading={<UiText k="Loading overview metrics." />}
         error={<UiText k="Overview metrics are unavailable." />}
       />
-      <section className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+      <section className="grid gap-3 md:grid-cols-3 xl:grid-cols-6">
         <Metric label={t("overview.metrics.applications")} value={overview.application_count} detail={t("overview.metrics.applicationsDetail")} />
         <Metric label={t("overview.metrics.onlineAgents")} value={`${overview.online_agents}/${overview.agent_count}`} detail={t("overview.metrics.onlineAgentsDetail", { rate: onlineRate })} />
         <Metric label={t("overview.metrics.events")} value={overview.event_count} detail={t("overview.metrics.eventsDetail")} />
-        <Metric label={t("overview.metrics.hookP95")} value="-" detail={overviewQuery.data ? t("overview.metrics.hookP95Detail") : <UiText k="requires observability data" />} />
+        <Metric label={t("overview.metrics.attacks")} value={attackCount} detail={t("overview.metrics.attacksDetail")} />
+        <Metric label={t("overview.metrics.crashes")} value={overview.crash_count} detail={t("overview.metrics.crashesDetail")} />
+        <Metric label={t("overview.metrics.critical")} value={criticalCount} detail={t("overview.metrics.criticalDetail")} />
+      </section>
+      <section className="grid gap-5 xl:grid-cols-[1.2fr_.8fr]">
+        <AttackTrendPanel points={overview.attack_trend} />
+        <DashboardBreakdown
+          title={t("overview.eventDistribution")}
+          groups={[
+            { label: t("overview.eventTypes"), entries: topEntries(overview.events_by_type) },
+            { label: t("overview.severities"), entries: topEntries(overview.events_by_severity) }
+          ]}
+        />
+      </section>
+      <section className="grid gap-5 xl:grid-cols-3">
+        <DashboardBreakdown
+          title={t("overview.attackHooks")}
+          groups={[{ label: t("overview.topHooks"), entries: topEntries(overview.attacks_by_hook) }]}
+        />
+        <DashboardBreakdown
+          title={t("overview.vulnerabilitySignals")}
+          groups={[{ label: t("overview.topAlgorithms"), entries: topEntries(overview.attacks_by_algorithm) }]}
+        />
+        <DashboardBreakdown
+          title={t("overview.userAgents")}
+          groups={[{ label: t("overview.topUserAgents"), entries: topEntries(overview.attacks_by_user_agent) }]}
+        />
       </section>
       <section className="grid gap-5 xl:grid-cols-[1.15fr_.85fr]">
         <Card>
@@ -4566,6 +4599,88 @@ function Metric({ label, value, detail }: { label: ReactNode; value: string | nu
       </CardContent>
     </Card>
   );
+}
+
+function AttackTrendPanel({ points }: { points: { bucket_start: string; count: number }[] }) {
+  const { t } = useTranslation();
+  const maxCount = Math.max(1, ...points.map(point => point.count));
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>{t("overview.attackTrend")}</CardTitle>
+      </CardHeader>
+      <CardContent>
+        {points.length > 0 ? (
+          <div className="grid min-h-44 gap-3">
+            {points.map(point => {
+              const width = Math.max(8, Math.round((point.count / maxCount) * 100));
+              return (
+                <div key={point.bucket_start} className="grid grid-cols-[5.5rem_minmax(0,1fr)_3rem] items-center gap-3">
+                  <div className="text-xs text-slate-500">{formatDateShort(point.bucket_start)}</div>
+                  <div className="h-3 overflow-hidden rounded-sm bg-slate-100">
+                    <div className="h-full rounded-sm bg-teal-600" style={{ width: `${width}%` }} />
+                  </div>
+                  <div className="text-right text-sm font-medium tabular-nums text-slate-900">{formatNumber(point.count)}</div>
+                </div>
+              );
+            })}
+          </div>
+        ) : (
+          <EmptyPanelLabel>{t("overview.noDashboardData")}</EmptyPanelLabel>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
+function DashboardBreakdown({ title, groups }: { title: string; groups: { label: string; entries: [string, number][] }[] }) {
+  const { t } = useTranslation();
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>{title}</CardTitle>
+      </CardHeader>
+      <CardContent>
+        <div className="grid gap-4">
+          {groups.map(group => (
+            <div key={group.label}>
+              <div className="mb-2 text-xs font-semibold uppercase tracking-normal text-slate-500">{group.label}</div>
+              {group.entries.length > 0 ? (
+                <div className="grid gap-2">
+                  {group.entries.map(([label, count]) => (
+                    <div key={label} className="flex min-h-9 items-center justify-between gap-3 rounded-md border border-slate-200 px-3 py-2">
+                      <span className="min-w-0 truncate text-sm text-slate-700" title={label}>{label}</span>
+                      <span className="shrink-0 text-sm font-medium tabular-nums text-slate-950">{formatNumber(count)}</span>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <EmptyPanelLabel>{t("overview.noDashboardData")}</EmptyPanelLabel>
+              )}
+            </div>
+          ))}
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+function EmptyPanelLabel({ children }: { children: ReactNode }) {
+  return <div className="flex min-h-24 items-center justify-center rounded-md border border-dashed border-slate-200 text-sm text-slate-500">{children}</div>;
+}
+
+function topEntries(values: Record<string, number>, limit = 5): [string, number][] {
+  return Object.entries(values)
+    .filter(([, count]) => count > 0)
+    .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
+    .slice(0, limit);
+}
+
+function formatDateShort(value: string) {
+  return new Intl.DateTimeFormat(appI18n.resolvedLanguage ?? appI18n.language, {
+    month: "short",
+    day: "numeric"
+  }).format(new Date(value));
 }
 
 function PolicyLifecycle() {

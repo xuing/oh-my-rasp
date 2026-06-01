@@ -2057,8 +2057,12 @@ func (s *Store) ListBaselineFindings(ctx context.Context, query control.Baseline
 
 func (s *Store) Overview(ctx context.Context) (control.Overview, error) {
 	overview := control.Overview{
-		EventsByType:     map[string]int{},
-		EventsBySeverity: map[string]int{},
+		EventsByType:       map[string]int{},
+		EventsBySeverity:   map[string]int{},
+		AttackTrend:        []control.TrendPoint{},
+		AttacksByHook:      map[string]int{},
+		AttacksByAlgorithm: map[string]int{},
+		AttacksByUserAgent: map[string]int{},
 	}
 	if err := s.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM applications WHERE organization_id = $1 AND deleted_at IS NULL`, s.organizationID).Scan(&overview.ApplicationCount); err != nil {
 		return control.Overview{}, err
@@ -2076,6 +2080,65 @@ func (s *Store) Overview(ctx context.Context) (control.Overview, error) {
 		return control.Overview{}, err
 	}
 	if err := scanCounts(ctx, s.db, `SELECT severity, COUNT(*) FROM event_ingest_outbox WHERE deleted_at IS NULL GROUP BY severity`, overview.EventsBySeverity); err != nil {
+		return control.Overview{}, err
+	}
+	if err := s.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM event_ingest_outbox WHERE deleted_at IS NULL AND type = 'crash'`).Scan(&overview.CrashCount); err != nil {
+		return control.Overview{}, err
+	}
+	attackTrend, err := scanTrendPoints(ctx, s.db, `
+		SELECT date_trunc('day', occurred_at) AS bucket_start, COUNT(*)
+		FROM event_ingest_outbox
+		WHERE deleted_at IS NULL AND type = 'attack'
+		GROUP BY bucket_start
+		ORDER BY bucket_start ASC
+	`)
+	if err != nil {
+		return control.Overview{}, err
+	}
+	overview.AttackTrend = attackTrend
+	if err := scanCounts(ctx, s.db, `
+		SELECT hook, COUNT(*)
+		FROM event_ingest_outbox
+		WHERE deleted_at IS NULL AND type = 'attack' AND hook <> ''
+		GROUP BY hook
+		ORDER BY COUNT(*) DESC, hook ASC
+		LIMIT 10
+	`, overview.AttacksByHook); err != nil {
+		return control.Overview{}, err
+	}
+	if err := scanCounts(ctx, s.db, `
+		SELECT algorithm, COUNT(*)
+		FROM event_ingest_outbox
+		WHERE deleted_at IS NULL AND type = 'attack' AND algorithm <> ''
+		GROUP BY algorithm
+		ORDER BY COUNT(*) DESC, algorithm ASC
+		LIMIT 10
+	`, overview.AttacksByAlgorithm); err != nil {
+		return control.Overview{}, err
+	}
+	if err := scanCounts(ctx, s.db, `
+		SELECT user_agent, COUNT(*)
+		FROM (
+			SELECT COALESCE(
+				NULLIF(attributes->>'user_agent', ''),
+				NULLIF(attributes->>'userAgent', ''),
+				NULLIF(attributes->>'User-Agent', ''),
+				NULLIF(attributes->>'user-agent', ''),
+				NULLIF(attributes#>>'{request,user_agent}', ''),
+				NULLIF(attributes#>>'{request,userAgent}', ''),
+				NULLIF(attributes#>>'{request,headers,User-Agent}', ''),
+				NULLIF(attributes#>>'{request,headers,user-agent}', ''),
+				NULLIF(attributes#>>'{headers,User-Agent}', ''),
+				NULLIF(attributes#>>'{headers,user-agent}', ''),
+				'unknown'
+			) AS user_agent
+			FROM event_ingest_outbox
+			WHERE deleted_at IS NULL AND type = 'attack'
+		) AS user_agents
+		GROUP BY user_agent
+		ORDER BY COUNT(*) DESC, user_agent ASC
+		LIMIT 10
+	`, overview.AttacksByUserAgent); err != nil {
 		return control.Overview{}, err
 	}
 	var deletedCount int
@@ -2973,8 +3036,8 @@ func scanBaselineFindingRows(rows *sql.Rows) (control.BaselineFinding, error) {
 	return finding, nil
 }
 
-func scanCounts(ctx context.Context, q queryer, query string, target map[string]int) error {
-	rows, err := q.QueryContext(ctx, query)
+func scanCounts(ctx context.Context, q queryer, query string, target map[string]int, args ...any) error {
+	rows, err := q.QueryContext(ctx, query, args...)
 	if err != nil {
 		return err
 	}
@@ -2988,6 +3051,24 @@ func scanCounts(ctx context.Context, q queryer, query string, target map[string]
 		target[key] = count
 	}
 	return rows.Err()
+}
+
+func scanTrendPoints(ctx context.Context, q queryer, query string, args ...any) ([]control.TrendPoint, error) {
+	rows, err := q.QueryContext(ctx, query, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	points := []control.TrendPoint{}
+	for rows.Next() {
+		var point control.TrendPoint
+		if err := rows.Scan(&point.BucketStart, &point.Count); err != nil {
+			return nil, err
+		}
+		point.BucketStart = point.BucketStart.UTC()
+		points = append(points, point)
+	}
+	return points, rows.Err()
 }
 
 func rowExists(ctx context.Context, q queryer, query string, args ...any) (bool, error) {

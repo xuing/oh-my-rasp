@@ -1611,13 +1611,29 @@ func openAPIPolicyPerformance(samples []control.PolicyPerformance) []generated.P
 
 func openAPIOverview(overview control.Overview) generated.Overview {
 	return generated.Overview{
-		ApplicationCount: overview.ApplicationCount,
-		AgentCount:       overview.AgentCount,
-		OnlineAgents:     overview.OnlineAgents,
-		EventCount:       overview.EventCount,
-		EventsByType:     copyStringIntMap(overview.EventsByType),
-		EventsBySeverity: copyStringIntMap(overview.EventsBySeverity),
+		ApplicationCount:   overview.ApplicationCount,
+		AgentCount:         overview.AgentCount,
+		OnlineAgents:       overview.OnlineAgents,
+		EventCount:         overview.EventCount,
+		EventsByType:       copyStringIntMap(overview.EventsByType),
+		EventsBySeverity:   copyStringIntMap(overview.EventsBySeverity),
+		AttackTrend:        openAPITrendPoints(overview.AttackTrend),
+		AttacksByHook:      copyStringIntMap(overview.AttacksByHook),
+		AttacksByAlgorithm: copyStringIntMap(overview.AttacksByAlgorithm),
+		AttacksByUserAgent: copyStringIntMap(overview.AttacksByUserAgent),
+		CrashCount:         overview.CrashCount,
 	}
+}
+
+func openAPITrendPoints(points []control.TrendPoint) []generated.TrendPoint {
+	result := make([]generated.TrendPoint, 0, len(points))
+	for _, point := range points {
+		result = append(result, generated.TrendPoint{
+			BucketStart: point.BucketStart,
+			Count:       point.Count,
+		})
+	}
+	return result
 }
 
 func openAPIAuditLogs(logs []control.AuditLog) []generated.AuditLog {

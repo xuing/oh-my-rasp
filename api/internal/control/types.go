@@ -432,18 +432,28 @@ type AlertDelivery struct {
 }
 
 type Overview struct {
-	ApplicationCount int            `json:"application_count"`
-	AgentCount       int            `json:"agent_count"`
-	OnlineAgents     int            `json:"online_agents"`
-	EventCount       int            `json:"event_count"`
-	EventsByType     map[string]int `json:"events_by_type"`
-	EventsBySeverity map[string]int `json:"events_by_severity"`
+	ApplicationCount   int            `json:"application_count"`
+	AgentCount         int            `json:"agent_count"`
+	OnlineAgents       int            `json:"online_agents"`
+	EventCount         int            `json:"event_count"`
+	EventsByType       map[string]int `json:"events_by_type"`
+	EventsBySeverity   map[string]int `json:"events_by_severity"`
+	AttackTrend        []TrendPoint   `json:"attack_trend"`
+	AttacksByHook      map[string]int `json:"attacks_by_hook"`
+	AttacksByAlgorithm map[string]int `json:"attacks_by_algorithm"`
+	AttacksByUserAgent map[string]int `json:"attacks_by_user_agent"`
+	CrashCount         int            `json:"crash_count"`
 }
 
 type EventOverview struct {
 	EventCount       int            `json:"event_count"`
 	EventsByType     map[string]int `json:"events_by_type"`
 	EventsBySeverity map[string]int `json:"events_by_severity"`
+}
+
+type TrendPoint struct {
+	BucketStart time.Time `json:"bucket_start"`
+	Count       int       `json:"count"`
 }
 
 type RateLimitDecision struct {

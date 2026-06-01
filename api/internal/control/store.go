@@ -1644,22 +1644,98 @@ func (s *MemoryStore) Overview(_ context.Context) (Overview, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	overview := Overview{
-		ApplicationCount: len(s.applications),
-		AgentCount:       len(s.agents),
-		EventCount:       len(s.events),
-		EventsByType:     make(map[string]int),
-		EventsBySeverity: make(map[string]int),
+		ApplicationCount:   len(s.applications),
+		AgentCount:         len(s.agents),
+		EventsByType:       map[string]int{},
+		EventsBySeverity:   map[string]int{},
+		AttacksByHook:      map[string]int{},
+		AttacksByAlgorithm: map[string]int{},
+		AttacksByUserAgent: map[string]int{},
 	}
 	for _, agent := range s.agents {
 		if agent.Status == "online" {
 			overview.OnlineAgents++
 		}
 	}
+	attackBuckets := map[time.Time]int{}
 	for _, event := range s.events {
+		if event.DeletedAt != nil {
+			continue
+		}
+		overview.EventCount++
 		overview.EventsByType[event.Type]++
 		overview.EventsBySeverity[event.Severity]++
+		switch event.Type {
+		case "attack":
+			bucket := dayBucket(event.OccurredAt)
+			attackBuckets[bucket]++
+			incrementIfPresent(overview.AttacksByHook, event.Hook)
+			incrementIfPresent(overview.AttacksByAlgorithm, event.Algorithm)
+			overview.AttacksByUserAgent[userAgentFromAttributes(event.Attributes)]++
+		case "crash":
+			overview.CrashCount++
+		}
 	}
+	overview.AttackTrend = trendPointsFromBuckets(attackBuckets)
 	return overview, nil
+}
+
+func dayBucket(value time.Time) time.Time {
+	value = value.UTC()
+	return time.Date(value.Year(), value.Month(), value.Day(), 0, 0, 0, 0, time.UTC)
+}
+
+func trendPointsFromBuckets(buckets map[time.Time]int) []TrendPoint {
+	points := make([]TrendPoint, 0, len(buckets))
+	for bucket, count := range buckets {
+		points = append(points, TrendPoint{BucketStart: bucket, Count: count})
+	}
+	sort.Slice(points, func(i, j int) bool {
+		return points[i].BucketStart.Before(points[j].BucketStart)
+	})
+	return points
+}
+
+func incrementIfPresent(target map[string]int, value string) {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return
+	}
+	target[value]++
+}
+
+func userAgentFromAttributes(attributes map[string]any) string {
+	for _, key := range []string{"user_agent", "userAgent", "User-Agent", "user-agent"} {
+		if value := stringAttribute(attributes, key); value != "" {
+			return value
+		}
+	}
+	for _, key := range []string{"request", "headers"} {
+		if nested, ok := attributes[key].(map[string]any); ok {
+			if value := userAgentFromAttributes(nested); value != "" && value != "unknown" {
+				return value
+			}
+		}
+	}
+	return "unknown"
+}
+
+func stringAttribute(attributes map[string]any, key string) string {
+	if attributes == nil {
+		return ""
+	}
+	value, ok := attributes[key]
+	if !ok {
+		return ""
+	}
+	switch typed := value.(type) {
+	case string:
+		return strings.TrimSpace(typed)
+	case fmt.Stringer:
+		return strings.TrimSpace(typed.String())
+	default:
+		return strings.TrimSpace(fmt.Sprint(typed))
+	}
 }
 
 func (s *MemoryStore) Observability(_ context.Context, query ObservabilityQuery) (ObservabilityReport, error) {

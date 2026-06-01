@@ -7,6 +7,16 @@ export type OverviewResponse = {
   event_count: number;
   events_by_type: Record<string, number>;
   events_by_severity: Record<string, number>;
+  attack_trend: TrendPoint[];
+  attacks_by_hook: Record<string, number>;
+  attacks_by_algorithm: Record<string, number>;
+  attacks_by_user_agent: Record<string, number>;
+  crash_count: number;
+};
+
+export type TrendPoint = {
+  bucket_start: string;
+  count: number;
 };
 
 export type ListResponse<T> = {

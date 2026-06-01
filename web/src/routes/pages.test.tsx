@@ -21,6 +21,10 @@ describe("OverviewPage", () => {
     expect(screen.getByText("Control Domains")).toBeTruthy();
     expect(screen.getByText("Policy Lifecycle")).toBeTruthy();
     expect(screen.getByText("Online Agents")).toBeTruthy();
+    expect(screen.getByText("Attack Trend")).toBeTruthy();
+    expect(screen.getByText("User-Agent Sources")).toBeTruthy();
+    expect(screen.getByText("curl/8.0")).toBeTruthy();
+    expect(screen.getByText("command_userinput")).toBeTruthy();
     expect(screen.queryByText("132/141")).toBeNull();
   });
 
@@ -119,7 +123,12 @@ function responseForPath(path: string) {
       online_agents: 3,
       event_count: 2,
       events_by_type: { attack: 1, hook: 1 },
-      events_by_severity: { critical: 1, low: 1 }
+      events_by_severity: { critical: 1, low: 1 },
+      attack_trend: [{ bucket_start: "2026-05-31T00:00:00Z", count: 1 }],
+      attacks_by_hook: { command: 1 },
+      attacks_by_algorithm: { command_userinput: 1 },
+      attacks_by_user_agent: { "curl/8.0": 1 },
+      crash_count: 1
     };
   }
   if (path === "/api/v1/analytics/observability") {
