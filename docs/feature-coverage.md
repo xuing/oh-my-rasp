@@ -20,7 +20,7 @@
     - 归档：Vue 登录入口和路由守卫。
     - 当前：`/login`, `/api/v1/auth/login`, `/api/v1/me`。
   - 路由进度条和菜单权限守卫 `[Implementation Unnecessary]`
-    - 当前有认证和角色权限，但没有复刻 Antiy 的 Vue 菜单守卫、企业上下文切换逻辑。
+    - 当前有认证和角色权限，但没有复刻 Vue 菜单守卫、企业上下文切换逻辑。
   - 404 页面 `/404` 和无权限页 `/noaccess` `[Completed]`
     - 当前有路由层错误处理和登录保护，但没有单独复刻这两个页面。
 - 初始配置
@@ -43,7 +43,7 @@
   - 删除应用 `/v1/api/app/delete` `[Completed]`
     - 当前：`DELETE /api/v1/applications/{appID}`，审计记录 `application.delete`。
   - 应用配置 `/v1/api/app/config` `[Implementation Unnecessary]`
-    - 当前通过应用、环境、策略分配和系统设置覆盖部分配置，不是 Antiy 的单一 app config。
+    - 当前通过应用、环境、策略分配和系统设置覆盖部分配置，不是单一 app config。
   - 应用初始化 `/v1/api/app/init` `[Completed]`
     - 当前应用创建时初始化 secret、环境和默认策略相关字段。
   - 应用导出 `/v1/api/app/export` `[Completed]`
@@ -63,7 +63,7 @@
   - 绑定标签 `/v1/api/command/label/bind` `[Implementation Unnecessary]`
   - 解绑标签 `/v1/api/command/label/unbind` `[Implementation Unnecessary]`
   - 命令设置查询 `/v1/api/command/setting` `[Implementation Unnecessary]`
-    - 当前有 daemon command group，但没有 Antiy 的命令标签设置模型。
+    - 当前有 daemon command group，但没有命令标签设置模型。
   - 命令设置重置 `/v1/api/command/setting/reset` `[Implementation Unnecessary]`
 
 ## 3. 安全总览 Dashboard `[Completed]`
