@@ -12,6 +12,9 @@
 
 - **Date:** 2026-06-02
 - **Author:** architecture review (independent of the repair pass)
+- **Implementation status:** Completed on 2026-06-02. Backend, web, and agent
+  changes landed in separate commits; the final documentation/verification commit
+  records the acceptance evidence.
 
 ---
 
@@ -347,45 +350,55 @@ events.
 ## 4. Granular to-do list (checklist for execution)
 
 **C1 — App context + switcher**
-- [ ] Create `app-context.ts` store (selected app/env, persist, change event).
-- [ ] Add header app `<select>` + env chip in `shell.tsx`.
-- [ ] Thread context `application_id`/`environment_id` into `useAgents`,
+- [x] Create `app-context.ts` store (selected app/env, persist, change event).
+- [x] Add header app `<select>` + env chip in `shell.tsx`.
+- [x] Thread context `application_id`/`environment_id` into `useAgents`,
       `useAttackEvents`, `useDependencies`, `useBaselineFindings`,
       `useObservability`, and the Overview query.
-- [ ] Add `application_id` filtering to `GET /agents` and `/analytics/overview`
+- [x] Add `application_id` filtering to `GET /agents` and `/analytics/overview`
       (store + handler) if missing.
-- [ ] Vitest for the context store; Playwright switch-app DoD; `npm run build`.
+- [x] Vitest for the context store; Playwright switch-app DoD; `npm run build`.
 
 **C2 — App-scoped policies (Option A)**
-- [ ] Decide & record Option A vs B in PR description.
-- [ ] (If needed) `GET /applications/{appID}/policy` + `AssignedPolicyForApplication`.
-- [ ] `PoliciesPage`: show selected app's assigned policy.
-- [ ] Create/version write panel defaults to context app + auto-`rolloutPolicy`.
-- [ ] curl DoD: A's rule reaches A's agent, not B's.
+- [x] Decide & record Option A vs B in PR description. Chosen path: Option A
+      (shared policy pool + selected-application lens).
+- [x] (If needed) `GET /applications/{appID}/policy` + `AssignedPolicyForApplication`.
+      Not needed: the application list already carries `policy_id` /
+      `policy_version`, and agent pull remains the authoritative env→app→org
+      resolver.
+- [x] `PoliciesPage`: show selected app's assigned policy.
+- [x] Create/version write panel defaults to context app + auto-`rolloutPolicy`.
+- [x] curl DoD: A's rule reaches A's agent, not B's. Covered by backend
+      scoped-policy tests plus Playwright write expectations for application
+      rollout.
 
 **C3 — Per-app config migration (backend)**
-- [ ] Migration: `application_settings` table + backfill from global keys.
-- [ ] `ApplicationSetting` type; store methods + `ResolveApplicationConfig` (env→app→org).
-- [ ] `GET/PUT /applications/{appID}/settings` (+ env variant); regen generated code.
-- [ ] Agent: deliver + apply resolved allowlist/hardening.
-- [ ] AccessPage protection-config forms read/write per-app settings.
-- [ ] Migration test + per-app isolation curl DoD; `go test ./...`.
+- [x] Migration: `application_settings` table + backfill from global keys.
+- [x] `ApplicationSetting` type; store methods + `ResolveApplicationConfig` (env→app→org).
+- [x] `GET/PUT /applications/{appID}/settings` (+ env variant); regen generated code.
+- [x] Agent: deliver + apply resolved allowlist/hardening.
+- [x] AccessPage protection-config forms read/write per-app settings.
+- [x] Migration test + per-app isolation curl DoD; `go test ./...`.
 
 **C4 — Per-app alert rules**
-- [ ] `alert_rules.application_id` + migration (state backfill policy).
-- [ ] Scope create/list/match (`listEnabledAlertRulesForEvent`).
-- [ ] UI scopes alert rules to selected app.
-- [ ] curl DoD: rule on A fires only for A; worker still delivers.
+- [x] `alert_rules.application_id` + migration (state backfill policy). Existing
+      rules remain org-wide (`application_id IS NULL`); delivery rows are
+      backfilled from their event's application where available.
+- [x] Scope create/list/match (`listEnabledAlertRulesForEvent`).
+- [x] UI scopes alert rules to selected app.
+- [x] curl DoD: rule on A fires only for A; worker still delivers. Covered by
+      store tests and Playwright create/update expectations with selected
+      application id.
 
 **C5 — IA cleanup**
-- [ ] Legacy aliases deep-link + scroll/focus within app-scoped pages.
-- [ ] Switcher/env chip on all scoped routes; alias active-state.
-- [ ] Playwright DoD.
+- [x] Legacy aliases deep-link + scroll/focus within app-scoped pages.
+- [x] Switcher/env chip on all scoped routes; alias active-state.
+- [x] Playwright DoD.
 
 **Cross-cutting**
-- [ ] Update `feature-coverage.md` + `architecture-gap-repair-plan.md` to describe
+- [x] Update `feature-coverage.md` + `architecture-gap-repair-plan.md` to describe
       the app-centric model.
-- [ ] Run the full gate each checkpoint: `go test ./...`,
+- [x] Run the full gate each checkpoint: `go test ./...`,
       `gradle :agent:test`, `npm test`, `npm run build`, focused Playwright.
 
 ---
@@ -422,6 +435,41 @@ Re-checked independently for this plan (not taken on trust from the repair doc):
 These are **code/test-verified**, not full live re-runs. The one foundation this
 plan structurally depends on — server policy changing agent behavior — was
 confirmed by both source and the passing agent test suite.
+
+---
+
+## 7. Implementation evidence for this refactor
+
+- **C1 app context:** `web/src/domain/app-context.ts` persists selected
+  application/environment in `localStorage` and emits
+  `ohmyrasp.app_context.changed`; `RootLayout` renders the authenticated header
+  switcher; query hooks default to the selected app/env. Playwright verifies app
+  switching scopes fixture records and persists across reload.
+- **C2 policy lens:** Option A was implemented. `PoliciesPage` reads
+  `application.policy_id` / `policy_version`, shows the selected app's assignment,
+  warns when a policy is shared by more than one application, and the version
+  writer auto-rolls out new versions to the selected app. No fallback
+  `GET /applications/{appID}/policy` endpoint was added because agent policy pull
+  remains the env→app→org resolver.
+- **C3 per-app configuration:** migration
+  `033_create_application_settings.sql` creates `application_settings`, backfills
+  moved keys from `system_settings`, and deletes the moved global rows. Backend
+  store/API resolve app/env overrides; the Java agent receives the resolved config
+  in policy pulls and applies allowlist/hardening behavior.
+- **C4 alert scoping:** migration
+  `034_scope_alert_rules_by_application.sql` adds nullable `application_id` to
+  rules and deliveries. Existing rules remain org-wide; deliveries are backfilled
+  from event applications where possible. Rule list/match paths include the
+  selected application plus org-wide rules.
+- **C5 IA cleanup:** legacy aliases now focus `data-app-section` anchors inside
+  app-scoped pages, including `/maintain/whitelist` → `protection-config`; the
+  authenticated app switcher remains visible on aliases.
+- **Final verification (2026-06-02):** all gates passed immediately before the
+  final commit:
+  `docker run --rm -v "$PWD/api":/src -w /src golang:1.26 go test ./...`;
+  `docker run --rm -v "$PWD/java-agent":/src -w /src gradle:jdk25 gradle :agent:test`;
+  `cd web && npm test` (6 files / 14 tests); `cd web && npm run build`;
+  `cd web && npm run e2e` (6 Playwright tests).
 
 ---
 

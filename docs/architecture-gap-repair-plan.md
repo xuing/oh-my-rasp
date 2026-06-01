@@ -9,6 +9,30 @@ Status legend:
 - `[Fixed]`: implemented and covered by focused tests.
 - `[Deferred By Design]`: explicitly out of the current product boundary, with a compensating documentation or UX change where needed.
 
+## Application-Centric Follow-Up
+
+The AG-01 through AG-18 repair pass made the platform honest about enforcement,
+runtime producers, alert delivery, RBAC, and route structure. A later acceptance
+pass then fixed the remaining product-architecture gap: the console is now scoped
+around a selected application, with environment as an optional sub-scope.
+
+Key model changes:
+
+- The authenticated shell exposes a global application/environment selector, and
+  read views default to `application_id` / `environment_id` filtering.
+- Policies use **Option A** from the app-scoping plan: a shared policy pool plus a
+  selected-application lens and default application rollout. Shared-policy edits
+  remain shared by design, with a UI warning when multiple apps use the same
+  policy.
+- `protection.allowlist`, `protection.hardening`, `alerts.delivery`, and
+  `dependency.vulnerability_policy` moved from global `system_settings` to
+  `application_settings`, with optional environment overrides and env→app→org
+  resolution.
+- Agent policy pulls now include resolved application config, so app-scoped
+  allowlist/hardening affects runtime behavior instead of only the UI.
+- Alert rules and deliveries are application-aware; existing rules remain
+  org-wide (`application_id IS NULL`) for backwards compatibility.
+
 ## Issue Register
 
 | ID | Audit issue | Explanation | Repair plan | Verification |
@@ -51,4 +75,9 @@ This section is updated as repairs land.
 - AG-08/AG-11/AG-12/AG-13/AG-15/AG-16: split route shell/auth/fallbacks, onboarding, guards, and focused legacy routes out of the old route monolith; `/addInstance` now renders dedicated onboarding; restricted routes enforce client-side RBAC before rendering; Vite production chunks are all below 500 kB. Verification: `npm test`, `npm run build`, and focused Playwright for viewer redirects, primary/legacy navigation, header shortcuts, and mobile navigation.
 - AG-10: memory store now bcrypt-hashes bootstrap and created-user passwords. Verification: `TestMemoryStoreHashesPasswords` plus `docker run --rm -v "$PWD/api":/src -w /src golang:1.26 go test ./internal/control ./internal/httpapi`.
 - AG-14/AG-17: UI and docs now distinguish Agent-produced runtime evidence from mocked UI fixture coverage; coverage docs no longer present endpoint existence alone as proof of end-to-end agent production.
-- Final verification: `docker run --rm -v "$PWD/api":/src -w /src golang:1.26 go test ./...`; `docker run --rm -v "$PWD/java-agent":/src -w /src gradle:jdk25 gradle :agent:test`; `cd web && npm test`; `cd web && npm run build`; `cd web && npm run e2e`. Rebuilt and restarted `api` and `web`; `GET /metrics` returned `ohmyrasp_api_up 1` and web returned the split production assets.
+- Application-scoping follow-up: added application context persistence/switcher,
+  app-scoped agents/overview/settings/alerts, policy assignment lens, resolved
+  policy config in Java Agent enforcement, and legacy alias focus within
+  app-scoped pages. Evidence is tracked in
+  [`application-scoping-refactor-plan.md`](application-scoping-refactor-plan.md).
+- Latest verification for the application-scoping follow-up: `docker run --rm -v "$PWD/api":/src -w /src golang:1.26 go test ./...`; `docker run --rm -v "$PWD/java-agent":/src -w /src gradle:jdk25 gradle :agent:test`; `cd web && npm test`; `cd web && npm run build`; `cd web && npm run e2e`. All passed on 2026-06-02. Previous live restart evidence for the AG repair pass: rebuilt and restarted `api` and `web`; `GET /metrics` returned `ohmyrasp_api_up 1` and web returned the split production assets.

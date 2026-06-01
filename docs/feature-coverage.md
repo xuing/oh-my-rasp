@@ -21,6 +21,19 @@
 
 审计修复明细和逐项证据见 [`docs/architecture-gap-repair-plan.md`](architecture-gap-repair-plan.md)。
 
+## 应用中心化模型说明
+
+当前控制台已经从早期的组织级平铺视图切换为应用中心化模型：登录后顶部提供全局
+Application Context 选择器，并可选择环境子范围。总览、Agent、事件、依赖、基线、
+可观测性、策略视图和告警配置都会默认按所选应用过滤。应用仍保留环境层级
+(`application → environment → agent`)；策略和应用配置按环境覆盖应用、应用覆盖组织
+默认值的顺序解析。
+
+以下配置已从全局 `system_settings` 移到应用级（可选环境级覆盖）：
+`protection.allowlist`、`protection.hardening`、`alerts.delivery` 和
+`dependency.vulnerability_policy`。保留全局的配置是平台级设置，例如
+`server.public_url`、`agent.minimum_version`、`events.retention` 和 `policy.canary`。
+
 ## 1. 门户、认证和初始化 `[Completed]`
 
 子文档：[`docs/feature-coverage/01-portal-auth-initialization.md`](feature-coverage/01-portal-auth-initialization.md)
@@ -52,14 +65,18 @@
     - 当前：`POST /api/v1/applications`。
   - 删除应用 `/v1/api/app/delete` `[Completed]`
     - 当前：`DELETE /api/v1/applications/{appID}`，审计记录 `application.delete`。
-  - 应用配置 `/v1/api/app/config` `[Implementation Unnecessary]`
-    - 当前通过应用、环境、策略分配和系统设置覆盖部分配置，不是单一 app config。
+  - 应用配置 `/v1/api/app/config` `[Completed]`
+    - 当前以 `GET/PUT /api/v1/applications/{appID}/settings` 和
+      `GET/PUT /api/v1/applications/{appID}/environments/{envID}/settings`
+      覆盖应用/环境配置；所选应用上下文会驱动防护配置、告警、依赖漏洞策略和
+      Agent 策略拉取中的 resolved config。
   - 应用初始化 `/v1/api/app/init` `[Completed]`
     - 当前应用创建时初始化 secret、环境和默认策略相关字段。
   - 应用导出 `/v1/api/app/export` `[Completed]`
     - 当前：`GET /api/v1/applications/export`，前端可下载 JSON 清单。
   - 应用概要 `/v1/api/app/summary` `[Completed]`
-    - 当前：`GET /api/v1/analytics/overview` 提供应用数、Agent 数、事件统计。
+    - 当前：`GET /api/v1/analytics/overview` 提供应用数、Agent 数、事件统计，并支持
+      `application_id`/`environment_id` 按当前应用上下文过滤。
 - 应用密钥
   - 获取应用密钥 `/v1/api/app/secret/get` `[Implementation Unnecessary]`
     - 当前按最佳实践仅在创建和轮换时一次性返回密钥，不提供持久密钥读回接口。
@@ -157,16 +174,19 @@
 - 防护设置页 `/algorithm`
   - 应用加固 `/algorithm/hardening`
     - App reinforces 配置 `/v1/api/app/general/app_reinforces` `[Completed]`
-      - 当前：`protection.hardening` 系统设置，兼容路由 `/algorithm/hardening` 指向防护配置。
+      - 当前：`protection.hardening` 为应用/环境级配置，兼容路由
+        `/algorithm/hardening` 指向所选应用的防护配置。
     - 通用 app hardening 视图 `[Completed]`
       - 当前 Access & Audit 页的 Protection Configuration 管理加固模式、反射滥用阻断、进程执行阻断和依赖漏洞阈值。
   - 报警设置 `/algorithm/alarm`
     - 应用报警配置 `/v1/api/app/alarm/config` `[Completed]`
-      - 当前：`GET/POST/PUT /api/v1/alert-rules` 和 `GET /api/v1/alert-deliveries`。
+      - 当前：`GET/POST/PUT /api/v1/alert-rules` 和 `GET /api/v1/alert-deliveries`，
+        支持 `application_id`；规则匹配只处理事件所属应用的规则和组织级规则。
     - 邮件测试 `/v1/api/app/email/test` `[Implementation Unnecessary]`
       - 当前未配置 SMTP/provider secret；在没有真实投递后端前新增测试邮件接口会产生误导性结果。
     - 报警间隔 `/v2/api/general/config` `[Completed]`
-      - 当前：`alerts.delivery.interval_seconds` 系统设置，Protection Configuration 表单可编辑并审计。
+      - 当前：`alerts.delivery.interval_seconds` 为应用/环境级设置，Protection
+        Configuration 表单按所选应用读写并审计。
   - 防护算法 `/algorithm/algorithm`
     - 获取应用算法配置 `/v2/api/algorithm/get` `[Completed]`
       - 当前：`GET /api/v1/policies/algorithms` 暴露 hook/algorithm catalog，`GET /api/v1/policies` 暴露版本化规则配置。

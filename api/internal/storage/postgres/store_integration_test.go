@@ -53,9 +53,18 @@ func TestStoreIntegrationPostgresWorkflow(t *testing.T) {
 	if err != nil {
 		t.Fatalf("list default settings: %v", err)
 	}
-	for _, key := range []string{"server.public_url", "agent.minimum_version", "alerts.delivery", "events.retention", "protection.allowlist", "protection.hardening", "dependency.vulnerability_policy"} {
+	for _, key := range []string{"server.public_url", "agent.minimum_version", "events.retention", "policy.canary"} {
 		if !containsSetting(defaultSettings, key) {
 			t.Fatalf("expected seeded setting %s in %#v", key, defaultSettings)
+		}
+	}
+	defaultApplicationSettings, err := store.ListApplicationSettings(ctx, defaultAppID, "")
+	if err != nil {
+		t.Fatalf("list default application settings: %v", err)
+	}
+	for _, key := range []string{"alerts.delivery", "protection.allowlist", "protection.hardening", "dependency.vulnerability_policy"} {
+		if !containsApplicationSetting(defaultApplicationSettings, key) {
+			t.Fatalf("expected seeded application setting %s in %#v", key, defaultApplicationSettings)
 		}
 	}
 	defaultAlertRules, err := store.ListAlertRules(ctx)
@@ -572,20 +581,21 @@ func TestStoreIntegrationPostgresWorkflow(t *testing.T) {
 			t.Fatalf("expected %s audit in %#v", action, audit)
 		}
 	}
-	if _, err := store.UpsertSystemSetting(ctx, admin.ID, control.SystemSetting{
-		Key: "alerts.delivery",
+	if _, err := store.UpsertApplicationSetting(ctx, admin.ID, control.ApplicationSetting{
+		ApplicationID: defaultAppID,
+		Key:           "alerts.delivery",
 		Value: map[string]any{
 			"email_enabled": true,
 			"severity":      "high",
 		},
 	}); err != nil {
-		t.Fatalf("upsert system setting: %v", err)
+		t.Fatalf("upsert application setting: %v", err)
 	}
-	settings, err := store.ListSystemSettings(ctx)
+	settings, err := store.ListApplicationSettings(ctx, defaultAppID, "")
 	if err != nil {
-		t.Fatalf("list settings: %v", err)
+		t.Fatalf("list application settings: %v", err)
 	}
-	if !containsSetting(settings, "alerts.delivery") {
+	if !containsApplicationSetting(settings, "alerts.delivery") {
 		t.Fatalf("expected persisted setting in %#v", settings)
 	}
 	alertRule, err := store.CreateAlertRule(ctx, admin.ID, control.AlertRule{
@@ -794,6 +804,15 @@ func containsDaemonCommandWorkload(commands []control.DaemonCommandGroup, appID 
 }
 
 func containsSetting(settings []control.SystemSetting, key string) bool {
+	for _, setting := range settings {
+		if setting.Key == key {
+			return true
+		}
+	}
+	return false
+}
+
+func containsApplicationSetting(settings []control.ApplicationSetting, key string) bool {
 	for _, setting := range settings {
 		if setting.Key == key {
 			return true

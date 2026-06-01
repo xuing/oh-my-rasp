@@ -88,6 +88,13 @@ export const resources = {
           summary: "Enterprise login, RBAC, system settings, alerts, and operation audit logs are modeled for a single self-hosted organization."
         }
       },
+      policies: {
+        selectedApplicationPolicy: "Selected Application Policy",
+        assignedPolicy: "Assigned Policy",
+        assignedVersion: "Assigned Version",
+        sharedWarning: "This policy is assigned to multiple applications; editing its rules changes every assigned application.",
+        noApplication: "Create an application before assigning a policy."
+      },
       overview: {
         metrics: {
           applications: "Applications",
@@ -313,6 +320,13 @@ export const resources = {
           summary: "企业登录、RBAC、系统设置、告警和操作审计日志面向单个自托管组织建模。"
         }
       },
+      policies: {
+        selectedApplicationPolicy: "当前应用策略",
+        assignedPolicy: "已分配策略",
+        assignedVersion: "已分配版本",
+        sharedWarning: "此策略已分配给多个应用；编辑规则会影响所有已分配应用。",
+        noApplication: "请先创建应用再分配策略。"
+      },
       overview: {
         metrics: {
           applications: "应用",
@@ -537,6 +551,13 @@ export const resources = {
           title: "アクセスと監査",
           summary: "企業ログイン、RBAC、システム設定、アラート、操作監査ログを単一のセルフホスト組織向けにモデル化します。"
         }
+      },
+      policies: {
+        selectedApplicationPolicy: "選択中アプリケーションのポリシー",
+        assignedPolicy: "割り当て済みポリシー",
+        assignedVersion: "割り当て済みバージョン",
+        sharedWarning: "このポリシーは複数のアプリに割り当てられています。ルール編集はすべての割り当て先に影響します。",
+        noApplication: "ポリシーを割り当てる前にアプリを作成してください。"
       },
       overview: {
         metrics: {

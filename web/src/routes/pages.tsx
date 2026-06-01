@@ -2920,7 +2920,12 @@ export function AccessPage() {
       </div>
       <EditionStatusPanel edition={edition} />
       <SystemVersionPanel version={version} />
-      <ProtectionConfigurationPanel applicationID={selectedApplicationID} applicationSettings={applicationSettings} settings={settings} />
+      <ProtectionConfigurationPanel
+        applicationID={selectedApplicationID}
+        environmentID={appContext.environmentId}
+        applicationSettings={applicationSettings}
+        settings={settings}
+      />
       <MaintenanceCleanupPanel />
       <AccessWritePanel applicationID={selectedApplicationID} />
       <AlertRuleLifecyclePanel applicationID={selectedApplicationID} alertRules={alertRules} />
@@ -4040,7 +4045,17 @@ function PolicyWritePanel({
   );
 }
 
-function ProtectionConfigurationPanel({ applicationID, applicationSettings, settings }: { applicationID: string; applicationSettings: ApplicationSetting[]; settings: SystemSetting[] }) {
+function ProtectionConfigurationPanel({
+  applicationID,
+  environmentID,
+  applicationSettings,
+  settings
+}: {
+  applicationID: string;
+  environmentID?: string | null;
+  applicationSettings: ApplicationSetting[];
+  settings: SystemSetting[];
+}) {
   const queryClient = useQueryClient();
   const [publicURL, setPublicURL] = useState("");
   const [allowlistEnabled, setAllowlistEnabled] = useState(false);
@@ -4096,39 +4111,56 @@ function ProtectionConfigurationPanel({ applicationID, applicationSettings, sett
         .split(/\r?\n/)
         .map(entry => entry.trim())
         .filter(Boolean);
+      const targetEnvironmentID = environmentID || undefined;
       await Promise.all([
         updateSystemSetting("server.public_url", {
           url: publicURL.trim()
         }),
-        updateApplicationSetting(applicationID, {
-          key: "protection.allowlist",
-          value: {
-            enabled: allowlistEnabled,
-            mode: allowlistMode,
-            entries
-          }
-        }),
-        updateApplicationSetting(applicationID, {
-          key: "protection.hardening",
-          value: {
-            mode: hardeningMode,
-            block_reflection_abuse: blockReflectionAbuse,
-            block_process_execution: blockProcessExecution
-          }
-        }),
-        updateApplicationSetting(applicationID, {
-          key: "dependency.vulnerability_policy",
-          value: {
-            fail_on_severity: vulnerabilitySeverity,
-            block_known_exploited: blockKnownExploited
-          }
-        }),
-        updateApplicationSetting(applicationID, {
-          key: "alerts.delivery",
-          value: {
-            interval_seconds: positiveInteger(alertDeliveryIntervalSeconds, 300)
-          }
-        }),
+        updateApplicationSetting(
+          applicationID,
+          {
+            key: "protection.allowlist",
+            value: {
+              enabled: allowlistEnabled,
+              mode: allowlistMode,
+              entries
+            }
+          },
+          targetEnvironmentID
+        ),
+        updateApplicationSetting(
+          applicationID,
+          {
+            key: "protection.hardening",
+            value: {
+              mode: hardeningMode,
+              block_reflection_abuse: blockReflectionAbuse,
+              block_process_execution: blockProcessExecution
+            }
+          },
+          targetEnvironmentID
+        ),
+        updateApplicationSetting(
+          applicationID,
+          {
+            key: "dependency.vulnerability_policy",
+            value: {
+              fail_on_severity: vulnerabilitySeverity,
+              block_known_exploited: blockKnownExploited
+            }
+          },
+          targetEnvironmentID
+        ),
+        updateApplicationSetting(
+          applicationID,
+          {
+            key: "alerts.delivery",
+            value: {
+              interval_seconds: positiveInteger(alertDeliveryIntervalSeconds, 300)
+            }
+          },
+          targetEnvironmentID
+        ),
         updateSystemSetting("events.retention", {
           attack_days: positiveInteger(attackRetentionDays, 180),
           performance_days: positiveInteger(performanceRetentionDays, 30),

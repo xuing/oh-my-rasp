@@ -159,6 +159,12 @@ test("navigates primary control-plane sections with an authenticated session", a
 
   for (const legacyRoute of [
     { path: "/addInstance", heading: "Add Instance", evidence: "Manual Java Agent" },
+    {
+      path: "/maintain/whitelist",
+      heading: "Protection Allowlist",
+      evidence: "Allowlist Entries",
+      focus: "protection-config"
+    },
     { path: "/maintain/clearData", heading: "Maintenance Cleanup", evidence: "Apply Cleanup" },
     { path: "/log/exceptions", heading: "Error Events", evidence: "Unhandled exception captured" },
     { path: "/log/crash", heading: "Crash Events", evidence: "Agent crash captured" },
@@ -175,6 +181,10 @@ test("navigates primary control-plane sections with an authenticated session", a
     await expect(page).toHaveURL(new RegExp(`${legacyRoute.path}$`));
     await expect(page.getByRole("heading", { name: legacyRoute.heading, level: 1 })).toBeVisible();
     await expect(page.getByText(legacyRoute.evidence).first()).toBeVisible();
+    await expect(page.getByLabel("Application Context")).toBeVisible();
+    if ("focus" in legacyRoute) {
+      await expect(page.locator(`[data-app-section="${legacyRoute.focus}"]`)).toBeFocused();
+    }
   }
 });
 
