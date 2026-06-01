@@ -31,37 +31,40 @@
   - 默认用户检查 `/v2/user/default` `[Implementation Unnecessary]`
     - 当前有默认管理员和登录接口，但无完全一致的默认用户检查接口。
 
-## 2. 应用管理
+## 2. 应用管理 `[Completed]`
+
+子文档：[`docs/feature-coverage/02-application-management.md`](feature-coverage/02-application-management.md)
 
 - 应用列表和应用选择 `/application`
-  - 应用列表查询 `/v1/api/app/get` `[请二次检查]`
+  - 应用列表查询 `/v1/api/app/get` `[Completed]`
     - 当前：`GET /api/v1/applications`。
-  - 创建应用 `/v1/api/app` `[请二次检查]`
+  - 创建应用 `/v1/api/app` `[Completed]`
     - 当前：`POST /api/v1/applications`。
-  - 删除应用 `/v1/api/app/delete` `[未覆盖]`
-    - 当前没有应用删除 API。
-  - 应用配置 `/v1/api/app/config` `[待检查]`
+  - 删除应用 `/v1/api/app/delete` `[Completed]`
+    - 当前：`DELETE /api/v1/applications/{appID}`，审计记录 `application.delete`。
+  - 应用配置 `/v1/api/app/config` `[Implementation Unnecessary]`
     - 当前通过应用、环境、策略分配和系统设置覆盖部分配置，不是 Antiy 的单一 app config。
-  - 应用初始化 `/v1/api/app/init` `[待检查]`
+  - 应用初始化 `/v1/api/app/init` `[Completed]`
     - 当前应用创建时初始化 secret、环境和默认策略相关字段。
-  - 应用导出 `/v1/api/app/export` `[未覆盖]`
-  - 应用概要 `/v1/api/app/summary` `[待检查]`
+  - 应用导出 `/v1/api/app/export` `[Completed]`
+    - 当前：`GET /api/v1/applications/export`，前端可下载 JSON 清单。
+  - 应用概要 `/v1/api/app/summary` `[Completed]`
     - 当前：`GET /api/v1/analytics/overview` 提供应用数、Agent 数、事件统计。
 - 应用密钥
-  - 获取应用密钥 `/v1/api/app/secret/get` `[待检查]`
-    - 当前列表返回应用 secret 相关数据，受权限保护。
-  - 重新生成密钥 `/v1/api/app/secret/regenerate` `[请二次检查]`
+  - 获取应用密钥 `/v1/api/app/secret/get` `[Implementation Unnecessary]`
+    - 当前按最佳实践仅在创建和轮换时一次性返回密钥，不提供持久密钥读回接口。
+  - 重新生成密钥 `/v1/api/app/secret/regenerate` `[Completed]`
     - 当前：`POST /api/v1/applications/{appID}/secret/rotate`。
 - 应用环境
-  - 归档无独立环境模型 `[请二次检查]`
+  - 归档无独立环境模型 `[Completed]`
     - 当前额外实现：`POST /api/v1/applications/{appID}/environments`。
 - 应用标签和命令标签
-  - 标签列表 `/v1/api/command/label/list` `[未覆盖]`
-  - 绑定标签 `/v1/api/command/label/bind` `[未覆盖]`
-  - 解绑标签 `/v1/api/command/label/unbind` `[未覆盖]`
-  - 命令设置查询 `/v1/api/command/setting` `[待检查]`
+  - 标签列表 `/v1/api/command/label/list` `[Implementation Unnecessary]`
+  - 绑定标签 `/v1/api/command/label/bind` `[Implementation Unnecessary]`
+  - 解绑标签 `/v1/api/command/label/unbind` `[Implementation Unnecessary]`
+  - 命令设置查询 `/v1/api/command/setting` `[Implementation Unnecessary]`
     - 当前有 daemon command group，但没有 Antiy 的命令标签设置模型。
-  - 命令设置重置 `/v1/api/command/setting/reset` `[未覆盖]`
+  - 命令设置重置 `/v1/api/command/setting/reset` `[Implementation Unnecessary]`
 
 ## 3. 安全总览 Dashboard
 

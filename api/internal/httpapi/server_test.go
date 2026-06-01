@@ -119,6 +119,47 @@ func TestAgentRegistrationHeartbeatAndPolicyPull(t *testing.T) {
 	}
 }
 
+func TestApplicationExportAndDelete(t *testing.T) {
+	client := newTestClient(t)
+	token := client.login(t)
+
+	app := client.request(t, http.MethodPost, "/api/v1/applications", token, map[string]any{
+		"name":        "Retired API",
+		"description": "short lived test app",
+	})
+	appID := stringValue(t, app, "id")
+	client.request(t, http.MethodPost, "/api/v1/applications/"+appID+"/environments", token, map[string]any{
+		"name": "production",
+		"kind": "production",
+	})
+
+	exported := client.request(t, http.MethodGet, "/api/v1/applications/export", token, nil)
+	if !containsApplicationID(arrayValue(t, exported, "items"), appID) {
+		t.Fatalf("expected export to include %s, got %#v", appID, exported)
+	}
+
+	deleted := client.raw(t, http.MethodDelete, "/api/v1/applications/"+appID, token, nil, nil)
+	if deleted.Code != http.StatusNoContent {
+		t.Fatalf("expected application delete to return 204, got %d: %s", deleted.Code, deleted.Body.String())
+	}
+	listed := client.request(t, http.MethodGet, "/api/v1/applications", token, nil)
+	if containsApplicationID(arrayValue(t, listed, "items"), appID) {
+		t.Fatalf("expected deleted application to be hidden from list, got %#v", listed)
+	}
+	exportedAfterDelete := client.request(t, http.MethodGet, "/api/v1/applications/export", token, nil)
+	if containsApplicationID(arrayValue(t, exportedAfterDelete, "items"), appID) {
+		t.Fatalf("expected deleted application to be hidden from export, got %#v", exportedAfterDelete)
+	}
+	missing := client.raw(t, http.MethodDelete, "/api/v1/applications/"+appID, token, nil, nil)
+	if missing.Code != http.StatusNotFound {
+		t.Fatalf("expected repeated delete to return 404, got %d: %s", missing.Code, missing.Body.String())
+	}
+	audit := client.request(t, http.MethodGet, "/api/v1/audit-logs", token, nil)
+	if !containsAuditAction(arrayValue(t, audit, "items"), "application.delete") {
+		t.Fatalf("expected application delete audit entry, got %#v", audit)
+	}
+}
+
 func TestPolicyDraftRulesCanBeUpdatedBeforeRollout(t *testing.T) {
 	client := newTestClient(t)
 	token := client.login(t)
@@ -1734,6 +1775,16 @@ func containsAuditAction(items []any, action string) bool {
 	for _, item := range items {
 		raw, ok := item.(map[string]any)
 		if ok && raw["action"] == action {
+			return true
+		}
+	}
+	return false
+}
+
+func containsApplicationID(items []any, id string) bool {
+	for _, item := range items {
+		raw, ok := item.(map[string]any)
+		if ok && raw["id"] == id {
 			return true
 		}
 	}

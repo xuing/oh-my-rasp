@@ -30,6 +30,7 @@ type Store interface {
 	UpdateUser(ctx context.Context, actorID string, userID string, input User) (User, error)
 	ListApplications(ctx context.Context) ([]Application, error)
 	CreateApplication(ctx context.Context, actorID string, input Application) (Application, error)
+	DeleteApplication(ctx context.Context, actorID string, appID string) error
 	RotateApplicationSecret(ctx context.Context, actorID string, appID string) (Application, error)
 	CreateEnvironment(ctx context.Context, actorID string, appID string, input Environment) (Environment, error)
 	DaemonAccessToken(ctx context.Context) (DaemonAccessToken, error)
@@ -341,6 +342,45 @@ func (s *MemoryStore) RotateApplicationSecret(_ context.Context, actorID string,
 	s.applications[appID] = app
 	s.audit(actorID, "application.secret.rotate", appID, map[string]any{"name": app.Name})
 	return app, nil
+}
+
+func (s *MemoryStore) DeleteApplication(_ context.Context, actorID string, appID string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	app, ok := s.applications[appID]
+	if !ok {
+		return ErrNotFound
+	}
+	delete(s.applications, appID)
+	for id, environment := range s.environments {
+		if environment.ApplicationID == appID {
+			delete(s.environments, id)
+		}
+	}
+	for id, agent := range s.agents {
+		if agent.ApplicationID == appID {
+			delete(s.agents, id)
+		}
+	}
+	for id, dependency := range s.dependencies {
+		if dependency.ApplicationID == appID {
+			delete(s.dependencies, id)
+		}
+	}
+	for id, finding := range s.baselineFindings {
+		if finding.ApplicationID == appID {
+			delete(s.baselineFindings, id)
+		}
+	}
+	for id, workload := range s.workloads {
+		if workload.ApplicationID == appID {
+			workload.ApplicationID = ""
+			workload.UpdatedAt = s.now()
+			s.workloads[id] = workload
+		}
+	}
+	s.audit(actorID, "application.delete", appID, map[string]any{"name": app.Name})
+	return nil
 }
 
 func (s *MemoryStore) CreateEnvironment(_ context.Context, actorID string, appID string, input Environment) (Environment, error) {

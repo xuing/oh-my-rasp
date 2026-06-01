@@ -590,6 +590,16 @@ async function sendJSON<T>(path: string, method: "POST" | "PUT", body: unknown):
   return response.json() as Promise<T>;
 }
 
+async function deleteJSON(path: string): Promise<void> {
+  const response = await fetch(path, {
+    method: "DELETE",
+    headers: requestHeaders()
+  });
+  if (!response.ok) {
+    throw new Error(`${response.status} ${response.statusText}`);
+  }
+}
+
 export function createPolicyVersion(policyID: string, rules: RuleInput[]) {
   return sendJSON<PolicySet>(`/api/v1/policies/${encodeURIComponent(policyID)}/versions`, "POST", { rules });
 }
@@ -653,6 +663,14 @@ export function rollbackPolicy(policyID: string) {
 
 export function createApplication(input: ApplicationCreateInput) {
   return sendJSON<Application>("/api/v1/applications", "POST", input);
+}
+
+export function exportApplications() {
+  return fetchJSON<ListResponse<Application>>("/api/v1/applications/export");
+}
+
+export function deleteApplication(appID: string) {
+  return deleteJSON(`/api/v1/applications/${encodeURIComponent(appID)}`);
 }
 
 export function createEnvironment(appID: string, input: EnvironmentCreateInput) {

@@ -125,6 +125,22 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Application"
+  /api/v1/applications/export:
+    get:
+      responses:
+        "200":
+          description: Exportable application inventory.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApplicationList"
+  /api/v1/applications/{appID}:
+    delete:
+      parameters:
+        - $ref: "#/components/parameters/AppID"
+      responses:
+        "204":
+          description: Application removed from active inventory.
   /api/v1/applications/{appID}/environments:
     post:
       parameters:

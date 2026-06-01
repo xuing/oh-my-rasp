@@ -162,6 +162,12 @@ test("submits application, environment, Agent operations, policy, setting, alert
   await expect(page.getByText("Created environment production for Managed API.")).toBeVisible();
   await page.getByRole("button", { name: "Rotate Secret" }).click();
   await expect(page.getByText("Rotated secret for Managed API. Secret: rotated-managed-secret.")).toBeVisible();
+  const exportDownload = page.waitForEvent("download");
+  await page.getByRole("button", { name: "Export Applications" }).click();
+  await exportDownload;
+  await expect(page.getByText("Exported 1 applications.")).toBeVisible();
+  await page.getByRole("button", { name: "Delete Application" }).click();
+  await expect(page.getByText("Deleted application Managed API.")).toBeVisible();
 
   await page.goto("/agents");
   await page.getByLabel("Application Secret").fill("rotated-managed-secret");
@@ -309,6 +315,12 @@ test("submits application, environment, Agent operations, policy, setting, alert
         authorization: "Bearer e2e-token",
         method: "POST",
         path: "/api/v1/applications/app_managed/secret/rotate",
+        body: {}
+      }),
+      expect.objectContaining({
+        authorization: "Bearer e2e-token",
+        method: "DELETE",
+        path: "/api/v1/applications/app_managed",
         body: {}
       }),
       expect.objectContaining({
@@ -560,7 +572,7 @@ async function mockControlPlaneApi(page: Page) {
     }
 
     if (request.method() !== "GET") {
-      const body = request.postDataJSON() as Record<string, unknown>;
+      const body = request.postData() ? request.postDataJSON() as Record<string, unknown> : {};
       writeRequests.push({
         applicationID: request.headers()["x-ohmyrasp-app-id"],
         applicationSecret: request.headers()["x-ohmyrasp-app-secret"],
@@ -628,6 +640,11 @@ async function fulfillWrite(route: Route, path: string, method: string, body: Re
         environment_ids: ["env_prod", "env_staging", "env_prod_new"]
       })
     });
+    return;
+  }
+
+  if (method === "DELETE" && path === "/api/v1/applications/app_managed") {
+    await route.fulfill({ status: 204 });
     return;
   }
 
@@ -1019,6 +1036,17 @@ const apiFixtures: Record<string, unknown> = {
     events_by_severity: { critical: 1, high: 4 }
   },
   "/api/v1/applications": {
+    items: [
+      {
+        id: "app_managed",
+        name: "Managed API",
+        description: "Playwright managed application",
+        created_at: "2026-05-31T00:00:00Z",
+        environment_ids: ["env_prod", "env_staging"]
+      }
+    ]
+  },
+  "/api/v1/applications/export": {
     items: [
       {
         id: "app_managed",

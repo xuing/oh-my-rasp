@@ -2026,6 +2026,12 @@ type ServerInterface interface {
 	// (POST /api/v1/applications)
 	PostApiV1Applications(w http.ResponseWriter, r *http.Request)
 
+	// (GET /api/v1/applications/export)
+	GetApiV1ApplicationsExport(w http.ResponseWriter, r *http.Request)
+
+	// (DELETE /api/v1/applications/{appID})
+	DeleteApiV1ApplicationsAppID(w http.ResponseWriter, r *http.Request, appID AppID)
+
 	// (POST /api/v1/applications/{appID}/environments)
 	PostApiV1ApplicationsAppIDEnvironments(w http.ResponseWriter, r *http.Request, appID AppID)
 
@@ -2248,6 +2254,16 @@ func (_ Unimplemented) GetApiV1Applications(w http.ResponseWriter, r *http.Reque
 
 // (POST /api/v1/applications)
 func (_ Unimplemented) PostApiV1Applications(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// (GET /api/v1/applications/export)
+func (_ Unimplemented) GetApiV1ApplicationsExport(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// (DELETE /api/v1/applications/{appID})
+func (_ Unimplemented) DeleteApiV1ApplicationsAppID(w http.ResponseWriter, r *http.Request, appID AppID) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
@@ -2987,6 +3003,58 @@ func (siw *ServerInterfaceWrapper) PostApiV1Applications(w http.ResponseWriter, 
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.PostApiV1Applications(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetApiV1ApplicationsExport operation middleware
+func (siw *ServerInterfaceWrapper) GetApiV1ApplicationsExport(w http.ResponseWriter, r *http.Request) {
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, BearerAuthScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetApiV1ApplicationsExport(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// DeleteApiV1ApplicationsAppID operation middleware
+func (siw *ServerInterfaceWrapper) DeleteApiV1ApplicationsAppID(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "appID" -------------
+	var appID AppID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "appID", chi.URLParam(r, "appID"), &appID, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "appID", Err: err})
+		return
+	}
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, BearerAuthScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.DeleteApiV1ApplicationsAppID(w, r, appID)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -5673,6 +5741,12 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 		r.Post(options.BaseURL+"/api/v1/applications", wrapper.PostApiV1Applications)
 	})
 	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/api/v1/applications/export", wrapper.GetApiV1ApplicationsExport)
+	})
+	r.Group(func(r chi.Router) {
+		r.Delete(options.BaseURL+"/api/v1/applications/{appID}", wrapper.DeleteApiV1ApplicationsAppID)
+	})
+	r.Group(func(r chi.Router) {
 		r.Post(options.BaseURL+"/api/v1/applications/{appID}/environments", wrapper.PostApiV1ApplicationsAppIDEnvironments)
 	})
 	r.Group(func(r chi.Router) {
@@ -6131,6 +6205,43 @@ func (response PostApiV1Applications201JSONResponse) VisitPostApiV1ApplicationsR
 	w.WriteHeader(201)
 	_, err := buf.WriteTo(w)
 	return err
+}
+
+type GetApiV1ApplicationsExportRequestObject struct {
+}
+
+type GetApiV1ApplicationsExportResponseObject interface {
+	VisitGetApiV1ApplicationsExportResponse(w http.ResponseWriter) error
+}
+
+type GetApiV1ApplicationsExport200JSONResponse ApplicationList
+
+func (response GetApiV1ApplicationsExport200JSONResponse) VisitGetApiV1ApplicationsExportResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DeleteApiV1ApplicationsAppIDRequestObject struct {
+	AppID AppID `json:"appID"`
+}
+
+type DeleteApiV1ApplicationsAppIDResponseObject interface {
+	VisitDeleteApiV1ApplicationsAppIDResponse(w http.ResponseWriter) error
+}
+
+type DeleteApiV1ApplicationsAppID204Response struct {
+}
+
+func (response DeleteApiV1ApplicationsAppID204Response) VisitDeleteApiV1ApplicationsAppIDResponse(w http.ResponseWriter) error {
+	w.WriteHeader(204)
+	return nil
 }
 
 type PostApiV1ApplicationsAppIDEnvironmentsRequestObject struct {
@@ -7282,6 +7393,12 @@ type StrictServerInterface interface {
 	// (POST /api/v1/applications)
 	PostApiV1Applications(ctx context.Context, request PostApiV1ApplicationsRequestObject) (PostApiV1ApplicationsResponseObject, error)
 
+	// (GET /api/v1/applications/export)
+	GetApiV1ApplicationsExport(ctx context.Context, request GetApiV1ApplicationsExportRequestObject) (GetApiV1ApplicationsExportResponseObject, error)
+
+	// (DELETE /api/v1/applications/{appID})
+	DeleteApiV1ApplicationsAppID(ctx context.Context, request DeleteApiV1ApplicationsAppIDRequestObject) (DeleteApiV1ApplicationsAppIDResponseObject, error)
+
 	// (POST /api/v1/applications/{appID}/environments)
 	PostApiV1ApplicationsAppIDEnvironments(ctx context.Context, request PostApiV1ApplicationsAppIDEnvironmentsRequestObject) (PostApiV1ApplicationsAppIDEnvironmentsResponseObject, error)
 
@@ -7845,6 +7962,56 @@ func (sh *strictHandler) PostApiV1Applications(w http.ResponseWriter, r *http.Re
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(PostApiV1ApplicationsResponseObject); ok {
 		if err := validResponse.VisitPostApiV1ApplicationsResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetApiV1ApplicationsExport operation middleware
+func (sh *strictHandler) GetApiV1ApplicationsExport(w http.ResponseWriter, r *http.Request) {
+	var request GetApiV1ApplicationsExportRequestObject
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetApiV1ApplicationsExport(ctx, request.(GetApiV1ApplicationsExportRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetApiV1ApplicationsExport")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetApiV1ApplicationsExportResponseObject); ok {
+		if err := validResponse.VisitGetApiV1ApplicationsExportResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// DeleteApiV1ApplicationsAppID operation middleware
+func (sh *strictHandler) DeleteApiV1ApplicationsAppID(w http.ResponseWriter, r *http.Request, appID AppID) {
+	var request DeleteApiV1ApplicationsAppIDRequestObject
+
+	request.AppID = appID
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.DeleteApiV1ApplicationsAppID(ctx, request.(DeleteApiV1ApplicationsAppIDRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "DeleteApiV1ApplicationsAppID")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(DeleteApiV1ApplicationsAppIDResponseObject); ok {
+		if err := validResponse.VisitDeleteApiV1ApplicationsAppIDResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {

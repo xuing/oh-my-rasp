@@ -4,6 +4,7 @@ import {
   Activity,
   AppWindow,
   ChartNoAxesColumnIncreasing,
+  Download,
   Gauge,
   Globe2,
   KeyRound,
@@ -14,6 +15,7 @@ import {
   RefreshCcw,
   ScrollText,
   ShieldCheck,
+  Trash2,
   Upload
 } from "lucide-react";
 import { type FormEvent, type ReactNode, useEffect, useState } from "react";
@@ -36,7 +38,9 @@ import {
   createPolicyVersion,
   createUser,
   currentSession,
+  deleteApplication,
   downloadAgentArtifact,
+  exportApplications,
   getAgentArtifactInfo,
   getDaemonApplicationCredential,
   getDaemonToken,
@@ -481,6 +485,10 @@ function ApplicationsWritePanel({ applications }: { applications: Application[] 
   const [isEnvironmentSubmitting, setIsEnvironmentSubmitting] = useState(false);
   const [secretMessage, setSecretMessage] = useState({ status: "", error: "" });
   const [isSecretSubmitting, setIsSecretSubmitting] = useState(false);
+  const [exportMessage, setExportMessage] = useState({ status: "", error: "" });
+  const [isExportSubmitting, setIsExportSubmitting] = useState(false);
+  const [deleteMessage, setDeleteMessage] = useState({ status: "", error: "" });
+  const [isDeleteSubmitting, setIsDeleteSubmitting] = useState(false);
 
   const selectedApplication = applications.find(application => application.id === applicationID) ?? applications[0];
 
@@ -571,6 +579,43 @@ function ApplicationsWritePanel({ applications }: { applications: Application[] 
     }
   }
 
+  async function handleExportApplications() {
+    setExportMessage({ status: "", error: "" });
+    setIsExportSubmitting(true);
+    try {
+      const exported = await exportApplications();
+      downloadApplicationExport(exported.items);
+      setExportMessage({ status: notice("Exported {{count}} applications.", { count: exported.items.length }), error: "" });
+    } catch {
+      setExportMessage({ status: "", error: notice("Unable to export applications.") });
+    } finally {
+      setIsExportSubmitting(false);
+    }
+  }
+
+  async function handleApplicationDelete() {
+    setDeleteMessage({ status: "", error: "" });
+    if (!selectedApplication) {
+      setDeleteMessage({ status: "", error: notice("Choose an application first.") });
+      return;
+    }
+    setIsDeleteSubmitting(true);
+    try {
+      const deletedName = selectedApplication.name;
+      await deleteApplication(selectedApplication.id);
+      setApplicationID("");
+      await queryClient.invalidateQueries({ queryKey: ["applications"] });
+      await queryClient.invalidateQueries({ queryKey: ["agents"] });
+      await queryClient.invalidateQueries({ queryKey: ["daemon-workloads"] });
+      await queryClient.invalidateQueries({ queryKey: ["overview"] });
+      setDeleteMessage({ status: notice("Deleted application {{name}}.", { name: deletedName }), error: "" });
+    } catch {
+      setDeleteMessage({ status: "", error: notice("Unable to delete application.") });
+    } finally {
+      setIsDeleteSubmitting(false);
+    }
+  }
+
   return (
     <Card>
       <CardHeader>
@@ -638,10 +683,37 @@ function ApplicationsWritePanel({ applications }: { applications: Application[] 
             <UiText k={isSecretSubmitting ? "Rotating Secret" : "Rotate Secret"} />
           </Button>
           <FormMessage error={secretMessage.error} status={secretMessage.status} />
+          <div className="grid gap-2 md:grid-cols-2">
+            <Button disabled={isExportSubmitting} type="button" variant="secondary" onClick={() => void handleExportApplications()}>
+              <Download className="h-4 w-4" />
+              <UiText k={isExportSubmitting ? "Exporting Applications" : "Export Applications"} />
+            </Button>
+            <Button disabled={isDeleteSubmitting || !selectedApplication} type="button" variant="danger" onClick={() => void handleApplicationDelete()}>
+              <Trash2 className="h-4 w-4" />
+              <UiText k={isDeleteSubmitting ? "Deleting Application" : "Delete Application"} />
+            </Button>
+          </div>
+          <FormMessage error={exportMessage.error} status={exportMessage.status} />
+          <FormMessage error={deleteMessage.error} status={deleteMessage.status} />
         </form>
       </CardContent>
     </Card>
   );
+}
+
+function downloadApplicationExport(applications: Application[]) {
+  if (typeof document === "undefined") {
+    return;
+  }
+  const blob = new Blob([JSON.stringify({ items: applications }, null, 2)], { type: "application/json" });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = `ohmyrasp-applications-${new Date().toISOString().slice(0, 10)}.json`;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  URL.revokeObjectURL(url);
 }
 
 export function AgentsPage() {

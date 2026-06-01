@@ -500,6 +500,38 @@ func (s *Store) RotateApplicationSecret(ctx context.Context, actorID string, app
 	return app, nil
 }
 
+func (s *Store) DeleteApplication(ctx context.Context, actorID string, appID string) error {
+	now := s.now().UTC()
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer rollback(tx)
+	var name string
+	if err := tx.QueryRowContext(ctx, `
+		UPDATE applications
+		SET deleted_at = $1, updated_at = $1
+		WHERE id = $2 AND organization_id = $3 AND deleted_at IS NULL
+		RETURNING name
+	`, now, appID, s.organizationID).Scan(&name); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return control.ErrNotFound
+		}
+		return err
+	}
+	if _, err := tx.ExecContext(ctx, `
+		UPDATE daemon_workloads
+		SET application_id = NULL, updated_at = $1
+		WHERE application_id = $2
+	`, now, appID); err != nil {
+		return err
+	}
+	if err := s.audit(ctx, tx, actorID, "application.delete", appID, map[string]any{"name": name}); err != nil {
+		return err
+	}
+	return tx.Commit()
+}
+
 func (s *Store) CreateEnvironment(ctx context.Context, actorID string, appID string, input control.Environment) (control.Environment, error) {
 	if strings.TrimSpace(input.Name) == "" {
 		return control.Environment{}, fmt.Errorf("%w: environment name is required", control.ErrInvalid)

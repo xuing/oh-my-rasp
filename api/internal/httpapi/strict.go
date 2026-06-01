@@ -79,6 +79,23 @@ func (s *strictServer) PostApiV1Applications(ctx context.Context, request genera
 	return generated.PostApiV1Applications201JSONResponse(openAPIApplication(application)), nil
 }
 
+func (s *strictServer) GetApiV1ApplicationsExport(ctx context.Context, _ generated.GetApiV1ApplicationsExportRequestObject) (generated.GetApiV1ApplicationsExportResponseObject, error) {
+	applications, err := s.server.store.ListApplications(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return generated.GetApiV1ApplicationsExport200JSONResponse{
+		Items: openAPIApplications(applications),
+	}, nil
+}
+
+func (s *strictServer) DeleteApiV1ApplicationsAppID(ctx context.Context, request generated.DeleteApiV1ApplicationsAppIDRequestObject) (generated.DeleteApiV1ApplicationsAppIDResponseObject, error) {
+	if err := s.server.store.DeleteApplication(ctx, userFromContext(ctx).ID, request.AppID); err != nil {
+		return nil, err
+	}
+	return generated.DeleteApiV1ApplicationsAppID204Response{}, nil
+}
+
 func (s *strictServer) PostApiV1ApplicationsAppIDEnvironments(ctx context.Context, request generated.PostApiV1ApplicationsAppIDEnvironmentsRequestObject) (generated.PostApiV1ApplicationsAppIDEnvironmentsResponseObject, error) {
 	if request.Body == nil {
 		return nil, control.ErrInvalid

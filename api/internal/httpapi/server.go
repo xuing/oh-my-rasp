@@ -282,6 +282,7 @@ func (s *Server) Routes() http.Handler {
 			private.Use(s.requireAuthenticatedUser)
 			private.With(s.requirePermission(permissionReadProfile)).Get("/me", strict.GetApiV1Me)
 			private.With(s.requirePermission(permissionReadApplications)).Get("/applications", strict.GetApiV1Applications)
+			private.With(s.requirePermission(permissionReadApplications)).Get("/applications/export", strict.GetApiV1ApplicationsExport)
 			private.With(s.requirePermission(permissionReadAgents)).Get("/agents", strict.GetApiV1Agents)
 			private.With(s.requirePermission(permissionReadDaemon)).Get("/agent-artifacts", strict.GetApiV1AgentArtifacts)
 			private.With(s.requirePermission(permissionManageDaemon)).Post("/agent-artifacts", strict.PostApiV1AgentArtifacts)
@@ -367,6 +368,9 @@ func (s *Server) Routes() http.Handler {
 				strict.PutApiV1UsersUserID(w, r, chi.URLParam(r, "userID"))
 			})
 			private.With(s.requirePermission(permissionManageApplications)).Post("/applications", strict.PostApiV1Applications)
+			private.With(s.requirePermission(permissionManageApplications)).Delete("/applications/{appID}", func(w http.ResponseWriter, r *http.Request) {
+				strict.DeleteApiV1ApplicationsAppID(w, r, chi.URLParam(r, "appID"))
+			})
 			private.With(s.requirePermission(permissionManageApplications)).Post("/applications/{appID}/environments", func(w http.ResponseWriter, r *http.Request) {
 				strict.PostApiV1ApplicationsAppIDEnvironments(w, r, chi.URLParam(r, "appID"))
 			})
