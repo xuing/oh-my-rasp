@@ -1,8 +1,10 @@
 package control
 
 import (
+	"context"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestValidateRulesParsesSupportedExpressions(t *testing.T) {
@@ -104,5 +106,51 @@ func TestRuleTestRequiresAllConditions(t *testing.T) {
 	)
 	if result.Matched || result.Confidence != 0 {
 		t.Fatalf("expected no match, got %#v", result)
+	}
+}
+
+func TestMemoryStoreHashesPasswords(t *testing.T) {
+	ctx := context.Background()
+	now := func() time.Time { return time.Unix(1700000000, 0).UTC() }
+	store := NewMemoryStoreWithSeed(now, MemorySeed{
+		AdminEmail:    "admin@example.test",
+		AdminPassword: "change-me-admin",
+		AdminName:     "Default Admin",
+	})
+
+	admin := store.users["usr_admin"]
+	if admin.PasswordHash == "change-me-admin" {
+		t.Fatal("bootstrap admin password was stored as plaintext")
+	}
+	if !strings.HasPrefix(admin.PasswordHash, "$2") {
+		t.Fatalf("expected bcrypt hash for bootstrap admin, got %q", admin.PasswordHash)
+	}
+	if _, _, err := store.Login(ctx, admin.Email, "change-me-admin"); err != nil {
+		t.Fatalf("expected bootstrap admin login with original password: %v", err)
+	}
+	if _, _, err := store.Login(ctx, admin.Email, admin.PasswordHash); err == nil {
+		t.Fatal("stored password hash should not authenticate as the plaintext password")
+	}
+
+	created, err := store.CreateUser(ctx, admin.ID, User{
+		Email: "analyst@example.test",
+		Name:  "Analyst",
+		Roles: []Role{RoleViewer},
+	}, "change-me-analyst")
+	if err != nil {
+		t.Fatalf("create user: %v", err)
+	}
+	if created.PasswordHash != "" {
+		t.Fatalf("public user leaked password hash: %#v", created)
+	}
+	stored := store.users[created.ID]
+	if stored.PasswordHash == "change-me-analyst" {
+		t.Fatal("created user password was stored as plaintext")
+	}
+	if _, _, err := store.Login(ctx, created.Email, "change-me-analyst"); err != nil {
+		t.Fatalf("expected created user login with original password: %v", err)
+	}
+	if _, _, err := store.Login(ctx, created.Email, stored.PasswordHash); err == nil {
+		t.Fatal("stored password hash should not authenticate as the created user's plaintext password")
 	}
 }

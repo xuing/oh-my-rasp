@@ -13,6 +13,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"golang.org/x/crypto/bcrypt"
 )
 
 var (
@@ -148,7 +150,7 @@ func NewMemoryStoreWithSeed(now func() time.Time, seed MemorySeed) *MemoryStore 
 		ID:           "usr_admin",
 		Email:        seed.AdminEmail,
 		Name:         seed.AdminName,
-		PasswordHash: seed.AdminPassword,
+		PasswordHash: mustHashMemoryPassword(seed.AdminPassword),
 		Roles:        []Role{RoleAdmin, RoleSecurityEngineer},
 		CreatedAt:    now(),
 		UpdatedAt:    now(),
@@ -219,7 +221,7 @@ func (s *MemoryStore) Login(_ context.Context, email string, password string) (S
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	for _, user := range s.users {
-		if strings.EqualFold(user.Email, email) && user.PasswordHash == password && user.DisabledAt == nil {
+		if strings.EqualFold(user.Email, email) && verifyMemoryPassword(user.PasswordHash, password) && user.DisabledAt == nil {
 			session := Session{
 				Token:     newID("ses"),
 				UserID:    user.ID,
@@ -278,7 +280,11 @@ func (s *MemoryStore) CreateUser(_ context.Context, actorID string, input User, 
 		}
 	}
 	user.ID = newID("usr")
-	user.PasswordHash = password
+	passwordHash, err := hashMemoryPassword(password)
+	if err != nil {
+		return User{}, err
+	}
+	user.PasswordHash = passwordHash
 	s.users[user.ID] = user
 	s.audit(actorID, "user.create", user.ID, map[string]any{"email": user.Email, "roles": rolesAsStrings(user.Roles)})
 	return publicUser(user), nil
@@ -2529,6 +2535,26 @@ func hasRole(roles []Role, role Role) bool {
 func publicUser(user User) User {
 	user.PasswordHash = ""
 	return user
+}
+
+func mustHashMemoryPassword(password string) string {
+	hash, err := hashMemoryPassword(password)
+	if err != nil {
+		panic(err)
+	}
+	return hash
+}
+
+func hashMemoryPassword(password string) (string, error) {
+	hash, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.MinCost)
+	if err != nil {
+		return "", err
+	}
+	return string(hash), nil
+}
+
+func verifyMemoryPassword(passwordHash string, password string) bool {
+	return bcrypt.CompareHashAndPassword([]byte(passwordHash), []byte(password)) == nil
 }
 
 func rolesAsStrings(roles []Role) []string {
