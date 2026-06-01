@@ -54,9 +54,7 @@ The near-term roadmap is focused on growing the rule and strategy system:
 - Expand the Java agent line. The current Java agent primarily targets JDK 25;
   future work will produce corresponding agents for each Java Long-Term Support
   (LTS) version so runtime coverage can match real-world deployment baselines.
-- Take advantage of larger token budgets and token liberalization to maintain
-  multiple agent variants, richer rule-generation workflows, and broader
-  automated validation across language/runtime combinations.
+
 
 ## Highlights
 
@@ -128,7 +126,6 @@ java-agent/   Java agent and comparative Tomcat playground
 deploy/       Helm chart, observability assets, smoke and validation scripts
 docs/         Architecture notes, audits, and operational runbooks
 .github/      CI and release workflows
-.archive/     Ignored reference material and upstream source drops
 ```
 
 ## Quick Start
@@ -257,13 +254,6 @@ project. OpenRASP helped define many of the ideas and operational expectations
 around open runtime application self-protection, and it remains an important
 reference point for the ecosystem.
 
-## Security
-
-`.env` is intentionally ignored. Do not commit real service credentials,
-private hostnames, private IP addresses, or production agent artifacts.
-
-For security issues, open a private advisory or contact the maintainers before
-publishing details.
 
 ## License
 

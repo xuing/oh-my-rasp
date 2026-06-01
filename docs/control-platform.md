@@ -8,7 +8,7 @@ This directory contains the new cloud control platform rewrite:
   ClickHouse, Valkey, Prometheus, API, and web containers.
 - `deploy/helm/ohmyrasp-control`: initial Helm chart skeleton.
 
-The legacy `AntiyRASP-*` projects remain as reference material only. The new
+The legacy projects remain as reference material only. The new
 implementation must not import, copy, or directly reuse legacy source code.
 Capability parity is tracked by domain and API behavior, not inheritance from
 the old codebase.

@@ -27,7 +27,7 @@
 [![Vitest](https://img.shields.io/badge/Vitest-unit_tests-6E9F18?logo=vitest&logoColor=white)](https://vitest.dev/)
 [![GitHub Actions](https://img.shields.io/badge/GitHub_Actions-CI-2088FF?logo=githubactions&logoColor=white)](https://github.com/features/actions)
 
-OhMyRASP 面向希望拥有可审计、可自托管 RASP 控制平面的团队，而不是把安全能力完全交给黑盒设备。它把应用和 Agent 清单、策略生命周期管理、运行时遥测、Daemon 工作负载上报、审计能力，以及开源 Java Agent 测试平台整合在同一个仓库中。
+OhMyRASP 面向希望拥有可审计、可自托管 RASP 控制平面的团队。它把应用和 Agent 清单、策略生命周期管理、运行时遥测、Daemon 工作负载上报、审计能力，以及开源 Java Agent 测试平台整合在同一个仓库中。
 
 ## 项目状态
 
@@ -38,7 +38,6 @@ OhMyRASP 目前正处于活跃开发阶段。项目仍然不稳定：API、策�
 - 自动运行大量现有靶场和漏洞应用场景，并从观察到的攻击路径中提取可复用的 RASP 检测规则。
 - 使用大语言模型（LLM）从靶场行为、漏洞模式和运行时证据中生成、审查并改进新的防护策略。
 - 扩展 Java Agent 体系。当前 Java Agent 主要面向 JDK 25；后续将为每个 Java 长期支持版本（LTS）创建对应 Agent，使运行时覆盖能力能够匹配真实部署基线。
-- 利用更宽松的 token 预算和 token liberalization 带来的能力，维护多个 Agent 变体、更丰富的规则生成流程，以及覆盖更多语言和运行时组合的自动化验证。
 
 ## 核心能力
 
@@ -88,7 +87,6 @@ java-agent/   Java Agent 和对比式 Tomcat 测试平台
 deploy/       Helm Chart、可观测性资产、烟雾测试和验证脚本
 docs/         架构说明、审计和运维 Runbook
 .github/      CI 和发布流程
-.archive/     已忽略的参考材料和上游源码快照
 ```
 
 ## 快速开始
@@ -199,19 +197,12 @@ Java Agent 验收脚本会在 `18080` 启动基线 Tomcat 实例，并在 `18081
 - [Java Agent 说明](docs/java-agent.md)
 - [Runbooks](docs/runbooks/)
 
-历史上游和参考材料会保留在本地 `.archive/` 目录中以便追溯，但该目录已被 Git 忽略，不属于发布仓库内容。
 
 ## 致谢
 
 OhMyRASP 的 Java Agent 概念验证使用了 [ASM](https://asm.ow2.io/) 字节码工程库。感谢 ASM 项目及其维护者提供的工具，使精确的 JVM 插桩成为现实。
 
 我们也感谢 [OpenRASP](https://github.com/baidu/openrasp) 项目。OpenRASP 帮助定义了围绕开放式运行时应用自我保护的许多理念和运维预期，并且仍然是该生态的重要参考。
-
-## 安全
-
-`.env` 会被有意忽略。请不要提交真实服务凭据、私有主机名、私有 IP 地址或生产 Agent 制品。
-
-如需报告安全问题，请在公开细节前创建私有安全公告或联系维护者。
 
 ## 许可证
 
