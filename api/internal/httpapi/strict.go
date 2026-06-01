@@ -36,6 +36,14 @@ func (s *strictServer) GetReadyz(context.Context, generated.GetReadyzRequestObje
 	return generated.GetReadyz200JSONResponse{Status: "ready"}, nil
 }
 
+func (s *strictServer) GetV1Version(context.Context, generated.GetV1VersionRequestObject) (generated.GetV1VersionResponseObject, error) {
+	return generated.GetV1Version200JSONResponse(systemVersion()), nil
+}
+
+func (s *strictServer) GetApiV1SystemVersion(context.Context, generated.GetApiV1SystemVersionRequestObject) (generated.GetApiV1SystemVersionResponseObject, error) {
+	return generated.GetApiV1SystemVersion200JSONResponse(systemVersion()), nil
+}
+
 func (s *strictServer) PostApiV1AuthLogin(ctx context.Context, request generated.PostApiV1AuthLoginRequestObject) (generated.PostApiV1AuthLoginResponseObject, error) {
 	if request.Body == nil {
 		return nil, control.ErrInvalid

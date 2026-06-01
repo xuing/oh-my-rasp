@@ -34,6 +34,16 @@ paths:
       responses:
         "200":
           description: Prometheus text metrics.
+  /v1/version:
+    get:
+      security: []
+      responses:
+        "200":
+          description: Legacy-compatible public control plane version metadata.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SystemVersion"
   /api/v1/auth/login:
     post:
       security: []
@@ -1111,6 +1121,15 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/EditionStatus"
+  /api/v1/system/version:
+    get:
+      responses:
+        "200":
+          description: Control plane component version metadata.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SystemVersion"
   /api/v1/system-settings/{key}:
     put:
       parameters:
@@ -2183,6 +2202,20 @@ components:
         value:
           type: object
           additionalProperties: true
+    SystemVersion:
+      type: object
+      required: [component, version, commit, build_time, go_version]
+      properties:
+        component:
+          type: string
+        version:
+          type: string
+        commit:
+          type: string
+        build_time:
+          type: string
+        go_version:
+          type: string
     EditionStatus:
       type: object
       required:

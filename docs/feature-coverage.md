@@ -324,37 +324,45 @@
   - 租户创建、更新、删除、搜索 `/v3/upms/tenants*` `[Implementation Unnecessary]`
     - 当前项目不采用多租户模型；应用、环境、Agent 和策略在单组织内组合管理。
 
-## 9. 系统设置
+## 9. 系统设置 `[Completed]`
+
+子文档：[`docs/feature-coverage/09-system-settings.md`](feature-coverage/09-system-settings.md)
 
 - 后台地址 `/settings/panel`
-  - 后台地址查询 `/v1/api/server/url/get` `[未覆盖]`
-  - 后台地址设置 `/v1/api/server/url` `[未覆盖]`
+  - 后台地址查询 `/v1/api/server/url/get` `[Completed]`
+    - 当前：`GET /api/v1/system-settings` 返回 `server.public_url`。
+  - 后台地址设置 `/v1/api/server/url` `[Completed]`
+    - 当前：`PUT /api/v1/system-settings/server.public_url`，Access & Audit 的 Protection Configuration 可编辑 Public Console URL。
 - 报警间隔 `/settings/alarm`
-  - 全局报警配置 `/v2/api/general/config` `[待检查]`
-    - 当前有 system settings 和 alert rules，但没有同名 interval 页面。
+  - 全局报警配置 `/v2/api/general/config` `[Completed]`
+    - 当前：`alerts.delivery.interval_seconds` 系统设置，兼容路由 `/settings/alarm` 指向 Access & Audit。
 - 系统信息 `/settings/systemInfo`
-  - 版本 `/v1/version` `[待检查]`
-    - 当前有 health/readiness、edition、metrics，但没有完全同名 version endpoint。
-  - 健康检查 `/v1/ping` `[请二次检查]`
-    - 当前：`GET /healthz`, `GET /readyz`。
-  - Prometheus 指标 `[请二次检查]`
-    - 当前额外实现：`GET /metrics`。
+  - 版本 `/v1/version` `[Completed]`
+    - 当前：`GET /v1/version` 公开返回 component、version、commit、build_time、go_version；`GET /api/v1/system/version` 在控制台展示同一数据。
+  - 健康检查 `/v1/ping` `[Completed]`
+    - 当前：`GET /healthz`, `GET /readyz`，使用标准 liveness/readiness 语义，不复刻模糊的 ping 名称。
+  - Prometheus 指标 `[Completed]`
+    - 当前：`GET /metrics`。
 - 版本池 `/settings/poolVersion`
-  - 默认版本 `/v2/api/version_pool/default` `[待检查]`
-    - 当前有 agent artifact catalog，未实现默认版本池模型。
-  - 上传版本 `/v2/api/version_pool/upload` `[待检查]`
+  - 默认版本 `/v2/api/version_pool/default` `[Implementation Unnecessary]`
+    - 当前按 language、system_type、language_version 精确解析 Agent artifact，避免全局默认版本误配到不同 JDK/系统。
+  - 上传版本 `/v2/api/version_pool/upload` `[Completed]`
     - 当前：`POST /api/v1/agent-artifacts`。
-  - 版本池编辑弹窗 `editDialog.vue` `[待检查]`
+  - 版本池编辑弹窗 `editDialog.vue` `[Implementation Unnecessary]`
+    - 当前 Artifact Upload 与 Catalog 已覆盖上传、校验、下载 URL、MD5、大小、版本和系统类型展示。
 - 版本管理 `/settings/version`
-  - 当前版本 `/v2/api/version/current` `[待检查]`
-  - 版本详情 `/v2/api/version/detail` `[待检查]`
-  - 版本列表 `/v2/api/version/list` `[待检查]`
+  - 当前版本 `/v2/api/version/current` `[Completed]`
+    - 当前 Agents 页统计 Agent 当前版本、最新版本和 drifted 数量。
+  - 版本详情 `/v2/api/version/detail` `[Completed]`
+    - 当前 Agent Artifact Catalog 展示 language、system_type、language_version、filename、size、md5、download_url。
+  - 版本列表 `/v2/api/version/list` `[Completed]`
     - 当前：`GET /api/v1/agent-artifacts`。
-  - 推送版本 `/v2/api/version/push` `[待检查]`
-    - 当前通过 artifact 下载和 daemon command group 支持 Agent 拉取，未实现控制台推送版本。
-  - 应用升级配置 `/v1/api/app/upgrade/get` `[未覆盖]`
-  - 版本编辑弹窗 `editDialog.vue` `[待检查]`
-    - 当前 artifact 上传表单覆盖部分能力。
+  - 推送版本 `/v2/api/version/push` `[Implementation Unnecessary]`
+    - 当前采用 Agent/Daemon 拉取 artifact 和命令组模型，不从控制台主动推送二进制到实例。
+  - 应用升级配置 `/v1/api/app/upgrade/get` `[Implementation Unnecessary]`
+    - 当前升级策略由 artifact catalog、agent.minimum_version 和 Daemon command group 组合表达；不维护独立应用升级配置表。
+  - 版本编辑弹窗 `editDialog.vue` `[Implementation Unnecessary]`
+    - 当前 artifact 上传表单和 catalog 表格覆盖必要能力，避免重复弹窗状态。
 
 ## 10. Agent、服务端和下载通道
 

@@ -53,7 +53,7 @@ func TestStoreIntegrationPostgresWorkflow(t *testing.T) {
 	if err != nil {
 		t.Fatalf("list default settings: %v", err)
 	}
-	for _, key := range []string{"agent.minimum_version", "events.retention", "protection.allowlist", "protection.hardening", "dependency.vulnerability_policy"} {
+	for _, key := range []string{"server.public_url", "agent.minimum_version", "alerts.delivery", "events.retention", "protection.allowlist", "protection.hardening", "dependency.vulnerability_policy"} {
 		if !containsSetting(defaultSettings, key) {
 			t.Fatalf("expected seeded setting %s in %#v", key, defaultSettings)
 		}

@@ -1652,6 +1652,15 @@ type SystemSettingUpdate struct {
 	Value map[string]interface{} `json:"value"`
 }
 
+// SystemVersion defines model for SystemVersion.
+type SystemVersion struct {
+	BuildTime string `json:"build_time"`
+	Commit    string `json:"commit"`
+	Component string `json:"component"`
+	GoVersion string `json:"go_version"`
+	Version   string `json:"version"`
+}
+
 // TrendPoint defines model for TrendPoint.
 type TrendPoint struct {
 	BucketStart time.Time `json:"bucket_start"`
@@ -2349,6 +2358,9 @@ type ServerInterface interface {
 	// (GET /api/v1/system/edition)
 	GetApiV1SystemEdition(w http.ResponseWriter, r *http.Request)
 
+	// (GET /api/v1/system/version)
+	GetApiV1SystemVersion(w http.ResponseWriter, r *http.Request)
+
 	// (GET /api/v1/users)
 	GetApiV1Users(w http.ResponseWriter, r *http.Request, params GetApiV1UsersParams)
 
@@ -2366,6 +2378,9 @@ type ServerInterface interface {
 
 	// (GET /readyz)
 	GetReadyz(w http.ResponseWriter, r *http.Request)
+
+	// (GET /v1/version)
+	GetV1Version(w http.ResponseWriter, r *http.Request)
 }
 
 // Unimplemented server implementation that returns http.StatusNotImplemented for each endpoint.
@@ -2722,6 +2737,11 @@ func (_ Unimplemented) GetApiV1SystemEdition(w http.ResponseWriter, r *http.Requ
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
+// (GET /api/v1/system/version)
+func (_ Unimplemented) GetApiV1SystemVersion(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
 // (GET /api/v1/users)
 func (_ Unimplemented) GetApiV1Users(w http.ResponseWriter, r *http.Request, params GetApiV1UsersParams) {
 	w.WriteHeader(http.StatusNotImplemented)
@@ -2749,6 +2769,11 @@ func (_ Unimplemented) GetMetrics(w http.ResponseWriter, r *http.Request) {
 
 // (GET /readyz)
 func (_ Unimplemented) GetReadyz(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// (GET /v1/version)
+func (_ Unimplemented) GetV1Version(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
@@ -6125,6 +6150,26 @@ func (siw *ServerInterfaceWrapper) GetApiV1SystemEdition(w http.ResponseWriter, 
 	handler.ServeHTTP(w, r)
 }
 
+// GetApiV1SystemVersion operation middleware
+func (siw *ServerInterfaceWrapper) GetApiV1SystemVersion(w http.ResponseWriter, r *http.Request) {
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, BearerAuthScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetApiV1SystemVersion(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // GetApiV1Users operation middleware
 func (siw *ServerInterfaceWrapper) GetApiV1Users(w http.ResponseWriter, r *http.Request) {
 
@@ -6275,6 +6320,20 @@ func (siw *ServerInterfaceWrapper) GetReadyz(w http.ResponseWriter, r *http.Requ
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.GetReadyz(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetV1Version operation middleware
+func (siw *ServerInterfaceWrapper) GetV1Version(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetV1Version(w, r)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -6608,6 +6667,9 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 		r.Get(options.BaseURL+"/api/v1/system/edition", wrapper.GetApiV1SystemEdition)
 	})
 	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/api/v1/system/version", wrapper.GetApiV1SystemVersion)
+	})
+	r.Group(func(r chi.Router) {
 		r.Get(options.BaseURL+"/api/v1/users", wrapper.GetApiV1Users)
 	})
 	r.Group(func(r chi.Router) {
@@ -6624,6 +6686,9 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 	})
 	r.Group(func(r chi.Router) {
 		r.Get(options.BaseURL+"/readyz", wrapper.GetReadyz)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/v1/version", wrapper.GetV1Version)
 	})
 
 	return r
@@ -8174,6 +8239,27 @@ func (response GetApiV1SystemEdition200JSONResponse) VisitGetApiV1SystemEditionR
 	return err
 }
 
+type GetApiV1SystemVersionRequestObject struct {
+}
+
+type GetApiV1SystemVersionResponseObject interface {
+	VisitGetApiV1SystemVersionResponse(w http.ResponseWriter) error
+}
+
+type GetApiV1SystemVersion200JSONResponse SystemVersion
+
+func (response GetApiV1SystemVersion200JSONResponse) VisitGetApiV1SystemVersionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type GetApiV1UsersRequestObject struct {
 	Params GetApiV1UsersParams
 }
@@ -8287,6 +8373,27 @@ type GetReadyzResponseObject interface {
 type GetReadyz200JSONResponse ReadyResponse
 
 func (response GetReadyz200JSONResponse) VisitGetReadyzResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetV1VersionRequestObject struct {
+}
+
+type GetV1VersionResponseObject interface {
+	VisitGetV1VersionResponse(w http.ResponseWriter) error
+}
+
+type GetV1Version200JSONResponse SystemVersion
+
+func (response GetV1Version200JSONResponse) VisitGetV1VersionResponse(w http.ResponseWriter) error {
 
 	var buf bytes.Buffer
 	if err := json.NewEncoder(&buf).Encode(response); err != nil {
@@ -8511,6 +8618,9 @@ type StrictServerInterface interface {
 	// (GET /api/v1/system/edition)
 	GetApiV1SystemEdition(ctx context.Context, request GetApiV1SystemEditionRequestObject) (GetApiV1SystemEditionResponseObject, error)
 
+	// (GET /api/v1/system/version)
+	GetApiV1SystemVersion(ctx context.Context, request GetApiV1SystemVersionRequestObject) (GetApiV1SystemVersionResponseObject, error)
+
 	// (GET /api/v1/users)
 	GetApiV1Users(ctx context.Context, request GetApiV1UsersRequestObject) (GetApiV1UsersResponseObject, error)
 
@@ -8528,6 +8638,9 @@ type StrictServerInterface interface {
 
 	// (GET /readyz)
 	GetReadyz(ctx context.Context, request GetReadyzRequestObject) (GetReadyzResponseObject, error)
+
+	// (GET /v1/version)
+	GetV1Version(ctx context.Context, request GetV1VersionRequestObject) (GetV1VersionResponseObject, error)
 }
 
 type StrictHandlerFunc func(ctx context.Context, w http.ResponseWriter, r *http.Request, request any) (any, error)
@@ -10546,6 +10659,30 @@ func (sh *strictHandler) GetApiV1SystemEdition(w http.ResponseWriter, r *http.Re
 	}
 }
 
+// GetApiV1SystemVersion operation middleware
+func (sh *strictHandler) GetApiV1SystemVersion(w http.ResponseWriter, r *http.Request) {
+	var request GetApiV1SystemVersionRequestObject
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetApiV1SystemVersion(ctx, request.(GetApiV1SystemVersionRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetApiV1SystemVersion")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetApiV1SystemVersionResponseObject); ok {
+		if err := validResponse.VisitGetApiV1SystemVersionResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
 // GetApiV1Users operation middleware
 func (sh *strictHandler) GetApiV1Users(w http.ResponseWriter, r *http.Request, params GetApiV1UsersParams) {
 	var request GetApiV1UsersRequestObject
@@ -10701,6 +10838,30 @@ func (sh *strictHandler) GetReadyz(w http.ResponseWriter, r *http.Request) {
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(GetReadyzResponseObject); ok {
 		if err := validResponse.VisitGetReadyzResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetV1Version operation middleware
+func (sh *strictHandler) GetV1Version(w http.ResponseWriter, r *http.Request) {
+	var request GetV1VersionRequestObject
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetV1Version(ctx, request.(GetV1VersionRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetV1Version")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetV1VersionResponseObject); ok {
+		if err := validResponse.VisitGetV1VersionResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {

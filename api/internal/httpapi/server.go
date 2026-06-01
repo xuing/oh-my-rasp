@@ -305,6 +305,7 @@ func (s *Server) Routes() http.Handler {
 
 	router.Get("/healthz", strict.GetHealthz)
 	router.Get("/readyz", strict.GetReadyz)
+	router.Get("/v1/version", strict.GetV1Version)
 	router.Get("/metrics", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/plain; version=0.0.4")
 		_, _ = w.Write([]byte(s.metrics.render(r.Context(), s.store, time.Now)))
@@ -410,6 +411,7 @@ func (s *Server) Routes() http.Handler {
 			})
 			private.With(s.requirePermission(permissionReadSettings)).Get("/system-settings", strict.GetApiV1SystemSettings)
 			private.With(s.requirePermission(permissionReadSettings)).Get("/system/edition", strict.GetApiV1SystemEdition)
+			private.With(s.requirePermission(permissionReadSettings)).Get("/system/version", strict.GetApiV1SystemVersion)
 			private.With(s.requirePermission(permissionReadAlertRules)).Get("/alert-rules", strict.GetApiV1AlertRules)
 			private.With(s.requirePermission(permissionReadAlertDeliveries)).Get("/alert-deliveries", strict.GetApiV1AlertDeliveries)
 			private.With(s.requirePermission(permissionReadAuditLogs)).Get("/audit-logs", strict.GetApiV1AuditLogs)

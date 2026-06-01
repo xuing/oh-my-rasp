@@ -69,7 +69,7 @@ test("logs in, creates application scope, operates an Agent, manages access, and
   await page.getByLabel("Application Secret").fill(applicationSecret);
   await page.getByLabel("Agent Hostname").fill(`live-agent-${suffix}`);
   await page.getByLabel("Agent Runtime").fill("java");
-  await page.getByLabel("Agent Version").fill("1.0.0");
+  await page.getByLabel("Agent Version", { exact: true }).fill("1.0.0");
   await page.getByRole("button", { name: "Register Agent" }).click();
   await expect(page.getByText(`Registered Agent live-agent-${suffix}`, { exact: false })).toBeVisible();
 

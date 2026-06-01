@@ -20,6 +20,9 @@ services:
       context: ./api
     environment:
       OHMYRASP_API_ADDR: ${OHMYRASP_API_ADDR}
+      OHMYRASP_VERSION: ${OHMYRASP_VERSION:-dev}
+      OHMYRASP_COMMIT: ${OHMYRASP_COMMIT:-}
+      OHMYRASP_BUILT_AT: ${OHMYRASP_BUILT_AT:-}
       OHMYRASP_POSTGRES_DSN: postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}?sslmode=disable
       OHMYRASP_CLICKHOUSE_DSN: clickhouse://${CLICKHOUSE_USER}:${CLICKHOUSE_PASSWORD}@clickhouse:9000?database=${CLICKHOUSE_DB}
       OHMYRASP_VALKEY_ADDR: valkey:6379

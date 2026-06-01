@@ -401,6 +401,14 @@ export type EditionStatus = {
   note?: string;
 };
 
+export type SystemVersion = {
+  component: string;
+  version: string;
+  commit: string;
+  build_time: string;
+  go_version: string;
+};
+
 export type MaintenanceCleanupRequest = {
   before: string;
   application_id?: string;
@@ -1106,6 +1114,15 @@ export function useEditionStatus() {
   return useQuery({
     queryKey: ["system-edition"],
     queryFn: () => fetchJSON<EditionStatus>("/api/v1/system/edition"),
+    retry: false,
+    staleTime: 60_000
+  });
+}
+
+export function useSystemVersion() {
+  return useQuery({
+    queryKey: ["system-version"],
+    queryFn: () => fetchJSON<SystemVersion>("/api/v1/system/version"),
     retry: false,
     staleTime: 60_000
   });

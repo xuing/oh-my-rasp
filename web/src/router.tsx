@@ -179,6 +179,41 @@ const platformUserRoute = createRoute({
   component: AccessPage
 });
 
+const settingsPanelRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/settings/panel",
+  beforeLoad: requireSession,
+  component: AccessPage
+});
+
+const settingsAlarmRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/settings/alarm",
+  beforeLoad: requireSession,
+  component: AccessPage
+});
+
+const settingsSystemInfoRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/settings/systemInfo",
+  beforeLoad: requireSession,
+  component: AccessPage
+});
+
+const settingsPoolVersionRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/settings/poolVersion",
+  beforeLoad: requireSession,
+  component: AgentsPage
+});
+
+const settingsVersionRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/settings/version",
+  beforeLoad: requireSession,
+  component: AgentsPage
+});
+
 const loginRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/login",
@@ -214,6 +249,11 @@ export const routeTree = rootRoute.addChildren([
   accessRoute,
   platformRoute,
   platformUserRoute,
+  settingsPanelRoute,
+  settingsAlarmRoute,
+  settingsSystemInfoRoute,
+  settingsPoolVersionRoute,
+  settingsVersionRoute,
   loginRoute,
   noAccessRoute
 ]);

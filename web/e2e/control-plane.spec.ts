@@ -117,6 +117,8 @@ test("navigates primary control-plane sections with an authenticated session", a
     } else if (section.path === "/access") {
       await expect(page.getByText("Open Source Self-Hosted")).toBeVisible();
       await expect(page.getByText("Not required")).toBeVisible();
+      await expect(page.getByText("System Version")).toBeVisible();
+      await expect(page.getByText("go1.26.0")).toBeVisible();
       await page.getByLabel("User Search").fill("Default");
       await page.getByLabel("Role Filter").selectOption("admin");
       await page.getByLabel("Status Filter").selectOption("active");
@@ -136,7 +138,12 @@ test("navigates primary control-plane sections with an authenticated session", a
     { path: "/log/crash", heading: "Events", evidence: "Agent crash captured" },
     { path: "/log/audit", heading: "Access & Audit", evidence: "auth.login" },
     { path: "/platform", heading: "Access & Audit", evidence: "User Administration" },
-    { path: "/platform/user", heading: "Access & Audit", evidence: "User Lifecycle" }
+    { path: "/platform/user", heading: "Access & Audit", evidence: "User Lifecycle" },
+    { path: "/settings/panel", heading: "Access & Audit", evidence: "Public Console URL" },
+    { path: "/settings/alarm", heading: "Access & Audit", evidence: "Alert Interval Seconds" },
+    { path: "/settings/systemInfo", heading: "Access & Audit", evidence: "System Version" },
+    { path: "/settings/poolVersion", heading: "Agents", evidence: "Agent Artifact Catalog" },
+    { path: "/settings/version", heading: "Agents", evidence: "Agent Artifact Upload" }
   ]) {
     await page.goto(legacyRoute.path);
     await expect(page).toHaveURL(new RegExp(`${legacyRoute.path}$`));
@@ -292,6 +299,7 @@ test("submits application, environment, Agent operations, policy, setting, alert
   await expect(page.getByText("Purged 1 event.")).toBeVisible();
 
   await page.goto("/access");
+  await page.getByLabel("Public Console URL").fill("http://localhost:18091");
   await page.getByLabel("Allowlist Enabled").check();
   await page.getByLabel("Allowlist Mode").selectOption("enforce");
   await page.getByLabel("Allowlist Entries").fill("/admin/*\n10.0.0.0/8");
@@ -477,6 +485,11 @@ test("submits application, environment, Agent operations, policy, setting, alert
         method: "POST",
         path: "/api/v1/events/recycle-bin/purge",
         body: { ids: ["evt_1"] }
+      }),
+      expect.objectContaining({
+        method: "PUT",
+        path: "/api/v1/system-settings/server.public_url",
+        body: { value: { url: "http://localhost:18091" } }
       }),
       expect.objectContaining({
         method: "PUT",
@@ -1487,7 +1500,9 @@ const apiFixtures: Record<string, unknown> = {
   },
   "/api/v1/system-settings": {
     items: [
+      { key: "server.public_url", value: { url: "" }, updated_by: "system", updated_at: "2026-05-31T00:00:00Z" },
       { key: "agent.minimum_version", value: { version: "1.0.0" }, updated_by: "usr_admin", updated_at: "2026-05-31T00:00:00Z" },
+      { key: "alerts.delivery", value: { interval_seconds: 300 }, updated_by: "system", updated_at: "2026-05-31T00:00:00Z" },
       { key: "events.retention", value: { attack_days: 180, performance_days: 30, dependency_days: 365, audit_days: 365 }, updated_by: "system", updated_at: "2026-05-31T00:00:00Z" },
       { key: "protection.allowlist", value: { enabled: false, mode: "monitor", entries: [] }, updated_by: "system", updated_at: "2026-05-31T00:00:00Z" },
       {
@@ -1512,6 +1527,13 @@ const apiFixtures: Record<string, unknown> = {
     license_enforcement: "none",
     license_status: "not_applicable",
     note: "Open-source self-hosted deployments do not require a license key and do not enforce license limits."
+  },
+  "/api/v1/system/version": {
+    component: "ohmyrasp-control-api",
+    version: "dev",
+    commit: "local",
+    build_time: "2026-06-01T00:00:00Z",
+    go_version: "go1.26.0"
   },
   "/api/v1/users": {
     items: [

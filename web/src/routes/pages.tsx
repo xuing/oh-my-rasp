@@ -67,6 +67,7 @@ import {
   type SecurityEvent,
   type SecurityEventQuery,
   type SystemSetting,
+  type SystemVersion,
   type User,
   type UserQuery,
   type UserRole,
@@ -101,6 +102,7 @@ import {
   useDependencySummary,
   useDeletedSecurityEvents,
   useEditionStatus,
+  useSystemVersion,
   useObservability,
   useOverview,
   usePolicyAlgorithms,
@@ -3069,6 +3071,8 @@ export function AccessPage() {
   const settings = settingsQuery.data?.items ?? [];
   const editionQuery = useEditionStatus();
   const edition = editionQuery.data ?? emptyEditionStatus();
+  const versionQuery = useSystemVersion();
+  const version = versionQuery.data ?? emptySystemVersion();
   const alertRulesQuery = useAlertRules();
   const alertRules = alertRulesQuery.data?.items ?? [];
   const alertDeliveriesQuery = useAlertDeliveries();
@@ -3095,8 +3099,8 @@ export function AccessPage() {
       summary={t("pages.access.summary")}
     >
       <QueryStateNotice
-        isLoading={auditQuery.isLoading || settingsQuery.isLoading || editionQuery.isLoading || alertRulesQuery.isLoading || alertDeliveriesQuery.isLoading || usersQuery.isLoading}
-        isError={auditQuery.isError || settingsQuery.isError || editionQuery.isError || alertRulesQuery.isError || alertDeliveriesQuery.isError || usersQuery.isError}
+        isLoading={auditQuery.isLoading || settingsQuery.isLoading || editionQuery.isLoading || versionQuery.isLoading || alertRulesQuery.isLoading || alertDeliveriesQuery.isLoading || usersQuery.isLoading}
+        isError={auditQuery.isError || settingsQuery.isError || editionQuery.isError || versionQuery.isError || alertRulesQuery.isError || alertDeliveriesQuery.isError || usersQuery.isError}
         loading={<UiText k="Loading access and audit data." />}
         error={<UiText k="Some access and audit data is unavailable." />}
       />
@@ -3115,6 +3119,7 @@ export function AccessPage() {
         ))}
       </div>
       <EditionStatusPanel edition={edition} />
+      <SystemVersionPanel version={version} />
       <ProtectionConfigurationPanel settings={settings} />
       <MaintenanceCleanupPanel />
       <AccessWritePanel />
@@ -3393,6 +3398,40 @@ function EditionStatusPanel({ edition }: { edition: EditionStatus }) {
         </div>
         {edition.note ? <p className="mt-4 text-sm leading-6 text-slate-600">{edition.note}</p> : null}
         {!edition.display_name ? <p className="mt-4 text-sm leading-6 text-slate-600"><UiText k="Edition status is unavailable." /></p> : null}
+      </CardContent>
+    </Card>
+  );
+}
+
+function SystemVersionPanel({ version }: { version: SystemVersion }) {
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle><UiText k="System Version" /></CardTitle>
+      </CardHeader>
+      <CardContent>
+        <div className="grid gap-4 md:grid-cols-5">
+          <div>
+            <span className="block text-xs font-medium text-slate-500"><UiText k="Component" /></span>
+            <span className="mt-1 block font-medium text-slate-950"><UiValue value={version.component} /></span>
+          </div>
+          <div>
+            <span className="block text-xs font-medium text-slate-500"><UiText k="Version" /></span>
+            <span className="mt-1 block font-medium text-slate-950"><UiValue value={version.version} /></span>
+          </div>
+          <div>
+            <span className="block text-xs font-medium text-slate-500"><UiText k="Commit" /></span>
+            <span className="mt-1 block font-mono text-sm text-slate-950"><UiValue value={version.commit || "unknown"} /></span>
+          </div>
+          <div>
+            <span className="block text-xs font-medium text-slate-500"><UiText k="Build Time" /></span>
+            <span className="mt-1 block font-medium text-slate-950"><UiValue value={version.build_time || "unknown"} /></span>
+          </div>
+          <div>
+            <span className="block text-xs font-medium text-slate-500"><UiText k="Go Version" /></span>
+            <span className="mt-1 block font-medium text-slate-950"><UiValue value={version.go_version} /></span>
+          </div>
+        </div>
       </CardContent>
     </Card>
   );
@@ -4180,6 +4219,7 @@ function PolicyWritePanel({
 
 function ProtectionConfigurationPanel({ settings }: { settings: SystemSetting[] }) {
   const queryClient = useQueryClient();
+  const [publicURL, setPublicURL] = useState("");
   const [allowlistEnabled, setAllowlistEnabled] = useState(false);
   const [allowlistMode, setAllowlistMode] = useState("monitor");
   const [allowlistEntries, setAllowlistEntries] = useState("");
@@ -4197,12 +4237,14 @@ function ProtectionConfigurationPanel({ settings }: { settings: SystemSetting[] 
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   useEffect(() => {
+    const serverPublicURL = settingRecord(settings, "server.public_url");
     const allowlist = settingRecord(settings, "protection.allowlist");
     const hardening = settingRecord(settings, "protection.hardening");
     const vulnerability = settingRecord(settings, "dependency.vulnerability_policy");
     const alerts = settingRecord(settings, "alerts.delivery");
     const retention = settingRecord(settings, "events.retention");
 
+    setPublicURL(settingString(serverPublicURL, "url", ""));
     setAllowlistEnabled(settingBool(allowlist, "enabled", false));
     setAllowlistMode(settingString(allowlist, "mode", "monitor"));
     setAllowlistEntries(settingStringArray(allowlist, "entries").join("\n"));
@@ -4228,6 +4270,9 @@ function ProtectionConfigurationPanel({ settings }: { settings: SystemSetting[] 
         .map(entry => entry.trim())
         .filter(Boolean);
       await Promise.all([
+        updateSystemSetting("server.public_url", {
+          url: publicURL.trim()
+        }),
         updateSystemSetting("protection.allowlist", {
           enabled: allowlistEnabled,
           mode: allowlistMode,
@@ -4270,6 +4315,15 @@ function ProtectionConfigurationPanel({ settings }: { settings: SystemSetting[] 
       <CardContent>
         <form className="grid gap-4" onSubmit={handleSubmit}>
           <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+            <label className={fieldGroupClass} htmlFor="server-public-url">
+              <span className={fieldLabelClass}><UiText k="Public Console URL" /></span>
+              <input
+                id="server-public-url"
+                className={fieldControlClass}
+                value={publicURL}
+                onChange={event => setPublicURL(event.target.value)}
+              />
+            </label>
             <label className="flex min-h-10 items-center gap-2 text-sm font-medium text-slate-700" htmlFor="protection-allowlist-enabled">
               <input
                 id="protection-allowlist-enabled"
@@ -4743,6 +4797,16 @@ function emptyEditionStatus(): EditionStatus {
     license_enforcement: "",
     license_status: "",
     note: ""
+  };
+}
+
+function emptySystemVersion(): SystemVersion {
+  return {
+    component: "",
+    version: "",
+    commit: "",
+    build_time: "",
+    go_version: ""
   };
 }
 

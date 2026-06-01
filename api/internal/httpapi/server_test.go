@@ -1567,13 +1567,21 @@ func TestSystemSettingsAreListedAndAudited(t *testing.T) {
 	if blockedEdition.Code != http.StatusUnauthorized {
 		t.Fatalf("expected edition endpoint to require authentication, got %d: %s", blockedEdition.Code, blockedEdition.Body.String())
 	}
+	blockedVersion := client.raw(t, http.MethodGet, "/api/v1/system/version", "", nil, nil)
+	if blockedVersion.Code != http.StatusUnauthorized {
+		t.Fatalf("expected version endpoint to require authentication, got %d: %s", blockedVersion.Code, blockedVersion.Body.String())
+	}
+	publicVersion := client.request(t, http.MethodGet, "/v1/version", "", nil)
+	if publicVersion["component"] != "ohmyrasp-control-api" || publicVersion["version"] == "" || publicVersion["go_version"] == "" {
+		t.Fatalf("expected public version metadata, got %#v", publicVersion)
+	}
 
 	settings := client.request(t, http.MethodGet, "/api/v1/system-settings", token, nil)
 	defaults := arrayValue(t, settings, "items")
 	if len(defaults) == 0 {
 		t.Fatalf("expected default system settings, got %#v", settings)
 	}
-	for _, key := range []string{"agent.minimum_version", "events.retention", "protection.allowlist", "protection.hardening", "dependency.vulnerability_policy"} {
+	for _, key := range []string{"server.public_url", "agent.minimum_version", "alerts.delivery", "events.retention", "protection.allowlist", "protection.hardening", "dependency.vulnerability_policy"} {
 		if !containsSettingKey(defaults, key) {
 			t.Fatalf("expected default setting %s in %#v", key, settings)
 		}
@@ -1581,6 +1589,10 @@ func TestSystemSettingsAreListedAndAudited(t *testing.T) {
 	edition := client.request(t, http.MethodGet, "/api/v1/system/edition", token, nil)
 	if edition["edition"] != "oss_self_hosted" || edition["deployment_model"] != "single_organization_self_hosted" || edition["license_required"] != false || edition["license_enforcement"] != "none" || edition["license_status"] != "not_applicable" {
 		t.Fatalf("expected OSS self-hosted edition status without license enforcement, got %#v", edition)
+	}
+	version := client.request(t, http.MethodGet, "/api/v1/system/version", token, nil)
+	if version["component"] != "ohmyrasp-control-api" || version["version"] == "" || version["go_version"] == "" {
+		t.Fatalf("expected authenticated version metadata, got %#v", version)
 	}
 
 	updated := client.request(t, http.MethodPut, "/api/v1/system-settings/alerts.delivery", token, map[string]any{

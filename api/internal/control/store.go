@@ -2300,7 +2300,9 @@ func contains(values []string, target string) bool {
 
 func DefaultSystemSettings(now time.Time) []SystemSetting {
 	return []SystemSetting{
+		{Key: "server.public_url", Value: map[string]any{"url": ""}, UpdatedBy: "system", UpdatedAt: now},
 		{Key: "agent.minimum_version", Value: map[string]any{"version": "1.0.0", "enforcement": "warn"}, UpdatedBy: "system", UpdatedAt: now},
+		{Key: "alerts.delivery", Value: map[string]any{"interval_seconds": 300}, UpdatedBy: "system", UpdatedAt: now},
 		{Key: "events.retention", Value: map[string]any{"attack_days": 180, "performance_days": 30, "dependency_days": 365, "audit_days": 365}, UpdatedBy: "system", UpdatedAt: now},
 		{Key: "policy.canary", Value: map[string]any{"default_percent": 25, "auto_promote": false}, UpdatedBy: "system", UpdatedAt: now},
 		{Key: "protection.allowlist", Value: map[string]any{"enabled": false, "mode": "monitor", "entries": []string{}}, UpdatedBy: "system", UpdatedAt: now},
