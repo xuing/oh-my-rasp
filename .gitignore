@@ -8,6 +8,7 @@ dist/
 .vite/
 test-results/
 playwright-report/
+.playwright-mcp/
 coverage/
 
 # Go
