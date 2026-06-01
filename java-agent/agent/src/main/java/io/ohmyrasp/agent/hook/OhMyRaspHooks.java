@@ -4,6 +4,8 @@ import io.ohmyrasp.agent.detect.DetectorEngine;
 import io.ohmyrasp.agent.log.JsonEventLogger;
 import io.ohmyrasp.agent.model.Detection;
 import io.ohmyrasp.agent.model.RequestContext;
+import io.ohmyrasp.agent.policy.AgentPolicy;
+import io.ohmyrasp.agent.policy.PolicyEvaluation;
 import java.io.File;
 import java.lang.StackWalker.StackFrame;
 import java.lang.reflect.Array;
@@ -24,6 +26,8 @@ import java.util.stream.Stream;
 
 public final class OhMyRaspHooks {
   private static final DetectorEngine DETECTORS = new DetectorEngine();
+  private static volatile AgentPolicy POLICY = AgentPolicy.absent();
+  private static volatile String POLICY_AGENT_KEY = "";
   private static final ThreadLocal<RequestContext> REQUEST =
       ThreadLocal.withInitial(RequestContext::empty);
   private static final ThreadLocal<Object> RESPONSE = new ThreadLocal<>();
@@ -32,6 +36,11 @@ public final class OhMyRaspHooks {
           Set.of(StackWalker.Option.RETAIN_CLASS_REFERENCE, StackWalker.Option.SHOW_REFLECT_FRAMES));
 
   private OhMyRaspHooks() {}
+
+  public static void installPolicy(AgentPolicy policy, String agentKey) {
+    POLICY = policy == null ? AgentPolicy.empty() : policy;
+    POLICY_AGENT_KEY = agentKey == null ? "" : agentKey;
+  }
 
   public static void enterHttpRequest(Object request, Object response) {
     try {
@@ -524,8 +533,18 @@ public final class OhMyRaspHooks {
       return;
     }
     Detection value = detection.orElseThrow();
-    boolean willBlock = blockEnabled() && value.request() != null && value.request().active();
-    Detection event = willBlock ? value.withAction("block") : value;
+    PolicyEvaluation policyEvaluation = POLICY.evaluate(value, POLICY_AGENT_KEY);
+    if (policyEvaluation.ignored()) {
+      return;
+    }
+    Detection event = policyEvaluation.detection();
+    if (!policyEvaluation.controlled() && legacyBlockEnabled() && activeRequest(value)) {
+      event = value.withAction("block");
+    }
+    if (forceBlockEnabled() && activeRequest(value)) {
+      event = event.withAction("block");
+    }
+    boolean willBlock = "block".equalsIgnoreCase(event.action()) && activeRequest(event);
     JsonEventLogger.get().log(event);
     if (willBlock) {
       redirectToBlockPage(event);
@@ -535,9 +554,18 @@ public final class OhMyRaspHooks {
     }
   }
 
-  private static boolean blockEnabled() {
+  private static boolean activeRequest(Detection detection) {
+    return detection != null && detection.request() != null && detection.request().active();
+  }
+
+  private static boolean legacyBlockEnabled() {
     return Boolean.getBoolean("ohmyrasp.block")
         || "true".equalsIgnoreCase(System.getenv("OHMYRASP_BLOCK"));
+  }
+
+  private static boolean forceBlockEnabled() {
+    return Boolean.getBoolean("ohmyrasp.force_block")
+        || "true".equalsIgnoreCase(System.getenv("OHMYRASP_FORCE_BLOCK"));
   }
 
   private static void redirectToBlockPage(Detection detection) {

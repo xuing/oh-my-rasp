@@ -1,6 +1,7 @@
 package io.ohmyrasp.agent.control;
 
 import io.ohmyrasp.agent.model.Detection;
+import io.ohmyrasp.agent.policy.AgentPolicy;
 import java.io.InputStream;
 import java.io.IOException;
 import java.io.OutputStream;
@@ -11,17 +12,25 @@ import java.util.Map;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
+import java.util.function.BiConsumer;
 
 public final class ControlPlaneClient implements AutoCloseable {
   private final ControlPlaneConfig config;
   private final ScheduledExecutorService executor;
+  private final BiConsumer<AgentPolicy, String> policyInstaller;
   private volatile String agentId;
   private volatile String policyId;
   private volatile int policyVersion;
   private volatile String cachedPolicy;
 
   public ControlPlaneClient(ControlPlaneConfig config) {
+    this(config, (policy, agentKey) -> {});
+  }
+
+  public ControlPlaneClient(
+      ControlPlaneConfig config, BiConsumer<AgentPolicy, String> policyInstaller) {
     this.config = config;
+    this.policyInstaller = policyInstaller == null ? (policy, agentKey) -> {} : policyInstaller;
     this.executor =
         Executors.newSingleThreadScheduledExecutor(
             task -> {
@@ -32,10 +41,15 @@ public final class ControlPlaneClient implements AutoCloseable {
   }
 
   public static ControlPlaneClient start(ControlPlaneConfig config) {
+    return start(config, (policy, agentKey) -> {});
+  }
+
+  public static ControlPlaneClient start(
+      ControlPlaneConfig config, BiConsumer<AgentPolicy, String> policyInstaller) {
     if (config == null || !config.enabled()) {
       return null;
     }
-    ControlPlaneClient client = new ControlPlaneClient(config);
+    ControlPlaneClient client = new ControlPlaneClient(config, policyInstaller);
     client.executor.execute(client::registerAndHeartbeat);
     client.executor.scheduleAtFixedRate(client::heartbeatQuietly, 30, 30, TimeUnit.SECONDS);
     return client;
@@ -119,10 +133,16 @@ public final class ControlPlaneClient implements AutoCloseable {
     Response response = send("GET", "/agents/" + encodePath(id) + "/policy", "");
     if (response.statusCode() == 404) {
       cachedPolicy = "";
+      policyInstaller.accept(AgentPolicy.empty(), id);
       return;
     }
     requireSuccess(response, "pull policy");
     cachedPolicy = response.body();
+    try {
+      policyInstaller.accept(AgentPolicy.parse(cachedPolicy), id);
+    } catch (IllegalArgumentException e) {
+      System.err.println("[OHMYRASP] policy parse failed: " + e.getMessage());
+    }
   }
 
   private void uploadQuietly(Detection detection) {

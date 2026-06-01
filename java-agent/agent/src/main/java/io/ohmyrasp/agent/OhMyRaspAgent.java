@@ -5,6 +5,7 @@ import io.ohmyrasp.agent.asm.OhMyRaspTransformer;
 import io.ohmyrasp.agent.control.ControlPlaneClient;
 import io.ohmyrasp.agent.control.ControlPlaneConfig;
 import io.ohmyrasp.agent.hook.DeserializationGuard;
+import io.ohmyrasp.agent.hook.OhMyRaspHooks;
 import io.ohmyrasp.agent.log.JsonEventLogger;
 import java.io.File;
 import java.io.IOException;
@@ -25,7 +26,8 @@ public final class OhMyRaspAgent {
   private static void start(String agentArgs, Instrumentation instrumentation) {
     HookRegistry hookRegistry = HookRegistry.defaults();
     appendSelfToBootstrap(instrumentation);
-    ControlPlaneClient controlPlane = ControlPlaneClient.start(ControlPlaneConfig.load(agentArgs));
+    ControlPlaneClient controlPlane =
+        ControlPlaneClient.start(ControlPlaneConfig.load(agentArgs), OhMyRaspHooks::installPolicy);
     JsonEventLogger.get().setControlPlaneClient(controlPlane);
     DeserializationGuard.install();
     instrumentation.addTransformer(new OhMyRaspTransformer(hookRegistry), true);
