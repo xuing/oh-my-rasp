@@ -85,12 +85,12 @@ The product is **org-flat**, not **application-centric**. Concretely:
 
 A RASP management console manages **many applications**, each with different risk
 profiles, owners, and tolerance for blocking. The entire industry pattern
-(OpenRASP/Baidu cloud, and this project's own legacy `AntiyRASP-WEB`) is
+(OpenRASP/Baidu cloud) is
 **application-as-context**: the operator selects one application, and *everything*
 — dashboard, attacks, instances, policy/algorithm config, whitelist, alarms,
 settings — is scoped to it.
 
-**Reference (legacy `AntiyRASP-WEB`, the product being migrated from):**
+**Reference (legacy, the product being migrated from):**
 `src/store/modules/application/index.ts` defines a global Pinia store with
 `chooseApplication` (the selected app) and `switchApplication(tenant, app_id, …)`.
 Critically, the selected application object **owns its configuration**:
@@ -475,7 +475,6 @@ confirmed by both source and the passing agent test suite.
 
 ## Sources
 
-- Legacy reference implementation (in-repo): `.archive/source-drop-1-rasp/AntiyRASP-WEB/src/store/modules/application/index.ts` (global `chooseApplication`/`switchApplication`; per-app `algorithm_config`, `whitelist_config`, `*_alarm_conf`, `general_config`).
 - [OpenRASP (baidu/openrasp) — open-source RASP](https://github.com/baidu/openrasp)
 - [OpenRASP: Protection against Vulnerabilities — Baidu Security X-Lab](https://medium.com/baiduxlab/openrasp-protection-against-vulnerabilities-ff298bb9501a)
 - [What is Runtime Application Self-Protection (RASP)? — Fortinet](https://www.fortinet.com/resources/cyberglossary/runtime-application-self-protection-rasp)
