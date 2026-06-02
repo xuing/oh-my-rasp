@@ -1,0 +1,238 @@
+@import "tailwindcss";
+
+/* ============================================================
+   Sentinel design system — an obsidian instrument deck.
+   Tailwind v4 CSS-first config. Tokens below generate utilities
+   (bg-panel, text-muted, border-hairline, text-signal, …).
+   ============================================================ */
+@theme {
+  /* Base surfaces — layered graphite, darkest first */
+  --color-void: #06070a;
+  --color-obsidian: #090b10;
+  --color-panel: #0f1219;
+  --color-raised: #151922;
+  --color-hairline: #212733;
+  --color-hairline-bright: #343d4e;
+
+  /* Text */
+  --color-ink: #e2e8f0;
+  --color-muted: #94a0b2;
+  --color-faint: #606b7e;
+
+  /* Signal accent — active / healthy / primary */
+  --color-signal: #b2f04a;
+  --color-signal-dim: #78a82c;
+  /* Text that sits on a signal-filled surface (stays dark in both themes). */
+  --color-on-signal: #0a0c10;
+
+  /* Severity scale */
+  --color-critical: #ff5656;
+  --color-high: #fb923c;
+  --color-medium: #facc15;
+  --color-low: #38bdf8;
+  --color-info: #94a3b8;
+
+  /* Type */
+  --font-display: "Archivo", system-ui, sans-serif;
+  --font-sans: "Hanken Grotesk", system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, monospace;
+
+  /* Motion */
+  --animate-fade-rise: fade-rise 0.5s cubic-bezier(0.22, 1, 0.36, 1) both;
+  --animate-sweep: sweep 2.4s ease-in-out infinite;
+  --animate-pulse-ring: pulse-ring 2s ease-out infinite;
+}
+
+/* ------------------------------------------------------------------
+   Light theme — re-skins the surface/text tokens. Accent + severity
+   colors are shared; only the graphite scale and ink invert. Unlayered
+   so it overrides the @theme defaults whenever <html> has `.light`.
+   ------------------------------------------------------------------ */
+:root.light {
+  --color-void: #eef1f6;
+  --color-obsidian: #ffffff;
+  --color-panel: #ffffff;
+  --color-raised: #f1f4f9;
+  --color-hairline: #dde3ec;
+  --color-hairline-bright: #c2cbd9;
+
+  --color-ink: #131822;
+  --color-muted: #4d5a70;
+  --color-faint: #7c8799;
+
+  /* Slightly deepen the lime so it reads on white surfaces. */
+  --color-signal: #6fb600;
+  --color-signal-dim: #5a9400;
+
+  /* Deepen mid/low severity + info so they keep contrast on light tints. */
+  --color-medium: #b45309;
+  --color-low: #0369a1;
+  --color-info: #5b6675;
+}
+
+@keyframes fade-rise {
+  0% {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+@keyframes sweep {
+  0% {
+    transform: translateX(-100%);
+  }
+  100% {
+    transform: translateX(100%);
+  }
+}
+@keyframes pulse-ring {
+  0% {
+    box-shadow: 0 0 0 0 color-mix(in oklab, var(--color-signal) 50%, transparent);
+  }
+  70% {
+    box-shadow: 0 0 0 6px transparent;
+  }
+  100% {
+    box-shadow: 0 0 0 0 transparent;
+  }
+}
+
+@layer base {
+  *,
+  ::before,
+  ::after {
+    border-color: var(--color-hairline);
+  }
+
+  html,
+  body,
+  #root {
+    height: 100%;
+  }
+
+  body {
+    margin: 0;
+    background-color: var(--color-void);
+    color: var(--color-ink);
+    font-family: var(--font-sans);
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+  }
+
+  /* Atmospheric backdrop: a faint signal glow at top, a fine grid, grain. */
+  .app-atmosphere::before {
+    content: "";
+    position: fixed;
+    inset: 0;
+    pointer-events: none;
+    z-index: 0;
+    background:
+      radial-gradient(120% 60% at 78% -10%, color-mix(in oklab, var(--color-signal) 8%, transparent), transparent 60%),
+      radial-gradient(80% 50% at 0% 0%, color-mix(in oklab, var(--color-low) 5%, transparent), transparent 55%);
+  }
+  .app-atmosphere::after {
+    content: "";
+    position: fixed;
+    inset: 0;
+    pointer-events: none;
+    z-index: 0;
+    opacity: 0.35;
+    background-image:
+      linear-gradient(to right, color-mix(in oklab, var(--color-hairline) 55%, transparent) 1px, transparent 1px),
+      linear-gradient(to bottom, color-mix(in oklab, var(--color-hairline) 55%, transparent) 1px, transparent 1px);
+    background-size: 64px 64px;
+    mask-image: radial-gradient(120% 80% at 50% 0%, black, transparent 80%);
+  }
+
+  ::selection {
+    background: color-mix(in oklab, var(--color-signal) 25%, transparent);
+    color: var(--color-ink);
+  }
+
+  *::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+  }
+  *::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  *::-webkit-scrollbar-thumb {
+    background: var(--color-hairline-bright);
+    border-radius: 999px;
+    border: 3px solid var(--color-obsidian);
+  }
+  *::-webkit-scrollbar-thumb:hover {
+    background: var(--color-faint);
+  }
+
+  select option {
+    background: var(--color-panel);
+    color: var(--color-ink);
+  }
+}
+
+@layer components {
+  /* Uppercase tracked label used throughout the instrument deck. */
+  .eyebrow {
+    font-family: var(--font-mono);
+    font-size: 0.6875rem;
+    line-height: 1rem;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    color: var(--color-faint);
+  }
+
+  .panel {
+    border-radius: 0.5rem;
+    border: 1px solid var(--color-hairline);
+    background-color: color-mix(in oklab, var(--color-panel) 85%, transparent);
+    backdrop-filter: blur(6px);
+  }
+
+  .readout {
+    font-family: var(--font-mono);
+    font-variant-numeric: tabular-nums;
+  }
+
+  .display {
+    font-family: var(--font-display);
+    letter-spacing: -0.01em;
+  }
+
+  /* Hairline divider with a faint highlight on top — brushed metal. */
+  .rule-top {
+    box-shadow: inset 0 1px 0 0 color-mix(in oklab, var(--color-hairline-bright) 50%, transparent);
+  }
+
+  .interactive {
+    transition: background-color 0.15s ease;
+  }
+  .interactive:hover {
+    background-color: var(--color-raised);
+  }
+
+  .scanline {
+    position: relative;
+    overflow: hidden;
+  }
+  .scanline::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(
+      100deg,
+      transparent 20%,
+      color-mix(in oklab, var(--color-signal) 8%, transparent) 50%,
+      transparent 80%
+    );
+    transform: translateX(-100%);
+    animation: var(--animate-sweep);
+  }
+}
+
+@utility grain {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='120'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='3'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.5'/%3E%3C/svg%3E");
+}
