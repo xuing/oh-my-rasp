@@ -1,4 +1,4 @@
-# web
+# console
 
 New React control-plane frontend for the self-hosted OhMyRasp platform. This is
 a from-scratch rewrite using React 19, TypeScript, Vite 8, TanStack Router,
@@ -67,5 +67,5 @@ npm run dev -- --host 0.0.0.0 --port 5173
 ```bash
 npm run build
 npm test
-npm run e2e
+npm run test:e2e
 ```

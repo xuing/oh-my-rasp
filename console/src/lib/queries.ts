@@ -63,6 +63,16 @@ export function useEvents(type: "attack" | "error" | "crash", extra?: SecurityEv
   });
 }
 
+export function useRecycleBin(extra?: SecurityEventQuery) {
+  const scope = useScopeFilter();
+  const query = { ...scope, ...extra };
+  return useQuery({
+    queryKey: ["recycle-bin", query],
+    queryFn: () => api.recycleBin(query),
+    enabled: !!scope.application_id
+  });
+}
+
 export function useDependencies() {
   const scope = useScopeFilter();
   return useQuery({
@@ -81,19 +91,30 @@ export function useBaselineFindings() {
   });
 }
 
-export function useApplicationSettings(appID: string | null) {
+export function useApplicationSettings(appID: string | null, environmentID?: string | null) {
   return useQuery({
-    queryKey: ["app-settings", appID],
-    queryFn: () => api.applicationSettings(appID!),
+    queryKey: ["app-settings", appID, environmentID ?? ""],
+    queryFn: () => api.applicationSettings(appID!, environmentID),
     enabled: !!appID
   });
 }
 
 export function useAlertRules() {
-  return useQuery({ queryKey: ["alert-rules"], queryFn: api.alertRules });
+  const scope = useScopeFilter();
+  return useQuery({
+    queryKey: ["alert-rules", scope.application_id ?? ""],
+    queryFn: () => api.alertRules({ application_id: scope.application_id ?? undefined }),
+    enabled: !!scope.application_id
+  });
 }
 export function useAlertDeliveries() {
-  return useQuery({ queryKey: ["alert-deliveries"], queryFn: api.alertDeliveries, refetchInterval: REFRESH });
+  const scope = useScopeFilter();
+  return useQuery({
+    queryKey: ["alert-deliveries", scope.application_id ?? ""],
+    queryFn: () => api.alertDeliveries({ application_id: scope.application_id ?? undefined }),
+    enabled: !!scope.application_id,
+    refetchInterval: REFRESH
+  });
 }
 export function useAuditLogs() {
   return useQuery({ queryKey: ["audit-logs"], queryFn: api.auditLogs });
@@ -109,6 +130,9 @@ export function useVersion() {
 }
 export function useEdition() {
   return useQuery({ queryKey: ["edition"], queryFn: api.edition, staleTime: 5 * 60_000 });
+}
+export function useAgentArtifacts() {
+  return useQuery({ queryKey: ["agent-artifacts"], queryFn: api.agentArtifacts, staleTime: 30_000 });
 }
 
 /** Invalidate a set of query keys after a mutation. */

@@ -86,10 +86,20 @@ export interface Environment {
   id: string;
   application_id: string;
   name: string;
-  kind: string;
+  kind?: string;
   policy_id?: string;
   policy_version?: number;
   created_at?: string;
+}
+
+export interface ApplicationInput {
+  name: string;
+  description?: string;
+}
+
+export interface EnvironmentInput {
+  name: string;
+  kind?: string;
 }
 
 export interface Agent {
@@ -117,6 +127,30 @@ export interface Rule {
   expression?: string;
   tags?: string[];
   description?: string;
+}
+
+export interface RuleInput {
+  id?: string;
+  name: string;
+  hook: string;
+  algorithm?: string;
+  action?: string;
+  severity?: string;
+  expression: string;
+  tags?: string[];
+  description?: string;
+}
+
+export interface RuleValidation {
+  valid: boolean;
+  errors: string[];
+}
+
+export interface RuleTestResult {
+  matched: boolean;
+  action: string;
+  algorithm: string;
+  confidence: number;
 }
 
 export interface PolicyVersion {
@@ -159,14 +193,35 @@ export interface SecurityEvent {
   deleted_at?: string | null;
 }
 
+export interface SecurityEventInput {
+  application_id: string;
+  environment_id?: string;
+  agent_id: string;
+  policy_id?: string;
+  policy_version?: number;
+  hook?: string;
+  algorithm?: string;
+  severity: string;
+  message: string;
+  occurred_at?: string;
+  attributes?: Record<string, unknown>;
+}
+
 export interface SecurityEventQuery {
   application_id?: string;
   environment_id?: string;
   agent_id?: string;
+  policy_id?: string;
   severity?: string;
   hook?: string;
   algorithm?: string;
+  type?: "attack" | "hook" | "performance" | "crash" | "error";
   limit?: number;
+}
+
+export interface EventRecycleBinReport {
+  ids: string[];
+  count: number;
 }
 
 export interface DependencyVulnerability {
@@ -283,6 +338,24 @@ export interface ApplicationConfig {
   settings: ApplicationSetting[];
 }
 
+export interface MaintenanceCleanupRequest {
+  before: string;
+  application_id?: string;
+  dry_run?: boolean;
+  include_events?: boolean;
+  include_dependencies?: boolean;
+  include_baseline_findings?: boolean;
+  include_alert_deliveries?: boolean;
+  confirmation?: string;
+}
+
+export interface MaintenanceCleanupReport {
+  dry_run: boolean;
+  before: string;
+  application_id?: string;
+  counts: Record<string, number>;
+}
+
 export interface AlertRule {
   id: string;
   name: string;
@@ -290,8 +363,22 @@ export interface AlertRule {
   application_id?: string;
   event_type: string;
   severity: string;
+  condition?: string;
   target: string;
   enabled: boolean;
+  created_at?: string;
+  updated_at?: string;
+}
+
+export interface AlertRuleInput {
+  application_id?: string;
+  name: string;
+  description?: string;
+  enabled: boolean;
+  event_type: string;
+  severity: string;
+  condition?: string;
+  target: string;
 }
 export interface AlertDelivery {
   id: string;
@@ -327,6 +414,56 @@ export interface User {
   disabled_at?: string | null;
 }
 
+export type UserRole = "admin" | "security_engineer" | "viewer";
+
+export interface UserCreateInput {
+  email: string;
+  name: string;
+  password: string;
+  roles: UserRole[];
+}
+
+export interface UserUpdateInput {
+  name: string;
+  roles: UserRole[];
+  disabled: boolean;
+}
+
+export interface AgentArtifactCatalogItem {
+  filename: string;
+  content_type: string;
+  md5: string;
+  size: number;
+  language: string;
+  system_type: string;
+  language_version: string;
+  source?: string;
+  updated_at?: string;
+}
+
+export interface AgentArtifactCatalog {
+  artifact_dir_configured: boolean;
+  generated_bootstrap_enabled: boolean;
+  items: AgentArtifactCatalogItem[];
+}
+
+export interface AgentArtifactUploadInput {
+  filename?: string;
+  language: "java";
+  system_type: string;
+  language_version: string;
+  content_base64: string;
+}
+
+export interface AgentRegistrationInput {
+  application_id: string;
+  application_secret: string;
+  environment_id?: string;
+  hostname: string;
+  runtime?: string;
+  version: string;
+}
+
 export interface SystemVersion {
   component: string;
   version: string;
@@ -355,17 +492,25 @@ export const api = {
   me: () => request<{ user: SessionUser }>("GET", "/me"),
 
   applications: () => items<Application>(request("GET", "/applications")),
-  createApplication: (input: { name: string; description?: string }) =>
+  createApplication: (input: ApplicationInput) =>
     request<Application>("POST", "/applications", input),
   deleteApplication: (appID: string) => request<void>("DELETE", `/applications/${enc(appID)}`),
   rotateSecret: (appID: string) => request<Application>("POST", `/applications/${enc(appID)}/secret/rotate`),
-  createEnvironment: (appID: string, input: { name: string; kind: string }) =>
+  createEnvironment: (appID: string, input: EnvironmentInput) =>
     request<Environment>("POST", `/applications/${enc(appID)}/environments`, input),
 
-  applicationSettings: (appID: string) =>
-    items<ApplicationSetting>(request("GET", `/applications/${enc(appID)}/settings`)),
-  updateApplicationSetting: (appID: string, key: string, value: Record<string, unknown>) =>
-    request<ApplicationSetting>("PUT", `/applications/${enc(appID)}/settings`, { key, value }),
+  applicationSettings: (appID: string, environmentID?: string | null) => {
+    const path = environmentID
+      ? `/applications/${enc(appID)}/environments/${enc(environmentID)}/settings`
+      : `/applications/${enc(appID)}/settings`;
+    return items<ApplicationSetting>(request("GET", path));
+  },
+  updateApplicationSetting: (appID: string, key: string, value: Record<string, unknown>, environmentID?: string | null) => {
+    const path = environmentID
+      ? `/applications/${enc(appID)}/environments/${enc(environmentID)}/settings`
+      : `/applications/${enc(appID)}/settings`;
+    return request<ApplicationSetting>("PUT", path, { key, value });
+  },
 
   agents: (query?: SecurityEventQuery) => items<Agent>(request("GET", `/agents${qs(query as Query)}`)),
   setAgentAlias: (agentID: string, alias: string) =>
@@ -378,16 +523,26 @@ export const api = {
   algorithms: () => items<PolicyAlgorithm>(request("GET", "/policies/algorithms")),
   createPolicy: (input: { name: string; description?: string }) =>
     request<PolicySet>("POST", "/policies", input),
-  addPolicyVersion: (policyID: string, rules: Rule[]) =>
+  addPolicyVersion: (policyID: string, rules: RuleInput[]) =>
     request<PolicySet>("POST", `/policies/${enc(policyID)}/versions`, { rules }),
+  validateRules: (rules: RuleInput[]) => request<RuleValidation>("POST", "/policies/validate", { rules }),
+  testRule: (rule: RuleInput, event: SecurityEventInput) =>
+    request<RuleTestResult>("POST", "/policies/test", { rule, event }),
   rolloutPolicy: (policyID: string, input: { version: number; canary_percent: number; application_id?: string; environment_id?: string }) =>
     request<PolicySet>("POST", `/policies/${enc(policyID)}/rollout`, input),
   rollbackPolicy: (policyID: string) => request<PolicySet>("POST", `/policies/${enc(policyID)}/rollback`, {}),
+  restoreDefaultPolicy: (policyID: string) => request<PolicySet>("POST", `/policies/${enc(policyID)}/restore-default`, {}),
 
   events: (type: "attack" | "error" | "crash", query?: SecurityEventQuery) =>
     items<SecurityEvent>(request("GET", `/events/${type}${qs(query as Query)}`)),
   recycleBin: (query?: SecurityEventQuery) =>
     items<SecurityEvent>(request("GET", `/events/recycle-bin${qs(query as Query)}`)),
+  moveEventsToRecycleBin: (ids: string[]) =>
+    request<EventRecycleBinReport>("POST", "/events/recycle-bin/delete", { ids }),
+  restoreEventsFromRecycleBin: (ids: string[]) =>
+    request<EventRecycleBinReport>("POST", "/events/recycle-bin/restore", { ids }),
+  purgeEventsFromRecycleBin: (ids: string[]) =>
+    request<EventRecycleBinReport>("POST", "/events/recycle-bin/purge", { ids }),
 
   dependencies: (query?: SecurityEventQuery) =>
     items<Dependency>(request("GET", `/dependencies${qs(query as Query)}`)),
@@ -401,15 +556,49 @@ export const api = {
     request<ObservabilityReport>("GET", `/analytics/observability${qs(query as Query)}`),
 
   systemSettings: () => items<SystemSetting>(request("GET", "/system-settings")),
-  alertRules: () => items<AlertRule>(request("GET", "/alert-rules")),
-  alertDeliveries: () => items<AlertDelivery>(request("GET", "/alert-deliveries")),
+  updateSystemSetting: (key: string, value: Record<string, unknown>) =>
+    request<SystemSetting>("PUT", `/system-settings/${enc(key)}`, { value }),
+  cleanupMaintenanceData: (input: MaintenanceCleanupRequest) =>
+    request<MaintenanceCleanupReport>("POST", "/maintenance/cleanup", input),
+  alertRules: (query?: { application_id?: string }) =>
+    items<AlertRule>(request("GET", `/alert-rules${qs(query as Query)}`)),
+  createAlertRule: (input: AlertRuleInput) => request<AlertRule>("POST", "/alert-rules", input),
+  updateAlertRule: (alertRuleID: string, input: AlertRuleInput) =>
+    request<AlertRule>("PUT", `/alert-rules/${enc(alertRuleID)}`, input),
+  alertDeliveries: (query?: { application_id?: string }) =>
+    items<AlertDelivery>(request("GET", `/alert-deliveries${qs(query as Query)}`)),
   auditLogs: () => items<AuditLog>(request("GET", "/audit-logs")),
   users: (query?: { search?: string; role?: string; status?: string }) =>
     items<User>(request("GET", `/users${qs(query as Query)}`)),
+  createUser: (input: UserCreateInput) => request<User>("POST", "/users", input),
+  updateUser: (userID: string, input: UserUpdateInput) => request<User>("PUT", `/users/${enc(userID)}`, input),
+
+  agentArtifacts: () => request<AgentArtifactCatalog>("GET", "/agent-artifacts"),
+  uploadAgentArtifact: (input: AgentArtifactUploadInput) =>
+    request<AgentArtifactCatalogItem>("POST", "/agent-artifacts", input),
+  registerAgent: (input: AgentRegistrationInput) =>
+    request<Agent>(
+      "POST",
+      "/agents/register",
+      {
+        environment_id: input.environment_id,
+        hostname: input.hostname,
+        runtime: input.runtime,
+        version: input.version
+      },
+      appCredentialHeaders(input)
+    ),
 
   version: () => request<SystemVersion>("GET", "/system/version"),
   edition: () => request<EditionStatus>("GET", "/system/edition")
 };
+
+function appCredentialHeaders(input: { application_id: string; application_secret: string }): Record<string, string> {
+  return {
+    "X-OhMyRasp-App-ID": input.application_id,
+    "X-OhMyRasp-App-Secret": input.application_secret
+  };
+}
 
 function enc(v: string): string {
   return encodeURIComponent(v);

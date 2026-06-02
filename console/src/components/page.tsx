@@ -1,4 +1,4 @@
-import type { ReactNode } from "react";
+import type { HTMLAttributes, ReactNode } from "react";
 import { motion } from "motion/react";
 import { Boxes } from "lucide-react";
 import { useAppScope } from "../lib/app-context";
@@ -53,6 +53,10 @@ export function RequireApplication({ children }: { children: (appId: string) => 
   return <>{children(scope.applicationId)}</>;
 }
 
-export function Grid({ children, className = "" }: { children: ReactNode; className?: string }) {
-  return <div className={`grid gap-4 ${className}`}>{children}</div>;
+export function Grid({ children, className = "", ...props }: HTMLAttributes<HTMLDivElement> & { children: ReactNode; className?: string }) {
+  return (
+    <div className={`grid gap-4 ${className}`} {...props}>
+      {children}
+    </div>
+  );
 }

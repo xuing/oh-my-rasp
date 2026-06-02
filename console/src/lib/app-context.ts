@@ -44,14 +44,27 @@ export function selectEnvironment(environmentId: string | null) {
   commit({ ...current, environmentId });
 }
 
-/** Ensure a valid selection exists once applications are known. */
-export function ensureApplication(validIds: string[]) {
+export interface ScopeApplication {
+  id: string;
+  environment_ids?: string[];
+}
+
+/** Ensure both application and optional environment selections are valid. */
+export function ensureScope(applications: ScopeApplication[]) {
+  const validIds = applications.map((a) => a.id);
   if (validIds.length === 0) {
-    if (current.applicationId !== null) commit({ applicationId: null, environmentId: null });
+    if (current.applicationId !== null || current.environmentId !== null) commit({ applicationId: null, environmentId: null });
     return;
   }
-  if (!current.applicationId || !validIds.includes(current.applicationId)) {
+
+  const selected = current.applicationId ? applications.find((a) => a.id === current.applicationId) : null;
+  if (!selected) {
     commit({ applicationId: validIds[0], environmentId: null });
+    return;
+  }
+
+  if (current.environmentId && !(selected.environment_ids ?? []).includes(current.environmentId)) {
+    commit({ applicationId: selected.id, environmentId: null });
   }
 }
 

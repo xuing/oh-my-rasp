@@ -1,4 +1,4 @@
-import type { ButtonHTMLAttributes, InputHTMLAttributes, ReactNode, SelectHTMLAttributes } from "react";
+import type { ButtonHTMLAttributes, HTMLAttributes, InputHTMLAttributes, ReactNode, SelectHTMLAttributes } from "react";
 import { motion } from "motion/react";
 import { cn } from "../lib/cn";
 import { normalizeSeverity, type Severity } from "../lib/format";
@@ -18,8 +18,9 @@ export function Panel({
   title,
   eyebrow,
   actions,
-  flush
-}: {
+  flush,
+  ...props
+}: Omit<HTMLAttributes<HTMLElement>, "title"> & {
   children: ReactNode;
   className?: string;
   title?: ReactNode;
@@ -28,7 +29,7 @@ export function Panel({
   flush?: boolean;
 }) {
   return (
-    <section className={cn("panel relative", className)}>
+    <section className={cn("panel relative", className)} {...props}>
       {(title || actions || eyebrow) && (
         <header className="flex items-start justify-between gap-4 px-5 pb-3 pt-4">
           <div>
@@ -219,15 +220,13 @@ export function Segmented<T extends string>({
   onChange: (v: T) => void;
 }) {
   return (
-    <div className="inline-flex rounded-md border border-hairline bg-obsidian p-0.5">
+    <div className="segmented">
       {options.map((opt) => (
         <button
           key={opt.value}
+          type="button"
           onClick={() => onChange(opt.value)}
-          className={cn(
-            "rounded px-3 py-1.5 text-[13px] font-medium transition-colors",
-            value === opt.value ? "bg-raised text-ink shadow-[0_1px_0_0_rgb(52_61_78/0.5)_inset]" : "text-faint hover:text-muted"
-          )}
+          className={cn("segmented-option", value === opt.value && "is-active")}
         >
           {opt.label}
         </button>

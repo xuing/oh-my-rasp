@@ -1,48 +1,119 @@
-# Console Frontend Review
+# Console Frontend Remediation Ledger
 
 Date: 2026-06-02
 
-This document records the review conclusion for the rewritten frontend under
-`console/`. The rewrite builds successfully (`npm run build` passed i18n
-coverage, TypeScript, and Vite), but it is not yet a production replacement for
-the existing `web/` console.
+This document replaces the earlier acceptance review for the rewritten
+`console/` frontend. The original conclusion was correct: the visual rewrite was
+not yet a production replacement because critical workflows, deployment wiring,
+scoping, and tests were incomplete. This ledger records the remediation plan
+derived from those findings and the evidence that the plan has been executed.
 
-## Summary
+## Requirements
 
-The visual direction is stronger and the source is compact, but several
-acceptance-level gaps remain. The biggest blockers are deployment wiring,
-missing operator workflows, an incorrect hardening-mode value, and application
-scoping regressions for alerts and environment-level settings.
+| Severity | Requirement | Resolution |
+|---|---|---|
+| Critical | Docker Compose must build the new console, not the old frontend. | `docker-compose.yml` now builds `./console` for the `web` service. |
+| Critical | Core operator workflows must be usable, not read-only. | Added application inventory, app creation, environment creation, secret rotation, app deletion, agent onboarding, artifact catalog, artifact upload, maintenance cleanup, and event recycle-bin actions. |
+| Critical | Policy management must support the full lifecycle. | Added policy creation, rule authoring, validation, testing against stored attack events, version creation, scoped rollout, rollback, restore-default, and shared-policy visibility. |
+| High | Alert rules and deliveries must honor selected application scope. | `useAlertRules()` and `useAlertDeliveries()` now query with `application_id`; alert rule creation also writes the selected application. |
+| High | Protection Config must honor selected environment sub-scope. | App settings queries and writes now use `/applications/{app}/environments/{env}/settings` when an environment is selected. |
+| High | Hardening mode must use the agent contract. | The UI now writes `mode: "enforce"` for blocking hardening instead of the non-agent value `block`. |
+| High | Non-privileged users must not see mutation actions. | Instance rename, ignore/restore, delete, onboarding, and artifact mutation controls are privileged-only. |
+| Medium | Legacy aliases must preserve section intent. | Legacy paths now store a focus target before redirecting; target pages switch/focus the relevant section. |
+| Medium | Stored environment selection must be validated. | The global app scope validator now clears stale environment IDs that do not belong to the selected application. |
+| Medium | Mobile navigation must be available. | The shell now provides a mobile drawer with the same permission-filtered navigation as desktop. |
+| Medium | Automated UI tests must cover acceptance workflows. | Added Playwright tests covering scoping, hardening, app/env management, onboarding, artifact workflows, RBAC, mobile nav, policy lifecycle, alerts, users, cleanup, and recycle-bin actions. |
 
-## Findings
+## Execution Plan
 
-| Severity | Problem | Why it is a problem | Importance / necessity |
-|---|---|---|---|
-| Critical | The new console is not wired into the running stack. `docker-compose.yml` still builds `./web`, not `./console`. | Users running the current Compose service will still see the old frontend. | Must be fixed before acceptance or deployment; otherwise the rewrite is not actually used. |
-| Critical | Core operator workflows are missing or read-only. | There is no application management page, app/environment creation, secret rotation, onboarding/register-agent flow, daemon/artifact management, maintenance cleanup, or recycle-bin actions. | Required for replacing the existing control-plane console. |
-| Critical | Policy management is mostly absent. | The policies page can display an assigned policy and rollback, but has no create, edit, validate, test, version, rollout, restore-default, or assignment controls. | Policy authoring and rollout are central RASP workflows. Operators cannot tune enforcement without them. |
-| High | Alert rules and deliveries ignore the selected application. | `useAlertRules()` and `useAlertDeliveries()` call unscoped endpoints, so Access & Audit can show org-wide alert data while the rest of the console is app-scoped. | Necessary to prevent operators editing or interpreting alerts for the wrong application. |
-| High | Environment sub-scope is not honored by Protection Config. | Protection settings read/write only application-level settings, even when an environment is selected. | Important because backend environment overrides exist; the UI context can imply a narrower change than what is saved. |
-| High | Hardening mode writes the wrong value. | The console writes `block`, but the Java Agent enforces hardening only when the resolved mode is `enforce`. | Must fix because it creates a false sense that hardening is active. |
-| High | Non-privileged users still see instance mutation actions. | Rename and ignore controls render for all roles; only delete is privilege-gated. | Needed for clean RBAC behavior and to avoid predictable server-side permission failures in the UI. |
-| Medium | Legacy aliases are shallow redirects, not focused deep links. | `/maintain/whitelist` redirects to `/protection`, losing the legacy route's intended section target. | Important for migration fidelity and existing bookmarked routes. |
-| Medium | Stored environment selection is not validated. | The app scope store validates selected application IDs, but not whether the stored environment belongs to that application. | Prevents confusing empty dashboards caused by stale environment filters. |
-| Medium | Mobile navigation is missing. | The sidebar is hidden below large breakpoints and no mobile equivalent is provided. | Important for remote/mobile access; users can get stuck on the current route. |
-| Medium | No automated UI tests are defined. | `package.json` provides build/typecheck/i18n scripts, but no Playwright or component tests for login, app switching, RBAC, protection saves, or legacy routes. | Necessary before replacing the existing frontend because visual rewrites are regression-prone. |
-| Low | Some API client methods are scaffolded but unused. | Methods such as create application, create policy, and rollout policy exist in the API client but are not exposed by routes. | Useful implementation signal: the API layer is partially prepared, but route/UI work is incomplete. |
+1. Complete the typed API/query surface before route work.
+   Add missing endpoint methods for policies, applications, settings,
+   artifacts, agent registration, maintenance cleanup, recycle-bin, alert rules,
+   users, and scoped reads.
 
-## Verification Performed
+2. Fix cross-cutting scoping and navigation.
+   Validate stored app/environment scope, scope alerts and settings by the active
+   selection, add mobile navigation, and preserve legacy deep-link intent.
 
-- `cd console && npm run build`
-  - i18n coverage passed.
-  - TypeScript build passed.
-  - Vite production build passed.
+3. Restore operator workflows in focused routes.
+   Keep pages split by domain: Applications for inventory, Instances for agent
+   lifecycle, Policies for authoring and rollout, Access for users,
+   alert routing, audit, system, and cleanup, Threats for event investigation and
+   recycle-bin lifecycle, Protection for runtime settings.
 
-## Conclusion
+4. Wire deployment and documentation to the new console.
+   Point Compose at `console/` and update project documentation that still named
+   the old frontend as the primary console.
 
-The `console/` rewrite is a promising visual and architectural direction, but it
-should be treated as an incomplete replacement. Before switching Compose or
-shipping it as the primary console, the implementation needs to restore the core
-operator workflows, fix the hardening-mode contract, enforce selected
-application/environment scoping consistently, add mobile navigation, and add
-acceptance tests.
+5. Add browser-level acceptance tests.
+   Use mocked API responses but the real React routes, context store, router,
+   forms, and fetch layer. Assert exact API paths, request bodies, headers, and
+   visible RBAC behavior for restored workflows.
+
+## Implemented Tests
+
+The new `console/e2e/console.spec.ts` suite covers:
+
+- Application creation, environment creation, application secret rotation, and
+  environment-scoped Protection Config writes.
+- Hardening save payload uses `mode: "enforce"`.
+- Agent registration sends application credential headers.
+- Agent artifact upload through the artifact catalog UI.
+- Viewer RBAC hides instance mutation actions.
+- Mobile navigation opens and exposes the application route.
+- Policy create, validate, test, version, restore-default, and rollout calls.
+- Alert rule reads are scoped with `application_id`, and alert rules can be
+  created from the selected application.
+- User creation and disable lifecycle.
+- Maintenance cleanup preview and confirmed apply.
+- Event recycle-bin delete, restore, and purge.
+
+## Verification Evidence
+
+Executed from `console/`:
+
+```bash
+npm run test
+npm run build
+```
+
+Result:
+
+```text
+i18n coverage OK — 355 used keys, zh=366, ja=366.
+tsc -b passed.
+5 Playwright tests passed.
+Vite production build passed.
+```
+
+The suite runs against Vite through Playwright and verifies the actual route
+behavior rather than isolated component snapshots. The production build was also
+run after the browser suite to cover the packaged console path.
+
+## Daemon Workloads Removed (2026-06-02)
+
+The remediation pass shipped a "Daemon Workloads" panel on the Instances page
+(token reveal/rotate plus per-workload bind/unbind) that consumed the
+control-plane daemon endpoints. There is **no daemon component in this
+repository** that discovers host processes/containers and reports them, so the
+panel had no producer — it would always render empty and its token/bind actions
+managed a feature nothing emits. Per maintainer direction it has been removed
+from the console:
+
+- `console/src/routes/instances.tsx` — dropped `DaemonPanel`/`DaemonRow` and the
+  bind/unbind/token mutations; `RegisterAgentPanel` now stands alone.
+- `console/src/lib/api.ts` — removed the `DaemonAccessToken`/`DaemonWorkload`
+  types and the five `/daemon/*` client methods.
+- `console/src/lib/queries.ts` — removed `useDaemonWorkloads`.
+- `console/src/i18n/messages.ts` — removed the 14 daemon-only zh/ja keys.
+- `console/e2e/console.spec.ts` — removed the daemon fixtures, route mocks, and
+  assertions; the instances test was retitled accordingly.
+
+The control-plane **backend** daemon surface is committed and untouched:
+`/api/v1/daemon/token`, `/daemon/token/reset`, `/daemon/workloads`,
+`/daemon/workloads/{id}/bind`, `/daemon/workloads/{id}/unbind`
+(`api/internal/httpapi/server.go`), the ingestion websocket
+(`legacy_daemon_ws.go`), artifact handlers (`daemon_artifacts.go`), and the
+generated OpenAPI bindings. These are orphaned without a daemon producer but are
+tested and code-generation-coupled, so they were left in place pending a
+decision on whether to remove the daemon concept end-to-end.

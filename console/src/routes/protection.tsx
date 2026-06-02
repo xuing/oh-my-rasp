@@ -1,6 +1,8 @@
 import { useEffect, useState } from "react";
 import { ShieldHalf, ListChecks, BellRing, PackageSearch, Check } from "lucide-react";
 import { api } from "../lib/api";
+import { useAppScope } from "../lib/app-context";
+import { focusStoredSection } from "../lib/focus";
 import { useApplicationSettings, useInvalidator, useMutation } from "../lib/queries";
 import { PageHeader, RequireApplication, Grid } from "../components/page";
 import { Panel, QueryState, Field, TextInput, SelectInput, Button, Badge } from "../components/ui";
@@ -12,6 +14,7 @@ type TFn = (key: string, vars?: Record<string, string | number>) => string;
 
 export function ProtectionPage() {
   const t = useT();
+  useEffect(focusStoredSection, []);
   return (
     <>
       <PageHeader
@@ -26,14 +29,15 @@ export function ProtectionPage() {
 
 function ProtectionBody({ appId }: { appId: string }) {
   const t = useT();
-  const settings = useApplicationSettings(appId);
+  const scope = useAppScope();
+  const settings = useApplicationSettings(appId, scope.environmentId);
   const invalidate = useInvalidator();
   const privileged = isPrivileged();
 
   const byKey = (key: string): Json => settings.data?.find((s) => s.key === key)?.value ?? {};
 
   const save = useMutation({
-    mutationFn: (v: { key: string; value: Json }) => api.updateApplicationSetting(appId, v.key, v.value),
+    mutationFn: (v: { key: string; value: Json }) => api.updateApplicationSetting(appId, v.key, v.value, scope.environmentId),
     onSuccess: () => invalidate("app-settings")
   });
 
@@ -45,6 +49,9 @@ function ProtectionBody({ appId }: { appId: string }) {
         <AlarmCard t={t} value={byKey("alerts.delivery")} disabled={!privileged} onSave={(value) => save.mutate({ key: "alerts.delivery", value })} saving={save.isPending} />
         <DependencyCard t={t} value={byKey("dependency.vulnerability_policy")} disabled={!privileged} onSave={(value) => save.mutate({ key: "dependency.vulnerability_policy", value })} saving={save.isPending} />
       </Grid>
+      <p className="mt-4 text-[12px] text-faint">
+        {scope.environmentId ? t("Settings are scoped to the selected environment.") : t("Settings are scoped to the selected application.")}
+      </p>
       {!privileged && (
         <p className="mt-4 text-[12px] text-faint">{t("You have read-only access. Administrators and security engineers can edit protection configuration.")}</p>
       )}
@@ -57,6 +64,7 @@ function CardShell({
   icon,
   eyebrow,
   title,
+  section,
   children,
   onSave,
   saving,
@@ -67,6 +75,7 @@ function CardShell({
   icon: React.ReactNode;
   eyebrow: string;
   title: string;
+  section: string;
   children: React.ReactNode;
   onSave: () => void;
   saving: boolean;
@@ -75,12 +84,15 @@ function CardShell({
 }) {
   return (
     <Panel
+      className="scroll-mt-20 outline-hidden"
+      title={title}
+      data-section={section}
+      tabIndex={-1}
       eyebrow={
         <span className="flex items-center gap-1.5">
           {icon} {eyebrow}
         </span>
       }
-      title={title}
       actions={
         <Button variant={dirty ? "primary" : "subtle"} size="sm" onClick={onSave} disabled={disabled || saving || !dirty}>
           {saving ? t("Saving…") : dirty ? <><Check className="h-3.5 w-3.5" /> {t("Save")}</> : t("Saved")}
@@ -122,11 +134,11 @@ function HardeningCard({ t, value, onSave, saving, disabled }: { t: TFn; value: 
   const dirty = mode !== ((value.mode as string) ?? "monitor") || reflection !== ((value.block_reflection_abuse as boolean) ?? true) || process !== ((value.block_process_execution as boolean) ?? true);
 
   return (
-    <CardShell t={t} icon={<ShieldHalf className="h-3.5 w-3.5" />} eyebrow={t("Runtime")} title={t("Hardening")} disabled={disabled} saving={saving} dirty={dirty} onSave={() => onSave({ mode, block_reflection_abuse: reflection, block_process_execution: process })}>
+    <CardShell t={t} icon={<ShieldHalf className="h-3.5 w-3.5" />} eyebrow={t("Runtime")} title={t("Hardening")} section="hardening" disabled={disabled} saving={saving} dirty={dirty} onSave={() => onSave({ mode, block_reflection_abuse: reflection, block_process_execution: process })}>
       <Field label={t("Mode")}>
         <SelectInput value={mode} disabled={disabled} onChange={(e) => setMode(e.target.value)}>
           <option value="monitor">{t("Monitor — log only")}</option>
-          <option value="block">{t("Block — enforce")}</option>
+          <option value="enforce">{t("Enforce — block")}</option>
         </SelectInput>
       </Field>
       <Toggle label={t("Block reflection abuse")} checked={reflection} onChange={setReflection} disabled={disabled} />
@@ -149,12 +161,12 @@ function AllowlistCard({ t, value, onSave, saving, disabled }: { t: TFn; value: 
   const dirty = enabled !== ((value.enabled as boolean) ?? false) || mode !== ((value.mode as string) ?? "monitor") || entries !== initialEntries;
 
   return (
-    <CardShell t={t} icon={<ListChecks className="h-3.5 w-3.5" />} eyebrow={t("Bypass")} title={t("Allowlist")} disabled={disabled} saving={saving} dirty={dirty} onSave={() => onSave({ enabled, mode, entries: parsed })}>
+    <CardShell t={t} icon={<ListChecks className="h-3.5 w-3.5" />} eyebrow={t("Bypass")} title={t("Allowlist")} section="allowlist" disabled={disabled} saving={saving} dirty={dirty} onSave={() => onSave({ enabled, mode, entries: parsed })}>
       <Toggle label={t("Allowlist enabled")} checked={enabled} onChange={setEnabled} disabled={disabled} />
       <Field label={t("Mode")}>
         <SelectInput value={mode} disabled={disabled} onChange={(e) => setMode(e.target.value)}>
           <option value="monitor">{t("Monitor")}</option>
-          <option value="block">{t("Block")}</option>
+          <option value="enforce">{t("Enforce")}</option>
         </SelectInput>
       </Field>
       <Field label={t("Entries")} hint={t("{count} pattern(s) · one per line", { count: parsed.length })}>
@@ -177,7 +189,7 @@ function AlarmCard({ t, value, onSave, saving, disabled }: { t: TFn; value: Json
   useEffect(() => setInterval(String((value.interval_seconds as number) ?? 300)), [value]);
   const dirty = interval !== initial;
   return (
-    <CardShell t={t} icon={<BellRing className="h-3.5 w-3.5" />} eyebrow={t("Notification")} title={t("Alerting")} disabled={disabled} saving={saving} dirty={dirty} onSave={() => onSave({ interval_seconds: Number(interval) || 300 })}>
+    <CardShell t={t} icon={<BellRing className="h-3.5 w-3.5" />} eyebrow={t("Notification")} title={t("Alerting")} section="alerts" disabled={disabled} saving={saving} dirty={dirty} onSave={() => onSave({ interval_seconds: Number(interval) || 300 })}>
       <Field label={t("Delivery interval (seconds)")} hint={t("Minimum gap between alert deliveries for this application")}>
         <TextInput type="number" min={0} value={interval} disabled={disabled} onChange={(e) => setInterval(e.target.value)} />
       </Field>
@@ -195,7 +207,7 @@ function DependencyCard({ t, value, onSave, saving, disabled }: { t: TFn; value:
   }, [value]);
   const dirty = sev !== ((value.fail_on_severity as string) ?? "critical") || exploited !== ((value.block_known_exploited as boolean) ?? true);
   return (
-    <CardShell t={t} icon={<PackageSearch className="h-3.5 w-3.5" />} eyebrow={t("Supply chain")} title={t("Dependency policy")} disabled={disabled} saving={saving} dirty={dirty} onSave={() => onSave({ fail_on_severity: sev, block_known_exploited: exploited })}>
+    <CardShell t={t} icon={<PackageSearch className="h-3.5 w-3.5" />} eyebrow={t("Supply chain")} title={t("Dependency policy")} section="dependency" disabled={disabled} saving={saving} dirty={dirty} onSave={() => onSave({ fail_on_severity: sev, block_known_exploited: exploited })}>
       <Field label={t("Fail on severity")}>
         <SelectInput value={sev} disabled={disabled} onChange={(e) => setSev(e.target.value)}>
           <option value="critical">{t("Critical")}</option>

@@ -3,7 +3,7 @@
 This directory contains the new cloud control platform rewrite:
 
 - `api`: Go 1.26 backend, `net/http` + `chi`, OpenAPI 3.1, `slog`.
-- `web`: React 19 + TypeScript + Vite 8 frontend.
+- `console`: React 19 + TypeScript + Vite 8 frontend.
 - `docker-compose.yml`: self-hosted development stack with PostgreSQL,
   ClickHouse, Valkey, Prometheus, API, and web containers.
 - `deploy/helm/ohmyrasp-control`: initial Helm chart skeleton.

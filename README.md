@@ -121,7 +121,7 @@ hook selected runtime call sites inside a comparative Tomcat testbed.
 
 ```text
 api/          Go control-plane API, migrations, OpenAPI contract, generated bindings
-web/          React 19 + Vite control-plane console
+console/      React 19 + Vite control-plane console
 java-agent/   Java agent and comparative Tomcat playground
 deploy/       Helm chart, observability assets, smoke and validation scripts
 docs/         Architecture notes, audits, and operational runbooks
@@ -202,12 +202,11 @@ docker run --rm -v "$PWD/api":/src -w /src golang:1.26 go test ./...
 Frontend checks:
 
 ```bash
-cd web
+cd console
 npm ci
 npm run build
 npm test
-npm run e2e
-OHMYRASP_E2E_LIVE_URL=http://127.0.0.1:18091 npm run e2e:live
+npm run test:e2e
 ```
 
 Deployment and observability checks:

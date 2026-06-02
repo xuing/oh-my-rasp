@@ -2,19 +2,22 @@ import { useEffect, useRef, useState } from "react";
 import { Link, Outlet, useNavigate } from "@tanstack/react-router";
 import {
   Activity,
+  Boxes,
   ChevronsUpDown,
   Crosshair,
   LayoutDashboard,
   LogOut,
+  Menu,
   Package,
   Radar,
   Server,
   ShieldCheck,
   SlidersHorizontal,
-  UsersRound
+  UsersRound,
+  X
 } from "lucide-react";
 import { useApplications } from "../lib/queries";
-import { ensureApplication, selectApplication, selectEnvironment, useAppScope } from "../lib/app-context";
+import { ensureScope, selectApplication, selectEnvironment, useAppScope } from "../lib/app-context";
 import { clearSession, isPrivileged, useSession } from "../lib/session";
 import { shortId } from "../lib/format";
 import { cn } from "../lib/cn";
@@ -45,6 +48,7 @@ const NAV: NavSection[] = [
   {
     heading: "Manage",
     items: [
+      { to: "/applications", label: "Applications", icon: Boxes },
       { to: "/instances", label: "Instances", icon: Server },
       { to: "/policies", label: "Policies", icon: ShieldCheck },
       { to: "/protection", label: "Protection Config", icon: SlidersHorizontal }
@@ -60,9 +64,10 @@ export function AppShell() {
   const apps = useApplications();
   const scope = useAppScope();
   const t = useT();
+  const [mobileNav, setMobileNav] = useState(false);
 
   useEffect(() => {
-    if (apps.data) ensureApplication(apps.data.map((a) => a.id));
+    if (apps.data) ensureScope(apps.data);
   }, [apps.data]);
 
   const selectedApp = apps.data?.find((a) => a.id === scope.applicationId) ?? null;
@@ -70,12 +75,24 @@ export function AppShell() {
   return (
     <div className="app-atmosphere relative flex min-h-screen">
       <Sidebar />
+      {mobileNav && (
+        <div className="fixed inset-0 z-50 lg:hidden">
+          <button
+            type="button"
+            className="absolute inset-0 bg-void/70 backdrop-blur-sm"
+            aria-label={t("Close navigation")}
+            onClick={() => setMobileNav(false)}
+          />
+          <Sidebar mobile onNavigate={() => setMobileNav(false)} />
+        </div>
+      )}
       <div className="relative z-10 flex min-w-0 flex-1 flex-col lg:pl-64">
         <Topbar
           applications={apps.data ?? []}
           selectedAppId={scope.applicationId}
           selectedEnvId={scope.environmentId}
           environmentIds={selectedApp?.environment_ids ?? []}
+          onOpenNav={() => setMobileNav(true)}
         />
         <main className="mx-auto w-full max-w-[1400px] flex-1 px-5 py-7 lg:px-8">
           <Outlet />
@@ -88,11 +105,16 @@ export function AppShell() {
   );
 }
 
-function Sidebar() {
+function Sidebar({ mobile = false, onNavigate }: { mobile?: boolean; onNavigate?: () => void }) {
   const admin = isPrivileged();
   const t = useT();
   return (
-    <aside className="fixed inset-y-0 left-0 z-20 hidden w-64 flex-col border-r border-hairline bg-obsidian/90 backdrop-blur-md lg:flex">
+    <aside
+      className={cn(
+        "fixed inset-y-0 left-0 z-20 w-64 flex-col border-r border-hairline bg-obsidian/95 backdrop-blur-md",
+        mobile ? "flex shadow-2xl" : "hidden lg:flex"
+      )}
+    >
       <div className="flex items-center gap-3 border-b border-hairline px-5 py-5">
         <div className="relative grid h-9 w-9 place-items-center rounded-md border border-signal/30 bg-signal/10">
           <Radar className="h-5 w-5 text-signal" />
@@ -102,6 +124,16 @@ function Sidebar() {
           <div className="display text-sm font-bold tracking-tight text-ink">OhMyRasp</div>
           <div className="eyebrow text-[10px] text-faint">{t("Sentinel Console")}</div>
         </div>
+        {mobile && (
+          <button
+            type="button"
+            aria-label={t("Close navigation")}
+            onClick={onNavigate}
+            className="ml-auto rounded-md p-1.5 text-faint transition-colors hover:bg-raised hover:text-ink"
+          >
+            <X className="h-4 w-4" />
+          </button>
+        )}
       </div>
       <nav className="flex-1 space-y-6 overflow-y-auto px-3 py-5">
         {NAV.map((section) => (
@@ -114,6 +146,7 @@ function Sidebar() {
                   <Link
                     key={item.to}
                     to={item.to}
+                    onClick={onNavigate}
                     activeOptions={{ exact: item.to === "/" }}
                     className="group flex items-center gap-3 rounded-md px-3 py-2 text-[13px] font-medium text-muted transition-colors hover:bg-raised hover:text-ink"
                     activeProps={{
@@ -143,16 +176,26 @@ function Topbar({
   applications,
   selectedAppId,
   selectedEnvId,
-  environmentIds
+  environmentIds,
+  onOpenNav
 }: {
   applications: { id: string; name: string }[];
   selectedAppId: string | null;
   selectedEnvId: string | null;
   environmentIds: string[];
+  onOpenNav: () => void;
 }) {
   const t = useT();
   return (
     <header className="sticky top-0 z-20 flex h-16 items-center gap-3 border-b border-hairline bg-obsidian/80 px-5 backdrop-blur-md lg:px-8">
+      <button
+        type="button"
+        className="rounded-md border border-hairline bg-panel p-2 text-muted transition-colors hover:text-ink lg:hidden"
+        aria-label={t("Open navigation")}
+        onClick={onOpenNav}
+      >
+        <Menu className="h-4 w-4" />
+      </button>
       <div className="flex min-w-0 items-center gap-2">
         <span className="eyebrow hidden text-faint sm:block">{t("Application")}</span>
         <div className="relative">

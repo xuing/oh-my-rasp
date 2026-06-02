@@ -1,10 +1,13 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { AnimatePresence, motion } from "motion/react";
-import { Crosshair, X, FileWarning, Ban } from "lucide-react";
-import { useEvents } from "../lib/queries";
+import { Crosshair, X, FileWarning, Ban, ArchiveRestore, Trash2 } from "lucide-react";
+import { api } from "../lib/api";
+import { focusStoredSection } from "../lib/focus";
+import { useEvents, useInvalidator, useMutation, useRecycleBin } from "../lib/queries";
 import type { SecurityEvent } from "../lib/api";
 import { PageHeader, RequireApplication } from "../components/page";
 import { Panel, QueryState, SeverityTag, Segmented, Table, Th, Td, Mono, Badge, Button } from "../components/ui";
+import { isPrivileged } from "../lib/session";
 import { relativeTime, shortDateTime, shortId, titleCase } from "../lib/format";
 import { useT } from "../i18n";
 
@@ -18,6 +21,7 @@ const EMPTY_KEY: Record<Kind, string> = {
 
 export function ThreatsPage() {
   const t = useT();
+  useEffect(focusStoredSection, []);
   return (
     <>
       <PageHeader
@@ -33,11 +37,29 @@ export function ThreatsPage() {
 function ThreatsBody() {
   const t = useT();
   const [kind, setKind] = useState<Kind>("attack");
+  const [view, setView] = useState<"active" | "recycle">("active");
   const [severity, setSeverity] = useState<string>("");
   const [selected, setSelected] = useState<SecurityEvent | null>(null);
+  const privileged = isPrivileged();
+  const invalidate = useInvalidator();
 
   const events = useEvents(kind, { severity: severity || undefined, limit: 200 });
-  const rows = useMemo(() => events.data ?? [], [events.data]);
+  const recycled = useRecycleBin({ type: kind, severity: severity || undefined, limit: 200 });
+  const data = view === "recycle" ? recycled : events;
+  const rows = useMemo(() => data.data ?? [], [data.data]);
+
+  const moveToRecycle = useMutation({
+    mutationFn: (id: string) => api.moveEventsToRecycleBin([id]),
+    onSuccess: () => invalidate("events", "recycle-bin", "audit-logs")
+  });
+  const restore = useMutation({
+    mutationFn: (id: string) => api.restoreEventsFromRecycleBin([id]),
+    onSuccess: () => invalidate("events", "recycle-bin", "audit-logs")
+  });
+  const purge = useMutation({
+    mutationFn: (id: string) => api.purgeEventsFromRecycleBin([id]),
+    onSuccess: () => invalidate("recycle-bin", "audit-logs")
+  });
 
   return (
     <div className="space-y-4">
@@ -52,6 +74,14 @@ function ThreatsBody() {
           ]}
         />
         <div className="flex items-center gap-2">
+          <Segmented
+            value={view}
+            onChange={setView}
+            options={[
+              { value: "active", label: t("Active") },
+              { value: "recycle", label: t("Recycle bin") }
+            ]}
+          />
           <span className="eyebrow hidden sm:block">{t("Severity")}</span>
           <Segmented
             value={severity}
@@ -67,13 +97,13 @@ function ThreatsBody() {
         </div>
       </div>
 
-      <Panel flush>
+      <Panel flush data-section={view === "recycle" ? "recycle-bin" : "threat-events"} tabIndex={-1}>
         <QueryState
-          isLoading={events.isLoading}
-          isError={events.isError}
-          error={events.error}
+          isLoading={data.isLoading}
+          isError={data.isError}
+          error={data.error}
           isEmpty={rows.length === 0}
-          emptyTitle={t(EMPTY_KEY[kind])}
+          emptyTitle={view === "recycle" ? t("Recycle bin is empty") : t(EMPTY_KEY[kind])}
           emptyHint={t("When agents detect and report activity in this application, it appears here in real time.")}
           emptyIcon={<Crosshair className="h-5 w-5" />}
         >
@@ -85,7 +115,7 @@ function ThreatsBody() {
                 <Th>{t("Message")}</Th>
                 <Th>{t("Instance")}</Th>
                 <Th>{t("When")}</Th>
-                <Th />
+                <Th>{t("Actions")}</Th>
               </tr>
             </thead>
             <tbody>
@@ -108,7 +138,52 @@ function ThreatsBody() {
                     <span title={shortDateTime(e.occurred_at)}>{relativeTime(e.occurred_at)}</span>
                   </Td>
                   <Td className="text-right">
-                    <span className="text-faint">→</span>
+                    <div className="flex justify-end gap-1">
+                      {privileged && view === "active" && (
+                        <Button
+                          size="sm"
+                          variant="subtle"
+                          title={t("Move to recycle bin")}
+                          disabled={moveToRecycle.isPending}
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            moveToRecycle.mutate(e.id);
+                          }}
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </Button>
+                      )}
+                      {privileged && view === "recycle" && (
+                        <>
+                          <Button
+                            size="sm"
+                            variant="subtle"
+                            title={t("Restore")}
+                            disabled={restore.isPending}
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              restore.mutate(e.id);
+                            }}
+                          >
+                            <ArchiveRestore className="h-3.5 w-3.5" />
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="subtle"
+                            title={t("Purge")}
+                            className="hover:text-critical"
+                            disabled={purge.isPending}
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              if (window.confirm(t("Permanently purge this event?"))) purge.mutate(e.id);
+                            }}
+                          >
+                            <Trash2 className="h-3.5 w-3.5" />
+                          </Button>
+                        </>
+                      )}
+                      {!privileged && <span className="text-faint">→</span>}
+                    </div>
                   </Td>
                 </tr>
               ))}

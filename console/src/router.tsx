@@ -10,6 +10,7 @@ import {
 import { authToken, isPrivileged } from "./lib/session";
 import { AppShell } from "./components/shell";
 import { Radar } from "lucide-react";
+import { storeFocusTarget } from "./lib/focus";
 
 // Each page is split into its own chunk and loaded on demand.
 const lazy = (importer: () => Promise<Record<string, unknown>>, name: string) =>
@@ -61,11 +62,12 @@ const route = (path: string, component: ReturnType<typeof lazy>, adminOnly = fal
   });
 
 // Legacy / alternative URLs redirect into the application-centric structure.
-const aliasRedirect = (path: string, to: string) =>
+const aliasRedirect = (path: string, to: string, focus?: string) =>
   createRoute({
     getParentRoute: () => appLayout,
     path,
     beforeLoad: () => {
+      if (focus) storeFocusTarget(focus);
       throw redirect({ to });
     },
     component: (): ReactNode => null
@@ -76,6 +78,7 @@ const routeTree = rootRoute.addChildren([
   appLayout.addChildren([
     route("/", lazy(() => import("./routes/overview"), "OverviewPage")),
     route("/threats", lazy(() => import("./routes/threats"), "ThreatsPage")),
+    route("/applications", lazy(() => import("./routes/applications"), "ApplicationsPage")),
     route("/instances", lazy(() => import("./routes/instances"), "InstancesPage")),
     route("/policies", lazy(() => import("./routes/policies"), "PoliciesPage")),
     route("/protection", lazy(() => import("./routes/protection"), "ProtectionPage")),
@@ -85,15 +88,23 @@ const routeTree = rootRoute.addChildren([
     aliasRedirect("/dashboard", "/"),
     aliasRedirect("/events", "/threats"),
     aliasRedirect("/agents", "/instances"),
-    aliasRedirect("/maintain/hosts", "/instances"),
+    aliasRedirect("/maintain/hosts", "/instances", "register-agent"),
+    aliasRedirect("/addInstance", "/instances", "register-agent"),
     aliasRedirect("/dependencies", "/software"),
     aliasRedirect("/safe/dependency", "/software"),
     aliasRedirect("/safe/baseline", "/software"),
     aliasRedirect("/algorithm", "/policies"),
-    aliasRedirect("/maintain/whitelist", "/protection"),
-    aliasRedirect("/algorithm/hardening", "/protection"),
-    aliasRedirect("/platform", "/access"),
-    aliasRedirect("/log/audit", "/access")
+    aliasRedirect("/safe/recycleBin", "/threats", "recycle-bin"),
+    aliasRedirect("/maintain/whitelist", "/protection", "allowlist"),
+    aliasRedirect("/algorithm/hardening", "/protection", "hardening"),
+    aliasRedirect("/algorithm/alarm", "/access", "alert-rules"),
+    aliasRedirect("/platform", "/access", "users"),
+    aliasRedirect("/log/audit", "/access", "audit"),
+    aliasRedirect("/settings/panel", "/access", "system"),
+    aliasRedirect("/settings/alarm", "/access", "alert-rules"),
+    aliasRedirect("/settings/systemInfo", "/access", "system"),
+    aliasRedirect("/settings/poolVersion", "/instances", "agent-artifacts"),
+    aliasRedirect("/settings/version", "/instances", "agent-inventory")
   ])
 ]);
 

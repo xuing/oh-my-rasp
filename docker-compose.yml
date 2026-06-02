@@ -50,7 +50,7 @@ services:
 
   web:
     build:
-      context: ./web
+      context: ./console
     ports:
       - "0.0.0.0:${WEB_PORT}:8080"
     depends_on:
