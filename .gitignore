@@ -23,5 +23,6 @@ logs/
 # Local/editor files
 .DS_Store
 *.log
+.codegraph/
 .env.local
 .env.*.local
