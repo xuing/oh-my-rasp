@@ -23,6 +23,7 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.stream.Stream;
+import java.util.zip.ZipEntry;
 
 public final class OhMyRaspHooks {
   private static final DetectorEngine DETECTORS = new DetectorEngine();
@@ -31,6 +32,7 @@ public final class OhMyRaspHooks {
   private static final ThreadLocal<RequestContext> REQUEST =
       ThreadLocal.withInitial(RequestContext::empty);
   private static final ThreadLocal<Object> RESPONSE = new ThreadLocal<>();
+  private static final ThreadLocal<String> ARCHIVE_ENTRY = new ThreadLocal<>();
   private static final StackWalker STACK_WALKER =
       StackWalker.getInstance(
           Set.of(StackWalker.Option.RETAIN_CLASS_REFERENCE, StackWalker.Option.SHOW_REFLECT_FRAMES));
@@ -48,6 +50,10 @@ public final class OhMyRaspHooks {
       REQUEST.set(context);
       RESPONSE.set(response);
       emit(DETECTORS.detectRequest(context), false);
+      emit(
+          DETECTORS.detectServletIncludeAttributes(
+              readServletIncludeAttributes(request), context, stackTraceClassNames()),
+          false);
     } catch (OhMyRaspBlockException blocked) {
       REQUEST.remove();
       RESPONSE.remove();
@@ -73,9 +79,105 @@ public final class OhMyRaspHooks {
     }
   }
 
+  public static void beforeSyntheticHttpRequestWithBody(
+      String method,
+      String uri,
+      String query,
+      Map<String, List<String>> parameters,
+      Map<String, String> headers,
+      String body) {
+    try {
+      RequestContext context = new RequestContext(method, uri, query, parameters, headers, body);
+      emit(DETECTORS.detectRequest(context));
+    } catch (OhMyRaspBlockException blocked) {
+      throw blocked;
+    } catch (Throwable throwable) {
+      quiet("beforeSyntheticHttpRequestWithBody", throwable);
+    }
+  }
+
+  public static void beforeSyntheticJaasConfig(
+      String method,
+      String uri,
+      String query,
+      Map<String, List<String>> parameters,
+      Map<String, String> headers,
+      String body,
+      Object config,
+      String mechanism) {
+    try {
+      RequestContext context = new RequestContext(method, uri, query, parameters, headers, body);
+      String hook = mechanism == null || mechanism.isBlank() ? "JAAS" : mechanism;
+      emit(DETECTORS.detectJaasConfig(String.valueOf(config), hook, context));
+    } catch (OhMyRaspBlockException blocked) {
+      throw blocked;
+    } catch (Throwable throwable) {
+      quiet("beforeSyntheticJaasConfig", throwable);
+    }
+  }
+
+  public static void beforeSyntheticJwtVerificationFailure(
+      String method,
+      String uri,
+      String query,
+      Map<String, List<String>> parameters,
+      Map<String, String> headers,
+      String mechanism,
+      String exceptionClass,
+      String message) {
+    try {
+      RequestContext context = new RequestContext(method, uri, query, parameters, headers);
+      emit(DETECTORS.detectJwtVerificationFailure(mechanism, exceptionClass, message, context));
+    } catch (OhMyRaspBlockException blocked) {
+      throw blocked;
+    } catch (Throwable throwable) {
+      quiet("beforeSyntheticJwtVerificationFailure", throwable);
+    }
+  }
+
+  public static void beforeServletIncludeAttributes(
+      Map<String, String> attributes, List<String> stackClassNames) {
+    try {
+      emit(DETECTORS.detectServletIncludeAttributes(attributes, currentRequest(), stackClassNames));
+    } catch (OhMyRaspBlockException blocked) {
+      throw blocked;
+    } catch (Throwable throwable) {
+      quiet("beforeServletIncludeAttributes", throwable);
+    }
+  }
+
+  public static void beforeRemoteJobSubmission(String mechanism, String descriptor) {
+    try {
+      emit(DETECTORS.detectRemoteJobSubmission(mechanism, descriptor, currentRequest()));
+    } catch (OhMyRaspBlockException blocked) {
+      throw blocked;
+    } catch (Throwable throwable) {
+      quiet("beforeRemoteJobSubmission", throwable);
+    }
+  }
+
+  public static void beforeRmiRegistryBind(String operation, String bindingName, Object remote) {
+    beforeRmiRegistryBind(operation, bindingName, remote, stackTraceClassNames());
+  }
+
+  public static void beforeRmiRegistryBind(
+      String operation, String bindingName, Object remote, List<String> stackClassNames) {
+    try {
+      String remoteClassName = remote == null ? "" : remote.getClass().getName();
+      emit(
+          DETECTORS.detectRmiRegistryBind(
+              operation, bindingName, remoteClassName, currentRequest(), stackClassNames));
+    } catch (OhMyRaspBlockException blocked) {
+      throw blocked;
+    } catch (Throwable throwable) {
+      quiet("beforeRmiRegistryBind", throwable);
+    }
+  }
+
   public static void exitHttpRequest() {
     REQUEST.remove();
     RESPONSE.remove();
+    ARCHIVE_ENTRY.remove();
   }
 
   public static void beforeProcessBuilderStart(ProcessBuilder processBuilder) {
@@ -93,6 +195,31 @@ public final class OhMyRaspHooks {
     }
   }
 
+  public static void beforeRuntimeExecString(String command) {
+    try {
+      List<String> items = command == null ? List.of() : List.of(command);
+      emit(DETECTORS.detectCommand(items, currentRequest(), stackTraceClassNames()));
+    } catch (OhMyRaspBlockException blocked) {
+      throw blocked;
+    } catch (Throwable throwable) {
+      quiet("beforeRuntimeExecString", throwable);
+    }
+  }
+
+  public static void beforeRuntimeExecArray(String[] command) {
+    try {
+      var items = new ArrayList<String>();
+      if (command != null) {
+        Collections.addAll(items, command);
+      }
+      emit(DETECTORS.detectCommand(items, currentRequest(), stackTraceClassNames()));
+    } catch (OhMyRaspBlockException blocked) {
+      throw blocked;
+    } catch (Throwable throwable) {
+      quiet("beforeRuntimeExecArray", throwable);
+    }
+  }
+
   public static void beforeSql(String query) {
     try {
       emit(DETECTORS.detectSql(query, currentRequest()));
@@ -100,6 +227,34 @@ public final class OhMyRaspHooks {
       throw blocked;
     } catch (Throwable throwable) {
       quiet("beforeSql", throwable);
+    }
+  }
+
+  public static void beforeJdbcConnect(String url) {
+    try {
+      emit(DETECTORS.detectJdbcUrl(url, currentRequest()));
+    } catch (OhMyRaspBlockException blocked) {
+      throw blocked;
+    } catch (Throwable throwable) {
+      quiet("beforeJdbcConnect", throwable);
+    }
+  }
+
+  public static void beforeSyntheticJdbcConnect(
+      String method,
+      String uri,
+      String query,
+      Map<String, List<String>> parameters,
+      Map<String, String> headers,
+      String body,
+      String url) {
+    try {
+      RequestContext context = new RequestContext(method, uri, query, parameters, headers, body);
+      emit(DETECTORS.detectJdbcUrl(url, context));
+    } catch (OhMyRaspBlockException blocked) {
+      throw blocked;
+    } catch (Throwable throwable) {
+      quiet("beforeSyntheticJdbcConnect", throwable);
     }
   }
 
@@ -157,6 +312,94 @@ public final class OhMyRaspHooks {
     }
   }
 
+  public static void beforeJaasConfig(Object config) {
+    try {
+      emit(DETECTORS.detectJaasConfig(String.valueOf(config), "JAAS", currentRequest()));
+    } catch (OhMyRaspBlockException blocked) {
+      throw blocked;
+    } catch (Throwable throwable) {
+      quiet("beforeJaasConfig", throwable);
+    }
+  }
+
+  public static void beforeJaasConfigEntry(Object loginModuleName, Object options) {
+    try {
+      emit(DETECTORS.detectJaasConfig(jaasConfigFrom(loginModuleName, options), "JAAS", currentRequest()));
+    } catch (OhMyRaspBlockException blocked) {
+      throw blocked;
+    } catch (Throwable throwable) {
+      quiet("beforeJaasConfigEntry", throwable);
+    }
+  }
+
+  public static void beforeClassLoaderUrl(Object url) {
+    beforeClassLoaderSources("URLClassLoader", url);
+  }
+
+  public static void beforeClassLoaderUrls(Object urls) {
+    beforeClassLoaderSources("URLClassLoader", urls);
+  }
+
+  public static void beforeRmiClassLoaderCodebase(String codebase) {
+    beforeClassLoaderSources("RMIClassLoader", codebase);
+  }
+
+  public static void beforeSpringConfigLocation(Object location) {
+    beforeSpringConfigLocations("SpringConfig", location);
+  }
+
+  public static void beforeSpringConfigLocations(Object locations) {
+    beforeSpringConfigLocations("SpringConfig", locations);
+  }
+
+  private static void beforeSpringConfigLocations(String mechanism, Object locations) {
+    try {
+      for (String location : classLoaderSources(locations)) {
+        emit(DETECTORS.detectSpringConfigLocation(location, mechanism, currentRequest()));
+      }
+    } catch (OhMyRaspBlockException blocked) {
+      throw blocked;
+    } catch (Throwable throwable) {
+      quiet("beforeSpringConfigLocations", throwable);
+    }
+  }
+
+  private static void beforeClassLoaderSources(String mechanism, Object sources) {
+    try {
+      for (String source : classLoaderSources(sources)) {
+        emit(DETECTORS.detectClassLoaderUrl(source, mechanism, currentRequest()));
+      }
+    } catch (OhMyRaspBlockException blocked) {
+      throw blocked;
+    } catch (Throwable throwable) {
+      quiet("beforeClassLoaderSources", throwable);
+    }
+  }
+
+  public static void beforeJmxMBeanInvoke(Object mbeanName, String operationName, Object arguments) {
+    try {
+      emit(
+          DETECTORS.detectJmxMBeanInvoke(
+              String.valueOf(mbeanName), operationName, toStringList(arguments), currentRequest()));
+    } catch (OhMyRaspBlockException blocked) {
+      throw blocked;
+    } catch (Throwable throwable) {
+      quiet("beforeJmxMBeanInvoke", throwable);
+    }
+  }
+
+  public static void beforeArgumentFileExpansion(Object arguments) {
+    try {
+      emit(
+          DETECTORS.detectArgumentFileExpansion(
+              "args4j", toStringList(arguments), currentRequest()));
+    } catch (OhMyRaspBlockException blocked) {
+      throw blocked;
+    } catch (Throwable throwable) {
+      quiet("beforeArgumentFileExpansion", throwable);
+    }
+  }
+
   public static void beforeFileRead(String path) {
     try {
       emit(DETECTORS.detectFileRead(path, currentRequest(), isXmlParserStack()));
@@ -176,12 +419,18 @@ public final class OhMyRaspHooks {
   }
 
   public static void beforeFileWrite(String path, List<String> stackClassNames) {
+    String archiveEntry = ARCHIVE_ENTRY.get();
     try {
+      emit(DETECTORS.detectArchiveExtraction(archiveEntry, path, currentRequest()));
       emit(DETECTORS.detectFileWrite(path, currentRequest(), stackClassNames));
     } catch (OhMyRaspBlockException blocked) {
       throw blocked;
     } catch (Throwable throwable) {
       quiet("beforeFileWrite", throwable);
+    } finally {
+      if (archiveEntry != null) {
+        ARCHIVE_ENTRY.remove();
+      }
     }
   }
 
@@ -275,8 +524,37 @@ public final class OhMyRaspHooks {
     beforeFileWrite(pathFrom(path), stackClassNames);
   }
 
+  public static void beforeGeneratedScriptFileWrite(Object path, Object content) {
+    try {
+      emit(
+          DETECTORS.detectGeneratedScriptFileWrite(
+              pathFrom(path), contentFrom(content), currentRequest()));
+    } catch (OhMyRaspBlockException blocked) {
+      throw blocked;
+    } catch (Throwable throwable) {
+      quiet("beforeGeneratedScriptFileWrite", throwable);
+    }
+  }
+
   public static void beforePathDelete(Object path) {
     beforeFileDelete(path);
+  }
+
+  public static void afterArchiveEntry(Object entry) {
+    try {
+      String name = archiveEntryName(entry);
+      if (name.isBlank()) {
+        ARCHIVE_ENTRY.remove();
+      } else {
+        ARCHIVE_ENTRY.set(name);
+      }
+    } catch (Throwable throwable) {
+      quiet("afterArchiveEntry", throwable);
+    }
+  }
+
+  public static void clearArchiveEntry() {
+    ARCHIVE_ENTRY.remove();
   }
 
   public static void beforeXmlEntity(String name, Object source) {
@@ -290,6 +568,29 @@ public final class OhMyRaspHooks {
     }
   }
 
+  public static void beforeUrlDataSource(Object url) {
+    try {
+      List<String> stackClassNames = stackTraceClassNames();
+      String mechanism = stackLooksCxfAegisAttachment(stackClassNames) ? "cxf-aegis-xop" : "";
+      String raw = url instanceof URL typed ? typed.toExternalForm() : String.valueOf(url);
+      emit(DETECTORS.detectXmlAttachmentReference(mechanism, raw, currentRequest()));
+    } catch (OhMyRaspBlockException blocked) {
+      throw blocked;
+    } catch (Throwable throwable) {
+      quiet("beforeUrlDataSource", throwable);
+    }
+  }
+
+  public static void beforeXmlAttachmentReference(String mechanism, String href) {
+    try {
+      emit(DETECTORS.detectXmlAttachmentReference(mechanism, href, currentRequest()));
+    } catch (OhMyRaspBlockException blocked) {
+      throw blocked;
+    } catch (Throwable throwable) {
+      quiet("beforeXmlAttachmentReference", throwable);
+    }
+  }
+
   public static void beforeXxeFileRead(String path) {
     try {
       emit(DETECTORS.detectFileRead(path, currentRequest(), true));
@@ -300,13 +601,143 @@ public final class OhMyRaspHooks {
     }
   }
 
+  public static void beforeJwtVerificationFailure(String mechanism, Object failure) {
+    try {
+      String exceptionClass = failure == null ? "" : failure.getClass().getName();
+      String message = failure instanceof Throwable throwable ? throwable.getMessage() : "";
+      emit(DETECTORS.detectJwtVerificationFailure(mechanism, exceptionClass, message, currentRequest()));
+    } catch (OhMyRaspBlockException blocked) {
+      throw blocked;
+    } catch (Throwable throwable) {
+      quiet("beforeJwtVerificationFailure", throwable);
+    }
+  }
+
   public static void beforeDeserializationClass(String className) {
     try {
-      emit(DETECTORS.detectDeserialization(className, currentRequest()));
+      emit(DETECTORS.detectDeserialization(className, currentRequest(), stackTraceClassNames()));
     } catch (OhMyRaspBlockException blocked) {
       throw blocked;
     } catch (Throwable throwable) {
       quiet("beforeDeserializationClass", throwable);
+    }
+  }
+
+  public static void beforeSyntheticDeserializationClass(
+      String className, List<String> stackClassNames) {
+    try {
+      emit(DETECTORS.detectDeserialization(className, currentRequest(), stackClassNames));
+    } catch (OhMyRaspBlockException blocked) {
+      throw blocked;
+    } catch (Throwable throwable) {
+      quiet("beforeSyntheticDeserializationClass", throwable);
+    }
+  }
+
+  public static void beforeObjectInputStream(Object inputStream) {
+    try {
+      String streamClassName = inputStream == null ? "" : inputStream.getClass().getName();
+      emit(
+          DETECTORS.detectHttpObjectStreamDeserialization(
+              streamClassName, currentRequest(), stackTraceClassNames()));
+    } catch (OhMyRaspBlockException blocked) {
+      throw blocked;
+    } catch (Throwable throwable) {
+      quiet("beforeObjectInputStream", throwable);
+    }
+  }
+
+  public static void beforeSessionDeserialization(String sessionId, String mechanism) {
+    try {
+      emit(DETECTORS.detectSessionDeserialization(sessionId, mechanism, currentRequest()));
+    } catch (OhMyRaspBlockException blocked) {
+      throw blocked;
+    } catch (Throwable throwable) {
+      quiet("beforeSessionDeserialization", throwable);
+    }
+  }
+
+  public static void beforePolymorphicType(String parser, String className) {
+    try {
+      emit(DETECTORS.detectPolymorphicType(parser, className, currentRequest()));
+    } catch (OhMyRaspBlockException blocked) {
+      throw blocked;
+    } catch (Throwable throwable) {
+      quiet("beforePolymorphicType", throwable);
+    }
+  }
+
+  public static void beforeProtocolClassInstantiation(
+      String protocol, String className, Object arguments) {
+    try {
+      emit(
+          DETECTORS.detectProtocolClassInstantiation(
+              protocol, className, toStringList(arguments), currentRequest()),
+          true,
+          true);
+    } catch (OhMyRaspBlockException blocked) {
+      throw blocked;
+    } catch (Throwable throwable) {
+      quiet("beforeProtocolClassInstantiation", throwable);
+    }
+  }
+
+  public static void beforeHttpInvokerDeserialization(String mechanism) {
+    try {
+      emit(DETECTORS.detectHttpInvokerDeserialization(mechanism, currentRequest()));
+    } catch (OhMyRaspBlockException blocked) {
+      throw blocked;
+    } catch (Throwable throwable) {
+      quiet("beforeHttpInvokerDeserialization", throwable);
+    }
+  }
+
+  public static void beforeHessianType(String type) {
+    try {
+      emit(DETECTORS.detectHessianType(type, currentRequest()), true, true);
+    } catch (OhMyRaspBlockException blocked) {
+      throw blocked;
+    } catch (Throwable throwable) {
+      quiet("beforeHessianType", throwable);
+    }
+  }
+
+  public static void beforeXmlRpcSerializableValue(String mechanism) {
+    try {
+      emit(DETECTORS.detectXmlRpcSerializableValue(mechanism, currentRequest()));
+    } catch (OhMyRaspBlockException blocked) {
+      throw blocked;
+    } catch (Throwable throwable) {
+      quiet("beforeXmlRpcSerializableValue", throwable);
+    }
+  }
+
+  public static void beforeJavaBeansStatement(Object statement) {
+    try {
+      Object target = invoke(statement, "getTarget").orElse(null);
+      String methodName = invokeString(statement, "getMethodName").orElse("");
+      Object arguments = invoke(statement, "getArguments").orElse(new Object[0]);
+      emit(
+          DETECTORS.detectXmlDecoderExpression(
+              javaBeansTargetType(target),
+              methodName,
+              javaBeansArguments(target, arguments),
+              currentRequest(),
+              stackTraceClassNames()));
+    } catch (OhMyRaspBlockException blocked) {
+      throw blocked;
+    } catch (Throwable throwable) {
+      quiet("beforeJavaBeansStatement", throwable);
+    }
+  }
+
+  public static void rethrowIfOhMyRaspBlock(Object throwable) {
+    Throwable current = throwable instanceof Throwable value ? value : null;
+    while (current != null) {
+      if (current instanceof OhMyRaspBlockException blocked) {
+        throw blocked;
+      }
+      current = current.getCause();
     }
   }
 
@@ -317,6 +748,42 @@ public final class OhMyRaspHooks {
       throw blocked;
     } catch (Throwable throwable) {
       quiet("beforeOgnl", throwable);
+    }
+  }
+
+  public static void beforeExpressionEvaluation(String engine, Object expression) {
+    try {
+      emit(DETECTORS.detectExpression(engine, expressionText(expression), currentRequest()));
+    } catch (OhMyRaspBlockException blocked) {
+      throw blocked;
+    } catch (Throwable throwable) {
+      quiet("beforeExpressionEvaluation", throwable);
+    }
+  }
+
+  public static void beforeJavaCompilationSource(String compiler, Object source) {
+    try {
+      emit(DETECTORS.detectJavaCompilation(compiler, javaSourceText(source), currentRequest()));
+    } catch (OhMyRaspBlockException blocked) {
+      throw blocked;
+    } catch (Throwable throwable) {
+      quiet("beforeJavaCompilationSource", throwable);
+    }
+  }
+
+  public static void beforeJavaCompilationUnits(Object units) {
+    beforeJavaCompilationUnits("javac", units);
+  }
+
+  public static void beforeJavaCompilationUnits(String compiler, Object units) {
+    try {
+      for (String source : javaSourceTexts(units)) {
+        emit(DETECTORS.detectJavaCompilation(compiler, source, currentRequest()));
+      }
+    } catch (OhMyRaspBlockException blocked) {
+      throw blocked;
+    } catch (Throwable throwable) {
+      quiet("beforeJavaCompilationUnits", throwable);
     }
   }
 
@@ -457,6 +924,36 @@ public final class OhMyRaspHooks {
     }
   }
 
+  private static Map<String, String> readServletIncludeAttributes(Object request) {
+    if (request == null) {
+      return Map.of();
+    }
+    try {
+      Method namesMethod = request.getClass().getMethod("getAttributeNames");
+      Object names = namesMethod.invoke(request);
+      if (!(names instanceof Enumeration<?> enumeration)) {
+        return Map.of();
+      }
+      Method attributeMethod = request.getClass().getMethod("getAttribute", String.class);
+      var attributes = new LinkedHashMap<String, String>();
+      while (enumeration.hasMoreElements()) {
+        String name = String.valueOf(enumeration.nextElement());
+        String normalized = name.toLowerCase(Locale.ROOT);
+        if (!normalized.startsWith("javax.servlet.include.")
+            && !normalized.startsWith("jakarta.servlet.include.")) {
+          continue;
+        }
+        Object value = attributeMethod.invoke(request, name);
+        if (value != null) {
+          attributes.put(name, String.valueOf(value));
+        }
+      }
+      return attributes;
+    } catch (ReflectiveOperationException | RuntimeException e) {
+      return Map.of();
+    }
+  }
+
   private static List<String> toStringList(Object value) {
     if (value == null) {
       return List.of();
@@ -482,6 +979,32 @@ public final class OhMyRaspHooks {
     return List.of(String.valueOf(value));
   }
 
+  private static List<String> classLoaderSources(Object value) {
+    var sources = new ArrayList<String>();
+    for (String item : toStringList(value)) {
+      if (item == null || item.isBlank()) {
+        continue;
+      }
+      String trimmed = item.trim();
+      for (String part : trimmed.split("\\s+")) {
+        if (!part.isBlank()) {
+          sources.add(part);
+        }
+      }
+    }
+    return sources;
+  }
+
+  private static String jaasConfigFrom(Object loginModuleName, Object options) {
+    StringBuilder builder = new StringBuilder(String.valueOf(loginModuleName));
+    if (options instanceof Map<?, ?> map) {
+      map.forEach((key, value) -> builder.append(' ').append(key).append('=').append(value));
+    } else if (options != null) {
+      builder.append(' ').append(options);
+    }
+    return builder.toString();
+  }
+
   private static Optional<String> invokeString(Object target, String methodName) {
     try {
       Object value = target.getClass().getMethod(methodName).invoke(target);
@@ -489,6 +1012,107 @@ public final class OhMyRaspHooks {
     } catch (ReflectiveOperationException | RuntimeException e) {
       return Optional.empty();
     }
+  }
+
+  private static Optional<Object> invoke(Object target, String methodName) {
+    try {
+      if (target == null) {
+        return Optional.empty();
+      }
+      return Optional.ofNullable(target.getClass().getMethod(methodName).invoke(target));
+    } catch (ReflectiveOperationException | RuntimeException e) {
+      return Optional.empty();
+    }
+  }
+
+  private static String javaBeansTargetType(Object target) {
+    if (target instanceof Class<?> clazz) {
+      return clazz.getName();
+    }
+    return target == null ? "" : target.getClass().getName();
+  }
+
+  private static List<String> javaBeansArguments(Object target, Object arguments) {
+    var items = new ArrayList<String>();
+    addJavaBeansArgument(items, arguments);
+    if (target instanceof ProcessBuilder processBuilder) {
+      items.addAll(processBuilder.command());
+    }
+    return items;
+  }
+
+  private static void addJavaBeansArgument(List<String> items, Object value) {
+    if (value == null) {
+      return;
+    }
+    if (value instanceof Iterable<?> iterable) {
+      for (Object item : iterable) {
+        addJavaBeansArgument(items, item);
+      }
+      return;
+    }
+    if (value.getClass().isArray()) {
+      int length = Array.getLength(value);
+      for (int i = 0; i < length; i++) {
+        addJavaBeansArgument(items, Array.get(value, i));
+      }
+      return;
+    }
+    items.add(String.valueOf(value));
+  }
+
+  private static String expressionText(Object expression) {
+    if (expression == null) {
+      return "";
+    }
+    if (expression instanceof CharSequence text) {
+      return text.toString();
+    }
+    Optional<String> expressionString = invokeString(expression, "getExpressionString");
+    if (expressionString.isPresent()) {
+      return expressionString.orElseThrow();
+    }
+    Optional<String> ast = invokeString(expression, "toStringAST");
+    if (ast.isPresent()) {
+      return ast.orElseThrow();
+    }
+    return String.valueOf(expression);
+  }
+
+  private static List<String> javaSourceTexts(Object units) {
+    if (units == null) {
+      return List.of();
+    }
+    if (units instanceof Iterable<?> iterable) {
+      var sources = new ArrayList<String>();
+      for (Object unit : iterable) {
+        String source = javaSourceText(unit);
+        if (!source.isBlank()) {
+          sources.add(source);
+        }
+      }
+      return sources;
+    }
+    String source = javaSourceText(units);
+    return source.isBlank() ? List.of() : List.of(source);
+  }
+
+  private static String javaSourceText(Object unit) {
+    if (unit == null) {
+      return "";
+    }
+    if (unit instanceof CharSequence text) {
+      return text.toString();
+    }
+    try {
+      Object content = unit.getClass().getMethod("getCharContent", boolean.class).invoke(unit, true);
+      if (content != null) {
+        return String.valueOf(content);
+      }
+    } catch (ReflectiveOperationException | RuntimeException e) {
+      // Fall through to a conservative string representation.
+    }
+    return String.valueOf(unit);
   }
 
   private static String pathFrom(Object value) {
@@ -499,6 +1123,57 @@ public final class OhMyRaspHooks {
       return file.getPath();
     }
     return String.valueOf(value);
+  }
+
+  private static String contentFrom(Object value) {
+    if (value == null) {
+      return "";
+    }
+    if (value instanceof CharSequence text) {
+      return text.toString();
+    }
+    if (value instanceof byte[] bytes) {
+      int length = Math.min(bytes.length, 8192);
+      return new String(bytes, 0, length, StandardCharsets.UTF_8);
+    }
+    if (value instanceof char[] chars) {
+      return new String(chars, 0, Math.min(chars.length, 8192));
+    }
+    if (value instanceof Iterable<?> iterable) {
+      StringBuilder builder = new StringBuilder();
+      for (Object item : iterable) {
+        if (builder.length() > 8192) {
+          break;
+        }
+        if (builder.length() > 0) {
+          builder.append('\n');
+        }
+        builder.append(String.valueOf(item));
+      }
+      return builder.toString();
+    }
+    if (value.getClass().isArray()) {
+      StringBuilder builder = new StringBuilder();
+      int length = Math.min(Array.getLength(value), 256);
+      for (int i = 0; i < length && builder.length() <= 8192; i++) {
+        if (builder.length() > 0) {
+          builder.append('\n');
+        }
+        builder.append(String.valueOf(Array.get(value, i)));
+      }
+      return builder.toString();
+    }
+    return String.valueOf(value);
+  }
+
+  private static String archiveEntryName(Object entry) {
+    if (entry == null) {
+      return "";
+    }
+    if (entry instanceof ZipEntry zipEntry) {
+      return zipEntry.getName() == null ? "" : zipEntry.getName();
+    }
+    return invokeString(entry, "getName").orElse("");
   }
 
   private static boolean isXmlParserStack() {
@@ -524,11 +1199,25 @@ public final class OhMyRaspHooks {
         .anyMatch(name -> name.startsWith("com.sun.org.apache.xerces") || name.contains(".xerces."));
   }
 
+  private static boolean stackLooksCxfAegisAttachment(List<String> classNames) {
+    for (String className : classNames) {
+      if ("org.apache.cxf.aegis.type.mtom.AttachmentUtil".equals(className)) {
+        return true;
+      }
+    }
+    return false;
+  }
+
   private static void emit(Optional<Detection> detection) {
     emit(detection, true);
   }
 
   private static void emit(Optional<Detection> detection, boolean throwOnBlock) {
+    emit(detection, throwOnBlock, false);
+  }
+
+  private static void emit(
+      Optional<Detection> detection, boolean throwOnBlock, boolean allowNonRequestBlock) {
     if (detection.isEmpty()) {
       return;
     }
@@ -547,7 +1236,9 @@ public final class OhMyRaspHooks {
     if (forceBlockEnabled() && activeRequest(value)) {
       event = event.withAction("block");
     }
-    boolean willBlock = "block".equalsIgnoreCase(event.action()) && activeRequest(event);
+    boolean willBlock =
+        "block".equalsIgnoreCase(event.action())
+            && (activeRequest(event) || allowNonRequestBlock);
     JsonEventLogger.get().log(event);
     JsonEventLogger.get().recordHookTelemetry(event, elapsedMicros(started), ruleEvaluationUs);
     if (willBlock) {

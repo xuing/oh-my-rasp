@@ -10,10 +10,30 @@ public final class HookRegistry {
           List.of(
               new ProcessHookModule(),
               new FileHookModule(),
+              new ArchiveHookModule(),
               new NetworkHookModule(),
               new JndiHookModule(),
+              new JaasHookModule(),
+              new ClassLoaderHookModule(),
+              new SpringConfigHookModule(),
+              new JmxHookModule(),
+              new ArgumentParserHookModule(),
+              new ExpressionHookModule(),
+              new JavaCompilationHookModule(),
+              new PolymorphicDeserializationHookModule(),
+              new RmiRegistryHookModule(),
+              new ObjectInputStreamHookModule(),
+              new OpenWireHookModule(),
+              new HttpInvokerHookModule(),
+              new HessianHookModule(),
+              new XmlRpcHookModule(),
+              new JavaBeansHookModule(),
+              new SessionHookModule(),
               new SqlHookModule(),
               new ServletHookModule(),
+              new JwtHookModule(),
+              new MultipartUploadHookModule(),
+              new XmlAttachmentHookModule(),
               new XxeHookModule()));
 
   private final List<HookModule> modules;
@@ -31,7 +51,12 @@ public final class HookRegistry {
       return false;
     }
     String internalName = className.replace('.', '/');
-    return modules.stream().anyMatch(module -> module.matchesClass(internalName));
+    for (HookModule module : modules) {
+      if (module.matchesClass(internalName)) {
+        return true;
+      }
+    }
+    return false;
   }
 
   public boolean isRetransformTarget(String className) {

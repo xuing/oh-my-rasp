@@ -20,6 +20,15 @@ final class SqlCallsiteClassVisitor extends ClassVisitor {
       @Override
       public void visitMethodInsn(
           int opcode, String owner, String methodName, String methodDescriptor, boolean isInterface) {
+        if (isJavaCompilerGetTaskCall(opcode, owner, methodName, methodDescriptor)) {
+          super.visitInsn(Opcodes.DUP);
+          super.visitMethodInsn(
+              Opcodes.INVOKESTATIC,
+              "io/ohmyrasp/agent/hook/OhMyRaspHooks",
+              "beforeJavaCompilationUnits",
+              "(Ljava/lang/Object;)V",
+              false);
+        }
         if (isSqlStringCall(opcode, owner, methodName, methodDescriptor)) {
           super.visitInsn(Opcodes.DUP);
           super.visitMethodInsn(
@@ -32,6 +41,24 @@ final class SqlCallsiteClassVisitor extends ClassVisitor {
         super.visitMethodInsn(opcode, owner, methodName, methodDescriptor, isInterface);
       }
     };
+  }
+
+  private static boolean isJavaCompilerGetTaskCall(
+      int opcode, String owner, String name, String descriptor) {
+    if (name == null || !name.equals("getTask")) {
+      return false;
+    }
+    if (opcode != Opcodes.INVOKEINTERFACE && opcode != Opcodes.INVOKEVIRTUAL) {
+      return false;
+    }
+    if (!descriptor.equals(
+        "(Ljava/io/Writer;Ljavax/tools/JavaFileManager;Ljavax/tools/DiagnosticListener;Ljava/lang/Iterable;Ljava/lang/Iterable;Ljava/lang/Iterable;)Ljavax/tools/JavaCompiler$CompilationTask;")
+        && !descriptor.equals(
+            "(Ljava/io/Writer;Ljavax/tools/JavaFileManager;Ljavax/tools/DiagnosticListener;Ljava/lang/Iterable;Ljava/lang/Iterable;Ljava/lang/Iterable;)Lcom/sun/source/util/JavacTask;")) {
+      return false;
+    }
+    return owner.equals("javax/tools/JavaCompiler")
+        || owner.equals("com/sun/tools/javac/api/JavacTool");
   }
 
   private static boolean isSqlStringCall(

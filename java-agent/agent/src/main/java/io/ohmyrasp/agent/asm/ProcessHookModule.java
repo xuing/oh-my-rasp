@@ -5,7 +5,7 @@ import org.objectweb.asm.MethodVisitor;
 final class ProcessHookModule implements HookModule {
   @Override
   public boolean matchesClass(String className) {
-    return className.equals("java/lang/ProcessBuilder");
+    return className.equals("java/lang/ProcessBuilder") || className.equals("java/lang/Runtime");
   }
 
   @Override
@@ -21,6 +21,24 @@ final class ProcessHookModule implements HookModule {
         protected void onMethodEnter() {
           loadThis();
           invokeHook("beforeProcessBuilderStart", "(Ljava/lang/ProcessBuilder;)V");
+        }
+      };
+    }
+    if (methodName.equals("exec") && descriptor.startsWith("(Ljava/lang/String;")) {
+      return new EntryAdvice(methodVisitor, access, methodName, descriptor) {
+        @Override
+        protected void onMethodEnter() {
+          loadArg(0);
+          invokeHook("beforeRuntimeExecString", "(Ljava/lang/String;)V");
+        }
+      };
+    }
+    if (methodName.equals("exec") && descriptor.startsWith("([Ljava/lang/String;")) {
+      return new EntryAdvice(methodVisitor, access, methodName, descriptor) {
+        @Override
+        protected void onMethodEnter() {
+          loadArg(0);
+          invokeHook("beforeRuntimeExecArray", "([Ljava/lang/String;)V");
         }
       };
     }

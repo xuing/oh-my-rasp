@@ -60,8 +60,35 @@ final class FileHookModule implements HookModule {
 
   private MethodVisitor nioFilesMethod(
       MethodVisitor methodVisitor, int access, String methodName, String descriptor) {
+    if (methodName.equals("copy")
+        && descriptor.startsWith("(Ljava/io/InputStream;Ljava/nio/file/Path;")) {
+      return new EntryAdvice(methodVisitor, access, methodName, descriptor) {
+        @Override
+        protected void onMethodEnter() {
+          loadArg(1);
+          invokeHook("beforePathWrite", "(Ljava/lang/Object;)V");
+        }
+      };
+    }
     if (!descriptor.startsWith("(Ljava/nio/file/Path;")) {
       return methodVisitor;
+    }
+    if ((methodName.equals("writeString")
+            && descriptor.startsWith("(Ljava/nio/file/Path;Ljava/lang/CharSequence;"))
+        || (methodName.equals("write")
+            && (descriptor.startsWith("(Ljava/nio/file/Path;[B")
+                || descriptor.startsWith("(Ljava/nio/file/Path;Ljava/lang/Iterable;")))) {
+      return new EntryAdvice(methodVisitor, access, methodName, descriptor) {
+        @Override
+        protected void onMethodEnter() {
+          loadArg(0);
+          loadArg(1);
+          invokeHook(
+              "beforeGeneratedScriptFileWrite", "(Ljava/lang/Object;Ljava/lang/Object;)V");
+          loadArg(0);
+          invokeHook("beforePathWrite", "(Ljava/lang/Object;)V");
+        }
+      };
     }
     if (methodName.startsWith("read")
         || methodName.equals("newInputStream")

@@ -30,6 +30,9 @@ public final class OhMyRaspTransformer implements ClassFileTransformer {
       return null;
     }
     try {
+      if (Boolean.getBoolean("ohmyrasp.debug") && registry.isDirectTarget(className)) {
+        System.err.println("[OHMYRASP] transforming hook target " + className);
+      }
       ClassReader reader = new ClassReader(classfileBuffer);
       ClassWriter writer = new ClassWriter(reader, ClassWriter.COMPUTE_MAXS);
       ClassVisitor visitor = new SqlCallsiteClassVisitor(writer);

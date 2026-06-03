@@ -54,6 +54,19 @@ final class OhMyRaspHooksPolicyTest {
     assertDoesNotThrow(() -> OhMyRaspHooks.beforeSql(vulnerableSql()));
   }
 
+  @Test
+  void protocolClassInstantiationPolicyBlockThrowsWithoutHttpRequest() {
+    OhMyRaspHooks.installPolicy(protocolPolicy("block"), "agent-one");
+
+    assertThrows(
+        OhMyRaspBlockException.class,
+        () ->
+            OhMyRaspHooks.beforeProtocolClassInstantiation(
+                "OpenWire",
+                "org.springframework.context.support.ClassPathXmlApplicationContext",
+                "http://attacker.example/poc.xml"));
+  }
+
   private static AgentPolicy policy(String action) {
     return AgentPolicy.parse(
         """
@@ -102,6 +115,28 @@ final class OhMyRaspHooksPolicyTest {
           ]
         }
         """);
+  }
+
+  private static AgentPolicy protocolPolicy(String action) {
+    return AgentPolicy.parse(
+        """
+        {
+          "version": 4,
+          "status": "active",
+          "canary_percent": 100,
+          "rules": [
+            {
+              "name": "Protocol class block",
+              "hook": "deserialization",
+              "algorithm": "deserialization_protocol_class",
+              "action": "%s",
+              "severity": "critical",
+              "expression": "algorithm == \\"deserialization_protocol_class\\""
+            }
+          ]
+        }
+        """
+            .formatted(action));
   }
 
   private static void enterSqlRequest() {

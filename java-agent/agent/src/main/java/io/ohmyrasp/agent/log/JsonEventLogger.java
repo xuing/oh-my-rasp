@@ -9,10 +9,62 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
+import java.util.Set;
 
 public final class JsonEventLogger {
   private static final JsonEventLogger INSTANCE = new JsonEventLogger();
+  private static final Set<String> SENSITIVE_HEADER_NAMES =
+      Set.of(
+          "authorization",
+          "cookie",
+          "set-cookie",
+          "x-api-key",
+          "api-key",
+          "x-auth-token",
+          "access-token",
+          "refresh-token",
+          "id-token");
+  private static final Set<String> SENSITIVE_PARAMETER_NAMES =
+      Set.of(
+          "authorization",
+          "password",
+          "passwd",
+          "pwd",
+          "pass",
+          "token",
+          "accesstoken",
+          "refreshtoken",
+          "idtoken",
+          "secret",
+          "apikey",
+          "xapikey",
+          "auth",
+          "credential",
+          "credentials");
+  private static final Set<String> EXECUTABLE_SOURCE_PARAMETER_NAMES =
+      Set.of(
+          "gluesource",
+          "executorparams",
+          "script",
+          "source",
+          "command",
+          "commandline",
+          "cmd",
+          "shell",
+          "code",
+          "payload",
+          "dataconfig",
+          "routeconfig",
+          "routedefinition",
+          "gatewayroute",
+          "filterconfig",
+          "scriptfields",
+          "scriptfield",
+          "scriptconfig",
+          "template",
+          "expression");
 
   private final Path logPath;
   private volatile ControlPlaneClient controlPlaneClient;
@@ -98,10 +150,10 @@ public final class JsonEventLogger {
     field(builder, "uri", current.uri()).append(',');
     field(builder, "query", current.query()).append(',');
     builder.append("\"parameters\":");
-    listMap(builder, current.parameters());
+    parameterMap(builder, current.parameters());
     builder.append(',');
     builder.append("\"headers\":");
-    stringMap(builder, current.headers());
+    headerMap(builder, current.headers());
     builder.append('}');
   }
 
@@ -126,7 +178,38 @@ public final class JsonEventLogger {
     builder.append('}');
   }
 
-  private static void listMap(StringBuilder builder, Map<String, List<String>> map) {
+  private static void headerMap(StringBuilder builder, Map<String, String> map) {
+    builder.append('{');
+    boolean first = true;
+    for (var entry : map.entrySet()) {
+      if (!first) {
+        builder.append(',');
+      }
+      first = false;
+      field(builder, entry.getKey(), redactedHeaderValue(entry.getKey(), entry.getValue()));
+    }
+    builder.append('}');
+  }
+
+  private static String redactedHeaderValue(String name, String value) {
+    String normalized = name == null ? "" : name.toLowerCase(Locale.ROOT);
+    if (!SENSITIVE_HEADER_NAMES.contains(normalized)) {
+      return value;
+    }
+    if (value == null || value.isBlank()) {
+      return "";
+    }
+    String trimmed = value.trim();
+    if (trimmed.regionMatches(true, 0, "Bearer ", 0, "Bearer ".length())) {
+      return "Bearer [redacted]";
+    }
+    if (trimmed.regionMatches(true, 0, "Basic ", 0, "Basic ".length())) {
+      return "Basic [redacted]";
+    }
+    return "[redacted]";
+  }
+
+  private static void parameterMap(StringBuilder builder, Map<String, List<String>> map) {
     builder.append('{');
     boolean firstEntry = true;
     for (var entry : map.entrySet()) {
@@ -141,11 +224,30 @@ public final class JsonEventLogger {
           builder.append(',');
         }
         firstValue = false;
-        builder.append('"').append(escape(value)).append('"');
+        builder
+            .append('"')
+            .append(escape(redactedParameterValue(entry.getKey(), value)))
+            .append('"');
       }
       builder.append(']');
     }
     builder.append('}');
+  }
+
+  private static String redactedParameterValue(String name, String value) {
+    if (value == null || value.isBlank()) {
+      return value;
+    }
+    String normalized = normalizeName(name);
+    if (SENSITIVE_PARAMETER_NAMES.contains(normalized)
+        || EXECUTABLE_SOURCE_PARAMETER_NAMES.contains(normalized)) {
+      return "[redacted]";
+    }
+    return value;
+  }
+
+  private static String normalizeName(String name) {
+    return name == null ? "" : name.replace("_", "").replace("-", "").toLowerCase(Locale.ROOT);
   }
 
   private static String escape(String value) {
