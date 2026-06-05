@@ -1,0 +1,17 @@
+ARG TOMCAT_IMAGE=tomcat:11.0-jdk17-temurin
+ARG PLAYGROUND_PROJECT=playground-java17-jakarta
+
+FROM gradle:jdk25 AS build
+ARG PLAYGROUND_PROJECT
+WORKDIR /workspace
+COPY --chown=gradle:gradle . .
+RUN gradle --no-daemon :agent-java17:agentJava17Jar ":${PLAYGROUND_PROJECT}:war"
+
+FROM ${TOMCAT_IMAGE}
+ARG PLAYGROUND_PROJECT
+RUN rm -rf /usr/local/tomcat/webapps/*
+COPY --from=build /workspace/${PLAYGROUND_PROJECT}/build/libs/${PLAYGROUND_PROJECT}.war /usr/local/tomcat/webapps/ROOT.war
+COPY --from=build /workspace/agent-java17/build/libs/ohmyrasp-agent-java17.jar /opt/ohmyrasp/ohmyrasp-agent-java17.jar
+RUN mkdir -p /opt/ohmyrasp/logs && chmod -R 777 /opt/ohmyrasp
+ENV OHMYRASP_LOG=/opt/ohmyrasp/logs/events.jsonl
+ENV UMASK=0000

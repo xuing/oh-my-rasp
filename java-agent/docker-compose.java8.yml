@@ -1,0 +1,112 @@
+name: ohmyrasp-java8-agent
+
+x-extra-hosts: &extra-hosts
+  - "host.docker.internal:host-gateway"
+
+services:
+  tomcat10-java8-baseline:
+    build:
+      context: .
+      dockerfile: Dockerfile.java8
+      pull: true
+      args:
+        TOMCAT_IMAGE: tomcat:10.0-jdk8-temurin
+        PLAYGROUND_PROJECT: playground-java8-jakarta
+        PLAYGROUND_WAR: playground-java8-jakarta.war
+    image: ohmyrasp/playground:tomcat10-java8
+    ports:
+      - "${OHMYRASP_TOMCAT10_JAVA8_BASELINE_PORT:-18118}:8080"
+    environment:
+      OHMYRASP_ENV: tomcat10-java8-baseline
+    volumes:
+      - ./logs/tomcat10-java8-baseline:/opt/ohmyrasp/logs
+    extra_hosts: *extra-hosts
+
+  tomcat10-java8-protected:
+    image: ohmyrasp/playground:tomcat10-java8
+    depends_on:
+      - tomcat10-java8-baseline
+    ports:
+      - "${OHMYRASP_TOMCAT10_JAVA8_PROTECTED_PORT:-18119}:8080"
+    environment:
+      OHMYRASP_ENV: tomcat10-java8-protected
+      OHMYRASP_HOSTNAME: tomcat10-java8-protected
+      OHMYRASP_LOG: /opt/ohmyrasp/logs/events.jsonl
+      CATALINA_OPTS: >-
+        -javaagent:/opt/ohmyrasp/ohmyrasp-agent-java8.jar
+        -Dohmyrasp.java8.log=/opt/ohmyrasp/logs/events.jsonl
+        -Dohmyrasp.java8.block=true
+        -Dohmyrasp.debug=${OHMYRASP_AGENT_DEBUG:-false}
+    volumes:
+      - ./logs/tomcat10-java8-protected:/opt/ohmyrasp/logs
+    extra_hosts: *extra-hosts
+
+  tomcat9-java8-baseline:
+    build:
+      context: .
+      dockerfile: Dockerfile.java8
+      pull: true
+      args:
+        TOMCAT_IMAGE: tomcat:9.0-jdk8-temurin
+    image: ohmyrasp/playground:tomcat9-java8
+    ports:
+      - "${OHMYRASP_TOMCAT9_JAVA8_BASELINE_PORT:-18120}:8080"
+    environment:
+      OHMYRASP_ENV: tomcat9-java8-baseline
+    volumes:
+      - ./logs/tomcat9-java8-baseline:/opt/ohmyrasp/logs
+    extra_hosts: *extra-hosts
+
+  tomcat9-java8-protected:
+    image: ohmyrasp/playground:tomcat9-java8
+    depends_on:
+      - tomcat9-java8-baseline
+    ports:
+      - "${OHMYRASP_TOMCAT9_JAVA8_PROTECTED_PORT:-18121}:8080"
+    environment:
+      OHMYRASP_ENV: tomcat9-java8-protected
+      OHMYRASP_HOSTNAME: tomcat9-java8-protected
+      OHMYRASP_LOG: /opt/ohmyrasp/logs/events.jsonl
+      CATALINA_OPTS: >-
+        -javaagent:/opt/ohmyrasp/ohmyrasp-agent-java8.jar
+        -Dohmyrasp.java8.log=/opt/ohmyrasp/logs/events.jsonl
+        -Dohmyrasp.java8.block=true
+        -Dohmyrasp.debug=${OHMYRASP_AGENT_DEBUG:-false}
+    volumes:
+      - ./logs/tomcat9-java8-protected:/opt/ohmyrasp/logs
+    extra_hosts: *extra-hosts
+
+  tomcat8-baseline:
+    build:
+      context: .
+      dockerfile: Dockerfile.java8
+      pull: true
+      args:
+        TOMCAT_IMAGE: tomcat:8.5-jdk8-temurin
+    image: ohmyrasp/playground:tomcat8-java8
+    ports:
+      - "${OHMYRASP_TOMCAT8_BASELINE_PORT:-18086}:8080"
+    environment:
+      OHMYRASP_ENV: tomcat8-baseline
+    volumes:
+      - ./logs/tomcat8-baseline:/opt/ohmyrasp/logs
+    extra_hosts: *extra-hosts
+
+  tomcat8-protected:
+    image: ohmyrasp/playground:tomcat8-java8
+    depends_on:
+      - tomcat8-baseline
+    ports:
+      - "${OHMYRASP_TOMCAT8_PROTECTED_PORT:-18087}:8080"
+    environment:
+      OHMYRASP_ENV: tomcat8-protected
+      OHMYRASP_HOSTNAME: tomcat8-protected
+      OHMYRASP_LOG: /opt/ohmyrasp/logs/events.jsonl
+      CATALINA_OPTS: >-
+        -javaagent:/opt/ohmyrasp/ohmyrasp-agent-java8.jar
+        -Dohmyrasp.java8.log=/opt/ohmyrasp/logs/events.jsonl
+        -Dohmyrasp.java8.block=true
+        -Dohmyrasp.debug=${OHMYRASP_AGENT_DEBUG:-false}
+    volumes:
+      - ./logs/tomcat8-protected:/opt/ohmyrasp/logs
+    extra_hosts: *extra-hosts

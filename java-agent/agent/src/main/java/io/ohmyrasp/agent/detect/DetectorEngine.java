@@ -170,7 +170,7 @@ public final class DetectorEngine {
           "(?i)(?:^|/)(?:admin|config|configs|settings|schema|template|templates|velocity)(?:[;/]|/|$)");
   private static final Pattern TEMPLATE_PARAMETER_MESSAGE_CONTROL_PATH =
       Pattern.compile(
-          "(?i)(?:^|/)(?:contactadministrators|contact|support|feedback|message|messages|mail|email)(?:[!;/]|/|$)");
+          "(?i)(?:^|/)(?:contactadministrators|contact|support|feedback|message|messages|mail|email)(?:[!.;/]|/|$)");
   private static final Pattern TEMPLATE_SOURCE_CONTROL_PATH =
       Pattern.compile(
           "(?i)(?:^|/)(?:admin|administrator|adminapi|ajax|cfc|control|filemanager|include|includes|macro|preview|render|resource|resources|template|templates|tinymce|view|views)(?:[!;/]|/|$)");
@@ -845,13 +845,14 @@ public final class DetectorEngine {
     Optional<SchedulerShellJobMatch> schedulerJob = schedulerShellJobDispatch(request);
     if (schedulerJob.isPresent()) {
       SchedulerShellJobMatch match = schedulerJob.orElseThrow();
+      RequestContext redactedRequest = redactSchedulerShellJobRequest(request);
       return Optional.of(
           Detection.log(
               "request",
               "request_scheduler_shell_job",
               90,
               "Request dispatches a scheduler job with shell-backed source",
-              request,
+              redactedRequest,
               Map.of(
                   "typeParameter", match.typeParameter(),
                   "typeValue", abbreviate(match.typeValue()),
@@ -4493,25 +4494,62 @@ public final class DetectorEngine {
 
   private static Optional<SchedulerShellJobMatch> schedulerShellJobDispatch(
       RequestContext request) {
-    if (request == null || !request.active() || request.parameters().isEmpty()) {
+    if (request == null || !request.active()) {
+      return Optional.empty();
+    }
+    boolean schedulerPath =
+        SCHEDULER_JOB_CONTROL_PATH.matcher(request.uri() == null ? "" : request.uri()).find();
+    Optional<SchedulerShellJobMatch> parameterMatch =
+        schedulerShellJobParameterDispatch(request.parameters(), schedulerPath);
+    if (parameterMatch.isPresent()) {
+      return parameterMatch;
+    }
+    if (!jsonConfigBody(request)) {
+      return Optional.empty();
+    }
+    List<JsonStringField> fields = jsonStringFields(request.body());
+    Optional<JsonStringField> type =
+        firstJsonFieldValueMatching(
+            fields, SCHEDULER_JOB_TYPE_PARAMETERS, DetectorEngine::isShellSchedulerType);
+    if (type.isEmpty()) {
+      return Optional.empty();
+    }
+    Optional<JsonStringField> source = firstNonBlankJsonField(fields, SCHEDULER_JOB_SOURCE_PARAMETERS);
+    if (source.isEmpty()) {
+      return Optional.empty();
+    }
+    if (!schedulerPath && schedulerContextSignalCount(fields) < 3) {
+      return Optional.empty();
+    }
+    JsonStringField typeField = type.orElseThrow();
+    JsonStringField sourceField = source.orElseThrow();
+    return Optional.of(
+        new SchedulerShellJobMatch(
+            jsonBodyParameter(typeField.name()),
+            typeField.value(),
+            jsonBodyParameter(sourceField.name()),
+            sourceField.value().length()));
+  }
+
+  private static Optional<SchedulerShellJobMatch> schedulerShellJobParameterDispatch(
+      Map<String, List<String>> parameters, boolean schedulerPath) {
+    if (parameters == null || parameters.isEmpty()) {
       return Optional.empty();
     }
     Optional<Map.Entry<String, String>> type =
         firstParameterValueMatching(
-            request.parameters(),
+            parameters,
             SCHEDULER_JOB_TYPE_PARAMETERS,
             DetectorEngine::isShellSchedulerType);
     if (type.isEmpty()) {
       return Optional.empty();
     }
     Optional<Map.Entry<String, String>> source =
-        firstNonBlankParameter(request.parameters(), SCHEDULER_JOB_SOURCE_PARAMETERS);
+        firstNonBlankParameter(parameters, SCHEDULER_JOB_SOURCE_PARAMETERS);
     if (source.isEmpty()) {
       return Optional.empty();
     }
-    boolean schedulerPath =
-        SCHEDULER_JOB_CONTROL_PATH.matcher(request.uri() == null ? "" : request.uri()).find();
-    if (!schedulerPath && schedulerContextSignalCount(request.parameters()) < 3) {
+    if (!schedulerPath && schedulerContextSignalCount(parameters) < 3) {
       return Optional.empty();
     }
     Map.Entry<String, String> typeEntry = type.orElseThrow();
@@ -4536,6 +4574,34 @@ public final class DetectorEngine {
         if (value != null && valuePredicate.test(value)) {
           return Optional.of(Map.entry(entry.getKey(), value));
         }
+      }
+    }
+    return Optional.empty();
+  }
+
+  private static Optional<JsonStringField> firstJsonFieldValueMatching(
+      List<JsonStringField> fields,
+      Set<String> candidateNames,
+      java.util.function.Predicate<String> valuePredicate) {
+    for (JsonStringField field : fields == null ? List.<JsonStringField>of() : fields) {
+      if (!candidateNames.contains(normalizeParameterName(field.name()))) {
+        continue;
+      }
+      if (field.value() != null && valuePredicate.test(field.value())) {
+        return Optional.of(field);
+      }
+    }
+    return Optional.empty();
+  }
+
+  private static Optional<JsonStringField> firstNonBlankJsonField(
+      List<JsonStringField> fields, Set<String> candidateNames) {
+    for (JsonStringField field : fields == null ? List.<JsonStringField>of() : fields) {
+      if (!candidateNames.contains(normalizeParameterName(field.name()))) {
+        continue;
+      }
+      if (field.value() != null && !field.value().isBlank()) {
+        return Optional.of(field);
       }
     }
     return Optional.empty();
@@ -4576,6 +4642,65 @@ public final class DetectorEngine {
       }
     }
     return count;
+  }
+
+  private static int schedulerContextSignalCount(List<JsonStringField> fields) {
+    int count = 0;
+    var seen = new LinkedHashSet<String>();
+    for (JsonStringField field : fields == null ? List.<JsonStringField>of() : fields) {
+      String normalized = normalizeParameterName(field.name());
+      if (SCHEDULER_JOB_CONTEXT_PARAMETERS.contains(normalized) && seen.add(normalized)) {
+        count++;
+      }
+    }
+    return count;
+  }
+
+  private static RequestContext redactSchedulerShellJobRequest(RequestContext request) {
+    if (request == null) {
+      return RequestContext.empty();
+    }
+    var parameters = new LinkedHashMap<String, List<String>>();
+    request
+        .parameters()
+        .forEach(
+            (name, values) -> {
+              var redactedValues = new ArrayList<String>();
+              for (String value : values == null ? List.<String>of() : values) {
+                redactedValues.add(
+                    SCHEDULER_JOB_SOURCE_PARAMETERS.contains(normalizeParameterName(name))
+                            && value != null
+                            && !value.isBlank()
+                        ? "[redacted]"
+                        : value);
+              }
+              parameters.put(name, List.copyOf(redactedValues));
+            });
+    return new RequestContext(
+        request.method(),
+        request.uri(),
+        redactSchedulerShellJobQuery(request.query()),
+        parameters,
+        request.headers(),
+        request.body());
+  }
+
+  private static String redactSchedulerShellJobQuery(String query) {
+    if (query == null || query.isBlank()) {
+      return query == null ? "" : query;
+    }
+    String[] parts = query.split("&", -1);
+    for (int i = 0; i < parts.length; i++) {
+      int separator = parts[i].indexOf('=');
+      if (separator <= 0) {
+        continue;
+      }
+      String name = percentDecode(parts[i].substring(0, separator));
+      if (SCHEDULER_JOB_SOURCE_PARAMETERS.contains(normalizeParameterName(name))) {
+        parts[i] = parts[i].substring(0, separator) + "=[redacted]";
+      }
+    }
+    return String.join("&", parts);
   }
 
   private static Optional<DebugProcessLaunchMatch> debugProcessLaunch(RequestContext request) {

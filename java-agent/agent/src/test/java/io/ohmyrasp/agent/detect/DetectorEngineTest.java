@@ -879,6 +879,15 @@ final class DetectorEngineTest {
   }
 
   @Test
+  void detectsMetabaseGeojsonFileReadProtocolFromUserInput() {
+    var result =
+        engine.detectFileRead(
+            "file:////etc/passwd", request(Map.of("url", List.of("file:////etc/passwd"))), false);
+
+    assertAlgorithm(result, "readFile_userinput_unwanted");
+  }
+
+  @Test
   void detectsFileReadOutsideWebroot() {
     var result = engine.detectFileRead("/etc/hosts", request(), false);
 
@@ -1084,6 +1093,26 @@ final class DetectorEngineTest {
     assertEquals("WEB-INF", result.orElseThrow().details().get("resource"));
     assertEquals(
         "servlet-include-attribute", result.orElseThrow().details().get("source"));
+  }
+
+  @Test
+  void detectsTomcatGhostcatAjpIncludeAttributes() {
+    var result =
+        engine.detectServletIncludeAttributes(
+            Map.of(
+                "javax.servlet.include.request_uri",
+                "/",
+                "javax.servlet.include.path_info",
+                "WEB-INF/web.xml",
+                "javax.servlet.include.servlet_path",
+                "/"),
+            requestUri("/asdf"),
+            List.of("org.apache.coyote.ajp.AjpProcessor"));
+
+    assertAlgorithm(result, "request_forged_include_attribute");
+    assertEquals("protected-resource", result.orElseThrow().details().get("targetType"));
+    assertEquals("WEB-INF", result.orElseThrow().details().get("resource"));
+    assertEquals("/asdf", result.orElseThrow().details().get("uri"));
   }
 
   @Test
@@ -3055,6 +3084,37 @@ final class DetectorEngineTest {
     assertAlgorithm(result, "request_scheduler_shell_job");
     assertEquals("glueType", result.orElseThrow().details().get("typeParameter"));
     assertEquals("glueSource", result.orElseThrow().details().get("sourceParameter"));
+    assertEquals(List.of("[redacted]"), result.orElseThrow().request().parameters().get("glueSource"));
+  }
+
+  @Test
+  void detectsSchedulerShellJobDispatchFromJsonBody() {
+    String body =
+        """
+        {
+          "jobId": "1",
+          "executorHandler": "demoJobHandler",
+          "executorParams": "demoJobHandler",
+          "executorBlockStrategy": "COVER_EARLY",
+          "glueType": "GLUE_SHELL",
+          "glueSource": "touch /tmp/success"
+        }
+        """;
+    var context =
+        new RequestContext(
+            "POST",
+            "/run",
+            "",
+            Map.of(),
+            Map.of("content-type", "application/json", "user-agent", "JUnit"),
+            body);
+
+    var result = engine.detectRequest(context);
+
+    assertAlgorithm(result, "request_scheduler_shell_job");
+    assertEquals("body.glueType", result.orElseThrow().details().get("typeParameter"));
+    assertEquals("body.glueSource", result.orElseThrow().details().get("sourceParameter"));
+    assertEquals("18", result.orElseThrow().details().get("sourceLength"));
   }
 
   @Test
@@ -3087,6 +3147,24 @@ final class DetectorEngineTest {
             "",
             Map.of("scriptType", List.of("shell"), "script", List.of("echo report")),
             Map.of("user-agent", "JUnit"));
+
+    assertTrue(engine.detectRequest(context).isEmpty());
+  }
+
+  @Test
+  void ignoresShellJsonFieldsOutsideSchedulerShape() {
+    String body =
+        """
+        {"glueType":"GLUE_SHELL","glueSource":"echo report","description":"normal renderer"}
+        """;
+    var context =
+        new RequestContext(
+            "POST",
+            "/api/render",
+            "",
+            Map.of(),
+            Map.of("content-type", "application/json", "user-agent", "JUnit"),
+            body);
 
     assertTrue(engine.detectRequest(context).isEmpty());
   }
@@ -5525,20 +5603,20 @@ final class DetectorEngineTest {
     var context =
         new RequestContext(
             "POST",
-            "/secure/ContactAdministrators!default.jspa",
-            "subject=help&details=" + template,
-            Map.of("subject", List.of("help"), "details", List.of(template)),
+            "/secure/ContactAdministrators.jspa",
+            "subject=" + template + "&details=v",
+            Map.of("subject", List.of(template), "details", List.of("v")),
             Map.of("user-agent", "JUnit", "content-type", "application/x-www-form-urlencoded"));
 
     var result = engine.detectRequest(context);
 
     assertAlgorithm(result, "request_template_parameter");
-    assertEquals("details", result.orElseThrow().details().get("parameter"));
+    assertEquals("subject", result.orElseThrow().details().get("parameter"));
     assertEquals("velocity", result.orElseThrow().details().get("engine"));
     assertEquals(
         String.valueOf(template.length()), result.orElseThrow().details().get("sourceLength"));
-    assertEquals(List.of("[redacted]"), result.orElseThrow().request().parameters().get("details"));
-    assertTrue(result.orElseThrow().request().query().contains("details=[redacted]"));
+    assertEquals(List.of("[redacted]"), result.orElseThrow().request().parameters().get("subject"));
+    assertTrue(result.orElseThrow().request().query().contains("subject=[redacted]"));
   }
 
   @Test
@@ -6607,6 +6685,17 @@ final class DetectorEngineTest {
     var result =
         engine.detectRequest(
             requestUri("/阮严灵丰丰甲来/阮严灵丰丰甲来/etc/passw%64"));
+
+    assertAlgorithm(result, "request_path_confusion");
+    assertTrue(result.orElseThrow().details().get("decoded").contains("/../"));
+  }
+
+  @Test
+  void detectsSpringCve202541242VulhubGhostBitsTraversalShape() {
+    var result =
+        engine.detectRequest(
+            requestUri(
+                "/阮严灵丰丰甲来/阮严灵丰丰甲来/阮严灵丰丰甲来/阮严灵丰丰甲来/阮严灵丰丰甲来/阮严灵丰丰甲来/阮严灵丰丰甲来/etc/passw%64"));
 
     assertAlgorithm(result, "request_path_confusion");
     assertTrue(result.orElseThrow().details().get("decoded").contains("/../"));

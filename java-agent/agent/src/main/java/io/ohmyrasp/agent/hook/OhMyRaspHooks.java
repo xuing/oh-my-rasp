@@ -146,6 +146,24 @@ public final class OhMyRaspHooks {
     }
   }
 
+  public static void beforeSyntheticServletIncludeAttributes(
+      String method,
+      String uri,
+      String query,
+      Map<String, List<String>> parameters,
+      Map<String, String> headers,
+      Map<String, String> attributes,
+      List<String> stackClassNames) {
+    try {
+      RequestContext context = new RequestContext(method, uri, query, parameters, headers);
+      emit(DETECTORS.detectServletIncludeAttributes(attributes, context, stackClassNames));
+    } catch (OhMyRaspBlockException blocked) {
+      throw blocked;
+    } catch (Throwable throwable) {
+      quiet("beforeSyntheticServletIncludeAttributes", throwable);
+    }
+  }
+
   public static void beforeRemoteJobSubmission(String mechanism, String descriptor) {
     try {
       emit(DETECTORS.detectRemoteJobSubmission(mechanism, descriptor, currentRequest()));
@@ -171,6 +189,19 @@ public final class OhMyRaspHooks {
       throw blocked;
     } catch (Throwable throwable) {
       quiet("beforeRmiRegistryBind", throwable);
+    }
+  }
+
+  public static void beforeSyntheticRmiRegistryBind(
+      String operation, String bindingName, String remoteClassName, List<String> stackClassNames) {
+    try {
+      emit(
+          DETECTORS.detectRmiRegistryBind(
+              operation, bindingName, remoteClassName, currentRequest(), stackClassNames));
+    } catch (OhMyRaspBlockException blocked) {
+      throw blocked;
+    } catch (Throwable throwable) {
+      quiet("beforeSyntheticRmiRegistryBind", throwable);
     }
   }
 

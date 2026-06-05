@@ -1,0 +1,77 @@
+name: ohmyrasp-java11-agent
+
+x-extra-hosts: &extra-hosts
+  - "host.docker.internal:host-gateway"
+
+services:
+  tomcat10-java11-baseline:
+    build:
+      context: .
+      dockerfile: Dockerfile.java11
+      pull: true
+      args:
+        TOMCAT_IMAGE: tomcat:10.1-jdk11-temurin
+        PLAYGROUND_PROJECT: playground-java11-jakarta
+    image: ohmyrasp/playground:tomcat10-java11
+    ports:
+      - "${OHMYRASP_TOMCAT10_JAVA11_BASELINE_PORT:-18110}:8080"
+    environment:
+      OHMYRASP_ENV: tomcat10-java11-baseline
+    volumes:
+      - ./logs/tomcat10-java11-baseline:/opt/ohmyrasp/logs
+    extra_hosts: *extra-hosts
+
+  tomcat10-java11-protected:
+    image: ohmyrasp/playground:tomcat10-java11
+    depends_on:
+      - tomcat10-java11-baseline
+    ports:
+      - "${OHMYRASP_TOMCAT10_JAVA11_PROTECTED_PORT:-18111}:8080"
+    environment:
+      OHMYRASP_ENV: tomcat10-java11-protected
+      OHMYRASP_HOSTNAME: tomcat10-java11-protected
+      OHMYRASP_LOG: /opt/ohmyrasp/logs/events.jsonl
+      CATALINA_OPTS: >-
+        -javaagent:/opt/ohmyrasp/ohmyrasp-agent-java11.jar
+        -Dohmyrasp.java11.log=/opt/ohmyrasp/logs/events.jsonl
+        -Dohmyrasp.java11.block=true
+        -Dohmyrasp.debug=${OHMYRASP_AGENT_DEBUG:-false}
+    volumes:
+      - ./logs/tomcat10-java11-protected:/opt/ohmyrasp/logs
+    extra_hosts: *extra-hosts
+
+  tomcat9-java11-baseline:
+    build:
+      context: .
+      dockerfile: Dockerfile.java11
+      pull: true
+      args:
+        TOMCAT_IMAGE: tomcat:9.0-jdk11-temurin
+        PLAYGROUND_PROJECT: playground-java11
+    image: ohmyrasp/playground:tomcat9-java11
+    ports:
+      - "${OHMYRASP_TOMCAT9_JAVA11_BASELINE_PORT:-18088}:8080"
+    environment:
+      OHMYRASP_ENV: tomcat9-java11-baseline
+    volumes:
+      - ./logs/tomcat9-java11-baseline:/opt/ohmyrasp/logs
+    extra_hosts: *extra-hosts
+
+  tomcat9-java11-protected:
+    image: ohmyrasp/playground:tomcat9-java11
+    depends_on:
+      - tomcat9-java11-baseline
+    ports:
+      - "${OHMYRASP_TOMCAT9_JAVA11_PROTECTED_PORT:-18089}:8080"
+    environment:
+      OHMYRASP_ENV: tomcat9-java11-protected
+      OHMYRASP_HOSTNAME: tomcat9-java11-protected
+      OHMYRASP_LOG: /opt/ohmyrasp/logs/events.jsonl
+      CATALINA_OPTS: >-
+        -javaagent:/opt/ohmyrasp/ohmyrasp-agent-java11.jar
+        -Dohmyrasp.java11.log=/opt/ohmyrasp/logs/events.jsonl
+        -Dohmyrasp.java11.block=true
+        -Dohmyrasp.debug=${OHMYRASP_AGENT_DEBUG:-false}
+    volumes:
+      - ./logs/tomcat9-java11-protected:/opt/ohmyrasp/logs
+    extra_hosts: *extra-hosts
