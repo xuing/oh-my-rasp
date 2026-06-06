@@ -13,4 +13,5 @@ COPY --from=build /workspace/build/selected/playground.war /usr/local/tomcat/web
 COPY --from=build /workspace/agent-jdk25/build/libs/ohmyrasp-agent.jar /opt/ohmyrasp/ohmyrasp-agent.jar
 RUN mkdir -p /opt/ohmyrasp/logs && chmod -R 777 /opt/ohmyrasp
 ENV OHMYRASP_LOG=/opt/ohmyrasp/logs/events.jsonl
+ENV OHMYRASP_LOG_SYNC=true
 ENV UMASK=0000

@@ -159,7 +159,8 @@ public final class JsonEventLogger {
    * unlike detection latency, which is only observed when an attack fires.
    */
   public void sampleHookLatency(String hook, long latencyUs) {
-    if (latencyUs < 0) {
+    // Sync mode = deterministic, detection-only output for acceptance/CI.
+    if (syncWrites || latencyUs < 0) {
       return;
     }
     if (latencySampleRate > 1 && sampleCounter.incrementAndGet() % latencySampleRate != 0) {
