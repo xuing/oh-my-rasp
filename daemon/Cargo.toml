@@ -1,0 +1,33 @@
+[package]
+name = "ohmyrasp-daemon"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.85"
+description = "OhMyRASP host daemon: ingests Java-agent security events, forwards to the cloud control plane, and serves a local single-host console."
+license = "Apache-2.0"
+publish = false
+
+[[bin]]
+name = "ohmyrasp-daemon"
+path = "src/main.rs"
+
+[dependencies]
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "net", "fs", "io-util", "time", "sync", "signal"] }
+axum = { version = "0.8", default-features = false, features = ["http1", "json", "tokio", "query"] }
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt"] }
+toml = "0.8"
+clap = { version = "4", features = ["derive", "env"] }
+time = { version = "0.3", features = ["formatting"] }
+anyhow = "1"
+
+[dev-dependencies]
+tempfile = "3"
+
+[profile.release]
+lto = "thin"
+codegen-units = 1
+strip = true

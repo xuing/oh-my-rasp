@@ -1,0 +1,51 @@
+# OhMyRASP host daemon — example configuration.
+#
+# Every value shown is the built-in default; uncomment and edit what you need.
+# Precedence (low → high): defaults < this file < OHMYRASP_* env < CLI flags.
+# Copy to `ohmyrasp-daemon.toml` (auto-loaded) or pass with `--config`.
+
+[log]
+# tracing filter: "info", "debug", or e.g. "ohmyrasp_daemon=debug"
+level = "info"
+
+[spool]
+# NDJSON event file the Java agent appends to (its JsonEventLogger target).
+path = "/tmp/ohmyrasp-events.jsonl"
+poll_interval_ms = 250
+# true = replay the whole existing file on startup; false = follow new events only.
+from_start = false
+
+[control]
+# JSON control file the daemon OWNS and the agent POLLS (mode + algorithm toggles).
+path = "/tmp/ohmyrasp-control.json"
+# Initial mode if no control file exists yet: "off" | "monitor" | "block".
+default_mode = "monitor"
+
+[console]
+# Local single-host console (dashboard + JSON API). Bind to loopback by default.
+bind = "127.0.0.1:7070"
+
+[cloud]
+# When false the daemon runs fully standalone; events stay local + buffered.
+enabled = false
+backend_url = ""          # e.g. "http://127.0.0.1:18090"
+app_id = ""
+app_secret = ""
+environment_id = ""
+# hostname defaults to the machine hostname when left blank.
+hostname = ""
+runtime = "java"
+version = "unknown"
+heartbeat_interval_s = 30
+upload_interval_ms = 1000
+upload_batch_max = 50
+request_timeout_s = 5
+
+[buffer]
+# Durable offline outbox for the cloud uplink (retry across restarts).
+dir = "/tmp/ohmyrasp-daemon"
+max_pending = 10000
+
+[store]
+# Recent events kept in memory for the console.
+capacity = 2000
