@@ -4626,31 +4626,6 @@ public final class Java8RaspHooks {
     return value != null && value.trim().length() > 0;
   }
 
-  private static void appendLine(String logPath, String message) {
-    File target = new File(logPath);
-    File parent = target.getParentFile();
-    if (parent != null && !parent.exists() && !parent.mkdirs()) {
-      System.err.println("[OHMYRASP-JAVA8] could not create log directory: " + parent);
-      return;
-    }
-    FileWriter writer = null;
-    try {
-      writer = new FileWriter(target, true);
-      writer.write(message);
-      writer.write(System.lineSeparator());
-    } catch (IOException e) {
-      System.err.println("[OHMYRASP-JAVA8] could not write detection event: " + e);
-    } finally {
-      if (writer != null) {
-        try {
-          writer.close();
-        } catch (IOException ignored) {
-          // Nothing useful to do during sink protection.
-        }
-      }
-    }
-  }
-
   private static String json(String value) {
     StringBuilder builder = new StringBuilder(value.length() + 16);
     for (int i = 0; i < value.length(); i++) {
