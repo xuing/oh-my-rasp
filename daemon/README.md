@@ -74,6 +74,30 @@ Common flags:
 See [`ohmyrasp-daemon.example.toml`](./ohmyrasp-daemon.example.toml) for the full
 config surface; every key is overridable by `OHMYRASP_*` env vars.
 
+## Container & demo stack
+
+A multi-stage [`Dockerfile`](./Dockerfile) (rust → `debian-slim`, rustls so no
+OpenSSL) builds a ~130 MB image:
+
+```bash
+docker build -t ohmyrasp/daemon:dev .
+```
+
+[`../java-agent/docker-compose.daemon.yml`](../java-agent/docker-compose.daemon.yml)
+runs the full local loop — one agent-protected Tomcat plus the daemon, sharing a
+single volume for the event spool (agent → daemon) and the control file
+(daemon → agent):
+
+```bash
+cd ../java-agent
+docker compose -f docker-compose.daemon.yml up -d --build
+# console: http://localhost:7070 ; protected app: http://localhost:18090
+```
+
+From the console you can watch the latency panel fill from live traffic, see
+attacks land in the log, and flip Off/Monitor/Block — the protected Tomcat
+honors the new mode within its control-file poll interval.
+
 ## Console & HTTP API
 
 The console at `/` is a single embedded page (no build step, no CDN — works on an

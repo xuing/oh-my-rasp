@@ -1,0 +1,58 @@
+# Daemon demonstration stack — NOT used by the acceptance suite.
+#
+# Brings up one agent-protected Tomcat alongside the OhMyRASP host daemon,
+# sharing a single volume for the event spool (agent → daemon) and the control
+# file (daemon → agent). Shows the full local loop: live attack log, the
+# business-latency panel (async + telemetry on), and live mode switching from
+# the daemon console.
+#
+#   docker compose -f docker-compose.daemon.yml up -d --build
+#   open http://localhost:7070            # daemon console
+#   curl http://localhost:18090/          # benign traffic → latency panel
+#
+name: ohmyrasp-daemon-demo
+
+services:
+  playground-protected:
+    build:
+      context: .
+      pull: true
+      args:
+        TOMCAT_IMAGE: tomcat:11.0-jdk25
+        PLAYGROUND_WAR: playground/build/libs/playground.war
+    image: ohmyrasp/playground:tomcat11
+    ports:
+      - "${OHMYRASP_DEMO_PORT:-18090}:8080"
+    environment:
+      OHMYRASP_ENV: daemon-demo-protected
+      # Override the image's baked acceptance settings: async writes + telemetry,
+      # and route the spool + control file into the volume the daemon owns.
+      OHMYRASP_LOG_SYNC: "false"
+      CATALINA_OPTS: >-
+        -javaagent:/opt/ohmyrasp/ohmyrasp-agent.jar
+        -Dohmyrasp.log=/opt/ohmyrasp/shared/events.jsonl
+        -Dohmyrasp.control=/opt/ohmyrasp/shared/control.json
+        -Dohmyrasp.log.sync=false
+        -Dohmyrasp.latency_sample=1
+        -Dohmyrasp.block=true
+    volumes:
+      - daemon-shared:/opt/ohmyrasp/shared
+
+  daemon:
+    build:
+      context: ../daemon
+    image: ohmyrasp/daemon:dev
+    depends_on:
+      - playground-protected
+    command:
+      - --spool=/opt/ohmyrasp/shared/events.jsonl
+      - --control=/opt/ohmyrasp/shared/control.json
+      - --console-bind=0.0.0.0:7070
+      - --from-start
+    ports:
+      - "${OHMYRASP_DAEMON_CONSOLE_PORT:-7070}:7070"
+    volumes:
+      - daemon-shared:/opt/ohmyrasp/shared
+
+volumes:
+  daemon-shared:
