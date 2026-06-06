@@ -50,6 +50,10 @@ public final class Java17ServletTransformer implements ClassFileTransformer {
       "(Ljakarta/servlet/ServletRequest;Ljakarta/servlet/ServletResponse;Ljakarta/servlet/FilterChain;)V";
   private static final String JAVAX_FILTER =
       "(Ljavax/servlet/ServletRequest;Ljavax/servlet/ServletResponse;Ljavax/servlet/FilterChain;)V";
+  private static final String JERSEY_CONTAINER_REQUEST =
+      "(Lorg/glassfish/jersey/server/ContainerRequest;)V";
+  private static final String TOMCAT_CONNECTOR_VALVE =
+      "(Lorg/apache/catalina/connector/Request;Lorg/apache/catalina/connector/Response;)V";
 
   @Override
   public byte[] transform(
@@ -78,7 +82,10 @@ public final class Java17ServletTransformer implements ClassFileTransformer {
   private static boolean isTarget(String className) {
     return "javax/servlet/http/HttpServlet".equals(className)
         || "jakarta/servlet/http/HttpServlet".equals(className)
-        || "org/apache/shiro/web/servlet/AbstractShiroFilter".equals(className);
+        || "org/apache/shiro/web/servlet/AbstractShiroFilter".equals(className)
+        || "org/glassfish/jersey/server/ServerRuntime".equals(className)
+        || "org/apache/catalina/authenticator/AuthenticatorBase".equals(className)
+        || "org/apache/catalina/core/StandardWrapperValve".equals(className);
   }
 
   private static boolean requiresReflectiveHook(ClassLoader loader) {
@@ -142,6 +149,50 @@ public final class Java17ServletTransformer implements ClassFileTransformer {
         };
       }
       if ("doFilterInternal".equals(name) && isFilterDescriptor(descriptor)) {
+        return new ReflectiveAdviceAdapter(Opcodes.ASM9, methodVisitor, access, name, descriptor) {
+          @Override
+          protected void onMethodEnter() {
+            if (reflectiveHook) {
+              invokeReflectiveHook("beforeHttpRequest", true);
+            } else {
+              loadArg(0);
+              invokeStatic(HOOKS, BEFORE_HTTP_REQUEST);
+            }
+          }
+
+          @Override
+          protected void onMethodExit(int opcode) {
+            if (reflectiveHook) {
+              invokeReflectiveHook("afterHttpRequest", false);
+            } else {
+              invokeStatic(HOOKS, AFTER_HTTP_REQUEST);
+            }
+          }
+        };
+      }
+      if ("process".equals(name) && JERSEY_CONTAINER_REQUEST.equals(descriptor)) {
+        return new ReflectiveAdviceAdapter(Opcodes.ASM9, methodVisitor, access, name, descriptor) {
+          @Override
+          protected void onMethodEnter() {
+            if (reflectiveHook) {
+              invokeReflectiveHook("beforeHttpRequest", true);
+            } else {
+              loadArg(0);
+              invokeStatic(HOOKS, BEFORE_HTTP_REQUEST);
+            }
+          }
+
+          @Override
+          protected void onMethodExit(int opcode) {
+            if (reflectiveHook) {
+              invokeReflectiveHook("afterHttpRequest", false);
+            } else {
+              invokeStatic(HOOKS, AFTER_HTTP_REQUEST);
+            }
+          }
+        };
+      }
+      if ("invoke".equals(name) && TOMCAT_CONNECTOR_VALVE.equals(descriptor)) {
         return new ReflectiveAdviceAdapter(Opcodes.ASM9, methodVisitor, access, name, descriptor) {
           @Override
           protected void onMethodEnter() {

@@ -17,6 +17,10 @@ public final class Java8JdbcTransformer implements ClassFileTransformer {
       Method.getMethod("void beforeJdbcConnection(java.lang.String)");
   private static final Method BEFORE_H2_JDBC_CONNECTION =
       Method.getMethod("void beforeH2JdbcConnection(java.lang.String)");
+  private static final Method BEFORE_SQL_IDENTIFIER =
+      Method.getMethod("void beforeSqlIdentifier(java.lang.String)");
+  private static final Method BEFORE_MYBATIS_BOUND_SQL =
+      Method.getMethod("void beforeMyBatisBoundSql(java.lang.String, java.lang.Object)");
 
   @Override
   public byte[] transform(
@@ -43,7 +47,10 @@ public final class Java8JdbcTransformer implements ClassFileTransformer {
 
   private static boolean isJdbcClass(String className) {
     return "java/sql/DriverManager".equals(className)
-        || "org/h2/jdbc/JdbcConnection".equals(className);
+        || "org/h2/jdbc/JdbcConnection".equals(className)
+        || "org/apache/ibatis/mapping/BoundSql".equals(className)
+        || "org/apache/skywalking/oap/server/storage/plugin/jdbc/h2/dao/H2LogQueryDAO"
+            .equals(className);
   }
 
   private static final class JdbcClassVisitor extends ClassVisitor {
@@ -58,7 +65,29 @@ public final class Java8JdbcTransformer implements ClassFileTransformer {
     public MethodVisitor visitMethod(
         int access, String name, String descriptor, String signature, String[] exceptions) {
       MethodVisitor methodVisitor = super.visitMethod(access, name, descriptor, signature, exceptions);
-      if (methodVisitor == null || !isConnectionMethod(className, name, descriptor)) {
+      if (methodVisitor == null) {
+        return methodVisitor;
+      }
+      if (isSqlIdentifierMethod(className, name, descriptor)) {
+        return new AdviceAdapter(Opcodes.ASM9, methodVisitor, access, name, descriptor) {
+          @Override
+          protected void onMethodEnter() {
+            loadArg(0);
+            invokeStatic(HOOKS, BEFORE_SQL_IDENTIFIER);
+          }
+        };
+      }
+      if (isMyBatisBoundSqlConstructor(className, name, descriptor)) {
+        return new AdviceAdapter(Opcodes.ASM9, methodVisitor, access, name, descriptor) {
+          @Override
+          protected void onMethodEnter() {
+            loadArg(1);
+            loadArg(3);
+            invokeStatic(HOOKS, BEFORE_MYBATIS_BOUND_SQL);
+          }
+        };
+      }
+      if (!isConnectionMethod(className, name, descriptor)) {
         return methodVisitor;
       }
       final boolean h2Constructor = isH2JdbcConnectionConstructor(className, name, descriptor);
@@ -90,6 +119,21 @@ public final class Java8JdbcTransformer implements ClassFileTransformer {
       return "org/h2/jdbc/JdbcConnection".equals(className)
           && "<init>".equals(name)
           && descriptor.startsWith("(Ljava/lang/String;");
+    }
+
+    private static boolean isSqlIdentifierMethod(String className, String name, String descriptor) {
+      return "org/apache/skywalking/oap/server/storage/plugin/jdbc/h2/dao/H2LogQueryDAO"
+              .equals(className)
+          && "queryLogs".equals(name)
+          && descriptor.startsWith("(Ljava/lang/String;");
+    }
+
+    private static boolean isMyBatisBoundSqlConstructor(
+        String className, String name, String descriptor) {
+      return "org/apache/ibatis/mapping/BoundSql".equals(className)
+          && "<init>".equals(name)
+          && "(Lorg/apache/ibatis/session/Configuration;Ljava/lang/String;Ljava/util/List;Ljava/lang/Object;)V"
+              .equals(descriptor);
     }
   }
 }

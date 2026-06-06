@@ -85,10 +85,14 @@ public final class OhMyRaspJava11Agent {
         + "\"url_hook\":\"installed\","
         + "\"classloader_hook\":\"installed\","
         + "\"jdbc_hook\":\"installed\","
+        + "\"sql_identifier_hook\":\"installed\","
         + "\"script_hook\":\"installed\","
+        + "\"jexl_hook\":\"installed\","
+        + "\"el_hook\":\"installed\","
         + "\"java_compile_hook\":\"installed\","
         + "\"jaas_hook\":\"installed\","
         + "\"jmx_hook\":\"installed\","
+        + "\"jwt_hook\":\"installed\","
         + "\"java_beans_hook\":\"installed\","
         + "\"xxe_hook\":\"installed\","
         + "\"instrumentation\":\"" + (instrumentation == null ? "missing" : "available") + "\""
@@ -112,9 +116,12 @@ public final class OhMyRaspJava11Agent {
     instrumentation.addTransformer(new Java11ClassLoaderTransformer(), canRetransform);
     instrumentation.addTransformer(new Java11JdbcTransformer(), canRetransform);
     instrumentation.addTransformer(new Java11ScriptEngineTransformer(), canRetransform);
+    instrumentation.addTransformer(new Java11JexlTransformer(), canRetransform);
+    instrumentation.addTransformer(new Java11ElTransformer(), canRetransform);
     instrumentation.addTransformer(new Java11JavaCompilationTransformer(), canRetransform);
     instrumentation.addTransformer(new Java11JaasTransformer(), canRetransform);
     instrumentation.addTransformer(new Java11JmxTransformer(), canRetransform);
+    instrumentation.addTransformer(new Java11JwtTransformer(), canRetransform);
     instrumentation.addTransformer(new Java11JavaBeansTransformer(), canRetransform);
     instrumentation.addTransformer(new Java11XxeTransformer(), canRetransform);
     if (!canRetransform) {
@@ -123,6 +130,9 @@ public final class OhMyRaspJava11Agent {
     retransformByName(instrumentation, "javax.servlet.http.HttpServlet");
     retransformByName(instrumentation, "jakarta.servlet.http.HttpServlet");
     retransformByName(instrumentation, "org.apache.shiro.web.servlet.AbstractShiroFilter");
+    retransformByName(instrumentation, "org.glassfish.jersey.server.ServerRuntime");
+    retransformByName(instrumentation, "org.apache.catalina.authenticator.AuthenticatorBase");
+    retransformByName(instrumentation, "org.apache.catalina.core.StandardWrapperValve");
     retransformByName(instrumentation, "org.apache.spark.deploy.rest.SubmitRequestServlet");
     retransformByName(instrumentation, "org.apache.spark.deploy.rest.StandaloneSubmitRequestServlet");
     retransformByName(instrumentation, "org.apache.hadoop.yarn.server.resourcemanager.webapp.RMWebServices");
@@ -141,12 +151,31 @@ public final class OhMyRaspJava11Agent {
     retransform(instrumentation, URLClassLoader.class);
     retransform(instrumentation, RMIClassLoader.class);
     retransform(instrumentation, DriverManager.class);
+    retransformByName(
+        instrumentation, "org.apache.skywalking.oap.server.storage.plugin.jdbc.h2.dao.H2LogQueryDAO");
     retransform(instrumentation, AbstractScriptEngine.class);
+    retransformByName(instrumentation, "org.apache.commons.jexl3.internal.Script");
+    retransformByName(instrumentation, "org.apache.commons.jexl2.ExpressionImpl");
+    retransformByName(instrumentation, "org.apache.commons.jexl2.ScriptImpl");
+    retransformByName(instrumentation, "org.apache.commons.jexl.ExpressionImpl");
+    retransformByName(instrumentation, "org.apache.commons.jexl.Script");
+    retransformByName(instrumentation, "com.sun.el.ValueExpressionImpl");
+    retransformByName(instrumentation, "com.sun.el.MethodExpressionImpl");
+    retransformByName(instrumentation, "org.apache.el.ValueExpressionImpl");
+    retransformByName(instrumentation, "org.apache.el.MethodExpressionImpl");
+    retransformByName(instrumentation, "de.odysseus.el.TreeValueExpression");
+    retransformByName(instrumentation, "de.odysseus.el.TreeMethodExpression");
+    retransformByName(instrumentation, "org.jboss.el.ValueExpressionImpl");
+    retransformByName(instrumentation, "org.jboss.el.MethodExpressionImpl");
     retransform(instrumentation, AppConfigurationEntry.class);
     retransform(instrumentation, Expression.class);
     retransform(instrumentation, Statement.class);
     retransformByName(instrumentation, "com.sun.tools.javac.api.JavacTool");
     retransformByName(instrumentation, "com.sun.jmx.mbeanserver.JmxMBeanServer");
+    retransformByName(instrumentation, "com.auth0.jwt.JWTVerifier");
+    retransformByName(instrumentation, "com.auth0.jwt.algorithms.HMACAlgorithm");
+    retransformByName(instrumentation, "com.auth0.jwt.algorithms.RSAAlgorithm");
+    retransformByName(instrumentation, "com.auth0.jwt.algorithms.ECDSAAlgorithm");
     retransformByName(instrumentation, "com.sun.beans.decoder.DocumentHandler");
     retransformByName(instrumentation, "com.sun.org.apache.xerces.internal.impl.XMLEntityManager");
   }

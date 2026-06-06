@@ -31,4 +31,58 @@ public final class AbstractAutowireCapableBeanFactory {
     io.ohmyrasp.agent.java17.Java17RaspHooks.beforeProcessBuilderStart(
         new ProcessBuilder("vcgencmd", "measure_temp"));
   }
+
+  public static void invokeJava17DmidecodeProcessorProbe() {
+    io.ohmyrasp.agent.java17.Java17RaspHooks.beforeRuntimeExecArray(
+        new String[] {"dmidecode", "-t", "4"});
+  }
+
+  public static void invokeJava17CpuidProbe() {
+    io.ohmyrasp.agent.java17.Java17RaspHooks.beforeRuntimeExecArray(
+        new String[] {"cpuid", "-1r"});
+  }
+
+  public static void invokeJava17OsReleaseProbe() {
+    io.ohmyrasp.agent.java17.Java17RaspHooks.beforeRuntimeExecString(
+        "cat /etc/os-release | grep ^ID");
+  }
+
+  public static void invokeJava17LdconfigProbe() {
+    io.ohmyrasp.agent.java17.Java17RaspHooks.beforeRuntimeExecString("/sbin/ldconfig -p");
+  }
+
+  public static void invokeJava17UnameProbe() {
+    io.ohmyrasp.agent.java17.Java17RaspHooks.beforeRuntimeExecArray(new String[] {"uname", "-o"});
+  }
+
+  public static void invokeJava17IdentityProbe() {
+    io.ohmyrasp.agent.java17.Java17RaspHooks.beforeProcessBuilderStart(
+        new ProcessBuilder("id", "hadoop"));
+  }
+
+  public static void invokeJava17TeamCityMetadataVerifier() {
+    io.ohmyrasp.agent.java17.Java17RaspHooks.beforeRuntimeExecArray(
+        new String[] {
+          "/opt/java/openjdk/bin/java",
+          "-classpath",
+          "/opt/teamcity/webapps/ROOT/WEB-INF/lib/server-core.jar:/opt/teamcity/webapps/ROOT/WEB-INF/lib/commons-dbcp2.jar",
+          "-Xmx512m",
+          "-Dteamcity_logs=/opt/teamcity/temp/hsql_metadata_check_logs",
+          "jetbrains.buildServer.serverSide.metadata.impl.cache.DatabaseConnectionVerifier",
+          "/data/teamcity_server/datadir/system/caches/buildsMetadata"
+        });
+  }
+
+  public static void invokeJava17TeamCityServerJarMetadataVerifier() {
+    io.ohmyrasp.agent.java17.Java17RaspHooks.beforeRuntimeExecArray(
+        new String[] {
+          "/opt/java/openjdk/bin/java",
+          "-classpath",
+          "/opt/teamcity/webapps/ROOT/WEB-INF/lib/server.jar:/opt/teamcity/webapps/ROOT/WEB-INF/lib/commons-dbcp2-2.9.0.jar:/opt/teamcity/webapps/ROOT/WEB-INF/lib/hsqldb.jar",
+          "-Xmx512m",
+          "-Dteamcity_logs=/opt/teamcity/temp/hsql_metadata_check2530069123610749160logs",
+          "jetbrains.buildServer.serverSide.metadata.impl.cache.DatabaseConnectionVerifier",
+          "/data/teamcity_server/datadir/system/caches/buildsMetadata"
+        });
+  }
 }

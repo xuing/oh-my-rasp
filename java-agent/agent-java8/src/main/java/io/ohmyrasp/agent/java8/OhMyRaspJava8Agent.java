@@ -48,11 +48,15 @@ public final class OhMyRaspJava8Agent {
         + "\"url_hook\":\"installed\","
         + "\"archive_hook\":\"installed\","
         + "\"jdbc_hook\":\"installed\","
+        + "\"sql_identifier_hook\":\"installed\","
         + "\"classloader_hook\":\"installed\","
         + "\"script_hook\":\"installed\","
+        + "\"jexl_hook\":\"installed\","
+        + "\"el_hook\":\"installed\","
         + "\"java_compile_hook\":\"installed\","
         + "\"jaas_hook\":\"installed\","
         + "\"jmx_hook\":\"installed\","
+        + "\"jwt_hook\":\"installed\","
         + "\"java_beans_hook\":\"installed\","
         + "\"xxe_hook\":\"installed\","
         + "\"instrumentation\":\"" + (instrumentation == null ? "missing" : "available") + "\""
@@ -96,9 +100,12 @@ public final class OhMyRaspJava8Agent {
     instrumentation.addTransformer(new Java8JdbcTransformer(), canRetransform);
     instrumentation.addTransformer(new Java8ClassLoaderTransformer(), canRetransform);
     instrumentation.addTransformer(new Java8ScriptEngineTransformer(), canRetransform);
+    instrumentation.addTransformer(new Java8JexlTransformer(), canRetransform);
+    instrumentation.addTransformer(new Java8ElTransformer(), canRetransform);
     instrumentation.addTransformer(new Java8JavaCompilationTransformer(), canRetransform);
     instrumentation.addTransformer(new Java8JaasTransformer(), canRetransform);
     instrumentation.addTransformer(new Java8JmxTransformer(), canRetransform);
+    instrumentation.addTransformer(new Java8JwtTransformer(), canRetransform);
     instrumentation.addTransformer(new Java8JavaBeansTransformer(), canRetransform);
     instrumentation.addTransformer(new Java8XxeTransformer(), canRetransform);
     if (!canRetransform) {
@@ -107,6 +114,9 @@ public final class OhMyRaspJava8Agent {
     retransformByName(instrumentation, "javax.servlet.http.HttpServlet");
     retransformByName(instrumentation, "jakarta.servlet.http.HttpServlet");
     retransformByName(instrumentation, "org.apache.shiro.web.servlet.AbstractShiroFilter");
+    retransformByName(instrumentation, "org.glassfish.jersey.server.ServerRuntime");
+    retransformByName(instrumentation, "org.apache.catalina.authenticator.AuthenticatorBase");
+    retransformByName(instrumentation, "org.apache.catalina.core.StandardWrapperValve");
     retransformByName(instrumentation, "org.apache.spark.deploy.rest.SubmitRequestServlet");
     retransformByName(instrumentation, "org.apache.spark.deploy.rest.StandaloneSubmitRequestServlet");
     retransformByName(instrumentation, "org.apache.hadoop.yarn.server.resourcemanager.webapp.RMWebServices");
@@ -123,13 +133,32 @@ public final class OhMyRaspJava8Agent {
     retransform(instrumentation, java.net.URL.class);
     retransform(instrumentation, java.util.zip.ZipEntry.class);
     retransform(instrumentation, java.sql.DriverManager.class);
+    retransformByName(
+        instrumentation, "org.apache.skywalking.oap.server.storage.plugin.jdbc.h2.dao.H2LogQueryDAO");
     retransform(instrumentation, java.net.URLClassLoader.class);
     retransform(instrumentation, java.rmi.server.RMIClassLoader.class);
     retransform(instrumentation, javax.script.AbstractScriptEngine.class);
+    retransformByName(instrumentation, "org.apache.commons.jexl3.internal.Script");
+    retransformByName(instrumentation, "org.apache.commons.jexl2.ExpressionImpl");
+    retransformByName(instrumentation, "org.apache.commons.jexl2.ScriptImpl");
+    retransformByName(instrumentation, "org.apache.commons.jexl.ExpressionImpl");
+    retransformByName(instrumentation, "org.apache.commons.jexl.Script");
+    retransformByName(instrumentation, "com.sun.el.ValueExpressionImpl");
+    retransformByName(instrumentation, "com.sun.el.MethodExpressionImpl");
+    retransformByName(instrumentation, "org.apache.el.ValueExpressionImpl");
+    retransformByName(instrumentation, "org.apache.el.MethodExpressionImpl");
+    retransformByName(instrumentation, "de.odysseus.el.TreeValueExpression");
+    retransformByName(instrumentation, "de.odysseus.el.TreeMethodExpression");
+    retransformByName(instrumentation, "org.jboss.el.ValueExpressionImpl");
+    retransformByName(instrumentation, "org.jboss.el.MethodExpressionImpl");
     retransform(instrumentation, javax.security.auth.login.AppConfigurationEntry.class);
     retransform(instrumentation, java.beans.Expression.class);
     retransform(instrumentation, java.beans.Statement.class);
     retransformByName(instrumentation, "com.sun.jmx.mbeanserver.JmxMBeanServer");
+    retransformByName(instrumentation, "com.auth0.jwt.JWTVerifier");
+    retransformByName(instrumentation, "com.auth0.jwt.algorithms.HMACAlgorithm");
+    retransformByName(instrumentation, "com.auth0.jwt.algorithms.RSAAlgorithm");
+    retransformByName(instrumentation, "com.auth0.jwt.algorithms.ECDSAAlgorithm");
     retransformByName(instrumentation, "com.sun.beans.decoder.DocumentHandler");
     retransformByName(instrumentation, "com.sun.org.apache.xerces.internal.impl.XMLEntityManager");
     retransformByName(instrumentation, "com.sun.tools.javac.api.JavacTool");
