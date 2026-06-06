@@ -90,6 +90,14 @@ The mode can also be seeded at startup and never requires the daemon:
 | Event log path | `log=/var/log/…` | `-Dohmyrasp.log=…` | `OHMYRASP_LOG=…` |
 | Control file | `control=/etc/…` | `-Dohmyrasp.control=…` | `OHMYRASP_CONTROL=…` |
 | Direct cloud (legacy) | `cloud_direct=true` | `-Dohmyrasp.cloud.direct=true` | `OHMYRASP_CLOUD_DIRECT=true` |
+| Synchronous logging (CI/acceptance) | — | `-Dohmyrasp.log.sync=true` | `OHMYRASP_LOG_SYNC=true` |
+| Latency sample rate (1-in-N) | — | `-Dohmyrasp.latency_sample=10` | `OHMYRASP_LATENCY_SAMPLE=10` |
+
+> The agent samples the overhead it adds to live requests (1-in-N, default 10)
+> and emits it as telemetry, so the daemon's latency panel reflects real
+> business traffic — not just the rare attack path. `OHMYRASP_LOG_SYNC=true`
+> reverts to inline writes for deterministic acceptance/CI runs (it intentionally
+> reintroduces the write on the hot path).
 
 When no control file and no `mode` are set, the agent uses legacy behavior
 (blocking permitted, driven by policy/flags) — a freshly installed agent behaves

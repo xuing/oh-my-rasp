@@ -76,9 +76,12 @@ async fn main() -> Result<()> {
         tailer::run(spool_cfg, tail_shutdown, move |line| {
             if let Some(event) = AgentEvent::parse_line(next_seq, now_rfc3339(), line) {
                 next_seq += 1;
-                store_for_tail.record(&event);
                 if event.is_detection() {
+                    store_for_tail.record(&event);
                     uploader.offer(event);
+                } else {
+                    // Telemetry: latency panel only — never the attack log or the cloud.
+                    store_for_tail.record_latency(&event);
                 }
             }
         })

@@ -82,12 +82,21 @@ public final class JsonEventLogger {
           "template",
           "expression");
 
-  /** One queued event plus its measured in-hook latencies (microseconds, -1 if unknown). */
-  private record Sample(Detection detection, long latencyUs, long ruleEvaluationUs) {}
+  /**
+   * One queued record: either a security {@code detection} (with its measured
+   * in-hook latencies) or a periodic latency {@code telemetryHook} sample that
+   * feeds the daemon's business-impact panel without being a detection.
+   */
+  private record Sample(
+      Detection detection, String telemetryHook, long latencyUs, long ruleEvaluationUs) {}
 
   private final Path logPath;
   private final BlockingQueue<Sample> queue;
   private final AtomicLong dropped = new AtomicLong();
+  private final AtomicLong sampleCounter = new AtomicLong();
+  private final Object writeLock = new Object();
+  private final boolean syncWrites;
+  private final int latencySampleRate;
   private volatile boolean running = true;
   private volatile ControlPlaneClient controlPlaneClient;
 
@@ -101,6 +110,11 @@ public final class JsonEventLogger {
     }
     logPath = Path.of(configured);
     queue = new ArrayBlockingQueue<>(queueCapacity());
+    // Acceptance/CI determinism: write inline so the event is on disk before the
+    // hook returns. Trades the no-business-latency property for repeatability.
+    syncWrites = flag("ohmyrasp.log.sync", "OHMYRASP_LOG_SYNC");
+    latencySampleRate =
+        Math.max(1, intSetting("ohmyrasp.latency_sample", "OHMYRASP_LATENCY_SAMPLE", 10));
 
     Thread writer = new Thread(this::drainLoop, "ohmyrasp-event-writer");
     writer.setDaemon(true);
@@ -135,7 +149,31 @@ public final class JsonEventLogger {
     if (detection == null) {
       return;
     }
-    if (!queue.offer(new Sample(detection, latencyUs, ruleEvaluationUs))) {
+    submit(new Sample(detection, null, latencyUs, ruleEvaluationUs));
+  }
+
+  /**
+   * Record a sampled measurement of the overhead a hook adds to a normal (often
+   * benign) request. Sampled 1-in-N so it costs almost nothing on the hot path,
+   * yet keeps the daemon's business-latency panel populated under live traffic —
+   * unlike detection latency, which is only observed when an attack fires.
+   */
+  public void sampleHookLatency(String hook, long latencyUs) {
+    if (latencyUs < 0) {
+      return;
+    }
+    if (latencySampleRate > 1 && sampleCounter.incrementAndGet() % latencySampleRate != 0) {
+      return;
+    }
+    submit(new Sample(null, hook == null ? "" : hook, latencyUs, -1));
+  }
+
+  private void submit(Sample sample) {
+    if (syncWrites) {
+      flush(List.of(sample));
+      return;
+    }
+    if (!queue.offer(sample)) {
       dropped.incrementAndGet();
     }
   }
@@ -182,29 +220,43 @@ public final class JsonEventLogger {
     StringBuilder stdoutBuffer = new StringBuilder(batch.size() * 256);
     String separator = System.lineSeparator();
     for (Sample sample : batch) {
-      String json = toJson(sample.detection(), sample.latencyUs());
+      String json =
+          sample.detection() == null
+              ? telemetryJson(sample.telemetryHook(), sample.latencyUs())
+              : toJson(sample.detection(), sample.latencyUs());
       fileBuffer.append(json).append(separator);
-      stdoutBuffer.append("[OHMYRASP] ").append(json).append(separator);
-    }
-    try {
-      Path parent = logPath.getParent();
-      if (parent != null) {
-        Files.createDirectories(parent);
+      // Telemetry is high-volume and uninteresting on the console; keep it off stdout.
+      if (sample.detection() != null) {
+        stdoutBuffer.append("[OHMYRASP] ").append(json).append(separator);
       }
-      Files.writeString(
-          logPath,
-          fileBuffer.toString(),
-          StandardCharsets.UTF_8,
-          StandardOpenOption.CREATE,
-          StandardOpenOption.APPEND);
-    } catch (IOException e) {
-      System.err.println("[OHMYRASP] failed to write event log: " + e);
     }
-    System.out.print(stdoutBuffer);
+    // A lock so concurrent inline (sync-mode) writers never interleave a line.
+    synchronized (writeLock) {
+      try {
+        Path parent = logPath.getParent();
+        if (parent != null) {
+          Files.createDirectories(parent);
+        }
+        Files.writeString(
+            logPath,
+            fileBuffer.toString(),
+            StandardCharsets.UTF_8,
+            StandardOpenOption.CREATE,
+            StandardOpenOption.APPEND);
+      } catch (IOException e) {
+        System.err.println("[OHMYRASP] failed to write event log: " + e);
+      }
+    }
+    if (stdoutBuffer.length() > 0) {
+      System.out.print(stdoutBuffer);
+    }
 
     ControlPlaneClient client = controlPlaneClient;
     if (client != null) {
       for (Sample sample : batch) {
+        if (sample.detection() == null) {
+          continue; // telemetry stays local
+        }
         client.submit(sample.detection());
         if (sample.latencyUs() >= 0) {
           client.submitHookTelemetry(
@@ -225,18 +277,49 @@ public final class JsonEventLogger {
   }
 
   private static int queueCapacity() {
-    String configured = System.getProperty("ohmyrasp.log.queue");
-    if (configured == null || configured.isBlank()) {
-      configured = System.getenv("OHMYRASP_LOG_QUEUE");
+    return Math.max(256, intSetting("ohmyrasp.log.queue", "OHMYRASP_LOG_QUEUE", 8192));
+  }
+
+  private static boolean flag(String property, String env) {
+    String value = System.getProperty(property);
+    if (value == null || value.isBlank()) {
+      value = System.getenv(env);
     }
-    if (configured != null && !configured.isBlank()) {
+    return value != null
+        && switch (value.trim().toLowerCase(Locale.ROOT)) {
+          case "true", "1", "yes", "on" -> true;
+          default -> false;
+        };
+  }
+
+  private static int intSetting(String property, String env, int fallback) {
+    String value = System.getProperty(property);
+    if (value == null || value.isBlank()) {
+      value = System.getenv(env);
+    }
+    if (value != null && !value.isBlank()) {
       try {
-        return Math.max(256, Integer.parseInt(configured.trim()));
+        return Integer.parseInt(value.trim());
       } catch (NumberFormatException ignored) {
         // fall through to default
       }
     }
-    return 8192;
+    return fallback;
+  }
+
+  /** Minimal telemetry line: a hook-overhead latency sample, not a detection. */
+  private static String telemetryJson(String hook, long latencyUs) {
+    var builder = new StringBuilder(160);
+    builder.append('{');
+    field(builder, "timestamp", java.time.Instant.now().toString()).append(',');
+    field(builder, "kind", "telemetry").append(',');
+    field(builder, "hook", hook == null ? "" : hook).append(',');
+    field(builder, "algorithm", "hook_latency").append(',');
+    field(builder, "action", "observe").append(',');
+    numberField(builder, "confidence", 0).append(',');
+    longField(builder, "latency_us", latencyUs);
+    builder.append('}');
+    return builder.toString();
   }
 
   private static String toJson(Detection detection, long latencyUs) {

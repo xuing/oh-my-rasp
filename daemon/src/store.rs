@@ -21,6 +21,7 @@ struct Inner {
     total: u64,
     detections: u64,
     blocks: u64,
+    telemetry: u64,
     by_hook: HashMap<String, u64>,
     by_algorithm: HashMap<String, u64>,
     by_action: HashMap<String, u64>,
@@ -50,6 +51,7 @@ pub struct StatsSnapshot {
     pub total: u64,
     pub detections: u64,
     pub blocks: u64,
+    pub telemetry: u64,
     pub retained: usize,
     pub started_at: String,
     pub last_event_at: Option<String>,
@@ -68,6 +70,7 @@ impl EventStore {
                 total: 0,
                 detections: 0,
                 blocks: 0,
+                telemetry: 0,
                 by_hook: HashMap::new(),
                 by_algorithm: HashMap::new(),
                 by_action: HashMap::new(),
@@ -113,6 +116,19 @@ impl EventStore {
         }
     }
 
+    /// Record a telemetry-only latency sample: it feeds the business-latency
+    /// panel but is not a detection, so it stays out of the attack log and the
+    /// detection counters.
+    pub fn record_latency(&self, event: &AgentEvent) {
+        let Some(latency) = event.latency_us.filter(|v| *v >= 0) else { return };
+        let mut inner = self.inner.lock().expect("store mutex");
+        inner.telemetry += 1;
+        inner.latencies.push_back(latency);
+        while inner.latencies.len() > LATENCY_SAMPLES {
+            inner.latencies.pop_front();
+        }
+    }
+
     /// Most-recent-first slice of retained events, optionally filtered.
     pub fn recent(&self, limit: usize, hook: Option<&str>, action: Option<&str>) -> Vec<AgentEvent> {
         let inner = self.inner.lock().expect("store mutex");
@@ -133,6 +149,7 @@ impl EventStore {
             total: inner.total,
             detections: inner.detections,
             blocks: inner.blocks,
+            telemetry: inner.telemetry,
             retained: inner.events.len(),
             started_at: inner.started_at.clone(),
             last_event_at: inner.last_event_at.clone(),
@@ -216,6 +233,21 @@ mod tests {
         // most recent first
         let recent = store.recent(10, None, None);
         assert_eq!(recent[0].hook, "c");
+    }
+
+    #[test]
+    fn telemetry_feeds_latency_only_not_attack_log() {
+        let store = EventStore::new(10);
+        store.record(&event(1, "sql", "block", Some(20)));
+        let mut tel = event(2, "http_request", "observe", Some(80));
+        tel.kind = "telemetry".into();
+        store.record_latency(&tel);
+        let stats = store.stats();
+        assert_eq!(stats.detections, 1);
+        assert_eq!(stats.telemetry, 1);
+        assert_eq!(stats.retained, 1, "telemetry not added to the attack log");
+        assert_eq!(stats.latency.samples, 2, "both latencies counted");
+        assert_eq!(stats.latency.max_us, 80);
     }
 
     #[test]

@@ -7,6 +7,7 @@ import io.ohmyrasp.agent.model.RequestContext;
 import io.ohmyrasp.agent.policy.AgentPolicy;
 import io.ohmyrasp.agent.policy.PolicyEvaluation;
 import io.ohmyrasp.agent.runtime.AgentRuntime;
+import io.ohmyrasp.agent.runtime.DetectionMode;
 import java.io.File;
 import java.lang.StackWalker.StackFrame;
 import java.lang.reflect.Array;
@@ -46,6 +47,10 @@ public final class OhMyRaspHooks {
   }
 
   public static void enterHttpRequest(Object request, Object response) {
+    // Time the full agent cost added to this request entry so the daemon's
+    // business-latency panel reflects real (usually benign) traffic, not just
+    // the rare attack path. Sampled inside sampleHookLatency.
+    long started = System.nanoTime();
     try {
       RequestContext context = buildRequestContext(request);
       REQUEST.set(context);
@@ -62,6 +67,7 @@ public final class OhMyRaspHooks {
     } catch (Throwable throwable) {
       quiet("enterHttpRequest", throwable);
     }
+    JsonEventLogger.get().sampleHookLatency("http_request", elapsedMicros(started));
   }
 
   public static void beforeSyntheticHttpRequest(
@@ -1278,7 +1284,16 @@ public final class OhMyRaspHooks {
         runtime.blockingAllowed()
             && "block".equalsIgnoreCase(event.action())
             && (activeRequest(event) || allowNonRequestBlock);
-    JsonEventLogger.get().record(event, elapsedMicros(started), ruleEvaluationUs);
+    // In MONITOR (record) mode a would-be block is observed, not enforced — record
+    // it truthfully so the log/console don't claim a block that never happened.
+    // Strictly gated on MONITOR, so unset/legacy (acceptance) behavior is unchanged.
+    Detection recorded = event;
+    if (!willBlock
+        && runtime.mode() == DetectionMode.MONITOR
+        && "block".equalsIgnoreCase(event.action())) {
+      recorded = event.withAction("monitor");
+    }
+    JsonEventLogger.get().record(recorded, elapsedMicros(started), ruleEvaluationUs);
     if (willBlock) {
       redirectToBlockPage(event);
       if (throwOnBlock) {
