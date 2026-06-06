@@ -7,6 +7,7 @@ import io.ohmyrasp.agent.control.ControlPlaneConfig;
 import io.ohmyrasp.agent.hook.DeserializationGuard;
 import io.ohmyrasp.agent.hook.OhMyRaspHooks;
 import io.ohmyrasp.agent.log.JsonEventLogger;
+import io.ohmyrasp.agent.policy.AgentPolicy;
 import io.ohmyrasp.agent.runtime.AgentRuntime;
 import io.ohmyrasp.agent.runtime.DetectionMode;
 import java.lang.instrument.Instrumentation;
@@ -19,7 +20,20 @@ public final class BootstrapAgent {
 
     // Local runtime control: detection mode + algorithm switches, hot-reloaded
     // from the daemon/operator control file. This is the only coordination the
-    // agent needs to run standalone.
+    // agent needs to run standalone. The daemon also distributes the cloud
+    // policy through the same file; install it via this callback (registered
+    // before start so the first load applies it).
+    AgentRuntime.get()
+        .setPolicyInstaller(
+            policyJson -> {
+              try {
+                OhMyRaspHooks.installPolicy(AgentPolicy.parse(policyJson), "");
+              } catch (RuntimeException e) {
+                if (Boolean.getBoolean("ohmyrasp.debug")) {
+                  System.err.println("[OHMYRASP] distributed policy parse failed: " + e);
+                }
+              }
+            });
     AgentRuntime.get().start(agentArgs);
 
     // The agent reports events asynchronously to its local spool (tailed by the

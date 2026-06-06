@@ -60,8 +60,12 @@ async fn main() -> Result<()> {
         }
         None
     };
-    let (uploader, uploader_join) =
-        uploader::spawn(config.cloud.clone(), config.buffer.clone(), client);
+    let (uploader, uploader_join) = uploader::spawn(
+        config.cloud.clone(),
+        config.buffer.clone(),
+        client,
+        Some(controller.clone()),
+    );
     let cloud_status = uploader.status().clone();
 
     // Shutdown fan-out.

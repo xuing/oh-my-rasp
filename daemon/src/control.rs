@@ -58,6 +58,11 @@ pub struct ControlState {
     /// as enabled by the agent; a present `false` disables it.
     #[serde(default)]
     pub algorithms: BTreeMap<String, bool>,
+    /// Cloud-assigned policy document, passed through verbatim for the agent to
+    /// parse and install. The daemon owns the cloud handshake; the agent only
+    /// ever sees the policy via this file.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub policy: Option<String>,
     /// Monotonic revision; bumped on every change so the agent can cheaply
     /// detect updates.
     #[serde(default)]
@@ -71,6 +76,7 @@ impl ControlState {
         Self {
             mode,
             algorithms: BTreeMap::new(),
+            policy: None,
             revision: 1,
             updated_at: now_rfc3339(),
         }
@@ -124,6 +130,23 @@ impl Controller {
         Ok(self.snapshot())
     }
 
+    /// Install a cloud-assigned policy document, preserving mode/algorithm
+    /// settings. Idempotent: a no-op (no revision bump, no write) when the
+    /// policy is unchanged, so repeated heartbeat pulls don't churn the file.
+    pub fn set_policy(&self, policy: Option<String>) -> Result<bool> {
+        {
+            let mut guard = self.state.lock().expect("control mutex");
+            if guard.policy == policy {
+                return Ok(false);
+            }
+            guard.policy = policy;
+            guard.revision += 1;
+            guard.updated_at = now_rfc3339();
+        }
+        self.persist()?;
+        Ok(true)
+    }
+
     /// Atomically write the control file (temp file + rename) so the agent
     /// never observes a half-written document.
     fn persist(&self) -> Result<()> {
@@ -175,5 +198,27 @@ mod tests {
         // A fresh controller reads the persisted file back.
         let reloaded = Controller::load_or_init(&path, Mode::Off).unwrap();
         assert_eq!(reloaded.snapshot().mode, Mode::Block);
+    }
+
+    #[test]
+    fn policy_passthrough_is_preserved_and_idempotent() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("control.json");
+        let ctrl = Controller::load_or_init(&path, Mode::Monitor).unwrap();
+
+        assert!(ctrl.set_policy(Some("{\"version\":4}".into())).unwrap());
+        assert!(!ctrl.set_policy(Some("{\"version\":4}".into())).unwrap(), "unchanged → no-op");
+        let rev = ctrl.snapshot().revision;
+
+        // A console mode change must keep the policy intact.
+        ctrl.update(Some(Mode::Block), None).unwrap();
+        let snap = ctrl.snapshot();
+        assert_eq!(snap.policy.as_deref(), Some("{\"version\":4}"));
+        assert_eq!(snap.mode, Mode::Block);
+        assert!(snap.revision > rev);
+
+        // Persisted file round-trips the policy.
+        let reloaded = Controller::load_or_init(&path, Mode::Off).unwrap();
+        assert_eq!(reloaded.snapshot().policy.as_deref(), Some("{\"version\":4}"));
     }
 }

@@ -80,4 +80,17 @@ final class AgentRuntimeTest {
     // Last good state is retained.
     assertEquals(DetectionMode.BLOCK, runtime.mode());
   }
+
+  @Test
+  void distributedPolicyIsInstalledOncePerChange() {
+    AgentRuntime runtime = AgentRuntime.newForTesting();
+    java.util.List<String> installed = new java.util.ArrayList<>();
+    runtime.setPolicyInstaller(installed::add);
+
+    runtime.apply("{\"mode\":\"block\",\"policy\":\"{\\\"version\\\":4}\"}");
+    runtime.apply("{\"mode\":\"monitor\",\"policy\":\"{\\\"version\\\":4}\"}"); // unchanged policy
+    runtime.apply("{\"mode\":\"monitor\",\"policy\":\"{\\\"version\\\":5}\"}"); // changed policy
+
+    assertEquals(java.util.List.of("{\"version\":4}", "{\"version\":5}"), installed);
+  }
 }

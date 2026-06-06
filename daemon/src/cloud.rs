@@ -102,11 +102,7 @@ impl CloudClient {
     }
 
     /// Pull the assigned policy document, if any. Returns `None` on 404.
-    ///
-    /// Wired for the next milestone — distributing the cloud-assigned
-    /// `AgentPolicy` down to the agent via the control file. Kept here so the
-    /// cloud surface mirrors the Java client it replaces.
-    #[allow(dead_code)]
+    /// The daemon distributes it to the agent via the control file.
     pub async fn pull_policy(&self, agent_id: &str) -> Result<Option<String>> {
         let resp = self
             .http

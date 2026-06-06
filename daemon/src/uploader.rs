@@ -88,6 +88,7 @@ pub fn spawn(
     cloud_cfg: CloudConfig,
     buffer_cfg: BufferConfig,
     client: Option<CloudClient>,
+    controller: Option<std::sync::Arc<crate::control::Controller>>,
 ) -> (UploaderHandle, tokio::task::JoinHandle<()>) {
     let status = CloudStatusHandle::new(cloud_cfg.enabled);
     let (tx, rx) = mpsc::channel::<AgentEvent>(4096);
@@ -96,6 +97,7 @@ pub fn spawn(
         outbox_path: buffer_cfg.dir.join("outbox.ndjson"),
         max_pending: buffer_cfg.max_pending.max(1),
         client,
+        controller,
         identity: CloudIdentity::default(),
         pending: VecDeque::new(),
         status: status.clone(),
@@ -109,6 +111,7 @@ struct Uploader {
     outbox_path: PathBuf,
     max_pending: usize,
     client: Option<CloudClient>,
+    controller: Option<std::sync::Arc<crate::control::Controller>>,
     identity: CloudIdentity,
     pending: VecDeque<AgentEvent>,
     status: CloudStatusHandle,
@@ -192,6 +195,7 @@ impl Uploader {
                 tracing::warn!(%err, "control-plane registration failed; buffering events");
             }
         }
+        self.refresh_policy().await;
     }
 
     async fn heartbeat(&mut self) {
@@ -221,6 +225,27 @@ impl Uploader {
                     s.last_error = Some(format!("heartbeat: {err}"));
                 });
             }
+        }
+        self.refresh_policy().await;
+    }
+
+    /// Pull the cloud-assigned policy and hand it to the control file for the
+    /// agent to install. Idempotent on the controller side, so it can run on
+    /// every heartbeat without churning the file.
+    async fn refresh_policy(&self) {
+        let (Some(client), Some(controller)) = (&self.client, &self.controller) else {
+            return;
+        };
+        if self.identity.agent_id.is_empty() {
+            return;
+        }
+        match client.pull_policy(&self.identity.agent_id).await {
+            Ok(policy) => match controller.set_policy(policy) {
+                Ok(true) => tracing::info!("distributed updated policy to the control file"),
+                Ok(false) => {}
+                Err(err) => tracing::warn!(%err, "failed to write policy to control file"),
+            },
+            Err(err) => tracing::debug!(%err, "policy pull failed; keeping last policy"),
         }
     }
 

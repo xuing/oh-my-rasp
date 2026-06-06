@@ -36,6 +36,11 @@ public final class AgentRuntime {
   private volatile long lastModifiedMillis = Long.MIN_VALUE;
   private final AtomicBoolean started = new AtomicBoolean();
 
+  // Cloud policy distributed via the control file: installed through this
+  // callback (set by BootstrapAgent), de-duplicated on the raw JSON.
+  private volatile java.util.function.Consumer<String> policyInstaller;
+  private volatile String lastPolicyJson;
+
   private AgentRuntime() {}
 
   public static AgentRuntime get() {
@@ -45,6 +50,14 @@ public final class AgentRuntime {
   /** Creates an isolated instance for tests, leaving the shared singleton untouched. */
   static AgentRuntime newForTesting() {
     return new AgentRuntime();
+  }
+
+  /**
+   * Register the callback that installs a cloud policy carried in the control
+   * file. Set this before {@link #start} so the initial load applies any policy.
+   */
+  public void setPolicyInstaller(java.util.function.Consumer<String> installer) {
+    this.policyInstaller = installer;
   }
 
   /** Initialise from configuration and start the control-file poller (idempotent). */
@@ -160,6 +173,20 @@ public final class AgentRuntime {
     }
     if (object.get("revision") instanceof Number number) {
       revision = number.longValue();
+    }
+    // Install a cloud policy distributed through the control file, once per change.
+    if (object.get("policy") instanceof String policyJson && !policyJson.isBlank()) {
+      if (!policyJson.equals(lastPolicyJson)) {
+        lastPolicyJson = policyJson;
+        java.util.function.Consumer<String> installer = policyInstaller;
+        if (installer != null) {
+          try {
+            installer.accept(policyJson);
+          } catch (RuntimeException e) {
+            // A bad policy document must never disturb the protected application.
+          }
+        }
+      }
     }
   }
 
