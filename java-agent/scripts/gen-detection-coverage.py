@@ -19,7 +19,7 @@ import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
-AGENT = ROOT / "agent" / "src" / "main" / "java" / "io" / "ohmyrasp" / "agent"
+AGENT = ROOT / "agent-jdk25" / "src" / "main" / "java" / "io" / "ohmyrasp" / "agent"
 SCRIPTS = ROOT / "scripts"
 OUT = ROOT / "docs" / "DETECTION-COVERAGE.md"
 

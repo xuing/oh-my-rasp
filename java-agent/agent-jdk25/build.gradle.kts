@@ -26,7 +26,7 @@ val agentJar by tasks.registering(Jar::class) {
             "Agent-Class" to "io.ohmyrasp.agent.OhMyRaspAgent",
             "Can-Redefine-Classes" to "true",
             "Can-Retransform-Classes" to "true",
-            "Implementation-Title" to "OhMyRasp Java Agent"
+            "Implementation-Title" to "OhMyRasp Java Agent (JDK 25)"
         )
     }
 
