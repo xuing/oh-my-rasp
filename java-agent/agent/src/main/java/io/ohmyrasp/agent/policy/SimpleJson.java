@@ -5,10 +5,10 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
-final class SimpleJson {
+public final class SimpleJson {
   private SimpleJson() {}
 
-  static Object parse(String json) {
+  public static Object parse(String json) {
     Parser parser = new Parser(json);
     Object value = parser.readValue();
     parser.skipWhitespace();

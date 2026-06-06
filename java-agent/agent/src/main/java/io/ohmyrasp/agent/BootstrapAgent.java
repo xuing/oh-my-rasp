@@ -7,6 +7,8 @@ import io.ohmyrasp.agent.control.ControlPlaneConfig;
 import io.ohmyrasp.agent.hook.DeserializationGuard;
 import io.ohmyrasp.agent.hook.OhMyRaspHooks;
 import io.ohmyrasp.agent.log.JsonEventLogger;
+import io.ohmyrasp.agent.runtime.AgentRuntime;
+import io.ohmyrasp.agent.runtime.DetectionMode;
 import java.lang.instrument.Instrumentation;
 
 public final class BootstrapAgent {
@@ -14,16 +16,38 @@ public final class BootstrapAgent {
 
   public static void start(String agentArgs, Instrumentation instrumentation) {
     HookRegistry hookRegistry = HookRegistry.defaults();
-    ControlPlaneClient controlPlane =
-        ControlPlaneClient.start(ControlPlaneConfig.load(agentArgs), OhMyRaspHooks::installPolicy);
-    JsonEventLogger.get().setControlPlaneClient(controlPlane);
-    installCrashReporter(controlPlane);
+
+    // Local runtime control: detection mode + algorithm switches, hot-reloaded
+    // from the daemon/operator control file. This is the only coordination the
+    // agent needs to run standalone.
+    AgentRuntime.get().start(agentArgs);
+
+    // The agent reports events asynchronously to its local spool (tailed by the
+    // daemon). Direct cloud communication and heartbeats are off by default —
+    // that is the daemon's job now — but remain available for legacy single-
+    // process deployments via cloud_direct=true.
+    if (ControlPlaneConfig.directCloudEnabled(agentArgs)) {
+      ControlPlaneClient controlPlane =
+          ControlPlaneClient.start(ControlPlaneConfig.load(agentArgs), OhMyRaspHooks::installPolicy);
+      if (controlPlane != null) {
+        JsonEventLogger.get().setControlPlaneClient(controlPlane);
+        installCrashReporter(controlPlane);
+      }
+    }
+
     DeserializationGuard.install();
     instrumentation.addTransformer(new OhMyRaspTransformer(hookRegistry), true);
     retransformAlreadyLoadedTargets(instrumentation, hookRegistry);
     System.out.println(
-        "[OHMYRASP] agent started with ASM transformer, args="
+        "[OHMYRASP] agent started with ASM transformer, mode="
+            + describeMode()
+            + ", args="
             + (agentArgs == null ? "" : agentArgs));
+  }
+
+  private static String describeMode() {
+    DetectionMode mode = AgentRuntime.get().mode();
+    return mode == null ? "legacy" : mode.token();
   }
 
   private static void installCrashReporter(ControlPlaneClient controlPlane) {

@@ -33,6 +33,25 @@ public record ControlPlaneConfig(
         && !blank(environmentId);
   }
 
+  /**
+   * Whether the agent should talk to the control plane directly (legacy single-
+   * process mode). Off by default: the daemon owns cloud communication and the
+   * agent only writes its local event spool.
+   */
+  public static boolean directCloudEnabled(String agentArgs) {
+    String value =
+        setting(
+            parseArgs(agentArgs),
+            "cloud_direct",
+            "ohmyrasp.cloud.direct",
+            "OHMYRASP_CLOUD_DIRECT",
+            "");
+    return switch (value.trim().toLowerCase(java.util.Locale.ROOT)) {
+      case "true", "1", "yes", "on" -> true;
+      default -> false;
+    };
+  }
+
   private static Map<String, String> parseArgs(String agentArgs) {
     Map<String, String> values = new HashMap<>();
     if (agentArgs == null || agentArgs.isBlank()) {

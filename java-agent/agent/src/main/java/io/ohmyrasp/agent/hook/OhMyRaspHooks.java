@@ -6,6 +6,7 @@ import io.ohmyrasp.agent.model.Detection;
 import io.ohmyrasp.agent.model.RequestContext;
 import io.ohmyrasp.agent.policy.AgentPolicy;
 import io.ohmyrasp.agent.policy.PolicyEvaluation;
+import io.ohmyrasp.agent.runtime.AgentRuntime;
 import java.io.File;
 import java.lang.StackWalker.StackFrame;
 import java.lang.reflect.Array;
@@ -1254,6 +1255,12 @@ public final class OhMyRaspHooks {
     }
     long started = System.nanoTime();
     Detection value = detection.orElseThrow();
+    // Local runtime controls (mode + per-algorithm switches), hot-reloaded from
+    // the daemon/operator control file. Unset mode keeps legacy behavior.
+    AgentRuntime runtime = AgentRuntime.get();
+    if (!runtime.detectionEnabled() || !runtime.isAlgorithmEnabled(value.algorithm())) {
+      return;
+    }
     long ruleEvaluationStarted = System.nanoTime();
     PolicyEvaluation policyEvaluation = POLICY.evaluate(value, POLICY_AGENT_KEY);
     long ruleEvaluationUs = elapsedMicros(ruleEvaluationStarted);
@@ -1268,10 +1275,10 @@ public final class OhMyRaspHooks {
       event = event.withAction("block");
     }
     boolean willBlock =
-        "block".equalsIgnoreCase(event.action())
+        runtime.blockingAllowed()
+            && "block".equalsIgnoreCase(event.action())
             && (activeRequest(event) || allowNonRequestBlock);
-    JsonEventLogger.get().log(event);
-    JsonEventLogger.get().recordHookTelemetry(event, elapsedMicros(started), ruleEvaluationUs);
+    JsonEventLogger.get().record(event, elapsedMicros(started), ruleEvaluationUs);
     if (willBlock) {
       redirectToBlockPage(event);
       if (throwOnBlock) {
