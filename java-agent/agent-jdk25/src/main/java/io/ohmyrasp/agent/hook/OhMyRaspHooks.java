@@ -47,6 +47,9 @@ public final class OhMyRaspHooks {
   }
 
   public static void enterHttpRequest(Object request, Object response) {
+    if (detectionDisabled()) {
+      return;
+    }
     // Time the full agent cost added to this request entry so the daemon's
     // business-latency panel reflects real (usually benign) traffic, not just
     // the rare attack path. Sampled inside sampleHookLatency.
@@ -76,6 +79,9 @@ public final class OhMyRaspHooks {
       String query,
       Map<String, List<String>> parameters,
       Map<String, String> headers) {
+    if (detectionDisabled()) {
+      return;
+    }
     try {
       RequestContext context = new RequestContext(method, uri, query, parameters, headers);
       emit(DETECTORS.detectRequest(context));
@@ -93,6 +99,9 @@ public final class OhMyRaspHooks {
       Map<String, List<String>> parameters,
       Map<String, String> headers,
       String body) {
+    if (detectionDisabled()) {
+      return;
+    }
     try {
       RequestContext context = new RequestContext(method, uri, query, parameters, headers, body);
       emit(DETECTORS.detectRequest(context));
@@ -112,6 +121,9 @@ public final class OhMyRaspHooks {
       String body,
       Object config,
       String mechanism) {
+    if (detectionDisabled()) {
+      return;
+    }
     try {
       RequestContext context = new RequestContext(method, uri, query, parameters, headers, body);
       String hook = mechanism == null || mechanism.isBlank() ? "JAAS" : mechanism;
@@ -132,6 +144,9 @@ public final class OhMyRaspHooks {
       String mechanism,
       String exceptionClass,
       String message) {
+    if (detectionDisabled()) {
+      return;
+    }
     try {
       RequestContext context = new RequestContext(method, uri, query, parameters, headers);
       emit(DETECTORS.detectJwtVerificationFailure(mechanism, exceptionClass, message, context));
@@ -144,6 +159,9 @@ public final class OhMyRaspHooks {
 
   public static void beforeServletIncludeAttributes(
       Map<String, String> attributes, List<String> stackClassNames) {
+    if (detectionDisabled()) {
+      return;
+    }
     try {
       emit(DETECTORS.detectServletIncludeAttributes(attributes, currentRequest(), stackClassNames));
     } catch (OhMyRaspBlockException blocked) {
@@ -161,6 +179,9 @@ public final class OhMyRaspHooks {
       Map<String, String> headers,
       Map<String, String> attributes,
       List<String> stackClassNames) {
+    if (detectionDisabled()) {
+      return;
+    }
     try {
       RequestContext context = new RequestContext(method, uri, query, parameters, headers);
       emit(DETECTORS.detectServletIncludeAttributes(attributes, context, stackClassNames));
@@ -172,6 +193,9 @@ public final class OhMyRaspHooks {
   }
 
   public static void beforeRemoteJobSubmission(String mechanism, String descriptor) {
+    if (detectionDisabled()) {
+      return;
+    }
     try {
       emit(DETECTORS.detectRemoteJobSubmission(mechanism, descriptor, currentRequest()));
     } catch (OhMyRaspBlockException blocked) {
@@ -182,11 +206,17 @@ public final class OhMyRaspHooks {
   }
 
   public static void beforeRmiRegistryBind(String operation, String bindingName, Object remote) {
+    if (detectionDisabled()) {
+      return;
+    }
     beforeRmiRegistryBind(operation, bindingName, remote, stackTraceClassNames());
   }
 
   public static void beforeRmiRegistryBind(
       String operation, String bindingName, Object remote, List<String> stackClassNames) {
+    if (detectionDisabled()) {
+      return;
+    }
     try {
       String remoteClassName = remote == null ? "" : remote.getClass().getName();
       emit(
@@ -201,6 +231,9 @@ public final class OhMyRaspHooks {
 
   public static void beforeSyntheticRmiRegistryBind(
       String operation, String bindingName, String remoteClassName, List<String> stackClassNames) {
+    if (detectionDisabled()) {
+      return;
+    }
     try {
       emit(
           DETECTORS.detectRmiRegistryBind(
@@ -219,11 +252,17 @@ public final class OhMyRaspHooks {
   }
 
   public static void beforeProcessBuilderStart(ProcessBuilder processBuilder) {
+    if (detectionDisabled()) {
+      return;
+    }
     beforeProcessBuilderStart(processBuilder, stackTraceClassNames());
   }
 
   public static void beforeProcessBuilderStart(
       ProcessBuilder processBuilder, List<String> stackClassNames) {
+    if (detectionDisabled()) {
+      return;
+    }
     try {
       emit(DETECTORS.detectCommand(processBuilder.command(), currentRequest(), stackClassNames));
     } catch (OhMyRaspBlockException blocked) {
@@ -234,6 +273,9 @@ public final class OhMyRaspHooks {
   }
 
   public static void beforeRuntimeExecString(String command) {
+    if (detectionDisabled()) {
+      return;
+    }
     try {
       List<String> items = command == null ? List.of() : List.of(command);
       emit(DETECTORS.detectCommand(items, currentRequest(), stackTraceClassNames()));
@@ -245,6 +287,9 @@ public final class OhMyRaspHooks {
   }
 
   public static void beforeRuntimeExecArray(String[] command) {
+    if (detectionDisabled()) {
+      return;
+    }
     try {
       var items = new ArrayList<String>();
       if (command != null) {
@@ -259,6 +304,9 @@ public final class OhMyRaspHooks {
   }
 
   public static void beforeSql(String query) {
+    if (detectionDisabled()) {
+      return;
+    }
     try {
       emit(DETECTORS.detectSql(query, currentRequest()));
     } catch (OhMyRaspBlockException blocked) {
@@ -269,6 +317,9 @@ public final class OhMyRaspHooks {
   }
 
   public static void beforeJdbcConnect(String url) {
+    if (detectionDisabled()) {
+      return;
+    }
     try {
       emit(DETECTORS.detectJdbcUrl(url, currentRequest()));
     } catch (OhMyRaspBlockException blocked) {
@@ -286,6 +337,9 @@ public final class OhMyRaspHooks {
       Map<String, String> headers,
       String body,
       String url) {
+    if (detectionDisabled()) {
+      return;
+    }
     try {
       RequestContext context = new RequestContext(method, uri, query, parameters, headers, body);
       emit(DETECTORS.detectJdbcUrl(url, context));
@@ -298,6 +352,9 @@ public final class OhMyRaspHooks {
 
   public static void beforeSqlException(
       String server, String errorCode, String errorState, String errorMessage, String query) {
+    if (detectionDisabled()) {
+      return;
+    }
     try {
       emit(
           DETECTORS.detectSqlException(
@@ -310,6 +367,9 @@ public final class OhMyRaspHooks {
   }
 
   public static void beforeSqlRegex(String query, String regex) {
+    if (detectionDisabled()) {
+      return;
+    }
     try {
       emit(DETECTORS.detectSqlRegex(query, regex, currentRequest()));
     } catch (OhMyRaspBlockException blocked) {
@@ -320,6 +380,9 @@ public final class OhMyRaspHooks {
   }
 
   public static void beforeUrlOpen(Object url) {
+    if (detectionDisabled()) {
+      return;
+    }
     try {
       String raw = url instanceof URL typed ? typed.toExternalForm() : String.valueOf(url);
       emit(DETECTORS.detectUrl(raw, currentRequest()));
@@ -331,6 +394,9 @@ public final class OhMyRaspHooks {
   }
 
   public static void beforeDnsLookup(String host) {
+    if (detectionDisabled()) {
+      return;
+    }
     try {
       emit(DETECTORS.detectDns(host, currentRequest()));
     } catch (OhMyRaspBlockException blocked) {
@@ -341,6 +407,9 @@ public final class OhMyRaspHooks {
   }
 
   public static void beforeJndiLookup(Object name) {
+    if (detectionDisabled()) {
+      return;
+    }
     try {
       emit(DETECTORS.detectJndi(String.valueOf(name), currentRequest()));
     } catch (OhMyRaspBlockException blocked) {
@@ -351,6 +420,9 @@ public final class OhMyRaspHooks {
   }
 
   public static void beforeJaasConfig(Object config) {
+    if (detectionDisabled()) {
+      return;
+    }
     try {
       emit(DETECTORS.detectJaasConfig(String.valueOf(config), "JAAS", currentRequest()));
     } catch (OhMyRaspBlockException blocked) {
@@ -361,6 +433,9 @@ public final class OhMyRaspHooks {
   }
 
   public static void beforeJaasConfigEntry(Object loginModuleName, Object options) {
+    if (detectionDisabled()) {
+      return;
+    }
     try {
       emit(DETECTORS.detectJaasConfig(jaasConfigFrom(loginModuleName, options), "JAAS", currentRequest()));
     } catch (OhMyRaspBlockException blocked) {
@@ -371,22 +446,37 @@ public final class OhMyRaspHooks {
   }
 
   public static void beforeClassLoaderUrl(Object url) {
+    if (detectionDisabled()) {
+      return;
+    }
     beforeClassLoaderSources("URLClassLoader", url);
   }
 
   public static void beforeClassLoaderUrls(Object urls) {
+    if (detectionDisabled()) {
+      return;
+    }
     beforeClassLoaderSources("URLClassLoader", urls);
   }
 
   public static void beforeRmiClassLoaderCodebase(String codebase) {
+    if (detectionDisabled()) {
+      return;
+    }
     beforeClassLoaderSources("RMIClassLoader", codebase);
   }
 
   public static void beforeSpringConfigLocation(Object location) {
+    if (detectionDisabled()) {
+      return;
+    }
     beforeSpringConfigLocations("SpringConfig", location);
   }
 
   public static void beforeSpringConfigLocations(Object locations) {
+    if (detectionDisabled()) {
+      return;
+    }
     beforeSpringConfigLocations("SpringConfig", locations);
   }
 
@@ -415,6 +505,9 @@ public final class OhMyRaspHooks {
   }
 
   public static void beforeJmxMBeanInvoke(Object mbeanName, String operationName, Object arguments) {
+    if (detectionDisabled()) {
+      return;
+    }
     try {
       emit(
           DETECTORS.detectJmxMBeanInvoke(
@@ -427,6 +520,9 @@ public final class OhMyRaspHooks {
   }
 
   public static void beforeArgumentFileExpansion(Object arguments) {
+    if (detectionDisabled()) {
+      return;
+    }
     try {
       emit(
           DETECTORS.detectArgumentFileExpansion(
@@ -439,6 +535,9 @@ public final class OhMyRaspHooks {
   }
 
   public static void beforeFileRead(String path) {
+    if (detectionDisabled()) {
+      return;
+    }
     try {
       emit(DETECTORS.detectFileRead(path, currentRequest(), isXmlParserStack()));
     } catch (OhMyRaspBlockException blocked) {
@@ -449,14 +548,23 @@ public final class OhMyRaspHooks {
   }
 
   public static void beforeFileReadObject(Object file) {
+    if (detectionDisabled()) {
+      return;
+    }
     beforeFileRead(pathFrom(file));
   }
 
   public static void beforeFileWrite(String path) {
+    if (detectionDisabled()) {
+      return;
+    }
     beforeFileWrite(path, stackTraceClassNames());
   }
 
   public static void beforeFileWrite(String path, List<String> stackClassNames) {
+    if (detectionDisabled()) {
+      return;
+    }
     String archiveEntry = ARCHIVE_ENTRY.get();
     try {
       emit(DETECTORS.detectArchiveExtraction(archiveEntry, path, currentRequest()));
@@ -473,10 +581,16 @@ public final class OhMyRaspHooks {
   }
 
   public static void beforeFileWriteObject(Object file) {
+    if (detectionDisabled()) {
+      return;
+    }
     beforeFileWrite(pathFrom(file));
   }
 
   public static void beforeFileDelete(Object file) {
+    if (detectionDisabled()) {
+      return;
+    }
     try {
       emit(DETECTORS.detectFileDelete(pathFrom(file), currentRequest()));
     } catch (OhMyRaspBlockException blocked) {
@@ -487,10 +601,16 @@ public final class OhMyRaspHooks {
   }
 
   public static void beforeDirectoryList(Object file) {
+    if (detectionDisabled()) {
+      return;
+    }
     beforeDirectoryList(file, stackTraceClassNames());
   }
 
   public static void beforeDirectoryList(Object file, List<String> stackClassNames) {
+    if (detectionDisabled()) {
+      return;
+    }
     try {
       emit(DETECTORS.detectDirectoryList(pathFrom(file), currentRequest(), stackClassNames));
     } catch (OhMyRaspBlockException blocked) {
@@ -501,6 +621,9 @@ public final class OhMyRaspHooks {
   }
 
   public static void beforeInclude(String url, String realPath, String function) {
+    if (detectionDisabled()) {
+      return;
+    }
     try {
       emit(DETECTORS.detectInclude(url, realPath, function, currentRequest()));
     } catch (OhMyRaspBlockException blocked) {
@@ -511,6 +634,9 @@ public final class OhMyRaspHooks {
   }
 
   public static void beforeFileUpload(String filename) {
+    if (detectionDisabled()) {
+      return;
+    }
     try {
       emit(DETECTORS.detectFileUpload(filename, currentRequest()));
     } catch (OhMyRaspBlockException blocked) {
@@ -521,6 +647,9 @@ public final class OhMyRaspHooks {
   }
 
   public static void beforeWebdavUpload(String source, String destination, String method) {
+    if (detectionDisabled()) {
+      return;
+    }
     try {
       emit(DETECTORS.detectWebdavUpload(source, destination, method, currentRequest()));
     } catch (OhMyRaspBlockException blocked) {
@@ -531,6 +660,9 @@ public final class OhMyRaspHooks {
   }
 
   public static void beforeRename(String source, String destination) {
+    if (detectionDisabled()) {
+      return;
+    }
     try {
       emit(DETECTORS.detectRename(source, destination, currentRequest()));
     } catch (OhMyRaspBlockException blocked) {
@@ -541,6 +673,9 @@ public final class OhMyRaspHooks {
   }
 
   public static void beforeLink(String source, String destination, String type) {
+    if (detectionDisabled()) {
+      return;
+    }
     try {
       emit(DETECTORS.detectLink(source, destination, type, currentRequest()));
     } catch (OhMyRaspBlockException blocked) {
@@ -551,18 +686,30 @@ public final class OhMyRaspHooks {
   }
 
   public static void beforePathRead(Object path) {
+    if (detectionDisabled()) {
+      return;
+    }
     beforeFileRead(pathFrom(path));
   }
 
   public static void beforePathWrite(Object path) {
+    if (detectionDisabled()) {
+      return;
+    }
     beforeFileWrite(pathFrom(path));
   }
 
   public static void beforePathWrite(Object path, List<String> stackClassNames) {
+    if (detectionDisabled()) {
+      return;
+    }
     beforeFileWrite(pathFrom(path), stackClassNames);
   }
 
   public static void beforeGeneratedScriptFileWrite(Object path, Object content) {
+    if (detectionDisabled()) {
+      return;
+    }
     try {
       emit(
           DETECTORS.detectGeneratedScriptFileWrite(
@@ -575,6 +722,9 @@ public final class OhMyRaspHooks {
   }
 
   public static void beforePathDelete(Object path) {
+    if (detectionDisabled()) {
+      return;
+    }
     beforeFileDelete(path);
   }
 
@@ -596,6 +746,9 @@ public final class OhMyRaspHooks {
   }
 
   public static void beforeXmlEntity(String name, Object source) {
+    if (detectionDisabled()) {
+      return;
+    }
     try {
       String systemId = invokeString(source, "getSystemId").orElse(String.valueOf(source));
       emit(DETECTORS.detectXxeEntity(name, systemId, currentRequest()));
@@ -607,6 +760,9 @@ public final class OhMyRaspHooks {
   }
 
   public static void beforeUrlDataSource(Object url) {
+    if (detectionDisabled()) {
+      return;
+    }
     try {
       List<String> stackClassNames = stackTraceClassNames();
       String mechanism = stackLooksCxfAegisAttachment(stackClassNames) ? "cxf-aegis-xop" : "";
@@ -620,6 +776,9 @@ public final class OhMyRaspHooks {
   }
 
   public static void beforeXmlAttachmentReference(String mechanism, String href) {
+    if (detectionDisabled()) {
+      return;
+    }
     try {
       emit(DETECTORS.detectXmlAttachmentReference(mechanism, href, currentRequest()));
     } catch (OhMyRaspBlockException blocked) {
@@ -630,6 +789,9 @@ public final class OhMyRaspHooks {
   }
 
   public static void beforeXxeFileRead(String path) {
+    if (detectionDisabled()) {
+      return;
+    }
     try {
       emit(DETECTORS.detectFileRead(path, currentRequest(), true));
     } catch (OhMyRaspBlockException blocked) {
@@ -640,6 +802,9 @@ public final class OhMyRaspHooks {
   }
 
   public static void beforeJwtVerificationFailure(String mechanism, Object failure) {
+    if (detectionDisabled()) {
+      return;
+    }
     try {
       String exceptionClass = failure == null ? "" : failure.getClass().getName();
       String message = failure instanceof Throwable throwable ? throwable.getMessage() : "";
@@ -652,6 +817,9 @@ public final class OhMyRaspHooks {
   }
 
   public static void beforeDeserializationClass(String className) {
+    if (detectionDisabled()) {
+      return;
+    }
     try {
       emit(DETECTORS.detectDeserialization(className, currentRequest(), stackTraceClassNames()));
     } catch (OhMyRaspBlockException blocked) {
@@ -663,6 +831,9 @@ public final class OhMyRaspHooks {
 
   public static void beforeSyntheticDeserializationClass(
       String className, List<String> stackClassNames) {
+    if (detectionDisabled()) {
+      return;
+    }
     try {
       emit(DETECTORS.detectDeserialization(className, currentRequest(), stackClassNames));
     } catch (OhMyRaspBlockException blocked) {
@@ -673,6 +844,9 @@ public final class OhMyRaspHooks {
   }
 
   public static void beforeObjectInputStream(Object inputStream) {
+    if (detectionDisabled()) {
+      return;
+    }
     try {
       String streamClassName = inputStream == null ? "" : inputStream.getClass().getName();
       emit(
@@ -686,6 +860,9 @@ public final class OhMyRaspHooks {
   }
 
   public static void beforeSessionDeserialization(String sessionId, String mechanism) {
+    if (detectionDisabled()) {
+      return;
+    }
     try {
       emit(DETECTORS.detectSessionDeserialization(sessionId, mechanism, currentRequest()));
     } catch (OhMyRaspBlockException blocked) {
@@ -696,6 +873,9 @@ public final class OhMyRaspHooks {
   }
 
   public static void beforePolymorphicType(String parser, String className) {
+    if (detectionDisabled()) {
+      return;
+    }
     try {
       emit(DETECTORS.detectPolymorphicType(parser, className, currentRequest()));
     } catch (OhMyRaspBlockException blocked) {
@@ -707,6 +887,9 @@ public final class OhMyRaspHooks {
 
   public static void beforeProtocolClassInstantiation(
       String protocol, String className, Object arguments) {
+    if (detectionDisabled()) {
+      return;
+    }
     try {
       emit(
           DETECTORS.detectProtocolClassInstantiation(
@@ -721,6 +904,9 @@ public final class OhMyRaspHooks {
   }
 
   public static void beforeHttpInvokerDeserialization(String mechanism) {
+    if (detectionDisabled()) {
+      return;
+    }
     try {
       emit(DETECTORS.detectHttpInvokerDeserialization(mechanism, currentRequest()));
     } catch (OhMyRaspBlockException blocked) {
@@ -731,6 +917,9 @@ public final class OhMyRaspHooks {
   }
 
   public static void beforeHessianType(String type) {
+    if (detectionDisabled()) {
+      return;
+    }
     try {
       emit(DETECTORS.detectHessianType(type, currentRequest()), true, true);
     } catch (OhMyRaspBlockException blocked) {
@@ -741,6 +930,9 @@ public final class OhMyRaspHooks {
   }
 
   public static void beforeXmlRpcSerializableValue(String mechanism) {
+    if (detectionDisabled()) {
+      return;
+    }
     try {
       emit(DETECTORS.detectXmlRpcSerializableValue(mechanism, currentRequest()));
     } catch (OhMyRaspBlockException blocked) {
@@ -751,6 +943,9 @@ public final class OhMyRaspHooks {
   }
 
   public static void beforeJavaBeansStatement(Object statement) {
+    if (detectionDisabled()) {
+      return;
+    }
     try {
       Object target = invoke(statement, "getTarget").orElse(null);
       String methodName = invokeString(statement, "getMethodName").orElse("");
@@ -780,6 +975,9 @@ public final class OhMyRaspHooks {
   }
 
   public static void beforeOgnl(String expression) {
+    if (detectionDisabled()) {
+      return;
+    }
     try {
       emit(DETECTORS.detectOgnl(expression, currentRequest()));
     } catch (OhMyRaspBlockException blocked) {
@@ -790,6 +988,9 @@ public final class OhMyRaspHooks {
   }
 
   public static void beforeExpressionEvaluation(String engine, Object expression) {
+    if (detectionDisabled()) {
+      return;
+    }
     try {
       emit(DETECTORS.detectExpression(engine, expressionText(expression), currentRequest()));
     } catch (OhMyRaspBlockException blocked) {
@@ -800,6 +1001,9 @@ public final class OhMyRaspHooks {
   }
 
   public static void beforeJavaCompilationSource(String compiler, Object source) {
+    if (detectionDisabled()) {
+      return;
+    }
     try {
       emit(DETECTORS.detectJavaCompilation(compiler, javaSourceText(source), currentRequest()));
     } catch (OhMyRaspBlockException blocked) {
@@ -810,10 +1014,16 @@ public final class OhMyRaspHooks {
   }
 
   public static void beforeJavaCompilationUnits(Object units) {
+    if (detectionDisabled()) {
+      return;
+    }
     beforeJavaCompilationUnits("javac", units);
   }
 
   public static void beforeJavaCompilationUnits(String compiler, Object units) {
+    if (detectionDisabled()) {
+      return;
+    }
     try {
       for (String source : javaSourceTexts(units)) {
         emit(DETECTORS.detectJavaCompilation(compiler, source, currentRequest()));
@@ -826,6 +1036,9 @@ public final class OhMyRaspHooks {
   }
 
   public static void beforeEval(String function, String code) {
+    if (detectionDisabled()) {
+      return;
+    }
     try {
       emit(DETECTORS.detectEval(function, code, currentRequest()));
     } catch (OhMyRaspBlockException blocked) {
@@ -836,6 +1049,9 @@ public final class OhMyRaspHooks {
   }
 
   public static void beforeLoadLibrary(String function, String path, boolean windows) {
+    if (detectionDisabled()) {
+      return;
+    }
     try {
       emit(DETECTORS.detectLoadLibrary(function, path, windows, currentRequest()));
     } catch (OhMyRaspBlockException blocked) {
@@ -846,6 +1062,9 @@ public final class OhMyRaspHooks {
   }
 
   public static void beforeResponseDataLeak(String contentType, String content) {
+    if (detectionDisabled()) {
+      return;
+    }
     try {
       emit(DETECTORS.detectResponseDataLeak(contentType, content, currentRequest()));
     } catch (OhMyRaspBlockException blocked) {
@@ -856,6 +1075,9 @@ public final class OhMyRaspHooks {
   }
 
   public static void beforeXssEcho(String content) {
+    if (detectionDisabled()) {
+      return;
+    }
     try {
       emit(DETECTORS.detectXssEcho(content, currentRequest()));
     } catch (OhMyRaspBlockException blocked) {
@@ -866,6 +1088,9 @@ public final class OhMyRaspHooks {
   }
 
   public static void beforeWebshellEval(String function, String code) {
+    if (detectionDisabled()) {
+      return;
+    }
     try {
       emit(DETECTORS.detectWebshellEval(function, code, currentRequest()));
     } catch (OhMyRaspBlockException blocked) {
@@ -876,6 +1101,9 @@ public final class OhMyRaspHooks {
   }
 
   public static void beforeWebshellCommand(String command) {
+    if (detectionDisabled()) {
+      return;
+    }
     try {
       emit(DETECTORS.detectWebshellCommand(List.of(command), currentRequest()));
     } catch (OhMyRaspBlockException blocked) {
@@ -886,6 +1114,9 @@ public final class OhMyRaspHooks {
   }
 
   public static void beforeWebshellFileWrite(String path, String content) {
+    if (detectionDisabled()) {
+      return;
+    }
     try {
       emit(DETECTORS.detectWebshellFileWrite(path, content, currentRequest()));
     } catch (OhMyRaspBlockException blocked) {
@@ -896,6 +1127,9 @@ public final class OhMyRaspHooks {
   }
 
   public static void beforeWebshellCallable(String function) {
+    if (detectionDisabled()) {
+      return;
+    }
     try {
       emit(DETECTORS.detectWebshellCallable(function, currentRequest()));
     } catch (OhMyRaspBlockException blocked) {
@@ -906,6 +1140,9 @@ public final class OhMyRaspHooks {
   }
 
   public static void beforeWebshellLdPreload(String name, String value) {
+    if (detectionDisabled()) {
+      return;
+    }
     try {
       emit(DETECTORS.detectWebshellLdPreload(name, value, currentRequest()));
     } catch (OhMyRaspBlockException blocked) {
@@ -1304,6 +1541,16 @@ public final class OhMyRaspHooks {
 
   private static boolean activeRequest(Detection detection) {
     return detection != null && detection.request() != null && detection.request().active();
+  }
+
+  /**
+   * True when detection is turned OFF. A single volatile read, used to
+   * short-circuit hook entry points before any detector runs — so OFF mode
+   * actually removes the hot-path cost rather than just suppressing the result.
+   * Cleanup/accessor hooks intentionally do not consult this.
+   */
+  private static boolean detectionDisabled() {
+    return AgentRuntime.get().mode() == DetectionMode.OFF;
   }
 
   private static long elapsedMicros(long startedNanos) {
