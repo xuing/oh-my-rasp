@@ -34,10 +34,13 @@ import javax.script.ScriptContext;
 import javax.script.ScriptEngine;
 import javax.script.SimpleBindings;
 import javax.security.auth.login.AppConfigurationEntry;
+import jakarta.servlet.ServletException;
+import jakarta.servlet.annotation.MultipartConfig;
 import jakarta.servlet.annotation.WebServlet;
 import jakarta.servlet.http.HttpServlet;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
+import jakarta.servlet.http.Part;
 import javax.tools.JavaCompiler;
 import javax.tools.SimpleJavaFileObject;
 import javax.tools.ToolProvider;
@@ -46,10 +49,11 @@ import javax.xml.parsers.DocumentBuilderFactory;
 import org.xml.sax.InputSource;
 
 @WebServlet(urlPatterns = "/rasp/*")
+@MultipartConfig
 public final class Java11ProbeServlet extends HttpServlet {
   @Override
   protected void doGet(HttpServletRequest request, HttpServletResponse response)
-      throws IOException {
+      throws ServletException, IOException {
     String path = request.getPathInfo() == null ? "/" : request.getPathInfo();
     if ("/health".equals(path)) {
       send(response, "ok");
@@ -115,6 +119,16 @@ public final class Java11ProbeServlet extends HttpServlet {
     if ("/java11/file-write".equals(path)) {
       writeWebrootScript();
       send(response, "java11 file write attempted");
+      return;
+    }
+    if ("/java11/plugin/add".equals(path)) {
+      int files = 0;
+      for (Part part : request.getParts()) {
+        if (part.getSubmittedFileName() != null) {
+          files++;
+        }
+      }
+      send(response, "java11 upload attempted " + files);
       return;
     }
     if ("/java11/archive-traversal".equals(path)) {
@@ -248,6 +262,12 @@ public final class Java11ProbeServlet extends HttpServlet {
     }
     response.setStatus(HttpServletResponse.SC_NOT_FOUND);
     send(response, "not found");
+  }
+
+  @Override
+  protected void doPost(HttpServletRequest request, HttpServletResponse response)
+      throws ServletException, IOException {
+    doGet(request, response);
   }
 
   private static void runSafeCommand() throws IOException {

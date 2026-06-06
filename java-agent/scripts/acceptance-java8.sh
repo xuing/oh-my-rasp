@@ -110,6 +110,11 @@ expect_startup_hook() {
     echo "missing Java 8 request hook startup marker for protected ${prefix}" >&2
     exit 1
   fi
+  if ! grep -q '"upload_hook":"installed"' "$log"; then
+    cat "$log" >&2
+    echo "missing Java 8 upload hook startup marker for protected ${prefix}" >&2
+    exit 1
+  fi
   if grep -q '"event":"ohmyrasp-detection"' "$log"; then
     cat "$log" >&2
     echo "protected ${prefix} startup or health traffic produced a detection" >&2
@@ -127,6 +132,50 @@ expect_block() {
   local status
   status="$(curl -sS -o "logs/${prefix}-protected/${name}.response" -w "%{http_code}" "${url}${path}" || true)"
   if [[ "$status" =~ ^2 ]]; then
+    echo "protected ${prefix} ${name} unexpectedly returned ${status}" >&2
+    cat "logs/${prefix}-protected/${name}.response" >&2
+    exit 1
+  fi
+  if ! grep -q "\"algorithm\":\"${algorithm}\".*\"action\":\"block\"" "$log"; then
+    cat "$log" >&2
+    echo "missing protected ${prefix} ${name} block event for ${algorithm}" >&2
+    exit 1
+  fi
+  echo "blocked ${prefix} ${name}"
+}
+
+expect_upload_ok() {
+  local prefix="$1"
+  local name="$2"
+  local url="$3"
+  local upload_file="logs/${prefix}-baseline/java-archive-upload.jar"
+  printf 'PK\003\004ohmyrasp-java8-upload' > "$upload_file"
+  curl -fsS \
+    -F "file=@${upload_file};filename=Evil.jar;type=application/java-archive" \
+    "$url" > "logs/${prefix}-baseline/${name}.response"
+  if ! grep -q "upload attempted 1" "logs/${prefix}-baseline/${name}.response"; then
+    cat "logs/${prefix}-baseline/${name}.response" >&2
+    echo "baseline ${prefix} ${name} did not reach multipart endpoint" >&2
+    exit 1
+  fi
+  echo "baseline ${prefix} ${name}"
+}
+
+expect_block_upload() {
+  local prefix="$1"
+  local url="$2"
+  local name="$3"
+  local algorithm="$4"
+  local log="logs/${prefix}-protected/events.jsonl"
+  local upload_file="logs/${prefix}-protected/java-archive-upload.jar"
+  local status
+  printf 'PK\003\004ohmyrasp-java8-upload' > "$upload_file"
+  status="$(curl -sS -o "logs/${prefix}-protected/${name}.response" \
+    -w "%{http_code}" \
+    -F "file=@${upload_file};filename=Evil.jar;type=application/java-archive" \
+    "${url}/rasp/java8/plugin/add" || true)"
+  if [[ "$status" =~ ^2 ]] \
+      && grep -q "upload attempted 1" "logs/${prefix}-protected/${name}.response"; then
     echo "protected ${prefix} ${name} unexpectedly returned ${status}" >&2
     cat "logs/${prefix}-protected/${name}.response" >&2
     exit 1
@@ -183,6 +232,7 @@ run_matrix_entry() {
     path=${item#*:}
     expect_ok "$prefix" "$name" "${baseline_url}${path}"
   done
+  expect_upload_ok "$prefix" upload_java_archive "${baseline_url}/rasp/java8/plugin/add"
 
   expect_protected_normal "$prefix" "$protected_url"
   expect_block "$prefix" "$protected_url" command java8_command_execution_exploit_primitive /rasp/java8/command
@@ -207,6 +257,7 @@ run_matrix_entry() {
   expect_block "$prefix" "$protected_url" xml_decoder_webshell java8_xml_decoder_script_file_write /rasp/java8/xml-decoder-webshell
   expect_block "$prefix" "$protected_url" jndi java8_jndi_remote_lookup /rasp/java8/jndi
   expect_block "$prefix" "$protected_url" xxe_file java8_xxe_external_entity_protocol /rasp/java8/xxe-file
+  expect_block_upload "$prefix" "$protected_url" upload_java_archive fileUpload_java_archive
 }
 
 for version in "${versions[@]}"; do

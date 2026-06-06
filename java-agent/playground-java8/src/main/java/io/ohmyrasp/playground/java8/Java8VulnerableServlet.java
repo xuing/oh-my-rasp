@@ -31,10 +31,12 @@ import javax.script.ScriptEngineManager;
 import javax.script.ScriptException;
 import javax.security.auth.login.AppConfigurationEntry;
 import javax.servlet.ServletException;
+import javax.servlet.annotation.MultipartConfig;
 import javax.servlet.annotation.WebServlet;
 import javax.servlet.http.HttpServlet;
 import javax.servlet.http.HttpServletRequest;
 import javax.servlet.http.HttpServletResponse;
+import javax.servlet.http.Part;
 import javax.xml.XMLConstants;
 import javax.xml.parsers.DocumentBuilderFactory;
 import javax.xml.parsers.ParserConfigurationException;
@@ -45,12 +47,13 @@ import org.xml.sax.InputSource;
 import org.xml.sax.SAXException;
 
 @WebServlet(urlPatterns = "/rasp/*")
+@MultipartConfig
 public final class Java8VulnerableServlet extends HttpServlet {
   @Override
   protected void doGet(HttpServletRequest request, HttpServletResponse response)
       throws ServletException, IOException {
     try {
-      route(request.getPathInfo(), response);
+      route(request, response);
     } catch (IOException exception) {
       throw exception;
     } catch (ServletException exception) {
@@ -60,8 +63,14 @@ public final class Java8VulnerableServlet extends HttpServlet {
     }
   }
 
-  private static void route(String pathInfo, HttpServletResponse response) throws Exception {
-    String path = pathInfo == null ? "/" : pathInfo;
+  @Override
+  protected void doPost(HttpServletRequest request, HttpServletResponse response)
+      throws ServletException, IOException {
+    doGet(request, response);
+  }
+
+  private static void route(HttpServletRequest request, HttpServletResponse response) throws Exception {
+    String path = request.getPathInfo() == null ? "/" : request.getPathInfo();
     if ("/health".equals(path)) {
       send(response, "ok");
       return;
@@ -106,6 +115,16 @@ public final class Java8VulnerableServlet extends HttpServlet {
       output.write("<% out.println(\"ok\"); %>".getBytes("UTF-8"));
       output.close();
       send(response, "file write attempted");
+      return;
+    }
+    if ("/java8/plugin/add".equals(path)) {
+      int files = 0;
+      for (Part part : request.getParts()) {
+        if (part.getSubmittedFileName() != null) {
+          files++;
+        }
+      }
+      send(response, "upload attempted " + files);
       return;
     }
     if ("/java8/ssrf-metadata".equals(path)) {

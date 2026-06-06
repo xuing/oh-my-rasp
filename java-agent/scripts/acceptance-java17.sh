@@ -69,6 +69,8 @@ run_baseline() {
   local version="$1"
   local url="$2"
   local dir="logs/tomcat${version}-java17-baseline"
+  local upload_file="${dir}/java-archive-upload.jar"
+  printf 'PK\003\004ohmyrasp-java17-upload' > "$upload_file"
   curl -fsS "${url}/rasp/java17/normal" > "${dir}/normal.response"
   curl -fsS "${url}/rasp/java17/command" > "${dir}/command.response"
   curl -fsS "${url}/rasp/java17/command-shell" > "${dir}/command_shell.response"
@@ -92,6 +94,14 @@ run_baseline() {
   curl -fsS "${url}/rasp/java17/xml-decoder-runtime" > "${dir}/xml_decoder_runtime.response"
   curl -fsS "${url}/rasp/java17/xml-decoder-webshell" > "${dir}/xml_decoder_webshell.response"
   curl -fsS "${url}/rasp/java17/xxe-file" > "${dir}/xxe_file.response"
+  curl -fsS \
+    -F "file=@${upload_file};filename=Evil.jar;type=application/java-archive" \
+    "${url}/rasp/java17/plugin/add" > "${dir}/upload_java_archive.response"
+  if ! grep -q "java17 upload attempted 1" "${dir}/upload_java_archive.response"; then
+    cat "${dir}/upload_java_archive.response" >&2
+    echo "baseline tomcat${version}-java17 upload did not reach multipart endpoint" >&2
+    exit 1
+  fi
 }
 
 verify_startup_and_normal() {
@@ -118,6 +128,11 @@ verify_startup_and_normal() {
   if ! grep -q '"file_hook":"installed"' "$log"; then
     cat "$log" >&2
     echo "missing Java 17 file hook startup marker on Tomcat ${version}" >&2
+    exit 1
+  fi
+  if ! grep -q '"upload_hook":"installed"' "$log"; then
+    cat "$log" >&2
+    echo "missing Java 17 upload hook startup marker on Tomcat ${version}" >&2
     exit 1
   fi
   if ! grep -q '"archive_hook":"installed"' "$log"; then
@@ -200,6 +215,33 @@ expect_block() {
   echo "blocked tomcat${version}-java17 ${name}"
 }
 
+expect_block_upload() {
+  local version="$1"
+  local name="$2"
+  local algorithm="$3"
+  local url="http://localhost:$(protected_port "$version")"
+  local log="logs/tomcat${version}-java17-protected/events.jsonl"
+  local upload_file="logs/tomcat${version}-java17-protected/java-archive-upload.jar"
+  local status
+  printf 'PK\003\004ohmyrasp-java17-upload' > "$upload_file"
+  status="$(curl -sS -o "logs/tomcat${version}-java17-protected/${name}.response" \
+    -w "%{http_code}" \
+    -F "file=@${upload_file};filename=Evil.jar;type=application/java-archive" \
+    "${url}/rasp/java17/plugin/add" || true)"
+  if [[ "$status" =~ ^2 ]] \
+      && grep -q "java17 upload attempted 1" "logs/tomcat${version}-java17-protected/${name}.response"; then
+    echo "protected tomcat${version}-java17 ${name} unexpectedly returned ${status}" >&2
+    cat "logs/tomcat${version}-java17-protected/${name}.response" >&2
+    exit 1
+  fi
+  if ! grep -q "\"algorithm\":\"${algorithm}\".*\"action\":\"block\"" "$log"; then
+    cat "$log" >&2
+    echo "missing protected tomcat${version}-java17 ${name} block event for ${algorithm}" >&2
+    exit 1
+  fi
+  echo "blocked tomcat${version}-java17 ${name}"
+}
+
 for version in "${versions[@]}"; do
   baseline_url="http://localhost:$(baseline_port "$version")"
   protected_url="http://localhost:$(protected_port "$version")"
@@ -229,6 +271,7 @@ for version in "${versions[@]}"; do
   expect_block "$version" xml_decoder_runtime java17_xml_decoder_runtime_execution /rasp/java17/xml-decoder-runtime
   expect_block "$version" xml_decoder_webshell java17_xml_decoder_script_file_write /rasp/java17/xml-decoder-webshell
   expect_block "$version" xxe_file java17_xxe_external_entity_protocol /rasp/java17/xxe-file
+  expect_block_upload "$version" upload_java_archive fileUpload_java_archive
 done
 
 echo "java17 acceptance passed on Tomcat versions: ${versions[*]} baseline/protected containers"

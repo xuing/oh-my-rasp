@@ -228,6 +228,45 @@ coverage, separate from the Java 25 behavioral replay suite:
   `java8_xxe_external_entity_protocol`, ordinary XML without external entities
   emits no detection, and block mode records `action:"block"` before throwing
   `Java8RaspBlockException` on Temurin 8.
+- [x] Refine the Java 8/11/17 XXE local runtime-resource allowlist after the
+  WebLogic 12.2.1.3 startup probe: WebLogic's security store bootstrap parses
+  the local embedded JDO metadata
+  `jar:file:/u01/oracle/wlserver/modules/com.oracle.weblogic.security.service.store.jar!/com/bea/common/security/store/data/package.jdo`.
+  That exact local `jar:file:` resource now stays quiet across Java 8/11/17,
+  while arbitrary `file:`, `jar:`, and remote protocol external entities still
+  emit the era-specific `xxe_external_entity_protocol` algorithms.
+- [x] Run the real Java 8 WebLogic CVE-2020-14882/CVE-2020-14883 Vulhub
+  application acceptance: `scripts/acceptance-vulhub-weblogic-14883-java8.sh`
+  starts `vulhub/weblogic:12.2.1.3-2018` on Oracle JDK 8u151. Baseline
+  reaches `/console/css/%252e%252e%252fconsole.portal` with the README-shaped
+  `ShellSession("Runtime.exec('touch ...')")` handle and creates
+  `/tmp/ohmyrasp-weblogic-14883-success`; protected mode starts quietly after
+  the WebLogic JDO metadata allowlist refinement and blocks the encoded console
+  auth-bypass path with `java8_request_path_confusion` before ShellSession
+  command execution.
+- [x] Refine Java 8/11/17 multipart upload filename coverage for real Jersey
+  multipart stacks: the dedicated upload transformers now hook
+  `org.glassfish.jersey.media.multipart.ContentDisposition.getFileName`, and
+  `beforeFileUpload` classifies server-side script, expression-bearing,
+  traversal, HTML, executable, and Java-archive upload filenames. This keeps
+  ordinary image uploads quiet while making the previously documented
+  `fileUpload_multipart_*` algorithms effective in real frameworks.
+- [x] Run the real Java 8 WebLogic CVE-2018-2894 Vulhub application
+  acceptance: `scripts/acceptance-vulhub-weblogic-2894-java8.sh` starts
+  `vulhub/weblogic:12.2.1.3-2018` on Oracle JDK 8u151, waits through the
+  WS_UTC on-demand deployment page, and sets Work Home Dir to the README static
+  `ws_utc/css` path. Baseline uploads `ohmyrasp-wl2894.jsp` through
+  `/ws_utc/resources/setting/keystore` and executes it from
+  `/ws_utc/css/config/keystore/<id>_ohmyrasp-wl2894.jsp`; protected mode starts
+  quietly and blocks the same Jersey multipart filename at
+  `MultipartUpload.filename` with `fileUpload_multipart_script`, so no JSP is
+  written.
+- [x] Re-run the full LTS Tomcat compatibility matrix after the WebLogic XXE
+  JDO metadata allowlist refinement on 2026-06-06:
+  `scripts/acceptance-java17.sh` passed Tomcat 11 -> 10.1 -> 9,
+  `scripts/acceptance-java11.sh` passed Tomcat 10.1 -> 9, and
+  `scripts/acceptance-java8.sh` passed Tomcat 10.0 -> 9 -> 8.5 with
+  baseline/protected checks for every current LTS-era behavior algorithm.
 - [x] Add the first Java 8/Tomcat 8 baseline-vs-protected harness:
   `playground-java8`, `Dockerfile.java8`, `docker-compose.java8.yml`, and
   `scripts/acceptance-java8.sh` run a Java 8-compatible WAR on
@@ -491,6 +530,42 @@ coverage, separate from the Java 25 behavioral replay suite:
   startup/readiness quiet and blocks `ObjectInputStream.resolveClass` with
   `java8_deserialization_gadget_class` on `TemplatesImpl` before marker
   creation.
+- [x] Run the real Java 11 Adobe ColdFusion CVE-2023-26360 Vulhub application
+  acceptance: `scripts/acceptance-vulhub-coldfusion-26360-java11.sh` starts
+  `vulhub/coldfusion:2018.0.15`, verifies the image JRE is Java 11.0.12,
+  injects `agent-java11` through ColdFusion `jvm.config`, and keeps normal
+  administrator readiness quiet. Baseline sends the Vulhub
+  `/cf_scripts/scripts/ajax/ckeditor/plugins/filemanager/iedit.cfc`
+  `_variables._metadata.classname=../../../../../../../../proc/self/environ`
+  payload and receives the `cfuser` process environment; protected mode blocks
+  the same local file load at `FileInputStream.open` with
+  `java11_file_sensitive_read`, so `/proc/self/environ` is not returned.
+- [x] Refine Java 8/11/17 file-write false-positive handling for ColdFusion
+  runtime compilation: normal ColdFusion writes under `WEB-INF/cfclasses/*.class`
+  now stay quiet like existing `WEB-INF/classes` deployment artifacts, while JSP,
+  JAR/WAR, traversal, and other webroot-like script writes still emit the
+  era-specific `file_script_write` algorithms.
+- [x] Add Java 8/11/17 command-sink correlation for Java object
+  deserialization stacks: process execution reached while the call stack contains
+  `java.io.ObjectInputStream`, Axis2 `SafeObjectInputStream`, or BlazeDS AMF
+  deserialization frames now emits the era-specific
+  `command_execution_exploit_primitive` algorithms without depending on
+  product-specific request paths or gadget class names.
+- [x] Run the real Java 8 Adobe ColdFusion CVE-2017-3066 Vulhub application
+  acceptance: `scripts/acceptance-vulhub-coldfusion-3066-java8.sh` starts
+  `vulhub/coldfusion:11u3`, verifies the image JRE is Java 8u25, builds a
+  README-style ColdFusionPwn/CommonsBeanutils1 AMF body, and keeps protected
+  ColdFusion startup quiet after the `WEB-INF/cfclasses` allowlist refinement.
+  Baseline posts `application/x-amf` to `/flex2gateway/amf` and creates
+  `/tmp/ohmyrasp-coldfusion-3066-success`; protected mode blocks the
+  deserialization-triggered `Runtime.exec(String)` sink with
+  `java8_command_execution_exploit_primitive`, so the marker is not created.
+- [x] Re-run the full LTS Tomcat compatibility matrix after the ColdFusion
+  `WEB-INF/cfclasses` file-write refinement and Java deserialization command
+  stack correlation on 2026-06-06: `scripts/acceptance-java17.sh` passed
+  Tomcat 11 -> 10.1 -> 9, `scripts/acceptance-java11.sh` passed Tomcat
+  10.1 -> 9, and `scripts/acceptance-java8.sh` passed Tomcat 10.0 -> 9 -> 8.5
+  with baseline/protected checks for every current LTS-era behavior algorithm.
 - [x] Run the real Java 8 Apache OFBiz ProgramExport Vulhub application
   acceptance: `scripts/acceptance-vulhub-ofbiz-51467-java8.sh` starts
   `vulhub/ofbiz:18.12.10` baseline/protected containers for CVE-2023-51467 on
@@ -1845,6 +1920,17 @@ coverage, separate from the Java 25 behavioral replay suite:
   `scripts/acceptance-java17.sh` passed Tomcat 11 -> 10.1 -> 9,
   `scripts/acceptance-java11.sh` passed Tomcat 10.1 -> 9, and
   `scripts/acceptance-java8.sh` passed Tomcat 10.0 -> 9 -> 8.5.
+- [x] Add real Java 8 Tomcat Tribes CVE-2026-34486 acceptance:
+  `scripts/acceptance-vulhub-tomcat-34486-java8.sh` uses the Vulhub
+  `tomcat/CVE-2026-34486/poc.py` frame against `vulhub/tomcat:9.0.116`
+  on OpenJDK 8u482/Tomcat 9.0.116. Baseline HTTP startup stays healthy and
+  the Tribes receiver accepts an unencrypted CommonsCollections6 serialized
+  payload after the `EncryptInterceptor` bypass, creating
+  `/tmp/ohmyrasp-tomcat-34486-success`; protected mode starts quietly with the
+  Java 8 agent, then blocks `ObjectInputStream.resolveClass` with
+  `java8_deserialization_gadget_class` on
+  `org.apache.commons.collections.functors.ChainedTransformer` before the
+  marker is created.
 - [x] Extend Java 8/11/17 JDBC-era transformers to SkyWalking
   `org.apache.skywalking.oap.server.storage.plugin.jdbc.h2.dao.H2LogQueryDAO`:
   `queryLogs(String, ...)` now checks the GraphQL `metricName` table/metric
@@ -1881,6 +1967,29 @@ coverage, separate from the Java 25 behavioral replay suite:
   Java 17 Tomcat 11 -> 10.1 -> 9, `scripts/acceptance-java11.sh` passed
   Java 11 Tomcat 10.1 -> 9, and `scripts/acceptance-java8.sh` passed Java 8
   Tomcat 10.0 -> 9 -> 8.5.
+- [x] Extend Java 8/11/17 multipart upload filename hooks across Servlet
+  `Part`, Tomcat `ApplicationPart`, Undertow `PartImpl`, Commons FileUpload,
+  Jetty multipart parts, and Spring `MultipartFile` implementations: Java
+  executable archive filenames now emit `fileUpload_java_archive` only when the
+  active request context is a plugin, extension, driver, connector, job, JAR,
+  or deployment surface. The LTS playground matrices now baseline-test
+  `/javaX/plugin/add` multipart `Evil.jar` uploads and protected mode verifies
+  `MultipartUpload.filename` block events without accepting the file.
+- [x] Add real Java 8 Vulhub MeterSphere plugin RCE acceptance:
+  `scripts/acceptance-vulhub-metersphere-plugin-java8.sh` verifies
+  `vulhub/metersphere:1.16.3` on OpenJDK 8 exposes `/plugin/list` without
+  login, accepts the official Vulhub Backdoor plugin JAR through `/plugin/add`,
+  executes `org.vulhub.Evil` through `/plugin/customMethod`, and creates
+  `/tmp/ohmyrasp-metersphere-plugin-success`; protected mode starts quietly,
+  keeps `/plugin/list` quiet, blocks the same `Evil.jar` upload with
+  `fileUpload_java_archive` at `MultipartUpload.filename`, does not write the
+  plugin JAR under `/opt/metersphere/data/body/plugin`, and cannot create the
+  marker through `customMethod`.
+- [x] Re-run the LTS Tomcat compatibility matrix after the multipart Java
+  archive upload hook on 2026-06-06: `scripts/acceptance-java17.sh` passed
+  Java 17 Tomcat 11 -> 10.1 -> 9, `scripts/acceptance-java11.sh` passed
+  Java 11 Tomcat 10.1 -> 9, and `scripts/acceptance-java8.sh` passed Java 8
+  Tomcat 10.0 -> 9 -> 8.5 with the new upload baseline/protected checks.
 - [x] Extend Java 8/11/17 servlet request hooks for TeamCity
   CVE-2024-27198 internal-forward authentication bypasses:
   request-controlled `jsp`, `view`, `forward`, and related parameters now
@@ -2166,7 +2275,7 @@ above.
 - [x] Apache Tomcat - CVE-2020-1938 / CNVD-2020-10487 Ghostcat AJP include replay (`request_tomcat_cnvd_2020_10487_ghostcat_include`; real Java8 acceptance: `scripts/acceptance-vulhub-tomcat-1938-java8.sh` blocks `java8_request_forged_include_attribute`)
 - [x] Apache Tomcat - CVE-2025-24813 session file deserialization (`deserialization_tomcat_cve_2025_24813_session_file`; real Java8 acceptance: `scripts/acceptance-vulhub-tomcat-24813-java8.sh` blocks `java8_request_session_file_deserialization`)
 - [x] Apache Tomcat Tribes - CVE-2026-29146 EncryptInterceptor padding-oracle predecessor post-oracle deserialization sink (`deserialization_tomcat_cve_2026_29146_tribes_padding_oracle`)
-- [x] Apache Tomcat Tribes - CVE-2026-34486 cluster message deserialization shape (`deserialization_tomcat_cve_2026_34486_tribes_encrypt`)
+- [x] Apache Tomcat Tribes - CVE-2026-34486 EncryptInterceptor bypass cluster message deserialization (`deserialization_tomcat_cve_2026_34486_tribes_encrypt`; real Java8 acceptance: `scripts/acceptance-vulhub-tomcat-34486-java8.sh` blocks `java8_deserialization_gadget_class`)
 - [x] Apache Tomcat 7+/8 - Manager weak credential backend WAR upload chain (`request_tomcat8_manager_default_credential`; real Java7 legacy boundary: `scripts/acceptance-vulhub-tomcat8-manager-java7-legacy.sh`)
 
 ### Atlassian Confluence / Jira
@@ -2181,8 +2290,8 @@ above.
 ### ColdFusion
 
 - [x] Adobe ColdFusion - CVE-2010-2861 locale traversal source (`request_coldfusion_locale_source_traversal`)
-- [x] Adobe ColdFusion - CVE-2017-3066 AMF deserialization (`deserialization_coldfusion_amf`)
-- [x] Adobe ColdFusion - CVE-2023-26360 metadata classname source (`request_coldfusion_iedit_metadata_class_source`)
+- [x] Adobe ColdFusion - CVE-2017-3066 AMF deserialization (`deserialization_coldfusion_amf`; real Java8 acceptance: `scripts/acceptance-vulhub-coldfusion-3066-java8.sh` blocks `java8_command_execution_exploit_primitive` from the AMF Java deserialization stack)
+- [x] Adobe ColdFusion - CVE-2023-26360 metadata classname source (`request_coldfusion_iedit_metadata_class_source`; real Java11 acceptance: `scripts/acceptance-vulhub-coldfusion-26360-java11.sh` blocks `java11_file_sensitive_read`)
 - [x] Adobe ColdFusion - CVE-2023-29300 WDDX `argumentCollection` typed payload (`request_coldfusion_cve_2023_29300_wddx_argumentcollection`)
 
 ### Elasticsearch / Solr / Log4j
@@ -2220,8 +2329,8 @@ above.
 - [x] WebLogic - UDDI Explorer SSRF shape (`ssrf_weblogic_uddi`)
 - [x] WebLogic - CVE-2017-10271 WorkContext XMLDecoder (`xml_decoder_runtime_weblogic_workcontext`)
 - [x] WebLogic - CVE-2018-2628 T3 JRMPClient deserialization replay (`deserialization_weblogic_cve_2018_2628_t3_jrmpclient`)
-- [x] WebLogic - CVE-2018-2894 WS_UTC Web Service Test Page JSP upload (`fileUpload_weblogic_cve_2018_2894_ws_utc_jsp`)
-- [x] WebLogic - CVE-2020-14882 / CVE-2020-14883 console ShellSession handle (`request_weblogic_cve_2020_14883_console_shellsession`)
+- [x] WebLogic - CVE-2018-2894 WS_UTC Web Service Test Page JSP upload (`fileUpload_weblogic_cve_2018_2894_ws_utc_jsp`; real Java8 acceptance: `scripts/acceptance-vulhub-weblogic-2894-java8.sh` blocks Jersey multipart `ContentDisposition.getFileName` with `fileUpload_multipart_script` before JSP write)
+- [x] WebLogic - CVE-2020-14882 / CVE-2020-14883 console ShellSession handle (`request_weblogic_cve_2020_14883_console_shellsession`; real Java8 acceptance: `scripts/acceptance-vulhub-weblogic-14883-java8.sh` blocks `java8_request_path_confusion` before ShellSession execution)
 - [x] WebLogic - CVE-2019-2725 console FileSystemXmlApplicationContext handle (`request_weblogic_cve_2019_2725_console_filesystemxml`)
 - [x] WebLogic - CVE-2023-21839 IIOP JNDI deserialization replay (`deserialization_weblogic_cve_2023_21839_iiop_jndi`)
 
@@ -2272,7 +2381,7 @@ above.
 ### MeterSphere / OFBiz / OpenTSDB / RocketMQ
 
 - [x] MeterSphere - CVE-2021-45788 case-list sort SQL injection (`request_metersphere_cve_2021_45788_case_sort_sqli`; real Java8 acceptance: `scripts/acceptance-vulhub-metersphere-45788-java8.sh` blocks `java8_sql_identifier_injection` at MyBatis `BoundSql`)
-- [x] MeterSphere - plugin add Java archive upload (`fileUpload_metersphere_plugin_add_jar_upload`)
+- [x] MeterSphere - plugin add Java archive upload (`fileUpload_metersphere_plugin_add_jar_upload`; real Java8 acceptance: `scripts/acceptance-vulhub-metersphere-plugin-java8.sh` blocks `fileUpload_java_archive` at `MultipartUpload.filename` before the plugin JAR is written or loaded)
 - [x] OFBiz - CVE-2020-9496 XML-RPC serialized payload (`deserialization_ofbiz_cve_2020_9496_xmlrpc_serialized`; real Java8 acceptance: `scripts/acceptance-vulhub-ofbiz-9496-java8.sh` blocks `java8_deserialization_gadget_class`)
 - [x] OFBiz - CVE-2023-49070 XML-RPC serialized payload (`deserialization_ofbiz_cve_2023_49070_xmlrpc_serialized`; real Java8 acceptance: `scripts/acceptance-vulhub-ofbiz-49070-java8.sh` blocks `java8_deserialization_gadget_class`)
 - [x] OFBiz - CVE-2023-51467 ProgramExport Groovy expression (`request_ofbiz_cve_2023_51467_programexport`; real Java8 acceptance: `scripts/acceptance-vulhub-ofbiz-51467-java8.sh` blocks `java8_command_execution_exploit_primitive`)
@@ -2289,7 +2398,7 @@ above.
 ### Spring / SkyWalking / Unomi
 
 - [x] Spring Security OAuth - CVE-2016-4977 response_type SpEL (`request_spring_cve_2016_4977_oauth_response_type_spel`; real Java8 acceptance: `scripts/acceptance-vulhub-spring-security-oauth-java8.sh` blocks `java8_command_execution_exploit_primitive`)
-- [x] Spring WebFlow - CVE-2017-4971 binding SpEL (`request_spring_cve_2017_4971_webflow_binding_spel`)
+- [x] Spring WebFlow - CVE-2017-4971 binding SpEL (`request_spring_cve_2017_4971_webflow_binding_spel`; real Java7 legacy boundary: `scripts/acceptance-vulhub-spring-webflow-java7-legacy.sh`)
 - [x] Spring Data REST - CVE-2017-8046 JSON Patch SpEL (`request_spring_cve_2017_8046_json_patch_spel`; real Java8 acceptance: `scripts/acceptance-vulhub-spring-data-rest-java8.sh` blocks `java8_command_execution_exploit_primitive`)
 - [x] Spring Messaging - CVE-2018-1270 STOMP selector SpEL (`request_spring_cve_2018_1270_stomp_selector`; real Java8 acceptance: `scripts/acceptance-vulhub-spring-messaging-java8.sh` blocks `java8_command_execution_exploit_primitive`)
 - [x] Spring Framework - CVE-2018-1271 path normalization reference (`request_spring_cve_2018_1271_path_normalization_reference`)
@@ -2308,7 +2417,7 @@ above.
 - [x] Fastjson - 1.2.47 autoType bypass (`deserialization_fastjson_1247_autotype_bypass`; real Java8 acceptance: `scripts/acceptance-vulhub-fastjson-java8.sh` blocks `java8_jndi_remote_lookup`)
 - [x] Jackson - CVE-2017-7525 `TemplatesImpl` polymorphic JSON (`deserialization_jackson_cve_2017_7525_templatesimpl`; real Java7 legacy boundary: `scripts/acceptance-vulhub-jackson-java7-legacy.sh`)
 - [x] Jackson - CVE-2017-17485 Spring XML polymorphic JSON bypass (`deserialization_jackson_cve_2017_17485_spring_xml`; real Java7 legacy boundary: `scripts/acceptance-vulhub-jackson-java7-legacy.sh`)
-- [x] SnakeYAML - H2 `JdbcConnection` type (`deserialization_snakeyaml_h2_type`)
+- [x] SnakeYAML - H2 `JdbcConnection` type (`deserialization_snakeyaml_h2_type`; real Java11 acceptance: `scripts/acceptance-vulhub-hertzbeat-java11.sh` blocks `java11_jdbc_h2_code_execution`)
 - [x] XStream - CVE-2021-21351 `JdbcRowSetImpl` JNDI XML gadget (`request_xstream_cve_2021_21351_jdbcrowset_jndi_xml_gadget`; real Java8 acceptance: `scripts/acceptance-vulhub-xstream-21351-java8.sh` blocks `java8_jndi_remote_lookup`)
 - [x] XStream - CVE-2021-29505 `RegistryImpl_Stub` RMI XML gadget (`request_xstream_cve_2021_29505_registryimpl_rmi_xml_gadget`; real Java8 acceptance: `scripts/acceptance-vulhub-xstream-29505-java8.sh` blocks `java8_deserialization_gadget_class`)
 
@@ -2335,14 +2444,53 @@ above.
   2026-06-06: the current audited Vulhub snapshot has no
   `struts2/s2-003/README.md` or environment directory, so this cannot graduate
   to real Vulhub acceptance unless the source snapshot adds that environment.
-- [ ] MeterSphere - plugin endpoint unauthenticated JAR upload RCE real Java8
-  acceptance (`metersphere/plugin-rce/README.md`): baseline
-  `vulhub/metersphere:1.16.3` should expose `/plugin/list` without login,
-  accept a malicious plugin JAR through `/plugin/add`, and execute a command
-  through `/plugin/customMethod` to create
-  `/tmp/ohmyrasp-metersphere-plugin-success`; protected mode should inject
-  `agent-java8`, keep startup and `/plugin/list` quiet, and block the same
-  `Evil.jar` upload at the upload/file sink with
-  `java8_file_script_write` or `fileUpload_metersphere_plugin_add_jar_upload`
-  before plugin code is loaded or the marker can be created.
+- [ ] Adobe ColdFusion - CVE-2023-29300 WDDX `argumentCollection`
+  `JdbcRowSetImpl` real runtime acceptance
+  (`coldfusion/CVE-2023-29300/README.md`): baseline
+  `vulhub/coldfusion:2018.0.15` should start on Java 11, accept the WDDX
+  `argumentCollection` typed object payload on
+  `/CFIDE/adminapi/accessmanager.cfc?method=foo&_cfclient=true`, and reach an
+  attacker-controlled LDAP listener through `dataSourceName`; protected mode
+  should inject `agent-java11`, keep normal ColdFusion startup and
+  administrator readiness quiet, block the same typed WDDX request before the
+  outbound LDAP connection, and log the ColdFusion WDDX typed-payload
+  algorithm. Probe note from 2026-06-06: the README-shaped POST body reached a
+  host LDAP listener in baseline (`JdbcRowSetImpl` emitted an LDAP bind), but
+  protected mode returned ColdFusion's JSON parse error and produced no RASP
+  detection event while also not connecting outbound. Moving
+  `argumentCollection` to the query string did not reach the LDAP listener in
+  baseline; protected query-string traffic did log
+  `java11_jndi_remote_lookup`, but without a matching baseline exploit path.
+  This candidate is not graduated until a baseline/protected pair uses the
+  same successful payload shape and records a RASP block event.
+- [ ] WebLogic - CVE-2017-10271 WorkContext XMLDecoder real runtime
+  acceptance (`weblogic/CVE-2017-10271/README.md`): baseline
+  `vulhub/weblogic:10.3.6.0-2017` should expose WebLogic on 7001, accept the
+  README-shaped `/wls-wsat/CoordinatorPortType` SOAP `WorkContext`
+  XMLDecoder payload, and create `/tmp/ohmyrasp-weblogic-10271-success` via
+  `ProcessBuilder.start`; protected mode should inject the matching LTS-era
+  Java agent, keep normal WebLogic startup and 404 health quiet, and block the
+  same XMLDecoder process primitive with the era-specific
+  `xml_decoder_runtime_execution` algorithm before the marker is created.
+  Probe note from 2026-06-06: the current `vulhub/weblogic:10.3.6.0-2017`
+  image reports `JAVA16_HOME=/root/jdk/jdk1.6.0_45` and
+  `java version "1.6.0_45"`, so the existing Java 8/11/17 agents are not
+  expected to inject into this runtime. Keep this candidate open as a Java 6
+  legacy/runtime-era boundary unless a dedicated Java 6 agent is introduced.
+- [ ] Adobe ColdFusion - CVE-2010-2861 administrator `locale` traversal real
+  runtime acceptance (`coldfusion/CVE-2010-2861/README.md`): baseline
+  `vulhub/coldfusion:8.0.1` should start on its bundled JVM and disclose
+  `/etc/passwd` through
+  `/CFIDE/administrator/enter.cfm?locale=../../../../../../../../../../etc/passwd%00en`;
+  protected mode should inject the matching runtime-era agent if the JVM is
+  supported, keep normal ColdFusion startup and administrator initialization
+  quiet, and block the same traversal before passwd content is returned through
+  the era-specific sensitive file-read or traversal-source algorithm. Probe
+  note from 2026-06-06: baseline ColdFusion 8.0.1 returns passwd content from
+  the README-shaped `locale=../../../../../../../../../../etc/passwd%00en`
+  request, but the image runs `java version "1.6.0_04"` from
+  `/opt/coldfusion8/runtime/jre/bin/java`. A minimal Java 8 agent injection
+  test fails before startup with `Unsupported major.minor version 52.0`, so
+  this candidate remains a Java 6 legacy/runtime-era boundary rather than a
+  current Java 8/11/17 protected LTS acceptance.
 - [ ] _Add the next Java Vulhub candidate here before probing it._

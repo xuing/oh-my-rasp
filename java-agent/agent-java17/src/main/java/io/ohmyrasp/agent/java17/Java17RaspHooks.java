@@ -60,6 +60,23 @@ public final class Java17RaspHooks {
   private static final Pattern SCRIPT_FILE_WRITE =
       Pattern.compile(
           "(?i).+\\.(?:jsp|jspx|jspf|war|class|jar|php|asp|aspx|ashx|cer|asa|sh|bash|cmd|bat|ps1)$");
+  private static final Pattern JAVA_ARCHIVE_UPLOAD_FILE =
+      Pattern.compile("(?i).+\\.(?:jar|war|ear|class)$");
+  private static final Pattern JAVA_ARCHIVE_UPLOAD_CONTEXT =
+      Pattern.compile(
+          "(?i)(?:^|/)(?:plugin|plugins|extension|extensions|driver|drivers|connector|connectors|jars?|job|jobs|deploy|deployment)(?:[/?#;]|/|$)");
+  private static final Pattern MULTIPART_SCRIPT_UPLOAD_FILE =
+      Pattern.compile(
+          "(?i)(?:.+\\.(?:jsp|jspx|jspf|php|asp|aspx|ashx|cer|asa)|(?:^|.*/)(?:\\.htaccess|\\.user\\.ini))$");
+  private static final Pattern MULTIPART_HTML_UPLOAD_FILE =
+      Pattern.compile("(?i).+\\.(?:html?|shtml|xhtml|svg)$");
+  private static final Pattern MULTIPART_EXECUTABLE_UPLOAD_FILE =
+      Pattern.compile("(?i).+\\.(?:exe|dll|so|dylib|msi|scr|com|bat|cmd|ps1|sh|bash)$");
+  private static final Pattern MULTIPART_EXPRESSION_UPLOAD_FILE =
+      Pattern.compile(
+          "(?is)(?:%\\{|\\$\\{|#(?:context|application|session|request|response)|\\b(?:ognl|freemarker|execute)\\b|\\x00)");
+  private static final Pattern MULTIPART_TRAVERSAL_UPLOAD_FILE =
+      Pattern.compile("(?i)(?:^|/|%2f|%5c)\\.\\.(?:/|$|%2f|%5c)");
   private static final Pattern GENERATED_PLOT_SCRIPT_FILE =
       Pattern.compile("(?i).+\\.(?:gnuplot|gp|plt|plot)$");
   private static final Pattern GENERATED_PLOT_COMMAND =
@@ -116,6 +133,7 @@ public final class Java17RaspHooks {
   private static final ThreadLocal<String> LAST_LOGGED_DESERIALIZATION = new ThreadLocal<String>();
   private static final ThreadLocal<String> LAST_LOGGED_FILE_READ = new ThreadLocal<String>();
   private static final ThreadLocal<String> LAST_LOGGED_FILE_WRITE = new ThreadLocal<String>();
+  private static final ThreadLocal<String> LAST_LOGGED_FILE_UPLOAD = new ThreadLocal<String>();
   private static final ThreadLocal<String> LAST_LOGGED_PLOT_SCRIPT = new ThreadLocal<String>();
   private static final ThreadLocal<String> CURRENT_PLOT_SCRIPT_WRITE = new ThreadLocal<String>();
   private static final ThreadLocal<String> CURRENT_PLOT_SCRIPT_CONTENT = new ThreadLocal<String>();
@@ -167,6 +185,23 @@ public final class Java17RaspHooks {
   public static void afterHttpRequest() {
     CURRENT_REQUEST.remove();
     CURRENT_REQUEST_URLS.remove();
+  }
+
+  public static void beforeFileUpload(String filename) {
+    Finding finding = classifyFileUpload(filename);
+    if (finding == null) {
+      return;
+    }
+    String action = shouldBlock() ? "block" : "log";
+    String previous = LAST_LOGGED_FILE_UPLOAD.get();
+    if (!"block".equals(action) && finding.detailValue.equals(previous)) {
+      return;
+    }
+    LAST_LOGGED_FILE_UPLOAD.set(finding.detailValue);
+    appendEvent(finding, "MultipartUpload.filename", action);
+    if ("block".equals(action)) {
+      throw new Java17RaspBlockException("OhMyRASP Java 17 blocked suspicious file upload");
+    }
   }
 
   public static void beforeSparkRestSubmit(String descriptor) {
@@ -643,6 +678,14 @@ public final class Java17RaspHooks {
           "command",
           joined);
     }
+    if (isJavaDeserializationCommandStack()) {
+      return new Finding(
+          "java17_command_execution_exploit_primitive",
+          95,
+          "Java deserialization reached a Java 17 process sink",
+          "command",
+          joined);
+    }
     if (isXStreamDeserializationCommandStack()) {
       return new Finding(
           "java17_command_execution_exploit_primitive",
@@ -757,6 +800,20 @@ public final class Java17RaspHooks {
       }
     }
     return beanInitialization && applicationContextRefresh;
+  }
+
+  private static boolean isJavaDeserializationCommandStack() {
+    StackTraceElement[] stack = Thread.currentThread().getStackTrace();
+    for (StackTraceElement element : stack) {
+      String className = element.getClassName();
+      if ("java.io.ObjectInputStream".equals(className)
+          || "org.apache.axis2.context.externalize.SafeObjectInputStream".equals(className)
+          || className.startsWith("flex.messaging.io.amf.")
+          || className.startsWith("flex.messaging.endpoints.amf.")) {
+        return true;
+      }
+    }
+    return false;
   }
 
   private static boolean isBenignSpringIdentityProbeCommand(String[] command) {
@@ -1122,6 +1179,75 @@ public final class Java17RaspHooks {
         "Script or executable file write reached a Java 17 file sink",
         "path",
         normalized);
+  }
+
+  private static Finding classifyFileUpload(String filename) {
+    String normalized = normalizePath(filename);
+    if (normalized.length() == 0) {
+      return null;
+    }
+    if (MULTIPART_TRAVERSAL_UPLOAD_FILE.matcher(normalized).find()) {
+      return new Finding(
+          "fileUpload_path_traversal",
+          93,
+          "Multipart upload filename contains path traversal",
+          "filename",
+          normalized);
+    }
+    if (MULTIPART_EXPRESSION_UPLOAD_FILE.matcher(normalized).find()) {
+      return new Finding(
+          "fileUpload_multipart_expression",
+          91,
+          "Multipart upload filename contains an expression payload",
+          "filename",
+          normalized);
+    }
+    if (MULTIPART_SCRIPT_UPLOAD_FILE.matcher(normalized).matches()) {
+      return new Finding(
+          "fileUpload_multipart_script",
+          92,
+          "Multipart upload contains a server-side script filename",
+          "filename",
+          normalized);
+    }
+    if (MULTIPART_HTML_UPLOAD_FILE.matcher(normalized).matches()) {
+      return new Finding(
+          "fileUpload_multipart_html",
+          82,
+          "Multipart upload contains an active HTML document filename",
+          "filename",
+          normalized);
+    }
+    if (MULTIPART_EXECUTABLE_UPLOAD_FILE.matcher(normalized).matches()) {
+      return new Finding(
+          "fileUpload_multipart_exe",
+          88,
+          "Multipart upload contains an executable filename",
+          "filename",
+          normalized);
+    }
+    if (!JAVA_ARCHIVE_UPLOAD_FILE.matcher(normalized).matches()) {
+      return null;
+    }
+    RequestSnapshot request = CURRENT_REQUEST.get();
+    String uri = request == null ? "" : request.uri;
+    if (!isJavaArchiveUploadContext(uri)) {
+      return null;
+    }
+    return new Finding(
+        "fileUpload_java_archive",
+        90,
+        "Multipart upload contains a Java executable archive for a deployment endpoint",
+        "filename",
+        normalized);
+  }
+
+  private static boolean isJavaArchiveUploadContext(String uri) {
+    if (uri == null || uri.length() == 0) {
+      return false;
+    }
+    String normalized = normalizePath(uri);
+    return JAVA_ARCHIVE_UPLOAD_CONTEXT.matcher(normalized).find();
   }
 
   private static Finding classifyGeneratedPlotScriptWrite(String path, String content) {
@@ -3131,7 +3257,8 @@ public final class Java17RaspHooks {
         || normalized.endsWith("!/javax/servlet/jsp/resources/web-jsptaglibrary_1_2.dtd")
         || normalized.endsWith("!/jakarta/servlet/jsp/resources/web-jsptaglibrary_1_2.dtd")
         || normalized.endsWith("!/struts-default.xml")
-        || normalized.endsWith("!/struts-plugin.xml");
+        || normalized.endsWith("!/struts-plugin.xml")
+        || normalized.endsWith("!/com/bea/common/security/store/data/package.jdo");
   }
 
   private static boolean isTrustedLocalFrameworkConfigXml(String value) {
@@ -3274,7 +3401,9 @@ public final class Java17RaspHooks {
   private static boolean isWebInfDeploymentArtifact(String path) {
     String normalized = normalizePath(path);
     String lower = lower(normalized);
-    if (!(lower.indexOf("/web-inf/classes/") >= 0 || lower.indexOf("/web-inf/lib/") >= 0)) {
+    if (!(lower.indexOf("/web-inf/classes/") >= 0
+        || lower.indexOf("/web-inf/cfclasses/") >= 0
+        || lower.indexOf("/web-inf/lib/") >= 0)) {
       return false;
     }
     return lower.endsWith(".class") || lower.endsWith(".jar");

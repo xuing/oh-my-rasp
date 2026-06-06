@@ -81,6 +81,7 @@ public final class OhMyRaspJava17Agent {
         + "\"jndi_hook\":\"installed\","
         + "\"deserialization_hook\":\"installed\","
         + "\"file_hook\":\"installed\","
+        + "\"upload_hook\":\"installed\","
         + "\"archive_hook\":\"installed\","
         + "\"url_hook\":\"installed\","
         + "\"classloader_hook\":\"installed\","
@@ -111,6 +112,7 @@ public final class OhMyRaspJava17Agent {
     instrumentation.addTransformer(new Java17JndiTransformer(), canRetransform);
     instrumentation.addTransformer(new Java17DeserializationTransformer(), canRetransform);
     instrumentation.addTransformer(new Java17FileTransformer(), canRetransform);
+    instrumentation.addTransformer(new Java17MultipartUploadTransformer(), canRetransform);
     instrumentation.addTransformer(new Java17ArchiveTransformer(), canRetransform);
     instrumentation.addTransformer(new Java17UrlTransformer(), canRetransform);
     instrumentation.addTransformer(new Java17ClassLoaderTransformer(), canRetransform);
@@ -146,6 +148,19 @@ public final class OhMyRaspJava17Agent {
     retransform(instrumentation, FileOutputStream.class);
     retransform(instrumentation, RandomAccessFile.class);
     retransform(instrumentation, java.nio.file.Files.class);
+    retransformByName(instrumentation, "javax.servlet.http.Part");
+    retransformByName(instrumentation, "jakarta.servlet.http.Part");
+    retransformByName(instrumentation, "org.apache.catalina.core.ApplicationPart");
+    retransformByName(instrumentation, "io.undertow.servlet.spec.PartImpl");
+    retransformByName(instrumentation, "org.apache.commons.fileupload.disk.DiskFileItem");
+    retransformByName(instrumentation, "org.eclipse.jetty.util.MultiPartInputStreamParser$MultiPart");
+    retransformByName(instrumentation, "org.eclipse.jetty.server.MultiPartFormInputStream$MultiPart");
+    retransformByName(instrumentation, "org.springframework.web.multipart.MultipartFile");
+    retransformByName(instrumentation, "org.springframework.web.multipart.commons.CommonsMultipartFile");
+    retransformByName(
+        instrumentation,
+        "org.springframework.web.multipart.support.StandardMultipartHttpServletRequest$StandardMultipartFile");
+    retransformByName(instrumentation, "org.springframework.mock.web.MockMultipartFile");
     retransform(instrumentation, ZipEntry.class);
     retransform(instrumentation, URL.class);
     retransform(instrumentation, URLClassLoader.class);

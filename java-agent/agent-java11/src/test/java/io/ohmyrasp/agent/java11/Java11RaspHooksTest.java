@@ -141,6 +141,27 @@ final class Java11RaspHooksTest {
   }
 
   @Test
+  void blocksJavaDeserializationProcessBuilderCommandWhenBlockModeIsEnabled() throws Exception {
+    Path log = Files.createTempFile("ohmyrasp-java11-axis2-deser-command", ".jsonl");
+    Files.delete(log);
+    System.setProperty("ohmyrasp.java11.log", log.toString());
+    System.setProperty("ohmyrasp.java11.block", "true");
+
+    assertThrows(
+        Java11RaspBlockException.class,
+        () ->
+            org.apache.axis2.context.externalize.SafeObjectInputStream
+                .invokeJava11ProcessBuilderStart(
+                    new ProcessBuilder("touch", "/tmp/ohmyrasp-coldfusion-3066-success")));
+
+    String text = new String(Files.readAllBytes(log), StandardCharsets.UTF_8);
+    assertTrue(text.contains("\"algorithm\":\"java11_command_execution_exploit_primitive\""));
+    assertTrue(text.contains("\"action\":\"block\""));
+    assertTrue(text.contains("Java deserialization reached a Java 11 process sink"));
+    assertTrue(text.contains("touch /tmp/ohmyrasp-coldfusion-3066-success"));
+  }
+
+  @Test
   void blocksJiffleRuntimeCommandStackWhenBlockModeIsEnabled() throws Exception {
     Path log = Files.createTempFile("ohmyrasp-java11-jiffle-command", ".jsonl");
     Files.delete(log);
@@ -1180,6 +1201,8 @@ final class Java11RaspHooksTest {
     Java11RaspHooks.beforeNioByteChannelOpen("/tmp/application-cache.txt", Arrays.asList("WRITE"));
     Java11RaspHooks.beforeFileWrite(
         "/usr/local/tomcat/webapps/ROOT/WEB-INF/classes/io/example/App.class");
+    Java11RaspHooks.beforeFileWrite(
+        "/opt/coldfusion11/cfusion/wwwroot/WEB-INF/cfclasses/cfcomponent2ecfc531178316.class");
     Java11RaspHooks.beforeFileWrite("/usr/local/tomcat/webapps/ROOT/WEB-INF/lib/app.jar");
     org.apache.catalina.startup.ExpandWar.writeJava11DeploymentFile(
         "/usr/local/tomcat/webapps/ROOT/index.jsp");
@@ -1289,6 +1312,149 @@ final class Java11RaspHooksTest {
     String text = new String(Files.readAllBytes(log), StandardCharsets.UTF_8);
     assertTrue(text.contains("\"algorithm\":\"java11_file_script_write\""));
     assertTrue(text.contains("\"action\":\"log\""));
+  }
+
+  @Test
+  void logsWebLogicWsUtcJspUploadFilename() throws Exception {
+    Path log = Files.createTempFile("ohmyrasp-java11-weblogic-wsutc-upload", ".jsonl");
+    Files.delete(log);
+    System.setProperty("ohmyrasp.java11.log", log.toString());
+
+    Java11RaspHooks.beforeHttpRequest(
+        new RequestStub("POST", "/ws_utc/resources/setting/keystore", ""));
+    try {
+      Java11RaspHooks.beforeFileUpload("ohmyrasp-wl2894.jsp");
+    } finally {
+      Java11RaspHooks.afterHttpRequest();
+    }
+
+    String text = new String(Files.readAllBytes(log), StandardCharsets.UTF_8);
+    assertTrue(text.contains("\"algorithm\":\"fileUpload_multipart_script\""));
+    assertTrue(text.contains("\"action\":\"log\""));
+    assertTrue(text.contains("\"filename\":\"ohmyrasp-wl2894.jsp\""));
+  }
+
+  @Test
+  void logsMultipartExpressionUploadFilename() throws Exception {
+    Path log = Files.createTempFile("ohmyrasp-java11-expression-upload", ".jsonl");
+    Files.delete(log);
+    System.setProperty("ohmyrasp.java11.log", log.toString());
+
+    Java11RaspHooks.beforeFileUpload("%{#context['x']}\0b");
+
+    String text = new String(Files.readAllBytes(log), StandardCharsets.UTF_8);
+    assertTrue(text.contains("\"algorithm\":\"fileUpload_multipart_expression\""));
+    assertTrue(text.contains("\"action\":\"log\""));
+  }
+
+  @Test
+  void logsMultipartPathTraversalUploadFilename() throws Exception {
+    Path log = Files.createTempFile("ohmyrasp-java11-traversal-upload", ".jsonl");
+    Files.delete(log);
+    System.setProperty("ohmyrasp.java11.log", log.toString());
+
+    Java11RaspHooks.beforeFileUpload("..\\..\\shell.jsp");
+
+    String text = new String(Files.readAllBytes(log), StandardCharsets.UTF_8);
+    assertTrue(text.contains("\"algorithm\":\"fileUpload_path_traversal\""));
+    assertTrue(text.contains("\"filename\":\"../../shell.jsp\""));
+  }
+
+  @Test
+  void logsMultipartHtmlAndExecutableUploadFilenames() throws Exception {
+    Path log = Files.createTempFile("ohmyrasp-java11-html-exe-upload", ".jsonl");
+    Files.delete(log);
+    System.setProperty("ohmyrasp.java11.log", log.toString());
+
+    Java11RaspHooks.beforeFileUpload("phish.html");
+    Java11RaspHooks.beforeFileUpload("dropper.exe");
+
+    String text = new String(Files.readAllBytes(log), StandardCharsets.UTF_8);
+    assertTrue(text.contains("\"algorithm\":\"fileUpload_multipart_html\""));
+    assertTrue(text.contains("\"algorithm\":\"fileUpload_multipart_exe\""));
+  }
+
+  @Test
+  void ignoresNormalImageUploadFilename() throws Exception {
+    Path log = Files.createTempFile("ohmyrasp-java11-image-upload", ".jsonl");
+    Files.delete(log);
+    System.setProperty("ohmyrasp.java11.log", log.toString());
+
+    Java11RaspHooks.beforeFileUpload("avatar.png");
+
+    assertFalse(Files.exists(log));
+  }
+
+  @Test
+  void logsJavaArchiveUploadOnPluginEndpoint() throws Exception {
+    Path log = Files.createTempFile("ohmyrasp-java11-plugin-upload", ".jsonl");
+    Files.delete(log);
+    System.setProperty("ohmyrasp.java11.log", log.toString());
+
+    Java11RaspHooks.beforeHttpRequest(new RequestStub("POST", "/plugin/add", ""));
+    try {
+      Java11RaspHooks.beforeFileUpload("Evil.jar");
+    } finally {
+      Java11RaspHooks.afterHttpRequest();
+    }
+
+    String text = new String(Files.readAllBytes(log), StandardCharsets.UTF_8);
+    assertTrue(text.contains("\"algorithm\":\"fileUpload_java_archive\""));
+    assertTrue(text.contains("\"action\":\"log\""));
+    assertTrue(text.contains("\"filename\":\"Evil.jar\""));
+  }
+
+  @Test
+  void ignoresJavaArchiveUploadOnRepositoryEndpoint() throws Exception {
+    Path log = Files.createTempFile("ohmyrasp-java11-repository-upload", ".jsonl");
+    Files.delete(log);
+    System.setProperty("ohmyrasp.java11.log", log.toString());
+
+    Java11RaspHooks.beforeHttpRequest(new RequestStub("POST", "/service/rest/v1/components", ""));
+    try {
+      Java11RaspHooks.beforeFileUpload("library.jar");
+    } finally {
+      Java11RaspHooks.afterHttpRequest();
+    }
+
+    assertFalse(Files.exists(log));
+  }
+
+  @Test
+  void blocksJavaArchiveUploadOnPluginEndpointWhenBlockModeIsEnabled() throws Exception {
+    Path log = Files.createTempFile("ohmyrasp-java11-plugin-upload-block", ".jsonl");
+    Files.delete(log);
+    System.setProperty("ohmyrasp.java11.log", log.toString());
+    System.setProperty("ohmyrasp.java11.block", "true");
+
+    Java11RaspHooks.beforeHttpRequest(new RequestStub("POST", "/plugin/add", ""));
+    try {
+      assertThrows(
+          Java11RaspBlockException.class,
+          () -> Java11RaspHooks.beforeFileUpload("Evil.jar"));
+    } finally {
+      Java11RaspHooks.afterHttpRequest();
+    }
+
+    String text = new String(Files.readAllBytes(log), StandardCharsets.UTF_8);
+    assertTrue(text.contains("\"algorithm\":\"fileUpload_java_archive\""));
+    assertTrue(text.contains("\"action\":\"block\""));
+  }
+
+  @Test
+  void blocksMultipartScriptUploadWhenBlockModeIsEnabled() throws Exception {
+    Path log = Files.createTempFile("ohmyrasp-java11-script-upload-block", ".jsonl");
+    Files.delete(log);
+    System.setProperty("ohmyrasp.java11.log", log.toString());
+    System.setProperty("ohmyrasp.java11.block", "true");
+
+    assertThrows(
+        Java11RaspBlockException.class,
+        () -> Java11RaspHooks.beforeFileUpload("ohmyrasp-wl2894-block.jsp"));
+
+    String text = new String(Files.readAllBytes(log), StandardCharsets.UTF_8);
+    assertTrue(text.contains("\"algorithm\":\"fileUpload_multipart_script\""));
+    assertTrue(text.contains("\"action\":\"block\""));
   }
 
   @Test
@@ -2112,6 +2278,9 @@ final class Java11RaspHooksTest {
     Java11RaspHooks.beforeXmlEntity(
         "[dtd]",
         "jar:file:/usr/local/tomcat/webapps/ROOT/WEB-INF/lib/struts2-config-browser-plugin-2.3.34.jar!/struts-plugin.xml");
+    Java11RaspHooks.beforeXmlEntity(
+        "[dtd]",
+        "jar:file:/u01/oracle/wlserver/modules/com.oracle.weblogic.security.service.store.jar!/com/bea/common/security/store/data/package.jdo");
     Java11RaspHooks.beforeXmlEntity("[dtd]", "file:/usr/src/target/classes/struts.xml");
     Java11RaspHooks.beforeXmlEntity("[dtd]", "file:/usr/src/target/classes/struts-actionchaining.xml");
     Java11RaspHooks.beforeXmlEntity("[dtd]", "file:/usr/local/tomcat/webapps/ROOT/WEB-INF/classes/struts.xml");
