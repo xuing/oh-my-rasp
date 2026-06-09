@@ -9,7 +9,7 @@
 - 归档后端路由：`.archive/source-drop-1-rasp/legacy-webapi/src/rasp-cloud/routers/router.go` 和 `commentsRouter.go`
 - 当前 API：`api/api/openapi.yaml`
 - 当前 Web：`web/src/router.tsx`, `web/src/routes/pages.tsx`, `web/src/lib/api.ts`
-- 当前 Java Agent：`java-agent/agent/src/main/java/io/ohmyrasp/agent/**`
+- 当前 Java Agent：`java-agent/agent-jdk25/src/main/java/io/ohmyrasp/agent/**`
 
 ## 证据层级说明
 

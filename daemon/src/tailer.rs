@@ -27,7 +27,7 @@ where
     let path = cfg.path.clone();
     let poll = Duration::from_millis(cfg.poll_interval_ms.max(20));
     let mut offset: u64 = initial_offset(&path, cfg.from_start).await;
-    let mut leftover = String::new();
+    let mut leftover: Vec<u8> = Vec::new();
 
     tracing::info!(path = %path.display(), offset, "tailing agent spool");
 
@@ -61,7 +61,7 @@ async fn initial_offset(path: &Path, from_start: bool) -> u64 {
 async fn poll_once<F>(
     path: &Path,
     mut offset: u64,
-    leftover: &mut String,
+    leftover: &mut Vec<u8>,
     on_line: &mut F,
 ) -> std::io::Result<u64>
 where
@@ -87,11 +87,14 @@ where
     let mut buf = Vec::with_capacity((len - offset) as usize);
     file.take(len - offset).read_to_end(&mut buf).await?;
 
-    leftover.push_str(&String::from_utf8_lossy(&buf));
+    leftover.extend_from_slice(&buf);
     // Emit every complete line; retain the trailing partial line for next poll.
-    while let Some(idx) = leftover.find('\n') {
-        let line: String = leftover.drain(..=idx).collect();
-        on_line(line.trim_end_matches(['\n', '\r']));
+    // Split on raw bytes BEFORE utf-8 conversion so a multibyte character that
+    // straddles two reads is reassembled instead of mangled.
+    while let Some(idx) = leftover.iter().position(|&b| b == b'\n') {
+        let line: Vec<u8> = leftover.drain(..=idx).collect();
+        let text = String::from_utf8_lossy(&line);
+        on_line(text.trim_end_matches(['\n', '\r']));
     }
     if leftover.len() > MAX_LEFTOVER {
         tracing::warn!("dropping oversized partial spool line");
@@ -133,5 +136,37 @@ mod tests {
 
         let lines = seen.lock().unwrap().clone();
         assert_eq!(lines, vec!["{\"a\":1}", "{\"b\":2}", "{\"c\":3}"]);
+    }
+
+    #[tokio::test]
+    async fn reassembles_multibyte_char_split_across_reads() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("events.jsonl");
+        // "查" is e6 9f a5 in UTF-8; write the line in two appends that split it.
+        let full = "{\"uri\":\"/查询\"}".as_bytes();
+        let split = full.len() - 4; // inside the final multibyte sequence
+        std::fs::write(&path, &full[..split]).unwrap();
+
+        let cfg = SpoolConfig { path: path.clone(), poll_interval_ms: 20, from_start: true };
+        let (tx, rx) = watch::channel(false);
+        let seen = Arc::new(Mutex::new(Vec::<String>::new()));
+        let sink = seen.clone();
+        let handle = tokio::spawn(async move {
+            run(cfg, rx, move |line| sink.lock().unwrap().push(line.to_string())).await;
+        });
+
+        // Let the tailer consume the partial bytes, then complete the line.
+        tokio::time::sleep(Duration::from_millis(80)).await;
+        {
+            let mut f = std::fs::OpenOptions::new().append(true).open(&path).unwrap();
+            f.write_all(&full[split..]).unwrap();
+            f.write_all(b"\n").unwrap();
+        }
+        tokio::time::sleep(Duration::from_millis(120)).await;
+        tx.send(true).unwrap();
+        handle.await.unwrap();
+
+        let lines = seen.lock().unwrap().clone();
+        assert_eq!(lines, vec!["{\"uri\":\"/查询\"}"]);
     }
 }
