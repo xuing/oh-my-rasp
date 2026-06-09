@@ -23,5 +23,8 @@ subprojects {
 
     tasks.withType<Test>().configureEach {
         useJUnitPlatform()
+        // Event reporting is asynchronous in production; tests assert on the spool
+        // immediately after invoking a hook, so write inline during tests.
+        systemProperty("ohmyrasp.log.sync", "true")
     }
 }

@@ -162,6 +162,15 @@ public final class Java11RaspHooks {
   private Java11RaspHooks() {}
 
   public static void beforeHttpRequest(Object request) {
+    long started = System.nanoTime();
+    try {
+      beforeHttpRequestImpl(request);
+    } finally {
+      RaspRuntime.sampleLatency((System.nanoTime() - started) / 1000L);
+    }
+  }
+
+  private static void beforeHttpRequestImpl(Object request) {
     CURRENT_REQUEST.set(captureRequestSnapshot(request));
     captureRequestControlledUrls(request);
     Finding finding = classifyHttpRequest(request);
@@ -4550,12 +4559,17 @@ public final class Java11RaspHooks {
     if (property == null || property.trim().length() == 0) {
       property = System.getenv("OHMYRASP_JAVA11_BLOCK");
     }
-    return "true".equalsIgnoreCase(property)
-        || "1".equals(property)
-        || "yes".equalsIgnoreCase(property);
+    boolean legacy =
+        "true".equalsIgnoreCase(property)
+            || "1".equals(property)
+            || "yes".equalsIgnoreCase(property);
+    return RaspRuntime.blockingAllowed(legacy);
   }
 
   private static void appendEvent(Finding finding, String hook, String action) {
+    if (RaspRuntime.detectionOff()) {
+      return;
+    }
     String logPath =
         firstNonBlank(
             System.getProperty("ohmyrasp.java11.log"),
@@ -4592,7 +4606,7 @@ public final class Java11RaspHooks {
       System.err.println(event);
       return;
     }
-    appendLine(logPath, event);
+    RaspRuntime.writeEvent(logPath, event);
   }
 
   private static String firstNonBlank(String first, String second, String third) {
@@ -4610,31 +4624,6 @@ public final class Java11RaspHooks {
 
   private static boolean hasText(String value) {
     return value != null && value.trim().length() > 0;
-  }
-
-  private static void appendLine(String logPath, String message) {
-    File target = new File(logPath);
-    File parent = target.getParentFile();
-    if (parent != null && !parent.exists() && !parent.mkdirs()) {
-      System.err.println("[OHMYRASP-JAVA11] could not create log directory: " + parent);
-      return;
-    }
-    FileWriter writer = null;
-    try {
-      writer = new FileWriter(target, true);
-      writer.write(message);
-      writer.write(System.lineSeparator());
-    } catch (IOException e) {
-      System.err.println("[OHMYRASP-JAVA11] could not write detection event: " + e);
-    } finally {
-      if (writer != null) {
-        try {
-          writer.close();
-        } catch (IOException ignored) {
-          // Nothing useful to do during sink protection.
-        }
-      }
-    }
   }
 
   private static String json(String value) {

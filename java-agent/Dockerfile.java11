@@ -14,4 +14,5 @@ COPY --from=build /workspace/${PLAYGROUND_PROJECT}/build/libs/${PLAYGROUND_PROJE
 COPY --from=build /workspace/agent-java11/build/libs/ohmyrasp-agent-java11.jar /opt/ohmyrasp/ohmyrasp-agent-java11.jar
 RUN mkdir -p /opt/ohmyrasp/logs && chmod -R 777 /opt/ohmyrasp
 ENV OHMYRASP_LOG=/opt/ohmyrasp/logs/events.jsonl
+ENV OHMYRASP_LOG_SYNC=true
 ENV UMASK=0000

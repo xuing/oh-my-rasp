@@ -1,0 +1,288 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>OhMyRASP · Host Console</title>
+<style>
+  :root {
+    --bg: #0b0e14; --panel: #111722; --panel-2: #0d131d; --line: #1e2735;
+    --txt: #d6deeb; --muted: #7d8aa3; --accent: #58a6ff;
+    --ok: #3fb950; --warn: #d29922; --bad: #f85149; --crit: #ff6a69;
+    --mono: ui-monospace, "SF Mono", "JetBrains Mono", "Cascadia Code", Menlo, Consolas, monospace;
+    --sans: system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--txt); font-family: var(--sans); font-size: 14px; }
+  a { color: var(--accent); }
+  header { display: flex; align-items: center; gap: 16px; padding: 14px 20px; border-bottom: 1px solid var(--line); background: linear-gradient(180deg,#0e141e,#0b0e14); position: sticky; top: 0; z-index: 5; }
+  .brand { display:flex; align-items:baseline; gap:10px; }
+  .brand b { font-size: 17px; letter-spacing: .3px; }
+  .brand .tag { color: var(--muted); font-family: var(--mono); font-size: 12px; }
+  .grow { flex: 1; }
+  .seg { display:inline-flex; border:1px solid var(--line); border-radius: 8px; overflow:hidden; }
+  .seg button { background: transparent; color: var(--muted); border: 0; padding: 7px 14px; cursor: pointer; font-weight: 600; font-family: var(--sans); }
+  .seg button:hover { color: var(--txt); }
+  .seg button.on-off { background: #20262f; color: var(--muted); }
+  .seg button.on-monitor { background: rgba(210,153,34,.18); color: var(--warn); }
+  .seg button.on-block { background: rgba(248,81,73,.18); color: var(--bad); }
+  main { padding: 18px 20px 60px; max-width: 1500px; margin: 0 auto; }
+  .row { display:grid; grid-template-columns: repeat(12, 1fr); gap: 14px; }
+  .card { background: var(--panel); border:1px solid var(--line); border-radius: 12px; padding: 14px 16px; }
+  .card h3 { margin: 0 0 10px; font-size: 12px; text-transform: uppercase; letter-spacing: .8px; color: var(--muted); font-weight: 700; }
+  .span3 { grid-column: span 3; } .span4 { grid-column: span 4; } .span5 { grid-column: span 5; }
+  .span6 { grid-column: span 6; } .span7 { grid-column: span 7; } .span8 { grid-column: span 8; } .span12 { grid-column: span 12; }
+  @media (max-width: 1000px){ .span3,.span4,.span5,.span6,.span7,.span8 { grid-column: span 12; } }
+  .metric { display:flex; flex-direction:column; gap:2px; }
+  .metric .v { font-size: 26px; font-weight: 700; font-family: var(--mono); }
+  .metric .k { color: var(--muted); font-size: 12px; }
+  .metrics { display:grid; grid-template-columns: repeat(4, 1fr); gap: 12px; }
+  .lat { display:grid; grid-template-columns: repeat(5, 1fr); gap: 10px; }
+  .lat .cell { background: var(--panel-2); border:1px solid var(--line); border-radius: 8px; padding: 10px; text-align:center; }
+  .lat .cell .v { font-family: var(--mono); font-size: 20px; font-weight: 700; }
+  .lat .cell .u { color: var(--muted); font-size: 11px; }
+  .hint { color: var(--muted); font-size: 12px; margin-top: 8px; line-height: 1.5; }
+  .pill { display:inline-block; padding: 2px 8px; border-radius: 999px; font-size: 11px; font-family: var(--mono); font-weight: 700; }
+  .pill.ok { background: rgba(63,185,80,.16); color: var(--ok); }
+  .pill.bad { background: rgba(248,81,73,.16); color: var(--bad); }
+  .pill.muted { background:#1b2230; color: var(--muted); }
+  .algos { display:flex; flex-direction:column; gap:6px; max-height: 320px; overflow:auto; }
+  .algo { display:flex; align-items:center; gap:10px; padding:6px 8px; border-radius: 8px; }
+  .algo:hover { background: var(--panel-2); }
+  .algo .name { font-family: var(--mono); font-size: 12.5px; flex:1; }
+  .algo .cnt { color: var(--muted); font-family: var(--mono); font-size: 11px; }
+  .switch { position: relative; width: 38px; height: 22px; flex: none; }
+  .switch input { display:none; }
+  .switch .slot { position:absolute; inset:0; background:#2a3342; border-radius: 999px; transition: .15s; }
+  .switch .knob { position:absolute; top:3px; left:3px; width:16px; height:16px; background:#8b97ac; border-radius:50%; transition:.15s; }
+  .switch input:checked + .slot { background: rgba(63,185,80,.5); }
+  .switch input:checked + .slot + .knob { left: 19px; background: var(--ok); }
+  table { width:100%; border-collapse: collapse; font-size: 13px; }
+  thead th { text-align:left; color: var(--muted); font-weight:600; font-size: 11px; text-transform: uppercase; letter-spacing:.6px; padding: 8px 10px; border-bottom:1px solid var(--line); position: sticky; top: 0; background: var(--panel); }
+  tbody td { padding: 8px 10px; border-bottom: 1px solid #161d28; vertical-align: top; }
+  tbody tr:hover { background: var(--panel-2); cursor: pointer; }
+  .mono { font-family: var(--mono); }
+  .nowrap { white-space: nowrap; }
+  .act { font-family: var(--mono); font-weight:700; font-size: 11px; padding: 2px 7px; border-radius: 6px; }
+  .act.block { background: rgba(248,81,73,.16); color: var(--bad); }
+  .act.log, .act.monitor { background: rgba(88,166,255,.14); color: var(--accent); }
+  .sev { width:8px; height:8px; border-radius:50%; display:inline-block; margin-right:6px; }
+  .sev.crit { background: var(--crit);} .sev.high { background: var(--bad);} .sev.med { background: var(--warn);} .sev.low { background: var(--muted);}
+  .raw { background: #06090f; border:1px solid var(--line); border-radius: 8px; padding: 12px; margin: 4px 0 2px; font-family: var(--mono); font-size: 12px; color: #b9c6dd; white-space: pre-wrap; word-break: break-word; max-height: 420px; overflow:auto; }
+  .toolbar { display:flex; gap:10px; align-items:center; margin-bottom: 10px; flex-wrap: wrap; }
+  input[type=text]{ background: var(--panel-2); border:1px solid var(--line); color: var(--txt); border-radius:8px; padding:7px 10px; font-family: var(--mono); font-size:12px; }
+  .btn { background: var(--panel-2); border:1px solid var(--line); color: var(--txt); border-radius:8px; padding:7px 12px; cursor:pointer; font-weight:600; }
+  .btn:hover { border-color: var(--accent); }
+  .dot { width:8px;height:8px;border-radius:50%; display:inline-block; }
+  .dot.live { background: var(--ok); box-shadow: 0 0 8px var(--ok); }
+  .dot.paused { background: var(--muted); }
+  .kv { display:flex; justify-content:space-between; gap:10px; padding:4px 0; border-bottom:1px solid #161d28; }
+  .kv .k { color: var(--muted); } .kv .v { font-family: var(--mono); }
+  .empty { color: var(--muted); text-align:center; padding: 30px; }
+</style>
+</head>
+<body>
+<header>
+  <div class="brand"><b>OhMyRASP</b> <span class="tag" id="version">host console</span></div>
+  <div class="grow"></div>
+  <div style="display:flex; align-items:center; gap:8px;">
+    <span class="mono" style="color:var(--muted); font-size:12px;">mode</span>
+    <div class="seg" id="modeSeg">
+      <button data-mode="off">Off</button>
+      <button data-mode="monitor">Monitor</button>
+      <button data-mode="block">Block</button>
+    </div>
+  </div>
+</header>
+
+<main>
+  <div class="row">
+    <div class="card span3">
+      <h3>Throughput</h3>
+      <div class="metrics" style="grid-template-columns: repeat(2,1fr);">
+        <div class="metric"><span class="v" id="m-total">0</span><span class="k">events</span></div>
+        <div class="metric"><span class="v" id="m-block" style="color:var(--bad)">0</span><span class="k">blocked</span></div>
+        <div class="metric"><span class="v" id="m-detections">0</span><span class="k">detections</span></div>
+        <div class="metric"><span class="v" id="m-retained">0</span><span class="k">in buffer</span></div>
+      </div>
+    </div>
+
+    <div class="card span5">
+      <h3>Business latency impact <span class="pill muted" id="lat-samples">0 samples</span></h3>
+      <div class="lat">
+        <div class="cell"><div class="v" id="lat-p50">0</div><div class="u">p50 µs</div></div>
+        <div class="cell"><div class="v" id="lat-p95">0</div><div class="u">p95 µs</div></div>
+        <div class="cell"><div class="v" id="lat-p99">0</div><div class="u">p99 µs</div></div>
+        <div class="cell"><div class="v" id="lat-max">0</div><div class="u">max µs</div></div>
+        <div class="cell"><div class="v" id="lat-avg">0</div><div class="u">avg µs</div></div>
+      </div>
+      <div class="hint" id="lat-hint">Agent overhead added to the protected request path, sampled on live (mostly benign) traffic — the real business-latency cost. Microseconds per hooked request; lower is better.</div>
+    </div>
+
+    <div class="card span4">
+      <h3>Cloud uplink</h3>
+      <div id="cloud-kv"></div>
+    </div>
+  </div>
+
+  <div class="row" style="margin-top:14px;">
+    <div class="card span4">
+      <h3>Detection algorithms</h3>
+      <div class="algos" id="algos"><div class="empty">No algorithms observed yet.</div></div>
+      <div class="hint">Toggle an algorithm off to suppress it on this host. Changes are written to the control file and picked up by the agent within its poll interval.</div>
+    </div>
+
+    <div class="card span8">
+      <h3>Attack &amp; suspicious activity log</h3>
+      <div class="toolbar">
+        <span class="dot live" id="liveDot" title="auto-refresh"></span>
+        <button class="btn" id="pauseBtn">Pause</button>
+        <input type="text" id="fHook" placeholder="filter hook…" size="16"/>
+        <input type="text" id="fAction" placeholder="filter action…" size="12"/>
+        <span class="grow"></span>
+        <span class="mono" style="color:var(--muted); font-size:12px;" id="srcPaths"></span>
+      </div>
+      <div style="max-height: 620px; overflow:auto; border:1px solid var(--line); border-radius:10px;">
+        <table>
+          <thead><tr>
+            <th class="nowrap">Time</th><th>Hook</th><th>Algorithm</th><th>Action</th><th>Conf</th><th>Message</th>
+          </tr></thead>
+          <tbody id="rows"><tr><td colspan="6" class="empty">Waiting for events…</td></tr></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</main>
+
+<script>
+const $ = (id) => document.getElementById(id);
+let paused = false;
+let currentMode = null;
+let controlAlgos = {};
+let expanded = new Set();
+
+function fmt(n){ return (n ?? 0).toLocaleString(); }
+function sevClass(c){ if(c>=90) return 'crit'; if(c>=75) return 'high'; if(c>=50) return 'med'; return 'low'; }
+function esc(s){ return String(s ?? '').replace(/[&<>"]/g, ch => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[ch])); }
+
+async function postControl(body){
+  try {
+    const r = await fetch('/api/control', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body)});
+    if(r.ok){ const c = await r.json(); applyControl(c); }
+  } catch(e){ /* offline console; ignore */ }
+}
+
+function applyControl(c){
+  currentMode = c.mode;
+  controlAlgos = c.algorithms || {};
+  for(const b of document.querySelectorAll('#modeSeg button')){
+    const on = b.dataset.mode === c.mode;
+    b.className = on ? ('on-'+c.mode) : '';
+  }
+}
+
+document.querySelectorAll('#modeSeg button').forEach(b => {
+  b.onclick = () => postControl({mode: b.dataset.mode});
+});
+$('pauseBtn').onclick = () => { paused = !paused; $('pauseBtn').textContent = paused ? 'Resume' : 'Pause';
+  $('liveDot').className = 'dot ' + (paused ? 'paused' : 'live'); };
+
+function renderCloud(cloud, spool, control){
+  const kv = $('cloud-kv');
+  const status = !cloud.enabled ? '<span class="pill muted">disabled (standalone)</span>'
+    : (cloud.connected ? '<span class="pill ok">connected</span>' : '<span class="pill bad">offline · buffering</span>');
+  const rows = [
+    ['status', status],
+    ['agent id', '<span class="mono">'+esc(cloud.agent_id || '—')+'</span>'],
+    ['pending → cloud', '<span class="mono">'+fmt(cloud.pending)+'</span>'],
+    ['uploaded', '<span class="mono">'+fmt(cloud.uploaded_total)+'</span>'],
+    ['dropped', '<span class="mono">'+fmt(cloud.dropped_total)+'</span>'],
+  ];
+  if(cloud.last_error) rows.push(['last error', '<span class="mono" style="color:var(--bad)">'+esc(cloud.last_error)+'</span>']);
+  kv.innerHTML = rows.map(r => `<div class="kv"><span class="k">${r[0]}</span><span class="v">${r[1]}</span></div>`).join('');
+}
+
+function renderAlgos(byAlgo){
+  const box = $('algos');
+  if(!byAlgo || byAlgo.length === 0){ box.innerHTML = '<div class="empty">No algorithms observed yet.</div>'; return; }
+  box.innerHTML = byAlgo.map(a => {
+    const enabled = controlAlgos[a.key] !== false;
+    return `<label class="algo">
+      <span class="name">${esc(a.key)}</span>
+      <span class="cnt">${fmt(a.count)}</span>
+      <span class="switch"><input type="checkbox" data-algo="${esc(a.key)}" ${enabled?'checked':''}/><span class="slot"></span><span class="knob"></span></span>
+    </label>`;
+  }).join('');
+  box.querySelectorAll('input[data-algo]').forEach(cb => {
+    cb.onchange = () => postControl({algorithms: {[cb.dataset.algo]: cb.checked}});
+  });
+}
+
+function renderRows(events){
+  const tb = $('rows');
+  if(!events || events.length === 0){ tb.innerHTML = '<tr><td colspan="6" class="empty">No matching events.</td></tr>'; return; }
+  let html = '';
+  for(const e of events){
+    const t = (e.timestamp || e.received_at || '').replace('T',' ').replace('Z','');
+    const act = (e.action || 'log').toLowerCase();
+    const key = e.seq;
+    html += `<tr data-seq="${key}">
+      <td class="nowrap mono" style="color:var(--muted)">${esc(t)}</td>
+      <td class="mono">${esc(e.hook)}</td>
+      <td class="mono">${esc(e.algorithm)}</td>
+      <td><span class="act ${act}">${esc(act)}</span></td>
+      <td class="mono"><span class="sev ${sevClass(e.confidence)}"></span>${esc(e.confidence)}</td>
+      <td>${esc(e.message)}</td>
+    </tr>`;
+    if(expanded.has(key)){
+      html += `<tr><td colspan="6"><div class="raw">${esc(JSON.stringify(e.raw, null, 2))}</div></td></tr>`;
+    }
+  }
+  tb.innerHTML = html;
+  tb.querySelectorAll('tr[data-seq]').forEach(tr => {
+    tr.onclick = () => {
+      const k = Number(tr.dataset.seq);
+      if(expanded.has(k)) expanded.delete(k); else expanded.add(k);
+      tick(true);
+    };
+  });
+}
+
+async function tick(force){
+  if(paused && !force) return;
+  try {
+    const s = await (await fetch('/api/stats')).json();
+    if(currentMode === null) applyControl(s.control);
+    else { controlAlgos = s.control.algorithms || {}; }
+    $('version').textContent = 'host console · v' + (s.version || '?');
+    $('srcPaths').textContent = 'spool: ' + s.spool_path;
+    const st = s.stats;
+    $('m-total').textContent = fmt(st.total);
+    $('m-block').textContent = fmt(st.blocks);
+    $('m-detections').textContent = fmt(st.detections);
+    $('m-retained').textContent = fmt(st.retained);
+    const L = st.latency;
+    $('lat-p50').textContent = fmt(L.p50_us); $('lat-p95').textContent = fmt(L.p95_us);
+    $('lat-p99').textContent = fmt(L.p99_us); $('lat-max').textContent = fmt(L.max_us);
+    $('lat-avg').textContent = fmt(L.avg_us);
+    $('lat-samples').textContent = fmt(L.samples) + ' samples';
+    renderCloud(s.cloud, s.spool_path, s.control);
+    renderAlgos(st.by_algorithm);
+
+    const hook = $('fHook').value.trim();
+    const action = $('fAction').value.trim();
+    const qs = new URLSearchParams({limit: '300'});
+    if(hook) qs.set('hook', hook);
+    if(action) qs.set('action', action);
+    const ev = await (await fetch('/api/events?'+qs.toString())).json();
+    renderRows(ev.events);
+  } catch(e){ /* transient */ }
+}
+
+$('fHook').oninput = () => tick(true);
+$('fAction').oninput = () => tick(true);
+tick(true);
+setInterval(tick, 1500);
+</script>
+</body>
+</html>
