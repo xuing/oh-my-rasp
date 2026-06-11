@@ -100,6 +100,14 @@ public final class Java17ProbeServlet extends HttpServlet {
       send(response, "java17 jndi completed");
       return;
     }
+    if ("/java17/typed-payload".equals(path)) {
+      String argumentCollection = request.getParameter("argumentCollection");
+      send(
+          response,
+          "java17 typed payload attempted "
+              + String.valueOf(argumentCollection == null ? 0 : argumentCollection.length()));
+      return;
+    }
     if ("/java17/deserialization".equals(path)) {
       try {
         deserialize(serializedDescriptor("com.sun.rowset.JdbcRowSetImpl"));

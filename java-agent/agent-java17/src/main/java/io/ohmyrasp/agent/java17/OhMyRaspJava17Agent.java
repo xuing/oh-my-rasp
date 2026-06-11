@@ -80,6 +80,7 @@ public final class OhMyRaspJava17Agent {
         + "\"command_hook\":\"installed\","
         + "\"jndi_hook\":\"installed\","
         + "\"deserialization_hook\":\"installed\","
+        + "\"hessian_hook\":\"installed\","
         + "\"file_hook\":\"installed\","
         + "\"upload_hook\":\"installed\","
         + "\"archive_hook\":\"installed\","
@@ -111,6 +112,7 @@ public final class OhMyRaspJava17Agent {
     instrumentation.addTransformer(new Java17ProcessTransformer(), canRetransform);
     instrumentation.addTransformer(new Java17JndiTransformer(), canRetransform);
     instrumentation.addTransformer(new Java17DeserializationTransformer(), canRetransform);
+    instrumentation.addTransformer(new Java17HessianTransformer(), canRetransform);
     instrumentation.addTransformer(new Java17FileTransformer(), canRetransform);
     instrumentation.addTransformer(new Java17MultipartUploadTransformer(), canRetransform);
     instrumentation.addTransformer(new Java17ArchiveTransformer(), canRetransform);
@@ -143,6 +145,7 @@ public final class OhMyRaspJava17Agent {
     retransform(instrumentation, javax.naming.InitialContext.class);
     retransform(instrumentation, ObjectInputStream.class);
     retransformByName(instrumentation, "sun.rmi.server.MarshalInputStream");
+    retransformByName(instrumentation, "com.caucho.hessian.io.SerializerFactory");
     retransform(instrumentation, File.class);
     retransform(instrumentation, FileInputStream.class);
     retransform(instrumentation, FileOutputStream.class);

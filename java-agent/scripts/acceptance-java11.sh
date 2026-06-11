@@ -63,6 +63,10 @@ wait_for() {
   exit 1
 }
 
+typed_payload_body() {
+  printf "%s" "argumentCollection=<wddxPacket version='1.0'><header/><data><struct type='xcom.sun.rowset.JdbcRowSetImplx'><var name='dataSourceName'><string>ldap://127.0.0.1:1389/Exploit</string></var><var name='autoCommit'><boolean value='true'/></var></struct></data></wddxPacket>"
+}
+
 run_baseline() {
   local version="$1"
   local url="$2"
@@ -73,6 +77,14 @@ run_baseline() {
   curl -fsS "${url}/rasp/java11/command" > "${dir}/command.response"
   curl -fsS "${url}/rasp/java11/command-shell" > "${dir}/command_shell.response"
   curl -fsS "${url}/rasp/java11/jndi" > "${dir}/jndi.response"
+  curl -fsS -X POST -H "Content-Type: application/x-www-form-urlencoded" \
+    --data-binary "$(typed_payload_body)" \
+    "${url}/rasp/java11/typed-payload" > "${dir}/typed_payload.response"
+  if ! grep -q "java11 typed payload attempted" "${dir}/typed_payload.response"; then
+    cat "${dir}/typed_payload.response" >&2
+    echo "baseline tomcat${version}-java11 typed payload did not reach endpoint" >&2
+    exit 1
+  fi
   curl -fsS "${url}/rasp/java11/deserialization" > "${dir}/deserialization.response"
   curl -fsS "${url}/rasp/java11/file-read" > "${dir}/file_read.response"
   curl -fsS "${url}/rasp/java11/file-write" > "${dir}/file_write.response"
@@ -213,6 +225,33 @@ expect_block() {
   echo "blocked tomcat${version}-java11 ${name}"
 }
 
+expect_block_form() {
+  local version="$1"
+  local name="$2"
+  local algorithm="$3"
+  local path="$4"
+  local url="http://localhost:$(protected_port "$version")"
+  local log="logs/tomcat${version}-java11-protected/events.jsonl"
+  local status
+  status="$(curl -sS -o "logs/tomcat${version}-java11-protected/${name}.response" \
+    -w "%{http_code}" \
+    -X POST \
+    -H "Content-Type: application/x-www-form-urlencoded" \
+    --data-binary "$(typed_payload_body)" \
+    "${url}${path}" || true)"
+  if [[ "$status" =~ ^2 ]]; then
+    echo "protected tomcat${version}-java11 ${name} unexpectedly returned ${status}" >&2
+    cat "logs/tomcat${version}-java11-protected/${name}.response" >&2
+    exit 1
+  fi
+  if ! grep -q "\"algorithm\":\"${algorithm}\".*\"action\":\"block\"" "$log"; then
+    cat "$log" >&2
+    echo "missing protected tomcat${version}-java11 ${name} block event for ${algorithm}" >&2
+    exit 1
+  fi
+  echo "blocked tomcat${version}-java11 ${name}"
+}
+
 expect_block_upload() {
   local version="$1"
   local name="$2"
@@ -250,6 +289,7 @@ for version in "${versions[@]}"; do
   expect_block "$version" command java11_command_execution_exploit_primitive /rasp/java11/command
   expect_block "$version" command_shell java11_command_execution_shell_meta /rasp/java11/command-shell
   expect_block "$version" jndi java11_jndi_remote_lookup /rasp/java11/jndi
+  expect_block_form "$version" typed_payload java11_request_typed_payload_deserialization /rasp/java11/typed-payload
   expect_block "$version" deserialization java11_deserialization_gadget_class /rasp/java11/deserialization
   expect_block "$version" file_read java11_file_sensitive_read /rasp/java11/file-read
   expect_block "$version" file_write java11_file_script_write /rasp/java11/file-write

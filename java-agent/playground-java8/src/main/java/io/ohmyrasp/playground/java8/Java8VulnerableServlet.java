@@ -265,6 +265,14 @@ public final class Java8VulnerableServlet extends HttpServlet {
       send(response, "jndi lookup completed");
       return;
     }
+    if ("/java8/typed-payload".equals(path)) {
+      String argumentCollection = request.getParameter("argumentCollection");
+      send(
+          response,
+          "typed payload attempted "
+              + String.valueOf(argumentCollection == null ? 0 : argumentCollection.length()));
+      return;
+    }
     if ("/java8/xxe-file".equals(path)) {
       parseXml(
           "<?xml version=\"1.0\"?>"

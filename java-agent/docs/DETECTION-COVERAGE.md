@@ -10,9 +10,9 @@
 |--------|------:|
 | Hook families (instrumentation points) | 27 |
 | Detector capabilities (engine entry points) | 52 |
-| Verified algorithm signatures (asserted by tests) | 42 |
-| End-to-end vulnerability acceptance scenarios | 127 |
-| JDK lines exercised | 5 |
+| Verified algorithm signatures (asserted by tests) | 43 |
+| End-to-end vulnerability acceptance scenarios | 136 |
+| JDK lines exercised | 6 |
 
 ## Hook families
 
@@ -77,7 +77,7 @@ The engine exposes **52** detection entry points:
 Algorithm identifiers asserted by the acceptance suite — i.e. detections that
 are proven end-to-end, not merely implemented.
 
-**java11** (7)
+**java11** (8)
 
 - `java11_command_execution_exploit_primitive`
 - `java11_file_script_write`
@@ -85,6 +85,7 @@ are proven end-to-end, not merely implemented.
 - `java11_jdbc_h2_code_execution`
 - `java11_jmx_script_file_write`
 - `java11_request_default_jwt_secret`
+- `java11_request_typed_payload_deserialization`
 - `java11_script_engine_runtime_execution`
 
 **java17** (11)
@@ -136,11 +137,13 @@ the agent and assert the expected detection/block. Counts by JDK line:
 | JDK | Scenarios |
 |-----|----------:|
 | java7-legacy | 9 |
-| java8 | 94 |
-| java11 | 9 |
+| java8 | 96 |
+| java11 | 10 |
 | java17 | 12 |
 | java21 | 3 |
-| **total** | **127** |
+| java6-legacy | 5 |
+| unknown | 1 |
+| **total** | **136** |
 
 Top application families by scenario count:
 
@@ -148,10 +151,12 @@ Top application families by scenario count:
 |-------------|----------:|
 | struts2 | 19 |
 | spring | 10 |
+| weblogic | 7 |
 | ofbiz | 6 |
 | activemq | 5 |
 | elasticsearch | 5 |
 | solr | 5 |
+| coldfusion | 4 |
 | geoserver | 4 |
 | nexus | 4 |
 | tomcat | 4 |
@@ -160,12 +165,10 @@ Top application families by scenario count:
 | jboss | 3 |
 | jenkins | 3 |
 | rmi | 3 |
-| coldfusion | 2 |
 | druid | 2 |
 | flink | 2 |
 | hugegraph | 2 |
 | log4j | 2 |
-| metabase | 2 |
 
 <details><summary>Full scenario list</summary>
 
@@ -181,7 +184,7 @@ Top application families by scenario count:
 - spring-webflow
 - tomcat8-manager
 
-### java8 (94)
+### java8 (96)
 
 - aj-report
 - apereo-cas-415
@@ -206,6 +209,7 @@ Top application families by scenario count:
 - jenkins-1000353
 - jenkins-1000861
 - jetty-28164
+- jira-11581-setup-boundary
 - jmeter-1297
 - kkfileview
 - liferay-7961
@@ -273,16 +277,18 @@ Top application families by scenario count:
 - tomcat-34486
 - unomi
 - weblogic-14883
+- weblogic-21839
 - weblogic-2894
 - xstream-21351
 - xstream-29505
 - xxljob
 
-### java11 (9)
+### java11 (10)
 
 - activemq
 - activemq-46604
 - coldfusion-26360
+- coldfusion-29300
 - hertzbeat
 - hugegraph
 - hugegraph-43441
@@ -310,6 +316,18 @@ Top application families by scenario count:
 - dataease-32966
 - dataease-49001
 - dataease-56511
+
+### java6-legacy (5)
+
+- coldfusion-2861
+- weblogic-10271
+- weblogic-2628
+- weblogic-uddi-ssrf
+- weblogic-weak-password
+
+### unknown (1)
+
+- confluence-setup-boundaries
 
 </details>
 

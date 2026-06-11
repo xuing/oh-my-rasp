@@ -100,6 +100,14 @@ public final class Java11ProbeServlet extends HttpServlet {
       send(response, "java11 jndi completed");
       return;
     }
+    if ("/java11/typed-payload".equals(path)) {
+      String argumentCollection = request.getParameter("argumentCollection");
+      send(
+          response,
+          "java11 typed payload attempted "
+              + String.valueOf(argumentCollection == null ? 0 : argumentCollection.length()));
+      return;
+    }
     if ("/java11/deserialization".equals(path)) {
       try {
         deserialize(serializedDescriptor("com.sun.rowset.JdbcRowSetImpl"));

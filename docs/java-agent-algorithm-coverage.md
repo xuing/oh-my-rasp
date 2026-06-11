@@ -297,6 +297,10 @@ same patch as any new Java-compatible Vulhub replay.
   BeanShell interpreter/proxy gadgets, Groovy closure gadgets, Spring factory
   gadgets, and `ProcessBuilder` log `java8_deserialization_gadget_class`;
   ordinary class resolution, such as string deserialization, is ignored.
+  The Java 8 era track also hooks Hessian `SerializerFactory.getDeserializer`
+  type resolution and emits `java8_deserialization_hessian_type` for dangerous
+  Hessian wire types such as `org.apache.commons.beanutils.BeanComparator`
+  while ignoring benign DTO/container types.
   `scripts/acceptance-vulhub-dubbo-java8.sh` provides real Vulhub application
   evidence: Dubbo 2.7.3 CVE-2019-17564 baseline deserializes a
   CommonsCollections6 HTTP Invoker body and creates
@@ -711,6 +715,11 @@ same patch as any new Java-compatible Vulhub replay.
   ignored. The Java 11 Tomcat matrix baseline-tests a crafted high-risk class
   descriptor and protected-block-tests it under the dedicated Java 11
   agent.
+- The Java 11 era track also hooks Hessian
+  `SerializerFactory.getDeserializer` type resolution and emits
+  `java11_deserialization_hessian_type` for dangerous Hessian wire types such
+  as `org.apache.commons.beanutils.BeanComparator`, while ordinary
+  DTO/container types stay quiet.
 - The Java 11 era track hooks `FileInputStream`, `FileOutputStream`,
   `RandomAccessFile`, `File.renameTo`, and `java.nio.file.Files` content
   read/write, byte-channel open, path-to-path copy, and path-to-path move APIs.
@@ -894,6 +903,8 @@ same patch as any new Java-compatible Vulhub replay.
   `java17_command_execution_exploit_primitive`,
   `java17_command_execution_shell_meta`, `java17_jndi_remote_lookup`,
   `java17_deserialization_gadget_class`, `java17_file_sensitive_read`, and
+  `java17_deserialization_hessian_type` for dangerous Hessian
+  `SerializerFactory.getDeserializer` wire types, and
   `java17_file_script_write`, `java17_file_generated_plot_script_command` for
   generated plot script command directives,
   `java17_archive_entry_traversal_write` for ZipEntry and SevenZipBinding
@@ -1400,7 +1411,12 @@ same patch as any new Java-compatible Vulhub replay.
   CVE-2023-22515-style requests such as
   `bootstrapStatusProvider.applicationConfig.setupComplete=false` while
   ignoring ordinary nested `setupComplete` fields outside setup context and
-  logging only parameter name, reset value, method, and URI.
+  logging only parameter name, reset value, method, and URI. The scripted
+  Confluence setup-boundary probe confirms `vulhub/confluence:8.5.1` is
+  injectable in principle, but the uninitialized environment keeps the
+  setup-state reset and administrator creation flow behind the manual
+  setup/license sequence, so it is tracked as a setup boundary rather than a
+  protected acceptance.
 - `request_server_side_script_put` covers HTTP `PUT` requests whose decoded path
   targets a server-side script extension, including trailing slash or semicolon
   bypass forms. This targets writable DefaultServlet/WebDAV upload paths such
@@ -1591,8 +1607,13 @@ same patch as any new Java-compatible Vulhub replay.
   S2-061 `freemarker.template.utility.Execute` OGNL sandbox-bypass primitive.
   The real Java 8 Spring Security OAuth Vulhub acceptance verifies the same
   `/oauth/authorize` `response_type` SpEL flow with protected-mode enforcement
-  at the later `Runtime.exec(String)` process sink, and the real Java 8
-  Struts2 S2-001 Vulhub acceptance verifies the validation-error
+  at the later `Runtime.exec(String)` process sink. The scripted Confluence
+  setup-boundary probe confirms the 7.4.10 and 8.5.3 images are injectable in
+  principle, but the uninitialized environments redirect the CVE-2021-26084 and
+  CVE-2023-22527 requests to setup before OGNL evaluation, so they are tracked
+  as setup boundaries rather than protected acceptances. The real Java 8 Struts2
+  S2-001 Vulhub
+  acceptance verifies the validation-error
   `/login.action` form value OGNL flow with enforcement at the later
   `ProcessBuilder.start` sink. The real Java 8 Struts2 S2-007 Vulhub acceptance
   verifies the integer conversion-error `/user.action` `age` value OGNL flow
@@ -1669,7 +1690,9 @@ same patch as any new Java-compatible Vulhub replay.
   acceptance confirms the real action-name wildcard-result baseline and
   protected enforcement at the later `Runtime.exec(String)` sink. The Java 8
   S2-057 Vulhub acceptance confirms the real action-chain redirect baseline
-  and protected enforcement at the later `Runtime.exec` sink.
+  and protected enforcement at the later `Runtime.exec` sink. The scripted
+  Confluence setup-boundary probe confirms the current CVE-2022-26134 image
+  redirects the direct encoded path payload to setup with no `X-Cmd-Response`.
 - `request_xxe_payload` covers request parameters whose values contain XML
   doctypes with external entity declarations using unsafe protocols such as
   `file:`, `jar:`, HTTP, FTP, LDAP, or RMI. This targets Solr CVE-2017-12629
@@ -1701,7 +1724,15 @@ same patch as any new Java-compatible Vulhub replay.
   Vulhub-shaped ColdFusion CVE-2023-29300
   `/CFIDE/adminapi/accessmanager.cfc?method=foo&_cfclient=true`
   `argumentCollection` WDDX POST and the `/api/monitors/import` YAML import
-  body.
+  body. The Java 8/11/17 backport request hooks implement the same parameter
+  value heuristic with era-prefixed algorithms
+  `java8_request_typed_payload_deserialization`,
+  `java11_request_typed_payload_deserialization`, and
+  `java17_request_typed_payload_deserialization` without reading raw request
+  bodies. Real Java 11 Vulhub evidence is provided by
+  `scripts/acceptance-vulhub-coldfusion-29300-java11.sh`: baseline reaches a
+  host LDAP listener from ColdFusion 2018.0.15, while protected mode blocks the
+  same WDDX POST at `HttpServlet.service` before the outbound LDAP connection.
 - `request_xml_polymorphic_gadget` covers XML request bodies that declare
   dangerous Java polymorphic gadget types through XML class attributes, class
   elements, or fully qualified Java tag names before an XML object mapper
@@ -1734,7 +1765,12 @@ same patch as any new Java-compatible Vulhub replay.
   inferred engine, and source length. The playground and acceptance suite
   include the Vulhub-shaped `/secure/ContactAdministrators.jspa` form POST for
   Jira CVE-2019-11581 and `/jmreport/queryFieldBySql` JSON `sql` POST for
-  JimuReport CVE-2023-4450. The Java 8 runtime track also proves Solr 8.2.0
+  JimuReport CVE-2023-4450. The real Jira 8.1.0 Vulhub environment is also
+  tracked by
+  `scripts/acceptance-vulhub-jira-11581-setup-boundary-java8.sh`: it confirms
+  the Java 8u212 runtime and shows that the uninitialized image redirects the
+  Contact Administrators GET/POST payload flow to setup before the vulnerable
+  form can be exercised. The Java 8 runtime track also proves Solr 8.2.0
   CVE-2019-17558 in `scripts/acceptance-vulhub-solr-velocity-java8.sh`,
   where the final protection is the generic `Runtime.exec` sink rather than a
   Velocity-specific block.
@@ -1768,8 +1804,17 @@ same patch as any new Java-compatible Vulhub replay.
   acceptance verifies the same metadata classname source reaches a sensitive
   file load in the product runtime; final enforcement there is
   `java11_file_sensitive_read` at `FileInputStream.open`, before
-  `/proc/self/environ` is returned. It logs only source location, field name,
-  target type, and value length.
+  `/proc/self/environ` is returned. The scripted ColdFusion CVE-2010-2861
+  Vulhub probe proves the README-shaped `locale=.../etc/passwd%00en` baseline
+  disclosure, but the image runs Java 6u04 and rejects the Java 8 agent
+  classfile version, so it is tracked as a legacy runtime boundary rather than a
+  protected LTS acceptance. The scripted Confluence CVE-2019-3396 Java 8 Vulhub
+  setup-boundary probe confirms the image runtime is injectable in principle,
+  but the uninitialized environment keeps the macro-preview `_template` request
+  behind the setup/license flow and returns `503 Setup in progress`, so that
+  target is tracked as a Vulhub setup boundary rather than a protected
+  acceptance. It logs only source location, field name, target type, and value
+  length.
 - `request_remote_content_stream` covers request-time control-plane payloads
   that enable remote/content streaming or pass content-stream URL parameters to
   local file, JAR, dangerous SSRF, or internal HTTP targets. This targets
@@ -1967,7 +2012,10 @@ same patch as any new Java-compatible Vulhub replay.
   Java file-read sink. This targets direct file-disclosure helpers such as the
   Vulhub WebLogic weak-password lab `GET /hello/file.jsp?path=/etc/passwd`,
   while keeping the decision at the file API boundary rather than on endpoint
-  names alone.
+  names alone. The real WebLogic weak-password Vulhub legacy-boundary script
+  proves the Java 6 baseline discloses `/etc/passwd` and that the current Java
+  8 agent cannot inject into that runtime because the JVM rejects classfile
+  major version 52.0.
 - `writeFile_config_path` covers runtime configuration persistence stacks that
   write to unsafe filesystem targets, such as RocketMQ NameServer
   CVE-2023-37582 `configStorePath` updates that redirect config persistence to
@@ -2086,7 +2134,14 @@ same patch as any new Java-compatible Vulhub replay.
   CVE-2023-21839-style IIOP/JNDI remote-reference flows while avoiding ordinary
   remoting calls that deserialize only benign peer metadata or service DTOs. The
   playground and acceptance suite include Vulhub-shaped WebLogic CVE-2018-2628
-  T3 JRMPClient and CVE-2023-21839 IIOP/JNDI deserialization replays.
+  T3 JRMPClient and CVE-2023-21839 IIOP/JNDI deserialization replays. The real
+  Java 6 WebLogic CVE-2018-2628 Vulhub boundary in
+  `scripts/acceptance-vulhub-weblogic-2628-java6-legacy.sh` proves the baseline
+  JRMPClient2 replay reaches the JRMP listener and creates a marker, while the
+  current Java 8 agent cannot inject into the Java 6u45 runtime. The real Java
+  8 WebLogic CVE-2023-21839 Vulhub acceptance proves the baseline IIOP/JNDI
+  replay reaches an outbound LDAP listener and protected mode blocks the same
+  remote lookup with `java8_jndi_remote_lookup` before the listener is reached.
 - `deserialization_jms_object_message` covers dangerous Java deserialization
   gadget classes resolved while a JMS provider is deserializing an
   `ObjectMessage` body. This targets ActiveMQ CVE-2015-5254-style broker or web
@@ -2174,7 +2229,13 @@ same patch as any new Java-compatible Vulhub replay.
   chains without blocking ordinary Hessian requests that only carry benign
   maps, lists, DTOs, or primitives. The playground and acceptance suite include
   the Vulhub-shaped XXL-JOB `POST /xxl-job-admin/api` Hessian request with
-  `Content-Type: x-application/hessian`.
+  `Content-Type: x-application/hessian`. The Java 8/11/17 backports now carry
+  era-prefixed Hessian type hooks (`java8_deserialization_hessian_type`,
+  `java11_deserialization_hessian_type`, and
+  `java17_deserialization_hessian_type`); the current Vulhub
+  `xxl-job/unacc` 2.2.0 image was probed and records only a non-graduated
+  candidate because its admin/core jars do not contain the old Hessian
+  dependency referenced by the README for pre-2.2.0 deployments.
 - `deserialization_xmlrpc_serialized` covers Apache XML-RPC extension values
   where a `<serializable>` XML element is decoded and passed to
   `ObjectInputStream` during request handling. This targets Apache OFBiz XMLRPC
@@ -2279,8 +2340,11 @@ same patch as any new Java-compatible Vulhub replay.
   passed to a server-side HTTP client; the real Java 17 Vulhub acceptance
   verifies the baseline listener relay and protected block. It also covers
   WebLogic UDDI Explorer SSRF where an `operator=` URL targets internal HTTP or
-  Redis services, including CRLF-shaped Redis command payloads, while public
-  external URLs that are not request-controlled remain allowed.
+  Redis services, including CRLF-shaped Redis command payloads; the real Vulhub
+  UDDI script proves the Java 6u45 baseline relay to a host listener, but records
+  the target as a legacy runtime boundary because the Java 6 JVM rejects the
+  Java 8 agent classfile version. Public external URLs that are not
+  request-controlled remain allowed.
 - `ssrf_protocol`, `ssrf_userinput`, and related SSRF algorithms also cover XML
   attachment resolvers that fall back from MTOM/XOP content IDs to URL loading.
   This targets Apache CXF Aegis-style `xop:Include href` SSRF/file reads while
@@ -2356,7 +2420,10 @@ same patch as any new Java-compatible Vulhub replay.
   script writers, covering WebLogic WorkContext XMLDecoder-style RCE without a
   WebLogic-specific path signature. The playground and acceptance suite include
   the Vulhub-shaped `/wls-wsat/CoordinatorPortType` SOAP `WorkContext`
-  `XMLDecoder` flow for CVE-2017-10271.
+  `XMLDecoder` flow for CVE-2017-10271. The real Vulhub WebLogic
+  CVE-2017-10271 script proves baseline Java 6u45 marker creation through
+  `ProcessBuilder.start`, but records the environment as a legacy runtime
+  boundary because the Java 6 JVM rejects the Java 8 agent classfile version.
 - `xxe_external_entity_protocol` ignores trusted local framework metadata
   resources required for normal startup, including WebLogic's local
   `jar:file:/u01/oracle/wlserver/modules/com.oracle.weblogic.security.service.store.jar!/com/bea/common/security/store/data/package.jdo`
