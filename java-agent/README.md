@@ -137,6 +137,10 @@ docker run --rm -v "$PWD":/workspace -w /workspace gradle:jdk25 \
   across JDK 7/8/11/17/21) and asserts the expected detection/block. The verified
   algorithm signatures and the full scenario matrix are listed in
   [`docs/DETECTION-COVERAGE.md`](docs/DETECTION-COVERAGE.md).
+  `scripts/acceptance-java21.sh` is a Java 21 runtime compatibility matrix: it
+  runs the Java 17-compatible agent jar on Tomcat 9/10/11 JDK 21 images and
+  asserts the startup log reports `java_version` 21 before replaying the Java 17
+  hook coverage endpoints.
 - **False-positive rate** — measured, not asserted. `scripts/fp-harness` runs a
   curated benign corpus through the real `DetectorEngine` and counts detections;
   results in [`docs/FALSE-POSITIVE-REPORT.md`](docs/FALSE-POSITIVE-REPORT.md).
