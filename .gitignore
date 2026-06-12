@@ -24,5 +24,6 @@ logs/
 .DS_Store
 *.log
 .codegraph/
+.omx/
 .env.local
 .env.*.local
