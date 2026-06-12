@@ -1,0 +1,81 @@
+name: Feature request
+description: Propose a new capability or improvement.
+title: "[feat] "
+labels: ["enhancement", "needs-triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Use this form to propose a new feature or a significant improvement
+        to an existing one. For detection coverage additions (new attack
+        classes, bypass variants) use the **Detection report** template
+        instead.
+
+  - type: dropdown
+    id: component
+    attributes:
+      label: Component
+      description: Which area does this feature primarily affect?
+      options:
+        - control-plane API (api/)
+        - console (console/)
+        - java-agent
+        - daemon (ohmyrasp-daemon)
+        - deploy / Helm
+        - docs
+        - multiple / cross-cutting
+        - other / unsure
+    validations:
+      required: true
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem or motivation
+      description: >
+        Describe the problem this feature solves or the use case it
+        enables. A concrete "I am trying to ... but I cannot because ..."
+        framing is most helpful.
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed solution
+      description: >
+        Describe what you would like to see. Include API shape, UI
+        sketches, config knobs, or algorithm notes if relevant. Being
+        specific here helps maintainers estimate effort.
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: >
+        List other approaches you considered and why you prefer the
+        proposed solution, or why the alternatives are insufficient.
+    validations:
+      required: false
+
+  - type: textarea
+    id: context
+    attributes:
+      label: Additional context
+      description: >
+        Links to related issues, upstream CVEs, reference implementations,
+        or any other background that would help the maintainers.
+    validations:
+      required: false
+
+  - type: checkboxes
+    id: checklist
+    attributes:
+      label: Pre-submission checklist
+      options:
+        - label: >
+            I searched existing issues and discussions and did not find a
+            duplicate or prior decision to decline this feature.
+          required: true

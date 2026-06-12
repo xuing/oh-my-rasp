@@ -1,159 +1,99 @@
 # OhMyRASP
 
-Self-hosted runtime application self-protection for Java services, with a
-control plane, observability stack, daemon-compatible APIs, and a Java agent
-proof of concept.
+**Runtime Application Self-Protection for Java — self-hosted, inspectable, and
+validated against real exploits.**
+
+OhMyRASP instruments the JVM from inside with ASM bytecode hooks, watches every
+dangerous sink (`Runtime.exec`, JDBC, JNDI, deserialization, file I/O, …), and
+decides — with request-taint correlation and call-stack analysis, not just
+regex — whether the call is an attack. Detections can be observed in monitor
+mode or stopped cold in block mode, switchable at runtime without restarting
+the JVM.
+
+[![CI](https://github.com/xuing/oh-my-rasp/actions/workflows/ohmyrasp-control.yml/badge.svg)](https://github.com/xuing/oh-my-rasp/actions/workflows/ohmyrasp-control.yml)
+[![License](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
+[![Java agents](https://img.shields.io/badge/Java-8%20%7C%2011%20%7C%2017%20%7C%2025-ED8B00?logo=openjdk&logoColor=white)](java-agent/)
+[![Exploit scenarios](https://img.shields.io/badge/exploit_scenarios-136_verified-success)](docs/development/vulhub-coverage.md)
+[![Detection algorithms](https://img.shields.io/badge/detection_algorithms-52-blueviolet)](docs/detection.md)
 
 **Languages:** English | [简体中文](README.zh-CN.md)
 
-[![License](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
-[![Go](https://img.shields.io/badge/Go-1.26-00ADD8?logo=go&logoColor=white)](https://go.dev/)
-[![chi](https://img.shields.io/badge/chi-router-00ADD8?logo=go&logoColor=white)](https://github.com/go-chi/chi)
-[![OpenAPI](https://img.shields.io/badge/OpenAPI-3.1-6BA539?logo=openapiinitiative&logoColor=white)](https://www.openapis.org/)
-[![React](https://img.shields.io/badge/React-19-61DAFB?logo=react&logoColor=061A23)](https://react.dev/)
-[![TypeScript](https://img.shields.io/badge/TypeScript-5-3178C6?logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
-[![Vite](https://img.shields.io/badge/Vite-8-646CFF?logo=vite&logoColor=white)](https://vite.dev/)
-[![PostgreSQL](https://img.shields.io/badge/PostgreSQL-control_store-4169E1?logo=postgresql&logoColor=white)](https://www.postgresql.org/)
-[![ClickHouse](https://img.shields.io/badge/ClickHouse-analytics-FFCC01?logo=clickhouse&logoColor=111111)](https://clickhouse.com/)
-[![Valkey](https://img.shields.io/badge/Valkey-cache-B71C1C?logo=valkey&logoColor=white)](https://valkey.io/)
-[![Prometheus](https://img.shields.io/badge/Prometheus-metrics-E6522C?logo=prometheus&logoColor=white)](https://prometheus.io/)
-[![Alertmanager](https://img.shields.io/badge/Alertmanager-routing-E6522C?logo=prometheus&logoColor=white)](https://prometheus.io/docs/alerting/latest/alertmanager/)
-[![Grafana](https://img.shields.io/badge/Grafana-dashboards-F46800?logo=grafana&logoColor=white)](https://grafana.com/)
-[![Docker Compose](https://img.shields.io/badge/Docker-Compose-2496ED?logo=docker&logoColor=white)](https://docs.docker.com/compose/)
-[![Helm](https://img.shields.io/badge/Helm-chart-0F1689?logo=helm&logoColor=white)](https://helm.sh/)
-[![Kubernetes](https://img.shields.io/badge/Kubernetes-ready-326CE5?logo=kubernetes&logoColor=white)](https://kubernetes.io/)
-[![Java](https://img.shields.io/badge/Java-agent-ED8B00?logo=openjdk&logoColor=white)](https://openjdk.org/)
-[![ASM](https://img.shields.io/badge/ASM-bytecode-5A45FF?logo=apache&logoColor=white)](https://asm.ow2.io/)
-[![Nginx](https://img.shields.io/badge/Nginx-web_proxy-009639?logo=nginx&logoColor=white)](https://nginx.org/)
-[![Playwright](https://img.shields.io/badge/Playwright-e2e-2EAD33?logo=playwright&logoColor=white)](https://playwright.dev/)
-[![Vitest](https://img.shields.io/badge/Vitest-unit_tests-6E9F18?logo=vitest&logoColor=white)](https://vitest.dev/)
-[![GitHub Actions](https://img.shields.io/badge/GitHub_Actions-CI-2088FF?logo=githubactions&logoColor=white)](https://github.com/features/actions)
+---
 
-OhMyRASP is built for teams that want an inspectable, self-hosted RASP control
-plane instead of a black-box security appliance. It combines application and
-agent inventory, policy lifecycle management, runtime telemetry, daemon
-workload reporting, auditability, and an OSS Java agent testbed in one
+## Why OhMyRASP
+
+Most RASP products are black boxes. OhMyRASP is the opposite: every hook,
+every detection algorithm, and every test that proves it works is in this
 repository.
 
-## Project Status
+| | |
+|---|---|
+| **Instrumented sink families** | 27 ASM hook modules — process exec, SQL, JNDI, deserialization (native, Hessian, XStream, Fastjson-style typed payloads, OpenWire), file I/O, SSRF, XXE, expression engines, JWT/session, archives, class loading, … |
+| **Detection algorithms** | 52 engine capabilities, 43 of them asserted by tests |
+| **End-to-end validation** | 136 acceptance scenarios replayed against real [Vulhub](https://github.com/vulhub/vulhub) images; 130 Java/JVM CVEs tracked in the [coverage ledger](docs/development/vulhub-coverage.md) |
+| **Real CVEs blocked** | Log4Shell (CVE-2021-44228), Spring4Shell (CVE-2022-22965), Fastjson autoType, Shiro rememberMe (CVE-2016-4437), 19 Struts2 advisories (S2-001 … S2-067), Tomcat Ghostcat (CVE-2020-1938), ActiveMQ OpenWire (CVE-2023-46604), WebLogic XMLDecoder, Spring Cloud Gateway SpEL (CVE-2022-22947), GeoServer (CVE-2024-36401), XStream gadgets, DataEase (2024–2025), … |
+| **Runtime coverage** | Dedicated agent builds for Java 8, 11, 17, and 25; one binary covers both `javax.servlet` and `jakarta.servlet` (Tomcat 8.5 → 11) |
+| **Measured precision** | Public [false-positive report](java-agent/docs/FALSE-POSITIVE-REPORT.md) generated against the live engine, regenerated by CI — including the cases we still get wrong |
 
-OhMyRASP is currently under active development. The project is still unstable:
-APIs, policy semantics, agent packaging, detector behavior, and deployment
-interfaces may change quickly as the architecture matures. It is suitable for
-experimentation, evaluation, and contribution, but it should not yet be treated
-as a production-ready security boundary.
+What makes the detection engine different from pattern matching:
 
-The near-term roadmap is focused on growing the rule and strategy system:
+- **Request-taint correlation** — a SQL string or shell command only escalates
+  to attack severity when it provably contains attacker-controlled request
+  input, checked at the sink against the live request context.
+- **Call-stack analysis** — a `StackWalker` trace at the sink distinguishes
+  *how* execution got there: the same `ProcessBuilder.start` is classified
+  differently arriving via Struts2 OGNL, Spring SpEL, an XStream unmarshaller,
+  or plain application code.
+- **Six-form path decoding** — URI confusion attacks (double-encoding, overlong
+  UTF-8, `%u` Unicode, ghost bits) are normalized into six decoded forms and
+  compared, catching Shiro/Nexus/GlassFish/Jetty bypass tricks with one generic
+  detector.
+- **Cryptographic verification, not string matching** — default-secret JWTs are
+  actually HMAC-verified against known keys; Shiro `rememberMe` cookies are
+  decrypted to confirm they contain a Java object stream.
+- **Response-side leak detection** — Luhn-validated card numbers, national ID
+  and phone-number checks on the way *out*, not just attacks on the way in.
+- **Zero network on the hot path** — events go to a local NDJSON spool; a Rust
+  daemon tails and forwards them. Off / monitor / block mode changes arrive via
+  a polled control file, no JVM restart.
 
-- Automatically run a large corpus of existing cyber ranges and vulnerable
-  application scenarios, then extract reusable RASP detection rules from the
-  observed attack paths.
-- Use Large Language Models (LLMs) to generate, review, and refine new
-  protection strategies from cyber-range behavior, vulnerability patterns, and
-  runtime evidence.
-- Expand the Java agent line. The current Java agent primarily targets JDK 25;
-  future work will produce corresponding agents for each Java Long-Term Support
-  (LTS) version so runtime coverage can match real-world deployment baselines.
+Read the full story in **[docs/detection.md](docs/detection.md)**.
 
+## See it block an attack (60 seconds)
 
-## Highlights
+Requires only Docker. This starts one Tomcat 11 with the agent in block mode
+plus the daemon's live console:
 
-- **Self-hosted control plane**: Go API, React console, PostgreSQL, ClickHouse,
-  Valkey, Prometheus, Alertmanager, and Grafana.
-- **Agent lifecycle APIs**: application secrets, agent registration,
-  heartbeat, policy pull, artifact catalog, and artifact upload/download.
-- **Daemon compatibility**: workload inventory reporting, bind/unbind
-  workflows, injection reports, and legacy command websocket support.
-- **Policy operations**: draft editing, validation, versioning, canary rollout,
-  rollback, and rule testing.
-- **Runtime telemetry**: attack, hook, performance, crash, dependency, and
-  baseline posture ingestion with filtered reads and analytics.
-- **Operations ready**: Helm chart, smoke tests, release workflow, runbooks,
-  Prometheus rules, Alertmanager config, and Grafana dashboards.
-- **Java agent PoC**: ASM-based Java agent and comparative Tomcat playground
-  for validating detector behavior.
+```bash
+cd java-agent
+docker compose -f docker-compose.daemon.yml up -d --build
 
-## Architecture
+# fire a SQL injection — the agent blocks it mid-request
+curl -L "http://localhost:18090/rasp/sqli?id=1+OR+1=1"
+# → redirected to /rasp/blocked
 
-OhMyRASP uses a control-plane architecture. The Go API is the central
-coordination point: it owns authentication, RBAC, application inventory,
-environment inventory, policies, daemon state, agent artifact metadata, audit
-logs, and operational settings through an OpenAPI-defined HTTP surface. The
-React console talks to that API and provides the operator workflow for creating
-applications, managing policies, reviewing telemetry, rotating credentials, and
-monitoring daemon/agent activity.
-
-Runtime data is split by access pattern. PostgreSQL stores authoritative
-control-plane state, ClickHouse stores high-volume event and performance
-telemetry, and Valkey provides session, policy-pull, and rate-limit caching.
-Prometheus scrapes the API and bundled rules, Alertmanager handles alert
-routing, and Grafana provides dashboarding.
-
-The Java side demonstrates the protection path. Agents register against the
-control plane, heartbeat, pull policies, and report runtime observations. The
-daemon-compatible APIs support workload discovery, binding workloads to
-applications, command delivery, artifact download, and injection-result
-reporting. The Java agent proof of concept uses ASM bytecode transformation to
-hook selected runtime call sites inside a comparative Tomcat testbed.
-
-```text
-                 +-------------------+
-                 |   Web Console     |
-                 |  React + Vite     |
-                 +---------+---------+
-                           |
-                           v
-+-------------------+  +---+----------------+  +--------------------+
-| Java Agents       |  | Control API        |  | Daemon / Helper    |
-| heartbeat/policy  +->+ Go + OpenAPI       +<-+ workload commands  |
-+-------------------+  +---+---+---+---+----+  +--------------------+
-                           |   |   |
-                +----------+   |   +----------------+
-                v              v                    v
-          PostgreSQL       ClickHouse             Valkey
-        control state      telemetry              cache
-                |
-                v
-   Prometheus + Alertmanager + Grafana
+# watch live: attack log, per-hook latency, mode switching
+open http://localhost:7070
 ```
 
-## Repository Layout
+> The demo app defaults to port `18090`, which is also the control-plane API
+> port — set `OHMYRASP_DEMO_PORT` if you run both at once.
 
-```text
-api/          Go control-plane API, migrations, OpenAPI contract, generated bindings
-console/      React 19 + Vite control-plane console
-java-agent/   Java agent and comparative Tomcat playground
-deploy/       Helm chart, observability assets, smoke and validation scripts
-docs/         Architecture notes, audits, and operational runbooks
-.github/      CI and release workflows
-```
+There is also a full comparative playground (baseline vs. protected Tomcat 9,
+10, and 11 side by side) — see
+[docs/getting-started.md](docs/getting-started.md).
 
 ## Quick Start
 
-Create a local environment file:
+### 1. Start the control plane
 
 ```bash
 cp .env.example .env
-```
+# fill every empty password — use URL-safe values:
+openssl rand -hex 18
 
-Fill every empty password value in `.env` before starting the stack:
-
-```bash
-POSTGRES_PASSWORD=
-CLICKHOUSE_PASSWORD=
-VALKEY_PASSWORD=
-GRAFANA_ADMIN_PASSWORD=
-OHMYRASP_BOOTSTRAP_ADMIN_PASSWORD=
-```
-
-Start the full self-hosted stack:
-
-```bash
 docker compose --env-file .env -f docker-compose.yml up -d --build
-docker compose --env-file .env -f docker-compose.yml ps
 ```
-
-Open the services from the host running Docker:
 
 | Service | URL |
 | --- | --- |
@@ -164,95 +104,151 @@ Open the services from the host running Docker:
 | Alertmanager | `http://<host>:19093` |
 | ClickHouse HTTP | `http://<host>:18123` |
 
-Default control-plane login:
+Log in to the console as `admin@ohmyrasp.local` with the password you set in
+`OHMYRASP_BOOTSTRAP_ADMIN_PASSWORD`.
 
-```text
-Email: admin@ohmyrasp.local
-Password: value of OHMYRASP_BOOTSTRAP_ADMIN_PASSWORD in .env
-```
+### 2. Build the agent
 
-Grafana login:
-
-```text
-User: admin
-Password: value of GRAFANA_ADMIN_PASSWORD in .env
-```
-
-Stop the stack:
+No local JDK needed:
 
 ```bash
-docker compose --env-file .env -f docker-compose.yml down
+cd java-agent
+docker run --rm -v "$PWD":/workspace -w /workspace gradle:jdk25 \
+  gradle --no-daemon :agent-jdk25:agentJar
+# → agent-jdk25/build/libs/ohmyrasp-agent.jar
 ```
 
-Remove data volumes for a clean local run:
+For older runtimes build `:agent-java8:agentJava8Jar`,
+`:agent-java11:agentJava11Jar`, or `:agent-java17:agentJava17Jar`.
+
+### 3. Protect your application
+
+Standalone (no control plane required):
 
 ```bash
-docker compose --env-file .env -f docker-compose.yml down -v
+java -javaagent:/opt/ohmyrasp/ohmyrasp-agent.jar=mode=monitor \
+     -Dohmyrasp.log=/var/log/ohmyrasp/events.jsonl \
+     -jar your-app.jar
+```
+
+Connected to the control plane (create the application in the console first to
+get its id and secret):
+
+```bash
+java -javaagent:/opt/ohmyrasp/ohmyrasp-agent.jar=backend_url=http://<host>:18090,app_id=<app-id>,app_secret=<secret>,environment_id=<env-id>,mode=block \
+     -jar your-app.jar
+```
+
+Attacks then show up in the console under **Threats**, with severity, hook,
+algorithm, and request context. Full walkthrough:
+[docs/getting-started.md](docs/getting-started.md).
+
+## Architecture
+
+```text
+                      ┌──────────────────────┐
+                      │      Web Console     │
+                      │    React 19 + Vite   │
+                      └──────────┬───────────┘
+                                 │
+┌─────────────────┐   ┌──────────▼───────────┐   ┌─────────────────────┐
+│   Host Daemon   │──►│      Control API     │◄──│  Prometheus rules   │
+│      Rust       │   │     Go + OpenAPI     │   │  Alertmanager       │
+└───▲─────────┬───┘   └───┬──────┬───────┬───┘   │  Grafana            │
+    │ spool   │ control   │      │       │       └─────────────────────┘
+    │ (NDJSON)│ file      ▼      ▼       ▼
+┌───┴─────────▼───┐  PostgreSQL ClickHouse Valkey
+│   Java Agent    │   control   telemetry  cache
+│  ASM sink hooks │    state
+└─────────────────┘
+```
+
+- **Java agent** (`java-agent/`) — ASM bytecode hooks at 27 sink families,
+  in-process detection, async NDJSON event spool, control-file mode switching.
+  Builds for Java 8 / 11 / 17 / 25.
+- **Host daemon** (`daemon/`) — Rust; tails agent spools, forwards events to
+  the control plane, serves a local live console, manages workload
+  bind/unbind and agent injection.
+- **Control API** (`api/`) — Go; authentication, RBAC, application and agent
+  inventory, policy lifecycle (draft → active → canary → rollback), telemetry
+  ingestion, artifact catalog, audit log. OpenAPI 3.1 contract.
+- **Web console** (`console/`) — React 19; overview dashboards, threat triage,
+  application and fleet management, policy editing and testing, hook-latency
+  observability, dependency (SCA) and posture views, RBAC and audit. English,
+  中文, and 日本語.
+- **Deploy** (`deploy/`) — Helm chart, Prometheus rules, Alertmanager config,
+  Grafana dashboards, smoke tests, runbooks.
+
+More detail: [docs/architecture.md](docs/architecture.md).
+
+## Project status
+
+OhMyRASP is under active development and **should not yet be treated as a
+production security boundary**. APIs, policy semantics, and packaging may
+change quickly. It is ready for experimentation, evaluation, and
+contribution — and the test evidence above is real and reproducible.
+
+Near-term focus:
+
+- Tune the known JNDI false-positive gap (`java:comp/env/*` allowlisting) —
+  see the [false-positive report](java-agent/docs/FALSE-POSITIVE-REPORT.md).
+- Keep growing the exploit corpus beyond the current 53 Vulhub component
+  roots, and use LLM-assisted analysis of cyber-range attack paths to draft
+  new detection rules for human review.
+- Published release artifacts (pre-built agent jars and images).
+
+## Repository layout
+
+```text
+api/          Go control-plane API, migrations, OpenAPI contract
+console/      React 19 + Vite web console
+java-agent/   Java agents (8/11/17/25), detection engine, Tomcat playgrounds
+daemon/       Rust host daemon (spool forwarding, live console, injection)
+deploy/       Helm chart, observability assets, smoke tests
+docs/         User and operator docs; development ledgers; runbooks
+.github/      CI and release workflows
 ```
 
 ## Development
 
-Backend checks:
-
 ```bash
-docker run --rm -v "$PWD/api":/src -w /src golang:1.26 go generate ./...
+# Go control plane
 docker run --rm -v "$PWD/api":/src -w /src golang:1.26 go test ./...
-```
 
-Frontend checks:
+# Console
+cd console && npm ci && npm run build && npm test
 
-```bash
-cd console
-npm ci
-npm run build
-npm test
-npm run test:e2e
-```
+# Java agent unit tests + full acceptance (6 Tomcats, ~136 scenarios)
+cd java-agent && bash scripts/acceptance.sh
 
-Deployment and observability checks:
-
-```bash
+# Deployment validation
 ./deploy/scripts/smoke-control-plane.sh
 ./deploy/scripts/validate-helm-manifests.sh
-./deploy/scripts/validate-observability-assets.sh
 ```
 
-Java agent acceptance:
-
-```bash
-cd java-agent
-bash scripts/acceptance.sh
-```
-
-The Java agent acceptance script starts a baseline Tomcat instance on `18080`
-and a protected Tomcat instance on `18081`. Those ports are intentionally
-separate from the control-plane stack.
+See [CONTRIBUTING.md](CONTRIBUTING.md) for the full developer guide, and
+[SECURITY.md](SECURITY.md) for how to report vulnerabilities — **detection
+bypasses are explicitly in scope and especially valued**.
 
 ## Documentation
 
-- [Control platform overview](docs/control-platform.md)
-- [Capability audit](docs/capability-audit.md)
-- [API notes](docs/api.md)
-- [Web console notes](docs/web.md)
-- [Java agent notes](docs/java-agent.md)
-- [Runbooks](docs/runbooks/)
-
-Historical upstream and reference material is retained locally under
-`.archive/` for traceability, but it is ignored by Git and is not part of the
-published repository.
+- [Getting started](docs/getting-started.md) — install, run, protect an app
+- [Detection deep-dive](docs/detection.md) — how the engine works, with numbers
+- [Architecture](docs/architecture.md) — control plane, daemon, data stores
+- [Java agent](docs/agent.md) · [Console](docs/console.md) · [API reference](docs/api-reference.md)
+- [Operations runbooks](docs/runbooks/) — Helm, backup/restore, upgrades, observability, release
+- [Development ledgers](docs/development/) — per-algorithm coverage, Vulhub replay checklist
 
 ## Acknowledgements
 
-OhMyRASP's Java agent proof of concept uses the
-[ASM](https://asm.ow2.io/) bytecode engineering library. We are grateful to the
-ASM project and maintainers for the tooling that makes precise JVM
-instrumentation practical.
+The agent is built on the [ASM](https://asm.ow2.io/) bytecode engineering
+library — precise JVM instrumentation would not be practical without it.
 
-We also want to thank the [OpenRASP](https://github.com/baidu/openrasp)
-project. OpenRASP helped define many of the ideas and operational expectations
-around open runtime application self-protection, and it remains an important
-reference point for the ecosystem.
-
+[OpenRASP](https://github.com/baidu/openrasp) defined many of the ideas and
+operational expectations around open runtime application self-protection and
+remains an important reference for the ecosystem.
+[Vulhub](https://github.com/vulhub/vulhub) makes reproducible exploit
+validation possible.
 
 ## License
 

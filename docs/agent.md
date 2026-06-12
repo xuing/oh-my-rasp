@@ -14,7 +14,7 @@ heartbeats, pull policy metadata, and upload detections through the API.
   `java.nio.file.Files` entry points.
 - Outbound URL, DNS, JNDI, SQL callsite, XXE, and Java deserialization hooks.
 - Java detector implementations for the migrated algorithm catalog covered by
-  the acceptance suite. See `docs/java-agent-algorithm-coverage.md`.
+  the acceptance suite. See `docs/development/algorithm-coverage.md`.
 - Registry-driven hook modules under `io.ohmyrasp.agent.asm`, so new hook
   families can be added as focused plug-ins without growing the transformer.
 

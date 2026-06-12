@@ -1,122 +1,93 @@
 # OhMyRASP
 
-面向 Java 服务的自托管运行时应用自我保护（RASP）项目，包含控制平面、可观测性栈、兼容 Daemon 的 API，以及 Java Agent 概念验证实现。
+**面向 Java 的运行时应用自我保护（RASP）—— 自托管、可审计、用真实漏洞验证。**
 
-**语言:** [English](README.md) | 简体中文
+OhMyRASP 通过 ASM 字节码注入从 JVM 内部进行插桩，监视每一个危险调用点
+（`Runtime.exec`、JDBC、JNDI、反序列化、文件 I/O 等），并基于请求污点关联与
+调用栈分析——而不仅仅是正则匹配——判断该调用是否为攻击。检测结果可以在
+monitor 模式下观察，也可以在 block 模式下直接拦截，且无需重启 JVM 即可
+在运行时切换模式。
 
+[![CI](https://github.com/xuing/oh-my-rasp/actions/workflows/ohmyrasp-control.yml/badge.svg)](https://github.com/xuing/oh-my-rasp/actions/workflows/ohmyrasp-control.yml)
 [![License](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
-[![Go](https://img.shields.io/badge/Go-1.26-00ADD8?logo=go&logoColor=white)](https://go.dev/)
-[![chi](https://img.shields.io/badge/chi-router-00ADD8?logo=go&logoColor=white)](https://github.com/go-chi/chi)
-[![OpenAPI](https://img.shields.io/badge/OpenAPI-3.1-6BA539?logo=openapiinitiative&logoColor=white)](https://www.openapis.org/)
-[![React](https://img.shields.io/badge/React-19-61DAFB?logo=react&logoColor=061A23)](https://react.dev/)
-[![TypeScript](https://img.shields.io/badge/TypeScript-5-3178C6?logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
-[![Vite](https://img.shields.io/badge/Vite-8-646CFF?logo=vite&logoColor=white)](https://vite.dev/)
-[![PostgreSQL](https://img.shields.io/badge/PostgreSQL-control_store-4169E1?logo=postgresql&logoColor=white)](https://www.postgresql.org/)
-[![ClickHouse](https://img.shields.io/badge/ClickHouse-analytics-FFCC01?logo=clickhouse&logoColor=111111)](https://clickhouse.com/)
-[![Valkey](https://img.shields.io/badge/Valkey-cache-B71C1C?logo=valkey&logoColor=white)](https://valkey.io/)
-[![Prometheus](https://img.shields.io/badge/Prometheus-metrics-E6522C?logo=prometheus&logoColor=white)](https://prometheus.io/)
-[![Alertmanager](https://img.shields.io/badge/Alertmanager-routing-E6522C?logo=prometheus&logoColor=white)](https://prometheus.io/docs/alerting/latest/alertmanager/)
-[![Grafana](https://img.shields.io/badge/Grafana-dashboards-F46800?logo=grafana&logoColor=white)](https://grafana.com/)
-[![Docker Compose](https://img.shields.io/badge/Docker-Compose-2496ED?logo=docker&logoColor=white)](https://docs.docker.com/compose/)
-[![Helm](https://img.shields.io/badge/Helm-chart-0F1689?logo=helm&logoColor=white)](https://helm.sh/)
-[![Kubernetes](https://img.shields.io/badge/Kubernetes-ready-326CE5?logo=kubernetes&logoColor=white)](https://kubernetes.io/)
-[![Java](https://img.shields.io/badge/Java-agent-ED8B00?logo=openjdk&logoColor=white)](https://openjdk.org/)
-[![ASM](https://img.shields.io/badge/ASM-bytecode-5A45FF?logo=apache&logoColor=white)](https://asm.ow2.io/)
-[![Nginx](https://img.shields.io/badge/Nginx-web_proxy-009639?logo=nginx&logoColor=white)](https://nginx.org/)
-[![Playwright](https://img.shields.io/badge/Playwright-e2e-2EAD33?logo=playwright&logoColor=white)](https://playwright.dev/)
-[![Vitest](https://img.shields.io/badge/Vitest-unit_tests-6E9F18?logo=vitest&logoColor=white)](https://vitest.dev/)
-[![GitHub Actions](https://img.shields.io/badge/GitHub_Actions-CI-2088FF?logo=githubactions&logoColor=white)](https://github.com/features/actions)
+[![Java agents](https://img.shields.io/badge/Java-8%20%7C%2011%20%7C%2017%20%7C%2025-ED8B00?logo=openjdk&logoColor=white)](java-agent/)
+[![Exploit scenarios](https://img.shields.io/badge/exploit_scenarios-136_verified-success)](docs/development/vulhub-coverage.md)
+[![Detection algorithms](https://img.shields.io/badge/detection_algorithms-52-blueviolet)](docs/detection.md)
 
-OhMyRASP 面向希望拥有可审计、可自托管 RASP 控制平面的团队。它把应用和 Agent 清单、策略生命周期管理、运行时遥测、Daemon 工作负载上报、审计能力，以及开源 Java Agent 测试平台整合在同一个仓库中。
+**语言：** [English](README.md) | 简体中文
 
-## 项目状态
+---
 
-OhMyRASP 目前正处于活跃开发阶段。项目仍然不稳定：API、策略语义、Agent 打包方式、检测器行为和部署接口都可能随着架构成熟而快速变化。它适合实验、评估和贡献，但暂时不应被视为生产就绪的安全边界。
+## 为什么选择 OhMyRASP
 
-近期路线图将重点扩展规则和策略体系：
+大多数 RASP 产品是黑盒。OhMyRASP 恰恰相反：每一个 hook、每一条检测算法、
+以及证明其有效的每一个测试，全部都在这个仓库里。
 
-- 自动运行大量现有靶场和漏洞应用场景，并从观察到的攻击路径中提取可复用的 RASP 检测规则。
-- 使用大语言模型（LLM）从靶场行为、漏洞模式和运行时证据中生成、审查并改进新的防护策略。
-- 扩展 Java Agent 体系。当前 Java Agent 主要面向 JDK 25；后续将为每个 Java 长期支持版本（LTS）创建对应 Agent，使运行时覆盖能力能够匹配真实部署基线。
+| | |
+|---|---|
+| **插桩的危险调用点家族** | 27 个 ASM hook 模块——进程执行、SQL、JNDI、反序列化（原生、Hessian、XStream、Fastjson 式类型化载荷、OpenWire）、文件 I/O、SSRF、XXE、表达式引擎、JWT/会话、压缩包、类加载等 |
+| **检测算法** | 引擎共 52 项检测能力，其中 43 项由测试断言验证 |
+| **端到端验证** | 136 个验收场景在真实 [Vulhub](https://github.com/vulhub/vulhub) 镜像上回放；[覆盖清单](docs/development/vulhub-coverage.md) 跟踪 130 个 Java/JVM CVE |
+| **已验证拦截的知名 CVE** | Log4Shell（CVE-2021-44228）、Spring4Shell（CVE-2022-22965）、Fastjson autoType、Shiro rememberMe（CVE-2016-4437）、19 个 Struts2 公告（S2-001 … S2-067）、Tomcat 幽灵猫（CVE-2020-1938）、ActiveMQ OpenWire（CVE-2023-46604）、WebLogic XMLDecoder、Spring Cloud Gateway SpEL（CVE-2022-22947）、GeoServer（CVE-2024-36401）、XStream gadget、DataEase（2024–2025）等 |
+| **运行时覆盖** | 为 Java 8、11、17、25 提供独立的 agent 构建；单个二进制同时覆盖 `javax.servlet` 与 `jakarta.servlet`（Tomcat 8.5 → 11） |
+| **可度量的精确度** | 公开的[误报报告](java-agent/docs/FALSE-POSITIVE-REPORT.md)直接针对真实引擎生成、由 CI 保持更新——包括我们尚未解决的误报 |
 
-## 核心能力
+检测引擎与纯模式匹配的区别：
 
-- **自托管控制平面**：Go API、React 控制台、PostgreSQL、ClickHouse、Valkey、Prometheus、Alertmanager 和 Grafana。
-- **Agent 生命周期 API**：应用密钥、Agent 注册、心跳、策略拉取、制品目录，以及制品上传和下载。
-- **Daemon 兼容能力**：工作负载清单上报、绑定和解绑流程、注入报告，以及兼容旧版命令 websocket。
-- **策略操作**：草稿编辑、验证、测试、版本管理、灰度发布、回滚和规则测试。
-- **运行时遥测**：攻击、Hook、性能、崩溃、依赖和基线态势数据的上报、过滤查询和分析。
-- **运维就绪能力**：Helm Chart、烟雾测试、发布流程、Runbook、Prometheus 规则、Alertmanager 配置和 Grafana 仪表盘。
-- **Java Agent 概念验证**：基于 ASM 的 Java Agent 和对比式 Tomcat 测试平台，用于验证检测器行为。
+- **请求污点关联** —— SQL 字符串或 shell 命令只有在确证包含攻击者可控的
+  请求输入时（在调用点对照实时请求上下文检查），才会升级为攻击级别。
+- **调用栈分析** —— 在调用点采集 `StackWalker` 栈轨迹，区分执行是*如何*
+  到达这里的：同一个 `ProcessBuilder.start`，经由 Struts2 OGNL、Spring
+  SpEL、XStream 反序列化链或普通应用代码到达时，会被分类为不同的算法。
+- **六重路径解码** —— 将 URI 按六种解码形式（双重编码、超长 UTF-8、`%u`
+  Unicode、ghost bits 等）归一化后对比，用一个通用检测器抓住
+  Shiro/Nexus/GlassFish/Jetty 的各种路径混淆绕过。
+- **密码学验证而非字符串匹配** —— 对默认密钥 JWT 进行真实的 HMAC 校验；
+  对 Shiro `rememberMe` Cookie 实际解密以确认其中包含 Java 对象流。
+- **响应侧泄漏检测** —— 在数据流出方向检查 Luhn 校验的银行卡号、身份证号
+  和手机号，而不仅仅防御流入方向的攻击。
+- **热路径零网络依赖** —— 事件写入本地 NDJSON spool 文件，由 Rust daemon
+  负责跟踪和转发。off / monitor / block 模式通过轮询控制文件下发，无需
+  重启 JVM。
 
-## 技术架构
+完整细节见 **[docs/detection.md](docs/detection.md)**。
 
-OhMyRASP 采用控制平面架构。Go API 是核心协调点：它通过 OpenAPI 定义的 HTTP 接口管理认证、RBAC、应用清单、环境清单、策略、Daemon 状态、Agent 制品元数据、审计日志和系统配置。React 控制台通过 API 提供操作员工作流，包括创建应用、管理策略、查看遥测、轮换凭据，以及监控 Daemon 和 Agent 活动。
+## 60 秒看到一次拦截
 
-运行时数据按访问模式拆分。PostgreSQL 保存权威控制平面状态，ClickHouse 存储高容量事件和性能遥测，Valkey 提供会话、策略拉取和限流缓存。Prometheus 抓取 API 指标和内置规则，Alertmanager 负责告警路由，Grafana 提供仪表盘。
+只需要 Docker。以下命令会启动一个挂载 agent（block 模式）的 Tomcat 11，
+以及 daemon 的实时控制台：
 
-Java 侧展示防护路径。Agent 向控制平面注册、发送心跳、拉取策略并上报运行时观测数据。兼容 Daemon 的 API 支持工作负载发现、将工作负载绑定到应用、命令下发、制品下载和注入结果上报。Java Agent 概念验证使用 ASM 字节码转换，在对比式 Tomcat 测试平台中 Hook 选定的运行时调用点。
+```bash
+cd java-agent
+docker compose -f docker-compose.daemon.yml up -d --build
 
-```text
-                 +-------------------+
-                 |   Web Console     |
-                 |  React + Vite     |
-                 +---------+---------+
-                           |
-                           v
-+-------------------+  +---+----------------+  +--------------------+
-| Java Agents       |  | Control API        |  | Daemon / Helper    |
-| heartbeat/policy  +->+ Go + OpenAPI       +<-+ workload commands  |
-+-------------------+  +---+---+---+---+----+  +--------------------+
-                           |   |   |
-                +----------+   |   +----------------+
-                v              v                    v
-          PostgreSQL       ClickHouse             Valkey
-        control state      telemetry              cache
-                |
-                v
-   Prometheus + Alertmanager + Grafana
+# 发起一次 SQL 注入——agent 在请求中途拦截
+curl -L "http://localhost:18090/rasp/sqli?id=1+OR+1=1"
+# → 被重定向到 /rasp/blocked
+
+# 实时观察：攻击日志、各 hook 延迟、模式切换
+open http://localhost:7070
 ```
 
-## 仓库结构
+> 演示应用默认使用 `18090` 端口，与控制平面 API 端口相同——如需同时运行
+> 两者，请设置 `OHMYRASP_DEMO_PORT`。
 
-```text
-api/          Go 控制平面 API、迁移、OpenAPI 合约和生成代码
-web/          React 19 + Vite 控制台
-java-agent/   Java Agent 和对比式 Tomcat 测试平台
-deploy/       Helm Chart、可观测性资产、烟雾测试和验证脚本
-docs/         架构说明、审计和运维 Runbook
-.github/      CI 和发布流程
-```
+还有一个完整的对比试验场（Tomcat 9、10、11 的基线与受保护实例并排对比），
+见 [docs/getting-started.md](docs/getting-started.md)。
 
 ## 快速开始
 
-创建本地环境文件：
+### 1. 启动控制平面
 
 ```bash
 cp .env.example .env
-```
+# 填写所有空白密码——请使用 URL 安全的值：
+openssl rand -hex 18
 
-启动前请填写 `.env` 中所有空密码值：
-
-```bash
-POSTGRES_PASSWORD=
-CLICKHOUSE_PASSWORD=
-VALKEY_PASSWORD=
-GRAFANA_ADMIN_PASSWORD=
-OHMYRASP_BOOTSTRAP_ADMIN_PASSWORD=
-```
-
-启动完整自托管栈：
-
-```bash
 docker compose --env-file .env -f docker-compose.yml up -d --build
-docker compose --env-file .env -f docker-compose.yml ps
 ```
 
-从运行 Docker 的主机访问服务：
-
-| 服务 | URL |
+| 服务 | 地址 |
 | --- | --- |
 | Web 控制台 | `http://<host>:18091` |
 | API | `http://<host>:18090` |
@@ -125,85 +96,143 @@ docker compose --env-file .env -f docker-compose.yml ps
 | Alertmanager | `http://<host>:19093` |
 | ClickHouse HTTP | `http://<host>:18123` |
 
-默认控制平面登录信息：
+使用 `admin@ohmyrasp.local` 登录控制台，密码为 `.env` 中
+`OHMYRASP_BOOTSTRAP_ADMIN_PASSWORD` 的值。
 
-```text
-Email: admin@ohmyrasp.local
-Password: .env 中 OHMYRASP_BOOTSTRAP_ADMIN_PASSWORD 的值
-```
+### 2. 构建 agent
 
-Grafana 登录信息：
-
-```text
-User: admin
-Password: .env 中 GRAFANA_ADMIN_PASSWORD 的值
-```
-
-停止服务：
+无需本地 JDK：
 
 ```bash
-docker compose --env-file .env -f docker-compose.yml down
+cd java-agent
+docker run --rm -v "$PWD":/workspace -w /workspace gradle:jdk25 \
+  gradle --no-daemon :agent-jdk25:agentJar
+# → agent-jdk25/build/libs/ohmyrasp-agent.jar
 ```
 
-删除数据卷并进行一次干净的本地运行：
+旧版运行时请构建 `:agent-java8:agentJava8Jar`、
+`:agent-java11:agentJava11Jar` 或 `:agent-java17:agentJava17Jar`。
+
+### 3. 保护你的应用
+
+独立运行（不需要控制平面）：
 
 ```bash
-docker compose --env-file .env -f docker-compose.yml down -v
+java -javaagent:/opt/ohmyrasp/ohmyrasp-agent.jar=mode=monitor \
+     -Dohmyrasp.log=/var/log/ohmyrasp/events.jsonl \
+     -jar your-app.jar
+```
+
+接入控制平面（请先在控制台中创建应用以获取 id 和密钥）：
+
+```bash
+java -javaagent:/opt/ohmyrasp/ohmyrasp-agent.jar=backend_url=http://<host>:18090,app_id=<app-id>,app_secret=<secret>,environment_id=<env-id>,mode=block \
+     -jar your-app.jar
+```
+
+随后攻击事件会出现在控制台的 **Threats** 页面，附带严重级别、hook、算法
+和请求上下文。完整教程：[docs/getting-started.md](docs/getting-started.md)。
+
+## 架构
+
+```text
+                      ┌──────────────────────┐
+                      │      Web 控制台       │
+                      │    React 19 + Vite   │
+                      └──────────┬───────────┘
+                                 │
+┌─────────────────┐   ┌──────────▼───────────┐   ┌─────────────────────┐
+│   Host Daemon   │──►│      控制平面 API     │◄──│  Prometheus 规则     │
+│      Rust       │   │     Go + OpenAPI     │   │  Alertmanager       │
+└───▲─────────┬───┘   └───┬──────┬───────┬───┘   │  Grafana            │
+    │ spool   │ 控制      │      │       │       └─────────────────────┘
+    │ (NDJSON)│ 文件      ▼      ▼       ▼
+┌───┴─────────▼───┐  PostgreSQL ClickHouse Valkey
+│   Java Agent    │   控制状态    遥测数据   缓存
+│  ASM 调用点钩子  │
+└─────────────────┘
+```
+
+- **Java agent**（`java-agent/`）—— 在 27 个调用点家族注入 ASM 字节码
+  hook，进程内检测，异步 NDJSON 事件 spool，控制文件模式切换。提供
+  Java 8 / 11 / 17 / 25 构建。
+- **Host daemon**（`daemon/`）—— Rust 实现；跟踪 agent spool、向控制平面
+  转发事件、提供本地实时控制台、管理工作负载绑定与 agent 注入。
+- **控制平面 API**（`api/`）—— Go 实现；认证、RBAC、应用与 agent 清单、
+  策略生命周期（草稿 → 生效 → 金丝雀 → 回滚）、遥测摄入、制品目录、
+  审计日志。OpenAPI 3.1 契约。
+- **Web 控制台**（`console/`）—— React 19；总览仪表盘、威胁处置、应用与
+  实例管理、策略编辑与测试、hook 延迟可观测性、依赖（SCA）与基线视图、
+  RBAC 与审计。支持英文、中文、日本語。
+- **部署**（`deploy/`）—— Helm chart、Prometheus 规则、Alertmanager 配置、
+  Grafana 仪表盘、冒烟测试、运维手册。
+
+更多细节：[docs/architecture.md](docs/architecture.md)。
+
+## 项目状态
+
+OhMyRASP 处于活跃开发中，**目前还不应作为生产环境的安全边界使用**。API、
+策略语义和打包方式可能快速变化。当前适合实验、评估与参与贡献——上文的
+测试证据真实且可复现。
+
+近期重点：
+
+- 解决已知的 JNDI 误报问题（`java:comp/env/*` 白名单）——见
+  [误报报告](java-agent/docs/FALSE-POSITIVE-REPORT.md)。
+- 在现有 53 个 Vulhub 组件根的基础上继续扩展漏洞语料，并利用 LLM 辅助
+  分析靶场攻击路径、起草新检测规则供人工评审。
+- 发布预构建制品（agent jar 与容器镜像）。
+
+## 仓库结构
+
+```text
+api/          Go 控制平面 API、数据库迁移、OpenAPI 契约
+console/      React 19 + Vite Web 控制台
+java-agent/   Java agent（8/11/17/25）、检测引擎、Tomcat 试验场
+daemon/       Rust host daemon（spool 转发、实时控制台、注入）
+deploy/       Helm chart、可观测性资产、冒烟测试
+docs/         用户与运维文档、开发清单、运维手册
+.github/      CI 与发布工作流
 ```
 
 ## 开发
 
-后端检查：
-
 ```bash
-docker run --rm -v "$PWD/api":/src -w /src golang:1.26 go generate ./...
+# Go 控制平面
 docker run --rm -v "$PWD/api":/src -w /src golang:1.26 go test ./...
-```
 
-前端检查：
+# 控制台
+cd console && npm ci && npm run build && npm test
 
-```bash
-cd web
-npm ci
-npm run build
-npm test
-npm run e2e
-OHMYRASP_E2E_LIVE_URL=http://127.0.0.1:18091 npm run e2e:live
-```
+# Java agent 单元测试 + 完整验收（6 个 Tomcat，约 136 个场景）
+cd java-agent && bash scripts/acceptance.sh
 
-部署和可观测性检查：
-
-```bash
+# 部署校验
 ./deploy/scripts/smoke-control-plane.sh
 ./deploy/scripts/validate-helm-manifests.sh
-./deploy/scripts/validate-observability-assets.sh
 ```
 
-Java Agent 验收：
-
-```bash
-cd java-agent
-bash scripts/acceptance.sh
-```
-
-Java Agent 验收脚本会在 `18080` 启动基线 Tomcat 实例，并在 `18081` 启动受保护 Tomcat 实例。这些端口有意与控制平面栈分离。
+完整开发指南见 [CONTRIBUTING.md](CONTRIBUTING.md)；漏洞报告方式见
+[SECURITY.md](SECURITY.md)——**检测绕过明确属于受理范围，且尤其欢迎**。
 
 ## 文档
 
-- [控制平台概览](docs/control-platform.md)
-- [能力审计](docs/capability-audit.md)
-- [API 说明](docs/api.md)
-- [Web 控制台说明](docs/web.md)
-- [Java Agent 说明](docs/java-agent.md)
-- [Runbooks](docs/runbooks/)
-
+- [快速上手](docs/getting-started.md) —— 安装、运行、保护应用
+- [检测深入解析](docs/detection.md) —— 引擎工作原理与数据
+- [架构](docs/architecture.md) —— 控制平面、daemon、数据存储
+- [Java agent](docs/agent.md) · [控制台](docs/console.md) · [API 参考](docs/api-reference.md)
+- [运维手册](docs/runbooks/) —— Helm、备份恢复、升级、可观测性、发布
+- [开发清单](docs/development/) —— 逐算法覆盖、Vulhub 回放清单
 
 ## 致谢
 
-OhMyRASP 的 Java Agent 概念验证使用了 [ASM](https://asm.ow2.io/) 字节码工程库。感谢 ASM 项目及其维护者提供的工具，使精确的 JVM 插桩成为现实。
+agent 构建于 [ASM](https://asm.ow2.io/) 字节码工程库之上——没有它，精确的
+JVM 插桩将难以实现。
 
-我们也感谢 [OpenRASP](https://github.com/baidu/openrasp) 项目。OpenRASP 帮助定义了围绕开放式运行时应用自我保护的许多理念和运维预期，并且仍然是该生态的重要参考。
+[OpenRASP](https://github.com/baidu/openrasp) 定义了开源运行时应用自我保护
+的许多理念与运维预期，至今仍是该生态的重要参照。
+[Vulhub](https://github.com/vulhub/vulhub) 让可复现的漏洞验证成为可能。
 
 ## 许可证
 
-Apache License 2.0。详见 [LICENSE](LICENSE)。
+Apache License 2.0。见 [LICENSE](LICENSE)。

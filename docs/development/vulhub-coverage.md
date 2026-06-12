@@ -53,7 +53,7 @@ and `xxl-job`.
 
 The Java/JVM README CVE-token audit is currently balanced: 130 unique Vulhub
 CVE tokens are present in this checklist, `java-agent/scripts/acceptance.sh`,
-or `docs/java-agent-algorithm-coverage.md`. Non-CVE or alias paths checked in
+or `docs/development/algorithm-coverage.md`. Non-CVE or alias paths checked in
 the same audit:
 
 - [x] `fastjson/vuln` is a redirect README to `fastjson/1.2.24-rce`.

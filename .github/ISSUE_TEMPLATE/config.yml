@@ -1,0 +1,14 @@
+blank_issues_enabled: false
+
+contact_links:
+  - name: GitHub Discussions (questions, ideas, show & tell)
+    url: https://github.com/xuing/oh-my-rasp/discussions
+    about: >
+      Ask questions, share use-cases, or propose ideas before opening a
+      formal issue. Discussions are indexed and searchable.
+
+  - name: Security advisories (private vulnerability reporting)
+    url: https://github.com/xuing/oh-my-rasp/security/advisories/new
+    about: >
+      Report a security vulnerability privately. Do not file public issues
+      for exploitable bugs. See SECURITY.md for the full policy.

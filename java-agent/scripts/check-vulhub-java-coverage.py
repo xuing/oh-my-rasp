@@ -92,8 +92,8 @@ PLACEHOLDER = "- [ ] _Add the next Java Vulhub candidate here before probing it.
 
 AGENT_ROOT = Path(__file__).resolve().parent.parent
 REPO_ROOT = AGENT_ROOT.parent
-CHECKLIST = REPO_ROOT / "docs" / "vulhub-java-coverage-checklist.md"
-ALGORITHM_DOC = REPO_ROOT / "docs" / "java-agent-algorithm-coverage.md"
+CHECKLIST = REPO_ROOT / "docs" / "development" / "vulhub-coverage.md"
+ALGORITHM_DOC = REPO_ROOT / "docs" / "development" / "algorithm-coverage.md"
 SCRIPTS = AGENT_ROOT / "scripts"
 
 

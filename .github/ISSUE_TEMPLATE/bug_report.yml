@@ -1,0 +1,138 @@
+name: Bug report
+description: Report a reproducible defect in OhMyRasp.
+title: "[bug] "
+labels: ["bug", "needs-triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thank you for taking the time to file a bug report. Please fill in
+        as much detail as you can so we can reproduce and fix the issue
+        quickly. For security vulnerabilities use the private advisory
+        channel described in SECURITY.md instead.
+
+  - type: dropdown
+    id: component
+    attributes:
+      label: Component
+      description: Which part of OhMyRasp is affected?
+      options:
+        - control-plane API (api/)
+        - console (console/)
+        - java-agent
+        - daemon (ohmyrasp-daemon)
+        - deploy / Helm
+        - docs
+        - other / unsure
+    validations:
+      required: true
+
+  - type: input
+    id: version
+    attributes:
+      label: Version or commit SHA
+      description: >
+        Run `git rev-parse --short HEAD` in the repo, or find the version
+        in the UI footer / agent jar manifest.
+      placeholder: "e.g. 0.3.1 or 507c75a"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: jdk_version
+    attributes:
+      label: JDK version (agent bugs only)
+      description: >
+        Skip this if the bug is not in the java-agent component.
+      options:
+        - "not applicable"
+        - "JDK 8"
+        - "JDK 11"
+        - "JDK 17"
+        - "JDK 21"
+        - "JDK 25 (primary)"
+        - other
+    validations:
+      required: false
+
+  - type: input
+    id: servlet_container
+    attributes:
+      label: Servlet container and version (agent bugs only)
+      description: >
+        e.g. Tomcat 9.0.85, Spring Boot 3.2 embedded Tomcat, Jetty 11.
+        Skip if not applicable.
+      placeholder: "Tomcat 10.1.19"
+    validations:
+      required: false
+
+  - type: textarea
+    id: repro
+    attributes:
+      label: Steps to reproduce
+      description: >
+        A minimal sequence of steps that reliably triggers the bug. Include
+        docker-compose commands, curl invocations, or test case names where
+        relevant.
+      placeholder: |
+        1. `docker compose up -d`
+        2. ...
+        3. Observe ...
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+      description: What should happen?
+    validations:
+      required: true
+
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behavior
+      description: What actually happens? Include error messages verbatim.
+    validations:
+      required: true
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Relevant logs
+      description: >
+        Paste log excerpts here. For agent issues attach the NDJSON events
+        file produced by the agent (default path printed at startup). For
+        stack-level issues run `docker compose logs --no-color <service>`
+        and paste the relevant window. Redact any credentials or PII before
+        submitting.
+      render: text
+    validations:
+      required: false
+
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment
+      description: OS, container runtime, relevant configuration overrides.
+      placeholder: |
+        OS: Ubuntu 22.04 / macOS 14
+        Docker: 26.1.4
+        Helm version (if applicable):
+        Agent mode: monitor / block
+    validations:
+      required: false
+
+  - type: checkboxes
+    id: checklist
+    attributes:
+      label: Pre-submission checklist
+      options:
+        - label: >
+            I searched existing issues and did not find a duplicate.
+          required: true
+        - label: >
+            I am not reporting a security vulnerability (use SECURITY.md
+            for that).
+          required: true

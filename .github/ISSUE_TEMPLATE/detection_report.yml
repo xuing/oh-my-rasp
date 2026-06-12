@@ -1,0 +1,155 @@
+name: Detection report
+description: >
+  Report a detection bypass (missed attack) or a false positive
+  (legitimate request blocked or flagged incorrectly).
+title: "[detection] "
+labels: ["detection", "needs-triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Use this form for detection quality issues: payloads the agent
+        fails to block in block mode, payloads the agent misses in monitor
+        mode, or benign requests that trigger spurious events.
+
+        **If you believe you have found a confirmed, exploitable bypass
+        that could be weaponised before a fix is released**, consider
+        using the private security-advisory channel described in
+        SECURITY.md instead of filing a public issue.
+
+  - type: dropdown
+    id: report_type
+    attributes:
+      label: Report type
+      options:
+        - bypass (attack not detected / not blocked)
+        - false positive (legitimate request flagged or blocked)
+    validations:
+      required: true
+
+  - type: dropdown
+    id: attack_class
+    attributes:
+      label: Attack class
+      description: >
+        Choose the category that best describes the technique. For false
+        positives pick the class that triggered the detection.
+      options:
+        - SQL injection (SQLi)
+        - Command execution (OS command injection)
+        - Deserialization (Java object deserialization)
+        - JNDI injection / Log4Shell-style
+        - SSRF (server-side request forgery)
+        - Path traversal / directory traversal
+        - Expression injection (OGNL, SpEL, EL, MVEL, etc.)
+        - XXE (XML external entity)
+        - other
+    validations:
+      required: true
+
+  - type: textarea
+    id: payload
+    attributes:
+      label: Payload or request
+      description: >
+        Provide the HTTP request, input string, or serialized bytes that
+        demonstrates the bypass or false positive. Wrap in a code block.
+
+        **Warning: redact any credentials, tokens, PII, or internal
+        hostnames before submitting. This is a public issue tracker.**
+      render: text
+    validations:
+      required: true
+
+  - type: input
+    id: agent_jar
+    attributes:
+      label: Agent jar and version
+      description: >
+        e.g. `agent-jdk25-0.3.1.jar`, `agent-java17-0.3.0.jar`. The
+        manifest version is printed at agent startup in the NDJSON events
+        file.
+      placeholder: "agent-jdk25-0.3.1.jar"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: agent_mode
+    attributes:
+      label: Agent mode
+      options:
+        - monitor
+        - block
+    validations:
+      required: true
+
+  - type: dropdown
+    id: jdk_version
+    attributes:
+      label: JDK version
+      options:
+        - "JDK 8"
+        - "JDK 11"
+        - "JDK 17"
+        - "JDK 21"
+        - "JDK 25 (primary)"
+        - other
+    validations:
+      required: true
+
+  - type: input
+    id: servlet_container
+    attributes:
+      label: Servlet container and version
+      placeholder: "Tomcat 10.1.19"
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+      description: >
+        For a bypass: describe how the agent should have responded
+        (event emitted, request blocked). For a false positive: describe
+        why the request is legitimate and should pass unimpeded.
+    validations:
+      required: true
+
+  - type: textarea
+    id: actual
+    attributes:
+      label: Observed behavior
+      description: >
+        What the agent actually did. Paste relevant lines from the NDJSON
+        events file or from `docker compose logs` output. Redact secrets.
+      render: text
+    validations:
+      required: true
+
+  - type: textarea
+    id: context
+    attributes:
+      label: Additional context
+      description: >
+        CVE references, framework version quirks, encoding variants,
+        links to the Vulhub or PoC you used, or any other background.
+    validations:
+      required: false
+
+  - type: checkboxes
+    id: checklist
+    attributes:
+      label: Pre-submission checklist
+      options:
+        - label: >
+            I have redacted all credentials, tokens, and PII from the
+            payload and logs above.
+          required: true
+        - label: >
+            I searched existing issues and did not find a duplicate report.
+          required: true
+        - label: >
+            I understand that confirmed critical bypasses can also be
+            reported privately via SECURITY.md.
+          required: true

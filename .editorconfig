@@ -1,0 +1,41 @@
+root = true
+
+# ── Defaults ──────────────────────────────────────────────────────────────────
+[*]
+charset = utf-8
+end_of_line = lf
+insert_final_newline = true
+trim_trailing_whitespace = true
+
+# ── Web / config (2-space indent) ─────────────────────────────────────────────
+[*.{ts,tsx,js,jsx,mjs,cjs,json,jsonc,yml,yaml,css,scss,html,svg}]
+indent_style = space
+indent_size = 2
+
+# ── JVM languages (4-space indent) ────────────────────────────────────────────
+[*.{java,kt,kts}]
+indent_style = space
+indent_size = 4
+
+# ── Python (4-space indent, PEP 8) ────────────────────────────────────────────
+[*.py]
+indent_style = space
+indent_size = 4
+
+# ── Rust (4-space indent) ─────────────────────────────────────────────────────
+[*.rs]
+indent_style = space
+indent_size = 4
+
+# ── Go (tabs, per gofmt) ──────────────────────────────────────────────────────
+[*.go]
+indent_style = tab
+indent_size = 4
+
+# ── Markdown (preserve trailing spaces — two spaces = hard line break) ────────
+[*.md]
+trim_trailing_whitespace = false
+
+# ── Makefiles (tabs required) ─────────────────────────────────────────────────
+[Makefile]
+indent_style = tab

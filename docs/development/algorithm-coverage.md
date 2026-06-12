@@ -7,7 +7,7 @@ policy families whose original hook point is language- or framework-specific,
 so the playground can still verify policy execution and JSONL log collection.
 
 For the per-component Vulhub progress tracker, update
-[`vulhub-java-coverage-checklist.md`](vulhub-java-coverage-checklist.md) in the
+[`vulhub-coverage.md`](vulhub-coverage.md) in the
 same patch as any new Java-compatible Vulhub replay.
 
 ## Runtime Era Tracks
