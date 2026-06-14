@@ -16,6 +16,10 @@ the JVM.
 [![Exploit scenarios](https://img.shields.io/badge/exploit_scenarios-136_verified-success)](docs/development/vulhub-coverage.md)
 [![Detection algorithms](https://img.shields.io/badge/detection_algorithms-52-blueviolet)](docs/detection.md)
 
+<a href="#fable-5-verification">
+  <img src="docs/assets/fable-5-proof.png" alt="Fable 5 verified" width="140">
+</a>
+
 **Languages:** English | [简体中文](README.zh-CN.md)
 
 ---

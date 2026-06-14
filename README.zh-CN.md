@@ -14,9 +14,12 @@ monitor 模式下观察，也可以在 block 模式下直接拦截，且无需�
 [![Exploit scenarios](https://img.shields.io/badge/exploit_scenarios-136_verified-success)](docs/development/vulhub-coverage.md)
 [![Detection algorithms](https://img.shields.io/badge/detection_algorithms-52-blueviolet)](docs/detection.md)
 
+<a href="#fable-5-verification">
+  <img src="docs/assets/fable-5-proof.png" alt="Fable 5 verified" width="140">
+</a>
+
 **语言：** [English](README.md) | 简体中文
 
----
 
 ## 为什么选择 OhMyRASP
 
