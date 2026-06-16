@@ -76,11 +76,48 @@ require_non_empty() {
   fi
 }
 
+wait_for_url() {
+  local label="$1"
+  local url="$2"
+  local output="$3"
+
+  for attempt in {1..60}; do
+    if curl -fsS "$url" > "$output"; then
+      return 0
+    fi
+    sleep 2
+  done
+
+  echo "timed out waiting for $label at $url" >&2
+  return 1
+}
+
+wait_for_url_matching() {
+  local label="$1"
+  local url="$2"
+  local pattern="$3"
+  local output="$4"
+
+  for attempt in {1..60}; do
+    if curl -fsS "$url" > "$output" && grep -Eq "$pattern" "$output"; then
+      return 0
+    fi
+    sleep 2
+  done
+
+  echo "timed out waiting for $label at $url to match: $pattern" >&2
+  if [[ -s "$output" ]]; then
+    echo "last response from $label:" >&2
+    sed -n '1,40p' "$output" >&2 || true
+  fi
+  return 1
+}
+
 echo "Checking health endpoints"
-curl -fsS "$API_URL/healthz" > "$tmp_dir/health.json"
-curl -fsS "$API_URL/readyz" > "$tmp_dir/ready.json"
-curl -fsS "$API_URL/metrics" | grep -q "ohmyrasp_api_up 1"
-curl -fsS "$WEB_URL/" | grep -q "OhMyRasp Control"
+wait_for_url "API health" "$API_URL/healthz" "$tmp_dir/health.json"
+wait_for_url "API readiness" "$API_URL/readyz" "$tmp_dir/ready.json"
+wait_for_url_matching "API metrics" "$API_URL/metrics" "ohmyrasp_api_up 1" "$tmp_dir/metrics-ready.txt"
+wait_for_url_matching "web console" "$WEB_URL/" "OhMyRasp" "$tmp_dir/web.html"
 
 echo "Logging in"
 request_json POST /api/v1/auth/login "$tmp_dir/login.json" "{\"email\":\"$ADMIN_EMAIL\",\"password\":\"$ADMIN_PASSWORD\"}"

@@ -113,7 +113,7 @@ jobs:
             --tag "${image}:sha-${{ steps.release.outputs.short_sha }}" \
             --metadata-file "$metadata_file" \
             --push \
-            web
+            console
           digest="$(python3 -c 'import json, sys; print(json.load(open(sys.argv[1], encoding="utf-8"))["containerimage.digest"])' "$metadata_file")"
           echo "digest=${digest}" >> "$GITHUB_OUTPUT"
 

@@ -14,7 +14,8 @@
     "typecheck": "tsc -b --noEmit",
     "i18n:check": "node scripts/i18n-coverage.ts",
     "test:e2e": "playwright test",
-    "test": "npm run i18n:check && npm run typecheck && npm run test:e2e"
+    "test": "npm run i18n:check && npm run typecheck && npm run test:e2e",
+    "test:e2e:live": "playwright test -c playwright.live.config.ts"
   },
   "dependencies": {
     "@tanstack/react-query": "^5.100.14",

@@ -4,6 +4,7 @@ on:
   push:
     paths:
       - "api/**"
+      - "console/**"
       - "web/**"
       - "deploy/**"
       - "docker-compose.yml"
@@ -12,6 +13,7 @@ on:
   pull_request:
     paths:
       - "api/**"
+      - "console/**"
       - "web/**"
       - "deploy/**"
       - "docker-compose.yml"
@@ -89,6 +91,23 @@ jobs:
       - run: npx playwright install --with-deps chromium
       - run: npm run e2e
 
+  console:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: console
+    steps:
+      - uses: actions/checkout@1af3b93b6815bc44a9784bd300feb67ff0d1eeb3 # v6.0.0
+      - uses: actions/setup-node@2028fbc5c25fe9cf00d9f06a71cc4710d4507903 # v6.0.0
+        with:
+          node-version: "24"
+          cache: npm
+          cache-dependency-path: console/package-lock.json
+      - run: npm ci
+      - run: npm run build
+      - run: npx playwright install --with-deps chromium
+      - run: npm test
+
   helm-manifests:
     runs-on: ubuntu-latest
     steps:
@@ -103,6 +122,7 @@ jobs:
     needs:
       - backend
       - frontend
+      - console
       - helm-manifests
     env:
       API_PORT: "18090"
@@ -133,22 +153,22 @@ jobs:
         with:
           node-version: "24"
           cache: npm
-          cache-dependency-path: web/package-lock.json
-      - name: Install frontend test dependencies
-        working-directory: web
+          cache-dependency-path: console/package-lock.json
+      - name: Install console test dependencies
+        working-directory: console
         run: npm ci
       - name: Install Playwright browser
-        working-directory: web
+        working-directory: console
         run: npx playwright install --with-deps chromium
       - name: Start Compose stack
         run: docker compose -f docker-compose.yml up -d --build
       - name: Run API smoke test
         run: deploy/scripts/smoke-control-plane.sh
       - name: Run live browser smoke test
-        working-directory: web
+        working-directory: console
         env:
           OHMYRASP_E2E_LIVE_URL: http://127.0.0.1:18091
-        run: npm run e2e:live
+        run: npm run test:e2e:live
       - name: Dump Compose logs
         if: failure()
         run: docker compose -f docker-compose.yml logs --no-color api web migrate postgres clickhouse valkey prometheus alertmanager grafana
