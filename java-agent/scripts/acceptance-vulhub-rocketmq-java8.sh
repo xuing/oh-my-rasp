@@ -11,6 +11,8 @@ docker run --rm -v "$(pwd):/workspace" -w /workspace gradle:jdk25 \
 image="${OHMYRASP_VULHUB_ROCKETMQ_IMAGE:-vulhub/rocketmq:5.1.0}"
 attack_image="${OHMYRASP_VULHUB_ROCKETMQ_ATTACK_IMAGE:-eclipse-temurin:8-jre}"
 attack_jar="${OHMYRASP_VULHUB_ROCKETMQ_ATTACK_JAR:-/tmp/ohmyrasp-rocketmq-attack/rocketmq-attack-1.0-SNAPSHOT.jar}"
+attack_jar_url="${OHMYRASP_VULHUB_ROCKETMQ_ATTACK_JAR_URL:-https://github.com/vulhub/rocketmq-attack/releases/download/1.0/rocketmq-attack-1.0-SNAPSHOT.jar}"
+attack_jar_sha256="${OHMYRASP_VULHUB_ROCKETMQ_ATTACK_JAR_SHA256:-ed9a4243113b5f8de403ec1c5dd90bca38d96204b79b12e14a35f1e67d49bc93}"
 baseline_name="${OHMYRASP_VULHUB_ROCKETMQ_BASELINE_NAME:-ohmyrasp-vulhub-rocketmq-33246-baseline}"
 protected_name="${OHMYRASP_VULHUB_ROCKETMQ_PROTECTED_NAME:-ohmyrasp-vulhub-rocketmq-33246-protected}"
 baseline_port="${OHMYRASP_VULHUB_ROCKETMQ_BASELINE_PORT:-19086}"
@@ -21,11 +23,22 @@ baseline_dir="logs/vulhub-rocketmq-2023-33246-java8-baseline"
 protected_dir="logs/vulhub-rocketmq-2023-33246-java8-protected"
 protected_log="${protected_dir}/events.jsonl"
 
-if [[ ! -f "$attack_jar" ]]; then
-  echo "missing rocketmq-attack jar at ${attack_jar}" >&2
-  echo "download it from https://github.com/vulhub/rocketmq-attack/releases/tag/1.0 or set OHMYRASP_VULHUB_ROCKETMQ_ATTACK_JAR" >&2
-  exit 1
-fi
+download_attack_jar() {
+  if [[ -s "$attack_jar" ]]; then
+    return
+  fi
+  if ! command -v curl >/dev/null 2>&1; then
+    echo "curl is required to download rocketmq-attack jar; set OHMYRASP_VULHUB_ROCKETMQ_ATTACK_JAR to a local file" >&2
+    exit 1
+  fi
+  mkdir -p "$(dirname "$attack_jar")"
+  curl -fL --retry 3 --connect-timeout 20 -o "${attack_jar}.tmp" "$attack_jar_url"
+  printf '%s  %s
+' "$attack_jar_sha256" "${attack_jar}.tmp" | sha256sum -c -
+  mv "${attack_jar}.tmp" "$attack_jar"
+}
+
+download_attack_jar
 
 if ! command -v timeout >/dev/null 2>&1; then
   echo "timeout command is required for the RocketMQ attack runner" >&2

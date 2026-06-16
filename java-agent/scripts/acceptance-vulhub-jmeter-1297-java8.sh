@@ -35,6 +35,10 @@ cleanup() {
 trap cleanup EXIT
 
 prepare_ysoserial() {
+  # shellcheck source=scripts/lib/ysoserial.sh
+  source scripts/lib/ysoserial.sh
+  prepare_ysoserial_jar "${payload_dir}/ysoserial.jar"
+  return
   mkdir -p "$payload_dir"
   if [[ ! -s "${payload_dir}/ysoserial.jar" ]]; then
     rm -rf "${payload_dir}/src"
@@ -78,7 +82,8 @@ wait_for_protected_startup() {
 run_beanshell_exploit() {
   local port="$1"
   local dir="$2"
-  local output="${dir}/beanshell1-exploit.log"
+  local attempt="${3:-1}"
+  local output="${dir}/beanshell1-exploit-${attempt}.log"
   local status
 
   set +e
@@ -87,14 +92,17 @@ run_beanshell_exploit() {
     > "$output" 2>&1
   status=$?
   set -e
-  printf 'exploit_status=%s\n' "$status" >> "${dir}/attempts.log"
+  ln -sf "$(basename "$output")" "${dir}/beanshell1-exploit.log"
+  printf 'exploit_attempt=%s exploit_status=%s\n' "$attempt" "$status" >> "${dir}/attempts.log"
 }
 
 start_baseline() {
   docker run -d --name "$baseline_name" \
     -p "${baseline_port}:1099" \
-    "$image" >/dev/null
+    "$image" /usr/src/apache-jmeter-3.3/bin/jmeter-server \
+      -Jserver.rmi.ssl.disable=true >/dev/null
   wait_for_rmi "$baseline_name" "$baseline_port" "$baseline_dir"
+  sleep "${OHMYRASP_JMETER_RMI_SETTLE_SECONDS:-8}"
 }
 
 start_protected() {
@@ -103,24 +111,29 @@ start_protected() {
     -v "${host_agent_jar}:/tmp/ohmyrasp-agent-java8.jar:ro" \
     -v "$(pwd)/${protected_dir}:/tmp/ohmyrasp-logs" \
     -e JAVA_TOOL_OPTIONS="-javaagent:/tmp/ohmyrasp-agent-java8.jar -Dohmyrasp.java8.log=/tmp/ohmyrasp-logs/events.jsonl -Dohmyrasp.java8.block=true -Djmeter.home=/usr/src/apache-jmeter-3.3" \
-    "$image" >/dev/null
+    "$image" /usr/src/apache-jmeter-3.3/bin/jmeter-server \
+      -Jserver.rmi.ssl.disable=true >/dev/null
   wait_for_rmi "$protected_name" "$protected_port" "$protected_dir"
   wait_for_protected_startup
+  sleep "${OHMYRASP_JMETER_RMI_SETTLE_SECONDS:-8}"
 }
 
 run_baseline() {
   start_baseline
   docker exec "$baseline_name" rm -f "$success_file"
-  run_beanshell_exploit "$baseline_port" "$baseline_dir"
 
-  for attempt in $(seq 1 15); do
-    if docker exec "$baseline_name" test -e "$success_file"; then
-      printf 'baseline_marker_attempt=%s\n' "$attempt" >> "${baseline_dir}/attempts.log"
-      copy_artifacts "$baseline_name" "$baseline_dir"
-      docker rm -f "$baseline_name" >/dev/null 2>&1 || true
-      return
-    fi
-    sleep 1
+  for exploit_attempt in $(seq 1 8); do
+    run_beanshell_exploit "$baseline_port" "$baseline_dir" "$exploit_attempt"
+    for marker_attempt in $(seq 1 5); do
+      if docker exec "$baseline_name" test -e "$success_file"; then
+        printf 'baseline_exploit_attempt=%s baseline_marker_attempt=%s\n' "$exploit_attempt" "$marker_attempt" >> "${baseline_dir}/attempts.log"
+        copy_artifacts "$baseline_name" "$baseline_dir"
+        docker rm -f "$baseline_name" >/dev/null 2>&1 || true
+        return
+      fi
+      sleep 1
+    done
+    sleep 3
   done
 
   docker logs "$baseline_name" >&2 || true
@@ -138,19 +151,25 @@ run_protected() {
   fi
 
   docker exec "$protected_name" rm -f "$success_file"
-  run_beanshell_exploit "$protected_port" "$protected_dir"
-  sleep 2
+  for exploit_attempt in $(seq 1 8); do
+    run_beanshell_exploit "$protected_port" "$protected_dir" "$exploit_attempt"
+    sleep 2
 
-  if docker exec "$protected_name" test -e "$success_file"; then
-    echo "protected JMeter CVE-2018-1297 created ${success_file} despite Java8 RASP" >&2
-    exit 1
-  fi
-  if ! grep -Eq '"algorithm":"java8_deserialization_gadget_class".*"action":"block"' "$protected_log"; then
-    cat "$protected_log" >&2 || true
-    docker logs "$protected_name" >&2 || true
-    echo "missing java8_deserialization_gadget_class block event for JMeter CVE-2018-1297" >&2
-    exit 1
-  fi
+    if docker exec "$protected_name" test -e "$success_file"; then
+      echo "protected JMeter CVE-2018-1297 created ${success_file} despite Java8 RASP" >&2
+      exit 1
+    fi
+    if grep -Eq '"algorithm":"java8_deserialization_gadget_class".*"action":"block"' "$protected_log"; then
+      printf 'protected_block_attempt=%s\n' "$exploit_attempt" >> "${protected_dir}/attempts.log"
+      return
+    fi
+    sleep 3
+  done
+
+  cat "$protected_log" >&2 || true
+  docker logs "$protected_name" >&2 || true
+  echo "missing java8_deserialization_gadget_class block event for JMeter CVE-2018-1297" >&2
+  exit 1
 }
 
 rm -rf "$baseline_dir" "$protected_dir"

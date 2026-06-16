@@ -11,6 +11,7 @@ listener_port="${OHMYRASP_VULHUB_WEBLOGIC_UDDI_LISTENER_PORT:-21680}"
 baseline_dir="logs/vulhub-weblogic-uddi-ssrf-java6-baseline"
 protected_dir="logs/vulhub-weblogic-uddi-ssrf-java6-protected"
 listener_pid=""
+gradle_cache_dir=""
 
 copy_artifacts() {
   mkdir -p "$baseline_dir"
@@ -30,6 +31,9 @@ cleanup() {
   fi
   copy_artifacts
   docker rm -f -v "$baseline_name" >/dev/null 2>&1 || true
+  if [[ -n "${gradle_cache_dir:-}" ]]; then
+    rm -rf "${gradle_cache_dir}" >/dev/null 2>&1 || true
+  fi
 }
 trap cleanup EXIT
 
@@ -45,10 +49,10 @@ curl_status() {
 }
 
 build_java8_agent() {
-  mkdir -p /tmp/ohmyrasp-gradle-cache
+  gradle_cache_dir="$(mktemp -d "${TMPDIR:-/tmp}/ohmyrasp-gradle-cache-weblogic-uddi.XXXXXX")"
   docker run --rm -u "$(id -u):$(id -g)" \
     -e GRADLE_USER_HOME=/tmp/gradle-cache \
-    -v /tmp/ohmyrasp-gradle-cache:/tmp/gradle-cache \
+    -v "${gradle_cache_dir}:/tmp/gradle-cache" \
     -v "$(pwd):/workspace" \
     -w /workspace \
     gradle:jdk25 \

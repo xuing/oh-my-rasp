@@ -6,12 +6,36 @@ cd "$(dirname "$0")/.."
 image="${OHMYRASP_VULHUB_STRUTS2_S2048_IMAGE:-vulhub/struts2:2.3.32-showcase}"
 baseline_name="${OHMYRASP_VULHUB_STRUTS2_S2048_BASELINE_NAME:-ohmyrasp-vulhub-struts2-s2048-baseline}"
 protected_name="${OHMYRASP_VULHUB_STRUTS2_S2048_PROTECTED_NAME:-ohmyrasp-vulhub-struts2-s2048-protected}"
-baseline_port="${OHMYRASP_VULHUB_STRUTS2_S2048_BASELINE_PORT:-18554}"
-protected_port="${OHMYRASP_VULHUB_STRUTS2_S2048_PROTECTED_PORT:-18555}"
+baseline_port="${OHMYRASP_VULHUB_STRUTS2_S2048_BASELINE_PORT:-}"
+protected_port="${OHMYRASP_VULHUB_STRUTS2_S2048_PROTECTED_PORT:-}"
 host_agent_jar="$(pwd)/agent-java8/build/libs/ohmyrasp-agent-java8.jar"
 baseline_dir="logs/vulhub-struts2-s2-048-java8-baseline"
 protected_dir="logs/vulhub-struts2-s2-048-java8-protected"
 protected_log="${protected_dir}/events.jsonl"
+
+choose_free_port() {
+  python3 - "$@" <<'PY'
+import socket
+import sys
+
+reserved = {int(value) for value in sys.argv[1:] if value}
+for _ in range(100):
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+        sock.bind(("0.0.0.0", 0))
+        port = sock.getsockname()[1]
+    if port not in reserved:
+        print(port)
+        raise SystemExit(0)
+raise SystemExit("could not allocate a free host port")
+PY
+}
+
+if [[ -z "$baseline_port" ]]; then
+  baseline_port="$(choose_free_port)"
+fi
+if [[ -z "$protected_port" ]]; then
+  protected_port="$(choose_free_port "$baseline_port")"
+fi
 
 docker run --rm -v "$(pwd):/workspace" -w /workspace gradle:jdk25 \
   gradle --no-daemon :agent-java8:agentJava8Jar

@@ -27,6 +27,7 @@ if [[ "$poc_source" != /* ]]; then
   poc_source="$(pwd)/${poc_source}"
 fi
 baseline_host=""
+gradle_cache_dir=""
 
 copy_artifacts() {
   mkdir -p "$baseline_dir" "$payload_dir"
@@ -44,6 +45,9 @@ copy_artifacts() {
 cleanup() {
   copy_artifacts
   docker rm -f -v "$baseline_name" "$listener_name" >/dev/null 2>&1 || true
+  if [[ -n "${gradle_cache_dir:-}" ]]; then
+    rm -rf "${gradle_cache_dir}" >/dev/null 2>&1 || true
+  fi
 }
 trap cleanup EXIT
 
@@ -59,10 +63,10 @@ curl_status() {
 }
 
 build_java8_agent() {
-  mkdir -p /tmp/ohmyrasp-gradle-cache
+  gradle_cache_dir="$(mktemp -d "${TMPDIR:-/tmp}/ohmyrasp-gradle-cache-weblogic2628.XXXXXX")"
   docker run --rm -u "$(id -u):$(id -g)" \
     -e GRADLE_USER_HOME=/tmp/gradle-cache \
-    -v /tmp/ohmyrasp-gradle-cache:/tmp/gradle-cache \
+    -v "${gradle_cache_dir}:/tmp/gradle-cache" \
     -v "$(pwd):/workspace" \
     -w /workspace \
     gradle:jdk25 \

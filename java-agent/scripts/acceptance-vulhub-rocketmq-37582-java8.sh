@@ -11,6 +11,8 @@ docker run --rm -v "$(pwd):/workspace" -w /workspace gradle:jdk25 \
 image="${OHMYRASP_VULHUB_ROCKETMQ_37582_IMAGE:-vulhub/rocketmq:5.1.0}"
 attack_image="${OHMYRASP_VULHUB_ROCKETMQ_37582_ATTACK_IMAGE:-eclipse-temurin:8-jre}"
 attack_jar="${OHMYRASP_VULHUB_ROCKETMQ_37582_ATTACK_JAR:-/tmp/ohmyrasp-rocketmq-attack/rocketmq-attack-1.1-SNAPSHOT.jar}"
+attack_jar_url="${OHMYRASP_VULHUB_ROCKETMQ_37582_ATTACK_JAR_URL:-https://github.com/vulhub/rocketmq-attack/releases/download/1.1/rocketmq-attack-1.1-SNAPSHOT.jar}"
+attack_jar_sha256="${OHMYRASP_VULHUB_ROCKETMQ_37582_ATTACK_JAR_SHA256:-4a6a96fad560ae9054204fd758d61b954111ebe7bfe0877b6a4ac1ed588e7085}"
 baseline_name="${OHMYRASP_VULHUB_ROCKETMQ_37582_BASELINE_NAME:-ohmyrasp-vulhub-rocketmq-37582-baseline}"
 protected_name="${OHMYRASP_VULHUB_ROCKETMQ_37582_PROTECTED_NAME:-ohmyrasp-vulhub-rocketmq-37582-protected}"
 baseline_port="${OHMYRASP_VULHUB_ROCKETMQ_37582_BASELINE_PORT:-19088}"
@@ -23,11 +25,22 @@ baseline_dir="logs/vulhub-rocketmq-2023-37582-java8-baseline"
 protected_dir="logs/vulhub-rocketmq-2023-37582-java8-protected"
 protected_log="${protected_dir}/events.jsonl"
 
-if [[ ! -f "$attack_jar" ]]; then
-  echo "missing rocketmq-attack jar at ${attack_jar}" >&2
-  echo "download version 1.1 from https://github.com/vulhub/rocketmq-attack/releases/tag/1.1 or set OHMYRASP_VULHUB_ROCKETMQ_37582_ATTACK_JAR" >&2
-  exit 1
-fi
+download_attack_jar() {
+  if [[ -s "$attack_jar" ]]; then
+    return
+  fi
+  if ! command -v curl >/dev/null 2>&1; then
+    echo "curl is required to download rocketmq-attack jar; set OHMYRASP_VULHUB_ROCKETMQ_37582_ATTACK_JAR to a local file" >&2
+    exit 1
+  fi
+  mkdir -p "$(dirname "$attack_jar")"
+  curl -fL --retry 3 --connect-timeout 20 -o "${attack_jar}.tmp" "$attack_jar_url"
+  printf '%s  %s
+' "$attack_jar_sha256" "${attack_jar}.tmp" | sha256sum -c -
+  mv "${attack_jar}.tmp" "$attack_jar"
+}
+
+download_attack_jar
 
 if ! command -v timeout >/dev/null 2>&1; then
   echo "timeout command is required for the RocketMQ NameServer attack runner" >&2

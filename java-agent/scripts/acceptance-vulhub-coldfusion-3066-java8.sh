@@ -10,7 +10,7 @@ baseline_port="${OHMYRASP_VULHUB_COLDFUSION_3066_BASELINE_PORT:-19611}"
 protected_port="${OHMYRASP_VULHUB_COLDFUSION_3066_PROTECTED_PORT:-19612}"
 marker="${OHMYRASP_VULHUB_COLDFUSION_3066_MARKER:-/tmp/ohmyrasp-coldfusion-3066-success}"
 host_agent_jar="$(pwd)/agent-java8/build/libs/ohmyrasp-agent-java8.jar"
-maven_jdk8_image="${OHMYRASP_MAVEN_JDK8_IMAGE:-maven:3.8.8-eclipse-temurin-8}"
+maven_jdk8_image="${OHMYRASP_MAVEN_JDK8_IMAGE:-maven:3.9-eclipse-temurin-8}"
 ysoserial_dir="${OHMYRASP_YSOSERIAL_DIR:-/tmp/ohmyrasp-ysoserial}"
 coldfusionpwn_dir="${OHMYRASP_COLDFUSIONPWN_DIR:-/tmp/ohmyrasp-ColdFusionPwn}"
 baseline_dir="logs/vulhub-coldfusion-11u3-3066-java8-baseline"
@@ -18,6 +18,7 @@ protected_dir="logs/vulhub-coldfusion-11u3-3066-java8-protected"
 payload_dir="logs/vulhub-coldfusion-11u3-3066-java8-payload"
 protected_log="${protected_dir}/events.jsonl"
 payload_file="${payload_dir}/coldfusion-3066.amf"
+gradle_cache_dir=""
 
 copy_artifacts() {
   local name="$1"
@@ -35,8 +36,23 @@ cleanup() {
   copy_artifacts "$baseline_name" "$baseline_dir"
   copy_artifacts "$protected_name" "$protected_dir"
   docker rm -f -v "$baseline_name" "$protected_name" >/dev/null 2>&1 || true
+  if [[ -n "${gradle_cache_dir:-}" ]]; then
+    rm -rf "${gradle_cache_dir}" >/dev/null 2>&1 || true
+  fi
 }
 trap cleanup EXIT
+
+safe_remove_tree() {
+  local path="$1"
+  if [[ ! -e "${path}" && ! -L "${path}" ]]; then
+    return 0
+  fi
+  local parent base
+  parent="$(dirname -- "${path}")"
+  base="$(basename -- "${path}")"
+  docker run --rm --network none --user 0:0     -v "${parent}:/ohmyrasp-cleanup"     --entrypoint sh     "${maven_jdk8_image}"     -c 'chmod -R u+rwX "/ohmyrasp-cleanup/$1" 2>/dev/null || true; rm -rf "/ohmyrasp-cleanup/$1"' sh "${base}"     >/dev/null 2>&1 || true
+  rm -rf "${path}"
+}
 
 curl_status() {
   local output="$1"
@@ -54,9 +70,14 @@ prepare_ysoserial() {
   if [[ -s "${ysoserial_dir}/ysoserial.jar" ]]; then
     return
   fi
-  rm -rf "${ysoserial_dir}/src"
-  docker run --rm -v "${ysoserial_dir}:/work" -w /work "$maven_jdk8_image" \
-    bash -lc 'git clone --depth 1 https://github.com/frohoff/ysoserial.git src && cd src && mvn -q -DskipTests package && cp target/ysoserial-*-all.jar /work/ysoserial.jar'
+  safe_remove_tree "${ysoserial_dir}/src"
+  docker run --rm -u "$(id -u):$(id -g)" \
+    -e HOME=/tmp/maven-home \
+    -e MAVEN_CONFIG=/tmp/maven-config \
+    -v "${ysoserial_dir}:/work" \
+    -w /work \
+    "$maven_jdk8_image" \
+    bash -lc 'git clone --depth 1 https://github.com/frohoff/ysoserial.git src && cd src && mvn -q -Duser.home=/tmp/maven-home -DskipTests package && cp target/ysoserial-*-all.jar /work/ysoserial.jar'
 }
 
 prepare_coldfusionpwn() {
@@ -65,14 +86,16 @@ prepare_coldfusionpwn() {
   if [[ -s "${coldfusionpwn_dir}/ColdFusionPwn-0.0.1-SNAPSHOT-all.jar" ]]; then
     return
   fi
-  rm -rf "${coldfusionpwn_dir}/src"
+  safe_remove_tree "${coldfusionpwn_dir}/src"
   git clone --depth 1 https://github.com/codewhitesec/ColdFusionPwn.git "${coldfusionpwn_dir}/src"
-  docker run --rm \
+  docker run --rm -u "$(id -u):$(id -g)" \
+    -e HOME=/tmp/maven-home \
+    -e MAVEN_CONFIG=/tmp/maven-config \
     -v "${coldfusionpwn_dir}/src:/workspace" \
     -v "${ysoserial_dir}/ysoserial.jar:/tmp/ysoserial.jar:ro" \
     -w /workspace \
     "$maven_jdk8_image" \
-    mvn -q -Dysoserial=/tmp/ysoserial.jar package
+    mvn -q -Duser.home=/tmp/maven-home -Dysoserial=/tmp/ysoserial.jar package
   cp "${coldfusionpwn_dir}/src/target/ColdFusionPwn-0.0.1-SNAPSHOT-all.jar" \
     "${coldfusionpwn_dir}/ColdFusionPwn-0.0.1-SNAPSHOT-all.jar"
 }
@@ -140,13 +163,13 @@ wait_for_coldfusion() {
       | grep -Fq "$name"; then
       docker logs "$name" >&2 || true
       echo "ColdFusion container ${name} stopped before readiness" >&2
-      exit 1
+      return 1
     fi
     sleep 2
   done
   docker logs "$name" >&2 || true
   echo "ColdFusion did not become ready on ${port}" >&2
-  exit 1
+  return 1
 }
 
 send_amf_payload() {
@@ -211,8 +234,25 @@ run_baseline() {
 }
 
 run_protected() {
-  start_protected
-  wait_for_coldfusion "$protected_name" "$protected_port" "$protected_dir" true
+  local ready="false"
+  for attempt in $(seq 1 3); do
+    : > "$protected_log"
+    chmod 666 "$protected_log"
+    docker rm -f -v "$protected_name" >/dev/null 2>&1 || true
+    start_protected
+    if wait_for_coldfusion "$protected_name" "$protected_port" "$protected_dir" true; then
+      ready="true"
+      break
+    fi
+    printf 'protected_start_retry=%s\n' "$attempt" >> "${protected_dir}/attempts.log"
+    copy_artifacts "$protected_name" "$protected_dir"
+    docker rm -f -v "$protected_name" >/dev/null 2>&1 || true
+    sleep 5
+  done
+  if [[ "$ready" != "true" ]]; then
+    echo "protected ColdFusion CVE-2017-3066 did not become ready after retries" >&2
+    exit 1
+  fi
   assert_protected_startup_quiet
   docker exec "$protected_name" sh -lc "rm -f '${marker}'" >/dev/null
 
@@ -233,8 +273,8 @@ run_protected() {
   fi
 }
 
-docker run --rm -v "$(pwd):/workspace" -w /workspace gradle:jdk25 \
-  gradle --no-daemon :agent-java8:agentJava8Jar >/dev/null
+gradle_cache_dir="$(mktemp -d "${TMPDIR:-/tmp}/ohmyrasp-gradle-cache-coldfusion3066.XXXXXX")"
+docker run --rm -u "$(id -u):$(id -g)" -e HOME=/tmp/gradle-home -e GRADLE_USER_HOME=/tmp/gradle-cache -v "${gradle_cache_dir}:/tmp/gradle-cache" -v "$(pwd):/workspace" -w /workspace gradle:jdk25 gradle --no-daemon :agent-java8:agentJava8Jar >/dev/null
 
 rm -rf "$baseline_dir" "$protected_dir" "$payload_dir"
 mkdir -p "$baseline_dir" "$protected_dir" "$payload_dir"

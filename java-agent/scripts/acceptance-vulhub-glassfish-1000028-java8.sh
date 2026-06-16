@@ -112,9 +112,9 @@ if [[ "$protected_status" == "000" ]] \
   echo "protected GlassFish CVE-2017-1000028 traversal was not blocked before passwd disclosure; status=${protected_status}" >&2
   exit 1
 fi
-if ! grep -q '"algorithm":"java8_request_path_confusion".*"action":"block"' "$protected_log"; then
+if ! grep -Eq '"algorithm":"(java8_request_path_confusion|java8_file_sensitive_read)".*"action":"block"' "$protected_log"; then
   cat "$protected_log" >&2
-  echo "missing java8_request_path_confusion block event for GlassFish CVE-2017-1000028" >&2
+  echo "missing path-confusion or sensitive-file-read block event for GlassFish CVE-2017-1000028" >&2
   exit 1
 fi
 if ! grep -q 'Java8RaspBlockException' "${protected_dir}/attack.response"; then

@@ -1,7 +1,14 @@
 name: ohmyrasp-control
 
+x-logging: &default-logging
+  driver: json-file
+  options:
+    max-size: "50m"
+    max-file: "5"
+
 services:
   migrate:
+    logging: *default-logging
     build:
       context: ./api
     entrypoint: ["/ohmyrasp-migrate"]
@@ -16,6 +23,7 @@ services:
     restart: "no"
 
   api:
+    logging: *default-logging
     build:
       context: ./api
     environment:
@@ -49,6 +57,7 @@ services:
         condition: service_healthy
 
   web:
+    logging: *default-logging
     build:
       context: ./console
     ports:
@@ -57,6 +66,7 @@ services:
       - api
 
   postgres:
+    logging: *default-logging
     image: postgres:18
     environment:
       POSTGRES_USER: ${POSTGRES_USER}
@@ -73,6 +83,7 @@ services:
       retries: 20
 
   clickhouse:
+    logging: *default-logging
     image: clickhouse/clickhouse-server:latest
     environment:
       CLICKHOUSE_DB: ${CLICKHOUSE_DB}
@@ -90,6 +101,7 @@ services:
       retries: 20
 
   valkey:
+    logging: *default-logging
     image: valkey/valkey:9
     command: ["sh", "-c", "exec valkey-server --requirepass \"$${VALKEY_PASSWORD}\""]
     environment:
@@ -103,6 +115,7 @@ services:
       retries: 20
 
   prometheus:
+    logging: *default-logging
     image: prom/prometheus:latest
     command:
       - --config.file=/etc/prometheus/prometheus.yml
@@ -115,6 +128,7 @@ services:
       - alertmanager
 
   alertmanager:
+    logging: *default-logging
     image: prom/alertmanager:latest
     command:
       - --config.file=/etc/alertmanager/alertmanager.yml
@@ -126,6 +140,7 @@ services:
       - ./deploy/helm/ohmyrasp-control/files/alertmanager/templates:/etc/alertmanager/templates:ro
 
   grafana:
+    logging: *default-logging
     image: grafana/grafana-oss:latest
     environment:
       GF_AUTH_ANONYMOUS_ENABLED: "true"

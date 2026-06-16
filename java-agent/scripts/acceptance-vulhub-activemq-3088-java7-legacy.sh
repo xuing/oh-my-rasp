@@ -82,6 +82,7 @@ rm -rf "$baseline_dir" "$protected_dir"
 mkdir -p "$baseline_dir" "$protected_dir"
 docker rm -f "$baseline_name" "$protected_name" >/dev/null 2>&1 || true
 
+docker image inspect "$image" >/dev/null 2>&1 || docker pull "$image" >/dev/null
 docker image inspect "$image" --format '{{json .Config.Env}}' > "${baseline_dir}/image-env.json"
 docker run --rm --entrypoint sh "$image" -lc 'java -version' \
   > "${baseline_dir}/java-version.log" 2>&1

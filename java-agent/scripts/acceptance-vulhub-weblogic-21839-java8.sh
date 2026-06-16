@@ -18,6 +18,7 @@ protected_log="${protected_dir}/events.jsonl"
 weblogic_listen_port=7001
 
 listener_pid=""
+gradle_cache_dir=""
 
 copy_artifacts() {
   local name="$1"
@@ -38,6 +39,9 @@ cleanup() {
   copy_artifacts "$baseline_name" "$baseline_dir"
   copy_artifacts "$protected_name" "$protected_dir"
   docker rm -f -v "$baseline_name" "$protected_name" >/dev/null 2>&1 || true
+  if [[ -n "${gradle_cache_dir:-}" ]]; then
+    rm -rf "${gradle_cache_dir}" >/dev/null 2>&1 || true
+  fi
 }
 trap cleanup EXIT
 
@@ -345,6 +349,9 @@ run_baseline() {
   fi
   copy_artifacts "$baseline_name" "$baseline_dir"
   docker rm -f -v "$baseline_name" >/dev/null 2>&1 || true
+  if [[ -n "${gradle_cache_dir:-}" ]]; then
+    rm -rf "${gradle_cache_dir}" >/dev/null 2>&1 || true
+  fi
 }
 
 run_protected() {
@@ -381,10 +388,10 @@ run_protected() {
   fi
 }
 
-mkdir -p /tmp/ohmyrasp-gradle-cache
+gradle_cache_dir="$(mktemp -d "${TMPDIR:-/tmp}/ohmyrasp-gradle-cache-weblogic21839.XXXXXX")"
 docker run --rm -u "$(id -u):$(id -g)" \
   -e GRADLE_USER_HOME=/tmp/gradle-cache \
-  -v /tmp/ohmyrasp-gradle-cache:/tmp/gradle-cache \
+  -v "${gradle_cache_dir}:/tmp/gradle-cache" \
   -v "$(pwd):/workspace" \
   -w /workspace \
   gradle:jdk25 \

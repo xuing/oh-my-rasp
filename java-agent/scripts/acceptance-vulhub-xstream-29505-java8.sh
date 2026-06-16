@@ -23,6 +23,14 @@ baseline_dir="logs/vulhub-xstream-1.4.16-java8-baseline"
 protected_dir="logs/vulhub-xstream-1.4.16-java8-protected"
 protected_log="${protected_dir}/events.jsonl"
 
+ensure_image() {
+  local image_ref="$1"
+  if docker image inspect "$image_ref" >/dev/null 2>&1; then
+    return
+  fi
+  docker pull "$image_ref" >/dev/null
+}
+
 cleanup() {
   docker logs "$baseline_name" > "${baseline_dir}/container.log" 2>&1 || true
   docker logs "$protected_name" > "${protected_dir}/container.log" 2>&1 || true
@@ -86,6 +94,10 @@ start_jrmp_listener() {
   local dir="$3"
   local ysoserial_dir
   local ysoserial_file
+
+  # shellcheck source=scripts/lib/ysoserial.sh
+  source scripts/lib/ysoserial.sh
+  prepare_ysoserial_jar "$ysoserial_jar"
 
   if [[ ! -s "$ysoserial_jar" ]]; then
     echo "ysoserial jar not found at ${ysoserial_jar}" >&2
@@ -236,6 +248,7 @@ docker rm -f \
   "$baseline_listener_name" \
   "$protected_listener_name" >/dev/null 2>&1 || true
 
+ensure_image "$image"
 docker image inspect "$image" --format '{{json .Config.Env}}' > "${baseline_dir}/image-env.json"
 docker run --rm --entrypoint sh "$image" -lc 'java -version' \
   > "${baseline_dir}/java-version.log" 2>&1

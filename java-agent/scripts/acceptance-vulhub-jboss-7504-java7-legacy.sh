@@ -18,6 +18,14 @@ success_file="/tmp/ohmyrasp-jboss7504-success"
 baseline_dir="logs/vulhub-jboss-4.0.5-java7-baseline"
 protected_dir="logs/vulhub-jboss-4.0.5-java7-protected"
 
+ensure_image() {
+  local image_ref="$1"
+  if docker image inspect "$image_ref" >/dev/null 2>&1; then
+    return
+  fi
+  docker pull "$image_ref" >/dev/null
+}
+
 cleanup() {
   docker logs "$baseline_name" > "${baseline_dir}/container.log" 2>&1 || true
   docker logs "$protected_name" > "${protected_dir}/container.log" 2>&1 || true
@@ -50,6 +58,10 @@ generate_payload() {
   local output="$1"
   local ysoserial_dir
   local ysoserial_file
+
+  # shellcheck source=scripts/lib/ysoserial.sh
+  source scripts/lib/ysoserial.sh
+  prepare_ysoserial_jar "$ysoserial_jar"
 
   if [[ ! -s "$ysoserial_jar" ]]; then
     echo "ysoserial jar not found at ${ysoserial_jar}" >&2
@@ -84,6 +96,7 @@ rm -rf "$baseline_dir" "$protected_dir"
 mkdir -p "$baseline_dir" "$protected_dir"
 docker rm -f "$baseline_name" "$protected_name" >/dev/null 2>&1 || true
 
+ensure_image "$image"
 docker image inspect "$image" --format '{{json .Config.Env}}' > "${baseline_dir}/image-env.json"
 docker run --rm --entrypoint sh "$image" -lc 'java -version' \
   > "${baseline_dir}/java-version.log" 2>&1

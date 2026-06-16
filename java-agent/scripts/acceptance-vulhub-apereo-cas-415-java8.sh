@@ -25,34 +25,59 @@ baseline_login="${work_dir}/baseline-login.html"
 protected_login="${work_dir}/protected-login.html"
 protected_logs="${work_dir}/protected-logs"
 protected_log="${protected_logs}/events.jsonl"
+gradle_cache_dir=""
 
 cleanup() {
   docker rm -f "${baseline_name}" "${protected_name}" >/dev/null 2>&1 || true
+  if [[ -n "${gradle_cache_dir:-}" ]]; then
+    rm -rf "${gradle_cache_dir}" >/dev/null 2>&1 || true
+  fi
 }
 
 trap cleanup EXIT
 
+safe_remove_tree() {
+  local path="$1"
+  if [[ ! -e "${path}" && ! -L "${path}" ]]; then
+    return 0
+  fi
+  local parent base
+  parent="$(dirname -- "${path}")"
+  base="$(basename -- "${path}")"
+  docker run --rm --network none --user 0:0     -v "${parent}:/ohmyrasp-cleanup"     --entrypoint sh     "${maven_jdk8_image}"     -c 'chmod -R u+rwX "/ohmyrasp-cleanup/$1" 2>/dev/null || true; rm -rf "/ohmyrasp-cleanup/$1"' sh "${base}"     >/dev/null 2>&1 || true
+  rm -rf "${path}"
+}
+
 prepare_ysoserial() {
   mkdir -p "${ysoserial_dir}"
   if [[ ! -s "${ysoserial_dir}/ysoserial.jar" ]]; then
-    rm -rf "${ysoserial_dir}/src"
-    docker run --rm -v "${ysoserial_dir}:/work" -w /work "${maven_jdk8_image}" \
-      bash -lc 'git clone --depth 1 https://github.com/frohoff/ysoserial.git src && cd src && mvn -q -DskipTests package && cp target/ysoserial-*-all.jar /work/ysoserial.jar'
+    safe_remove_tree "${ysoserial_dir}/src"
+    docker run --rm -u "$(id -u):$(id -g)" \
+      -e HOME=/tmp/maven-home \
+      -e MAVEN_CONFIG=/tmp/maven-config \
+      -v "${ysoserial_dir}:/work" \
+      -w /work \
+      "${maven_jdk8_image}" \
+      bash -lc 'git clone --depth 1 https://github.com/frohoff/ysoserial.git src && cd src && mvn -q -Duser.home=/tmp/maven-home -DskipTests package && cp target/ysoserial-*-all.jar /work/ysoserial.jar'
   fi
 }
 
 prepare_attack_tool() {
   prepare_ysoserial
   if [[ ! -f "${attack_dir}/pom.xml" ]]; then
-    rm -rf "${attack_dir}"
+    safe_remove_tree "${attack_dir}"
     git clone --depth 1 https://github.com/vulhub/Apereo-CAS-Attack.git "${attack_dir}"
   fi
-  docker run --rm \
+  safe_remove_tree "${attack_dir}/target"
+  safe_remove_tree "${attack_dir}/my-repo"
+  docker run --rm -u "$(id -u):$(id -g)" \
+    -e HOME=/tmp/maven-home \
+    -e MAVEN_CONFIG=/tmp/maven-config \
     -v "${attack_dir}:/workspace" \
     -v "${ysoserial_dir}/ysoserial.jar:/tmp/ysoserial.jar:ro" \
     -w /workspace \
     "${maven_jdk8_image}" \
-    sh -c 'mvn -q org.apache.maven.plugins:maven-install-plugin:2.5.2:install-file -Dfile=/tmp/ysoserial.jar -DgroupId=ysoserial -DartifactId=ysoserial -Dversion=0.0.6 -Dpackaging=jar -DlocalRepositoryPath=my-repo && mvn -q clean package assembly:single'
+    sh -c 'mvn -q -Duser.home=/tmp/maven-home org.apache.maven.plugins:maven-install-plugin:2.5.2:install-file -Dfile=/tmp/ysoserial.jar -DgroupId=ysoserial -DartifactId=ysoserial -Dversion=0.0.6 -Dpackaging=jar -DlocalRepositoryPath=my-repo && mvn -q -Duser.home=/tmp/maven-home clean package assembly:single'
   if [[ ! -s "${attack_jar}" ]]; then
     echo "missing built Apereo CAS attack jar: ${attack_jar}" >&2
     exit 1
@@ -154,11 +179,8 @@ deserialization_block_count() {
   grep -Ec '"algorithm":"java8_deserialization_gadget_class".*"action":"block"' "${protected_log}" 2>/dev/null || true
 }
 
-docker run --rm \
-  -v "${agent_root}:/workspace" \
-  -w /workspace \
-  gradle:jdk25 \
-  gradle --no-daemon :agent-java8:agentJava8Jar >/dev/null
+gradle_cache_dir="$(mktemp -d "${TMPDIR:-/tmp}/ohmyrasp-gradle-cache-apereo-cas415.XXXXXX")"
+docker run --rm -u "$(id -u):$(id -g)" -e HOME=/tmp/gradle-home -e GRADLE_USER_HOME=/tmp/gradle-cache -v "${gradle_cache_dir}:/tmp/gradle-cache" -v "${agent_root}:/workspace" -w /workspace gradle:jdk25 gradle --no-daemon :agent-java8:agentJava8Jar >/dev/null
 
 rm -rf "${work_dir}"
 mkdir -p "${protected_logs}"

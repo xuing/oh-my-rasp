@@ -9,6 +9,7 @@ baseline_port="${OHMYRASP_VULHUB_COLDFUSION_2861_BASELINE_PORT:-19660}"
 host_agent_jar="$(pwd)/agent-java8/build/libs/ohmyrasp-agent-java8.jar"
 baseline_dir="logs/vulhub-coldfusion-8.0.1-2861-java6-baseline"
 protected_dir="logs/vulhub-coldfusion-8.0.1-2861-java6-protected"
+gradle_cache_dir=""
 
 copy_artifacts() {
   mkdir -p "$baseline_dir"
@@ -23,6 +24,9 @@ copy_artifacts() {
 cleanup() {
   copy_artifacts
   docker rm -f -v "$baseline_name" >/dev/null 2>&1 || true
+  if [[ -n "${gradle_cache_dir:-}" ]]; then
+    rm -rf "${gradle_cache_dir}" >/dev/null 2>&1 || true
+  fi
 }
 trap cleanup EXIT
 
@@ -38,10 +42,10 @@ curl_status() {
 }
 
 build_java8_agent() {
-  mkdir -p /tmp/ohmyrasp-gradle-cache
-  docker run --rm -u "$(id -u):$(id -g)" \
+  gradle_cache_dir="$(mktemp -d "${TMPDIR:-/tmp}/ohmyrasp-gradle-cache-coldfusion2861.XXXXXX")"
+  docker run --rm -u "$(id -u):$(id -g)"   -e HOME=/tmp/gradle-home \
     -e GRADLE_USER_HOME=/tmp/gradle-cache \
-    -v /tmp/ohmyrasp-gradle-cache:/tmp/gradle-cache \
+    -v "${gradle_cache_dir}:/tmp/gradle-cache" \
     -v "$(pwd):/workspace" \
     -w /workspace \
     gradle:jdk25 \

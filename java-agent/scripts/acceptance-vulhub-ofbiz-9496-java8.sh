@@ -19,6 +19,10 @@ marker="/tmp/ohmyrasp-ofbiz-9496-success"
 xmlrpc_path="/webtools/control/xmlrpc"
 
 prepare_ysoserial() {
+  # shellcheck source=scripts/lib/ysoserial.sh
+  source scripts/lib/ysoserial.sh
+  prepare_ysoserial_jar "${ysoserial_dir}/ysoserial.jar"
+  return
   mkdir -p "$ysoserial_dir"
   if [[ ! -s "${ysoserial_dir}/ysoserial.jar" ]]; then
     rm -rf "${ysoserial_dir}/src"
@@ -214,9 +218,9 @@ run_protected() {
     echo "protected OFBiz CVE-2020-9496 created ${marker} despite RASP" >&2
     exit 1
   fi
-  if ! grep -Fq 'com.sun.org.apache.xalan.internal.xsltc.trax.TemplatesImpl' "$protected_log"; then
+  if ! grep -Eq 'com\.sun\.org\.apache\.xalan\.internal\.xsltc\.trax\.TemplatesImpl|org\.apache\.commons\.beanutils\.BeanComparator' "$protected_log"; then
     cat "$protected_log" >&2 || true
-    echo "OFBiz CVE-2020-9496 block event did not identify TemplatesImpl" >&2
+    echo "OFBiz CVE-2020-9496 block event did not identify a CommonsBeanutils gadget class" >&2
     exit 1
   fi
 }

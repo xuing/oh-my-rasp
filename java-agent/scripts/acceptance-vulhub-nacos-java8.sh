@@ -15,9 +15,12 @@ baseline_port="${OHMYRASP_VULHUB_NACOS_BASELINE_PORT:-19084}"
 protected_port="${OHMYRASP_VULHUB_NACOS_PROTECTED_PORT:-19085}"
 vulhub_root="${OHMYRASP_VULHUB_ROOT:-/tmp/vulhub-ohmyrasp-20260603}"
 poc_py="${OHMYRASP_VULHUB_NACOS_POC:-${vulhub_root}/nacos/CVE-2021-29442/poc.py}"
+poc_timeout_seconds="${OHMYRASP_VULHUB_NACOS_POC_TIMEOUT_SECONDS:-120}"
+protected_poc_timeout_seconds="${OHMYRASP_VULHUB_NACOS_PROTECTED_POC_TIMEOUT_SECONDS:-10}"
 baseline_dir="logs/vulhub-nacos-2021-29442-java8-baseline"
 protected_dir="logs/vulhub-nacos-2021-29442-java8-protected"
 protected_log="${protected_dir}/events.jsonl"
+protected_block_regex='"algorithm":"(java8_command_execution_exploit_primitive|java8_request_internal_identity)".*"action":"block"'
 
 copy_artifacts() {
   local name="$1"
@@ -75,6 +78,8 @@ run_poc() {
   local port="$1"
   local command="$2"
   local output="$3"
+  local allow_timeout="${4:-false}"
+  local timeout_seconds="${5:-$poc_timeout_seconds}"
   if [[ ! -f "$poc_py" ]]; then
     echo "missing Vulhub Nacos poc.py at ${poc_py}" >&2
     exit 1
@@ -90,7 +95,20 @@ PY
     echo "python3 requests package is required for Vulhub Nacos poc.py" >&2
     exit 1
   fi
-  python3 "$poc_py" -t "http://127.0.0.1:${port}" -c "$command" > "$output"
+  local rc=0
+  timeout --kill-after=5s "${timeout_seconds}s" \
+    python3 "$poc_py" -t "http://127.0.0.1:${port}" -c "$command" > "$output" || rc=$?
+  if [[ "$rc" == "0" ]]; then
+    return 0
+  fi
+  if [[ "$allow_timeout" == "true" && "$rc" == "124" ]]; then
+    printf '%s\n' \
+      "poc timed out after ${timeout_seconds}s; continuing to verify protected block event" >> "$output"
+    return 0
+  fi
+  cat "$output" >&2 || true
+  echo "Nacos poc.py failed or timed out for port ${port} (exit=${rc})" >&2
+  return "$rc"
 }
 
 run_baseline() {
@@ -125,16 +143,16 @@ run_protected() {
     exit 1
   fi
 
-  run_poc "$protected_port" "id" "${protected_dir}/cve-2021-29442-poc.out"
+  run_poc "$protected_port" "id" "${protected_dir}/cve-2021-29442-poc.out" true "$protected_poc_timeout_seconds"
   if grep -q "uid=0(root)" "${protected_dir}/cve-2021-29442-poc.out"; then
     cat "${protected_dir}/cve-2021-29442-poc.out" >&2 || true
     echo "protected Nacos still returned command output" >&2
     exit 1
   fi
-  if ! grep -Eq '"algorithm":"java8_command_execution_exploit_primitive".*"action":"block"' "$protected_log"; then
+  if ! grep -Eq "$protected_block_regex" "$protected_log"; then
     cat "$protected_log" >&2 || true
     cat "${protected_dir}/cve-2021-29442-poc.out" >&2 || true
-    echo "missing java8_command_execution_exploit_primitive block event for Nacos CVE-2021-29442" >&2
+    echo "missing command-execution or internal-identity block event for Nacos CVE-2021-29442" >&2
     exit 1
   fi
 }

@@ -37,9 +37,11 @@ docker run -d --name "$protected_name" -p "${protected_port}:8080" \
   -v "${host_agent_jar}:/opt/ohmyrasp/ohmyrasp-agent-java17.jar:ro" \
   -v "$(pwd)/${protected_dir}:/opt/ohmyrasp/logs" \
   "$image" \
-  mvn spring-boot:run \
-  "-Dspring-boot.run.jvmArguments=-agentlib:jdwp=transport=dt_socket,server=y,suspend=n,address=*:5005 -javaagent:/opt/ohmyrasp/ohmyrasp-agent-java17.jar -Dohmyrasp.java17.log=/opt/ohmyrasp/logs/events.jsonl -Dohmyrasp.java17.block=true" \
-  >/dev/null
+  java -Djava.security.egd=file:/dev/./urandom \
+    -javaagent:/opt/ohmyrasp/ohmyrasp-agent-java17.jar \
+    -Dohmyrasp.java17.log=/opt/ohmyrasp/logs/events.jsonl \
+    -Dohmyrasp.java17.block=true \
+    -jar /app/app.jar >/dev/null
 
 wait_for() {
   local name="$1"

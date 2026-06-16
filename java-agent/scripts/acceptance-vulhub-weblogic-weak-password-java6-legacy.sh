@@ -11,6 +11,13 @@ baseline_port="${OHMYRASP_VULHUB_WEBLOGIC_WEAK_PASSWORD_BASELINE_PORT:-19650}"
 baseline_dir="logs/vulhub-weblogic-weak-password-java6-baseline"
 protected_dir="logs/vulhub-weblogic-weak-password-java6-protected"
 web_dir="${vulhub_dir}/web"
+gradle_cache_dir="${OHMYRASP_GRADLE_CACHE_DIR:-}"
+cleanup_gradle_cache="false"
+
+if [[ -z "$gradle_cache_dir" ]]; then
+  gradle_cache_dir="$(mktemp -d "${TMPDIR:-/tmp}/ohmyrasp-gradle-cache-weblogic-weak-password.XXXXXX")"
+  cleanup_gradle_cache="true"
+fi
 
 copy_artifacts() {
   mkdir -p "$baseline_dir"
@@ -22,6 +29,9 @@ copy_artifacts() {
 cleanup() {
   copy_artifacts
   docker rm -f -v "$baseline_name" >/dev/null 2>&1 || true
+  if [[ "$cleanup_gradle_cache" == "true" ]]; then
+    rm -rf "$gradle_cache_dir"
+  fi
 }
 trap cleanup EXIT
 
@@ -79,10 +89,10 @@ wait_for_file_read() {
   exit 1
 }
 
-mkdir -p /tmp/ohmyrasp-gradle-cache
+mkdir -p "$gradle_cache_dir"
 docker run --rm -u "$(id -u):$(id -g)" \
   -e GRADLE_USER_HOME=/tmp/gradle-cache \
-  -v /tmp/ohmyrasp-gradle-cache:/tmp/gradle-cache \
+  -v "${gradle_cache_dir}:/tmp/gradle-cache" \
   -v "$(pwd):/workspace" \
   -w /workspace \
   gradle:jdk25 \

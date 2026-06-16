@@ -8,6 +8,7 @@ base_dir="logs/vulhub-confluence-setup-boundaries"
 current_web=""
 current_db=""
 current_net=""
+run_tag="${OHMYRASP_VULHUB_CONFLUENCE_RUN_TAG:-$$}"
 
 cleanup_current() {
   if [[ -n "$current_web" ]]; then
@@ -124,6 +125,11 @@ assert_no_cmd_header() {
   fi
 }
 
+ensure_image() {
+  local image="$1"
+  docker image inspect "$image" >/dev/null 2>&1 || docker pull "$image" >/dev/null
+}
+
 probe_3396() {
   local port="$1"
   local dir="$2"
@@ -226,24 +232,53 @@ run_case() {
   local probe="$5"
   local port="$6"
   current_dir="${base_dir}/${id}"
-  current_web="ohmyrasp-confluence-${id}-web"
-  current_db="ohmyrasp-confluence-${id}-db"
-  current_net="ohmyrasp-confluence-${id}-net"
+  current_web="ohmyrasp-confluence-${id}-${run_tag}-web"
+  current_db="ohmyrasp-confluence-${id}-${run_tag}-db"
+  current_net="ohmyrasp-confluence-${id}-${run_tag}-net"
 
   rm -rf "$current_dir"
   mkdir -p "$current_dir"
-  docker rm -f -v "$current_web" "$current_db" >/dev/null 2>&1 || true
-  docker network rm "$current_net" >/dev/null 2>&1 || true
+  docker rm -f -v "$current_web" "$current_db" \
+    "ohmyrasp-confluence-${id}-web" "ohmyrasp-confluence-${id}-db" \
+    >/dev/null 2>&1 || true
+  docker network rm "$current_net" "ohmyrasp-confluence-${id}-net" >/dev/null 2>&1 || true
 
+  ensure_image "$db_image"
   verify_image_java "$image" "$java_marker" "$current_dir"
 
   docker network create "$current_net" >/dev/null
-  docker run -d --name "$current_db" --network "$current_net" --network-alias db \
-    -e POSTGRES_PASSWORD=postgres -e POSTGRES_DB=confluence \
-    "$db_image" >/dev/null
+  local db_started="false"
+  for attempt in $(seq 1 3); do
+    if docker run -d --name "$current_db" --network "$current_net" --network-alias db \
+      -e POSTGRES_PASSWORD=postgres -e POSTGRES_DB=confluence \
+      "$db_image" >/dev/null; then
+      db_started="true"
+      break
+    fi
+    docker rm -f -v "$current_db" >/dev/null 2>&1 || true
+    docker network inspect "$current_net" >/dev/null 2>&1 || docker network create "$current_net" >/dev/null
+    sleep 2
+  done
+  if [[ "$db_started" != "true" ]]; then
+    echo "Confluence boundary PostgreSQL container did not start after retries: ${current_db}" >&2
+    exit 1
+  fi
   wait_for_postgres "$current_db" "$current_dir"
-  docker run -d --name "$current_web" --network "$current_net" \
-    -p "${port}:8090" "$image" >/dev/null
+  local web_started="false"
+  for attempt in $(seq 1 3); do
+    if docker run -d --name "$current_web" --network "$current_net" \
+      -p "${port}:8090" "$image" >/dev/null; then
+      web_started="true"
+      break
+    fi
+    docker rm -f -v "$current_web" >/dev/null 2>&1 || true
+    docker network inspect "$current_net" >/dev/null 2>&1 || docker network create "$current_net" >/dev/null
+    sleep 2
+  done
+  if [[ "$web_started" != "true" ]]; then
+    echo "Confluence boundary web container did not start after retries: ${current_web}" >&2
+    exit 1
+  fi
   wait_for_setup_redirect "$port" "$current_dir"
   record_table_count "$current_db" "$current_dir"
   "$probe" "$port" "$current_dir"
