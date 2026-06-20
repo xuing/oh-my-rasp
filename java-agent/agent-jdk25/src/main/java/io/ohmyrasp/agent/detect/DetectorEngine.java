@@ -261,8 +261,24 @@ public final class DetectorEngine {
       Pattern.compile("(?is)(?:^|\\W)(?:bash|sh|cmd|powershell|pwsh|nc|curl|wget)\\b");
   private static final Pattern JAVA_CONFIG_CONSTRUCTOR_ARGUMENT =
       Pattern.compile("(?s)[\"']([^\"']{1,2048})[\"']");
+  // Matches actual XSS execution vectors — script injection, `javascript:` URIs,
+  // and inline DOM event-handler attributes (including attribute-injection forms
+  // that carry no full tag). It deliberately does NOT match benign HTML markup
+  // like <b>, <p>, <div> or <a href>: the prior "any tag-open" pattern fired on
+  // legitimate HTML-bearing input (comments, rich text, search terms, markup
+  // fields), a real false-positive source for the live `xss_userinput` detector.
+  // The curated event-handler set avoids matching benign params such as
+  // `online=`, `once=`, or `onboarding=`.
   private static final Pattern XSS_INPUT =
-      Pattern.compile("(?is)<![-\\[]|<([A-Za-z]{1,12})[/>\\x00-\\x20]");
+      Pattern.compile(
+          "(?is)<\\s*script\\b"
+              + "|javascript\\s*:"
+              + "|\\bon(?:error|load|click|dblclick|mouse[a-z]*|key[a-z]*|focus[a-z]*|blur"
+              + "|change|submit|reset|select|input|toggle|scroll|wheel|contextmenu"
+              + "|copy|cut|paste|drag[a-z]*|drop|animation[a-z]*|transition[a-z]*"
+              + "|pointer[a-z]*|play[a-z]*|abort|unload|resize|show|begin|finish"
+              + "|pageshow|pagehide|hashchange|popstate|message|storage|beforescriptexecute)"
+              + "\\s*=");
   private static final Pattern CHINA_ID =
       Pattern.compile("(?<!\\d)\\d{10}(?:[01]\\d)(?:[0123]\\d)\\d{3}(?:\\d|x|X)(?!\\d)");
   private static final Pattern CHINA_MOBILE =

@@ -6470,6 +6470,34 @@ final class DetectorEngineTest {
   }
 
   @Test
+  void detectsXssRequestInputEventHandlerAttributeInjection() {
+    // Attribute-injection XSS carries no full tag, only an event handler.
+    var result =
+        engine.detectRequest(request(Map.of("name", List.of("\" onerror=alert(1) x=\""))));
+
+    assertTrue(result.isPresent());
+    assertEquals("xss_userinput", result.orElseThrow().algorithm());
+  }
+
+  @Test
+  void ignoresBenignHtmlMarkupInRequestParameters() {
+    // Legitimate HTML-bearing input (comments, rich text, markup, search terms)
+    // must not trip xss_userinput — it is not an XSS execution vector.
+    for (String benign :
+        List.of(
+            "I love <b>bold</b> and <i>italic</i> text",
+            "<p>Hello world</p>",
+            "<div class=\"card\"><a href=\"/home\">home</a></div>",
+            "<html><body><h1>Title</h1></body></html>",
+            "online=true&onboarding=1")) {
+      var result = engine.detectRequest(request(Map.of("comment", List.of(benign))));
+      assertTrue(
+          result.isEmpty() || !"xss_userinput".equals(result.orElseThrow().algorithm()),
+          "benign markup should not trip xss_userinput: " + benign);
+    }
+  }
+
+  @Test
   void detectsJavaBeanClassLoaderPollutionParameter() {
     var result =
         engine.detectRequest(
