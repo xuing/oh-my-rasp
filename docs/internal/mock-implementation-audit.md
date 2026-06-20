@@ -4,6 +4,13 @@ This audit lists code paths that still use seeded, generated, simulated, or
 otherwise non-production behavior. It also records the mock paths removed during
 the current cleanup so future work does not reintroduce them.
 
+> **Historical note (added 2026-06-20).** The `web/src/...` and `web/e2e/...`
+> paths in the tables below refer to the **legacy `web/` frontend**, which was
+> decommissioned and removed from git (commit `94b5e32`). The current frontend is
+> `console/`, whose equivalent tests live under `console/` (unit tests via
+> `npm test`, Playwright specs in `console/e2e/`). These rows are kept as the
+> historical cleanup record; the cited `web/` files no longer exist.
+
 ## Resolved During This Cleanup
 
 | Area | Previous behavior | Current behavior |

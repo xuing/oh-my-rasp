@@ -11,6 +11,15 @@
 > placeholders." That conclusion is **not supported by the code or by live
 > testing.**
 
+> **Historical note (added 2026-06-20).** This audit predates the
+> application-centric frontend rewrite. Every `web/src/...` / `web/e2e/...` path
+> below refers to the **legacy `web/` frontend**, which was decommissioned and
+> removed from git (commit `94b5e32`); the current frontend is `console/`, with a
+> different (per-route, lazy-loaded) structure — so the file paths and the
+> "5,351-line `pages.tsx`" finding describe the legacy code as it stood on the
+> audit date, not the current tree. The paths are preserved as the historical
+> record; do not follow them as current locations.
+
 - **Date:** 2026-06-02
 - **Method:** static source review (Go API, React web, Java agent) + a live run of
   the full `docker compose` stack (Postgres + ClickHouse + Valkey + API + web),
