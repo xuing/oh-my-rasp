@@ -38,6 +38,19 @@ covered section after the baseline/protected acceptance rows pass.
 Last audited Vulhub snapshot: `/tmp/vulhub-ohmyrasp-20260603` at commit
 `d277a86`; `git pull --ff-only` returned `Already up to date` on 2026-06-11.
 
+**Root-completeness re-verified 2026-06-20.** An exhaustive enumeration of all
+152 environments in the snapshot — byte-identical to the live clone at
+`/home/ubuntu/vulhub` (same commit `d277a86`, no dir diffs) — confirms every
+Java/JVM environment maps to one of the 53 roots below. The only non-covered
+directories that even reference a Java/Tomcat base image are `base/` (Vulhub's
+shared base images, not a vulnerability env) and `httpd/` (an Apache HTTP Server
+/ C env whose Tomcat image is only an SSRF proxy backend, not a Java app a Java
+RASP can protect); `zabbix/` and the remainder are non-Java. **No uncovered Java
+vulnerability environment remains in the corpus at this commit.** The
+"Continue expanding Java 8/11/17" items below therefore refer to deeper
+per-root CVE / runtime-matrix depth, **not** new roots; only a future upstream
+`vulhub` pull could introduce a new Java root to scope.
+
 Java/JVM source scope currently covers 53 Vulhub roots and 148 README
 environment or alias paths:
 
