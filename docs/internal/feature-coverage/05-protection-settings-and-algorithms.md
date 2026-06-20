@@ -77,7 +77,7 @@ Some archived categories, such as PHP include semantics and framework-specific u
 
 - `docker run --rm -v "$PWD/api":/src -w /src golang:1.26 go generate ./...`
 - `docker run --rm -v "$PWD/api":/src -w /src golang:1.26 go test ./...`
-- `cd web && npm run build && npm test && npm run e2e`
+- `cd console && npm run build && npm test && npm run test:e2e`
 - `cd java-agent && ./scripts/acceptance.sh`
 - `docker compose build api migrate web && docker compose up -d web`
 - Live control-plane API check: algorithm catalog returned 24 hooks; restore-default created 54 draft rules; `alerts.delivery.interval_seconds` persisted.

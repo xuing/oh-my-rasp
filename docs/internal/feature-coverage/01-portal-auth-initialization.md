@@ -48,7 +48,7 @@ Frontend side:
 
 ## Verification
 
-- `cd web && npm run build`
-- `cd web && npm test`
-- `cd web && npm run e2e`
+- `cd console && npm run build`
+- `cd console && npm test`
+- `cd console && npm run test:e2e`
 - Live Docker Compose acceptance after rebuilding `web`.

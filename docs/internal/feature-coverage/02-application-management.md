@@ -56,9 +56,9 @@ Frontend side:
 ## Verification
 
 - `docker run --rm -v "$PWD":/src -w /src golang:1.26 go test ./...` from `api/`.
-- `cd web && npm run build`
-- `cd web && npm test`
-- `cd web && npm run e2e`
+- `cd console && npm run build`
+- `cd console && npm test`
+- `cd console && npm run test:e2e`
 - `docker compose build --no-cache api migrate web && docker compose up -d web`
 - Live API acceptance against `http://127.0.0.1:18090` for create, environment create, export, delete, list, and export-after-delete.
 - Live UI acceptance against `http://127.0.0.1:18091/applications` for localized application-management controls.

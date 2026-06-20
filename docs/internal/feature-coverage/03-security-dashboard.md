@@ -56,9 +56,9 @@ Frontend side:
 
 - `docker run --rm -v "$PWD":/src -w /src golang:1.26 go generate ./...` from `api/`.
 - `docker run --rm -v "$PWD":/src -w /src golang:1.26 go test ./...` from `api/`.
-- `cd web && npm run build`
-- `cd web && npm test`
-- `cd web && npm run e2e`
+- `cd console && npm run build`
+- `cd console && npm test`
+- `cd console && npm run test:e2e`
 - `docker compose build --no-cache api migrate web && docker compose up -d web`
 - Live API acceptance against `http://127.0.0.1:18090` for login, Agent registration, attack ingest, crash ingest, and overview aggregate verification.
 - Live UI acceptance against `http://127.0.0.1:18091` for login and dashboard panels with no missing translation markers.

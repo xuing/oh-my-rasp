@@ -61,9 +61,9 @@
 ## 验证
 
 - `docker run --rm -v "$PWD/api":/src -w /src golang:1.26 go test ./...`
-- `cd web && npm test`
-- `cd web && npm run build`
-- `cd web && npm run e2e`
-- Focused Playwright: `cd web && npm run e2e -- --grep "redirects authenticated viewers|navigates primary|supports header"`
+- `cd console && npm test`
+- `cd console && npm run build`
+- `cd console && npm run test:e2e`
+- Focused Playwright (primary-page navigation, mobile nav, RBAC): `cd console && npm run test:e2e -- --grep "instances expose onboarding, artifacts, mobile nav, and RBAC correctly"`
 - `docker compose build api migrate web && docker compose up -d web`
-- `cd web && npm run e2e:live`
+- `cd console && npm run test:e2e:live`

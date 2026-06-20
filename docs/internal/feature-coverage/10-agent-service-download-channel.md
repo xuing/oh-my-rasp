@@ -64,8 +64,8 @@
 ## 验证
 
 - `docker run --rm -v "$PWD/api":/src -w /src golang:1.26 go test ./...`
-- `cd web && npm test`
-- `cd web && npm run build`
-- `cd web && npm run e2e`
+- `cd console && npm test`
+- `cd console && npm run build`
+- `cd console && npm run test:e2e`
 - `docker compose build api migrate web && docker compose up -d web`
-- `cd web && npm run e2e:live`
+- `cd console && npm run test:e2e:live`
