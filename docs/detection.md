@@ -238,6 +238,21 @@ for:
 verbatim in the response body, converting a one-sided injection alert into
 a confirmed reflection finding.
 
+> **Wiring status — not yet active on live traffic.** Both response-side
+> detectors (`detectResponseDataLeak`, `detectXssEcho`) are implemented and
+> unit-tested, and the agent exposes the `beforeResponseDataLeak` /
+> `beforeXssEcho` hook entry points. However, **no bytecode transformer
+> currently installs those hooks onto a response-output sink** (e.g.
+> `HttpServletResponse.getWriter()` / `ServletOutputStream`), so the detectors
+> do not run during normal request handling. They are exercised today only via
+> the playground's direct invocation probes (the `response` and `xss-echo`
+> action cases in `VulnerableServlet`, which call the hooks reflectively).
+> Wiring response-body scanning onto the hot response path is
+> deferred pending a latency-conscious instrumentation design, because it would
+> scan every outbound body and the agent's standing goal is **no business
+> latency**. Treat response-side detection as a demonstrated capability, not an
+> active protection, until that wiring lands.
+
 Note: PII detection is oriented toward Chinese formats. International PII
 formats (US SSN, EU national identifiers) are not currently in scope.
 
