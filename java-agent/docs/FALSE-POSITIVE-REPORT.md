@@ -18,19 +18,11 @@ A curated corpus of **51** benign-but-plausible inputs across **9** detector cat
 | File writes | 4 | 0 | 0.0% |
 | Deserialization classes | 6 | 0 | 0.0% |
 | Expressions | 5 | 0 | 0.0% |
-| JNDI names | 3 | 3 | 100.0% |
+| JNDI names | 3 | 0 | 0.0% |
 | DNS lookups | 4 | 0 | 0.0% |
-| **Overall** | **51** | **3** | **5.9%** |
+| **Overall** | **51** | **0** | **0.0%** |
 
-## False positives observed
-
-### JNDI names false positives
-
-- `jndi_disable_all` ⇐ `java:comp/env/jdbc/AppDataSource`
-- `jndi_disable_all` ⇐ `java:comp/env/jms/QueueConnectionFactory`
-- `jndi_disable_all` ⇐ `java:global/AppEjb/UserService`
-
-> Each line above is a legitimate input that tripped a detector. These are the precision edges to tune (taint scope, allowlist, confidence thresholds).
+No false positives observed across the corpus.
 
 ## Corpus
 

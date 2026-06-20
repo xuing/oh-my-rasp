@@ -1338,6 +1338,24 @@ final class DetectorEngineTest {
   }
 
   @Test
+  void detectsJndiRemoteRmiScheme() {
+    var result = engine.detectJndi("rmi://attacker.example.com:1099/Exploit", request());
+
+    assertTrue(result.isPresent());
+    assertEquals("jndi_disable_all", result.orElseThrow().algorithm());
+  }
+
+  @Test
+  void ignoresLocalContainerJndiNames() {
+    // Legitimate Java EE / container-managed lookups must not trip the detector
+    // (closes the documented 100% JNDI false-positive precision gap).
+    assertTrue(engine.detectJndi("java:comp/env/jdbc/AppDataSource", request()).isEmpty());
+    assertTrue(engine.detectJndi("java:comp/env/jms/QueueConnectionFactory", request()).isEmpty());
+    assertTrue(engine.detectJndi("java:global/AppEjb/UserService", request()).isEmpty());
+    assertTrue(engine.detectJndi("jdbc/AppDataSource", request()).isEmpty());
+  }
+
+  @Test
   void detectsKafkaCve202325194DruidSamplerJaasJndiLoginModuleRemoteProvider() {
     String config =
         "com.sun.security.auth.module.JndiLoginModule required "

@@ -104,6 +104,14 @@ public final class DetectorEngine {
           "(?is)\\b(?:(?:java\\.naming\\.)?provider\\.url|(?:user|group)\\.provider\\.url)\\s*=\\s*[\"']?\\s*((?:ldap|ldaps|rmi|iiop|corbaname|corbaloc)://[^\\s\"';]+)");
   private static final Pattern REQUEST_JNDI_LOOKUP =
       Pattern.compile("(?is)\\$\\{[^\\r\\n]{0,512}?jndi\\s*:\\s*([a-z][a-z0-9.+-]{0,20})://");
+  // A lookup whose name resolves through a *remote* naming provider is the
+  // JNDI-injection vector (Log4Shell-class). Local container lookups in the
+  // `java:` namespace (java:comp/env/..., java:global/..., java:module/...) and
+  // bare relative names are legitimate and must not trip the detector. Mirrors
+  // the backports' REMOTE_JNDI_LOOKUP scheme set for cross-agent parity.
+  private static final Pattern JNDI_REMOTE_LOOKUP =
+      Pattern.compile(
+          "(?is)^\\s*(ldap|ldaps|rmi|iiop|corbaname|corbaloc)://[^\\s\\u0000]{1,2048}");
   private static final Pattern REQUEST_XXE_EXTERNAL_ENTITY =
       Pattern.compile(
           "(?is)<!\\s*DOCTYPE\\b.{0,4096}<!\\s*ENTITY\\b.{0,1024}\\b(?:SYSTEM|PUBLIC)\\b.{0,512}['\"]\\s*([a-z][a-z0-9.+-]{0,20}):");
@@ -2488,14 +2496,26 @@ public final class DetectorEngine {
     if (name == null || name.isBlank()) {
       return Optional.empty();
     }
+    String lookup = name.trim();
+    var remote = JNDI_REMOTE_LOOKUP.matcher(lookup);
+    if (!remote.find()) {
+      // Local container lookups (java:comp/env/..., java:global/..., relative
+      // names) are legitimate; only a remote naming provider is the attack vector.
+      return Optional.empty();
+    }
+    String scheme = remote.group(1).toLowerCase(Locale.ROOT);
+    boolean requestControlled = request != null && request.hasParameterIn(lookup);
     return Optional.of(
         Detection.log(
             "jndi",
             "jndi_disable_all",
-            100,
-            "JNDI lookup intercepted",
+            requestControlled ? 100 : 95,
+            "JNDI lookup resolves through a remote naming provider",
             request,
-            Map.of("name", abbreviate(name))));
+            Map.of(
+                "name", abbreviate(lookup),
+                "scheme", scheme,
+                "requestControlled", String.valueOf(requestControlled))));
   }
 
   public Optional<Detection> detectJaasConfig(

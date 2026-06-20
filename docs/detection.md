@@ -320,18 +320,19 @@ engine, not a mock.
 | File writes | 4 | 0 | 0.0% |
 | Deserialization classes | 6 | 0 | 0.0% |
 | Expressions | 5 | 0 | 0.0% |
-| JNDI names | 3 | **3** | **100.0%** |
+| JNDI names | 3 | 0 | 0.0% |
 | DNS lookups | 4 | 0 | 0.0% |
-| **Overall** | **51** | **3** | **5.9%** |
+| **Overall** | **51** | **0** | **0.0%** |
 
-The three false positives are identical in character: legitimate Java EE JNDI
+The corpus is clean. The previous JNDI precision gap — legitimate Java EE
 names (`java:comp/env/jdbc/AppDataSource`,
 `java:comp/env/jms/QueueConnectionFactory`, `java:global/AppEjb/UserService`)
-all trip `jndi_disable_all`. The fix is straightforward — allowlist the
-`java:comp/env` and `java:global` prefixes as app-scoped names — but it has
-not yet been applied. Any deployment that relies on container-managed JNDI
-resources should evaluate this before enabling block mode on the JNDI
-detector.
+tripping `jndi_disable_all` — was closed by making `detectJndi` scheme-aware:
+the detector now fires only when the lookup name resolves through a *remote*
+naming provider (`ldap`, `ldaps`, `rmi`, `iiop`, `corbaname`, `corbaloc`) — the
+JNDI-injection vector — and ignores the local `java:` namespace and bare
+relative names. This matches the scheme set the `agent-java8/11/17` backports
+already enforced, restoring cross-agent parity.
 
 **Framing.** This is a detector-precision measurement on 51 hand-curated
 benign strings. It is not a production false-positive rate measurement.
@@ -366,13 +367,9 @@ automated container starts. The acceptance script probes expected payloads
 against the setup boundary; it does not complete a full agent-injection and
 block cycle.
 
-**The JNDI detector has a known precision gap.** `jndi_disable_all` produces
-100% false positives on all three tested benign JNDI names in the
-`java:comp/env` and `java:global` namespaces. This is an open item.
-
 **The false-positive corpus is 51 curated inputs, not production traffic.**
-A 5.9% overall FP rate (all from JNDI) on this corpus should not be
-extrapolated to a production deployment rate.
+The overall FP rate on this corpus is 0.0%, but a clean curated corpus should
+not be extrapolated to a production deployment rate.
 
 **Acceptance breadth is bounded by the 53 Vulhub roots in scope.** 136
 scenarios against real Docker containers is strong coverage for the
