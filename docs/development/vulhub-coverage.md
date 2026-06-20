@@ -375,6 +375,20 @@ coverage, separate from the Java 25 behavioral replay suite:
   remains a setup/license/SMTP/sample-project boundary rather than a protected
   LTS acceptance. Evidence:
   `/tmp/ohmyrasp-jira-11581-setup-boundary-java8-20260611032206.log`.
+- [x] Re-run the primary `agent-jdk25` live baseline-vs-protected acceptance on
+  2026-06-20 to validate the 2026-06-20 detector-precision changes against real
+  containers, closing the gap that the prior recorded matrix (2026-06-11)
+  predated them. `scripts/acceptance.sh` rebuilt the Tomcat 11/10/9 `jdk25`
+  baseline and protected images from current source (so the freshly compiled
+  agent jar carries the L2 scheme-aware JNDI fix `d867d45` and the L3
+  execution-vector XSS retightening `292d9f5`) and passed across Tomcat 11, 10,
+  and 9: 414 required block-event confirmations, 0 missing. The detector changes
+  hold under live HTTP — `xss_userinput`, `xss_echo`, `jndi_disable_all`, and
+  `request_jndi_lookup` each emitted `action:"block"` on all three Tomcat
+  versions while baseline/normal-traffic checks stayed clean. Evidence: 2,825
+  protected events across `logs/tomcat{9,10,11}-protected/events.jsonl`; full
+  run log `/tmp/acceptance-l8-1781963376.log`. The companion unit gate
+  (`gradle :agent-jdk25:test`) is also green on the same HEAD.
 - [x] Re-run the current full LTS Tomcat compatibility matrix on 2026-06-11
   after the Java 8/11/17 agent checks and Vulhub coverage-ledger automation:
   `scripts/acceptance-java17.sh` passed Tomcat 11 -> 10.1 -> 9 with
