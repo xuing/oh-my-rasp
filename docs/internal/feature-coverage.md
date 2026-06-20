@@ -8,8 +8,14 @@
 - 归档前端 API：`.archive/source-drop-1-rasp/legacy-web/src/api/**/*.ts`
 - 归档后端路由：`.archive/source-drop-1-rasp/legacy-webapi/src/rasp-cloud/routers/router.go` 和 `commentsRouter.go`
 - 当前 API：`api/api/openapi.yaml`
-- 当前 Web：`web/src/router.tsx`, `web/src/routes/pages.tsx`, `web/src/lib/api.ts`
+- 当前 Web：`console/src/router.tsx`, `console/src/routes/*`, `console/src/lib/api.ts`
 - 当前 Java Agent：`java-agent/agent-jdk25/src/main/java/io/ohmyrasp/agent/**`
+
+> **前端已迁移到 `console/`（应用中心化重写）。旧的 `web/` 前端已于 2026-06-20 下线并从仓库移除。**
+> 各子文档「验证」小节中的 `cd web && npm run build|test|e2e` 命令现应对应 `console/` 的脚本：
+> `cd console && npm run build`、`cd console && npm test`（已含 typecheck + Playwright e2e）、
+> `cd console && npm run test:e2e`（以及 `npm run test:e2e:live`）。带 `--grep` 的定向 e2e
+> 命令引用的是旧 `web/` 测试标题，需按 `console/` 的实际用例重写（见 `.ralph/fix_plan.md` 跟踪项）。
 
 ## 证据层级说明
 

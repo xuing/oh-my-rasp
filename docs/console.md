@@ -3,7 +3,8 @@
 The `console/` directory is the OhMyRasp control-plane frontend. It is a
 from-scratch React 19 application built with Vite 8, TanStack Router, TanStack
 Query, and Tailwind CSS v4. It is the sole supported frontend; the legacy
-`web/` directory is no longer active.
+`web/` directory was decommissioned and removed from the repository on
+2026-06-20.
 
 ## Technology stack
 
