@@ -46,8 +46,12 @@ public final class FpReport {
         new Category("File writes", fileWriteCorpus(), (c, r) -> ENGINE.detectFileWrite(c.payload(), r)),
         new Category("Deserialization classes", deserializationCorpus(), (c, r) -> ENGINE.detectDeserialization(c.payload(), r)),
         new Category("Expressions", expressionCorpus(), (c, r) -> ENGINE.detectExpression("spel", c.payload(), r)),
+        new Category("OGNL expressions", ognlCorpus(), (c, r) -> ENGINE.detectOgnl(c.payload(), r)),
         new Category("JNDI names", jndiCorpus(), (c, r) -> ENGINE.detectJndi(c.payload(), r)),
-        new Category("DNS lookups", dnsCorpus(), (c, r) -> ENGINE.detectDns(c.payload(), r)));
+        new Category("DNS lookups", dnsCorpus(), (c, r) -> ENGINE.detectDns(c.payload(), r)),
+        new Category("Upload filenames", uploadCorpus(), (c, r) -> ENGINE.detectFileUpload(c.payload(), r)),
+        new Category("JDBC URLs", jdbcCorpus(), (c, r) -> ENGINE.detectJdbcUrl(c.payload(), r)),
+        new Category("Request parameters", requestParamCorpus(), (c, r) -> ENGINE.detectRequest(r)));
 
     int totalCases = 0;
     int totalFp = 0;
@@ -224,6 +228,55 @@ public final class FpReport {
         Case.of("db-primary.internal.example.com"),
         Case.of("smtp.example.com"),
         Case.of("storage.googleapis.com"));
+  }
+
+  private static List<Case> ognlCorpus() {
+    // Legitimate Struts2/OGNL value expressions: property access, ValueStack
+    // references, i18n lookups — none reference a dangerous class.
+    return List.of(
+        Case.of("user.name"),
+        Case.of("#session.username"),
+        Case.of("top.id"),
+        Case.of("address.city"),
+        Case.of("person.age > 18"),
+        Case.of("%{getText('label.welcome')}"),
+        Case.of("order.items.size()"));
+  }
+
+  private static List<Case> uploadCorpus() {
+    // Ordinary user uploads: documents, images, archives of non-executable data.
+    return List.of(
+        Case.of("vacation-photo.jpg"),
+        Case.of("Q2-report-2026.pdf"),
+        Case.of("avatar.png"),
+        Case.of("export-2026-06.csv"),
+        Case.of("slides.pptx"),
+        Case.of("resume.docx"));
+  }
+
+  private static List<Case> jdbcCorpus() {
+    // Standard connection URLs across drivers; none request-controlled, none
+    // using H2 INIT or MySQL connector deserialization parameters.
+    return List.of(
+        Case.of("jdbc:postgresql://db.internal:5432/app"),
+        Case.of("jdbc:mysql://db.internal:3306/app?useSSL=true&serverTimezone=UTC"),
+        Case.of("jdbc:h2:mem:testdb"),
+        Case.of("jdbc:oracle:thin:@db.internal:1521:orcl"),
+        Case.of("jdbc:sqlserver://db.internal;databaseName=app;encrypt=true"));
+  }
+
+  private static List<Case> requestParamCorpus() {
+    // Request parameters that carry benign HTML markup / plain text — rich-text
+    // comments, CMS fields, search terms with angle brackets. None is an XSS
+    // execution vector; they must not trip `xss_userinput` (the live, every-request
+    // detector) or any other request sub-detector.
+    return List.of(
+        Case.tainted("I love <b>bold</b> and <i>italic</i> text", "I love <b>bold</b> and <i>italic</i> text"),
+        Case.tainted("<p>Hello world</p>", "<p>Hello world</p>"),
+        Case.tainted("<div class=\"card\">welcome home</div>", "<div class=\"card\">welcome home</div>"),
+        Case.tainted("<ul><li>one</li><li>two</li></ul>", "<ul><li>one</li><li>two</li></ul>"),
+        Case.tainted("prices: a < b, c > d", "prices: a < b, c > d"),
+        Case.tainted("online surveys and onboarding tips", "online surveys and onboarding tips"));
   }
 
   private static String abbreviate(String value) {

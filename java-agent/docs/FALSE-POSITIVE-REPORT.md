@@ -5,7 +5,7 @@
 
 ## Method
 
-A curated corpus of **51** benign-but-plausible inputs across **9** detector categories is run through the engine. Each input is presented with a realistic request context; where a value would be user-supplied it is placed in a request parameter so taint-aware detectors evaluate it as in production. A *false positive* is any detector returning a detection for legitimate input. This is a detector-precision probe on benign traffic, **not** a production-traffic false-positive rate.
+A curated corpus of **75** benign-but-plausible inputs across **13** detector categories is run through the engine. Each input is presented with a realistic request context; where a value would be user-supplied it is placed in a request parameter so taint-aware detectors evaluate it as in production. A *false positive* is any detector returning a detection for legitimate input. This is a detector-precision probe on benign traffic, **not** a production-traffic false-positive rate.
 
 ## Result
 
@@ -18,9 +18,13 @@ A curated corpus of **51** benign-but-plausible inputs across **9** detector cat
 | File writes | 4 | 0 | 0.0% |
 | Deserialization classes | 6 | 0 | 0.0% |
 | Expressions | 5 | 0 | 0.0% |
+| OGNL expressions | 7 | 0 | 0.0% |
 | JNDI names | 3 | 0 | 0.0% |
 | DNS lookups | 4 | 0 | 0.0% |
-| **Overall** | **51** | **0** | **0.0%** |
+| Upload filenames | 6 | 0 | 0.0% |
+| JDBC URLs | 5 | 0 | 0.0% |
+| Request parameters | 6 | 0 | 0.0% |
+| **Overall** | **75** | **0** | **0.0%** |
 
 No false positives observed across the corpus.
 
@@ -93,6 +97,16 @@ No false positives observed across the corpus.
 - `customer.firstName + ' ' + customer.lastName`
 - `#{T(java.lang.Math).max(a, b)}`
 
+**OGNL expressions**
+
+- `user.name`
+- `#session.username`
+- `top.id`
+- `address.city`
+- `person.age > 18`
+- `%{getText('label.welcome')}`
+- `order.items.size()`
+
 **JNDI names**
 
 - `java:comp/env/jdbc/AppDataSource`
@@ -105,5 +119,31 @@ No false positives observed across the corpus.
 - `db-primary.internal.example.com`
 - `smtp.example.com`
 - `storage.googleapis.com`
+
+**Upload filenames**
+
+- `vacation-photo.jpg`
+- `Q2-report-2026.pdf`
+- `avatar.png`
+- `export-2026-06.csv`
+- `slides.pptx`
+- `resume.docx`
+
+**JDBC URLs**
+
+- `jdbc:postgresql://db.internal:5432/app`
+- `jdbc:mysql://db.internal:3306/app?useSSL=true&serverTimezone=UTC`
+- `jdbc:h2:mem:testdb`
+- `jdbc:oracle:thin:@db.internal:1521:orcl`
+- `jdbc:sqlserver://db.internal;databaseName=app;encrypt=true`
+
+**Request parameters**
+
+- `I love <b>bold</b> and <i>italic</i> text` (user input: `I love <b>bold</b> and <i>italic</i> text`)
+- `<p>Hello world</p>` (user input: `<p>Hello world</p>`)
+- `<div class="card">welcome home</div>` (user input: `<div class="card">welcome home</div>`)
+- `<ul><li>one</li><li>two</li></ul>` (user input: `<ul><li>one</li><li>two</li></ul>`)
+- `prices: a < b, c > d` (user input: `prices: a < b, c > d`)
+- `online surveys and onboarding tips` (user input: `online surveys and onboarding tips`)
 
 </details>
