@@ -102,7 +102,10 @@ impl Controller {
                 }),
             Err(_) => ControlState::initial(default_mode),
         };
-        let controller = Self { path: path.to_path_buf(), state: Mutex::new(state) };
+        let controller = Self {
+            path: path.to_path_buf(),
+            state: Mutex::new(state),
+        };
         controller.persist()?;
         Ok(controller)
     }
@@ -112,7 +115,11 @@ impl Controller {
     }
 
     /// Apply a partial update from the console. Any field left `None` is kept.
-    pub fn update(&self, mode: Option<Mode>, algorithms: Option<BTreeMap<String, bool>>) -> Result<ControlState> {
+    pub fn update(
+        &self,
+        mode: Option<Mode>,
+        algorithms: Option<BTreeMap<String, bool>>,
+    ) -> Result<ControlState> {
         {
             let mut guard = self.state.lock().expect("control mutex");
             if let Some(mode) = mode {
@@ -160,6 +167,11 @@ impl Controller {
         let tmp = self.path.with_extension("json.tmp");
         std::fs::write(&tmp, json.as_bytes())
             .with_context(|| format!("writing control temp {}", tmp.display()))?;
+        // The control file carries the cloud policy; keep it owner-only. Set the
+        // mode on the temp file before the rename so the file is never exposed
+        // world-readable, even briefly, under its final name.
+        crate::util::restrict_to_owner(&tmp)
+            .with_context(|| format!("restricting control temp {}", tmp.display()))?;
         std::fs::rename(&tmp, &self.path)
             .with_context(|| format!("renaming control file into place {}", self.path.display()))?;
         Ok(())
@@ -207,7 +219,10 @@ mod tests {
         let ctrl = Controller::load_or_init(&path, Mode::Monitor).unwrap();
 
         assert!(ctrl.set_policy(Some("{\"version\":4}".into())).unwrap());
-        assert!(!ctrl.set_policy(Some("{\"version\":4}".into())).unwrap(), "unchanged → no-op");
+        assert!(
+            !ctrl.set_policy(Some("{\"version\":4}".into())).unwrap(),
+            "unchanged → no-op"
+        );
         let rev = ctrl.snapshot().revision;
 
         // A console mode change must keep the policy intact.
@@ -219,6 +234,25 @@ mod tests {
 
         // Persisted file round-trips the policy.
         let reloaded = Controller::load_or_init(&path, Mode::Off).unwrap();
-        assert_eq!(reloaded.snapshot().policy.as_deref(), Some("{\"version\":4}"));
+        assert_eq!(
+            reloaded.snapshot().policy.as_deref(),
+            Some("{\"version\":4}")
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn control_file_is_owner_only() {
+        use std::os::unix::fs::PermissionsExt;
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("control.json");
+        let ctrl = Controller::load_or_init(&path, Mode::Monitor).unwrap();
+        // Freshly written on load.
+        let mode = std::fs::metadata(&path).unwrap().permissions().mode();
+        assert_eq!(mode & 0o777, 0o600);
+        // Still owner-only after a subsequent rewrite via the temp+rename path.
+        ctrl.update(Some(Mode::Block), None).unwrap();
+        let mode = std::fs::metadata(&path).unwrap().permissions().mode();
+        assert_eq!(mode & 0o777, 0o600);
     }
 }

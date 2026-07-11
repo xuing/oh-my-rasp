@@ -26,6 +26,9 @@ anyhow = "1"
 
 [dev-dependencies]
 tempfile = "3"
+# Lightweight, already a transitive dep of axum; used only to drive the console
+# router in tests via `ServiceExt::oneshot` (no live TCP server needed).
+tower = { version = "0.5", features = ["util"] }
 
 [profile.release]
 lto = "thin"

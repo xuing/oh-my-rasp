@@ -51,11 +51,22 @@ where
 
 /// Where to begin reading: 0 to replay everything, or current EOF to follow only
 /// new events.
+//
+// TODO(durability): the read offset is not persisted across restarts. Without
+// `--from-start` a restart resumes at the current EOF, so any events the agent
+// appended while the daemon was down are skipped; with `--from-start` the whole
+// spool is re-ingested and already-forwarded events are duplicated. A durable
+// fix would checkpoint the byte offset (e.g. to `buffer/spool.cursor`) and
+// resume from it. Left out here because it needs its own crash-consistency
+// tests; see the "offset-persistence" finding.
 async fn initial_offset(path: &Path, from_start: bool) -> u64 {
     if from_start {
         return 0;
     }
-    tokio::fs::metadata(path).await.map(|m| m.len()).unwrap_or(0)
+    tokio::fs::metadata(path)
+        .await
+        .map(|m| m.len())
+        .unwrap_or(0)
 }
 
 async fn poll_once<F>(
@@ -115,19 +126,29 @@ mod tests {
         let path = dir.path().join("events.jsonl");
         std::fs::write(&path, b"{\"a\":1}\n").unwrap();
 
-        let cfg = SpoolConfig { path: path.clone(), poll_interval_ms: 20, from_start: true };
+        let cfg = SpoolConfig {
+            path: path.clone(),
+            poll_interval_ms: 20,
+            from_start: true,
+        };
         let (tx, rx) = watch::channel(false);
         let seen = Arc::new(Mutex::new(Vec::<String>::new()));
         let sink = seen.clone();
 
         let handle = tokio::spawn(async move {
-            run(cfg, rx, move |line| sink.lock().unwrap().push(line.to_string())).await;
+            run(cfg, rx, move |line| {
+                sink.lock().unwrap().push(line.to_string())
+            })
+            .await;
         });
 
         // Append more lines after the tailer has started.
         tokio::time::sleep(Duration::from_millis(60)).await;
         {
-            let mut f = std::fs::OpenOptions::new().append(true).open(&path).unwrap();
+            let mut f = std::fs::OpenOptions::new()
+                .append(true)
+                .open(&path)
+                .unwrap();
             f.write_all(b"{\"b\":2}\n{\"c\":3}\n").unwrap();
         }
         tokio::time::sleep(Duration::from_millis(120)).await;
@@ -147,18 +168,28 @@ mod tests {
         let split = full.len() - 4; // inside the final multibyte sequence
         std::fs::write(&path, &full[..split]).unwrap();
 
-        let cfg = SpoolConfig { path: path.clone(), poll_interval_ms: 20, from_start: true };
+        let cfg = SpoolConfig {
+            path: path.clone(),
+            poll_interval_ms: 20,
+            from_start: true,
+        };
         let (tx, rx) = watch::channel(false);
         let seen = Arc::new(Mutex::new(Vec::<String>::new()));
         let sink = seen.clone();
         let handle = tokio::spawn(async move {
-            run(cfg, rx, move |line| sink.lock().unwrap().push(line.to_string())).await;
+            run(cfg, rx, move |line| {
+                sink.lock().unwrap().push(line.to_string())
+            })
+            .await;
         });
 
         // Let the tailer consume the partial bytes, then complete the line.
         tokio::time::sleep(Duration::from_millis(80)).await;
         {
-            let mut f = std::fs::OpenOptions::new().append(true).open(&path).unwrap();
+            let mut f = std::fs::OpenOptions::new()
+                .append(true)
+                .open(&path)
+                .unwrap();
             f.write_all(&full[split..]).unwrap();
             f.write_all(b"\n").unwrap();
         }
@@ -168,5 +199,58 @@ mod tests {
 
         let lines = seen.lock().unwrap().clone();
         assert_eq!(lines, vec!["{\"uri\":\"/查询\"}"]);
+    }
+
+    #[tokio::test]
+    async fn poll_once_resets_offset_on_truncation() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("events.jsonl");
+        std::fs::write(&path, b"{\"a\":1}\n{\"b\":2}\n").unwrap();
+
+        let mut leftover = Vec::new();
+        let mut seen = Vec::<String>::new();
+        let offset = {
+            let mut push = |l: &str| seen.push(l.to_string());
+            poll_once(&path, 0, &mut leftover, &mut push).await.unwrap()
+        };
+        assert_eq!(seen, vec!["{\"a\":1}", "{\"b\":2}"]);
+        assert_eq!(offset, 16);
+
+        // Rotate: replace with a shorter file so len < offset triggers a reset.
+        std::fs::write(&path, b"{\"c\":3}\n").unwrap();
+        seen.clear();
+        let new_offset = {
+            let mut push = |l: &str| seen.push(l.to_string());
+            poll_once(&path, offset, &mut leftover, &mut push)
+                .await
+                .unwrap()
+        };
+        assert_eq!(
+            seen,
+            vec!["{\"c\":3}"],
+            "reads the rotated file from the top"
+        );
+        assert_eq!(new_offset, 8, "offset tracks the shorter file");
+        assert!(leftover.is_empty());
+    }
+
+    #[tokio::test]
+    async fn poll_once_drops_oversized_partial_line() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("events.jsonl");
+        // More than the guard, with no newline: an unterminated line the tailer
+        // must refuse to buffer unboundedly.
+        let big = vec![b'a'; MAX_LEFTOVER + 16];
+        std::fs::write(&path, &big).unwrap();
+
+        let mut leftover = Vec::new();
+        let mut count = 0usize;
+        let offset = {
+            let mut bump = |_l: &str| count += 1;
+            poll_once(&path, 0, &mut leftover, &mut bump).await.unwrap()
+        };
+        assert_eq!(count, 0, "no complete line was emitted");
+        assert!(leftover.is_empty(), "oversized partial line was dropped");
+        assert_eq!(offset, big.len() as u64);
     }
 }

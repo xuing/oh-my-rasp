@@ -44,7 +44,9 @@ pub struct LogConfig {
 
 impl Default for LogConfig {
     fn default() -> Self {
-        Self { level: "info".into() }
+        Self {
+            level: "info".into(),
+        }
     }
 }
 
@@ -97,7 +99,9 @@ pub struct ConsoleConfig {
 
 impl Default for ConsoleConfig {
     fn default() -> Self {
-        Self { bind: "127.0.0.1:7070".parse().expect("valid default addr") }
+        Self {
+            bind: "127.0.0.1:7070".parse().expect("valid default addr"),
+        }
     }
 }
 
@@ -226,7 +230,10 @@ impl Config {
             }
         }
         if let Ok(v) = std::env::var("OHMYRASP_DAEMON_CLOUD_ENABLED") {
-            self.cloud.enabled = matches!(v.trim().to_ascii_lowercase().as_str(), "1" | "true" | "yes" | "on");
+            self.cloud.enabled = matches!(
+                v.trim().to_ascii_lowercase().as_str(),
+                "1" | "true" | "yes" | "on"
+            );
         }
         if let Ok(v) = std::env::var("OHMYRASP_BACKEND_URL") {
             self.cloud.backend_url = v;

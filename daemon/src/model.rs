@@ -122,7 +122,10 @@ impl AgentEvent {
 
         let mut body = Map::new();
         body.insert("application_id".into(), Value::String(ident.app_id.clone()));
-        body.insert("environment_id".into(), Value::String(ident.environment_id.clone()));
+        body.insert(
+            "environment_id".into(),
+            Value::String(ident.environment_id.clone()),
+        );
         body.insert("agent_id".into(), Value::String(ident.agent_id.clone()));
         if let Some(policy_id) = &ident.policy_id {
             body.insert("policy_id".into(), Value::String(policy_id.clone()));
@@ -135,11 +138,19 @@ impl AgentEvent {
         body.insert("severity".into(), Value::String(self.severity().into()));
         body.insert(
             "message".into(),
-            Value::String(if self.message.is_empty() { "agent event".into() } else { self.message.clone() }),
+            Value::String(if self.message.is_empty() {
+                "agent event".into()
+            } else {
+                self.message.clone()
+            }),
         );
         body.insert(
             "occurred_at".into(),
-            Value::String(if self.timestamp.is_empty() { self.received_at.clone() } else { self.timestamp.clone() }),
+            Value::String(if self.timestamp.is_empty() {
+                self.received_at.clone()
+            } else {
+                self.timestamp.clone()
+            }),
         );
         body.insert("attributes".into(), Value::Object(attributes));
         Value::Object(body)

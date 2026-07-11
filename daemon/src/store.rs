@@ -94,7 +94,10 @@ impl EventStore {
             *inner.by_hook.entry(event.hook.clone()).or_default() += 1;
         }
         if !event.algorithm.is_empty() {
-            *inner.by_algorithm.entry(event.algorithm.clone()).or_default() += 1;
+            *inner
+                .by_algorithm
+                .entry(event.algorithm.clone())
+                .or_default() += 1;
         }
         if !event.action.is_empty() {
             *inner.by_action.entry(event.action.clone()).or_default() += 1;
@@ -120,7 +123,9 @@ impl EventStore {
     /// panel but is not a detection, so it stays out of the attack log and the
     /// detection counters.
     pub fn record_latency(&self, event: &AgentEvent) {
-        let Some(latency) = event.latency_us.filter(|v| *v >= 0) else { return };
+        let Some(latency) = event.latency_us.filter(|v| *v >= 0) else {
+            return;
+        };
         let mut inner = self.inner.lock().expect("store mutex");
         inner.telemetry += 1;
         inner.latencies.push_back(latency);
@@ -130,7 +135,12 @@ impl EventStore {
     }
 
     /// Most-recent-first slice of retained events, optionally filtered.
-    pub fn recent(&self, limit: usize, hook: Option<&str>, action: Option<&str>) -> Vec<AgentEvent> {
+    pub fn recent(
+        &self,
+        limit: usize,
+        hook: Option<&str>,
+        action: Option<&str>,
+    ) -> Vec<AgentEvent> {
         let inner = self.inner.lock().expect("store mutex");
         inner
             .events
@@ -163,7 +173,14 @@ impl EventStore {
 
 fn latency_stats(samples: &VecDeque<i64>) -> LatencyStats {
     if samples.is_empty() {
-        return LatencyStats { samples: 0, p50_us: 0, p95_us: 0, p99_us: 0, max_us: 0, avg_us: 0 };
+        return LatencyStats {
+            samples: 0,
+            p50_us: 0,
+            p95_us: 0,
+            p99_us: 0,
+            max_us: 0,
+            avg_us: 0,
+        };
     }
     let mut sorted: Vec<i64> = samples.iter().copied().collect();
     sorted.sort_unstable();
@@ -190,8 +207,13 @@ fn percentile(sorted: &[i64], pct: f64) -> i64 {
 }
 
 fn top_counters(map: &HashMap<String, u64>, limit: usize) -> Vec<Counter> {
-    let mut counters: Vec<Counter> =
-        map.iter().map(|(k, v)| Counter { key: k.clone(), count: *v }).collect();
+    let mut counters: Vec<Counter> = map
+        .iter()
+        .map(|(k, v)| Counter {
+            key: k.clone(),
+            count: *v,
+        })
+        .collect();
     counters.sort_by(|a, b| b.count.cmp(&a.count).then_with(|| a.key.cmp(&b.key)));
     counters.truncate(limit);
     counters

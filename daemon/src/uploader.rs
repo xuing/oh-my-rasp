@@ -44,7 +44,10 @@ pub struct CloudStatusHandle(std::sync::Arc<Mutex<CloudStatus>>);
 
 impl CloudStatusHandle {
     pub fn new(enabled: bool) -> Self {
-        let status = CloudStatus { enabled, ..Default::default() };
+        let status = CloudStatus {
+            enabled,
+            ..Default::default()
+        };
         Self(std::sync::Arc::new(Mutex::new(status)))
     }
 
@@ -157,6 +160,14 @@ impl Uploader {
         self.publish_counts();
     }
 
+    // TODO(durability): pending events live only in memory and are flushed to
+    // the on-disk outbox by `persist_outbox` on a *graceful* shutdown. A hard
+    // crash (SIGKILL, panic, power loss) therefore loses everything currently
+    // buffered. A crash-durable design would append each event to the outbox as
+    // it is enqueued (a write-ahead log) and compact it on successful upload,
+    // rather than writing the whole queue once at exit. Deferred because it must
+    // be covered by crash-consistency tests; see the "crash-durable-outbox"
+    // finding.
     fn enqueue(&mut self, event: AgentEvent) {
         self.pending.push_back(event);
         while self.pending.len() > self.max_pending {
@@ -257,7 +268,9 @@ impl Uploader {
         let batch_max = self.cfg.upload_batch_max.max(1);
         let mut sent = 0u64;
         while sent < batch_max as u64 {
-            let Some(front) = self.pending.front() else { break };
+            let Some(front) = self.pending.front() else {
+                break;
+            };
             let body = front.to_cloud_attack(&self.identity);
             match client.upload_attack(&body).await {
                 Ok(()) => {
@@ -291,7 +304,9 @@ impl Uploader {
     }
 
     fn load_outbox(&mut self) {
-        let Ok(text) = std::fs::read_to_string(&self.outbox_path) else { return };
+        let Ok(text) = std::fs::read_to_string(&self.outbox_path) else {
+            return;
+        };
         let mut restored = 0usize;
         for line in text.lines() {
             if let Some(event) = AgentEvent::parse_line(0, now_rfc3339(), line) {
@@ -324,7 +339,97 @@ impl Uploader {
         if let Err(err) = std::fs::write(&self.outbox_path, buf.as_bytes()) {
             tracing::warn!(%err, path = %self.outbox_path.display(), "failed to persist outbox");
         } else {
-            tracing::info!(count = self.pending.len(), "persisted pending events to outbox");
+            // The outbox holds raw attack request context; keep it owner-only
+            // rather than the umask default of world-readable.
+            if let Err(err) = crate::util::restrict_to_owner(&self.outbox_path) {
+                tracing::warn!(%err, path = %self.outbox_path.display(), "failed to restrict outbox permissions");
+            }
+            tracing::info!(
+                count = self.pending.len(),
+                "persisted pending events to outbox"
+            );
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Build a bare uploader with no cloud client for exercising the pure,
+    /// server-free buffering logic (enqueue eviction, outbox persist/load).
+    fn uploader(outbox_path: PathBuf, max_pending: usize) -> Uploader {
+        Uploader {
+            cfg: CloudConfig::default(),
+            outbox_path,
+            max_pending,
+            client: None,
+            controller: None,
+            identity: CloudIdentity::default(),
+            pending: VecDeque::new(),
+            status: CloudStatusHandle::new(false),
+        }
+    }
+
+    fn event(seq: u64) -> AgentEvent {
+        let line =
+            format!("{{\"hook\":\"sql\",\"algorithm\":\"sqli\",\"action\":\"log\",\"seq\":{seq}}}");
+        AgentEvent::parse_line(seq, now_rfc3339(), &line).expect("event parses")
+    }
+
+    #[test]
+    fn enqueue_evicts_oldest_and_counts_drops() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut up = uploader(dir.path().join("outbox.ndjson"), 2);
+        for seq in 1..=4 {
+            up.enqueue(event(seq));
+        }
+        // Bounded at max_pending; the two oldest were dropped and counted.
+        assert_eq!(up.pending.len(), 2);
+        assert_eq!(up.status.snapshot().dropped_total, 2);
+        // The survivors are the two most recent (3 and 4).
+        assert_eq!(up.pending.front().unwrap().seq, 3);
+        assert_eq!(up.pending.back().unwrap().seq, 4);
+    }
+
+    #[test]
+    fn outbox_round_trips_pending_events() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("outbox.ndjson");
+
+        let mut writer = uploader(path.clone(), 10);
+        writer.enqueue(event(1));
+        writer.enqueue(event(2));
+        writer.persist_outbox();
+        assert!(path.exists());
+
+        // A fresh uploader restores the persisted events and clears the file so
+        // a later run doesn't double-count them.
+        let mut reader = uploader(path.clone(), 10);
+        reader.load_outbox();
+        assert_eq!(reader.pending.len(), 2);
+        assert!(!path.exists(), "outbox consumed on load");
+    }
+
+    #[test]
+    fn persist_outbox_skips_when_empty() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("outbox.ndjson");
+        let up = uploader(path.clone(), 10);
+        up.persist_outbox();
+        assert!(!path.exists(), "no file written for an empty outbox");
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn persisted_outbox_is_owner_only() {
+        use std::os::unix::fs::PermissionsExt;
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("outbox.ndjson");
+        let mut up = uploader(path.clone(), 10);
+        up.enqueue(event(1));
+        up.persist_outbox();
+        let mode = std::fs::metadata(&path).unwrap().permissions().mode();
+        assert_eq!(mode & 0o777, 0o600);
     }
 }

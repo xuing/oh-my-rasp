@@ -48,7 +48,11 @@ impl CloudClient {
             .user_agent("ohmyrasp-daemon")
             .build()
             .context("building HTTP client")?;
-        Ok(Self { http, base: normalize_base(&cfg.backend_url), cfg })
+        Ok(Self {
+            http,
+            base: normalize_base(&cfg.backend_url),
+            cfg,
+        })
     }
 
     fn url(&self, path: &str) -> String {
@@ -147,7 +151,10 @@ fn assignment_from(agent_id: Option<String>, value: &Value) -> Assignment {
             .and_then(Value::as_str)
             .filter(|s| !s.is_empty())
             .map(str::to_string),
-        policy_version: value.get("policy_version").and_then(Value::as_i64).unwrap_or(0),
+        policy_version: value
+            .get("policy_version")
+            .and_then(Value::as_i64)
+            .unwrap_or(0),
     }
 }
 
@@ -184,5 +191,19 @@ mod tests {
         assert_eq!(a.agent_id.as_deref(), Some("a1"));
         assert_eq!(a.policy_id.as_deref(), Some("p1"));
         assert_eq!(a.policy_version, 4);
+    }
+
+    #[test]
+    fn assignment_ignores_blank_policy_id() {
+        let v = serde_json::json!({"policy_id": "", "policy_version": 0});
+        let a = assignment_from(Some("a1".into()), &v);
+        assert_eq!(a.policy_id, None);
+        assert_eq!(a.policy_version, 0);
+    }
+
+    #[test]
+    fn encode_segment_escapes_slashes() {
+        assert_eq!(encode_segment("agent-123"), "agent-123");
+        assert_eq!(encode_segment("a/b/c"), "a%2Fb%2Fc");
     }
 }
