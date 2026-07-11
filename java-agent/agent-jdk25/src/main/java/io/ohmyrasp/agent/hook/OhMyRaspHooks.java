@@ -829,6 +829,31 @@ public final class OhMyRaspHooks {
     }
   }
 
+  /**
+   * Non-emitting check used by {@link DeserializationGuard}: {@code true} when
+   * the class is a known-dangerous deserialization gadget. Fail-safe — any
+   * internal error is treated as "not dangerous" so the guard never breaks the
+   * deserializing application.
+   */
+  public static boolean isDangerousDeserialization(String className) {
+    try {
+      return DETECTORS.isDangerousDeserializationType(className);
+    } catch (Throwable throwable) {
+      return false;
+    }
+  }
+
+  /**
+   * {@code true} when the agent is currently allowed to actively block (as
+   * opposed to monitor/off). Used by the serial-filter guard to reject dangerous
+   * gadget classes even outside an active HTTP request (RMI, caches, …), where
+   * the request-scoped {@link #emit} path cannot enforce.
+   */
+  public static boolean blockingEnabled() {
+    return AgentRuntime.get().blockingAllowed()
+        && (legacyBlockEnabled() || forceBlockEnabled());
+  }
+
   public static void beforeSyntheticDeserializationClass(
       String className, List<String> stackClassNames) {
     if (detectionDisabled()) {

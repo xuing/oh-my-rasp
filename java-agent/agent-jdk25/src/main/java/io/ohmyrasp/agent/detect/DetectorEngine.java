@@ -2597,6 +2597,19 @@ public final class DetectorEngine {
     return detectDeserialization(className, request, List.of());
   }
 
+  /**
+   * Non-emitting predicate mirroring {@link #detectDeserialization}'s notion of a
+   * dangerous gadget class. Exposed for the JVM serial-filter guard, which must
+   * decide whether to reject a class without re-running (or double-recording)
+   * the full detection pipeline.
+   */
+  public boolean isDangerousDeserializationType(String className) {
+    if (className == null || className.isBlank()) {
+      return false;
+    }
+    return dangerousDeserializationType(normalizeJavaTypeName(className));
+  }
+
   public Optional<Detection> detectDeserialization(
       String className, RequestContext request, List<String> stackClassNames) {
     if (className == null || className.isBlank()) {
