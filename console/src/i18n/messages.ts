@@ -8,6 +8,13 @@ import type { Lang } from "./index";
 type Table = Record<string, string>;
 
 const zh: Table = {
+  // toasts / error boundary
+  "Action failed": "操作失败",
+  "An unexpected error occurred. Please try again.": "发生意外错误，请重试。",
+  Dismiss: "关闭",
+  "Something went wrong": "出现问题",
+  "The console hit an unexpected error. Reloading usually clears it.": "控制台遇到意外错误，重新加载通常即可恢复。",
+  "Reload console": "重新加载控制台",
   // shell / chrome
   "Sentinel Console": "哨兵控制台",
   "Protection active": "防护运行中",
@@ -414,6 +421,13 @@ const zh: Table = {
 };
 
 const ja: Table = {
+  // toasts / error boundary
+  "Action failed": "操作に失敗しました",
+  "An unexpected error occurred. Please try again.": "予期しないエラーが発生しました。もう一度お試しください。",
+  Dismiss: "閉じる",
+  "Something went wrong": "問題が発生しました",
+  "The console hit an unexpected error. Reloading usually clears it.": "コンソールで予期しないエラーが発生しました。再読み込みすると解消される場合があります。",
+  "Reload console": "コンソールを再読み込み",
   "Sentinel Console": "センチネル コンソール",
   "Protection active": "保護は稼働中",
   Monitor: "モニター",

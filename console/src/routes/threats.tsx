@@ -120,7 +120,19 @@ function ThreatsBody() {
             </thead>
             <tbody>
               {rows.map((e) => (
-                <tr key={e.id} className="interactive cursor-pointer" onClick={() => setSelected(e)}>
+                <tr
+                  key={e.id}
+                  className="interactive cursor-pointer"
+                  role="button"
+                  tabIndex={0}
+                  onClick={() => setSelected(e)}
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter" || event.key === " ") {
+                      event.preventDefault();
+                      setSelected(e);
+                    }
+                  }}
+                >
                   <Td>
                     <SeverityTag value={e.severity} />
                   </Td>

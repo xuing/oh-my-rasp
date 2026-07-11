@@ -5,12 +5,15 @@ import {
   createRouter,
   lazyRouteComponent,
   redirect,
-  Outlet
+  Outlet,
+  type ErrorComponentProps
 } from "@tanstack/react-router";
 import { authToken, isPrivileged } from "./lib/session";
 import { AppShell } from "./components/shell";
-import { Radar } from "lucide-react";
+import { AlertTriangle, Radar, RotateCcw } from "lucide-react";
 import { storeFocusTarget } from "./lib/focus";
+import { Button } from "./components/ui";
+import { useT } from "./i18n";
 
 // Each page is split into its own chunk and loaded on demand.
 const lazy = (importer: () => Promise<Record<string, unknown>>, name: string) =>
@@ -25,8 +28,43 @@ function RoutePending() {
   );
 }
 
+/**
+ * Route-level error boundary. A single malformed API record or a render-time
+ * throw in any page is caught here instead of white-screening the whole SPA.
+ * TanStack Router renders the nearest `errorComponent` up the tree; placing it
+ * on the root route makes it the catch-all for every page.
+ */
+function RootErrorBoundary({ error }: ErrorComponentProps) {
+  const t = useT();
+  const detail = error instanceof Error ? error.message : String(error);
+  return (
+    <div className="app-atmosphere grid min-h-screen place-items-center px-6">
+      <div className="panel relative w-full max-w-md p-8 text-center">
+        <div className="mx-auto grid h-12 w-12 place-items-center rounded-lg border border-critical/40 bg-critical/5 text-critical">
+          <AlertTriangle className="h-6 w-6" />
+        </div>
+        <h1 className="display mt-4 text-lg font-semibold text-ink">{t("Something went wrong")}</h1>
+        <p className="mt-2 text-[13px] text-muted">
+          {t("The console hit an unexpected error. Reloading usually clears it.")}
+        </p>
+        {detail && (
+          <p className="readout mt-3 break-words rounded-md border border-hairline bg-obsidian px-3 py-2 text-left text-[12px] text-faint">
+            {detail}
+          </p>
+        )}
+        <div className="mt-5 flex justify-center">
+          <Button variant="primary" onClick={() => window.location.reload()}>
+            <RotateCcw className="h-4 w-4" /> {t("Reload console")}
+          </Button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 const rootRoute = createRootRoute({
   component: () => <Outlet />,
+  errorComponent: RootErrorBoundary,
   notFoundComponent: lazy(() => import("./routes/not-found"), "NotFoundPage")
 });
 

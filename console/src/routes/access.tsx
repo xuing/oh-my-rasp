@@ -195,7 +195,19 @@ function Alerts() {
               </thead>
               <tbody>
                 {(rules.data ?? []).map((r) => (
-                  <tr key={r.id} className="interactive cursor-pointer" onClick={() => setSelectedRule(r)}>
+                  <tr
+                    key={r.id}
+                    className="interactive cursor-pointer"
+                    role="button"
+                    tabIndex={0}
+                    onClick={() => setSelectedRule(r)}
+                    onKeyDown={(event) => {
+                      if (event.key === "Enter" || event.key === " ") {
+                        event.preventDefault();
+                        setSelectedRule(r);
+                      }
+                    }}
+                  >
                     <Td>
                       <div className="text-[13px] text-ink">{r.name}</div>
                       <SeverityTag value={r.severity} />
