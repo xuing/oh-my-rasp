@@ -1,0 +1,33 @@
+name: daemon
+
+on:
+  push:
+    paths:
+      - "daemon/**"
+      - ".github/workflows/daemon.yml"
+  pull_request:
+    paths:
+      - "daemon/**"
+      - ".github/workflows/daemon.yml"
+
+jobs:
+  build-test:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: daemon
+    steps:
+      - uses: actions/checkout@1af3b93b6815bc44a9784bd300feb67ff0d1eeb3 # v6.0.0
+      - name: Install Rust toolchain
+        # Pinned to dtolnay/rust-toolchain stable @ 4be7066 (2026-06-30).
+        uses: dtolnay/rust-toolchain@4be7066ada62dd38de10e7b70166bc74ed198c30 # stable
+        with:
+          components: rustfmt, clippy
+      - name: Check formatting
+        run: cargo fmt --check
+      - name: Clippy
+        run: cargo clippy --all-targets -- -D warnings
+      - name: Build
+        run: cargo build --locked
+      - name: Test
+        run: cargo test --locked

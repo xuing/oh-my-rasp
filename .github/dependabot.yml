@@ -1,0 +1,89 @@
+version: 2
+updates:
+  # Go control-plane API
+  - package-ecosystem: gomod
+    directory: /api
+    schedule:
+      interval: weekly
+    groups:
+      gomod-minor-patch:
+        update-types:
+          - minor
+          - patch
+
+  # Console frontend (Node + npm)
+  - package-ecosystem: npm
+    directory: /console
+    schedule:
+      interval: weekly
+    groups:
+      npm-minor-patch:
+        update-types:
+          - minor
+          - patch
+
+  # Rust host daemon
+  - package-ecosystem: cargo
+    directory: /daemon
+    schedule:
+      interval: weekly
+    groups:
+      cargo-minor-patch:
+        update-types:
+          - minor
+          - patch
+
+  # Java agent - primary module
+  - package-ecosystem: gradle
+    directory: /java-agent/agent-jdk25
+    schedule:
+      interval: weekly
+    groups:
+      gradle-minor-patch:
+        update-types:
+          - minor
+          - patch
+
+  # Java agent - Java 8 backport
+  - package-ecosystem: gradle
+    directory: /java-agent/agent-java8
+    schedule:
+      interval: weekly
+    groups:
+      gradle-minor-patch:
+        update-types:
+          - minor
+          - patch
+
+  # Java agent - Java 11 backport
+  - package-ecosystem: gradle
+    directory: /java-agent/agent-java11
+    schedule:
+      interval: weekly
+    groups:
+      gradle-minor-patch:
+        update-types:
+          - minor
+          - patch
+
+  # Java agent - Java 17 backport
+  - package-ecosystem: gradle
+    directory: /java-agent/agent-java17
+    schedule:
+      interval: weekly
+    groups:
+      gradle-minor-patch:
+        update-types:
+          - minor
+          - patch
+
+  # GitHub Actions workflows
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    groups:
+      actions-minor-patch:
+        update-types:
+          - minor
+          - patch

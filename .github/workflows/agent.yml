@@ -1,0 +1,23 @@
+name: agent
+
+on:
+  push:
+    paths:
+      - "java-agent/**"
+      - ".github/workflows/agent.yml"
+  pull_request:
+    paths:
+      - "java-agent/**"
+      - ".github/workflows/agent.yml"
+
+jobs:
+  unit:
+    runs-on: ubuntu-latest
+    # There is no gradle wrapper in this repo; the documented unit gate builds
+    # inside the gradle:jdk25 image (see java-agent/README.md and Dockerfiles).
+    container: gradle:jdk25
+    steps:
+      - uses: actions/checkout@1af3b93b6815bc44a9784bd300feb67ff0d1eeb3 # v6.0.0
+      - name: Run agent unit tests (primary + backports)
+        working-directory: java-agent
+        run: gradle :agent-jdk25:test :agent-java8:test :agent-java11:test :agent-java17:test --no-daemon

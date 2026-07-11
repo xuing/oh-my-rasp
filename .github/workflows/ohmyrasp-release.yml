@@ -19,7 +19,35 @@ permissions:
   artifact-metadata: write
 
 jobs:
+  test-api:
+    runs-on: ubuntu-latest
+    container: golang:1.26
+    defaults:
+      run:
+        working-directory: api
+    steps:
+      - uses: actions/checkout@1af3b93b6815bc44a9784bd300feb67ff0d1eeb3 # v6.0.0
+      - run: go test ./...
+
+  test-console:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: console
+    steps:
+      - uses: actions/checkout@1af3b93b6815bc44a9784bd300feb67ff0d1eeb3 # v6.0.0
+      - uses: actions/setup-node@2028fbc5c25fe9cf00d9f06a71cc4710d4507903 # v6.0.0
+        with:
+          node-version: "24"
+          cache: npm
+          cache-dependency-path: console/package-lock.json
+      - run: npm ci
+      - run: npm run build
+
   release:
+    needs:
+      - test-api
+      - test-console
     runs-on: ubuntu-latest
     env:
       REGISTRY: ghcr.io
