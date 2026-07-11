@@ -1446,6 +1446,9 @@ public final class DetectorEngine {
       if (target.isEmpty()) {
         continue;
       }
+      if (isKnownLiferayPortalInclude(safeRequest.uri(), value)) {
+        continue;
+      }
       IncludeAttributeTarget match = target.orElseThrow();
       return Optional.of(
           Detection.log(
@@ -3958,7 +3961,16 @@ public final class DetectorEngine {
       return false;
     }
     String uri = request.uri() == null ? "" : request.uri();
+    if (isBenignInternalServicePath(uri)) {
+      return false;
+    }
     return SENSITIVE_CONTROL_PATH.matcher(uri).find();
+  }
+
+  private static boolean isBenignInternalServicePath(String uri) {
+    String normalized = lower(uri == null ? "" : uri);
+    return normalized.equals("/nacos/v1/cs/ops/data/removal")
+        || normalized.startsWith("/nacos/v1/cs/ops/data/removal/");
   }
 
   private record JwtDefaultSecretMatch(String keyId, String algorithm) {}
@@ -8458,6 +8470,47 @@ public final class DetectorEngine {
       }
     }
     return Optional.empty();
+  }
+
+  private static boolean isKnownLiferayPortalInclude(String uri, String value) {
+    String normalizedUri = normalizePath(uri == null ? "" : uri);
+    if (!("/".equals(normalizedUri)
+        || normalizedUri.startsWith("/c/portal/")
+        || normalizedUri.startsWith("/o/"))) {
+      return false;
+    }
+    for (String variant : pathVariants(value)) {
+      String normalized = normalizePath(stripServletPathParameters(variant));
+      if (isKnownLiferayInternalIncludePath(normalizedUri, normalized)) {
+        return true;
+      }
+      String canonical = collapsePathDotSegments(normalized);
+      if (isKnownLiferayInternalIncludePath(normalizedUri, canonical)) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  private static boolean isKnownLiferayInternalIncludePath(String uri, String path) {
+    if (path == null) {
+      return false;
+    }
+    if (path.startsWith("/html/portal/")
+        || path.startsWith("/html/common/")
+        || path.startsWith("/html/taglib/")) {
+      return true;
+    }
+    if (uri != null
+        && uri.startsWith("/c/portal/")
+        && path.startsWith("/dynamic_include/")) {
+      return true;
+    }
+    return uri != null
+        && uri.startsWith("/o/")
+        && ("/view.jsp".equals(path)
+            || path.endsWith("/view.jsp")
+            || path.startsWith("/search/bar/"));
   }
 
   private static boolean legitimateServletIncludeStack(List<String> stackClassNames) {

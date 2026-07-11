@@ -18,6 +18,9 @@ jobs:
     container: gradle:jdk25
     steps:
       - uses: actions/checkout@1af3b93b6815bc44a9784bd300feb67ff0d1eeb3 # v6.0.0
+      - name: Check detector false-positive-suppression parity
+        working-directory: java-agent
+        run: bash scripts/check-detector-parity.sh
       - name: Run agent unit tests (primary + backports)
         working-directory: java-agent
         run: gradle :agent-jdk25:test :agent-java8:test :agent-java11:test :agent-java17:test --no-daemon

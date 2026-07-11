@@ -1222,6 +1222,9 @@ public final class Java11RaspHooks {
     if (isTeamCityPluginStartupWrite(normalized)) {
       return null;
     }
+    if (isMavenRepositoryArtifactWrite(normalized)) {
+      return null;
+    }
     if (!WEBROOT_PATH.matcher(normalized).find() && normalized.indexOf("../") < 0) {
       return null;
     }
@@ -2145,6 +2148,9 @@ public final class Java11RaspHooks {
       return null;
     }
     String path = uri == null ? "" : uri;
+    if (isBenignInternalServicePath(path)) {
+      return null;
+    }
     if (!SENSITIVE_CONTROL_PATH.matcher(path).find()) {
       return null;
     }
@@ -2196,6 +2202,12 @@ public final class Java11RaspHooks {
 
   private static boolean isInternalServiceUserAgent(String userAgent) {
     return "nacos-server".equals(userAgent) || userAgent.startsWith("nacos-server/");
+  }
+
+  private static boolean isBenignInternalServicePath(String path) {
+    String normalized = lower(path == null ? "" : path);
+    return normalized.equals("/nacos/v1/cs/ops/data/removal")
+        || normalized.startsWith("/nacos/v1/cs/ops/data/removal/");
   }
 
   private static TypedPayloadMatch typedPayloadMatch(String value) {
@@ -2517,6 +2529,9 @@ public final class Java11RaspHooks {
     if (!include.present || isLegitimateRequestDispatcherInclude()) {
       return null;
     }
+    if (isKnownLiferayPortalInclude(uri, include)) {
+      return null;
+    }
     List<String> candidates = new ArrayList<String>();
     addIncludeCandidate(candidates, include.pathInfo);
     addIncludeCandidate(candidates, include.servletPath);
@@ -2685,6 +2700,56 @@ public final class Java11RaspHooks {
       return trimmedBase + trimmedPath;
     }
     return trimmedBase + "/" + trimmedPath;
+  }
+
+  private static boolean isKnownLiferayPortalInclude(String uri, IncludeAttributes include) {
+    String normalizedUri = normalizePath(uri == null ? "" : uri);
+    if (!("/".equals(normalizedUri)
+        || normalizedUri.startsWith("/c/portal/")
+        || normalizedUri.startsWith("/o/"))) {
+      return false;
+    }
+    List<String> candidates = new ArrayList<String>();
+    addIncludeCandidate(candidates, include.pathInfo);
+    addIncludeCandidate(candidates, include.servletPath);
+    addIncludeCandidate(candidates, include.requestUri);
+    addIncludeCandidate(candidates, joinIncludePath(include.servletPath, include.pathInfo));
+    addIncludeCandidate(candidates, joinIncludePath(include.requestUri, include.pathInfo));
+    for (int i = 0; i < candidates.size(); i++) {
+      List<String> variants = pathVariants(candidates.get(i));
+      for (int j = 0; j < variants.size(); j++) {
+        String normalized = normalizePath(stripServletPathParameters(variants.get(j)));
+        if (isKnownLiferayInternalIncludePath(normalizedUri, normalized)) {
+          return true;
+        }
+        String canonical = collapsePathDotSegments(normalized);
+        if (isKnownLiferayInternalIncludePath(normalizedUri, canonical)) {
+          return true;
+        }
+      }
+    }
+    return false;
+  }
+
+  private static boolean isKnownLiferayInternalIncludePath(String uri, String path) {
+    if (path == null) {
+      return false;
+    }
+    if (path.startsWith("/html/portal/")
+        || path.startsWith("/html/common/")
+        || path.startsWith("/html/taglib/")) {
+      return true;
+    }
+    if (uri != null
+        && uri.startsWith("/c/portal/")
+        && path.startsWith("/dynamic_include/")) {
+      return true;
+    }
+    return uri != null
+        && uri.startsWith("/o/")
+        && ("/view.jsp".equals(path)
+            || path.endsWith("/view.jsp")
+            || path.startsWith("/search/bar/"));
   }
 
   private static String forgedIncludeTarget(String value) {
@@ -3601,6 +3666,13 @@ public final class Java11RaspHooks {
       return false;
     }
     return lower.endsWith(".class") || lower.endsWith(".jar");
+  }
+
+  private static boolean isMavenRepositoryArtifactWrite(String path) {
+    String lower = lower(normalizePath(path));
+    return lower.indexOf("/.m2/repository/") >= 0
+        && lower.indexOf("../") < 0
+        && lower.endsWith(".jar");
   }
 
   private static boolean isTeamCityPluginStartupWrite(String path) {

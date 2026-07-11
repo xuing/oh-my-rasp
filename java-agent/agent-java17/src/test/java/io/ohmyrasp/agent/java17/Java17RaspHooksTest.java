@@ -656,6 +656,45 @@ final class Java17RaspHooksTest {
   }
 
   @Test
+  void ignoresLiferayPortalInternalJspIncludes() throws Exception {
+    Path log = Files.createTempFile("ohmyrasp-java17-liferay-portal-include", ".jsonl");
+    Files.delete(log);
+    System.setProperty("ohmyrasp.java17.log", log.toString());
+    System.setProperty("ohmyrasp.java17.block", "true");
+
+    Java17RaspHooks.beforeHttpRequest(
+        new RequestStub("GET", "/", "")
+            .withAttribute("javax.servlet.include.request_uri", "/")
+            .withAttribute("javax.servlet.include.servlet_path", "/html/portal/render_portlet.jsp"));
+    Java17RaspHooks.beforeHttpRequest(
+        new RequestStub("GET", "/c/portal/layout", "")
+            .withAttribute("javax.servlet.include.request_uri", "/c/portal/layout")
+            .withAttribute("javax.servlet.include.servlet_path", "/html/portal/layout/view/portlet.jsp"));
+    Java17RaspHooks.beforeHttpRequest(
+        new RequestStub("GET", "/c/portal/status", "")
+            .withAttribute("javax.servlet.include.request_uri", "/c/portal/status")
+            .withAttribute("javax.servlet.include.servlet_path", "/html/taglib/ui/quick_access/page.jsp"));
+    Java17RaspHooks.beforeHttpRequest(
+        new RequestStub("GET", "/", "")
+            .withAttribute("javax.servlet.include.request_uri", "/")
+            .withAttribute("javax.servlet.include.servlet_path", "/WEB-INF/../html/portal/render_portlet.jsp"));
+    Java17RaspHooks.beforeHttpRequest(
+        new RequestStub("GET", "/o/portal-search-web/search/bar/view.jsp", "")
+            .withAttribute("javax.servlet.include.request_uri", "/o/portal-search-web/search/bar/view.jsp")
+            .withAttribute("javax.servlet.include.servlet_path", "/search/bar/view.jsp"));
+    Java17RaspHooks.beforeHttpRequest(
+        new RequestStub("GET", "/o/site-navigation-menu-web/view.jsp", "")
+            .withAttribute("javax.servlet.include.request_uri", "/o/site-navigation-menu-web/view.jsp")
+            .withAttribute("javax.servlet.include.servlet_path", "/view.jsp"));
+    Java17RaspHooks.beforeHttpRequest(
+        new RequestStub("GET", "/c/portal/layout", "")
+            .withAttribute("javax.servlet.include.request_uri", "/c/portal/layout")
+            .withAttribute("javax.servlet.include.servlet_path", "/dynamic_include/top_head.jsp"));
+
+    assertFalse(Files.exists(log));
+  }
+
+  @Test
   void logsJettyEncodedDotWebInfDisclosurePath() throws Exception {
     Path log = Files.createTempFile("ohmyrasp-java17-jetty-webinf", ".jsonl");
     Files.delete(log);
@@ -808,6 +847,21 @@ final class Java17RaspHooksTest {
     Java17RaspHooks.beforeHttpRequest(
         new RequestStub("GET", "/nacos/v1/ns/instance/list", "serviceName=demo")
             .withHeader("User-Agent", "Nacos-Server"));
+
+    assertFalse(Files.exists(log));
+  }
+
+  @Test
+  void ignoresNacosInternalMaintenancePath() throws Exception {
+    Path log = Files.createTempFile("ohmyrasp-java17-internal-identity-maintenance", ".jsonl");
+    Files.delete(log);
+    System.setProperty("ohmyrasp.java17.log", log.toString());
+    System.setProperty("ohmyrasp.java17.block", "true");
+
+    Java17RaspHooks.beforeHttpRequest(
+        new RequestStub("POST", "/nacos/v1/cs/ops/data/removal", "")
+            .withHeader("User-Agent", "Nacos-Server"));
+    Java17RaspHooks.afterHttpRequest();
 
     assertFalse(Files.exists(log));
   }
@@ -1300,6 +1354,19 @@ final class Java17RaspHooksTest {
     org.apache.jasper.compiler.JDTCompiler.writeJava17JspCompilationFile(
         "/usr/local/tomcat/work/Catalina/localhost/ROOT/org/apache/jsp/index_jsp.class");
     io.netty.resolver.HostsFileEntriesProvider.ParserImpl.readJava17HostsFile("/etc/hosts");
+
+    assertFalse(Files.exists(log));
+  }
+
+  @Test
+  void ignoresMavenRepositoryJarWrite() throws Exception {
+    Path log = Files.createTempFile("ohmyrasp-java17-maven-repository", ".jsonl");
+    Files.delete(log);
+    System.setProperty("ohmyrasp.java17.log", log.toString());
+    System.setProperty("ohmyrasp.java17.block", "true");
+
+    Java17RaspHooks.beforeFileWrite(
+        "/root/.m2/repository/org/apache/cxf/karaf/cxf-karaf-commands/3.3.4/cxf-karaf-commands-3.3.4.jar");
 
     assertFalse(Files.exists(log));
   }
