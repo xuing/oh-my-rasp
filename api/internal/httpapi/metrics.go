@@ -17,6 +17,16 @@ type metricsRecorder struct {
 	policyPullBuckets []float64
 	policyPullCount   map[string][]uint64
 	policyPullSum     map[string]float64
+
+	cacheMu      sync.Mutex
+	cachedRender string
+	cachedAt     time.Time
+}
+
+// eventOutboxBacklogCounter is implemented by stores that expose an
+// undelivered-events count so /metrics can surface analytics delivery backlog.
+type eventOutboxBacklogCounter interface {
+	UndeliveredEventOutboxCount(ctx context.Context) (int, error)
 }
 
 func newMetricsRecorder() *metricsRecorder {
@@ -48,6 +58,31 @@ func (m *metricsRecorder) observePolicyPull(duration time.Duration, err error) {
 	}
 	counts[len(counts)-1]++
 	m.policyPullSum[status] += seconds
+}
+
+// renderCached returns a rendered exposition, reusing a previous render while it
+// is younger than ttl. A non-positive ttl disables caching. This bounds how often
+// the expensive full-table store queries run under repeated scrapes.
+func (m *metricsRecorder) renderCached(ctx context.Context, store control.Store, now func() time.Time, ttl time.Duration) string {
+	if ttl <= 0 {
+		return m.render(ctx, store, now)
+	}
+	current := now()
+	m.cacheMu.Lock()
+	if m.cachedRender != "" && current.Sub(m.cachedAt) < ttl {
+		cached := m.cachedRender
+		m.cacheMu.Unlock()
+		return cached
+	}
+	m.cacheMu.Unlock()
+
+	rendered := m.render(ctx, store, now)
+
+	m.cacheMu.Lock()
+	m.cachedRender = rendered
+	m.cachedAt = current
+	m.cacheMu.Unlock()
+	return rendered
 }
 
 func (m *metricsRecorder) render(ctx context.Context, store control.Store, now func() time.Time) string {
@@ -91,6 +126,16 @@ func (m *metricsRecorder) renderStoreMetrics(ctx context.Context, b *strings.Bui
 		scrapeErrors["observability"] = 1
 	} else {
 		renderObservabilityMetrics(b, report)
+	}
+
+	if counter, ok := store.(eventOutboxBacklogCounter); ok {
+		writeMetricHeader(b, "ohmyrasp_event_outbox_undelivered", "Events awaiting delivery to ClickHouse analytics", "gauge")
+		scrapeErrors["event_outbox"] = 0
+		if backlog, err := counter.UndeliveredEventOutboxCount(ctx); err != nil {
+			scrapeErrors["event_outbox"] = 1
+		} else {
+			writeMetric(b, "ohmyrasp_event_outbox_undelivered", nil, float64(backlog))
+		}
 	}
 
 	for _, source := range sortedKeys(scrapeErrors) {

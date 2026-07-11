@@ -1855,6 +1855,102 @@ func (s *Store) IngestEvent(ctx context.Context, event control.SecurityEvent) (c
 	return event, nil
 }
 
+// DrainEventOutbox replays events that were persisted to the outbox but never
+// delivered to ClickHouse (best-effort inline delivery failed at ingest time).
+// Each successfully replayed event is stamped delivered so it is not retried.
+// It backs the EventOutboxWorker and closes the analytics data-loss gap left by
+// migration 018's unused idx_event_ingest_outbox_delivery partial index.
+func (s *Store) DrainEventOutbox(ctx context.Context, limit int) (int, error) {
+	if s.analytics == nil {
+		return 0, nil
+	}
+	if limit <= 0 {
+		limit = 100
+	}
+	events, err := s.undeliveredOutboxEvents(ctx, limit)
+	if err != nil {
+		return 0, err
+	}
+	drained := 0
+	for _, event := range events {
+		if err := s.analytics.IngestEvent(ctx, event); err != nil {
+			// Stop on the first failure; the batch is retried on the next tick so
+			// events remain durably queued rather than being lost.
+			return drained, err
+		}
+		if _, err := s.db.ExecContext(ctx, `
+			UPDATE event_ingest_outbox
+			SET delivered_to_clickhouse_at = $2
+			WHERE id = $1
+		`, event.ID, s.now().UTC()); err != nil {
+			return drained, err
+		}
+		drained++
+	}
+	return drained, nil
+}
+
+func (s *Store) undeliveredOutboxEvents(ctx context.Context, limit int) ([]control.SecurityEvent, error) {
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT id, type, application_id, environment_id, agent_id, COALESCE(policy_id, ''), policy_version,
+			hook, algorithm, severity, message, attributes::text, occurred_at, deleted_at, COALESCE(deleted_by, '')
+		FROM event_ingest_outbox
+		WHERE delivered_to_clickhouse_at IS NULL
+		ORDER BY ingested_at ASC
+		LIMIT $1
+	`, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	events := make([]control.SecurityEvent, 0, limit)
+	for rows.Next() {
+		event, err := scanEventRows(rows)
+		if err != nil {
+			return nil, err
+		}
+		events = append(events, event)
+	}
+	return events, rows.Err()
+}
+
+// UndeliveredEventOutboxCount returns the number of events still awaiting
+// delivery to ClickHouse analytics, exposed as a /metrics backlog gauge.
+func (s *Store) UndeliveredEventOutboxCount(ctx context.Context) (int, error) {
+	var count int
+	if err := s.db.QueryRowContext(ctx, `
+		SELECT COUNT(*) FROM event_ingest_outbox WHERE delivered_to_clickhouse_at IS NULL
+	`).Scan(&count); err != nil {
+		return 0, err
+	}
+	return count, nil
+}
+
+type pinger interface {
+	Ping(ctx context.Context) error
+}
+
+// CheckReadiness pings the required Postgres dependency (and any wired cache /
+// analytics backends that expose a cheap Ping) so /readyz reflects real health.
+func (s *Store) CheckReadiness(ctx context.Context) error {
+	if s.db != nil {
+		if err := s.db.PingContext(ctx); err != nil {
+			return fmt.Errorf("postgres: %w", err)
+		}
+	}
+	if p, ok := s.sessionCache.(pinger); ok {
+		if err := p.Ping(ctx); err != nil {
+			return fmt.Errorf("valkey: %w", err)
+		}
+	}
+	if p, ok := s.analytics.(pinger); ok {
+		if err := p.Ping(ctx); err != nil {
+			return fmt.Errorf("clickhouse: %w", err)
+		}
+	}
+	return nil
+}
+
 func (s *Store) IngestDependency(ctx context.Context, dep control.Dependency) (control.Dependency, error) {
 	dep = control.NormalizeDependency(dep)
 	if strings.TrimSpace(dep.Name) == "" {

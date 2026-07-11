@@ -3,6 +3,7 @@ package httpapi
 import (
 	"context"
 	"crypto/sha256"
+	"crypto/subtle"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
@@ -28,6 +29,10 @@ type Server struct {
 	rateLimitWindow  time.Duration
 	metrics          *metricsRecorder
 	agentArtifactDir string
+	now              func() time.Time
+	metricsToken     string
+	metricsCacheTTL  time.Duration
+	loginThrottle    *loginThrottle
 }
 
 type RateLimiter interface {
@@ -38,7 +43,14 @@ func NewServer(store control.Store, logger *slog.Logger) *Server {
 	if logger == nil {
 		logger = slog.Default()
 	}
-	return &Server{store: store, logger: logger, metrics: newMetricsRecorder()}
+	return &Server{
+		store:           store,
+		logger:          logger,
+		metrics:         newMetricsRecorder(),
+		now:             time.Now,
+		metricsCacheTTL: 10 * time.Second,
+		loginThrottle:   newLoginThrottle(defaultLoginMaxFailures, defaultLoginLockout),
+	}
 }
 
 func (s *Server) WithRateLimiter(limiter RateLimiter, limit int64, window time.Duration) *Server {
@@ -50,6 +62,22 @@ func (s *Server) WithRateLimiter(limiter RateLimiter, limit int64, window time.D
 
 func (s *Server) WithAgentArtifactDir(dir string) *Server {
 	s.agentArtifactDir = strings.TrimSpace(dir)
+	return s
+}
+
+// WithMetricsToken gates the /metrics endpoint behind a bearer token. When the
+// token is empty the endpoint stays open (current behaviour) but callers should
+// log a warning at startup.
+func (s *Server) WithMetricsToken(token string) *Server {
+	s.metricsToken = strings.TrimSpace(token)
+	return s
+}
+
+// WithMetricsCacheTTL overrides how long a rendered /metrics response is reused
+// before the expensive store queries run again. A non-positive TTL disables
+// caching.
+func (s *Server) WithMetricsCacheTTL(ttl time.Duration) *Server {
+	s.metricsCacheTTL = ttl
 	return s
 }
 
@@ -340,12 +368,9 @@ func (s *Server) Routes() http.Handler {
 	strict := s.openAPIStrictHandler()
 
 	router.Get("/healthz", strict.GetHealthz)
-	router.Get("/readyz", strict.GetReadyz)
+	router.Get("/readyz", s.handleReadyz)
 	router.Get("/v1/version", strict.GetV1Version)
-	router.Get("/metrics", func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "text/plain; version=0.0.4")
-		_, _ = w.Write([]byte(s.metrics.render(r.Context(), s.store, time.Now)))
-	})
+	router.Get("/metrics", s.handleMetrics)
 	router.Get("/v1/service/app/get", s.legacyDaemonApplication)
 	router.Get("/v1/service/command", s.legacyDaemonCommandWebsocket)
 	router.Post("/v1/service/command/daemon_set/inject", s.legacyDaemonSetInject)
@@ -354,7 +379,7 @@ func (s *Server) Routes() http.Handler {
 	router.Get("/v2/service/dl/agent", s.daemonArtifactDownload)
 
 	router.Route("/api/v1", func(api chi.Router) {
-		api.Post("/auth/login", strict.PostApiV1AuthLogin)
+		api.Post("/auth/login", s.throttleLogin(strict.PostApiV1AuthLogin))
 
 		api.Group(func(private chi.Router) {
 			private.Use(s.requireAuthenticatedUser)
@@ -375,7 +400,7 @@ func (s *Server) Routes() http.Handler {
 			private.With(s.requirePermission(permissionReadEvents)).Get("/events/attack", func(w http.ResponseWriter, r *http.Request) {
 				params, err := eventQueryParams(r)
 				if err != nil {
-					writeError(w, err)
+					s.writeError(w, err)
 					return
 				}
 				strict.GetApiV1EventsAttack(w, r, generated.GetApiV1EventsAttackParams(params))
@@ -383,7 +408,7 @@ func (s *Server) Routes() http.Handler {
 			private.With(s.requirePermission(permissionReadEvents)).Get("/events/hook", func(w http.ResponseWriter, r *http.Request) {
 				params, err := eventQueryParams(r)
 				if err != nil {
-					writeError(w, err)
+					s.writeError(w, err)
 					return
 				}
 				strict.GetApiV1EventsHook(w, r, generated.GetApiV1EventsHookParams(params))
@@ -391,7 +416,7 @@ func (s *Server) Routes() http.Handler {
 			private.With(s.requirePermission(permissionReadEvents)).Get("/events/performance", func(w http.ResponseWriter, r *http.Request) {
 				params, err := eventQueryParams(r)
 				if err != nil {
-					writeError(w, err)
+					s.writeError(w, err)
 					return
 				}
 				strict.GetApiV1EventsPerformance(w, r, generated.GetApiV1EventsPerformanceParams(params))
@@ -399,7 +424,7 @@ func (s *Server) Routes() http.Handler {
 			private.With(s.requirePermission(permissionReadEvents)).Get("/events/crash", func(w http.ResponseWriter, r *http.Request) {
 				params, err := eventQueryParams(r)
 				if err != nil {
-					writeError(w, err)
+					s.writeError(w, err)
 					return
 				}
 				strict.GetApiV1EventsCrash(w, r, generated.GetApiV1EventsCrashParams(params))
@@ -407,7 +432,7 @@ func (s *Server) Routes() http.Handler {
 			private.With(s.requirePermission(permissionReadEvents)).Get("/events/error", func(w http.ResponseWriter, r *http.Request) {
 				params, err := eventQueryParams(r)
 				if err != nil {
-					writeError(w, err)
+					s.writeError(w, err)
 					return
 				}
 				strict.GetApiV1EventsError(w, r, generated.GetApiV1EventsErrorParams(params))
@@ -415,7 +440,7 @@ func (s *Server) Routes() http.Handler {
 			private.With(s.requirePermission(permissionReadEvents)).Get("/events/recycle-bin", func(w http.ResponseWriter, r *http.Request) {
 				params, err := eventRecycleBinQueryParams(r)
 				if err != nil {
-					writeError(w, err)
+					s.writeError(w, err)
 					return
 				}
 				strict.GetApiV1EventsRecycleBin(w, r, params)
@@ -423,7 +448,7 @@ func (s *Server) Routes() http.Handler {
 			private.With(s.requirePermission(permissionReadEvents)).Get("/dependencies", func(w http.ResponseWriter, r *http.Request) {
 				params, err := dependencyQueryParams(r)
 				if err != nil {
-					writeError(w, err)
+					s.writeError(w, err)
 					return
 				}
 				strict.GetApiV1Dependencies(w, r, generated.GetApiV1DependenciesParams(params))
@@ -435,7 +460,7 @@ func (s *Server) Routes() http.Handler {
 			private.With(s.requirePermission(permissionReadEvents)).Get("/baseline-findings", func(w http.ResponseWriter, r *http.Request) {
 				params, err := baselineFindingQueryParams(r)
 				if err != nil {
-					writeError(w, err)
+					s.writeError(w, err)
 					return
 				}
 				strict.GetApiV1BaselineFindings(w, r, generated.GetApiV1BaselineFindingsParams(params))
@@ -472,7 +497,7 @@ func (s *Server) Routes() http.Handler {
 			private.With(s.requirePermission(permissionReadUsers)).Get("/users", func(w http.ResponseWriter, r *http.Request) {
 				params, err := userQueryParams(r)
 				if err != nil {
-					writeError(w, err)
+					s.writeError(w, err)
 					return
 				}
 				strict.GetApiV1Users(w, r, params)
@@ -513,7 +538,7 @@ func (s *Server) Routes() http.Handler {
 			private.With(s.requirePermission(permissionManagePolicies)).Put("/policies/{policyID}/versions/{version}/rules", func(w http.ResponseWriter, r *http.Request) {
 				version, err := strconv.Atoi(chi.URLParam(r, "version"))
 				if err != nil || version <= 0 {
-					writeError(w, control.ErrInvalid)
+					s.writeError(w, control.ErrInvalid)
 					return
 				}
 				strict.PutApiV1PoliciesPolicyIDVersionsVersionRules(w, r, chi.URLParam(r, "policyID"), version)
@@ -633,12 +658,20 @@ func (s *Server) Routes() http.Handler {
 
 func (s *Server) limitRequests(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if s.rateLimiter == nil || s.rateLimit <= 0 || !strings.HasPrefix(r.URL.Path, "/api/") {
+		if s.rateLimiter == nil || s.rateLimit <= 0 || !shouldRateLimit(r.URL.Path) {
 			next.ServeHTTP(w, r)
 			return
 		}
 		decision, err := s.rateLimiter.Allow(r.Context(), rateLimitKey(r), s.rateLimit, s.rateLimitWindow)
 		if err != nil {
+			// The limiter backend is unavailable. Fail OPEN for ordinary traffic
+			// to preserve availability, but fail CLOSED for the login endpoint so
+			// a backend outage cannot be used to bypass brute-force protection.
+			if isLoginRequest(r) {
+				s.logger.Warn("rate limiter unavailable, refusing login", "error", err)
+				writeErrorResponse(w, http.StatusServiceUnavailable, "rate_limiter_unavailable", "login temporarily unavailable")
+				return
+			}
 			s.logger.Warn("rate limiter failed open", "error", err)
 			next.ServeHTTP(w, r)
 			return
@@ -659,6 +692,77 @@ func (s *Server) limitRequests(next http.Handler) http.Handler {
 	})
 }
 
+// shouldRateLimit reports whether a path is subject to request rate limiting.
+// Everything is throttled except the cheap liveness/readiness probes, so the
+// previously unprotected /metrics and daemon /v1/service/* routes are covered.
+func shouldRateLimit(path string) bool {
+	switch path {
+	case "/healthz", "/readyz":
+		return false
+	default:
+		return true
+	}
+}
+
+// handleMetrics renders the Prometheus exposition, optionally gated by a bearer
+// token and served from a short-lived cache so repeated scrapes do not run the
+// expensive store queries on every request.
+func (s *Server) handleMetrics(w http.ResponseWriter, r *http.Request) {
+	if !s.authorizeMetrics(r) {
+		w.Header().Set("WWW-Authenticate", `Bearer realm="metrics"`)
+		s.writeError(w, control.ErrUnauthorized)
+		return
+	}
+	w.Header().Set("Content-Type", "text/plain; version=0.0.4")
+	_, _ = w.Write([]byte(s.metrics.renderCached(r.Context(), s.store, s.clock, s.metricsCacheTTL)))
+}
+
+func (s *Server) authorizeMetrics(r *http.Request) bool {
+	if s.metricsToken == "" {
+		return true
+	}
+	provided := bearerToken(r)
+	if provided == "" {
+		return false
+	}
+	return subtle.ConstantTimeCompare([]byte(provided), []byte(s.metricsToken)) == 1
+}
+
+type readinessChecker interface {
+	CheckReadiness(ctx context.Context) error
+}
+
+// handleReadyz reports readiness by pinging required dependencies. /healthz stays
+// a cheap liveness probe; readiness returns 503 when a dependency is unreachable.
+func (s *Server) handleReadyz(w http.ResponseWriter, r *http.Request) {
+	if checker, ok := s.store.(readinessChecker); ok {
+		ctx, cancel := context.WithTimeout(r.Context(), 3*time.Second)
+		defer cancel()
+		if err := checker.CheckReadiness(ctx); err != nil {
+			s.logger.Warn("readiness check failed", "error", err)
+			writeJSON(w, http.StatusServiceUnavailable, map[string]any{"status": "unavailable"})
+			return
+		}
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"status": "ready"})
+}
+
+func (s *Server) clock() time.Time {
+	if s.now != nil {
+		return s.now()
+	}
+	return time.Now()
+}
+
+func bearerToken(r *http.Request) string {
+	auth := r.Header.Get("Authorization")
+	token := strings.TrimPrefix(auth, "Bearer ")
+	if token == auth {
+		return ""
+	}
+	return strings.TrimSpace(token)
+}
+
 func (s *Server) login(w http.ResponseWriter, r *http.Request) {
 	var input struct {
 		Email    string `json:"email"`
@@ -669,7 +773,7 @@ func (s *Server) login(w http.ResponseWriter, r *http.Request) {
 	}
 	session, user, err := s.store.Login(r.Context(), input.Email, input.Password)
 	if err != nil {
-		writeError(w, err)
+		s.writeError(w, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"session": session, "user": user})
@@ -682,7 +786,7 @@ func (s *Server) me(w http.ResponseWriter, r *http.Request) {
 func (s *Server) listUsers(w http.ResponseWriter, r *http.Request) {
 	users, err := s.store.ListUsers(r.Context())
 	if err != nil {
-		writeError(w, err)
+		s.writeError(w, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"items": users})
@@ -704,7 +808,7 @@ func (s *Server) createUser(w http.ResponseWriter, r *http.Request) {
 		Roles: input.Roles,
 	}, input.Password)
 	if err != nil {
-		writeError(w, err)
+		s.writeError(w, err)
 		return
 	}
 	writeJSON(w, http.StatusCreated, user)
@@ -729,7 +833,7 @@ func (s *Server) updateUser(w http.ResponseWriter, r *http.Request) {
 		DisabledAt: disabledAt,
 	})
 	if err != nil {
-		writeError(w, err)
+		s.writeError(w, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, user)
@@ -738,7 +842,7 @@ func (s *Server) updateUser(w http.ResponseWriter, r *http.Request) {
 func (s *Server) listApplications(w http.ResponseWriter, r *http.Request) {
 	apps, err := s.store.ListApplications(r.Context())
 	if err != nil {
-		writeError(w, err)
+		s.writeError(w, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"items": apps})
@@ -751,7 +855,7 @@ func (s *Server) createApplication(w http.ResponseWriter, r *http.Request) {
 	}
 	app, err := s.store.CreateApplication(r.Context(), userFromRequest(r).ID, input)
 	if err != nil {
-		writeError(w, err)
+		s.writeError(w, err)
 		return
 	}
 	writeJSON(w, http.StatusCreated, app)
@@ -764,7 +868,7 @@ func (s *Server) createEnvironment(w http.ResponseWriter, r *http.Request) {
 	}
 	env, err := s.store.CreateEnvironment(r.Context(), userFromRequest(r).ID, chi.URLParam(r, "appID"), input)
 	if err != nil {
-		writeError(w, err)
+		s.writeError(w, err)
 		return
 	}
 	writeJSON(w, http.StatusCreated, env)
@@ -773,7 +877,7 @@ func (s *Server) createEnvironment(w http.ResponseWriter, r *http.Request) {
 func (s *Server) listAgents(w http.ResponseWriter, r *http.Request) {
 	agents, err := s.store.ListAgents(r.Context())
 	if err != nil {
-		writeError(w, err)
+		s.writeError(w, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"items": agents})
@@ -788,7 +892,7 @@ func (s *Server) registerAgent(w http.ResponseWriter, r *http.Request) {
 	appSecret := r.Header.Get("X-OhMyRasp-App-Secret")
 	agent, err := s.store.RegisterAgent(r.Context(), appID, appSecret, input)
 	if err != nil {
-		writeError(w, err)
+		s.writeError(w, err)
 		return
 	}
 	writeJSON(w, http.StatusCreated, agent)
@@ -803,12 +907,12 @@ func (s *Server) heartbeatAgent(w http.ResponseWriter, r *http.Request) {
 	}
 	agentID := chi.URLParam(r, "agentID")
 	if err := s.store.AuthorizeAgent(r.Context(), r.Header.Get("X-OhMyRasp-App-ID"), r.Header.Get("X-OhMyRasp-App-Secret"), "", agentID); err != nil {
-		writeError(w, err)
+		s.writeError(w, err)
 		return
 	}
 	agent, err := s.store.HeartbeatAgent(r.Context(), agentID, input.Status)
 	if err != nil {
-		writeError(w, err)
+		s.writeError(w, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, agent)
@@ -817,12 +921,12 @@ func (s *Server) heartbeatAgent(w http.ResponseWriter, r *http.Request) {
 func (s *Server) getAgentPolicy(w http.ResponseWriter, r *http.Request) {
 	agentID := chi.URLParam(r, "agentID")
 	if err := s.store.AuthorizeAgent(r.Context(), r.Header.Get("X-OhMyRasp-App-ID"), r.Header.Get("X-OhMyRasp-App-Secret"), "", agentID); err != nil {
-		writeError(w, err)
+		s.writeError(w, err)
 		return
 	}
 	policy, err := s.store.GetAgentPolicy(r.Context(), agentID)
 	if err != nil {
-		writeError(w, err)
+		s.writeError(w, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, policy)
@@ -835,7 +939,7 @@ func (s *Server) createPolicy(w http.ResponseWriter, r *http.Request) {
 	}
 	policy, err := s.store.CreatePolicy(r.Context(), userFromRequest(r).ID, input)
 	if err != nil {
-		writeError(w, err)
+		s.writeError(w, err)
 		return
 	}
 	writeJSON(w, http.StatusCreated, policy)
@@ -844,7 +948,7 @@ func (s *Server) createPolicy(w http.ResponseWriter, r *http.Request) {
 func (s *Server) listPolicies(w http.ResponseWriter, r *http.Request) {
 	policies, err := s.store.ListPolicies(r.Context())
 	if err != nil {
-		writeError(w, err)
+		s.writeError(w, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"items": policies})
@@ -859,7 +963,7 @@ func (s *Server) addPolicyVersion(w http.ResponseWriter, r *http.Request) {
 	}
 	policy, err := s.store.AddPolicyVersion(r.Context(), userFromRequest(r).ID, chi.URLParam(r, "policyID"), input.Rules)
 	if err != nil {
-		writeError(w, err)
+		s.writeError(w, err)
 		return
 	}
 	writeJSON(w, http.StatusCreated, policy)
@@ -903,7 +1007,7 @@ func (s *Server) rolloutPolicy(w http.ResponseWriter, r *http.Request) {
 		EnvironmentID: input.EnvironmentID,
 	})
 	if err != nil {
-		writeError(w, err)
+		s.writeError(w, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, policy)
@@ -912,7 +1016,7 @@ func (s *Server) rolloutPolicy(w http.ResponseWriter, r *http.Request) {
 func (s *Server) rollbackPolicy(w http.ResponseWriter, r *http.Request) {
 	policy, err := s.store.RollbackPolicy(r.Context(), userFromRequest(r).ID, chi.URLParam(r, "policyID"))
 	if err != nil {
-		writeError(w, err)
+		s.writeError(w, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, policy)
@@ -927,7 +1031,7 @@ func (s *Server) ingestEvent(eventType string) http.HandlerFunc {
 		input.Type = eventType
 		event, err := s.store.IngestEvent(r.Context(), input)
 		if err != nil {
-			writeError(w, err)
+			s.writeError(w, err)
 			return
 		}
 		writeJSON(w, http.StatusAccepted, event)
@@ -941,7 +1045,7 @@ func (s *Server) ingestDependency(w http.ResponseWriter, r *http.Request) {
 	}
 	dep, err := s.store.IngestDependency(r.Context(), input)
 	if err != nil {
-		writeError(w, err)
+		s.writeError(w, err)
 		return
 	}
 	writeJSON(w, http.StatusAccepted, dep)
@@ -950,7 +1054,7 @@ func (s *Server) ingestDependency(w http.ResponseWriter, r *http.Request) {
 func (s *Server) listAttackEvents(w http.ResponseWriter, r *http.Request) {
 	events, err := s.store.ListEvents(r.Context(), control.SecurityEventQuery{Type: "attack"})
 	if err != nil {
-		writeError(w, err)
+		s.writeError(w, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"items": events})
@@ -959,7 +1063,7 @@ func (s *Server) listAttackEvents(w http.ResponseWriter, r *http.Request) {
 func (s *Server) overview(w http.ResponseWriter, r *http.Request) {
 	overview, err := s.store.Overview(r.Context())
 	if err != nil {
-		writeError(w, err)
+		s.writeError(w, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, overview)
@@ -971,7 +1075,7 @@ func (s *Server) observability(w http.ResponseWriter, r *http.Request) {
 		PolicyID:      r.URL.Query().Get("policy_id"),
 	})
 	if err != nil {
-		writeError(w, err)
+		s.writeError(w, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, report)
@@ -980,7 +1084,7 @@ func (s *Server) observability(w http.ResponseWriter, r *http.Request) {
 func (s *Server) listSystemSettings(w http.ResponseWriter, r *http.Request) {
 	settings, err := s.store.ListSystemSettings(r.Context())
 	if err != nil {
-		writeError(w, err)
+		s.writeError(w, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"items": settings})
@@ -998,7 +1102,7 @@ func (s *Server) upsertSystemSetting(w http.ResponseWriter, r *http.Request) {
 		Value: input.Value,
 	})
 	if err != nil {
-		writeError(w, err)
+		s.writeError(w, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, setting)
@@ -1007,7 +1111,7 @@ func (s *Server) upsertSystemSetting(w http.ResponseWriter, r *http.Request) {
 func (s *Server) listAlertRules(w http.ResponseWriter, r *http.Request) {
 	rules, err := s.store.ListAlertRules(r.Context())
 	if err != nil {
-		writeError(w, err)
+		s.writeError(w, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"items": rules})
@@ -1020,7 +1124,7 @@ func (s *Server) createAlertRule(w http.ResponseWriter, r *http.Request) {
 	}
 	rule, err := s.store.CreateAlertRule(r.Context(), userFromRequest(r).ID, input)
 	if err != nil {
-		writeError(w, err)
+		s.writeError(w, err)
 		return
 	}
 	writeJSON(w, http.StatusCreated, rule)
@@ -1033,7 +1137,7 @@ func (s *Server) updateAlertRule(w http.ResponseWriter, r *http.Request) {
 	}
 	rule, err := s.store.UpdateAlertRule(r.Context(), userFromRequest(r).ID, chi.URLParam(r, "alertRuleID"), input)
 	if err != nil {
-		writeError(w, err)
+		s.writeError(w, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, rule)
@@ -1042,7 +1146,7 @@ func (s *Server) updateAlertRule(w http.ResponseWriter, r *http.Request) {
 func (s *Server) listAlertDeliveries(w http.ResponseWriter, r *http.Request) {
 	deliveries, err := s.store.ListAlertDeliveries(r.Context())
 	if err != nil {
-		writeError(w, err)
+		s.writeError(w, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"items": deliveries})
@@ -1051,7 +1155,7 @@ func (s *Server) listAlertDeliveries(w http.ResponseWriter, r *http.Request) {
 func (s *Server) listAuditLogs(w http.ResponseWriter, r *http.Request) {
 	logs, err := s.store.ListAuditLogs(r.Context())
 	if err != nil {
-		writeError(w, err)
+		s.writeError(w, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"items": logs})
@@ -1078,12 +1182,12 @@ func (s *Server) requireAuthenticatedUser(next http.Handler) http.Handler {
 		auth := r.Header.Get("Authorization")
 		token := strings.TrimPrefix(auth, "Bearer ")
 		if token == auth || token == "" {
-			writeError(w, control.ErrUnauthorized)
+			s.writeError(w, control.ErrUnauthorized)
 			return
 		}
 		user, err := s.store.UserForToken(r.Context(), token)
 		if err != nil {
-			writeError(w, err)
+			s.writeError(w, err)
 			return
 		}
 		next.ServeHTTP(w, r.WithContext(withUser(r.Context(), user)))
@@ -1094,7 +1198,7 @@ func (s *Server) requirePermission(permission permission) func(http.Handler) htt
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			if !userHasPermission(userFromContext(r.Context()), permission) {
-				writeError(w, control.ErrForbidden)
+				s.writeError(w, control.ErrForbidden)
 				return
 			}
 			next.ServeHTTP(w, r)
@@ -1127,6 +1231,10 @@ func rateLimitKey(r *http.Request) string {
 	if appID != "" {
 		return "app:" + appID
 	}
+	return "ip:" + clientIP(r)
+}
+
+func clientIP(r *http.Request) string {
 	host := r.RemoteAddr
 	if realIP := r.Header.Get("X-Real-IP"); realIP != "" {
 		host = realIP
@@ -1136,7 +1244,7 @@ func rateLimitKey(r *http.Request) string {
 	if parsedHost, _, err := net.SplitHostPort(host); err == nil {
 		host = parsedHost
 	}
-	return "ip:" + host
+	return host
 }
 
 func shortHash(value string) string {
@@ -1167,22 +1275,27 @@ func writeJSON(w http.ResponseWriter, status int, value any) {
 	_ = json.NewEncoder(w).Encode(value)
 }
 
-func writeError(w http.ResponseWriter, err error) {
-	status := http.StatusInternalServerError
-	code := "internal_error"
+func (s *Server) writeError(w http.ResponseWriter, err error) {
 	switch {
 	case errors.Is(err, control.ErrUnauthorized):
-		status = http.StatusUnauthorized
-		code = "unauthorized"
+		writeErrorResponse(w, http.StatusUnauthorized, "unauthorized", err.Error())
 	case errors.Is(err, control.ErrForbidden):
-		status = http.StatusForbidden
-		code = "forbidden"
+		writeErrorResponse(w, http.StatusForbidden, "forbidden", err.Error())
 	case errors.Is(err, control.ErrNotFound):
-		status = http.StatusNotFound
-		code = "not_found"
+		writeErrorResponse(w, http.StatusNotFound, "not_found", err.Error())
 	case errors.Is(err, control.ErrInvalid):
-		status = http.StatusBadRequest
-		code = "invalid_request"
+		writeErrorResponse(w, http.StatusBadRequest, "invalid_request", err.Error())
+	default:
+		// Unmatched errors are treated as internal failures. The real error is
+		// logged server-side (structured) but never leaked to the client, which
+		// only receives a generic message to avoid disclosing internals.
+		if s != nil && s.logger != nil {
+			s.logger.Error("internal server error", "error", err.Error())
+		}
+		writeErrorResponse(w, http.StatusInternalServerError, "internal_error", "internal server error")
 	}
-	writeJSON(w, status, map[string]any{"error": code, "message": err.Error(), "status": strconv.Itoa(status)})
+}
+
+func writeErrorResponse(w http.ResponseWriter, status int, code string, message string) {
+	writeJSON(w, status, map[string]any{"error": code, "message": message, "status": strconv.Itoa(status)})
 }

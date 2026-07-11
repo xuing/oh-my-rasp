@@ -35,7 +35,7 @@ type agentArtifact struct {
 func (s *Server) daemonApplication(w http.ResponseWriter, r *http.Request) {
 	app, err := s.daemonApplicationFromRequest(r)
 	if err != nil {
-		writeError(w, err)
+		s.writeError(w, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, app)
@@ -44,7 +44,7 @@ func (s *Server) daemonApplication(w http.ResponseWriter, r *http.Request) {
 func (s *Server) legacyDaemonApplication(w http.ResponseWriter, r *http.Request) {
 	app, err := s.daemonApplicationFromRequest(r)
 	if err != nil {
-		writeError(w, err)
+		s.writeError(w, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{
@@ -60,7 +60,7 @@ func (s *Server) legacyDaemonApplication(w http.ResponseWriter, r *http.Request)
 func (s *Server) daemonArtifactInfo(w http.ResponseWriter, r *http.Request) {
 	artifact, err := s.agentArtifactFromRequest(r)
 	if err != nil {
-		writeError(w, err)
+		s.writeError(w, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, artifact)
@@ -69,7 +69,7 @@ func (s *Server) daemonArtifactInfo(w http.ResponseWriter, r *http.Request) {
 func (s *Server) legacyDaemonArtifactInfo(w http.ResponseWriter, r *http.Request) {
 	artifact, err := s.agentArtifactFromRequest(r)
 	if err != nil {
-		writeError(w, err)
+		s.writeError(w, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{
@@ -84,7 +84,7 @@ func (s *Server) legacyDaemonArtifactInfo(w http.ResponseWriter, r *http.Request
 func (s *Server) daemonArtifactDownload(w http.ResponseWriter, r *http.Request) {
 	artifact, err := s.agentArtifactFromRequest(r)
 	if err != nil {
-		writeError(w, err)
+		s.writeError(w, err)
 		return
 	}
 	w.Header().Set("Content-Type", artifact.ContentType)

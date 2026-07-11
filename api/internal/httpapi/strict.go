@@ -23,7 +23,7 @@ func (s *Server) openAPIStrictHandler() generated.ServerInterface {
 			writeJSON(w, http.StatusBadRequest, map[string]any{"error": "invalid_json", "message": err.Error()})
 		},
 		ResponseErrorHandlerFunc: func(w http.ResponseWriter, _ *http.Request, err error) {
-			writeError(w, err)
+			s.writeError(w, err)
 		},
 	})
 }
@@ -63,6 +63,9 @@ func (s *strictServer) GetApiV1Me(ctx context.Context, _ generated.GetApiV1MeReq
 }
 
 func (s *strictServer) GetApiV1Applications(ctx context.Context, _ generated.GetApiV1ApplicationsRequestObject) (generated.GetApiV1ApplicationsResponseObject, error) {
+	// TODO(tenant-isolation): scope this listing to the caller's tenant/application
+	// grants instead of returning every application. Tracked as finding
+	// no-application-tenant-isolation (deferred to a dedicated PR).
 	applications, err := s.server.store.ListApplications(ctx)
 	if err != nil {
 		return nil, err
@@ -265,6 +268,9 @@ func (s *strictServer) PostApiV1DaemonWorkloadsWorkloadIDUnbind(ctx context.Cont
 }
 
 func (s *strictServer) GetApiV1Agents(ctx context.Context, request generated.GetApiV1AgentsRequestObject) (generated.GetApiV1AgentsResponseObject, error) {
+	// TODO(tenant-isolation): restrict to applications the caller is entitled to;
+	// the application_id filter here is caller-supplied, not enforced. Tracked as
+	// finding no-application-tenant-isolation (deferred to a dedicated PR).
 	agents, err := s.server.store.ListAgents(ctx, control.AgentQuery{
 		ApplicationID: stringFromPointer(request.Params.ApplicationId),
 		EnvironmentID: stringFromPointer(request.Params.EnvironmentId),
@@ -366,6 +372,9 @@ func (s *strictServer) GetApiV1AgentsAgentIDPolicy(ctx context.Context, request 
 }
 
 func (s *strictServer) GetApiV1Policies(ctx context.Context, _ generated.GetApiV1PoliciesRequestObject) (generated.GetApiV1PoliciesResponseObject, error) {
+	// TODO(tenant-isolation): scope policies to the caller's tenant instead of
+	// listing all policy sets. Tracked as finding no-application-tenant-isolation
+	// (deferred to a dedicated PR).
 	policies, err := s.server.store.ListPolicies(ctx)
 	if err != nil {
 		return nil, err
@@ -470,6 +479,9 @@ func (s *strictServer) PostApiV1PoliciesPolicyIDRollback(ctx context.Context, re
 }
 
 func (s *strictServer) GetApiV1EventsAttack(ctx context.Context, request generated.GetApiV1EventsAttackRequestObject) (generated.GetApiV1EventsAttackResponseObject, error) {
+	// TODO(tenant-isolation): constrain events to the caller's authorized
+	// applications; application_id is a caller-supplied filter, not an enforced
+	// boundary. Tracked as finding no-application-tenant-isolation (deferred).
 	events, err := s.server.store.ListEvents(ctx, controlSecurityEventQueryFromParams("attack", eventQueryParameterSet(request.Params)))
 	if err != nil {
 		return nil, err
@@ -638,6 +650,9 @@ func (s *strictServer) PostApiV1EventsError(ctx context.Context, request generat
 }
 
 func (s *strictServer) GetApiV1Dependencies(ctx context.Context, request generated.GetApiV1DependenciesRequestObject) (generated.GetApiV1DependenciesResponseObject, error) {
+	// TODO(tenant-isolation): limit to the caller's authorized applications rather
+	// than trusting the caller-supplied application_id filter. Tracked as finding
+	// no-application-tenant-isolation (deferred to a dedicated PR).
 	dependencies, err := s.server.store.ListDependencies(ctx, controlDependencyQueryFromParams(dependencyQueryParameterSet(request.Params)))
 	if err != nil {
 		return nil, err

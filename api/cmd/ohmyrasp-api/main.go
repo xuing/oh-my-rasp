@@ -34,6 +34,13 @@ func main() {
 	defer cleanup()
 	server := httpapi.NewServer(store, logger)
 	server.WithAgentArtifactDir(env("OHMYRASP_AGENT_ARTIFACT_DIR", ""))
+	server.WithMetricsCacheTTL(envDuration("OHMYRASP_METRICS_CACHE_TTL", 10*time.Second))
+	if metricsToken := env("OHMYRASP_METRICS_TOKEN", ""); metricsToken != "" {
+		server.WithMetricsToken(metricsToken)
+		logger.Info("metrics endpoint authentication enabled")
+	} else {
+		logger.Warn("OHMYRASP_METRICS_TOKEN is not set; /metrics is exposed without authentication")
+	}
 	if limiter != nil {
 		server.WithRateLimiter(
 			limiter,
@@ -41,7 +48,7 @@ func main() {
 			envDuration("OHMYRASP_RATE_LIMIT_WINDOW", time.Minute),
 		)
 	}
-	workerCtx, stopAlertWorker := context.WithCancel(context.Background())
+	workerCtx, stopWorkers := context.WithCancel(context.Background())
 	if envBool("OHMYRASP_ALERT_DELIVERY_ENABLED", true) {
 		worker := httpapi.NewAlertDeliveryWorker(store, logger, httpapi.AlertDeliveryWorkerOptions{
 			Interval:       envDuration("OHMYRASP_ALERT_DELIVERY_INTERVAL", 10*time.Second),
@@ -51,7 +58,15 @@ func main() {
 		go worker.Run(workerCtx)
 		logger.Info("alert delivery worker enabled")
 	}
-	defer stopAlertWorker()
+	if drainer, ok := store.(httpapi.EventOutboxDrainer); ok && envBool("OHMYRASP_EVENT_OUTBOX_DRAIN_ENABLED", true) {
+		worker := httpapi.NewEventOutboxWorker(drainer, logger, httpapi.EventOutboxWorkerOptions{
+			Interval:  envDuration("OHMYRASP_EVENT_OUTBOX_DRAIN_INTERVAL", 15*time.Second),
+			BatchSize: envInt("OHMYRASP_EVENT_OUTBOX_DRAIN_BATCH_SIZE", 200),
+		})
+		go worker.Run(workerCtx)
+		logger.Info("event outbox drain worker enabled")
+	}
+	defer stopWorkers()
 
 	addr := env("OHMYRASP_API_ADDR", ":8080")
 	httpServer := &http.Server{
