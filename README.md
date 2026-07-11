@@ -5,20 +5,15 @@ validated against real exploits.**
 
 OhMyRASP instruments the JVM from inside with ASM bytecode hooks, watches every
 dangerous sink (`Runtime.exec`, JDBC, JNDI, deserialization, file I/O, …), and
-decides — with request-taint correlation and call-stack analysis, not just
-regex — whether the call is an attack. Detections can be observed in monitor
-mode or stopped cold in block mode, switchable at runtime without restarting
-the JVM.
+decides — using request-parameter correlation and call-stack analysis layered
+on top of signature detection — whether the call is an attack. Detections can be
+observed in monitor mode or stopped cold in block mode, switchable at runtime
+without restarting the JVM.
 
 [![CI](https://github.com/xuing/oh-my-rasp/actions/workflows/ohmyrasp-control.yml/badge.svg)](https://github.com/xuing/oh-my-rasp/actions/workflows/ohmyrasp-control.yml)
 [![License](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
 [![Java agents](https://img.shields.io/badge/Java-8%20%7C%2011%20%7C%2017%20%7C%2025-ED8B00?logo=openjdk&logoColor=white)](java-agent/)
 [![Exploit scenarios](https://img.shields.io/badge/exploit_scenarios-136_verified-success)](docs/development/vulhub-coverage.md)
-[![Detection algorithms](https://img.shields.io/badge/detection_algorithms-52-blueviolet)](docs/detection.md)
-
-<a href="#fable-5-verification">
-  <img src="docs/assets/fable-5-proof.png" alt="Fable 5 verified" width="140">
-</a>
 
 **Languages:** English | [简体中文](README.zh-CN.md)
 

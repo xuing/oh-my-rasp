@@ -3,8 +3,8 @@
 **面向 Java 的运行时应用自我保护（RASP）—— 自托管、可审计、用真实漏洞验证。**
 
 OhMyRASP 通过 ASM 字节码注入从 JVM 内部进行插桩，监视每一个危险调用点
-（`Runtime.exec`、JDBC、JNDI、反序列化、文件 I/O 等），并基于请求污点关联与
-调用栈分析——而不仅仅是正则匹配——判断该调用是否为攻击。检测结果可以在
+（`Runtime.exec`、JDBC、JNDI、反序列化、文件 I/O 等），在特征检测的基础上
+叠加请求参数关联与调用栈分析，判断该调用是否为攻击。检测结果可以在
 monitor 模式下观察，也可以在 block 模式下直接拦截，且无需重启 JVM 即可
 在运行时切换模式。
 
@@ -12,11 +12,6 @@ monitor 模式下观察，也可以在 block 模式下直接拦截，且无需�
 [![License](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
 [![Java agents](https://img.shields.io/badge/Java-8%20%7C%2011%20%7C%2017%20%7C%2025-ED8B00?logo=openjdk&logoColor=white)](java-agent/)
 [![Exploit scenarios](https://img.shields.io/badge/exploit_scenarios-136_verified-success)](docs/development/vulhub-coverage.md)
-[![Detection algorithms](https://img.shields.io/badge/detection_algorithms-52-blueviolet)](docs/detection.md)
-
-<a href="#fable-5-verification">
-  <img src="docs/assets/fable-5-proof.png" alt="Fable 5 verified" width="140">
-</a>
 
 **语言：** [English](README.md) | 简体中文
 
