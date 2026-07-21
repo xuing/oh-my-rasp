@@ -1635,6 +1635,73 @@ final class Java8RaspHooksTest {
   }
 
   @Test
+  void rewritesFastjson1283ClassResourceLookup() throws Exception {
+    byte[] transformed =
+        new Java8FastjsonTransformer()
+            .transform(
+                null,
+                "com/alibaba/fastjson/parser/ParserConfig",
+                null,
+                null,
+                classBytes(com.alibaba.fastjson.parser.ParserConfig.class));
+
+    assertTrue(transformed != null && transformed.length > 0);
+    assertTrue(
+        new String(transformed, StandardCharsets.ISO_8859_1)
+            .contains("beforeFastjsonClassResource"));
+  }
+
+  @Test
+  void logsFastjson1283ResourceUrlGadgetVariants() throws Exception {
+    Path log = Files.createTempFile("ohmyrasp-java8-fastjson-resource", ".jsonl");
+    Files.delete(log);
+    System.setProperty("ohmyrasp.java8.log", log.toString());
+
+    Java8RaspHooks.beforeFastjsonClassResource("http://192.168.65.254:19090/a.class");
+    Java8RaspHooks.beforeFastjsonClassResource(
+        "jar:http://192.168.65.254:19090/probe!/foo/Exception.class");
+    Java8RaspHooks.beforeFastjsonClassResource(
+        "jar:file:/proc/self/fd/3!/fd3/Exception.class");
+
+    String text = new String(Files.readAllBytes(log), StandardCharsets.UTF_8);
+    assertTrue(text.contains("\"algorithm\":\"java8_deserialization_fastjson_resource_url\""));
+    assertTrue(text.contains("http://192.168.65.254:19090/a.class"));
+    assertTrue(text.contains("jar:http://192.168.65.254:19090/probe!/foo/Exception.class"));
+    assertTrue(text.contains("jar:file:/proc/self/fd/3!/fd3/Exception.class"));
+  }
+
+  @Test
+  void ignoresNormalFastjsonClassResources() throws Exception {
+    Path log = Files.createTempFile("ohmyrasp-java8-fastjson-normal", ".jsonl");
+    Files.delete(log);
+    System.setProperty("ohmyrasp.java8.log", log.toString());
+
+    Java8RaspHooks.beforeFastjsonClassResource("com/example/orders/Order.class");
+    Java8RaspHooks.beforeFastjsonClassResource("jar:file:/opt/app/lib/models.jar!/Order.class");
+    Java8RaspHooks.beforeFastjsonClassResource(null);
+
+    assertFalse(Files.exists(log));
+  }
+
+  @Test
+  void blocksFastjson1283BeforeRemoteClassResourceLookup() throws Exception {
+    Path log = Files.createTempFile("ohmyrasp-java8-fastjson-block", ".jsonl");
+    Files.delete(log);
+    System.setProperty("ohmyrasp.java8.log", log.toString());
+    System.setProperty("ohmyrasp.java8.block", "true");
+
+    assertThrows(
+        Java8RaspBlockException.class,
+        () ->
+            Java8RaspHooks.beforeFastjsonClassResource(
+                "jar:http://192.168.65.254:19090/probe!/foo/Exception.class"));
+
+    String text = new String(Files.readAllBytes(log), StandardCharsets.UTF_8);
+    assertTrue(text.contains("\"algorithm\":\"java8_deserialization_fastjson_resource_url\""));
+    assertTrue(text.contains("\"action\":\"block\""));
+  }
+
+  @Test
   void logsCloudMetadataUrlOpen() throws Exception {
     Path log = Files.createTempFile("ohmyrasp-java8-url-metadata", ".jsonl");
     Files.delete(log);

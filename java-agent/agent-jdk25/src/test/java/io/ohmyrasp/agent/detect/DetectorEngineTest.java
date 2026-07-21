@@ -533,6 +533,16 @@ final class DetectorEngineTest {
   }
 
   @Test
+  void ignoresSpringBootNestedClasspathResource() {
+    var result =
+        engine.detectUrl(
+            "jar:nested:/app.jar/!BOOT-INF/lib/fastjson-1.2.83.jar!/com/alibaba/fastjson/parser/ParserConfig.class",
+            request());
+
+    assertTrue(result.isEmpty());
+  }
+
+  @Test
   void ignoresTomcatLibraryFileResource() {
     var result = engine.detectUrl("file:/usr/local/tomcat/lib/servlet-api.jar", request());
 
@@ -1784,6 +1794,46 @@ final class DetectorEngineTest {
     var result = engine.detectPolymorphicType("jackson", "java.util.HashMap", request());
 
     assertTrue(result.isEmpty());
+  }
+
+  @Test
+  void detectsFastjson1283DirectHttpClassResource() {
+    var result =
+        engine.detectFastjsonClassResource(
+            "http://192.168.65.254:19090/a.class", request());
+
+    assertAlgorithm(result, "deserialization_fastjson_resource_url");
+    assertEquals("block", result.orElseThrow().action());
+    assertEquals("http", result.orElseThrow().details().get("mechanism"));
+    assertEquals("ParserConfig.checkAutoType", result.orElseThrow().details().get("source"));
+  }
+
+  @Test
+  void detectsFastjson1283RemoteJarAndProcFdClassResources() {
+    var remote =
+        engine.detectFastjsonClassResource(
+            "jar:http://192.168.65.254:19090/probe!/foo/Exception.class", request());
+    var procFd =
+        engine.detectFastjsonClassResource(
+            "jar:file:/proc/self/fd/3!/fd3/Exception.class", request());
+
+    assertAlgorithm(remote, "deserialization_fastjson_resource_url");
+    assertEquals("jar:http", remote.orElseThrow().details().get("mechanism"));
+    assertAlgorithm(procFd, "deserialization_fastjson_resource_url");
+    assertEquals("jar:file:proc-fd", procFd.orElseThrow().details().get("mechanism"));
+  }
+
+  @Test
+  void ignoresNormalFastjsonClasspathResourcesAndUnrelatedFileUrls() {
+    assertTrue(
+        engine
+            .detectFastjsonClassResource("com/example/orders/Order.class", request())
+            .isEmpty());
+    assertTrue(
+        engine
+            .detectFastjsonClassResource("jar:file:/opt/app/lib/models.jar!/Order.class", request())
+            .isEmpty());
+    assertTrue(engine.detectFastjsonClassResource(null, request()).isEmpty());
   }
 
   @Test

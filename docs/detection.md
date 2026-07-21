@@ -71,7 +71,7 @@ These counts are generated from the agent source and acceptance suite by
 | Metric | Count |
 |--------|------:|
 | Hook families (ASM instrumentation points) | 27 |
-| Detector capabilities (engine entry points) | 52 |
+| Detector capabilities (engine entry points) | 53 |
 | Verified algorithm signatures (asserted by tests) | 43 |
 | End-to-end vulnerability acceptance scenarios | 136 |
 | JDK lines exercised in acceptance matrix | 6 |

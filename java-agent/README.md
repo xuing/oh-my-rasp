@@ -53,7 +53,9 @@ Coverage is **generated from source** so it can't drift — see
   JNDI, deserialization (ObjectInputStream / polymorphic / Hessian / OpenWire /
   HTTP-invoker / RMI), XXE, expression/EL, class loading, Spring config, JMX,
   JAAS, JWT, servlet, archive extraction, multipart upload, and more.
-- **52** detector capabilities (engine entry points).
+- **53** detector capabilities (engine entry points), including a dedicated
+  Fastjson 1.2.83 class-resource boundary that blocks URL-shaped resources
+  immediately before `ParserConfig.checkAutoType` calls the ClassLoader.
 - **42** algorithm signatures **verified** by the acceptance suite.
 - **127** end-to-end vulnerability acceptance scenarios across JDK 7/8/11/17/21.
 

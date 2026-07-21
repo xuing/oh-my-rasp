@@ -1634,6 +1634,73 @@ final class Java11RaspHooksTest {
   }
 
   @Test
+  void rewritesFastjson1283ClassResourceLookup() throws Exception {
+    byte[] transformed =
+        new Java11FastjsonTransformer()
+            .transform(
+                null,
+                "com/alibaba/fastjson/parser/ParserConfig",
+                null,
+                null,
+                classBytes(com.alibaba.fastjson.parser.ParserConfig.class));
+
+    assertTrue(transformed != null && transformed.length > 0);
+    assertTrue(
+        new String(transformed, StandardCharsets.ISO_8859_1)
+            .contains("beforeFastjsonClassResource"));
+  }
+
+  @Test
+  void logsFastjson1283ResourceUrlGadgetVariants() throws Exception {
+    Path log = Files.createTempFile("ohmyrasp-java11-fastjson-resource", ".jsonl");
+    Files.delete(log);
+    System.setProperty("ohmyrasp.java11.log", log.toString());
+
+    Java11RaspHooks.beforeFastjsonClassResource("http://192.168.65.254:19090/a.class");
+    Java11RaspHooks.beforeFastjsonClassResource(
+        "jar:http://192.168.65.254:19090/probe!/foo/Exception.class");
+    Java11RaspHooks.beforeFastjsonClassResource(
+        "jar:file:/proc/self/fd/3!/fd3/Exception.class");
+
+    String text = new String(Files.readAllBytes(log), StandardCharsets.UTF_8);
+    assertTrue(text.contains("\"algorithm\":\"java11_deserialization_fastjson_resource_url\""));
+    assertTrue(text.contains("http://192.168.65.254:19090/a.class"));
+    assertTrue(text.contains("jar:http://192.168.65.254:19090/probe!/foo/Exception.class"));
+    assertTrue(text.contains("jar:file:/proc/self/fd/3!/fd3/Exception.class"));
+  }
+
+  @Test
+  void ignoresNormalFastjsonClassResources() throws Exception {
+    Path log = Files.createTempFile("ohmyrasp-java11-fastjson-normal", ".jsonl");
+    Files.delete(log);
+    System.setProperty("ohmyrasp.java11.log", log.toString());
+
+    Java11RaspHooks.beforeFastjsonClassResource("com/example/orders/Order.class");
+    Java11RaspHooks.beforeFastjsonClassResource("jar:file:/opt/app/lib/models.jar!/Order.class");
+    Java11RaspHooks.beforeFastjsonClassResource(null);
+
+    assertFalse(Files.exists(log));
+  }
+
+  @Test
+  void blocksFastjson1283BeforeRemoteClassResourceLookup() throws Exception {
+    Path log = Files.createTempFile("ohmyrasp-java11-fastjson-block", ".jsonl");
+    Files.delete(log);
+    System.setProperty("ohmyrasp.java11.log", log.toString());
+    System.setProperty("ohmyrasp.java11.block", "true");
+
+    assertThrows(
+        Java11RaspBlockException.class,
+        () ->
+            Java11RaspHooks.beforeFastjsonClassResource(
+                "jar:http://192.168.65.254:19090/probe!/foo/Exception.class"));
+
+    String text = new String(Files.readAllBytes(log), StandardCharsets.UTF_8);
+    assertTrue(text.contains("\"algorithm\":\"java11_deserialization_fastjson_resource_url\""));
+    assertTrue(text.contains("\"action\":\"block\""));
+  }
+
+  @Test
   void logsCloudMetadataUrlOpen() throws Exception {
     Path log = Files.createTempFile("ohmyrasp-java11-url-metadata", ".jsonl");
     Files.delete(log);

@@ -24,9 +24,9 @@ monitor 模式下观察，也可以在 block 模式下直接拦截，且无需�
 | | |
 |---|---|
 | **插桩的危险调用点家族** | 27 个 ASM hook 模块——进程执行、SQL、JNDI、反序列化（原生、Hessian、XStream、Fastjson 式类型化载荷、OpenWire）、文件 I/O、SSRF、XXE、表达式引擎、JWT/会话、压缩包、类加载等 |
-| **检测算法** | 引擎共 52 项检测能力，其中 43 项由测试断言验证 |
+| **检测算法** | 引擎共 53 项检测能力，其中 43 项由测试断言验证 |
 | **端到端验证** | 136 个验收场景在真实 [Vulhub](https://github.com/vulhub/vulhub) 镜像上回放；[覆盖清单](docs/development/vulhub-coverage.md) 跟踪 130 个 Java/JVM CVE |
-| **已验证拦截的知名 CVE** | Log4Shell（CVE-2021-44228）、Spring4Shell（CVE-2022-22965）、Fastjson autoType、Shiro rememberMe（CVE-2016-4437）、19 个 Struts2 公告（S2-001 … S2-067）、Tomcat 幽灵猫（CVE-2020-1938）、ActiveMQ OpenWire（CVE-2023-46604）、WebLogic XMLDecoder、Spring Cloud Gateway SpEL（CVE-2022-22947）、GeoServer（CVE-2024-36401）、XStream gadget、DataEase（2024–2025）等 |
+| **已验证拦截的知名 CVE** | Log4Shell（CVE-2021-44228）、Spring4Shell（CVE-2022-22965）、Fastjson autoType——包括 [1.2.83 `getResourceAsStream` 资源 URL gadget](https://github.com/midisec/fastjson-1.2.83-gadget-rce)、Shiro rememberMe（CVE-2016-4437）、19 个 Struts2 公告（S2-001 … S2-067）、Tomcat 幽灵猫（CVE-2020-1938）、ActiveMQ OpenWire（CVE-2023-46604）、WebLogic XMLDecoder、Spring Cloud Gateway SpEL（CVE-2022-22947）、GeoServer（CVE-2024-36401）、XStream gadget、DataEase（2024–2025）等 |
 | **运行时覆盖** | 为 Java 8、11、17、25 提供独立的 agent 构建；单个二进制同时覆盖 `javax.servlet` 与 `jakarta.servlet`（Tomcat 8.5 → 11） |
 | **可度量的精确度** | 公开的[误报报告](java-agent/docs/FALSE-POSITIVE-REPORT.md)直接针对真实引擎生成、由 CI 保持更新——包括我们尚未解决的误报 |
 
@@ -42,6 +42,12 @@ monitor 模式下观察，也可以在 block 模式下直接拦截，且无需�
   Shiro/Nexus/GlassFish/Jetty 的各种路径混淆绕过。
 - **密码学验证而非字符串匹配** —— 对默认密钥 JWT 进行真实的 HMAC 校验；
   对 Shiro `rememberMe` Cookie 实际解密以确认其中包含 Java 对象流。
+- **Fastjson 1.2.83 类资源边界拦截** —— agent 只 hook
+  `ParserConfig.checkAutoType` 内部的
+  `ClassLoader.getResourceAsStream(resource)` 调用：Fastjson 已经生成类资源名，
+  但 ClassLoader 尚未执行 I/O。规则仅拦截 `http(s)://`、`jar:http(s)://`
+  和该 PoC 使用的 `jar:file:/proc/self/fd/`；正常 classpath 类型和 Spring Boot
+  本地 `jar:nested:` 资源不会产生告警。
 - **响应侧泄漏检测** —— 在数据流出方向检查 Luhn 校验的银行卡号、身份证号
   和手机号，而不仅仅防御流入方向的攻击。
 - **热路径零网络依赖** —— 事件写入本地 NDJSON spool 文件，由 Rust daemon

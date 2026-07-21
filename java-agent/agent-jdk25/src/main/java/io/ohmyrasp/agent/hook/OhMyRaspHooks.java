@@ -910,6 +910,19 @@ public final class OhMyRaspHooks {
     }
   }
 
+  public static void beforeFastjsonClassResource(String resource) {
+    if (detectionDisabled()) {
+      return;
+    }
+    try {
+      emit(DETECTORS.detectFastjsonClassResource(resource, currentRequest()));
+    } catch (OhMyRaspBlockException blocked) {
+      throw blocked;
+    } catch (Throwable throwable) {
+      quiet("beforeFastjsonClassResource", throwable);
+    }
+  }
+
   public static void beforeProtocolClassInstantiation(
       String protocol, String className, Object arguments) {
     if (detectionDisabled()) {

@@ -112,6 +112,7 @@ public final class OhMyRaspJava11Agent {
     instrumentation.addTransformer(new Java11ProcessTransformer(), canRetransform);
     instrumentation.addTransformer(new Java11JndiTransformer(), canRetransform);
     instrumentation.addTransformer(new Java11DeserializationTransformer(), canRetransform);
+    instrumentation.addTransformer(new Java11FastjsonTransformer(), canRetransform);
     instrumentation.addTransformer(new Java11HessianTransformer(), canRetransform);
     instrumentation.addTransformer(new Java11FileTransformer(), canRetransform);
     instrumentation.addTransformer(new Java11MultipartUploadTransformer(), canRetransform);
@@ -145,6 +146,7 @@ public final class OhMyRaspJava11Agent {
     retransform(instrumentation, javax.naming.InitialContext.class);
     retransform(instrumentation, ObjectInputStream.class);
     retransformByName(instrumentation, "sun.rmi.server.MarshalInputStream");
+    retransformByName(instrumentation, "com.alibaba.fastjson.parser.ParserConfig");
     retransformByName(instrumentation, "com.caucho.hessian.io.SerializerFactory");
     retransform(instrumentation, File.class);
     retransform(instrumentation, FileInputStream.class);

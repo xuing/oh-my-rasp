@@ -96,6 +96,7 @@ public final class OhMyRaspJava8Agent {
     instrumentation.addTransformer(new Java8ProcessTransformer(), canRetransform);
     instrumentation.addTransformer(new Java8JndiTransformer(), canRetransform);
     instrumentation.addTransformer(new Java8DeserializationTransformer(), canRetransform);
+    instrumentation.addTransformer(new Java8FastjsonTransformer(), canRetransform);
     instrumentation.addTransformer(new Java8HessianTransformer(), canRetransform);
     instrumentation.addTransformer(new Java8FileTransformer(), canRetransform);
     instrumentation.addTransformer(new Java8MultipartUploadTransformer(), canRetransform);
@@ -129,6 +130,7 @@ public final class OhMyRaspJava8Agent {
     retransform(instrumentation, javax.naming.InitialContext.class);
     retransform(instrumentation, java.io.ObjectInputStream.class);
     retransformByName(instrumentation, "sun.rmi.server.MarshalInputStream");
+    retransformByName(instrumentation, "com.alibaba.fastjson.parser.ParserConfig");
     retransformByName(instrumentation, "com.caucho.hessian.io.SerializerFactory");
     retransform(instrumentation, java.io.File.class);
     retransform(instrumentation, java.io.FileInputStream.class);

@@ -388,6 +388,19 @@ public final class Java11RaspHooks {
     }
   }
 
+  public static void beforeFastjsonClassResource(String resource) {
+    Finding finding = classifyFastjsonClassResource(resource);
+    if (finding == null) {
+      return;
+    }
+    String action = shouldBlock() ? "block" : "log";
+    appendEvent(finding, "ParserConfig.checkAutoType.getResourceAsStream", action);
+    if ("block".equals(action)) {
+      throw new Java11RaspBlockException(
+          "OhMyRASP Java 11 blocked a Fastjson URL-shaped class resource");
+    }
+  }
+
   public static void afterArchiveEntryName(String name) {
     String normalized = normalizePath(name);
     if (isDangerousArchiveEntry(normalized)) {
@@ -4365,6 +4378,42 @@ public final class Java11RaspHooks {
           abbreviate(requestControlledUrl, 1200));
     }
     return null;
+  }
+
+  private static Finding classifyFastjsonClassResource(String resource) {
+    String mechanism = fastjsonClassResourceMechanism(resource);
+    if (mechanism.length() == 0) {
+      return null;
+    }
+    return new Finding(
+        "java11_deserialization_fastjson_resource_url",
+        100,
+        "Fastjson autoType attempted to resolve a URL-shaped class resource",
+        "resource",
+        abbreviate(resource, 1200));
+  }
+
+  private static String fastjsonClassResourceMechanism(String resource) {
+    if (resource == null || resource.trim().length() == 0) {
+      return "";
+    }
+    String normalized = lower(resource.trim());
+    if (normalized.startsWith("http://")) {
+      return "http";
+    }
+    if (normalized.startsWith("https://")) {
+      return "https";
+    }
+    if (normalized.startsWith("jar:http://")) {
+      return "jar:http";
+    }
+    if (normalized.startsWith("jar:https://")) {
+      return "jar:https";
+    }
+    if (normalized.startsWith("jar:file:/proc/self/fd/")) {
+      return "jar:file:proc-fd";
+    }
+    return "";
   }
 
   private static boolean isDataEaseApisixStartupProbe(UrlParts parts) {

@@ -2805,6 +2805,27 @@ public final class DetectorEngine {
                 "originalClass", abbreviate(className))));
   }
 
+  public Optional<Detection> detectFastjsonClassResource(
+      String resource, RequestContext request) {
+    Optional<String> mechanism = fastjsonClassResourceMechanism(resource);
+    if (mechanism.isEmpty()) {
+      return Optional.empty();
+    }
+    RequestContext safeRequest = request == null ? RequestContext.empty() : request;
+    return Optional.of(
+        Detection.log(
+                "deserialization",
+                "deserialization_fastjson_resource_url",
+                100,
+                "Fastjson autoType attempted to resolve a URL-shaped class resource",
+                safeRequest,
+                Map.of(
+                    "mechanism", mechanism.orElseThrow(),
+                    "resource", abbreviate(resource),
+                    "source", "ParserConfig.checkAutoType"))
+            .withAction("block"));
+  }
+
   public Optional<Detection> detectProtocolClassInstantiation(
       String protocol, String className, List<String> arguments, RequestContext request) {
     String mechanism = protocol == null ? "" : protocol.trim();
@@ -3648,7 +3669,9 @@ public final class DetectorEngine {
   }
 
   private static boolean isLocalClasspathResource(String rawUrl, String scheme, String path) {
-    if ("jar".equals(scheme) && rawUrl.startsWith("jar:file:")) {
+    String normalized = lower(rawUrl);
+    if ("jar".equals(scheme)
+        && (normalized.startsWith("jar:file:") || normalized.startsWith("jar:nested:"))) {
       return true;
     }
     return "file".equals(scheme)
@@ -8955,6 +8978,29 @@ public final class DetectorEngine {
   private static boolean dangerousPolymorphicType(String className) {
     return POLYMORPHIC_CONSTRUCTION_BLACKLIST.contains(className)
         || dangerousDeserializationType(className);
+  }
+
+  private static Optional<String> fastjsonClassResourceMechanism(String resource) {
+    if (resource == null || resource.isBlank()) {
+      return Optional.empty();
+    }
+    String normalized = lower(resource.trim());
+    if (normalized.startsWith("http://")) {
+      return Optional.of("http");
+    }
+    if (normalized.startsWith("https://")) {
+      return Optional.of("https");
+    }
+    if (normalized.startsWith("jar:http://")) {
+      return Optional.of("jar:http");
+    }
+    if (normalized.startsWith("jar:https://")) {
+      return Optional.of("jar:https");
+    }
+    if (normalized.startsWith("jar:file:/proc/self/fd/")) {
+      return Optional.of("jar:file:proc-fd");
+    }
+    return Optional.empty();
   }
 
   private static boolean dangerousHessianType(String className) {

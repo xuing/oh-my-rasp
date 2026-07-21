@@ -38,7 +38,34 @@ final class PolymorphicDeserializationHookModule implements HookModule {
         loadArg(stringArg);
         invokeHook("beforePolymorphicType", "(Ljava/lang/String;Ljava/lang/String;)V");
       }
+
+      @Override
+      public void visitMethodInsn(
+          int opcode, String owner, String name, String methodDescriptor, boolean isInterface) {
+        if (isFastjsonClassResourceLookup(
+            className, methodName, owner, name, methodDescriptor)) {
+          // Stack before the original call is [ClassLoader, resource]. Keep the
+          // original resource for getResourceAsStream and inspect one copy
+          // immediately before any URL-aware ClassLoader can dereference it.
+          dup();
+          invokeHook("beforeFastjsonClassResource", "(Ljava/lang/String;)V");
+        }
+        super.visitMethodInsn(opcode, owner, name, methodDescriptor, isInterface);
+      }
     };
+  }
+
+  private static boolean isFastjsonClassResourceLookup(
+      String className,
+      String methodName,
+      String owner,
+      String invokedName,
+      String invokedDescriptor) {
+    return className.equals("com/alibaba/fastjson/parser/ParserConfig")
+        && methodName.equals("checkAutoType")
+        && owner.equals("java/lang/ClassLoader")
+        && invokedName.equals("getResourceAsStream")
+        && invokedDescriptor.equals("(Ljava/lang/String;)Ljava/io/InputStream;");
   }
 
   private static String parserFor(String className, String methodName) {
