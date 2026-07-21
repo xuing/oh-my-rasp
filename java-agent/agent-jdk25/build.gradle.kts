@@ -12,8 +12,8 @@ dependencies {
     // >= 9.8 — do NOT downgrade to the 9.7.1 the java8/11/17 backports pin (those
     // only ever see Java <= 17, major <= 61). The version is pinned (not
     // latest.release) for reproducible, supply-chain-reviewable builds.
-    implementation("org.ow2.asm:asm:9.8")
-    implementation("org.ow2.asm:asm-commons:9.8")
+    implementation("org.ow2.asm:asm:9.10.1")
+    implementation("org.ow2.asm:asm-commons:9.10.1")
 
     testImplementation("com.alibaba:fastjson:1.2.83")
     testImplementation("org.junit.jupiter:junit-jupiter:5.10.3")
