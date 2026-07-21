@@ -5,7 +5,8 @@ set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 OUT="$ROOT/docs/FALSE-POSITIVE-REPORT.md"
-IMAGE="${GRADLE_IMAGE:-gradle:jdk25}"
+default_image="$(awk '$1 == "FROM" && $2 ~ /^gradle:/ { print $2; exit }' "$ROOT/Dockerfile")"
+IMAGE="${GRADLE_IMAGE:-$default_image}"
 
 cd "$ROOT"
 docker run --rm -v "$ROOT":/workspace -w /workspace "$IMAGE" bash -c '

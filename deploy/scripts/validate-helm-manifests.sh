@@ -3,9 +3,12 @@ set -euo pipefail
 
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 chart="deploy/helm/ohmyrasp-control"
-helm_image="${HELM_IMAGE:-alpine/helm:3.14.4}"
-kubeconform_image="${KUBECONFORM_IMAGE:-ghcr.io/yannh/kubeconform@sha256:85dbef6b4b312b99133decc9c6fc9495e9fc5f92293d4ff3b7e1b30f5611823c}"
-kubernetes_version="${KUBERNETES_VERSION:-1.30.0}"
+tool_image_resolver="${repo_root}/deploy/scripts/resolve-tool-image.sh"
+helm_image="${HELM_IMAGE:-$("$tool_image_resolver" helm)}"
+kubeconform_image="${KUBECONFORM_IMAGE:-$("$tool_image_resolver" kubeconform)}"
+kubernetes_schema_image="$("$tool_image_resolver" kubernetes-schema)"
+kubernetes_schema_tag="${kubernetes_schema_image##*:}"
+kubernetes_version="${KUBERNETES_VERSION:-${kubernetes_schema_tag#v}}"
 
 tmp_dir="$(mktemp -d)"
 trap 'rm -rf "$tmp_dir"' EXIT

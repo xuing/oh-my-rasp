@@ -111,7 +111,8 @@ Current Java agent build and acceptance coverage are Java 25 based:
 
 - [x] `java-agent/build.gradle.kts` uses `JavaLanguageVersion.of(25)` and
   `options.release.set(25)`.
-- [x] `java-agent/Dockerfile` builds with `gradle:jdk25`.
+- [x] `java-agent/Dockerfile` pins the current Gradle release on JDK 25; CI
+  derives the build image from that Dependabot-managed file.
 - [x] `java-agent/docker-compose.yml` defines Tomcat 9, 10, and 11
   `tomcat:*-jdk25` images; `java-agent/scripts/acceptance.sh` runs them in the
   required order Tomcat 11 -> 10 -> 9.

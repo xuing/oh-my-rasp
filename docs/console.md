@@ -51,7 +51,7 @@ bookmarks and external links remain valid (for example `/events` redirects to
 ## Local development
 
 ```bash
-# Install dependencies (Node >= 24 required)
+# Install dependencies (Node >= 26 required)
 npm install
 
 # Start the dev server, exposed on all interfaces

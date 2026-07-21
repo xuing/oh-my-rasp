@@ -23,11 +23,11 @@ sourceSets {
 
 dependencies {
     providedCompile("javax.servlet:javax.servlet-api:4.0.1")
-    implementation("commons-jxpath:commons-jxpath:latest.release")
-    implementation("com.h2database:h2:latest.release")
-    implementation("org.apache.velocity:velocity-engine-core:latest.release")
-    implementation("org.springframework:spring-context:latest.release")
-    implementation("org.springframework:spring-expression:latest.release")
+    implementation("commons-jxpath:commons-jxpath:1.4.0")
+    implementation("com.h2database:h2:2.4.240")
+    implementation("org.apache.velocity:velocity-engine-core:2.4.1")
+    implementation("org.springframework:spring-context:7.0.8")
+    implementation("org.springframework:spring-expression:7.0.8")
 }
 
 tasks.compileJava {

@@ -75,10 +75,10 @@ impl UploaderHandle {
     /// channel is full the event is dropped (and counted) rather than stall
     /// ingestion.
     pub fn offer(&self, event: AgentEvent) {
-        if let Err(err) = self.tx.try_send(event) {
-            if matches!(err, mpsc::error::TrySendError::Full(_)) {
-                self.status.update(|s| s.dropped_total += 1);
-            }
+        if let Err(err) = self.tx.try_send(event)
+            && matches!(err, mpsc::error::TrySendError::Full(_))
+        {
+            self.status.update(|s| s.dropped_total += 1);
         }
     }
 }

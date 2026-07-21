@@ -48,7 +48,7 @@ function InstancesBody() {
     onSuccess: () => invalidate("agents")
   });
 
-  const all = agents.data ?? [];
+  const all = useMemo(() => agents.data ?? [], [agents.data]);
   const rows = useMemo(() => {
     if (filter === "online") return all.filter((a) => (a.status ?? "").toLowerCase() === "online");
     if (filter === "ignored") return all.filter((a) => a.ignored_at);

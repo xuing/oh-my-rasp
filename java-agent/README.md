@@ -121,11 +121,11 @@ Built with Gradle in the JDK 25 image (no local toolchain required):
 
 ```bash
 # self-contained agent jar -> agent-jdk25/build/libs/ohmyrasp-agent.jar
-docker run --rm -v "$PWD":/workspace -w /workspace gradle:jdk25 \
+docker run --rm -v "$PWD":/workspace -w /workspace gradle:9.6.1-jdk25 \
   gradle --no-daemon :agent-jdk25:agentJar
 
 # unit tests
-docker run --rm -v "$PWD":/workspace -w /workspace gradle:jdk25 \
+docker run --rm -v "$PWD":/workspace -w /workspace gradle:9.6.1-jdk25 \
   gradle --no-daemon :agent-jdk25:test
 ```
 

@@ -9,18 +9,76 @@ on:
     paths:
       - "java-agent/**"
       - ".github/workflows/agent.yml"
+  schedule:
+    # Re-resolve each JDK major every week so new CPU releases are tested even
+    # when no source file changed.
+    - cron: "19 3 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
 
 jobs:
-  unit:
+  build-agents:
     runs-on: ubuntu-latest
-    # There is no gradle wrapper in this repo; the documented unit gate builds
-    # inside the gradle:jdk25 image (see java-agent/README.md and Dockerfiles).
-    container: gradle:jdk25
     steps:
-      - uses: actions/checkout@1af3b93b6815bc44a9784bd300feb67ff0d1eeb3 # v6.0.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: Check detector false-positive-suppression parity
         working-directory: java-agent
         run: bash scripts/check-detector-parity.sh
-      - name: Run agent unit tests (primary + backports)
-        working-directory: java-agent
-        run: gradle :agent-jdk25:test :agent-java8:test :agent-java11:test :agent-java17:test --no-daemon
+      - name: Test and package every agent compatibility line
+        run: |
+          set -euo pipefail
+          gradle_image="$(awk '$1 == "FROM" && $2 ~ /^gradle:/ { print $2; exit }' java-agent/Dockerfile)"
+          test -n "$gradle_image"
+          docker run --pull always --rm \
+            -v "$PWD/java-agent:/workspace" \
+            -w /workspace \
+            "$gradle_image" \
+            gradle --no-daemon clean check \
+            :agent-jdk25:agentJar \
+            :playground:war \
+            :playground-javax:war
+      - name: Upload agent compatibility artifacts
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: java-agents
+          path: |
+            java-agent/agent-java8/build/libs/ohmyrasp-agent-java8.jar
+            java-agent/agent-java11/build/libs/ohmyrasp-agent-java11.jar
+            java-agent/agent-java17/build/libs/ohmyrasp-agent-java17.jar
+            java-agent/agent-jdk25/build/libs/ohmyrasp-agent.jar
+          if-no-files-found: error
+          retention-days: 1
+
+  runtime-compatibility:
+    needs: build-agents
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - java: "8"
+            jar: agent-java8/build/libs/ohmyrasp-agent-java8.jar
+          - java: "11"
+            jar: agent-java11/build/libs/ohmyrasp-agent-java11.jar
+          - java: "17"
+            jar: agent-java17/build/libs/ohmyrasp-agent-java17.jar
+          - java: "21"
+            jar: agent-java17/build/libs/ohmyrasp-agent-java17.jar
+          - java: "25"
+            jar: agent-jdk25/build/libs/ohmyrasp-agent.jar
+    steps:
+      - name: Download agent compatibility artifacts
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: java-agents
+          path: java-agent
+      - name: Install latest Temurin ${{ matrix.java }}
+        uses: actions/setup-java@03ad4de0992f5dab5e18fcb136590ce7c4a0ac95 # v5.6.0
+        with:
+          distribution: temurin
+          java-version: ${{ matrix.java }}
+          check-latest: true
+      - name: Start the agent on JDK ${{ matrix.java }}
+        run: java -javaagent:"java-agent/${{ matrix.jar }}" -version

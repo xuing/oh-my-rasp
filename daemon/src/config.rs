@@ -224,10 +224,10 @@ impl Config {
         if let Ok(v) = std::env::var("OHMYRASP_DAEMON_CONTROL_PATH") {
             self.control.path = v.into();
         }
-        if let Ok(v) = std::env::var("OHMYRASP_DAEMON_CONSOLE_BIND") {
-            if let Ok(addr) = v.parse() {
-                self.console.bind = addr;
-            }
+        if let Ok(v) = std::env::var("OHMYRASP_DAEMON_CONSOLE_BIND")
+            && let Ok(addr) = v.parse()
+        {
+            self.console.bind = addr;
         }
         if let Ok(v) = std::env::var("OHMYRASP_DAEMON_CLOUD_ENABLED") {
             self.cloud.enabled = matches!(

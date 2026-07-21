@@ -7,6 +7,7 @@ on:
       - "console/**"
       - "deploy/**"
       - "docker-compose.yml"
+      - ".github/docker-compose.ci-services.yml"
       - ".github/workflows/ohmyrasp-control.yml"
       - ".github/workflows/ohmyrasp-release.yml"
   pull_request:
@@ -15,61 +16,41 @@ on:
       - "console/**"
       - "deploy/**"
       - "docker-compose.yml"
+      - ".github/docker-compose.ci-services.yml"
       - ".github/workflows/ohmyrasp-control.yml"
       - ".github/workflows/ohmyrasp-release.yml"
+  schedule:
+    - cron: "53 3 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
 
 jobs:
   backend:
     runs-on: ubuntu-latest
-    services:
-      postgres:
-        image: postgres:18
-        env:
-          POSTGRES_USER: ohmyrasp
-          POSTGRES_PASSWORD: ohmyrasp
-          POSTGRES_DB: ohmyrasp
-        ports:
-          - 55432:5432
-        options: >-
-          --health-cmd "pg_isready -U ohmyrasp -d ohmyrasp"
-          --health-interval 5s
-          --health-timeout 3s
-          --health-retries 20
-      clickhouse:
-        image: clickhouse/clickhouse-server:latest
-        env:
-          CLICKHOUSE_DB: default
-          CLICKHOUSE_USER: ohmyrasp
-          CLICKHOUSE_PASSWORD: ohmyrasp
-        ports:
-          - 59000:9000
-        options: >-
-          --health-cmd "clickhouse-client --user ohmyrasp --password ohmyrasp --query 'SELECT 1'"
-          --health-interval 5s
-          --health-timeout 3s
-          --health-retries 30
-      valkey:
-        image: valkey/valkey:9
-        ports:
-          - 56379:6379
-        options: >-
-          --health-cmd "valkey-cli ping"
-          --health-interval 5s
-          --health-timeout 3s
-          --health-retries 20
     env:
       OHMYRASP_POSTGRES_TEST_DSN: postgres://ohmyrasp:ohmyrasp@localhost:55432/ohmyrasp?sslmode=disable
       OHMYRASP_CLICKHOUSE_TEST_DSN: clickhouse://ohmyrasp:ohmyrasp@localhost:59000?database=default
       OHMYRASP_VALKEY_TEST_ADDR: localhost:56379
-    defaults:
-      run:
-        working-directory: api
     steps:
-      - uses: actions/checkout@1af3b93b6815bc44a9784bd300feb67ff0d1eeb3 # v6.0.0
-      - uses: actions/setup-go@d35c59abb061a4a6fb18e82ac0862c26744d6ab5 # v5.5.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
-          go-version: "1.26"
-      - run: go test ./...
+          go-version: stable
+          check-latest: true
+          cache-dependency-path: api/go.sum
+      - name: Start integration-test services
+        run: docker compose -f .github/docker-compose.ci-services.yml up -d --wait
+      - name: Run API tests
+        working-directory: api
+        run: go test ./...
+      - name: Dump integration-service logs
+        if: failure()
+        run: docker compose -f .github/docker-compose.ci-services.yml logs --no-color
+      - name: Stop integration-test services
+        if: always()
+        run: docker compose -f .github/docker-compose.ci-services.yml down -v
 
   console:
     runs-on: ubuntu-latest
@@ -77,10 +58,11 @@ jobs:
       run:
         working-directory: console
     steps:
-      - uses: actions/checkout@1af3b93b6815bc44a9784bd300feb67ff0d1eeb3 # v6.0.0
-      - uses: actions/setup-node@2028fbc5c25fe9cf00d9f06a71cc4710d4507903 # v6.0.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
-          node-version: "24"
+          node-version: node
+          check-latest: true
           cache: npm
           cache-dependency-path: console/package-lock.json
       - run: npm ci
@@ -91,7 +73,7 @@ jobs:
   helm-manifests:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@1af3b93b6815bc44a9784bd300feb67ff0d1eeb3 # v6.0.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: Validate rendered Helm manifests
         run: deploy/scripts/validate-helm-manifests.sh
       - name: Validate observability assets
@@ -127,10 +109,11 @@ jobs:
       OHMYRASP_BOOTSTRAP_ADMIN_NAME: CI Admin
       OHMYRASP_BOOTSTRAP_APP_SECRET: ohmyrasp-ci-app-secret
     steps:
-      - uses: actions/checkout@1af3b93b6815bc44a9784bd300feb67ff0d1eeb3 # v6.0.0
-      - uses: actions/setup-node@2028fbc5c25fe9cf00d9f06a71cc4710d4507903 # v6.0.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
-          node-version: "24"
+          node-version: node
+          check-latest: true
           cache: npm
           cache-dependency-path: console/package-lock.json
       - name: Install console test dependencies

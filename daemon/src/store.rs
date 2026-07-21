@@ -102,12 +102,12 @@ impl EventStore {
         if !event.action.is_empty() {
             *inner.by_action.entry(event.action.clone()).or_default() += 1;
         }
-        if let Some(latency) = event.latency_us {
-            if latency >= 0 {
-                inner.latencies.push_back(latency);
-                while inner.latencies.len() > LATENCY_SAMPLES {
-                    inner.latencies.pop_front();
-                }
+        if let Some(latency) = event.latency_us
+            && latency >= 0
+        {
+            inner.latencies.push_back(latency);
+            while inner.latencies.len() > LATENCY_SAMPLES {
+                inner.latencies.pop_front();
             }
         }
         inner.last_event_at = Some(event.received_at.clone());

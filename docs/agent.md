@@ -20,9 +20,9 @@ heartbeats, pull policy metadata, and upload detections through the API.
 
 ## Build And Run
 
-The repository intentionally uses dynamic dependency versions such as
-`latest.release` and Docker's JDK 25 moving tags to match the project
-requirement that packages resolve to the newest available release.
+Gradle and library versions are pinned so builds are reviewable and
+reproducible. Dependabot proposes updates, while the CI runtime matrix pulls the
+latest Temurin release in each supported JDK line (8, 11, 17, 21, and 25).
 
 ```bash
 docker compose up --build

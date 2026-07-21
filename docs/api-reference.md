@@ -133,7 +133,7 @@ For local development without Go on the host:
 ```bash
 docker run --rm --network host \
   -e OHMYRASP_POSTGRES_DSN='postgres://ohmyrasp:ohmyrasp@localhost:15432/ohmyrasp?sslmode=disable' \
-  -v "$PWD":/src -w /src golang:1.26 \
+  -v "$PWD":/src -w /src golang:1.26.5 \
   go run ./cmd/ohmyrasp-migrate -skip-clickhouse
 ```
 
@@ -142,7 +142,7 @@ docker run --rm --network host \
 Regenerate typed OpenAPI bindings after editing `api/openapi.yaml`:
 
 ```bash
-docker run --rm -v "$PWD":/src -w /src golang:1.26 go generate ./...
+docker run --rm -v "$PWD":/src -w /src golang:1.26.5 go generate ./...
 ```
 
 The generated code is checked in at `internal/generated/openapi.gen.go`.
@@ -157,7 +157,7 @@ Prometheus text format, not JSON.
 The host may not have Go installed. Use Docker:
 
 ```bash
-docker run --rm -v "$PWD":/src -w /src golang:1.26 go test ./...
+docker run --rm -v "$PWD":/src -w /src golang:1.26.5 go test ./...
 ```
 
 Run the PostgreSQL integration test:
@@ -167,11 +167,11 @@ docker run -d --rm --name ohmyrasp-postgres-test \
   -e POSTGRES_USER=ohmyrasp \
   -e POSTGRES_PASSWORD=ohmyrasp \
   -e POSTGRES_DB=ohmyrasp \
-  -p 55432:5432 postgres:18
+  -p 55432:5432 postgres:18.4
 
 docker run --rm --network host \
   -e OHMYRASP_POSTGRES_TEST_DSN='postgres://ohmyrasp:ohmyrasp@localhost:55432/ohmyrasp?sslmode=disable' \
-  -v "$PWD":/src -w /src golang:1.26 \
+  -v "$PWD":/src -w /src golang:1.26.5 \
   go test ./internal/storage/postgres -run TestStoreIntegrationPostgresWorkflow -count=1 -v
 ```
 
@@ -182,11 +182,11 @@ docker run -d --rm --name ohmyrasp-clickhouse-test \
   -e CLICKHOUSE_USER=ohmyrasp \
   -e CLICKHOUSE_PASSWORD=ohmyrasp \
   -e CLICKHOUSE_DB=default \
-  -p 59000:9000 clickhouse/clickhouse-server:latest
+  -p 59000:9000 clickhouse/clickhouse-server:26.6.2.81
 
 docker run --rm --network host \
   -e OHMYRASP_CLICKHOUSE_TEST_DSN='clickhouse://ohmyrasp:ohmyrasp@localhost:59000?database=default' \
-  -v "$PWD":/src -w /src golang:1.26 \
+  -v "$PWD":/src -w /src golang:1.26.5 \
   go test ./internal/storage/clickhouse -run TestAnalyticsIntegrationClickHouseWorkflow -count=1 -v
 ```
 
@@ -194,11 +194,11 @@ Run the Valkey integration test:
 
 ```bash
 docker run -d --rm --name ohmyrasp-valkey-test \
-  -p 56379:6379 valkey/valkey:9
+  -p 56379:6379 valkey/valkey:9.1.0
 
 docker run --rm --network host \
   -e OHMYRASP_VALKEY_TEST_ADDR='localhost:56379' \
-  -v "$PWD":/src -w /src golang:1.26 \
+  -v "$PWD":/src -w /src golang:1.26.5 \
   go test ./internal/storage/valkey -run TestCacheIntegrationValkeyWorkflow -count=1 -v
 ```
 

@@ -123,10 +123,12 @@ gh attestation verify ohmyrasp-control-0.1.0.tgz -R <owner>/<repo>
 ## Vulnerability Gate
 
 The release workflow scans both pushed images before packaging the Helm chart.
-The scanner runs from this pinned image by default:
+The scanner runs from the digest-pinned Trivy image declared in
+`deploy/docker-compose.tools.yml`. Dependabot keeps that Compose-managed reference
+current, and the release script resolves it at runtime:
 
 ```text
-aquasec/trivy:0.70.0@sha256:be1190afcb28352bfddc4ddeb71470835d16462af68d310f9f4bca710961a41e
+deploy/scripts/resolve-tool-image.sh trivy
 ```
 
 The gate fails the release on fixable `HIGH` or `CRITICAL` CVEs by default.

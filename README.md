@@ -118,7 +118,7 @@ No local JDK needed:
 
 ```bash
 cd java-agent
-docker run --rm -v "$PWD":/workspace -w /workspace gradle:jdk25 \
+docker run --rm -v "$PWD":/workspace -w /workspace gradle:9.6.1-jdk25 \
   gradle --no-daemon :agent-jdk25:agentJar
 # → agent-jdk25/build/libs/ohmyrasp-agent.jar
 ```
@@ -218,7 +218,7 @@ docs/         User and operator docs; development ledgers; runbooks
 
 ```bash
 # Go control plane
-docker run --rm -v "$PWD/api":/src -w /src golang:1.26 go test ./...
+docker run --rm -v "$PWD/api":/src -w /src golang:1.26.5 go test ./...
 
 # Console
 cd console && npm ci && npm run build && npm test

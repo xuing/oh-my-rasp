@@ -1,4 +1,4 @@
-FROM golang:1.26 AS build
+FROM golang:1.26.5 AS build
 WORKDIR /src
 COPY go.mod go.sum ./
 RUN go mod download
@@ -8,7 +8,7 @@ RUN CGO_ENABLED=0 go test ./... \
 	&& CGO_ENABLED=0 go build -o /out/ohmyrasp-migrate ./cmd/ohmyrasp-migrate \
 	&& mkdir -p /out/agent-artifacts
 
-FROM gcr.io/distroless/static-debian12:nonroot
+FROM gcr.io/distroless/static-debian13:nonroot
 ARG VERSION=dev
 ARG REVISION=unknown
 ARG SOURCE=https://github.com/ohmyrasp/oh-my-rasp

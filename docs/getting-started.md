@@ -16,7 +16,7 @@ Running everything — including building the agent jars — requires only:
 - Docker Compose v2
 
 There is no need for a local JDK or Gradle installation. The agent build
-uses the `gradle:jdk25` Docker image, and the entire control plane builds
+uses the `gradle:9.6.1-jdk25` Docker image, and the entire control plane builds
 locally from source via `docker compose`.
 
 ### Local toolchain (development only)
@@ -26,21 +26,22 @@ Contributing to the project requires the following verified toolchain:
 | Tool | Required version | Notes |
 |------|-----------------|-------|
 | Go | 1.26 | Go 1.25 + `GOTOOLCHAIN=auto` also works |
-| Node.js | 24 | npm 11 bundled |
+| Node.js | 26 | Use the npm bundled with the current Node.js 26 release |
 | JDK | 25 | JDK, not just JRE — `javac` must be present |
-| Gradle | 9.5.1+ | Ubuntu's packaged `gradle` (4.4.1) is too old |
+| Gradle | 9.6.1+ | Ubuntu's packaged `gradle` (4.4.1) is too old |
+| Rust / Cargo | 1.97.1 | Pinned by `daemon/rust-toolchain.toml` |
 
 #### Installing Gradle locally (no sudo required)
 
 ```bash
 mkdir -p "$HOME/.local/opt" "$HOME/.local/bin"
-curl -fsSL https://services.gradle.org/distributions/gradle-9.5.1-bin.zip \
-  -o /tmp/gradle-9.5.1-bin.zip
+curl -fsSL https://services.gradle.org/distributions/gradle-9.6.1-bin.zip \
+  -o /tmp/gradle-9.6.1-bin.zip
 printf '%s  %s\n' \
-  'bafc141b619ad6350fd975fc903156dd5c151998cc8b058e8c1044ab5f7b031f' \
-  '/tmp/gradle-9.5.1-bin.zip' | sha256sum -c -
-unzip -q /tmp/gradle-9.5.1-bin.zip -d "$HOME/.local/opt"
-ln -sfn "$HOME/.local/opt/gradle-9.5.1/bin/gradle" "$HOME/.local/bin/gradle"
+  '9c0f7faeeb306cb14e4279a3e084ca6b596894089a0638e68a07c945a32c9e14' \
+  '/tmp/gradle-9.6.1-bin.zip' | sha256sum -c -
+unzip -q /tmp/gradle-9.6.1-bin.zip -d "$HOME/.local/opt"
+ln -sfn "$HOME/.local/opt/gradle-9.6.1/bin/gradle" "$HOME/.local/bin/gradle"
 ```
 
 #### Installing JDK 25 locally (no sudo required)
@@ -65,7 +66,7 @@ export PATH="$HOME/.local/bin:$JAVA_HOME/bin:$PATH"
 #### Known toolchain issues
 
 - Host Go `1.25.x` — add `GOTOOLCHAIN=auto` to your shell; `go mod
-  download` will fetch `go1.26.0` automatically and `go test ./...` passes.
+  download` will fetch a compatible Go 1.26 toolchain automatically.
 - A generated password containing `/` breaks the PostgreSQL DSN during the
   compose migration step. Always use URL-safe passwords (see the next
   section).
@@ -74,7 +75,7 @@ export PATH="$HOME/.local/bin:$JAVA_HOME/bin:$PATH"
   and does not affect the build.
 - `npm ci` is required (not `npm install`) after dependency changes; the
   lockfile must stay in sync.
-- Playwright 1.60 does not support the native `ubuntu26.04-x64` download
+- Playwright 1.61.1 does not support the native `ubuntu26.04-x64` download
   target. The `e2e:install`, `e2e`, and `e2e:live` scripts set
   `PLAYWRIGHT_HOST_PLATFORM_OVERRIDE=ubuntu24.04-x64` automatically,
   matching the upstream workaround for Microsoft Playwright issue #40117.
@@ -164,11 +165,11 @@ docker compose --env-file .env -f docker-compose.yml down -v
 ### Build the agent jar
 
 No local JDK or Gradle is required. The build runs entirely inside the
-`gradle:jdk25` Docker image:
+`gradle:9.6.1-jdk25` Docker image:
 
 ```bash
 cd java-agent
-docker run --rm -v "$PWD":/workspace -w /workspace gradle:jdk25 \
+docker run --rm -v "$PWD":/workspace -w /workspace gradle:9.6.1-jdk25 \
   gradle --no-daemon :agent-jdk25:agentJar
 ```
 
@@ -185,17 +186,17 @@ jar. The task names differ from the primary agent:
 
 ```bash
 # Java 8 backport:
-docker run --rm -v "$PWD":/workspace -w /workspace gradle:jdk25 \
+docker run --rm -v "$PWD":/workspace -w /workspace gradle:9.6.1-jdk25 \
   gradle --no-daemon :agent-java8:agentJava8Jar
 # Output: java-agent/agent-java8/build/libs/ohmyrasp-agent-java8.jar
 
 # Java 11 backport:
-docker run --rm -v "$PWD":/workspace -w /workspace gradle:jdk25 \
+docker run --rm -v "$PWD":/workspace -w /workspace gradle:9.6.1-jdk25 \
   gradle --no-daemon :agent-java11:agentJava11Jar
 # Output: java-agent/agent-java11/build/libs/ohmyrasp-agent-java11.jar
 
 # Java 17 backport:
-docker run --rm -v "$PWD":/workspace -w /workspace gradle:jdk25 \
+docker run --rm -v "$PWD":/workspace -w /workspace gradle:9.6.1-jdk25 \
   gradle --no-daemon :agent-java17:agentJava17Jar
 # Output: java-agent/agent-java17/build/libs/ohmyrasp-agent-java17.jar
 ```

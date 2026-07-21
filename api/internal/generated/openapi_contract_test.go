@@ -429,7 +429,7 @@ func TestGeneratedContractsCoverControlPlaneResponses(t *testing.T) {
 		t.Fatalf("unexpected dependency report params: %#v", dependencyParams)
 	}
 	dependencyLimit := DependencyLimit(25)
-	vulnerabilitySeverity := High
+	vulnerabilitySeverity := GetApiV1DependenciesParamsVulnerabilitySeverityHigh
 	dependencyQueryParams := GetApiV1DependenciesParams{
 		ApplicationId:         &dependencyCreate.ApplicationId,
 		AgentId:               dependencyCreate.AgentId,
@@ -486,7 +486,7 @@ func TestGeneratedContractsCoverControlPlaneResponses(t *testing.T) {
 	}
 	baselineLimit := BaselineLimit(25)
 	baselineSeverity := GetApiV1BaselineFindingsParamsSeverityMedium
-	baselineStatus := Warning
+	baselineStatus := GetApiV1BaselineFindingsParamsStatusWarning
 	baselineQueryParams := GetApiV1BaselineFindingsParams{
 		ApplicationId:  &baselineCreate.ApplicationId,
 		EnvironmentId:  &baselineCreate.EnvironmentId,

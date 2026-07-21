@@ -5,7 +5,7 @@
  *   1. zh and ja tables have identical key sets (parity).
  *   2. Every directly-quoted `t("…")` key in the source exists in both tables.
  *
- * Node 24 strips TypeScript types natively, so this runs without a build step.
+ * Node 26 strips TypeScript types natively, so this runs without a build step.
  */
 import { readFileSync, readdirSync, statSync } from "node:fs";
 import { fileURLToPath } from "node:url";

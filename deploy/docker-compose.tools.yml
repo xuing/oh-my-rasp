@@ -1,0 +1,14 @@
+services:
+  helm:
+    image: alpine/helm:4.2.3@sha256:b97ba4f9b27fe7af16ee3d37e6815783c9d4a51289b6240a9024ec471611ae9b
+  kubeconform:
+    image: ghcr.io/yannh/kubeconform:v0.8.0@sha256:faffaf43f95aa6425306e1ab8d6fcad72acb9049158f38e574c085ea1ec0f64e
+  kubernetes-schema:
+    # Metadata-only service: its tag drives kubeconform's schema version.
+    image: registry.k8s.io/kube-apiserver:v1.36.2
+  prometheus:
+    image: prom/prometheus:v3.13.1
+  alertmanager:
+    image: prom/alertmanager:v0.33.1
+  trivy:
+    image: aquasec/trivy:0.72.0@sha256:cffe3f5161a47a6823fbd23d985795b3ed72a4c806da4c4df16266c02accdd6f

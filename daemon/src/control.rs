@@ -159,10 +159,10 @@ impl Controller {
     fn persist(&self) -> Result<()> {
         let state = self.snapshot();
         let json = serde_json::to_string_pretty(&state)?;
-        if let Some(parent) = self.path.parent() {
-            if !parent.as_os_str().is_empty() {
-                std::fs::create_dir_all(parent).ok();
-            }
+        if let Some(parent) = self.path.parent()
+            && !parent.as_os_str().is_empty()
+        {
+            std::fs::create_dir_all(parent).ok();
         }
         let tmp = self.path.with_extension("json.tmp");
         std::fs::write(&tmp, json.as_bytes())

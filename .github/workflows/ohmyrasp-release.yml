@@ -21,12 +21,16 @@ permissions:
 jobs:
   test-api:
     runs-on: ubuntu-latest
-    container: golang:1.26
     defaults:
       run:
         working-directory: api
     steps:
-      - uses: actions/checkout@1af3b93b6815bc44a9784bd300feb67ff0d1eeb3 # v6.0.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version: stable
+          check-latest: true
+          cache-dependency-path: api/go.sum
       - run: go test ./...
 
   test-console:
@@ -35,10 +39,11 @@ jobs:
       run:
         working-directory: console
     steps:
-      - uses: actions/checkout@1af3b93b6815bc44a9784bd300feb67ff0d1eeb3 # v6.0.0
-      - uses: actions/setup-node@2028fbc5c25fe9cf00d9f06a71cc4710d4507903 # v6.0.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
-          node-version: "24"
+          node-version: node
+          check-latest: true
           cache: npm
           cache-dependency-path: console/package-lock.json
       - run: npm ci
@@ -52,7 +57,7 @@ jobs:
     env:
       REGISTRY: ghcr.io
     steps:
-      - uses: actions/checkout@1af3b93b6815bc44a9784bd300feb67ff0d1eeb3 # v6.0.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Resolve release metadata
         id: release
@@ -74,9 +79,11 @@ jobs:
           namespace="$(echo "${GITHUB_REPOSITORY_OWNER}" | tr '[:upper:]' '[:lower:]')"
           short_sha="${GITHUB_SHA::12}"
 
-          echo "version=${version}" >> "$GITHUB_OUTPUT"
-          echo "namespace=${namespace}" >> "$GITHUB_OUTPUT"
-          echo "short_sha=${short_sha}" >> "$GITHUB_OUTPUT"
+          {
+            echo "version=${version}"
+            echo "namespace=${namespace}"
+            echo "short_sha=${short_sha}"
+          } >> "$GITHUB_OUTPUT"
 
       - name: Stamp chart and default image tags
         run: deploy/scripts/set-release-version.sh "${{ steps.release.outputs.version }}" "${{ steps.release.outputs.namespace }}" "$REGISTRY"
@@ -116,7 +123,7 @@ jobs:
           echo "digest=${digest}" >> "$GITHUB_OUTPUT"
 
       - name: Attest API image provenance
-        uses: actions/attest@59d89421af93a897026c735860bf21b6eb4f7b26 # v4.1.0
+        uses: actions/attest@f7c74d28b9d84cb8768d0b8ca14a4bac6ef463e6 # v4.2.0
         with:
           subject-name: ${{ env.REGISTRY }}/${{ steps.release.outputs.namespace }}/control-api
           subject-digest: ${{ steps.build_api.outputs.digest }}
@@ -146,7 +153,7 @@ jobs:
           echo "digest=${digest}" >> "$GITHUB_OUTPUT"
 
       - name: Attest web image provenance
-        uses: actions/attest@59d89421af93a897026c735860bf21b6eb4f7b26 # v4.1.0
+        uses: actions/attest@f7c74d28b9d84cb8768d0b8ca14a4bac6ef463e6 # v4.2.0
         with:
           subject-name: ${{ env.REGISTRY }}/${{ steps.release.outputs.namespace }}/control-web
           subject-digest: ${{ steps.build_web.outputs.digest }}
@@ -167,6 +174,7 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p dist
+          helm_image="$(deploy/scripts/resolve-tool-image.sh helm)"
           docker run --rm --entrypoint sh \
             -e GITHUB_TOKEN \
             -e GITHUB_ACTOR \
@@ -174,7 +182,7 @@ jobs:
             -e IMAGE_NAMESPACE \
             -v "$PWD":/work \
             -w /work \
-            alpine/helm:3.14.4 -c '
+            "$helm_image" -c '
               set -eu
               echo "$GITHUB_TOKEN" | helm registry login ghcr.io -u "$GITHUB_ACTOR" --password-stdin
               helm lint deploy/helm/ohmyrasp-control
@@ -184,6 +192,6 @@ jobs:
             '
 
       - name: Attest Helm chart package provenance
-        uses: actions/attest@59d89421af93a897026c735860bf21b6eb4f7b26 # v4.1.0
+        uses: actions/attest@f7c74d28b9d84cb8768d0b8ca14a4bac6ef463e6 # v4.2.0
         with:
           subject-path: dist/ohmyrasp-control-${{ steps.release.outputs.version }}.tgz

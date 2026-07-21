@@ -3,6 +3,7 @@ plugins {
 }
 
 dependencies {
+    // This WAR runs on both Tomcat 10.1 (Servlet 6.0) and Tomcat 11 (6.1).
     providedCompile("jakarta.servlet:jakarta.servlet-api:6.0.0")
 }
 

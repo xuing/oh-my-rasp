@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+
 usage() {
   cat <<'USAGE'
 Usage: deploy/scripts/scan-release-images.sh IMAGE [IMAGE...]
@@ -9,7 +11,7 @@ Runs a pinned Trivy container image scan against release images. By default the
 script fails when fixable critical or high vulnerabilities are detected.
 
 Environment:
-  OHMYRASP_TRIVY_IMAGE           Scanner image. Defaults to a pinned Trivy 0.70.0 digest.
+  OHMYRASP_TRIVY_IMAGE           Scanner image. Defaults to the pinned image in deploy/docker-compose.tools.yml.
   OHMYRASP_TRIVY_SEVERITIES      Comma-separated severities. Defaults to HIGH,CRITICAL.
   OHMYRASP_TRIVY_IGNORE_UNFIXED  Set to false to fail on unfixed CVEs too. Defaults to true.
   OHMYRASP_TRIVY_TIMEOUT         Trivy scan timeout. Defaults to 10m.
@@ -32,7 +34,7 @@ if ! docker version >/dev/null 2>&1; then
   exit 127
 fi
 
-trivy_image="${OHMYRASP_TRIVY_IMAGE:-aquasec/trivy:0.70.0@sha256:be1190afcb28352bfddc4ddeb71470835d16462af68d310f9f4bca710961a41e}"
+trivy_image="${OHMYRASP_TRIVY_IMAGE:-$("${repo_root}/deploy/scripts/resolve-tool-image.sh" trivy)}"
 severities="${OHMYRASP_TRIVY_SEVERITIES:-HIGH,CRITICAL}"
 ignore_unfixed="${OHMYRASP_TRIVY_IGNORE_UNFIXED:-true}"
 timeout="${OHMYRASP_TRIVY_TIMEOUT:-10m}"

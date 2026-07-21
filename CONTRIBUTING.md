@@ -62,11 +62,11 @@ If you prefer a local install, the minimum versions required are:
 | Component | Tool | Version |
 |-----------|------|---------|
 | API | Go | 1.26 (or 1.25+ with `GOTOOLCHAIN=auto`) |
-| Console | Node.js | 24+ |
-| Console | npm | 11+ |
+| Console | Node.js | 26+ |
+| Console | npm | Bundled with Node.js 26+ |
 | Java agent | JDK | 25 (primary); 8, 11, 17 for backport modules |
-| Java agent | Gradle | 9.5+ |
-| Daemon | Rust / Cargo | 1.85 (matches `rust-version` in `daemon/Cargo.toml`) |
+| Java agent | Gradle | 9.6.1+ |
+| Daemon | Rust / Cargo | 1.97.1 (matches `daemon/rust-toolchain.toml`) |
 
 `docs/getting-started.md` documents verified installation steps for each
 toolchain on Ubuntu, including workarounds for restricted environments.
@@ -79,8 +79,8 @@ toolchain on Ubuntu, including workarounds for restricted environments.
 
 ```bash
 # Via Docker (no local Go required):
-docker run --rm -v "$PWD/api":/src -w /src golang:1.26 go generate ./...
-docker run --rm -v "$PWD/api":/src -w /src golang:1.26 go test ./...
+docker run --rm -v "$PWD/api":/src -w /src golang:1.26.5 go generate ./...
+docker run --rm -v "$PWD/api":/src -w /src golang:1.26.5 go test ./...
 
 # Or with a local Go 1.26 toolchain:
 cd api
@@ -111,7 +111,7 @@ Unit tests run against the primary JDK 25 module:
 
 ```bash
 # Via Docker (no local JDK required):
-docker run --rm -v "$PWD/java-agent":/workspace -w /workspace gradle:jdk25 \
+docker run --rm -v "$PWD/java-agent":/workspace -w /workspace gradle:9.6.1-jdk25 \
   gradle --no-daemon :agent-jdk25:test
 ```
 

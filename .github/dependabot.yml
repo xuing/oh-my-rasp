@@ -1,89 +1,262 @@
 version: 2
+
 updates:
-  # Go control-plane API
   - package-ecosystem: gomod
     directory: /api
     schedule:
-      interval: weekly
+      interval: daily
+      time: "03:05"
+      timezone: Asia/Tokyo
+    open-pull-requests-limit: 10
+    labels: [dependencies, go]
     groups:
-      gomod-minor-patch:
-        update-types:
-          - minor
-          - patch
+      go-compatible:
+        patterns: ["*"]
+        update-types: [minor, patch]
 
-  # Console frontend (Node + npm)
   - package-ecosystem: npm
     directory: /console
     schedule:
-      interval: weekly
+      interval: daily
+      time: "03:10"
+      timezone: Asia/Tokyo
+    open-pull-requests-limit: 10
+    labels: [dependencies, frontend]
     groups:
-      npm-minor-patch:
-        update-types:
-          - minor
-          - patch
+      npm-compatible:
+        patterns: ["*"]
+        update-types: [minor, patch]
 
-  # Rust host daemon
   - package-ecosystem: cargo
     directory: /daemon
     schedule:
-      interval: weekly
+      interval: daily
+      time: "03:15"
+      timezone: Asia/Tokyo
+    open-pull-requests-limit: 10
+    labels: [dependencies, rust]
     groups:
-      cargo-minor-patch:
-        update-types:
-          - minor
-          - patch
+      cargo-compatible:
+        patterns: ["*"]
+        update-types: [minor, patch]
 
-  # Java agent - primary module
+  # Root plugin only. Playground manifests are split below so each Servlet
+  # compatibility line can still receive its newest patch release.
   - package-ecosystem: gradle
-    directory: /java-agent/agent-jdk25
+    directory: /java-agent
+    exclude-paths:
+      - "agent-java8/**"
+      - "agent-java11/**"
+      - "agent-java17/**"
+      - "agent-jdk25/**"
+      - "playground*/**"
     schedule:
-      interval: weekly
+      interval: daily
+      time: "03:20"
+      timezone: Asia/Tokyo
+    open-pull-requests-limit: 10
+    labels: [dependencies, java]
     groups:
-      gradle-minor-patch:
-        update-types:
-          - minor
-          - patch
+      gradle-root-compatible:
+        patterns: ["*"]
+        update-types: [minor, patch]
 
-  # Java agent - Java 8 backport
   - package-ecosystem: gradle
     directory: /java-agent/agent-java8
     schedule:
-      interval: weekly
+      interval: daily
+      time: "03:25"
+      timezone: Asia/Tokyo
+    labels: [dependencies, java]
+    ignore:
+      - dependency-name: com.alibaba:fastjson
+      - dependency-name: org.junit.jupiter:junit-jupiter
+        versions: [">=6.0.0"]
+      - dependency-name: org.junit.platform:junit-platform-launcher
+        versions: [">=6.0.0"]
     groups:
-      gradle-minor-patch:
-        update-types:
-          - minor
-          - patch
+      java8-compatible:
+        patterns: ["*"]
+        update-types: [minor, patch]
 
-  # Java agent - Java 11 backport
   - package-ecosystem: gradle
     directory: /java-agent/agent-java11
     schedule:
-      interval: weekly
+      interval: daily
+      time: "03:30"
+      timezone: Asia/Tokyo
+    labels: [dependencies, java]
+    ignore:
+      - dependency-name: com.alibaba:fastjson
+      - dependency-name: org.junit.jupiter:junit-jupiter
+        versions: [">=6.0.0"]
+      - dependency-name: org.junit.platform:junit-platform-launcher
+        versions: [">=6.0.0"]
     groups:
-      gradle-minor-patch:
-        update-types:
-          - minor
-          - patch
+      java11-compatible:
+        patterns: ["*"]
+        update-types: [minor, patch]
 
-  # Java agent - Java 17 backport
   - package-ecosystem: gradle
     directory: /java-agent/agent-java17
     schedule:
-      interval: weekly
+      interval: daily
+      time: "03:35"
+      timezone: Asia/Tokyo
+    labels: [dependencies, java]
+    ignore:
+      - dependency-name: com.alibaba:fastjson
     groups:
-      gradle-minor-patch:
-        update-types:
-          - minor
-          - patch
+      java17-compatible:
+        patterns: ["*"]
+        update-types: [minor, patch]
 
-  # GitHub Actions workflows
+  - package-ecosystem: gradle
+    directory: /java-agent/agent-jdk25
+    schedule:
+      interval: daily
+      time: "03:40"
+      timezone: Asia/Tokyo
+    labels: [dependencies, java]
+    ignore:
+      - dependency-name: com.alibaba:fastjson
+    groups:
+      jdk25-compatible:
+        patterns: ["*"]
+        update-types: [minor, patch]
+
+  # Tomcat 10.1 and 11 share Servlet 6.0, but not Servlet 6.1. Keep accepting
+  # future 6.0.x patches while blocking the incompatible API line.
+  - package-ecosystem: gradle
+    directories:
+      - /java-agent/playground
+      - /java-agent/playground-java11-jakarta
+      - /java-agent/playground-java17-jakarta
+    schedule:
+      interval: daily
+      time: "03:45"
+      timezone: Asia/Tokyo
+    labels: [dependencies, java]
+    ignore:
+      - dependency-name: jakarta.servlet:jakarta.servlet-api
+        versions: [">=6.1.0"]
+    groups:
+      servlet6-compatible:
+        patterns: ["*"]
+        update-types: [minor, patch]
+
+  # The Java 8 Jakarta playground targets Tomcat 10 / Servlet 5.
+  - package-ecosystem: gradle
+    directory: /java-agent/playground-java8-jakarta
+    schedule:
+      interval: daily
+      time: "03:50"
+      timezone: Asia/Tokyo
+    labels: [dependencies, java]
+    ignore:
+      - dependency-name: jakarta.servlet:jakarta.servlet-api
+        versions: [">=6.0.0"]
+    groups:
+      servlet5-compatible:
+        patterns: ["*"]
+        update-types: [minor, patch]
+
+  # These playgrounds target Servlet 4; javax.servlet-api 4.0.x is the newest
+  # compatible line.
+  - package-ecosystem: gradle
+    directories:
+      - /java-agent/playground-javax
+      - /java-agent/playground-java11
+      - /java-agent/playground-java17
+    schedule:
+      interval: daily
+      time: "03:55"
+      timezone: Asia/Tokyo
+    labels: [dependencies, java]
+    groups:
+      servlet4-compatible:
+        patterns: ["*"]
+        update-types: [minor, patch]
+
+  # The Java 8 legacy playground targets Tomcat 8 / Servlet 3.1.
+  - package-ecosystem: gradle
+    directory: /java-agent/playground-java8
+    schedule:
+      interval: daily
+      time: "04:00"
+      timezone: Asia/Tokyo
+    labels: [dependencies, java]
+    ignore:
+      - dependency-name: javax.servlet:javax.servlet-api
+        versions: [">=4.0.0"]
+    groups:
+      servlet3-compatible:
+        patterns: ["*"]
+        update-types: [minor, patch]
+
+  - package-ecosystem: rust-toolchain
+    directory: /daemon
+    schedule:
+      interval: daily
+      time: "04:05"
+      timezone: Asia/Tokyo
+    labels: [dependencies, rust]
+
+  - package-ecosystem: docker
+    directories:
+      - /api
+      - /console
+      - /daemon
+      - /java-agent
+    schedule:
+      interval: daily
+      time: "04:10"
+      timezone: Asia/Tokyo
+    open-pull-requests-limit: 10
+    labels: [dependencies, containers]
+    groups:
+      docker-compatible:
+        patterns: ["*"]
+        update-types: [minor, patch]
+
+  - package-ecosystem: docker-compose
+    directories:
+      - /
+      - /.github
+      - /deploy
+    schedule:
+      interval: daily
+      time: "04:15"
+      timezone: Asia/Tokyo
+    open-pull-requests-limit: 10
+    labels: [dependencies, containers]
+    groups:
+      compose-compatible:
+        patterns: ["*"]
+        update-types: [minor, patch]
+
+  - package-ecosystem: helm
+    directory: /deploy/helm/ohmyrasp-control
+    schedule:
+      interval: daily
+      time: "04:20"
+      timezone: Asia/Tokyo
+    open-pull-requests-limit: 10
+    labels: [dependencies, helm]
+    groups:
+      helm-compatible:
+        patterns: ["*"]
+        update-types: [minor, patch]
+
   - package-ecosystem: github-actions
     directory: /
     schedule:
-      interval: weekly
+      interval: daily
+      time: "04:25"
+      timezone: Asia/Tokyo
+    open-pull-requests-limit: 10
+    labels: [dependencies, ci]
     groups:
-      actions-minor-patch:
-        update-types:
-          - minor
-          - patch
+      actions-compatible:
+        patterns: ["*"]
+        update-types: [minor, patch]

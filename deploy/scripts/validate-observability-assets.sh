@@ -2,8 +2,9 @@
 set -euo pipefail
 
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
-prometheus_image="${PROMETHEUS_IMAGE:-prom/prometheus:latest}"
-alertmanager_image="${ALERTMANAGER_IMAGE:-prom/alertmanager:latest}"
+tool_image_resolver="${repo_root}/deploy/scripts/resolve-tool-image.sh"
+prometheus_image="${PROMETHEUS_IMAGE:-$("$tool_image_resolver" prometheus)}"
+alertmanager_image="${ALERTMANAGER_IMAGE:-$("$tool_image_resolver" alertmanager)}"
 
 docker run --rm --entrypoint promtool \
   -v "$repo_root/deploy/prometheus/prometheus.yml":/etc/prometheus/prometheus.yml:ro \

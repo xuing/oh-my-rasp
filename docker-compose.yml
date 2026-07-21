@@ -72,7 +72,7 @@ services:
 
   postgres:
     logging: *default-logging
-    image: postgres:18
+    image: postgres:18.4
     environment:
       POSTGRES_USER: ${POSTGRES_USER}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
@@ -89,7 +89,7 @@ services:
 
   clickhouse:
     logging: *default-logging
-    image: clickhouse/clickhouse-server:latest
+    image: clickhouse/clickhouse-server:26.6.2.81
     environment:
       CLICKHOUSE_DB: ${CLICKHOUSE_DB}
       CLICKHOUSE_USER: ${CLICKHOUSE_USER}
@@ -107,7 +107,7 @@ services:
 
   valkey:
     logging: *default-logging
-    image: valkey/valkey:9
+    image: valkey/valkey:9.1.0
     command: ["sh", "-c", "exec valkey-server --requirepass \"$${VALKEY_PASSWORD}\""]
     environment:
       VALKEY_PASSWORD: ${VALKEY_PASSWORD}
@@ -121,7 +121,7 @@ services:
 
   prometheus:
     logging: *default-logging
-    image: prom/prometheus:latest
+    image: prom/prometheus:v3.13.1
     command:
       - --config.file=/etc/prometheus/prometheus.yml
     ports:
@@ -134,7 +134,7 @@ services:
 
   alertmanager:
     logging: *default-logging
-    image: prom/alertmanager:latest
+    image: prom/alertmanager:v0.33.1
     command:
       - --config.file=/etc/alertmanager/alertmanager.yml
       - --storage.path=/alertmanager
@@ -146,7 +146,7 @@ services:
 
   grafana:
     logging: *default-logging
-    image: grafana/grafana-oss:latest
+    image: grafana/grafana:13.1.1
     environment:
       GF_AUTH_ANONYMOUS_ENABLED: "true"
       GF_AUTH_ANONYMOUS_ORG_ROLE: Viewer
