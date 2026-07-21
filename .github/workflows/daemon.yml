@@ -17,7 +17,7 @@ jobs:
       run:
         working-directory: daemon
     steps:
-      - uses: actions/checkout@1af3b93b6815bc44a9784bd300feb67ff0d1eeb3 # v6.0.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: Install Rust toolchain
         # Pinned to dtolnay/rust-toolchain stable @ 4be7066 (2026-06-30).
         uses: dtolnay/rust-toolchain@4be7066ada62dd38de10e7b70166bc74ed198c30 # stable
