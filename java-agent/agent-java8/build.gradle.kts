@@ -7,8 +7,8 @@ plugins {
 }
 
 dependencies {
-    implementation("org.ow2.asm:asm:9.7.1")
-    implementation("org.ow2.asm:asm-commons:9.7.1")
+    implementation("org.ow2.asm:asm:9.10.1")
+    implementation("org.ow2.asm:asm-commons:9.10.1")
 
     testImplementation("com.alibaba:fastjson:1.2.83")
     testImplementation("org.junit.jupiter:junit-jupiter:5.10.3")
