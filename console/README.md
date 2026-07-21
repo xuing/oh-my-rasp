@@ -49,7 +49,7 @@ All new UI must route text through `t()` and use semantic color tokens.
 
 ## Stack (current standards)
 
-React 19 · TypeScript 6 · Vite 8 · Tailwind CSS v4 (CSS-first `@theme`) ·
+React 19 · TypeScript 7 · Vite 8 · Tailwind CSS v4 (CSS-first `@theme`) ·
 TanStack Router + Query · Motion · lucide-react. Routes are lazy-loaded so the
 initial bundle stays small (no >500 KB chunk).
 

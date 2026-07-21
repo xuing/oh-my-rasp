@@ -30,7 +30,7 @@ tasks.jar {
     archiveBaseName.set("ohmyrasp-agent-java17-thin")
 }
 
-val agentJava17Jar by tasks.registering(ShadowJar::class) {
+val agentJava17Jar = tasks.register<ShadowJar>("agentJava17Jar") {
     group = "build"
     description = "Builds the dedicated Java 17 era agent jar."
     archiveBaseName.set("ohmyrasp-agent-java17")
@@ -54,7 +54,7 @@ val agentJava17Jar by tasks.registering(ShadowJar::class) {
     exclude("**/module-info.class", "META-INF/versions/**")
 }
 
-val verifyJava17AgentBytecode by tasks.registering {
+val verifyJava17AgentBytecode = tasks.register("verifyJava17AgentBytecode") {
     group = "verification"
     description = "Verifies the Java 17 era agent jar emits Java 17-compatible class files."
     dependsOn(agentJava17Jar)

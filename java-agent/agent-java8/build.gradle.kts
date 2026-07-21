@@ -30,7 +30,7 @@ tasks.jar {
     archiveBaseName.set("ohmyrasp-agent-java8-thin")
 }
 
-val agentJava8Jar by tasks.registering(ShadowJar::class) {
+val agentJava8Jar = tasks.register<ShadowJar>("agentJava8Jar") {
     group = "build"
     description = "Builds the dedicated Java 8 era agent jar."
     archiveBaseName.set("ohmyrasp-agent-java8")
@@ -55,7 +55,7 @@ val agentJava8Jar by tasks.registering(ShadowJar::class) {
     exclude("**/module-info.class", "META-INF/versions/**")
 }
 
-val verifyJava8AgentBytecode by tasks.registering {
+val verifyJava8AgentBytecode = tasks.register("verifyJava8AgentBytecode") {
     group = "verification"
     description = "Verifies the Java 8 era agent jar emits Java 8 class files."
     dependsOn(agentJava8Jar)

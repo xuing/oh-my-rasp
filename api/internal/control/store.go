@@ -2200,8 +2200,13 @@ func observabilityEventMatches(event SecurityEvent, query ObservabilityQuery) bo
 
 func intAttribute(attributes map[string]any, key string) int {
 	value := int64Attribute(attributes, key)
-	if value > int64(^uint(0)>>1) {
-		return int(^uint(0) >> 1)
+	// Observability metrics are portable 32-bit values. Keeping the explicit
+	// bounds here avoids architecture-dependent narrowing from int64 to int.
+	if value > 2147483647 {
+		return 2147483647
+	}
+	if value < -2147483648 {
+		return -2147483648
 	}
 	return int(value)
 }
@@ -2217,7 +2222,10 @@ func int64Attribute(attributes map[string]any, key string) int64 {
 	case float32:
 		return int64(value)
 	case json.Number:
-		parsed, _ := strconv.ParseInt(string(value), 10, 64)
+		parsed, err := strconv.ParseInt(string(value), 10, 64)
+		if err != nil {
+			return 0
+		}
 		return parsed
 	default:
 		return 0

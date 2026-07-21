@@ -4,7 +4,7 @@ plugins {
 
 val generatedJava = layout.buildDirectory.dir("generated/sources/javax/main/java")
 
-val generateJavaxSources by tasks.registering(Sync::class) {
+val generateJavaxSources = tasks.register<Sync>("generateJavaxSources") {
     from(project(":playground").projectDir.resolve("src/main/java")) {
         include("**/*.java")
         filter { line: String ->

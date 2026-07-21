@@ -5,7 +5,9 @@ import (
 	"bytes"
 	"context"
 	"crypto/md5"
+	"crypto/rand"
 	"encoding/base64"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"net/http"
@@ -110,6 +112,11 @@ func (s *Server) agentArtifactCatalog() (generated.AgentArtifactCatalog, error) 
 		}
 		return generated.AgentArtifactCatalog{}, err
 	}
+	root, err := os.OpenRoot(s.agentArtifactDir)
+	if err != nil {
+		return generated.AgentArtifactCatalog{}, err
+	}
+	defer root.Close()
 	for _, entry := range entries {
 		if entry.IsDir() || !strings.EqualFold(filepath.Ext(entry.Name()), ".zip") {
 			continue
@@ -118,8 +125,7 @@ func (s *Server) agentArtifactCatalog() (generated.AgentArtifactCatalog, error) 
 		if err != nil {
 			return generated.AgentArtifactCatalog{}, err
 		}
-		path := filepath.Join(s.agentArtifactDir, entry.Name())
-		data, err := os.ReadFile(path)
+		data, err := root.ReadFile(entry.Name())
 		if err != nil {
 			return generated.AgentArtifactCatalog{}, err
 		}
@@ -166,9 +172,13 @@ func (s *Server) uploadAgentArtifact(ctx context.Context, actorID string, input 
 	if err := os.MkdirAll(s.agentArtifactDir, 0o750); err != nil {
 		return generated.AgentArtifactCatalogItem{}, err
 	}
+	root, err := os.OpenRoot(s.agentArtifactDir)
+	if err != nil {
+		return generated.AgentArtifactCatalogItem{}, err
+	}
+	defer root.Close()
 	filename := canonicalAgentArtifactFilename(language, systemType, languageVersion)
-	path := filepath.Join(s.agentArtifactDir, filename)
-	if err := writeAgentArtifactFile(path, data); err != nil {
+	if err := writeAgentArtifactFile(root, filename, data); err != nil {
 		return generated.AgentArtifactCatalogItem{}, err
 	}
 	updatedAt := time.Now().UTC()
@@ -209,9 +219,13 @@ func (s *Server) agentArtifactFromRequest(r *http.Request) (agentArtifact, error
 	if err != nil {
 		return agentArtifact{}, err
 	}
-	language := normalizeArtifactSegment(queryValue(r, "language"))
+	languageInput := queryValue(r, "language")
+	if languageInput == "" {
+		languageInput = app.Language
+	}
+	language := normalizeArtifactSegment(languageInput)
 	if language == "" {
-		language = app.Language
+		return agentArtifact{}, fmt.Errorf("%w: invalid agent language", control.ErrInvalid)
 	}
 	if language != app.Language {
 		return agentArtifact{}, fmt.Errorf("%w: requested language does not match application language", control.ErrInvalid)
@@ -219,13 +233,19 @@ func (s *Server) agentArtifactFromRequest(r *http.Request) (agentArtifact, error
 	if language != "java" {
 		return agentArtifact{}, fmt.Errorf("%w: unsupported agent language", control.ErrInvalid)
 	}
-	systemType := normalizeArtifactSegment(queryValue(r, "system_type", "systemType"))
-	if systemType == "" {
+	systemTypeInput := queryValue(r, "system_type", "systemType")
+	systemType := normalizeArtifactSegment(systemTypeInput)
+	if systemTypeInput == "" {
 		systemType = "linux"
+	} else if systemType == "" {
+		return agentArtifact{}, fmt.Errorf("%w: invalid system type", control.ErrInvalid)
 	}
-	languageVersion := normalizeArtifactSegment(queryValue(r, "language_version", "languageVersion"))
-	if languageVersion == "" {
+	languageVersionInput := queryValue(r, "language_version", "languageVersion")
+	languageVersion := normalizeArtifactSegment(languageVersionInput)
+	if languageVersionInput == "" {
 		languageVersion = "unknown"
+	} else if languageVersion == "" {
+		return agentArtifact{}, fmt.Errorf("%w: invalid language version", control.ErrInvalid)
 	}
 	data, fileName, err := s.loadAgentArtifact(app, language, systemType, languageVersion)
 	if err != nil {
@@ -245,9 +265,16 @@ func (s *Server) agentArtifactFromRequest(r *http.Request) (agentArtifact, error
 
 func (s *Server) loadAgentArtifact(app control.DaemonApplication, language string, systemType string, languageVersion string) ([]byte, string, error) {
 	if s.agentArtifactDir != "" {
+		root, err := os.OpenRoot(s.agentArtifactDir)
+		if err != nil {
+			if errors.Is(err, os.ErrNotExist) {
+				return nil, "", fmt.Errorf("%w: no matching agent artifact found", control.ErrNotFound)
+			}
+			return nil, "", err
+		}
+		defer root.Close()
 		for _, candidate := range agentArtifactCandidates(language, systemType, languageVersion) {
-			path := filepath.Join(s.agentArtifactDir, candidate)
-			data, err := os.ReadFile(path)
+			data, err := root.ReadFile(candidate)
 			if err == nil {
 				return data, candidate, nil
 			}
@@ -313,14 +340,17 @@ func validateAgentArtifactZip(data []byte) error {
 	return nil
 }
 
-func writeAgentArtifactFile(path string, data []byte) error {
-	dir := filepath.Dir(path)
-	tmp, err := os.CreateTemp(dir, ".artifact-*.zip")
+func writeAgentArtifactFile(root *os.Root, filename string, data []byte) error {
+	random := make([]byte, 16)
+	if _, err := rand.Read(random); err != nil {
+		return err
+	}
+	tmpName := ".artifact-" + hex.EncodeToString(random) + ".zip"
+	tmp, err := root.OpenFile(tmpName, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600)
 	if err != nil {
 		return err
 	}
-	tmpName := tmp.Name()
-	defer func() { _ = os.Remove(tmpName) }()
+	defer func() { _ = root.Remove(tmpName) }()
 	if _, err := tmp.Write(data); err != nil {
 		_ = tmp.Close()
 		return err
@@ -332,7 +362,7 @@ func writeAgentArtifactFile(path string, data []byte) error {
 	if err := tmp.Close(); err != nil {
 		return err
 	}
-	return os.Rename(tmpName, path)
+	return root.Rename(tmpName, filename)
 }
 
 func artifactCatalogSegments(filename string) (string, string, string) {
@@ -380,7 +410,7 @@ func daemonRequestToken(r *http.Request) string {
 
 func normalizeArtifactSegment(value string) string {
 	value = strings.ToLower(strings.TrimSpace(value))
-	if value == "" {
+	if value == "" || len(value) > 64 || value == "." || strings.Contains(value, "..") || strings.ContainsAny(value, `/\\`) {
 		return ""
 	}
 	for _, char := range value {

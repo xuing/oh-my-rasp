@@ -8,7 +8,7 @@ dependencies {
 
 val generatedJava8JakartaSources = layout.buildDirectory.dir("generated/sources/java8Jakarta/java")
 
-val generateJava8JakartaServlet by tasks.registering(Copy::class) {
+val generateJava8JakartaServlet = tasks.register<Copy>("generateJava8JakartaServlet") {
     from(project(":playground-java8").layout.projectDirectory.dir("src/main/java"))
     into(generatedJava8JakartaSources)
     include("**/*.java")

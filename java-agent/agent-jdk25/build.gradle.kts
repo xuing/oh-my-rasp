@@ -30,7 +30,7 @@ tasks.jar {
 // application's own ASM (Spring CGLIB, Hibernate, Byte Buddy, Groovy, …) and
 // crash the host app on any version mismatch. Relocating ASM into a private
 // package eliminates that conflict. The java8/11/17 backports already do this.
-val agentJar by tasks.registering(ShadowJar::class) {
+val agentJar = tasks.register<ShadowJar>("agentJar") {
     group = "build"
     description = "Builds the self-contained Java agent jar with ASM relocated."
     archiveBaseName.set("ohmyrasp-agent")

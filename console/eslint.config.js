@@ -6,12 +6,13 @@
 // existing code are dialed to "warn" (with a note) rather than blanket
 // disabled — they still surface, they just don't block.
 import js from "@eslint/js";
+import { defineConfig } from "eslint/config";
 import tseslint from "typescript-eslint";
 import reactHooks from "eslint-plugin-react-hooks";
-import jsxA11y from "eslint-plugin-jsx-a11y";
+import jsxA11y from "eslint-plugin-jsx-a11y-x";
 import globals from "globals";
 
-export default tseslint.config(
+export default defineConfig(
   {
     // Build output, deps, Playwright artifacts, and the e2e suite (its own
     // Playwright toolchain/globals) are out of scope for the app lint.
@@ -37,7 +38,7 @@ export default tseslint.config(
   },
   // Accessibility rules for JSX (scoped to component/route files).
   {
-    ...jsxA11y.flatConfigs.recommended,
+    ...jsxA11y.configs.recommended,
     files: ["src/**/*.tsx"]
   },
   // Node scripts and root build/test config run in Node, not the browser.

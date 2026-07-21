@@ -30,7 +30,7 @@ tasks.jar {
     archiveBaseName.set("ohmyrasp-agent-java11-thin")
 }
 
-val agentJava11Jar by tasks.registering(ShadowJar::class) {
+val agentJava11Jar = tasks.register<ShadowJar>("agentJava11Jar") {
     group = "build"
     description = "Builds the dedicated Java 11 era agent jar."
     archiveBaseName.set("ohmyrasp-agent-java11")
@@ -54,7 +54,7 @@ val agentJava11Jar by tasks.registering(ShadowJar::class) {
     exclude("**/module-info.class", "META-INF/versions/**")
 }
 
-val verifyJava11AgentBytecode by tasks.registering {
+val verifyJava11AgentBytecode = tasks.register("verifyJava11AgentBytecode") {
     group = "verification"
     description = "Verifies the Java 11 era agent jar emits Java 11-compatible class files."
     dependsOn(agentJava11Jar)
