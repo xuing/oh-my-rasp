@@ -11,8 +11,8 @@ dependencies {
     implementation("org.ow2.asm:asm-commons:9.10.1")
 
     testImplementation("com.alibaba:fastjson:1.2.83")
-    testImplementation("org.junit.jupiter:junit-jupiter:6.1.2")
-    testRuntimeOnly("org.junit.platform:junit-platform-launcher:6.1.2")
+    testImplementation("org.junit.jupiter:junit-jupiter:6.1.3")
+    testRuntimeOnly("org.junit.platform:junit-platform-launcher:6.1.3")
 }
 
 java {
