@@ -8,8 +8,8 @@ dependencies {
     implementation("commons-jxpath:commons-jxpath:1.4.0")
     implementation("com.h2database:h2:2.4.240")
     implementation("org.apache.velocity:velocity-engine-core:2.4.1")
-    implementation("org.springframework:spring-context:7.0.8")
-    implementation("org.springframework:spring-expression:7.0.8")
+    implementation("org.springframework:spring-context:7.0.9")
+    implementation("org.springframework:spring-expression:7.0.9")
 }
 
 tasks.war {
