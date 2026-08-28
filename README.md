@@ -1,3 +1,5 @@
+
+
 # OhMyRASP
 
 **Runtime Application Self-Protection for Java — self-hosted, inspectable, and
@@ -124,7 +126,7 @@ docker run --rm -v "$PWD":/workspace -w /workspace gradle:9.6.1-jdk25 \
 ```
 
 For older runtimes build `:agent-java8:agentJava8Jar`,
-`:agent-java11:agentJava11Jar`, or `:agent-java17:agentJava17Jar`.
+`:agent-java11:agentJava11Jar`, or `:agent-java17:agentJava17Jar`; use the Java 17 jar on Java 21.
 
 ### 3. Protect your application
 
