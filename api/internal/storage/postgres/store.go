@@ -65,8 +65,10 @@ type SessionCache interface {
 }
 
 type AgentPolicyCache interface {
-	GetAgentPolicy(ctx context.Context, agentID string) (control.PolicyVersion, bool, error)
-	SetAgentPolicy(ctx context.Context, agentID string, policy control.PolicyVersion, ttl time.Duration) error
+	// GetAgentPolicy also returns the cache epoch it read; SetAgentPolicy must
+	// be given that epoch so a load that races an invalidation is discarded.
+	GetAgentPolicy(ctx context.Context, agentID string) (control.PolicyVersion, string, bool, error)
+	SetAgentPolicy(ctx context.Context, agentID string, epoch string, policy control.PolicyVersion, ttl time.Duration) error
 	InvalidateAgentPolicies(ctx context.Context) error
 }
 
@@ -1279,10 +1281,21 @@ func (s *Store) HeartbeatAgent(ctx context.Context, agentID string, status strin
 }
 
 func (s *Store) GetAgentPolicy(ctx context.Context, agentID string) (control.PolicyVersion, error) {
+	// cacheEpoch stays empty when the cache is absent or unreachable; nothing
+	// is written back in that case.
+	var cacheEpoch string
 	if s.agentPolicyCache != nil {
-		policy, found, err := s.agentPolicyCache.GetAgentPolicy(ctx, agentID)
-		if err == nil && found && policy.Config != nil {
-			return policy, nil
+		policy, epoch, found, err := s.agentPolicyCache.GetAgentPolicy(ctx, agentID)
+		if err == nil {
+			if found && policy.Config != nil {
+				return policy, nil
+			}
+			cacheEpoch = epoch
+		}
+	}
+	cachePolicy := func(policy control.PolicyVersion) {
+		if cacheEpoch != "" {
+			_ = s.agentPolicyCache.SetAgentPolicy(ctx, agentID, cacheEpoch, policy, time.Minute)
 		}
 	}
 	var policyID string
@@ -1314,24 +1327,20 @@ func (s *Store) GetAgentPolicy(ctx context.Context, agentID string) (control.Pol
 	}
 	if policyID == "" || policyVersion == 0 {
 		empty := control.PolicyVersion{Version: 0, Status: "empty", Rules: []control.Rule{}, Config: &config}
-		if s.agentPolicyCache != nil {
-			_ = s.agentPolicyCache.SetAgentPolicy(ctx, agentID, empty, time.Minute)
-		}
+		cachePolicy(empty)
 		return empty, nil
 	}
 	version, err := s.activePolicyVersion(ctx, policyID, policyVersion)
 	if errors.Is(err, sql.ErrNoRows) {
 		empty := control.PolicyVersion{Version: 0, Status: "empty", Rules: []control.Rule{}, Config: &config}
-		if s.agentPolicyCache != nil {
-			_ = s.agentPolicyCache.SetAgentPolicy(ctx, agentID, empty, time.Minute)
-		}
+		cachePolicy(empty)
 		return empty, nil
 	}
 	if err == nil {
 		version.Config = &config
 	}
-	if err == nil && s.agentPolicyCache != nil {
-		_ = s.agentPolicyCache.SetAgentPolicy(ctx, agentID, version, time.Minute)
+	if err == nil {
+		cachePolicy(version)
 	}
 	return version, err
 }

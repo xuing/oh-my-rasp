@@ -86,21 +86,23 @@ func (c *Cache) DeleteSession(ctx context.Context, tokenHash string) error {
 	return c.client.Do(ctx, c.client.B().Del().Key(c.key(sessionPrefix+tokenHash)).Build()).Error()
 }
 
-func (c *Cache) GetAgentPolicy(ctx context.Context, agentID string) (control.PolicyVersion, bool, error) {
+// GetAgentPolicy looks up the cached policy for agentID under the current
+// invalidation epoch and also returns that epoch. On a miss, callers pass the
+// epoch back to SetAgentPolicy so a value loaded from the database is stored
+// under the epoch observed before the load: if an invalidation lands while the
+// load runs, the (possibly stale) value goes to the retired epoch and is never
+// served.
+func (c *Cache) GetAgentPolicy(ctx context.Context, agentID string) (control.PolicyVersion, string, bool, error) {
 	var policy control.PolicyVersion
 	epoch, err := c.policyEpoch(ctx)
 	if err != nil {
-		return control.PolicyVersion{}, false, err
+		return control.PolicyVersion{}, "", false, err
 	}
 	found, err := c.getJSON(ctx, c.agentPolicyKey(epoch, agentID), &policy)
-	return policy, found, err
+	return policy, epoch, found, err
 }
 
-func (c *Cache) SetAgentPolicy(ctx context.Context, agentID string, policy control.PolicyVersion, ttl time.Duration) error {
-	epoch, err := c.policyEpoch(ctx)
-	if err != nil {
-		return err
-	}
+func (c *Cache) SetAgentPolicy(ctx context.Context, agentID string, epoch string, policy control.PolicyVersion, ttl time.Duration) error {
 	return c.setJSON(ctx, c.agentPolicyKey(epoch, agentID), policy, ttl)
 }
 

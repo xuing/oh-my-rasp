@@ -76,10 +76,14 @@ func TestCacheIntegrationValkeyWorkflow(t *testing.T) {
 		CanaryPercent: 100,
 		CreatedAt:     time.Date(2026, 5, 31, 0, 0, 0, 0, time.UTC),
 	}
-	if err := cache.SetAgentPolicy(ctx, agentID, policy, time.Minute); err != nil {
+	_, epoch, found, err := cache.GetAgentPolicy(ctx, agentID)
+	if err != nil || found {
+		t.Fatalf("expected initial policy miss, found=%v err=%v", found, err)
+	}
+	if err := cache.SetAgentPolicy(ctx, agentID, epoch, policy, time.Minute); err != nil {
 		t.Fatalf("set policy: %v", err)
 	}
-	gotPolicy, found, err := cache.GetAgentPolicy(ctx, agentID)
+	gotPolicy, _, found, err := cache.GetAgentPolicy(ctx, agentID)
 	if err != nil {
 		t.Fatalf("get policy: %v", err)
 	}
@@ -89,17 +93,30 @@ func TestCacheIntegrationValkeyWorkflow(t *testing.T) {
 	if err := other.InvalidateAgentPolicies(ctx); err != nil {
 		t.Fatalf("invalidate other namespace: %v", err)
 	}
-	if _, found, err := cache.GetAgentPolicy(ctx, agentID); err != nil || !found {
+	if _, _, found, err := cache.GetAgentPolicy(ctx, agentID); err != nil || !found {
 		t.Fatalf("invalidation in another namespace evicted policy, found=%v err=%v", found, err)
 	}
-	if _, found, err := other.GetAgentPolicy(ctx, agentID); err != nil || found {
+	if _, _, found, err := other.GetAgentPolicy(ctx, agentID); err != nil || found {
 		t.Fatalf("policy leaked into another namespace, found=%v err=%v", found, err)
 	}
 	if err := cache.InvalidateAgentPolicies(ctx); err != nil {
 		t.Fatalf("invalidate policies: %v", err)
 	}
-	if _, found, err := cache.GetAgentPolicy(ctx, agentID); err != nil || found {
+	_, staleEpoch, found, err := cache.GetAgentPolicy(ctx, agentID)
+	if err != nil || found {
 		t.Fatalf("expected invalidated policy miss, found=%v err=%v", found, err)
+	}
+
+	// A database load that races an invalidation must not be served: the
+	// write-back lands under the epoch observed before the load.
+	if err := cache.InvalidateAgentPolicies(ctx); err != nil {
+		t.Fatalf("invalidate during load: %v", err)
+	}
+	if err := cache.SetAgentPolicy(ctx, agentID, staleEpoch, policy, time.Minute); err != nil {
+		t.Fatalf("set stale policy: %v", err)
+	}
+	if _, _, found, err := cache.GetAgentPolicy(ctx, agentID); err != nil || found {
+		t.Fatalf("policy loaded before an invalidation was served afterwards, found=%v err=%v", found, err)
 	}
 
 	rateKey := fmt.Sprintf("rate_%d", suffix)
