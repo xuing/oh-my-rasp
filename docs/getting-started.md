@@ -29,7 +29,7 @@ Contributing to the project requires the following verified toolchain:
 | Node.js | 26 | Use the npm bundled with the current Node.js 26 release |
 | JDK | 25 | JDK, not just JRE — `javac` must be present |
 | Gradle | 9.8.1+ | Ubuntu's packaged `gradle` (4.4.1) is too old |
-| Rust / Cargo | 1.97.1 | Pinned by `daemon/rust-toolchain.toml` |
+| Rust / Cargo | 1.99.0 | Pinned by `daemon/rust-toolchain.toml` |
 
 #### Installing Gradle locally (no sudo required)
 

@@ -66,7 +66,7 @@ If you prefer a local install, the minimum versions required are:
 | Console | npm | Bundled with Node.js 26+ |
 | Java agent | JDK | 25 (primary); 8, 11, 17 for backport modules |
 | Java agent | Gradle | 9.8.1+ |
-| Daemon | Rust / Cargo | 1.97.1 (matches `daemon/rust-toolchain.toml`) |
+| Daemon | Rust / Cargo | 1.99.0 (matches `daemon/rust-toolchain.toml`) |
 
 `docs/getting-started.md` documents verified installation steps for each
 toolchain on Ubuntu, including workarounds for restricted environments.

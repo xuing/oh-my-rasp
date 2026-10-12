@@ -1,7 +1,7 @@
 # OhMyRASP host daemon — multi-stage build.
 # rustls (no OpenSSL) keeps the runtime image minimal; ca-certificates are
 # included only for the cloud HTTPS uplink.
-FROM rust:1.97.1-slim AS build
+FROM rust:1.99.0-slim AS build
 WORKDIR /src
 COPY Cargo.toml Cargo.lock ./
 COPY src ./src
