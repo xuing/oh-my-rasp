@@ -11,23 +11,23 @@ name = "ohmyrasp-daemon"
 path = "src/main.rs"
 
 [dependencies]
-tokio = { version = "1", features = ["rt-multi-thread", "macros", "net", "fs", "io-util", "time", "sync", "signal"] }
-axum = { version = "0.8", default-features = false, features = ["http1", "json", "tokio", "query"] }
-reqwest = { version = "0.13", default-features = false, features = ["json", "rustls"] }
-serde = { version = "1", features = ["derive"] }
-serde_json = "1"
-tracing = "0.1"
-tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt"] }
-toml = "1.1"
-clap = { version = "4", features = ["derive", "env"] }
-time = { version = "0.3", features = ["formatting"] }
-anyhow = "1"
+tokio = { version = "1.53.2", features = ["rt-multi-thread", "macros", "net", "fs", "io-util", "time", "sync", "signal"] }
+axum = { version = "0.8.9", default-features = false, features = ["http1", "json", "tokio", "query"] }
+reqwest = { version = "0.13.5", default-features = false, features = ["json", "rustls"] }
+serde = { version = "1.0.229", features = ["derive"] }
+serde_json = "1.0.154"
+tracing = "0.1.44"
+tracing-subscriber = { version = "0.3.23", features = ["env-filter", "fmt"] }
+toml = "1.1.8"
+clap = { version = "4.6.7", features = ["derive", "env"] }
+time = { version = "0.3.55", features = ["formatting"] }
+anyhow = "1.0.104"
 
 [dev-dependencies]
-tempfile = "3"
+tempfile = "3.27.0"
 # Lightweight, already a transitive dep of axum; used only to drive the console
 # router in tests via `ServiceExt::oneshot` (no live TCP server needed).
-tower = { version = "0.5", features = ["util"] }
+tower = { version = "0.5.3", features = ["util"] }
 
 [profile.release]
 lto = "thin"

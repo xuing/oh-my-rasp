@@ -31,7 +31,7 @@ app and simply writes its local log.
 
 ## Build
 
-Requires Rust 1.97.1 or newer (edition 2024); the exact CI toolchain is pinned
+Requires Rust 1.99.0 or newer (edition 2024); the exact CI toolchain is pinned
 in `rust-toolchain.toml` and updated automatically.
 
 ```bash
