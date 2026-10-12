@@ -109,7 +109,7 @@ docker compose --env-file .env -f docker-compose.yml up -d --build
 
 ```bash
 cd java-agent
-docker run --rm -v "$PWD":/workspace -w /workspace gradle:9.6.1-jdk25 \
+docker run --rm -v "$PWD":/workspace -w /workspace gradle:9.8.1-jdk25 \
   gradle --no-daemon :agent-jdk25:agentJar
 # → agent-jdk25/build/libs/ohmyrasp-agent.jar
 ```

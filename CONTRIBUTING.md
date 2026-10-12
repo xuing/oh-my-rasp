@@ -65,7 +65,7 @@ If you prefer a local install, the minimum versions required are:
 | Console | Node.js | 26+ |
 | Console | npm | Bundled with Node.js 26+ |
 | Java agent | JDK | 25 (primary); 8, 11, 17 for backport modules |
-| Java agent | Gradle | 9.6.1+ |
+| Java agent | Gradle | 9.8.1+ |
 | Daemon | Rust / Cargo | 1.97.1 (matches `daemon/rust-toolchain.toml`) |
 
 `docs/getting-started.md` documents verified installation steps for each
@@ -111,7 +111,7 @@ Unit tests run against the primary JDK 25 module:
 
 ```bash
 # Via Docker (no local JDK required):
-docker run --rm -v "$PWD/java-agent":/workspace -w /workspace gradle:9.6.1-jdk25 \
+docker run --rm -v "$PWD/java-agent":/workspace -w /workspace gradle:9.8.1-jdk25 \
   gradle --no-daemon :agent-jdk25:test
 ```
 
