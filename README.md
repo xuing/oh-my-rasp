@@ -1,5 +1,3 @@
-
-
 # OhMyRASP
 
 **Runtime Application Self-Protection for Java — self-hosted, inspectable, and

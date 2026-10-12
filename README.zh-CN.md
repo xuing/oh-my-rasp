@@ -115,7 +115,7 @@ docker run --rm -v "$PWD":/workspace -w /workspace gradle:9.6.1-jdk25 \
 ```
 
 旧版运行时请构建 `:agent-java8:agentJava8Jar`、
-`:agent-java11:agentJava11Jar` 或 `:agent-java17:agentJava17Jar`。
+`:agent-java11:agentJava11Jar` 或 `:agent-java17:agentJava17Jar`；Java 21 请使用 Java 17 版 jar。
 
 ### 3. 保护你的应用
 
