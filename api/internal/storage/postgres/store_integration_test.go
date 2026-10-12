@@ -369,7 +369,7 @@ func TestStoreIntegrationPostgresWorkflow(t *testing.T) {
 		t.Fatalf("expected policy v1, got %#v", pulled)
 	}
 	if cache != nil {
-		cached, found, err := cache.GetAgentPolicy(ctx, agent.ID)
+		cached, _, found, err := cache.GetAgentPolicy(ctx, agent.ID)
 		if err != nil || !found || cached.Version != 1 {
 			t.Fatalf("expected valkey policy cache hit, found=%v policy=%#v err=%v", found, cached, err)
 		}
@@ -386,7 +386,7 @@ func TestStoreIntegrationPostgresWorkflow(t *testing.T) {
 		t.Fatalf("expected policy v2 before rollback, got %#v", pulled)
 	}
 	if cache != nil {
-		cached, found, err := cache.GetAgentPolicy(ctx, agent.ID)
+		cached, _, found, err := cache.GetAgentPolicy(ctx, agent.ID)
 		if err != nil || !found || cached.Version != 2 {
 			t.Fatalf("expected valkey policy cache hit for v2, found=%v policy=%#v err=%v", found, cached, err)
 		}
@@ -406,7 +406,7 @@ func TestStoreIntegrationPostgresWorkflow(t *testing.T) {
 		t.Fatalf("expected policy v1 after rollback, got %#v", pulled)
 	}
 	if cache != nil {
-		cached, found, err := cache.GetAgentPolicy(ctx, agent.ID)
+		cached, _, found, err := cache.GetAgentPolicy(ctx, agent.ID)
 		if err != nil || !found || cached.Version != 1 {
 			t.Fatalf("expected valkey policy cache refresh after rollback, found=%v policy=%#v err=%v", found, cached, err)
 		}
