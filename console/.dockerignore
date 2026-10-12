@@ -1,0 +1,10 @@
+node_modules/
+dist/
+dist-ssr/
+test-results/
+playwright-report/
+.vite/
+.playwright-mcp/
+*.local
+*.log
+.DS_Store
