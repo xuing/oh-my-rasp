@@ -44,6 +44,9 @@ func TestStoreIntegrationPostgresWorkflow(t *testing.T) {
 			t.Fatalf("new valkey cache: %v", err)
 		}
 		defer cache.Close()
+		// Isolate from the valkey package's integration test, which runs
+		// concurrently under `go test ./...` against the same server.
+		cache.WithKeyNamespace(fmt.Sprintf("test:postgres:%d", time.Now().UnixNano()))
 		store.WithSessionCache(cache).WithAgentPolicyCache(cache)
 	}
 	if err := store.EnsureSeedData(ctx); err != nil {

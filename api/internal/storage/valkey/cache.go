@@ -14,14 +14,18 @@ import (
 )
 
 const (
-	sessionPrefix      = "ohmyrasp:session:"
-	agentPolicyPrefix  = "ohmyrasp:agent-policy:"
-	policyCacheEpoch   = "ohmyrasp:agent-policy:epoch"
-	rateLimitKeyPrefix = "ohmyrasp:ratelimit:"
+	keyRoot            = "ohmyrasp:"
+	sessionPrefix      = "session:"
+	agentPolicyPrefix  = "agent-policy:"
+	policyCacheEpoch   = "agent-policy:epoch"
+	rateLimitKeyPrefix = "ratelimit:"
 )
 
 type Cache struct {
 	client valkeygo.Client
+	// keyPrefix is prepended to every key: "ohmyrasp:" by default,
+	// "ohmyrasp:<namespace>:" after WithKeyNamespace.
+	keyPrefix string
 }
 
 func New(addr string, username string, password string) (*Cache, error) {
@@ -36,7 +40,26 @@ func New(addr string, username string, password string) (*Cache, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &Cache{client: client}, nil
+	return &Cache{client: client, keyPrefix: keyRoot}, nil
+}
+
+// WithKeyNamespace scopes every key this cache reads or writes (sessions,
+// cached agent policies, the policy invalidation epoch and rate-limit
+// counters) under "ohmyrasp:<namespace>:", so independent users of one Valkey
+// (e.g. concurrently running integration-test packages) cannot observe each
+// other's invalidations. An empty namespace keeps the default "ohmyrasp:" keys.
+func (c *Cache) WithKeyNamespace(namespace string) *Cache {
+	namespace = strings.Trim(strings.TrimSpace(namespace), ":")
+	if namespace == "" {
+		c.keyPrefix = keyRoot
+	} else {
+		c.keyPrefix = keyRoot + namespace + ":"
+	}
+	return c
+}
+
+func (c *Cache) key(suffix string) string {
+	return c.keyPrefix + suffix
 }
 
 func (c *Cache) Close() {
@@ -51,16 +74,16 @@ func (c *Cache) Ping(ctx context.Context) error {
 
 func (c *Cache) GetSessionUser(ctx context.Context, tokenHash string) (control.User, bool, error) {
 	var user control.User
-	found, err := c.getJSON(ctx, sessionPrefix+tokenHash, &user)
+	found, err := c.getJSON(ctx, c.key(sessionPrefix+tokenHash), &user)
 	return user, found, err
 }
 
 func (c *Cache) SetSessionUser(ctx context.Context, tokenHash string, user control.User, ttl time.Duration) error {
-	return c.setJSON(ctx, sessionPrefix+tokenHash, user, ttl)
+	return c.setJSON(ctx, c.key(sessionPrefix+tokenHash), user, ttl)
 }
 
 func (c *Cache) DeleteSession(ctx context.Context, tokenHash string) error {
-	return c.client.Do(ctx, c.client.B().Del().Key(sessionPrefix+tokenHash).Build()).Error()
+	return c.client.Do(ctx, c.client.B().Del().Key(c.key(sessionPrefix+tokenHash)).Build()).Error()
 }
 
 func (c *Cache) GetAgentPolicy(ctx context.Context, agentID string) (control.PolicyVersion, bool, error) {
@@ -82,14 +105,14 @@ func (c *Cache) SetAgentPolicy(ctx context.Context, agentID string, policy contr
 }
 
 func (c *Cache) InvalidateAgentPolicies(ctx context.Context) error {
-	return c.client.Do(ctx, c.client.B().Incr().Key(policyCacheEpoch).Build()).Error()
+	return c.client.Do(ctx, c.client.B().Incr().Key(c.key(policyCacheEpoch)).Build()).Error()
 }
 
 func (c *Cache) Allow(ctx context.Context, key string, limit int64, window time.Duration) (control.RateLimitDecision, error) {
 	if limit <= 0 || window <= 0 {
 		return control.RateLimitDecision{Allowed: true, Limit: limit, Remaining: math.MaxInt64}, nil
 	}
-	cacheKey := rateLimitKeyPrefix + key
+	cacheKey := c.key(rateLimitKeyPrefix + key)
 	count, err := c.client.Do(ctx, c.client.B().Incr().Key(cacheKey).Build()).ToInt64()
 	if err != nil {
 		return control.RateLimitDecision{}, err
@@ -135,7 +158,7 @@ func (c *Cache) setJSON(ctx context.Context, key string, value any, ttl time.Dur
 }
 
 func (c *Cache) policyEpoch(ctx context.Context) (string, error) {
-	epoch, err := c.client.Do(ctx, c.client.B().Get().Key(policyCacheEpoch).Build()).ToString()
+	epoch, err := c.client.Do(ctx, c.client.B().Get().Key(c.key(policyCacheEpoch)).Build()).ToString()
 	if valkeygo.IsValkeyNil(err) {
 		return "0", nil
 	}
@@ -143,7 +166,7 @@ func (c *Cache) policyEpoch(ctx context.Context) (string, error) {
 }
 
 func (c *Cache) agentPolicyKey(epoch string, agentID string) string {
-	return fmt.Sprintf("%s%s:%s", agentPolicyPrefix, epoch, agentID)
+	return fmt.Sprintf("%s%s:%s", c.key(agentPolicyPrefix), epoch, agentID)
 }
 
 func maxInt64(left int64, right int64) int64 {

@@ -18,16 +18,26 @@ func TestCacheIntegrationValkeyWorkflow(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
+	suffix := time.Now().UnixNano()
+	// `go test ./...` runs packages in parallel and the postgres integration
+	// tests share this Valkey; namespace the keys so their policy-epoch bumps
+	// cannot invalidate the entries this test writes.
 	cache, err := New(addr, os.Getenv("OHMYRASP_VALKEY_TEST_USERNAME"), os.Getenv("OHMYRASP_VALKEY_TEST_PASSWORD"))
 	if err != nil {
 		t.Fatalf("new cache: %v", err)
 	}
 	defer cache.Close()
+	cache.WithKeyNamespace(fmt.Sprintf("test:valkey:%d", suffix))
 	if err := cache.Ping(ctx); err != nil {
 		t.Fatalf("ping: %v", err)
 	}
+	other, err := New(addr, os.Getenv("OHMYRASP_VALKEY_TEST_USERNAME"), os.Getenv("OHMYRASP_VALKEY_TEST_PASSWORD"))
+	if err != nil {
+		t.Fatalf("new other cache: %v", err)
+	}
+	defer other.Close()
+	other.WithKeyNamespace(fmt.Sprintf("test:valkey-other:%d", suffix))
 
-	suffix := time.Now().UnixNano()
 	sessionHash := fmt.Sprintf("session_%d", suffix)
 	user := control.User{
 		ID:        "usr_cache",
@@ -75,6 +85,15 @@ func TestCacheIntegrationValkeyWorkflow(t *testing.T) {
 	}
 	if !found || gotPolicy.Version != policy.Version || len(gotPolicy.Rules) != 1 {
 		t.Fatalf("unexpected cached policy found=%v policy=%#v", found, gotPolicy)
+	}
+	if err := other.InvalidateAgentPolicies(ctx); err != nil {
+		t.Fatalf("invalidate other namespace: %v", err)
+	}
+	if _, found, err := cache.GetAgentPolicy(ctx, agentID); err != nil || !found {
+		t.Fatalf("invalidation in another namespace evicted policy, found=%v err=%v", found, err)
+	}
+	if _, found, err := other.GetAgentPolicy(ctx, agentID); err != nil || found {
+		t.Fatalf("policy leaked into another namespace, found=%v err=%v", found, err)
 	}
 	if err := cache.InvalidateAgentPolicies(ctx); err != nil {
 		t.Fatalf("invalidate policies: %v", err)
