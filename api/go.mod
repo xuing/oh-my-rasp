@@ -4,13 +4,13 @@ go 1.26.0
 
 require (
 	github.com/ClickHouse/clickhouse-go/v2 v2.49.0
-	github.com/go-chi/chi/v5 v5.4.0
+	github.com/go-chi/chi/v5 v5.5.0
 	github.com/gorilla/websocket v1.5.3
 	github.com/jackc/pgx/v5 v5.11.0
 	github.com/oapi-codegen/oapi-codegen/v2 v2.8.0
-	github.com/oapi-codegen/runtime v1.7.0
+	github.com/oapi-codegen/runtime v1.8.0
 	github.com/pierrec/lz4/v4 v4.1.33
-	github.com/valkey-io/valkey-go v1.0.78
+	github.com/valkey-io/valkey-go v1.0.79
 	golang.org/x/crypto v0.58.0
 )
 
