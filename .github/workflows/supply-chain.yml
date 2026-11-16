@@ -1,6 +1,9 @@
 name: supply-chain
 
 on:
+  push:
+    branches:
+      - main
   pull_request:
   schedule:
     - cron: "42 5 * * 1"
@@ -60,4 +63,4 @@ jobs:
           cache: npm
           cache-dependency-path: console/package-lock.json
       - run: npm ci
-      - run: npm audit --audit-level=high
+      - run: npm audit

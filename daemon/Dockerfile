@@ -5,7 +5,7 @@ FROM rust:1.99.0-slim AS build
 WORKDIR /src
 COPY Cargo.toml Cargo.lock ./
 COPY src ./src
-RUN cargo build --release --locked && strip target/release/ohmyrasp-daemon || true
+RUN cargo build --release --locked && strip target/release/ohmyrasp-daemon
 
 FROM debian:13-slim
 RUN apt-get update \

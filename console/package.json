@@ -28,6 +28,14 @@
     "react-dom": "^19.3.0",
     "tailwind-merge": "^3.7.0"
   },
+  "overrides": {
+    "@typescript-eslint/typescript-estree": {
+      "minimatch": "^11.0.8"
+    },
+    "eslint-plugin-jsx-a11y-x": {
+      "minimatch": "^11.0.8"
+    }
+  },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
     "@playwright/test": "^1.64.0",
