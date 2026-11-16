@@ -9,11 +9,11 @@ dependencies {
     // ASM 9.8 is the first release whose ClassReader can read Java 25 (class
     // file major version 69). Because this is the JDK 25 agent and it must
     // instrument genuine Java 25 application bytecode at runtime, it must stay
-    // >= 9.8. All runtime lines currently share 9.11, which still emits
+    // >= 9.8. All runtime lines currently share 9.11.1, which still emits
     // Java-5-compatible library bytecode; the version is pinned (not a dynamic
     // selector) for reproducible, supply-chain-reviewable builds.
-    implementation("org.ow2.asm:asm:9.11")
-    implementation("org.ow2.asm:asm-commons:9.11")
+    implementation("org.ow2.asm:asm:9.11.1")
+    implementation("org.ow2.asm:asm-commons:9.11.1")
 
     testImplementation("com.alibaba:fastjson:1.2.83")
     testImplementation("org.junit.jupiter:junit-jupiter:6.1.3")

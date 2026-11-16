@@ -1,12 +1,12 @@
 # syntax=docker/dockerfile:1
-FROM node:26.11.1-alpine AS build
+FROM node:26.12.0-alpine AS build
 WORKDIR /src
 COPY package.json package-lock.json* ./
 RUN npm ci --no-audit --no-fund
 COPY . .
 RUN npm run build
 
-FROM nginx:1.31.6-alpine
+FROM nginx:1.31.7-alpine
 LABEL org.opencontainers.image.title="OhMyRasp Sentinel Console" \
       org.opencontainers.image.description="Application-centric RASP control console"
 COPY nginx.conf /etc/nginx/conf.d/default.conf
