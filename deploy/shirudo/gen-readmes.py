@@ -293,12 +293,12 @@ def render_top_readme(
     w("> **Generated** by `deploy/shirudo/gen-readmes.py` from `java-agent/` sources and test suites.")
     w("> Re-run after changing hooks, transformers, or detectors; `--check` fails CI when stale.")
     w("")
-    w("This directory packages OhMyRASP's standalone, daemonless Java runtime")
-    w("self-protection agents as [shirudo](https://github.com/shirudo-dev/shirudo) Java")
-    w("upatches (`.bee` packages and signed `.upatch` artifacts).")
+    w("Packages OhMyRASP's standalone, daemonless Java runtime self-protection agents as")
+    w("[shirudo](https://github.com/shirudo-dev/shirudo) Java upatches (`.bee` packages and")
+    w("signed `.upatch` artifacts).")
     w("")
     w("Pre-built staged JARs and the full `deploy/shirudo/` bundle")
-    w("(`ohmyrasp-shirudo-upatches-<version>.tar.gz`) are also published on")
+    w("(`ohmyrasp-shirudo-upatches-<version>.tar.gz`) are published on")
     w("[GitHub Releases](https://github.com/xuing/oh-my-rasp/releases), ready to sign")
     w("with `shirudo bpm build`.")
     w("")
@@ -349,8 +349,8 @@ def render_top_readme(
         j25_items = jdk25_grp.get(cat, [])
         if not bp_items and not j25_items:
             continue
-        bp_str = ", ".join(f"`{t.replace('Java8', 'Java*')}`" for t in bp_items) if bp_items else "—"
-        j25_str = ", ".join(f"`{m}`" for m in j25_items) if j25_items else "—"
+        bp_str = ", ".join(f"`{t.replace('Java8', 'Java*')}`" for t in bp_items) if bp_items else "-"
+        j25_str = ", ".join(f"`{m}`" for m in j25_items) if j25_items else "-"
         w(f"| **{cat}** | {CATEGORY_DESCRIPTIONS[cat]} | {bp_str} | {j25_str} |")
     w("")
     non_req = ", ".join(f"`detect{c}`" for c in jdk25["non_req_blocks"])
@@ -363,12 +363,12 @@ def render_top_readme(
     w("")
     w("Each shirudo upatch JAR embeds `META-INF/ohmyrasp-shirudo.properties` so it runs without a host daemon, control file, or spool rotation:")
     w("")
-    w("- `standalone=true` — disables daemon polling and cloud upload (`cloud_direct` forced off).")
-    w("- `lock_config=true` — read strictly from the signed JAR; ignores `/tmp/ohmyrasp-control.json`, `OHMYRASP_MODE=off`, and `OHMYRASP_CONTROL`.")
-    w("- `mode=block` — enables blocking immediately at JVM startup (use `--mode monitor` when building for observe-only rollout).")
-    w("- `control=none` — starts zero background control-poller threads.")
-    w("- `log=stderr` — writes structured JSON detection events directly to `stderr` with zero file-writer threads and no `/tmp/ohmyrasp-events.jsonl`.")
-    w("- `latency_sample=0` — suppresses benign `hook_latency` telemetry lines.")
+    w("- `standalone=true`: disables daemon polling and cloud upload (`cloud_direct` forced off).")
+    w("- `lock_config=true`: read strictly from the signed JAR; ignores `/tmp/ohmyrasp-control.json`, `OHMYRASP_MODE=off`, and `OHMYRASP_CONTROL`.")
+    w("- `mode=block`: enables blocking immediately at JVM startup (use `--mode monitor` when building for observe-only rollout).")
+    w("- `control=none`: starts zero background control-poller threads.")
+    w("- `log=stderr`: writes structured JSON detection events directly to `stderr` with zero file-writer threads and no `/tmp/ohmyrasp-events.jsonl`.")
+    w("- `latency_sample=0`: suppresses benign `hook_latency` telemetry lines.")
     w("")
     w("## Build")
     w("")

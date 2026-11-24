@@ -1,17 +1,12 @@
-# Upgrade And Downgrade Runbook
+# Upgrade and Downgrade Runbook
 
-This runbook covers control-plane application upgrades for Docker Compose and
-Helm deployments. Database migrations are forward-only. If an upgrade applies a
-schema change, downgrade is performed by restoring the pre-upgrade PostgreSQL
-and ClickHouse backups, then starting the previous API and web versions.
+This runbook covers control-plane upgrades and downgrades for Docker Compose and Helm deployments. Database migrations are forward-only: if an upgrade applies a schema change, downgrade requires restoring the pre-upgrade PostgreSQL and ClickHouse backups before starting the previous API and web versions.
 
 ## Pre-Upgrade Checklist
 
-1. Read the release notes and identify whether PostgreSQL or ClickHouse
-   migrations changed.
-2. Pin the target API and web image tags or source revision. Do not upgrade from
-   `latest` without recording the exact image digests.
-3. Take a backup using [backup-restore.md](./backup-restore.md).
+1. Review release notes and check whether PostgreSQL or ClickHouse migrations changed (`api/internal/storage/migrations/`).
+2. Pin the target API/web image tags or Git revision; record exact digests rather than relying on floating tags.
+3. Take a coordinated backup using [backup-restore.md](./backup-restore.md).
 4. Confirm the current stack is healthy:
 
 ```bash
@@ -20,8 +15,7 @@ curl -fsS http://localhost:18090/readyz
 curl -fsS http://localhost:18091/
 ```
 
-5. Pause scheduled maintenance jobs or external automation that might mutate
-   policies, users, settings, or alert rules during the upgrade.
+5. Pause scheduled cleanup jobs or external automation that mutates policies, users, settings, or alert rules during the window.
 
 ## PostgreSQL 18 to 19
 
@@ -84,7 +78,7 @@ rolling back to the 18 snapshot.
 ## Docker Compose Upgrade
 
 When upgrading from PostgreSQL 18, complete the [database migration](#postgresql-18-to-19) first.
-For routine application upgrades, run from the repository root after checking out the target revision:
+For routine application upgrades, run from the repository root on the target revision:
 
 ```bash
 export COMPOSE_FILE=docker-compose.yml
@@ -104,18 +98,16 @@ curl -fsS http://localhost:18091/
 deploy/scripts/smoke-control-plane.sh
 ```
 
-Then log in and verify:
+Log in to the console and verify:
 
-- Overview loads current application, Agent, and event counts.
-- Applications, Agents, Policies, Events, Observability, and Access & Audit
-  pages load.
-- An Agent heartbeat and policy pull succeeds.
-- A test admin login appears in the audit log.
+- Overview shows current application, Agent, and event counts.
+- Applications, Agents, Policies, Events, Observability, and Access & Audit pages load.
+- An Agent heartbeat and policy pull succeed.
+- The test login appears in the audit log.
 
 ## Docker Compose Downgrade
 
-If the failed upgrade did not apply database migrations, downgrade only the
-application containers:
+If no database migrations were applied, roll back only the application containers:
 
 ```bash
 export COMPOSE_FILE=docker-compose.yml
@@ -125,26 +117,25 @@ docker compose -f "$COMPOSE_FILE" build migrate api web
 docker compose -f "$COMPOSE_FILE" up -d --no-deps --build api web
 ```
 
-If the failed upgrade applied migrations, restore the pre-upgrade backup first:
+If migrations were applied, restore the pre-upgrade backup first:
 
 ```bash
 export COMPOSE_FILE=docker-compose.yml
 export BACKUP_DIR="$PWD/backups/<pre-upgrade-timestamp>"
 
 docker compose -f "$COMPOSE_FILE" stop api web migrate
-# Follow the PostgreSQL and ClickHouse restore steps in backup-restore.md.
+# Restore PostgreSQL and ClickHouse using backup-restore.md.
 git checkout <previous-source-revision>
 docker compose -f "$COMPOSE_FILE" build migrate api web
 docker compose -f "$COMPOSE_FILE" run --rm migrate
 docker compose -f "$COMPOSE_FILE" up -d api web
 ```
 
-Do not try to manually delete migration rows or reverse schema changes in
-place. Treat the backup as the downgrade boundary.
+Do not delete `schema_migrations` rows or reverse schema changes manually in place.
 
 ## Helm Upgrade
 
-Render and review changes before applying:
+Preview the upgrade diff before applying:
 
 ```bash
 helm upgrade --install ohmyrasp-control deploy/helm/ohmyrasp-control \
@@ -154,7 +145,7 @@ helm upgrade --install ohmyrasp-control deploy/helm/ohmyrasp-control \
   --dry-run
 ```
 
-Apply the upgrade:
+Apply the upgrade (replace `deploy/helm/ohmyrasp-control` with `oci://ghcr.io/<namespace>/charts/ohmyrasp-control --version <version>` when installing published charts):
 
 ```bash
 helm upgrade --install ohmyrasp-control deploy/helm/ohmyrasp-control \
@@ -164,19 +155,17 @@ helm upgrade --install ohmyrasp-control deploy/helm/ohmyrasp-control \
   --wait
 ```
 
-The chart runs `ohmyrasp-migrate` as a pre-install/pre-upgrade hook when
-`migrations.enabled=true`.
+When `migrations.enabled=true`, Helm runs `ohmyrasp-migrate` as a `pre-install,pre-upgrade` hook Job with `before-hook-creation,hook-succeeded` deletion policy.
 
 Verify rollout and health:
 
 ```bash
 kubectl -n ohmyrasp rollout status deploy/ohmyrasp-api
 kubectl -n ohmyrasp rollout status deploy/ohmyrasp-web
-kubectl -n ohmyrasp get job ohmyrasp-migrate
+kubectl -n ohmyrasp get pods
 ```
 
-Port-forward or use the ingress/service endpoint to check `/healthz`,
-`/readyz`, the web root, login, and the primary navigation pages.
+Use your ingress or `kubectl port-forward` to verify `/healthz`, `/readyz`, the console root, login, and main views.
 
 ## Helm Downgrade
 
@@ -186,7 +175,7 @@ List release history:
 helm -n ohmyrasp history ohmyrasp-control
 ```
 
-If no migrations were applied, roll back the release:
+If no migrations were applied, roll back the Helm release:
 
 ```bash
 helm -n ohmyrasp rollback ohmyrasp-control <revision> --wait
@@ -196,12 +185,11 @@ kubectl -n ohmyrasp rollout status deploy/ohmyrasp-web
 
 If migrations were applied:
 
-1. Scale API and web to zero.
-2. Restore the pre-upgrade PostgreSQL and ClickHouse backups.
-3. Clear or restore Valkey.
-4. Roll back the Helm release or reinstall the previous chart values and image
-   tags.
-5. Run the same health and login checks as an upgrade.
+1. Scale `deploy/ohmyrasp-api` and `deploy/ohmyrasp-web` to zero.
+2. Restore the pre-upgrade PostgreSQL and ClickHouse backups using [backup-restore.md](./backup-restore.md).
+3. Flush or restore Valkey.
+4. Roll back the Helm release or reinstall the previous chart and image tags.
+5. Run the upgrade verification checks.
 
 ```bash
 kubectl -n ohmyrasp scale deploy/ohmyrasp-api deploy/ohmyrasp-web --replicas=0
@@ -211,11 +199,11 @@ helm -n ohmyrasp rollback ohmyrasp-control <revision> --wait
 
 ## Post-Upgrade Monitoring
 
-For the first 30 minutes after upgrade or downgrade, watch:
+Watch these signals for 30 minutes after an upgrade or downgrade:
 
-- API error rate and `/metrics`.
-- PostgreSQL and ClickHouse connection errors.
-- Migration job logs.
-- Login success and audit-log creation.
-- Agent heartbeat freshness and policy-pull latency.
-- Event ingest volume and alert delivery queue growth.
+- API error rate and `/metrics` (`ohmyrasp_api_up`, `ohmyrasp_metrics_scrape_error`).
+- PostgreSQL and ClickHouse connection errors and `ohmyrasp_event_outbox_undelivered`.
+- Migration job logs (`kubectl -n ohmyrasp logs job/ohmyrasp-migrate` if retained or failed).
+- Login success and audit-log entries.
+- Agent heartbeat freshness and policy-pull latency (`ohmyrasp_policy_pull_latency_seconds`).
+- Event ingest lag (`ohmyrasp_event_ingest_lag_seconds`) and alert delivery status.

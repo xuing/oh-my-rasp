@@ -1,26 +1,17 @@
-# Backup And Restore Runbook
+# Backup and Restore Runbook
 
-This runbook covers the self-hosted OhMyRasp control plane in this directory.
-PostgreSQL is the authoritative control-plane store. ClickHouse stores
-analytics and event detail tables. Valkey is a cache for sessions, policy pulls,
-and rate limiting; it can be rebuilt from PostgreSQL and Agent traffic.
+This runbook covers backup and restore for the self-hosted OhMyRASP control plane. PostgreSQL is the authoritative control-plane store, ClickHouse stores analytics and event detail tables, and Valkey caches sessions, agent policies, and rate-limit state (rebuilt automatically from PostgreSQL and live traffic).
 
 ## Backup Scope
 
-Back up these stores together under one timestamp:
+Back up these components together under one timestamp:
 
-- PostgreSQL: users, sessions, applications, environments, Agents, policies,
-  dependency inventory, event ingest outbox, settings, alert rules, alert
-  deliveries, and audit logs.
-- ClickHouse: security events, hook/performance/crash detail tables, dependency
-  observations, and overhead rollups.
-- Agent artifacts: uploaded Java Agent ZIP packages in the
-  `agent-artifacts` Compose volume or the Helm artifact PVC.
-- Valkey: optional. Restore is not required for correctness; missing cache data
-  is repopulated by logins, policy pulls, and live traffic.
+- **PostgreSQL**: users, sessions, applications, environments, Agents, policies, dependency inventory, event ingest outbox, settings, alert rules, alert deliveries, and audit logs.
+- **ClickHouse**: security events, hook/performance/crash/error detail tables, dependency observations, and overhead rollups.
+- **Agent artifacts**: uploaded Java Agent ZIP packages in the `agent-artifacts` Compose volume or the Helm artifact PVC.
+- **Valkey**: optional. Restore is not required for correctness; logins and policy pulls repopulate it.
 
-Use a maintenance window for consistent backups when possible. Stop API writes
-before taking a cold ClickHouse volume backup.
+Use a maintenance window and stop API writes before taking a cold ClickHouse volume backup.
 
 ## Docker Compose Backup
 
@@ -54,10 +45,11 @@ docker run --rm \
 docker compose -f "$COMPOSE_FILE" up -d clickhouse api web
 ```
 
-Optionally capture Valkey for faster warm restore:
+Optionally capture Valkey for a faster warm restore:
 
 ```bash
-docker compose -f "$COMPOSE_FILE" exec -T valkey valkey-cli BGSAVE
+docker compose -f "$COMPOSE_FILE" exec -T valkey \
+  sh -c 'valkey-cli -a "$VALKEY_PASSWORD" BGSAVE'
 docker cp "$(docker compose -f "$COMPOSE_FILE" ps -q valkey)":/data/dump.rdb \
   "$BACKUP_DIR/valkey-dump.rdb"
 ```
@@ -71,7 +63,7 @@ docker run --rm \
   busybox sh -c 'tar czf /backup/agent-artifacts.tgz -C /data .'
 ```
 
-Record the running image/source version with the backup:
+Record the running image and source revision with the backup:
 
 ```bash
 docker compose -f "$COMPOSE_FILE" images > "$BACKUP_DIR/images.txt"
@@ -80,8 +72,7 @@ git rev-parse HEAD > "$BACKUP_DIR/source-revision.txt" 2>/dev/null || true
 
 ## Docker Compose Restore
 
-Restore into an isolated environment first when possible. Stop API and web
-before replacing database contents:
+Test restores in an isolated environment first when possible. Stop API and web before replacing database contents:
 
 ```bash
 export COMPOSE_FILE=docker-compose.yml
@@ -119,11 +110,12 @@ docker run --rm \
   busybox sh -c 'tar xzf /backup/clickhouse-data.tgz -C /data'
 ```
 
-Valkey can usually be cleared instead of restored:
+Flush Valkey instead of restoring stale cache entries:
 
 ```bash
 docker compose -f "$COMPOSE_FILE" up -d valkey
-docker compose -f "$COMPOSE_FILE" exec -T valkey valkey-cli FLUSHDB
+docker compose -f "$COMPOSE_FILE" exec -T valkey \
+  sh -c 'valkey-cli -a "$VALKEY_PASSWORD" FLUSHDB'
 ```
 
 Restore uploaded Agent artifacts:
@@ -157,63 +149,44 @@ curl -fsS http://localhost:13000/api/health
 deploy/scripts/smoke-control-plane.sh
 ```
 
-Log in with an admin account and verify applications, Agents, policies, events,
-alert deliveries, and audit logs are visible.
+Log in with an admin account and verify applications, Agents, policies, events, alert deliveries, and audit logs are visible.
 
 ## Compose Volume Notes
 
-Compose mounts the PostgreSQL data volume at `/var/lib/postgresql`. PostgreSQL
-19 stores its cluster under `19/docker` inside that volume. For existing
-PostgreSQL 18 installations, follow the [18 to 19 migration](./upgrade-downgrade.md#postgresql-18-to-19)
-before starting the new stack.
-
-Prometheus reads `deploy/prometheus/prometheus.yml` from the host. The file and
-its parent directories must be readable/traversable by the Prometheus container
-user, for example:
+- `postgres:19.0` mounts `postgres-data` at `/var/lib/postgresql` (not `/var/lib/postgresql/data`) in [docker-compose.yml](../../docker-compose.yml); PostgreSQL 19 stores its cluster under `19/docker` inside that volume. For existing PostgreSQL 18 installations, follow the [18 to 19 migration](./upgrade-downgrade.md#postgresql-18-to-19) before starting the new stack.
+- Prometheus reads `deploy/prometheus/prometheus.yml`, and alert rules, Grafana dashboards, and Alertmanager configs are mounted from `deploy/helm/ohmyrasp-control/files/`. Keep those host files readable by container users (`0755` directories, `0644` files):
 
 ```bash
-chmod 755 deploy deploy/prometheus
-chmod 644 deploy/prometheus/prometheus.yml
-```
-
-Prometheus alert rules, Grafana dashboards, and Alertmanager examples are
-mounted from the Helm chart asset directory. Keep these readable by container
-users:
-
-```bash
-chmod 755 deploy/helm deploy/helm/ohmyrasp-control deploy/helm/ohmyrasp-control/files
+chmod 755 deploy deploy/prometheus deploy/helm deploy/helm/ohmyrasp-control deploy/helm/ohmyrasp-control/files
 chmod 755 deploy/helm/ohmyrasp-control/files/prometheus deploy/helm/ohmyrasp-control/files/grafana
 chmod 755 deploy/helm/ohmyrasp-control/files/alertmanager deploy/helm/ohmyrasp-control/files/alertmanager/templates
-chmod 644 deploy/helm/ohmyrasp-control/files/prometheus/*.yml
+chmod 644 deploy/prometheus/prometheus.yml deploy/helm/ohmyrasp-control/files/prometheus/*.yml
 chmod 644 deploy/helm/ohmyrasp-control/files/grafana/*.json
 chmod 644 deploy/helm/ohmyrasp-control/files/alertmanager/*.yml
 chmod 644 deploy/helm/ohmyrasp-control/files/alertmanager/templates/*.tmpl
 ```
 
-## Helm Backup And Restore
+## Helm Backup and Restore
 
-The Helm chart does not deploy PostgreSQL, ClickHouse, or Valkey by itself. Use
-the managed-service snapshot mechanism or the operator runbook for those
-services. The minimum backup set is:
+The `ohmyrasp-control` Helm chart does not deploy PostgreSQL, ClickHouse, or Valkey. Back up and restore those backing services using your cluster or managed-service procedures. Minimum backup set:
 
 - PostgreSQL logical dump or managed snapshot.
-- ClickHouse snapshot, backup, or volume snapshot.
-- Agent artifact PVC snapshot or archive, when `api.artifacts.persistence.enabled=true`.
-- Helm release values:
+- ClickHouse snapshot or volume backup.
+- Agent artifact PVC snapshot or archive when `api.artifacts.persistence.enabled=true`.
+- Helm release values and manifest:
 
 ```bash
 helm -n ohmyrasp get values ohmyrasp-control --all > "$BACKUP_DIR/helm-values.yaml"
 helm -n ohmyrasp get manifest ohmyrasp-control > "$BACKUP_DIR/helm-manifest.yaml"
 ```
 
-For restore:
+Restore order:
 
-1. Scale the API and web deployments to zero.
-2. Restore PostgreSQL and ClickHouse using the backing-service procedure.
-3. Restore the Agent artifact PVC if managed uploads are enabled.
-4. Clear or restore Valkey.
-5. Reinstall the same chart/image tags with the saved values.
-6. Run health checks and login verification.
+1. Scale `deploy/ohmyrasp-api` and `deploy/ohmyrasp-web` to zero.
+2. Restore PostgreSQL and ClickHouse.
+3. Restore the Agent artifact PVC if persistence is enabled.
+4. Flush or restore Valkey.
+5. Reinstall the matching chart version and image tags with the saved values.
 
 ```bash
 kubectl -n ohmyrasp scale deploy/ohmyrasp-api deploy/ohmyrasp-web --replicas=0
@@ -229,13 +202,11 @@ kubectl -n ohmyrasp rollout status deploy/ohmyrasp-web
 
 ## Restore Acceptance Checks
 
-Run these before reopening traffic:
+Verify before reopening traffic:
 
 - `/healthz` and `/readyz` return HTTP 200.
-- Admin login succeeds and creates an audit record.
-- Application, Agent, policy, system setting, alert rule, alert delivery, and
-  audit-log pages load.
+- Admin login succeeds and records an audit entry.
+- Applications, Agents, Policies, System Settings, Alert Rules, Alert Deliveries, and Audit Logs load in the console.
 - Recent event counts match the recovery point objective.
 - Agents can heartbeat and pull policy.
-- Daemon artifact metadata/download succeeds for at least one uploaded or
-  generated Java Agent ZIP.
+- Daemon artifact metadata and download succeed for at least one uploaded or filesystem Java Agent ZIP.

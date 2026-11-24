@@ -1,8 +1,7 @@
 ## What and why
 
 <!--
-Describe the change and the motivation behind it. Link to the issue(s)
-this closes with "Closes #NNN" so GitHub auto-closes them on merge.
+Describe the change and motivation. Link related issue(s) with "Closes #NNN".
 -->
 
 Closes #
@@ -10,8 +9,7 @@ Closes #
 ## Changes
 
 <!--
-Bullet-point summary of the notable changes. Be specific enough that a
-reviewer can follow without reading every line of diff.
+Specific bullet-point summary of observable changes.
 -->
 
 -
@@ -19,32 +17,23 @@ reviewer can follow without reading every line of diff.
 ## Tests run
 
 <!--
-List the test commands you executed and their outcome. At minimum run
-the suite for the component(s) you touched.
-
-  api/        go test ./...
-  console/    pnpm test (vitest)
-  java-agent/ mvn verify -pl agent-jdk25
-  daemon/     cargo test
+List executed commands and outcomes for every touched component:
+  api/            go test ./...
+  console/        npm run build && npm test
+  java-agent/     gradle --no-daemon :agent-jdk25:check
+                  bash scripts/check-detector-parity.sh
+                  python3 scripts/check-vulhub-java-coverage.py
+  daemon/         cargo test --locked
+  deploy/shirudo/ ./deploy/shirudo/verify-shirudo-upatch.sh
 -->
 
 - [ ] Relevant unit / integration tests pass locally.
-- [ ] New behaviour is covered by tests (or explain why it is not
-      practical).
+- [ ] New behaviour is covered by tests (or explain why not practical).
 
 ## Checklist
 
-- [ ] **Docs updated** — if you changed user-visible behaviour, updated
-      the relevant file(s) under `docs/` or inline in the component.
-- [ ] **i18n keys** — if the change adds or renames UI strings in
-      `console/`, the corresponding keys are present in all locale files
-      under `console/src/locales/`.
-- [ ] **Coverage docs regenerated** — if you added or modified a hook or
-      detector in `java-agent/`, re-run the coverage generator and
-      committed the updated `java-agent/docs/DETECTION-COVERAGE.md` and
-      `java-agent/docs/FALSE-POSITIVE-REPORT.md`.
-- [ ] **Breaking changes** — if this PR changes an API contract, wire
-      format, or config schema, the change is called out explicitly above
-      and migration steps are documented.
-- [ ] **No secrets or credentials** committed (checked with
-      `git diff HEAD~1 | grep -iE 'password|secret|token|key'`).
+- [ ] **Docs updated:** updated the owning reference under `docs/` in the same PR (linking to source files/symbols; `docs/internal/` left frozen).
+- [ ] **Console i18n keys:** if UI strings in `console/` changed, `console/src/i18n/messages.ts` passes `npm run i18n:check`.
+- [ ] **Generated docs fresh:** if hooks, detectors, or Vulhub scripts changed, ran `python3 java-agent/scripts/gen-detection-coverage.py --check`, `bash java-agent/scripts/run-fp-report.sh`, and `python3 deploy/shirudo/gen-readmes.py --check`, and committed updated outputs.
+- [ ] **Breaking changes:** API, wire-format, or config schema changes are called out above with migration steps.
+- [ ] **No secrets or credentials** committed (checked with `git diff HEAD~1 | grep -iE 'password|secret|token|key'`).

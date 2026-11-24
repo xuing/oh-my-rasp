@@ -1,6 +1,6 @@
 # OhMyRASP
 
-Self-hosted Java RASP built on ASM bytecode instrumentation, call-stack analysis, and request-parameter correlation. Runs inside the JVM across JDK 8, 11, 17, 21, and 25—either paired with a Rust host daemon and Go/React control plane, or standalone as signed [shirudo](https://github.com/shirudo-dev/shirudo) Java upatches.
+Self-hosted Java RASP built on ASM bytecode instrumentation, `StackWalker` call-stack analysis, and request-parameter correlation. Runs inside the JVM across JDK 8, 11, 17, 21, and 25, either paired with a Rust host daemon and Go/React control plane, or standalone as signed [shirudo](https://github.com/shirudo-dev/shirudo) Java upatches.
 
 [![CI](https://github.com/xuing/oh-my-rasp/actions/workflows/ohmyrasp-control.yml/badge.svg)](https://github.com/xuing/oh-my-rasp/actions/workflows/ohmyrasp-control.yml)
 [![Release](https://img.shields.io/github/v/release/xuing/oh-my-rasp?include_prereleases)](https://github.com/xuing/oh-my-rasp/releases)
@@ -10,27 +10,39 @@ Self-hosted Java RASP built on ASM bytecode instrumentation, call-stack analysis
 
 **Languages:** English | [简体中文](README.zh-CN.md)
 
----
+## Try the local demo
 
-## See it block an attack in 60 seconds
-
-Start Tomcat 11 with the agent in `block` mode and the Rust daemon's local console:
+Start Tomcat 11 with the agent in `block` mode and the Rust daemon's local console (first source build typically takes 1–2 minutes depending on network and CPU):
 
 ```bash
 cd java-agent
-docker compose -f docker-compose.daemon.yml up -d --build
+docker compose -f docker-compose.daemon.yml up -d --build --wait
 
 # Send a SQL injection payload
-curl -L "http://localhost:18090/rasp/sqli?id=1+OR+1=1"
-# -> blocked mid-request and redirected to /rasp/blocked
+curl -i -G --data-urlencode "value=' OR '1'='1" "http://localhost:18090/rasp/sql"
+# -> HTTP/1.1 302 redirecting to /rasp/blocked?hook=sql&algorithm=sql_userinput&message=SQL+query+structure+appears+altered+by+request+input
 
-# Live attack events, hook latency, and mode switching (off / monitor / block)
-open http://localhost:7070
+# Query recent attack events from the daemon API
+curl -s "http://localhost:7070/api/events?limit=5"
 ```
+
+Open `http://localhost:7070` in a browser for the daemon's live attack events, hook latency, and runtime mode switching (`off` / `monitor` / `block`).
 
 > The demo app uses port `18090`, which is also the control-plane API port. Set `OHMYRASP_DEMO_PORT` if you run both together.
 
+> The mode lives in `control.json` on the demo's volume and survives restarts. If the attack returns `200 rows=1` instead of `302`, the volume still holds `monitor` from an earlier run or a console switch: reset it with `docker compose -f docker-compose.daemon.yml down -v`.
+
 For a side-by-side baseline vs. protected comparison across Tomcat 9, 10, and 11, see [docs/getting-started.md](docs/getting-started.md).
+
+## When to use OhMyRASP
+
+OhMyRASP fits self-hosted Java services on JDK 8, 11, 17, 21, or 25 where you want sink-level blocking inside the JVM, optionally backed by host-daemon telemetry and a centralized policy console, or deployed daemonless via shirudo.
+
+**Trade-offs and limits:**
+
+- **Signature-based detection, not bytecode taint tracking:** Sinks correlate arguments against `ThreadLocal<RequestContext>` request parameters via substring matching and inspect live call stacks. Arbitrary multi-hop string transformations or async executor boundaries without HTTP context are outside taint correlation unless covered by a stack or sink rule.
+- **JVM-process trust boundary:** A `-javaagent` runs inside the JVM it protects. `root` or the JVM-launching user can omit `-javaagent` or override environment variables unless you deploy signed shirudo JARs (`lock_config=true`) alongside kernel enforcement (such as shirudo BPF upatches).
+- **Pre-release status:** `v0.2.0-alpha.1` is an experimental pre-release. APIs, policy schemas, and packaging formats may change before `1.0`.
 
 ## By the numbers
 
@@ -38,8 +50,8 @@ Every hook, detector, and Vulhub replay script lives in this repository and runs
 
 | Metric | Value | Source |
 |---|---|---|
-| Instrumented sink families | 28 ASM hook modules | [DETECTION-COVERAGE.md](java-agent/docs/DETECTION-COVERAGE.md) |
-| Detection engine | 54 capabilities, 43 algorithm signatures asserted end-to-end | [docs/detection.md](docs/detection.md) |
+| Instrumented sink families | 28 ASM hook modules (`agent-jdk25`); 24 ASM transformers per backport (`java8`, `java11`, `java17`) | [DETECTION-COVERAGE.md](java-agent/docs/DETECTION-COVERAGE.md) |
+| Detection engine | 54 `DetectorEngine` capabilities, 43 verified algorithm signatures asserted end-to-end | [docs/detection.md](docs/detection.md) |
 | Exploit replay suite | 136 scenarios across 53 [Vulhub](https://github.com/vulhub/vulhub) roots (130 CVEs tracked) | [vulhub-coverage.md](docs/development/vulhub-coverage.md) |
 | Benign corpus precision | `0 / 83` false positives across 14 categories | [FALSE-POSITIVE-REPORT.md](java-agent/docs/FALSE-POSITIVE-REPORT.md) |
 | Supported JVMs | Builds for JDK 8, 11, 17, and a shared JDK 21/25 build (`javax.servlet` & `jakarta.servlet`) | [docs/agent.md](docs/agent.md) |
@@ -52,10 +64,10 @@ Every hook, detector, and Vulhub replay script lives in this repository and runs
 
 ## How detection works
 
-Rather than matching regexes on HTTP payloads at a proxy, OhMyRASP intercepts execution inside JDK sinks:
+OhMyRASP intercepts execution inside JDK sinks rather than matching regexes on HTTP payloads at a proxy:
 
-- **Request-parameter correlation:** Process execution and SQL sinks check whether suspect arguments trace back to live HTTP request parameters via `ThreadLocal<RequestContext>`, separating attacker input from scheduled internal jobs.
-- **`StackWalker` call-stack classification:** At sinks such as `ProcessBuilder.start`, the agent inspects live stack frames to tell Struts2 OGNL, Spring SpEL, MVEL, Groovy, and XStream gadget chains apart from normal application calls.
+- **Request-parameter correlation:** Process execution and SQL sinks check whether suspect arguments match live HTTP request parameters via `ThreadLocal<RequestContext>` substring checks, separating attacker input from scheduled internal jobs.
+- **`StackWalker` call-stack classification:** At sinks such as `ProcessBuilder.start`, the agent inspects live stack frames to distinguish Struts2 OGNL, Spring SpEL, MVEL, Groovy, and XStream gadget chains from normal application calls.
 - **Six-form path confusion decoding:** Incoming URIs are normalized simultaneously across raw, single-decoded, double-decoded, low-byte Unicode, overlong UTF-8, and lenient percent forms to catch traversal mismatches without per-framework rules.
 - **Cryptographic token checks:** Default-secret JWTs are verified by real HMAC execution, and Shiro `rememberMe` cookies are decrypted under known default keys to check for Java serialization magic bytes.
 - **Zero-allocation Java2Shell guard (CVE-2026-114938):** Instruments `java.util.Base64$Decoder.decode0` with a pure arithmetic boundary check (`length >= 65`, `1 <= (length & 63) <= 3`, `1 <= padding <= 2`, `padding <= remainder`, strict Base64 alphabet, `!isMIME`) before the native x86-64 AVX-512 stub can write out of bounds. Fires even outside HTTP requests and logs metadata only.
@@ -90,7 +102,7 @@ Build and sign all five `.bee` packages from source, or grab `ohmyrasp-shirudo-u
 # Build & sign all 5 .bee packages with your operator ML-DSA-87 keys
 ./deploy/shirudo/build-all.sh 0.2.0 --keys-dir <keys>
 
-# Or build JARs only and run the real-JVM Temurin 8/11/17/21/25 smoke suite
+# Or build JARs only and run Beefile/JAR checks + Temurin 8/11/17/21/25 smoke tests
 ./deploy/shirudo/build-all.sh --jar-only
 ./deploy/shirudo/verify-shirudo-upatch.sh
 ./deploy/shirudo/smoke-test.sh
@@ -100,9 +112,21 @@ See [deploy/shirudo/README.md](deploy/shirudo/README.md) for `shirudo bpm instal
 
 ## Quick Start
 
-### Option A: Download pre-built artifacts
+### Option A: Download pre-built artifacts (`v0.2.0-alpha.1`)
 
-Pre-built agent JARs (both standard and shirudo standalone), `ohmyrasp-shirudo-upatches-<version>.tar.gz`, `ohmyrasp-daemon-linux-amd64.tar.gz`, `SHA256SUMS.txt`, and SLSA provenance attestations are published on [GitHub Releases](https://github.com/xuing/oh-my-rasp/releases).
+The `v0.2.0-alpha.1` release on [GitHub Releases](https://github.com/xuing/oh-my-rasp/releases) publishes **12 release assets** (later releases add JDK 21 builds; see the [release runbook](docs/runbooks/release.md)):
+
+- **Standard Java agents:** `ohmyrasp-agent-java8.jar`, `ohmyrasp-agent-java11.jar`, `ohmyrasp-agent-java17.jar`, `ohmyrasp-agent.jar`
+- **Shirudo standalone Java upatch JARs:** `ohmyrasp-java8.jar`, `ohmyrasp-java11.jar`, `ohmyrasp-java17.jar`, `ohmyrasp-jdk25.jar`
+- **Bundles & archives:** `ohmyrasp-shirudo-upatches-<version>.tar.gz`, `ohmyrasp-daemon-linux-amd64.tar.gz`, `ohmyrasp-control-<version>.tgz`, `SHA256SUMS.txt`
+
+Container images (`ghcr.io/xuing/control-api`, `ghcr.io/xuing/control-web`) and the OCI Helm chart (`oci://ghcr.io/xuing/charts/ohmyrasp-control`) are published alongside the release assets. Verify checksums and GitHub artifact attestations before deploying:
+
+```bash
+sha256sum -c SHA256SUMS.txt
+gh attestation verify ohmyrasp-shirudo-upatches-<version>.tar.gz -R xuing/oh-my-rasp
+gh attestation verify ohmyrasp-control-<version>.tgz -R xuing/oh-my-rasp
+```
 
 ### Option B: Build the agent locally (Docker only)
 
@@ -156,28 +180,29 @@ Full walkthrough: [docs/getting-started.md](docs/getting-started.md).
 
 | Component | Stack | Role |
 |---|---|---|
-| `java-agent/` | Java 8/11/17/25, ASM 9.11.1 | In-JVM sink hooks, detection engine, NDJSON spool, shirudo standalone JARs |
-| `daemon/` | Rust | Tails agent spools, forwards events, serves local live console, injects agents |
-| `api/` | Go, OpenAPI 3.1 | RBAC, app/fleet inventory, policy rollout/canary/rollback, telemetry ingestion |
-| `console/` | React 19, Vite | Fleet dashboards, threat triage, policy editor, latency & posture views (EN/中文/日本語) |
+| `java-agent/` | Java 8/11/17/25, ASM 9.11.1 (shaded) | In-JVM sink hooks, detection engine, NDJSON spool, shirudo standalone JARs |
+| `daemon/` | Rust 1.100.0 (edition 2024) | Tails agent spools, forwards events, serves local live console, injects agents |
+| `api/` | Go 1.26.7, OpenAPI 3.1 | RBAC, app/fleet inventory, policy rollout/canary/rollback, telemetry ingestion |
+| `console/` | React 19, Vite 8, TypeScript 6, Tailwind CSS 4 | Fleet dashboards, threat triage, policy editor, latency & posture views (EN/中文/日本語) |
 | `deploy/` | Helm, Compose, shirudo | Kubernetes Helm chart, observability assets, [shirudo Java upatch packages](deploy/shirudo/README.md) |
 
 More detail: [docs/architecture.md](docs/architecture.md).
-
-## Project status
-
-OhMyRASP is pre-release software (`v0.2.0-alpha.1` experimental pre-release on [GitHub Releases](https://github.com/xuing/oh-my-rasp/releases)). APIs, policy schemas, and packaging may change between pre-releases. Do not rely on the JVM agent alone as a boundary against `root`; pair with kernel enforcement (such as shirudo BPF upatches) when host isolation is required.
 
 ## Development & Documentation
 
 ```bash
 # Go control plane
-docker run --rm -v "$PWD/api":/src -w /src golang:1.26.5 go test ./...
+docker run --rm -v "$PWD/api":/src -w /src golang:1.27.4 go test ./...
 
 # Web console
 cd console && npm ci && npm run build && npm test
 
+# Rust daemon
+cd daemon && cargo test --locked
+
 # Java agent unit tests + 136-scenario Docker acceptance suite
+docker run --rm -v "$PWD/java-agent":/workspace -w /workspace gradle:9.9.2-jdk25 \
+  gradle --no-daemon :agent-jdk25:check
 cd java-agent && bash scripts/acceptance.sh
 
 # Shirudo upatch Beefile/JAR checks + Temurin 8/11/17/21/25 smoke tests
@@ -186,10 +211,10 @@ cd java-agent && bash scripts/acceptance.sh
 ./deploy/shirudo/smoke-test.sh
 ```
 
-- [Getting started](docs/getting-started.md) · [Architecture](docs/architecture.md) · [Detection engine](docs/detection.md)
+- [Documentation index](docs/README.md) · [Getting started](docs/getting-started.md) · [Architecture](docs/architecture.md) · [Detection engine](docs/detection.md)
 - [Java agent](docs/agent.md) · [Shirudo upatch packages](deploy/shirudo/README.md) · [Console](docs/console.md) · [API reference](docs/api-reference.md)
 - [Operations runbooks](docs/runbooks/) · [Algorithm coverage](docs/development/algorithm-coverage.md) · [Vulhub coverage](docs/development/vulhub-coverage.md)
-- [Contributing](CONTRIBUTING.md) · [Security policy](SECURITY.md) (detection bypasses are explicitly in scope)
+- [Contributing](CONTRIBUTING.md) · [Changelog](CHANGELOG.md) · [Security policy](SECURITY.md) (detection bypasses are explicitly in scope)
 
 ## Acknowledgements
 

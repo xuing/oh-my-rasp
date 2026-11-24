@@ -1,89 +1,46 @@
-# OhMyRasp Sentinel Console
+# OhMyRASP Console
 
-A ground-up rewrite of the OhMyRasp control-plane web interface — an
-**application-centric** command deck for runtime application self-protection.
+Application-centric React 19 frontend for the OhMyRasp control plane (`console/`).
 
-This is a clean replacement for the legacy `web/` console. It does not share code
-with it; it is designed around the way operators actually run a RASP fleet:
-**pick an application, then everything is scoped to it.**
+See [`../docs/console.md`](../docs/console.md) for the full screen inventory, technology stack, nginx security headers, and E2E setup, and [`CONVENTIONS.md`](CONVENTIONS.md) for the mandatory i18n and theming rules every UI change must follow.
 
-## Why it exists
+## Quick Start
 
-The previous console was org-flat: 7 nav items rendered every application's data
-mixed together, with no way to scope to one application, and per-application
-protection settings were collapsed into global rows. This console fixes the
-information architecture:
-
-- A **global application switcher** in the top bar is the primary context. The
-  selected application (and an optional environment sub-scope) scopes every view —
-  overview, threats, instances, policies, software, observability, and protection
-  config. Selection persists across reloads.
-- **Per-application protection configuration** (hardening, allowlist, alerting,
-  dependency policy) is edited where it belongs — under the selected application —
-  and the UI states plainly that changes don't bleed into other applications.
-- Legacy URLs (`/dashboard`, `/events`, `/agents`, `/maintain/whitelist`, …)
-  redirect into the new structure instead of dumping users on a catch-all page.
-
-## Themes & i18n
-
-- **Light and dark themes**, persisted and defaulting to the OS preference, toggled
-  from the top bar. Built on semantic CSS-variable tokens (`src/styles.css`:
-  `@theme` = dark, `:root.light` = light), so the whole UI re-skins automatically.
-- **English / 中文 / 日本語**, switchable from the top bar and login, persisted to
-  `localStorage`. English-as-key dictionary in `src/i18n/`; `npm run i18n:check`
-  enforces that every `t()` key is translated in both non-English locales (and the
-  `build` script runs it).
-
-**These are framework rules, not options** — see [`CONVENTIONS.md`](CONVENTIONS.md).
-All new UI must route text through `t()` and use semantic color tokens.
-
-## Design
-
-"Sentinel" — an obsidian instrument deck. Dark, high-contrast, precise:
-
-- **Type:** Archivo (display) · Hanken Grotesk (body) · JetBrains Mono (readouts).
-- **Palette:** layered graphite surfaces, a disciplined signal-lime accent for
-  active/healthy/primary, and a severity signal scale for threats.
-- **Texture:** faint top signal-glow, a fine masked grid, brushed-metal hairlines.
-- Hand-rolled SVG charts (no generic chart library), staggered load reveals.
-
-## Stack (current standards)
-
-React 19 · TypeScript 7 · Vite 8 · Tailwind CSS v4 (CSS-first `@theme`) ·
-TanStack Router + Query · Motion · lucide-react. Routes are lazy-loaded so the
-initial bundle stays small (no >500 KB chunk).
-
-## Develop
+Requires Node.js `>=26` (`console/package.json`).
 
 ```bash
-npm install
-npm run dev          # http://localhost:5273  (proxies /api → VITE_API_TARGET, default :18090)
+npm ci
+npm run dev          # binds 0.0.0.0:5273, proxies /api -> VITE_API_TARGET (default http://localhost:18090)
 ```
 
-Point at a running control plane:
+Point the dev proxy at a custom control-plane API URL:
 
 ```bash
-VITE_API_TARGET=http://localhost:18090 npm run dev
+VITE_API_TARGET=http://127.0.0.1:18090 npm run dev
 ```
 
-## Build & ship
+## Build and Verify
 
 ```bash
-npm run build        # tsc -b && vite build  →  dist/
-npm run preview      # serve the production build
+npm run build        # i18n:check && tsc -b && vite build -> dist/
+npm run preview      # preview production build locally
+npm run lint         # eslint .
+npm run typecheck    # tsc -b --noEmit
+npm run i18n:check   # verify zh/ja translation parity and quoted t("...") keys
+npm test             # i18n:check && lint && typecheck && test:e2e
 ```
 
-A production image (`Dockerfile` + `nginx.conf`) serves the SPA same-origin with
-the API (`/api` is proxied to the `api` service), so it drops into the existing
-`docker-compose.yml` in place of the `web` service.
+Playwright suites: `npm run test:e2e` (mocked API on `http://127.0.0.1:5273`) and `npm run test:e2e:live` (live Compose console at `OHMYRASP_E2E_LIVE_URL`, default `http://127.0.0.1:18091`).
 
-## Structure
+## Directory Layout
 
-```
+```text
 src/
-  lib/         api client + types, session, app-context (the scope store), queries, format
-  components/  ui (design system), charts (SVG), shell (app-centric layout + switcher), page kit
-  routes/      login, overview, threats, instances, policies, protection, software, observability, access, not-found
-  router.tsx   auth-guarded lazy routes + legacy redirects
-  main.tsx     providers (QueryClient + Router)
+  lib/         API client + types, session store, app/env scope store, queries, theme, format
+  components/  UI primitives, SVG charts, app-centric shell + switcher, page helpers, toast
+  i18n/        useT(), translate(), zh/ja message tables
+  routes/      login, overview, threats, applications, instances, policies, protection, software, observability, access, not-found
+  router.tsx   auth-guarded lazy routes, RootErrorBoundary, legacy alias redirects
+  main.tsx     QueryClient + Router providers
+  styles.css   Tailwind v4 @theme dark tokens and :root.light overrides
 ```

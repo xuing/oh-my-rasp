@@ -3,12 +3,12 @@
 > **Generated** by `deploy/shirudo/gen-readmes.py` from `java-agent/` sources and test suites.
 > Re-run after changing hooks, transformers, or detectors; `--check` fails CI when stale.
 
-This directory packages OhMyRASP's standalone, daemonless Java runtime
-self-protection agents as [shirudo](https://github.com/shirudo-dev/shirudo) Java
-upatches (`.bee` packages and signed `.upatch` artifacts).
+Packages OhMyRASP's standalone, daemonless Java runtime self-protection agents as
+[shirudo](https://github.com/shirudo-dev/shirudo) Java upatches (`.bee` packages and
+signed `.upatch` artifacts).
 
 Pre-built staged JARs and the full `deploy/shirudo/` bundle
-(`ohmyrasp-shirudo-upatches-<version>.tar.gz`) are also published on
+(`ohmyrasp-shirudo-upatches-<version>.tar.gz`) are published on
 [GitHub Releases](https://github.com/xuing/oh-my-rasp/releases), ready to sign
 with `shirudo bpm build`.
 
@@ -50,12 +50,12 @@ Each package injects ASM bytecode hooks at JVM class-load / retransform time acr
 
 Each shirudo upatch JAR embeds `META-INF/ohmyrasp-shirudo.properties` so it runs without a host daemon, control file, or spool rotation:
 
-- `standalone=true` — disables daemon polling and cloud upload (`cloud_direct` forced off).
-- `lock_config=true` — read strictly from the signed JAR; ignores `/tmp/ohmyrasp-control.json`, `OHMYRASP_MODE=off`, and `OHMYRASP_CONTROL`.
-- `mode=block` — enables blocking immediately at JVM startup (use `--mode monitor` when building for observe-only rollout).
-- `control=none` — starts zero background control-poller threads.
-- `log=stderr` — writes structured JSON detection events directly to `stderr` with zero file-writer threads and no `/tmp/ohmyrasp-events.jsonl`.
-- `latency_sample=0` — suppresses benign `hook_latency` telemetry lines.
+- `standalone=true`: disables daemon polling and cloud upload (`cloud_direct` forced off).
+- `lock_config=true`: read strictly from the signed JAR; ignores `/tmp/ohmyrasp-control.json`, `OHMYRASP_MODE=off`, and `OHMYRASP_CONTROL`.
+- `mode=block`: enables blocking immediately at JVM startup (use `--mode monitor` when building for observe-only rollout).
+- `control=none`: starts zero background control-poller threads.
+- `log=stderr`: writes structured JSON detection events directly to `stderr` with zero file-writer threads and no `/tmp/ohmyrasp-events.jsonl`.
+- `latency_sample=0`: suppresses benign `hook_latency` telemetry lines.
 
 ## Build
 

@@ -7,46 +7,75 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-### Security
-- Relocate (shade) the bundled ASM library under `io.ohmyrasp.agent.shaded.asm`
-  in the primary `agent-jdk25` JAR so the agent can no longer shadow the
-  instrumented application's own ASM on the bootstrap classloader. The Java 8/11/17
-  backports already shaded ASM; this brings the primary agent in line.
-- Add strict security headers (Content-Security-Policy, X-Frame-Options,
-  X-Content-Type-Options, Referrer-Policy, Permissions-Policy) to the console's
-  nginx configuration.
-
 ### Added
-- Standalone daemonless shirudo Java upatch support across all four JDK tracks
-  (`ohmyrasp-java8.jar`, `ohmyrasp-java11.jar`, `ohmyrasp-java17.jar`,
-  `ohmyrasp-jdk25.jar`) with signed baked-in defaults
-  (`META-INF/ohmyrasp-shirudo.properties`), `deploy/shirudo/` `Beefile`
-  packaging, and real-JVM Docker smoke tests.
-- GitHub Release publishing in `ohmyrasp-release.yml` via
-  `deploy/scripts/publish-github-release.sh` (uploading Java agents, shirudo
-  upatch JARs/bundle, Rust daemon tarball, Helm chart, `SHA256SUMS.txt`, and
-  provenance attestations with SemVer-safe `Latest` reconciliation).
-- Continuous integration for the Java agent (`java-agent/**`) and the Rust
-  daemon (`daemon/**`), which previously ran no automated tests.
-- Dependency scanning (Dependabot), CodeQL, `govulncheck`, and `cargo audit`.
-- `NOTICE` file recording third-party attribution for the shaded ASM dependency.
-- `CODE_OF_CONDUCT.md`.
+- `deploy/shirudo/gen-readmes.py`: auto-generates `deploy/shirudo/README.md`
+  and per-track `ohmyrasp-{java8,java11,java17,jdk25}/README.md` with
+  source-derived hook, transformer, algorithm, and Vulhub coverage tables;
+  `deploy/shirudo/verify-shirudo-upatch.sh` enforces `--check`.
+- `docs/images/architecture.svg`: architectural overview diagram in root READMEs.
 
 ### Changed
 - The default Compose database is PostgreSQL 19. Existing PostgreSQL 18 deployments can follow the [volume migration and rollback procedure](docs/runbooks/upgrade-downgrade.md#postgresql-18-to-19).
 - The primary Java agent and standalone `ohmyrasp-jdk25.jar` run on both JDK 21 and 25. JDK 21 downloads are named `ohmyrasp-agent-jdk21.jar` and `ohmyrasp-jdk21.jar`. The `ohmyrasp-jdk21` Shirudo package uses the same standalone binary as `ohmyrasp-jdk25`.
-- README: removed a broken model-self-assessment badge and corrected the
-  detection description to accurately state that detection is signature-based
-  with request-parameter correlation and call-stack analysis layered on top
-  (not dataflow taint tracking).
+- Documentation overhaul across root guides, navigation (`docs/README.md`),
+  `CONTRIBUTING.md`, `SECURITY.md`, and `.github/PULL_REQUEST_TEMPLATE.md` to
+  align toolchains, commands, and generated-doc checks with the current tree.
+
+## [0.2.0-alpha.1] - 2026-11-25
+
+### Security
+- **Java agent (`agent-jdk25`):** relocate (shade) bundled ASM under
+  `io.ohmyrasp.agent.shaded.asm` so the bootstrap classloader no longer shadows
+  the instrumented application's own ASM, matching the `java8`/`java11`/`java17`
+  backports. Make `ObjectInputStream` deserialization filtering selective.
+- **Java agent (all 4 tracks):** add zero-allocation arithmetic guard on
+  `java.util.Base64$Decoder.decode0` for OpenJDK AVX-512 tail-underflow
+  (CVE-2026-114938), block Fastjson 1.2.83 `ClassLoader.getResourceAsStream`
+  remote/`/proc/self/fd/` gadgets inside `ParserConfig.checkAutoType`, and add
+  standalone JDBC `Statement` SQLi protection.
+- **Console (`console/`):** add strict security headers
+  (`Content-Security-Policy`, `X-Frame-Options`, `X-Content-Type-Options`,
+  `Referrer-Policy`, `Permissions-Policy`) to `console/nginx.conf`.
+- **Daemon (`daemon/`):** create telemetry temp files (spool, control, outbox)
+  with owner-only (`0600`) permissions.
+
+### Added
+- **Shirudo standalone Java upatch packages (`deploy/shirudo/`):** daemonless
+  JARs (`ohmyrasp-java8.jar`, `ohmyrasp-java11.jar`, `ohmyrasp-java17.jar`,
+  `ohmyrasp-jdk25.jar`) built via `shirudoUpatchJar` / `verifyShirudoUpatchJar`
+  with signed `META-INF/ohmyrasp-shirudo.properties` (`standalone=true`,
+  `lock_config=true`, `mode=block`, `control=none`, `log=stderr`,
+  `latency_sample=0`), `Beefile` packaging, and Temurin 8/11/17/21/25 Docker
+  smoke tests (`deploy/shirudo/smoke-test.sh`).
+- **Release pipeline (`.github/workflows/ohmyrasp-release.yml`):** automated
+  GitHub Release publishing via `deploy/scripts/publish-github-release.sh` with
+  12 release assets (4 standard JARs, 4 shirudo JARs,
+  `ohmyrasp-shirudo-upatches-<version>.tar.gz`, `ohmyrasp-daemon-linux-amd64.tar.gz`,
+  `ohmyrasp-control-<version>.tgz`, `SHA256SUMS.txt`), GHCR images, OCI Helm
+  chart, Trivy scan gate, and GitHub artifact attestations.
+- **CI & supply-chain checks:** automated CI workflows for `java-agent/` and
+  `daemon/`, `scripts/check-detector-parity.sh`, Dependabot, CodeQL,
+  `govulncheck`, and `cargo audit`.
+- **API & daemon observability:** `/metrics` endpoints and event outbox drainer
+  configuration (`api/`, `daemon/`).
+- `NOTICE` and `CODE_OF_CONDUCT.md`.
+
+### Changed
+- **Console:** removed legacy `web/` frontend; `console/` (React 19, Vite 8,
+  TypeScript 6, Tailwind CSS 4) is the sole frontend.
+- **Toolchains:** aligned Go (`1.26.7` / `golang:1.27.4`), JDK 25 + Gradle
+  `9.9.2`, Rust `1.100.0` (edition 2024), and Node `>=26` / Playwright `1.65.1`.
+- **READMEs:** clarified that detection is signature-based with
+  `ThreadLocal<RequestContext>` substring correlation and call-stack analysis
+  (not bytecode dataflow taint tracking).
 
 ### Fixed
-- Console: failed mutations (policy rollout/rollback, user disable, secret
-  rotation, cleanup) now surface an error to the operator instead of failing
-  silently; a route-level error boundary prevents a single malformed record
-  from blanking the entire console.
-- Daemon: telemetry temp files (spool, control, outbox) are created with
-  owner-only (`0600`) permissions instead of world-readable defaults.
+- **Console:** surface failed mutations (policy rollout/rollback, user disable,
+  secret rotation, cleanup) to operators and add a route-level error boundary.
+- **API:** drain event outbox, enforce rate-limiting across paths, stop leaking
+  internal errors, and fix policy cache invalidation across updates.
+- **Java agent:** port false-positive suppressions across `agent-java11`,
+  `agent-java17`, and `agent-jdk25` with parity enforcement.
 
 <!--
 Release process: when cutting a version, move the Unreleased section to a new

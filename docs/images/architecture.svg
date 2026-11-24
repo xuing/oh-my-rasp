@@ -1,239 +1,327 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1120 640" width="1120" height="640" role="img" aria-labelledby="title desc">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1120 650" width="1120" height="650" role="img" aria-labelledby="title desc">
   <title id="title">OhMyRASP Architecture</title>
-  <desc id="desc">Architecture of OhMyRASP showing the target host (Java Agent, Rust Host Daemon, and standalone Shirudo Java Upatch mode), the self-hosted control plane (Web Console, Go Control Plane API, PostgreSQL, ClickHouse, Valkey), and the observability stack (Prometheus, Alertmanager, Grafana).</desc>
+  <desc id="desc">Architecture of OhMyRASP showing the target host (Rust Host Daemon, Java Agent, and standalone Shirudo Java Upatch mode), the self-hosted control plane (Web Console, Go Control Plane API, PostgreSQL, ClickHouse, Valkey), and the observability stack (Prometheus, Alertmanager, Grafana).</desc>
 
   <defs>
     <style>
-      .font { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; }
+      .font { font-family: -apple-system, BlinkMacSystemFont, "Inter", "Segoe UI", Roboto, Helvetica, Arial, sans-serif; }
       .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; }
-      .title { font-size: 21px; font-weight: 700; fill: #0f172a; }
-      .subtitle { font-size: 12.5px; font-weight: 500; fill: #475569; }
-      .zone-label { font-size: 12px; font-weight: 700; letter-spacing: 0.4px; }
-      .card-title { font-size: 14px; font-weight: 700; fill: #ffffff; }
-      .card-badge { font-size: 10.5px; font-weight: 600; fill: #f8fafc; }
-      .body-text { font-size: 11.5px; fill: #1e293b; }
-      .body-muted { font-size: 11px; fill: #475569; }
-      .store-title { font-size: 13px; font-weight: 700; fill: #ffffff; }
-      .store-text { font-size: 11px; fill: #334155; }
-      .edge-label { font-size: 10.5px; font-weight: 600; fill: #334155; }
+      .title { font-size: 22px; font-weight: 650; fill: #0f172a; letter-spacing: -0.2px; }
+      .subtitle { font-size: 12.5px; font-weight: 450; fill: #64748b; }
+      .zone-label { font-size: 11px; font-weight: 600; letter-spacing: 0.8px; fill: #64748b; }
+      .card-title { font-size: 13.5px; font-weight: 600; fill: #0f172a; }
+      .badge-text { font-size: 10px; font-weight: 500; fill: #475569; }
+      .body { font-size: 11px; fill: #334155; }
+      .body .mono { font-size: 10.5px; fill: #1e293b; }
+      .note { font-size: 10.75px; fill: #64748b; font-style: italic; }
+      .store-title { font-size: 13px; font-weight: 600; fill: #0f172a; }
+      .edge-label { font-size: 10.5px; font-weight: 500; fill: #334155; }
+      .card { fill: #ffffff; }
+      .card-border { fill: none; stroke: #dde3ec; stroke-width: 1; }
+      .divider { stroke: #e6ebf1; stroke-width: 1; }
+      .badge { fill: #f1f5f9; stroke: #e2e8f0; stroke-width: 1; }
+      .bullet { fill: #94a3b8; }
+      .pill { fill: #ffffff; stroke: #cbd5e1; stroke-width: 1; }
+      .edge { fill: none; stroke: #94a3b8; stroke-width: 1.4; }
+      .zone { fill: #f8fafc; stroke: #e2e8f0; stroke-width: 1; }
     </style>
 
-    <filter id="cardShadow" x="-4%" y="-4%" width="108%" height="112%">
-      <feDropShadow dx="0" dy="2" stdDeviation="3" flood-color="#0f172a" flood-opacity="0.08"/>
+    <filter id="cardShadow" x="-5%" y="-5%" width="110%" height="115%">
+      <feDropShadow dx="0" dy="1" stdDeviation="1.5" flood-color="#0f172a" flood-opacity="0.035"/>
     </filter>
 
-    <marker id="arrow-slate" viewBox="0 0 10 10" refX="8.5" refY="5" markerWidth="6.5" markerHeight="6.5" orient="auto-start-reverse">
-      <path d="M 0 1.5 L 9 5 L 0 8.5 z" fill="#475569"/>
-    </marker>
-    <marker id="arrow-teal" viewBox="0 0 10 10" refX="8.5" refY="5" markerWidth="6.5" markerHeight="6.5" orient="auto-start-reverse">
-      <path d="M 0 1.5 L 9 5 L 0 8.5 z" fill="#0f766e"/>
-    </marker>
-    <marker id="arrow-blue" viewBox="0 0 10 10" refX="8.5" refY="5" markerWidth="6.5" markerHeight="6.5" orient="auto-start-reverse">
-      <path d="M 0 1.5 L 9 5 L 0 8.5 z" fill="#1d4ed8"/>
-    </marker>
-    <marker id="arrow-violet" viewBox="0 0 10 10" refX="8.5" refY="5" markerWidth="6.5" markerHeight="6.5" orient="auto-start-reverse">
-      <path d="M 0 1.5 L 9 5 L 0 8.5 z" fill="#6d28d9"/>
-    </marker>
-    <marker id="arrow-rose" viewBox="0 0 10 10" refX="8.5" refY="5" markerWidth="6.5" markerHeight="6.5" orient="auto-start-reverse">
-      <path d="M 0 1.5 L 9 5 L 0 8.5 z" fill="#be123c"/>
+    <marker id="arr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="5" markerHeight="5" orient="auto-start-reverse" markerUnits="strokeWidth">
+      <path d="M 0 1 L 10 5 L 0 9 Z" fill="#64748b"/>
     </marker>
   </defs>
 
   <!-- Canvas -->
-  <rect x="0.5" y="0.5" width="1119" height="639" rx="16" fill="#f8fafc" stroke="#cbd5e1" stroke-width="1"/>
+  <rect x="0.5" y="0.5" width="1119" height="649" rx="14" fill="#ffffff" stroke="#e2e8f0" stroke-width="1"/>
 
   <!-- Header -->
-  <text x="560" y="34" text-anchor="middle" class="font title">OhMyRASP Architecture</text>
-  <text x="560" y="54" text-anchor="middle" class="font subtitle">In-JVM ASM Runtime Protection · Self-Hosted Control Plane · Daemonless Shirudo Java Upatch Mode</text>
+  <text x="560" y="38" text-anchor="middle" class="font title">OhMyRASP Architecture</text>
+  <text x="560" y="59" text-anchor="middle" class="font subtitle">In-JVM ASM Runtime Protection · Self-Hosted Control Plane · Daemonless Shirudo Java Upatch Mode</text>
 
-  <!-- Zone 1: Target Host -->
-  <rect x="24" y="76" width="332" height="540" rx="14" fill="#fffbeb" stroke="#f59e0b" stroke-width="1.5" stroke-dasharray="6 4" fill-opacity="0.65"/>
-  <rect x="42" y="65" width="114" height="22" rx="11" fill="#fef3c7" stroke="#f59e0b" stroke-width="1"/>
-  <text x="99" y="80" text-anchor="middle" class="font zone-label" fill="#92400e">TARGET HOST</text>
+  <!-- Zones -->
+  <rect x="24" y="80" width="332" height="546" rx="12" class="zone"/>
+  <circle cx="44" cy="99" r="3" fill="#9a6b2f"/>
+  <text x="54" y="103" class="font zone-label">TARGET HOST</text>
 
-  <!-- Zone 2: Control Plane -->
-  <rect x="396" y="76" width="424" height="540" rx="14" fill="#eff6ff" stroke="#3b82f6" stroke-width="1.5" stroke-dasharray="6 4" fill-opacity="0.7"/>
-  <rect x="414" y="65" width="214" height="22" rx="11" fill="#dbeafe" stroke="#3b82f6" stroke-width="1"/>
-  <text x="521" y="80" text-anchor="middle" class="font zone-label" fill="#1e40af">SELF-HOSTED CONTROL PLANE</text>
+  <rect x="396" y="80" width="424" height="546" rx="12" class="zone"/>
+  <circle cx="416" cy="99" r="3" fill="#356291"/>
+  <text x="426" y="103" class="font zone-label">SELF-HOSTED CONTROL PLANE</text>
 
-  <!-- Zone 3: Observability Stack -->
-  <rect x="860" y="76" width="236" height="540" rx="14" fill="#fff1f2" stroke="#fb7185" stroke-width="1.5" stroke-dasharray="6 4" fill-opacity="0.65"/>
-  <rect x="878" y="65" width="174" height="22" rx="11" fill="#ffe4e6" stroke="#fb7185" stroke-width="1"/>
-  <text x="965" y="80" text-anchor="middle" class="font zone-label" fill="#9f1239">OBSERVABILITY STACK</text>
+  <rect x="860" y="80" width="236" height="546" rx="12" class="zone"/>
+  <circle cx="880" cy="99" r="3" fill="#475569"/>
+  <text x="890" y="103" class="font zone-label">OBSERVABILITY STACK</text>
+
+  <!-- ================= CONNECTORS ================= -->
+
+  <!-- Daemon <-> Java Agent -->
+  <line x1="114" y1="312" x2="114" y2="247.5" class="edge" marker-end="url(#arr)"/>
+  <line x1="262" y1="246" x2="262" y2="310.5" class="edge" marker-end="url(#arr)"/>
+
+  <!-- Shirudo -> Java Agent (dashed) -->
+  <line x1="190" y1="520" x2="190" y2="469.5" class="edge" stroke-dasharray="4 3" marker-end="url(#arr)"/>
+
+  <!-- Daemon <-> Control Plane API -->
+  <path d="M 337.5 170 H 368 Q 376 170 376 178 V 322 Q 376 330 384 330 H 422.5" class="edge" marker-start="url(#arr)" marker-end="url(#arr)"/>
+
+  <!-- Web Console <-> Control Plane API -->
+  <line x1="608" y1="213.5" x2="608" y2="260.5" class="edge" marker-start="url(#arr)" marker-end="url(#arr)"/>
+
+  <!-- Control Plane API -> data stores -->
+  <path d="M 476 456.5 V 430 Q 476 422 484 422 H 732 Q 740 422 740 430 V 456.5" class="edge"/>
+  <line x1="476" y1="446" x2="476" y2="456.5" class="edge" marker-end="url(#arr)"/>
+  <line x1="740" y1="446" x2="740" y2="456.5" class="edge" marker-end="url(#arr)"/>
+  <line x1="608" y1="398" x2="608" y2="456.5" class="edge" marker-end="url(#arr)"/>
+  <circle cx="608" cy="422" r="2.6" fill="#94a3b8"/>
+
+  <!-- Control Plane API -> Prometheus -->
+  <path d="M 792 330 H 832 Q 840 330 840 322 V 201 Q 840 193 848 193 H 878.5" class="edge" marker-end="url(#arr)"/>
+
+  <!-- Prometheus -> Alertmanager -->
+  <line x1="975" y1="252" x2="975" y2="294.5" class="edge" marker-end="url(#arr)"/>
+
+  <!-- Prometheus -> Grafana (right rail) -->
+  <path d="M 1070 193 H 1080 Q 1088 193 1088 201 V 519 Q 1088 527 1080 527 H 1071.5" class="edge" marker-end="url(#arr)"/>
 
   <!-- ================= ZONE 1 CARDS ================= -->
 
-  <!-- Card: Rust Host Daemon -->
+  <!-- Rust Host Daemon -->
   <g filter="url(#cardShadow)">
-    <rect x="44" y="106" width="292" height="126" rx="10" fill="#ffffff" stroke="#0f766e" stroke-width="1.5"/>
-    <path d="M 44 116 Q 44 106 54 106 L 326 106 Q 336 106 336 116 L 336 140 L 44 140 Z" fill="#0f766e"/>
-    <text x="58" y="128" class="font card-title">Rust Host Daemon</text>
-    <rect x="254" y="114" width="68" height="18" rx="9" fill="#115e59"/>
-    <text x="288" y="126.5" text-anchor="middle" class="mono card-badge">daemon/</text>
-    <text x="58" y="160" class="font body-text">• Tails async NDJSON spool &amp; uploads events</text>
-    <text x="58" y="180" class="font body-text">• Pulls policies &amp; writes local control.json</text>
-    <text x="58" y="200" class="font body-text">• Local live console (<tspan class="mono">:7070</tspan>) &amp; JVM injection</text>
-    <text x="58" y="220" class="font body-muted">Optional when using Shirudo standalone mode</text>
+    <rect x="44" y="116" width="292" height="130" rx="8" class="card"/>
+  </g>
+  <path d="M 44 148 V 124 Q 44 116 52 116 H 328 Q 336 116 336 124 V 148 Z" fill="#f2f9f8"/>
+  <line x1="44" y1="148" x2="336" y2="148" class="divider"/>
+  <rect x="44" y="116" width="292" height="130" rx="8" class="card-border"/>
+  <rect x="60" y="128" width="8" height="8" rx="2" fill="#2c7a74"/>
+  <text x="76" y="136.5" class="font card-title">Rust Host Daemon</text>
+  <rect x="268" y="123" width="56" height="18" rx="5" class="badge"/>
+  <text x="296" y="135.5" text-anchor="middle" class="mono badge-text">daemon/</text>
+  <g class="font body">
+    <circle cx="64" cy="166.2" r="1.6" class="bullet"/>
+    <text x="72" y="170">Tails async NDJSON spool &amp; uploads events</text>
+    <circle cx="64" cy="185.2" r="1.6" class="bullet"/>
+    <text x="72" y="189">Pulls policies &amp; writes local <tspan class="mono">control.json</tspan></text>
+    <circle cx="64" cy="204.2" r="1.6" class="bullet"/>
+    <text x="72" y="208">Local live console (<tspan class="mono">:7070</tspan>) &amp; JVM attach</text>
+  </g>
+  <line x1="60" y1="219" x2="320" y2="219" stroke="#eef2f6" stroke-width="1"/>
+  <text x="60" y="235" class="font note">Optional when using Shirudo standalone mode</text>
+
+  <!-- Daemon <-> Agent labels -->
+  <rect x="64" y="269" width="100" height="20" rx="10" class="pill"/>
+  <text x="114" y="282.5" text-anchor="middle" class="mono edge-label">NDJSON spool</text>
+  <rect x="198" y="269" width="128" height="20" rx="10" class="pill"/>
+  <text x="262" y="282.5" text-anchor="middle" class="mono edge-label">control.json mode</text>
+
+  <!-- Java Agent -->
+  <g filter="url(#cardShadow)">
+    <rect x="44" y="312" width="292" height="156" rx="8" class="card"/>
+  </g>
+  <path d="M 44 344 V 320 Q 44 312 52 312 H 328 Q 336 312 336 320 V 344 Z" fill="#fbf8f3"/>
+  <line x1="44" y1="344" x2="336" y2="344" class="divider"/>
+  <rect x="44" y="312" width="292" height="156" rx="8" class="card-border"/>
+  <rect x="60" y="324" width="8" height="8" rx="2" fill="#9a6b2f"/>
+  <text x="76" y="332.5" class="font card-title">Java Agent (In-JVM)</text>
+  <rect x="244" y="319" width="80" height="18" rx="5" class="badge"/>
+  <text x="284" y="331.5" text-anchor="middle" class="mono badge-text">java-agent/</text>
+  <g class="font body">
+    <circle cx="64" cy="362.2" r="1.6" class="bullet"/>
+    <text x="72" y="366">Shaded ASM bytecode hooks · JDK 8/11/17/21/25</text>
+    <circle cx="64" cy="381.2" r="1.6" class="bullet"/>
+    <text x="72" y="385">28 hook families · 54 detector capabilities</text>
+    <circle cx="64" cy="400.2" r="1.6" class="bullet"/>
+    <text x="72" y="404"><tspan class="mono">StackWalker</tspan> stacks &amp; HTTP param correlation</text>
+    <circle cx="64" cy="419.2" r="1.6" class="bullet"/>
+    <text x="72" y="423"><tspan class="mono">CVE-2026-114938</tspan> zero-alloc Base64 guard</text>
+    <circle cx="64" cy="438.2" r="1.6" class="bullet"/>
+    <text x="72" y="442">Zero network I/O on request hot path</text>
   </g>
 
-  <!-- Connectors: Daemon <-> Java Agent -->
-  <line x1="114" y1="302" x2="114" y2="236" stroke="#0f766e" stroke-width="2" marker-end="url(#arrow-teal)"/>
-  <rect x="52" y="258" width="124" height="20" rx="6" fill="#f0fdfa" stroke="#99f6e4" stroke-width="1"/>
-  <text x="114" y="271.5" text-anchor="middle" class="mono edge-label">NDJSON spool</text>
+  <!-- Shirudo -> Agent label -->
+  <rect x="88" y="484" width="204" height="20" rx="10" class="pill"/>
+  <text x="190" y="497.5" text-anchor="middle" class="mono edge-label">sealed -javaagent (no daemon)</text>
 
-  <line x1="266" y1="232" x2="266" y2="298" stroke="#b45309" stroke-width="2" marker-end="url(#arrow-slate)"/>
-  <rect x="196" y="258" width="140" height="20" rx="6" fill="#fef3c7" stroke="#fcd34d" stroke-width="1"/>
-  <text x="266" y="271.5" text-anchor="middle" class="mono edge-label">control.json mode</text>
-
-  <!-- Card: Java Agent -->
+  <!-- Shirudo Java Upatch -->
   <g filter="url(#cardShadow)">
-    <rect x="44" y="302" width="292" height="150" rx="10" fill="#ffffff" stroke="#b45309" stroke-width="1.5"/>
-    <path d="M 44 312 Q 44 302 54 302 L 326 302 Q 336 302 336 312 L 336 336 L 44 336 Z" fill="#b45309"/>
-    <text x="58" y="324" class="font card-title">Java Agent (In-JVM)</text>
-    <rect x="236" y="310" width="86" height="18" rx="9" fill="#92400e"/>
-    <text x="279" y="322.5" text-anchor="middle" class="mono card-badge">java-agent/</text>
-    <text x="58" y="356" class="font body-text">• ASM 9.11.1 bytecode hooks · JDK 8/11/17/21/25</text>
-    <text x="58" y="376" class="font body-text">• 28 hook families · 54 detection capabilities</text>
-    <text x="58" y="396" class="font body-text">• <tspan class="mono">StackWalker</tspan> stacks &amp; HTTP taint correlation</text>
-    <text x="58" y="416" class="font body-text">• <tspan class="mono">CVE-2026-114938</tspan> zero-alloc Base64 guard</text>
-    <text x="58" y="436" class="font body-muted">Zero network I/O on request hot path</text>
+    <rect x="44" y="520" width="292" height="88" rx="8" class="card"/>
   </g>
-
-  <!-- Connector: Shirudo -> Java Agent -->
-  <line x1="190" y1="504" x2="190" y2="456" stroke="#6d28d9" stroke-width="2" stroke-dasharray="4 3" marker-end="url(#arrow-violet)"/>
-  <rect x="86" y="468" width="208" height="20" rx="6" fill="#f5f3ff" stroke="#c4b5fd" stroke-width="1"/>
-  <text x="190" y="481.5" text-anchor="middle" class="mono edge-label">sealed -javaagent (no daemon)</text>
-
-  <!-- Card: Shirudo Java Upatch Mode -->
-  <g filter="url(#cardShadow)">
-    <rect x="44" y="504" width="292" height="94" rx="10" fill="#ffffff" stroke="#6d28d9" stroke-width="1.5"/>
-    <path d="M 44 514 Q 44 504 54 504 L 326 504 Q 336 504 336 514 L 336 538 L 44 538 Z" fill="#6d28d9"/>
-    <text x="58" y="526" class="font card-title">Shirudo Java Upatch</text>
-    <rect x="218" y="512" width="104" height="18" rx="9" fill="#5b21b6"/>
-    <text x="270" y="524.5" text-anchor="middle" class="mono card-badge">deploy/shirudo/</text>
-    <text x="58" y="558" class="font body-text">• ML-DSA-87 signed .bee · TPM2 measured</text>
-    <text x="58" y="578" class="font body-text">• <tspan class="mono">lock_config=true</tspan> · <tspan class="mono">stderr</tspan> JSON · 0 threads</text>
+  <path d="M 44 552 V 528 Q 44 520 52 520 H 328 Q 336 520 336 528 V 552 Z" fill="#f4f5fb"/>
+  <line x1="44" y1="552" x2="336" y2="552" class="divider"/>
+  <rect x="44" y="520" width="292" height="88" rx="8" class="card-border"/>
+  <rect x="60" y="532" width="8" height="8" rx="2" fill="#525f96"/>
+  <text x="76" y="540.5" class="font card-title">Shirudo Java Upatch</text>
+  <rect x="220" y="527" width="104" height="18" rx="5" class="badge"/>
+  <text x="272" y="539.5" text-anchor="middle" class="mono badge-text">deploy/shirudo/</text>
+  <g class="font body">
+    <circle cx="64" cy="570.2" r="1.6" class="bullet"/>
+    <text x="72" y="574">ML-DSA-87 signed <tspan class="mono">.bee</tspan> · TPM2 measured</text>
+    <circle cx="64" cy="589.2" r="1.6" class="bullet"/>
+    <text x="72" y="593"><tspan class="mono">lock_config=true</tspan> · <tspan class="mono">stderr</tspan> JSON · 0 threads</text>
   </g>
 
   <!-- ================= ZONE 2 CARDS ================= -->
 
-  <!-- Card: Web Console -->
+  <!-- Web Console -->
   <g filter="url(#cardShadow)">
-    <rect x="470" y="106" width="276" height="98" rx="10" fill="#ffffff" stroke="#4338ca" stroke-width="1.5"/>
-    <path d="M 470 116 Q 470 106 480 106 L 736 106 Q 746 106 746 116 L 746 140 L 470 140 Z" fill="#4338ca"/>
-    <text x="484" y="128" class="font card-title">Web Console</text>
-    <rect x="658" y="114" width="74" height="18" rx="9" fill="#3730a3"/>
-    <text x="695" y="126.5" text-anchor="middle" class="mono card-badge">console/</text>
-    <text x="484" y="160" class="font body-text">• React 19 + Vite · EN / 中文 / 日本語</text>
-    <text x="484" y="180" class="font body-text">• Threat triage, fleet, policy &amp; SCA views</text>
+    <rect x="456" y="116" width="304" height="96" rx="8" class="card"/>
+  </g>
+  <path d="M 456 148 V 124 Q 456 116 464 116 H 752 Q 760 116 760 124 V 148 Z" fill="#f2f6fb"/>
+  <line x1="456" y1="148" x2="760" y2="148" class="divider"/>
+  <rect x="456" y="116" width="304" height="96" rx="8" class="card-border"/>
+  <rect x="472" y="128" width="8" height="8" rx="2" fill="#356291"/>
+  <text x="488" y="136.5" class="font card-title">Web Console</text>
+  <rect x="686" y="123" width="62" height="18" rx="5" class="badge"/>
+  <text x="717" y="135.5" text-anchor="middle" class="mono badge-text">console/</text>
+  <g class="font body">
+    <circle cx="476" cy="166.2" r="1.6" class="bullet"/>
+    <text x="484" y="170">React 19 + Vite · EN / 中文 / 日本語</text>
+    <circle cx="476" cy="185.2" r="1.6" class="bullet"/>
+    <text x="484" y="189">App-scoped threats, fleet, policy &amp; SCA views</text>
   </g>
 
-  <!-- Connector: Web Console <-> Control API -->
-  <line x1="608" y1="208" x2="608" y2="248" stroke="#1d4ed8" stroke-width="2" marker-start="url(#arrow-blue)" marker-end="url(#arrow-blue)"/>
-  <rect x="546" y="218" width="124" height="19" rx="6" fill="#eff6ff" stroke="#93c5fd" stroke-width="1"/>
-  <text x="608" y="231" text-anchor="middle" class="mono edge-label">HTTPS / OpenAPI</text>
+  <!-- HTTPS label -->
+  <rect x="550" y="227" width="116" height="20" rx="10" class="pill"/>
+  <text x="608" y="240.5" text-anchor="middle" class="mono edge-label">HTTPS / OpenAPI</text>
 
-  <!-- Card: Control Plane API -->
+  <!-- Control Plane API -->
   <g filter="url(#cardShadow)">
-    <rect x="424" y="252" width="368" height="134" rx="10" fill="#ffffff" stroke="#1d4ed8" stroke-width="1.5"/>
-    <path d="M 424 262 Q 424 252 434 252 L 782 252 Q 792 252 792 262 L 792 286 L 424 286 Z" fill="#1d4ed8"/>
-    <text x="438" y="274" class="font card-title">Control Plane API</text>
-    <rect x="724" y="260" width="54" height="18" rx="9" fill="#1e40af"/>
-    <text x="751" y="272.5" text-anchor="middle" class="mono card-badge">api/</text>
-    <text x="438" y="306" class="font body-text">• Go + chi · strict OpenAPI 3.1 contract</text>
-    <text x="438" y="326" class="font body-text">• RBAC, app/agent inventory, audit logging</text>
-    <text x="438" y="346" class="font body-text">• Policy rollout (draft → canary → active → rollback)</text>
-    <text x="438" y="366" class="font body-text">• Event ingest outbox &amp; Prometheus <tspan class="mono">/metrics</tspan></text>
+    <rect x="424" y="262" width="368" height="136" rx="8" class="card"/>
+  </g>
+  <path d="M 424 294 V 270 Q 424 262 432 262 H 784 Q 792 262 792 270 V 294 Z" fill="#f2f6fb"/>
+  <line x1="424" y1="294" x2="792" y2="294" class="divider"/>
+  <rect x="424" y="262" width="368" height="136" rx="8" class="card-border"/>
+  <rect x="440" y="274" width="8" height="8" rx="2" fill="#356291"/>
+  <text x="456" y="282.5" class="font card-title">Control Plane API</text>
+  <rect x="742" y="269" width="38" height="18" rx="5" class="badge"/>
+  <text x="761" y="281.5" text-anchor="middle" class="mono badge-text">api/</text>
+  <g class="font body">
+    <circle cx="444" cy="312.2" r="1.6" class="bullet"/>
+    <text x="452" y="316">Go + chi · strict OpenAPI 3.1 contract</text>
+    <circle cx="444" cy="331.2" r="1.6" class="bullet"/>
+    <text x="452" y="335">RBAC, app/agent inventory, audit logging</text>
+    <circle cx="444" cy="350.2" r="1.6" class="bullet"/>
+    <text x="452" y="354">Policy rollout (draft → canary → active → rollback)</text>
+    <circle cx="444" cy="369.2" r="1.6" class="bullet"/>
+    <text x="452" y="373">Event ingest outbox &amp; Prometheus <tspan class="mono">/metrics</tspan></text>
   </g>
 
-  <!-- Connector: Daemon <-> Control API -->
-  <path d="M 336 168 L 376 168 L 376 300 L 420 300" fill="none" stroke="#1d4ed8" stroke-width="2" marker-start="url(#arrow-blue)" marker-end="url(#arrow-blue)"/>
-  <rect x="331" y="220" width="90" height="32" rx="6" fill="#ffffff" stroke="#93c5fd" stroke-width="1"/>
-  <text x="376" y="234" text-anchor="middle" class="mono edge-label">events /</text>
-  <text x="376" y="246" text-anchor="middle" class="mono edge-label">policy pull</text>
+  <!-- events / policy pull label -->
+  <rect x="334" y="250" width="84" height="34" rx="8" class="pill"/>
+  <text x="376" y="263.5" text-anchor="middle" class="mono edge-label">events /</text>
+  <text x="376" y="276.5" text-anchor="middle" class="mono edge-label">policy pull</text>
 
-  <!-- Data store bus -->
-  <line x1="608" y1="386" x2="608" y2="418" stroke="#475569" stroke-width="2"/>
-  <line x1="476" y1="418" x2="740" y2="418" stroke="#475569" stroke-width="2"/>
-  <line x1="476" y1="418" x2="476" y2="450" stroke="#475569" stroke-width="2" marker-end="url(#arrow-slate)"/>
-  <line x1="608" y1="418" x2="608" y2="450" stroke="#475569" stroke-width="2" marker-end="url(#arrow-slate)"/>
-  <line x1="740" y1="418" x2="740" y2="450" stroke="#475569" stroke-width="2" marker-end="url(#arrow-slate)"/>
-
-  <!-- Card: PostgreSQL -->
+  <!-- PostgreSQL -->
   <g filter="url(#cardShadow)">
-    <rect x="416" y="454" width="120" height="144" rx="10" fill="#ffffff" stroke="#2563eb" stroke-width="1.5"/>
-    <path d="M 416 464 Q 416 454 426 454 L 526 454 Q 536 454 536 464 L 536 486 L 416 486 Z" fill="#2563eb"/>
-    <text x="476" y="475" text-anchor="middle" class="font store-title">PostgreSQL</text>
-    <text x="428" y="508" class="font store-text">• Control state</text>
-    <text x="428" y="528" class="font store-text">• RBAC &amp; users</text>
-    <text x="428" y="548" class="font store-text">• Policy sets</text>
-    <text x="428" y="568" class="font store-text">• Audit logs</text>
+    <rect x="416" y="458" width="120" height="136" rx="8" class="card"/>
+  </g>
+  <path d="M 416 488 V 466 Q 416 458 424 458 H 528 Q 536 458 536 466 V 488 Z" fill="#f8fafc"/>
+  <line x1="416" y1="488" x2="536" y2="488" class="divider"/>
+  <rect x="416" y="458" width="120" height="136" rx="8" class="card-border"/>
+  <circle cx="430" cy="473" r="3.5" fill="#3b6ea5"/>
+  <text x="440" y="477.5" class="font store-title">PostgreSQL</text>
+  <g class="font body">
+    <circle cx="432" cy="508.2" r="1.6" class="bullet"/><text x="440" y="512">Control state</text>
+    <circle cx="432" cy="527.2" r="1.6" class="bullet"/><text x="440" y="531">RBAC &amp; users</text>
+    <circle cx="432" cy="546.2" r="1.6" class="bullet"/><text x="440" y="550">Policy sets</text>
+    <circle cx="432" cy="565.2" r="1.6" class="bullet"/><text x="440" y="569">Audit logs</text>
   </g>
 
-  <!-- Card: ClickHouse -->
+  <!-- ClickHouse -->
   <g filter="url(#cardShadow)">
-    <rect x="548" y="454" width="120" height="144" rx="10" fill="#ffffff" stroke="#d97706" stroke-width="1.5"/>
-    <path d="M 548 464 Q 548 454 558 454 L 658 454 Q 668 454 668 464 L 668 486 L 548 486 Z" fill="#d97706"/>
-    <text x="608" y="475" text-anchor="middle" class="font store-title">ClickHouse</text>
-    <text x="560" y="508" class="font store-text">• Attack events</text>
-    <text x="560" y="528" class="font store-text">• Hook latency</text>
-    <text x="560" y="548" class="font store-text">• SCA &amp; posture</text>
-    <text x="560" y="568" class="font store-text">• Rollups</text>
+    <rect x="548" y="458" width="120" height="136" rx="8" class="card"/>
+  </g>
+  <path d="M 548 488 V 466 Q 548 458 556 458 H 660 Q 668 458 668 466 V 488 Z" fill="#f8fafc"/>
+  <line x1="548" y1="488" x2="668" y2="488" class="divider"/>
+  <rect x="548" y="458" width="120" height="136" rx="8" class="card-border"/>
+  <circle cx="562" cy="473" r="3.5" fill="#a37636"/>
+  <text x="572" y="477.5" class="font store-title">ClickHouse</text>
+  <g class="font body">
+    <circle cx="564" cy="508.2" r="1.6" class="bullet"/><text x="572" y="512">Attack events</text>
+    <circle cx="564" cy="527.2" r="1.6" class="bullet"/><text x="572" y="531">Hook latency</text>
+    <circle cx="564" cy="546.2" r="1.6" class="bullet"/><text x="572" y="550">SCA &amp; posture</text>
+    <circle cx="564" cy="565.2" r="1.6" class="bullet"/><text x="572" y="569">Rollups</text>
   </g>
 
-  <!-- Card: Valkey -->
+  <!-- Valkey -->
   <g filter="url(#cardShadow)">
-    <rect x="680" y="454" width="120" height="144" rx="10" fill="#ffffff" stroke="#e11d48" stroke-width="1.5"/>
-    <path d="M 680 464 Q 680 454 690 454 L 790 454 Q 800 454 800 464 L 800 486 L 680 486 Z" fill="#e11d48"/>
-    <text x="740" y="475" text-anchor="middle" class="font store-title">Valkey</text>
-    <text x="692" y="508" class="font store-text">• Auth sessions</text>
-    <text x="692" y="528" class="font store-text">• Policy cache</text>
-    <text x="692" y="548" class="font store-text">• Rate limits</text>
-    <text x="692" y="568" class="font store-text">• Fast lookups</text>
+    <rect x="680" y="458" width="120" height="136" rx="8" class="card"/>
+  </g>
+  <path d="M 680 488 V 466 Q 680 458 688 458 H 792 Q 800 458 800 466 V 488 Z" fill="#f8fafc"/>
+  <line x1="680" y1="488" x2="800" y2="488" class="divider"/>
+  <rect x="680" y="458" width="120" height="136" rx="8" class="card-border"/>
+  <circle cx="694" cy="473" r="3.5" fill="#9d5c6e"/>
+  <text x="704" y="477.5" class="font store-title">Valkey</text>
+  <g class="font body">
+    <circle cx="696" cy="508.2" r="1.6" class="bullet"/><text x="704" y="512">Auth sessions</text>
+    <circle cx="696" cy="527.2" r="1.6" class="bullet"/><text x="704" y="531">Policy cache</text>
+    <circle cx="696" cy="546.2" r="1.6" class="bullet"/><text x="704" y="550">Rate limits</text>
+    <circle cx="696" cy="565.2" r="1.6" class="bullet"/><text x="704" y="569">Fast lookups</text>
   </g>
 
   <!-- ================= ZONE 3 CARDS ================= -->
 
-  <!-- Connector: Control API -> Prometheus -->
-  <path d="M 792 318 L 840 318 L 840 184 L 878 184" fill="none" stroke="#be123c" stroke-width="2" marker-end="url(#arrow-rose)"/>
-  <rect x="802" y="236" width="76" height="20" rx="6" fill="#ffffff" stroke="#fda4af" stroke-width="1"/>
-  <text x="840" y="249.5" text-anchor="middle" class="mono edge-label">/metrics</text>
+  <!-- /metrics label -->
+  <rect x="805" y="252" width="70" height="20" rx="10" class="pill"/>
+  <text x="840" y="265.5" text-anchor="middle" class="mono edge-label">/metrics</text>
 
-  <!-- Card: Prometheus -->
+  <!-- Prometheus -->
   <g filter="url(#cardShadow)">
-    <rect x="882" y="128" width="186" height="110" rx="10" fill="#ffffff" stroke="#ea580c" stroke-width="1.5"/>
-    <path d="M 882 138 Q 882 128 892 128 L 1058 128 Q 1068 128 1068 138 L 1068 162 L 882 162 Z" fill="#ea580c"/>
-    <text x="896" y="150" class="font card-title">Prometheus</text>
-    <text x="896" y="182" class="font body-text">• Scrapes API <tspan class="mono">/metrics</tspan></text>
-    <text x="896" y="202" class="font body-text">• Alerting rule evaluation</text>
-    <text x="896" y="222" class="font body-muted">deploy/prometheus/</text>
+    <rect x="880" y="134" width="190" height="118" rx="8" class="card"/>
   </g>
+  <path d="M 880 166 V 142 Q 880 134 888 134 H 1062 Q 1070 134 1070 142 V 166 Z" fill="#f8fafc"/>
+  <line x1="880" y1="166" x2="1070" y2="166" class="divider"/>
+  <rect x="880" y="134" width="190" height="118" rx="8" class="card-border"/>
+  <rect x="896" y="146" width="8" height="8" rx="2" fill="#475569"/>
+  <text x="912" y="154.5" class="font card-title">Prometheus</text>
+  <g class="font body">
+    <circle cx="900" cy="184.2" r="1.6" class="bullet"/>
+    <text x="908" y="188">Scrapes API <tspan class="mono">/metrics</tspan></text>
+    <circle cx="900" cy="203.2" r="1.6" class="bullet"/>
+    <text x="908" y="207">Alerting rule evaluation</text>
+  </g>
+  <rect x="896" y="220" width="122" height="18" rx="5" class="badge"/>
+  <text x="957" y="232.5" text-anchor="middle" class="mono badge-text">deploy/prometheus/</text>
 
-  <!-- Connector: Prometheus -> Alertmanager -->
-  <line x1="975" y1="238" x2="975" y2="288" stroke="#be123c" stroke-width="2" marker-end="url(#arrow-rose)"/>
-  <rect x="938" y="253" width="74" height="19" rx="6" fill="#fff1f2" stroke="#fda4af" stroke-width="1"/>
-  <text x="975" y="266" text-anchor="middle" class="mono edge-label">alerts</text>
+  <!-- alerts label -->
+  <rect x="946" y="263" width="58" height="20" rx="10" class="pill"/>
+  <text x="975" y="276.5" text-anchor="middle" class="mono edge-label">alerts</text>
 
-  <!-- Card: Alertmanager -->
+  <!-- Alertmanager -->
   <g filter="url(#cardShadow)">
-    <rect x="882" y="292" width="186" height="110" rx="10" fill="#ffffff" stroke="#be123c" stroke-width="1.5"/>
-    <path d="M 882 302 Q 882 292 892 292 L 1058 292 Q 1068 292 1068 302 L 1068 326 L 882 326 Z" fill="#be123c"/>
-    <text x="896" y="314" class="font card-title">Alertmanager</text>
-    <text x="896" y="346" class="font body-text">• Deduplicates &amp; routes</text>
-    <text x="896" y="366" class="font body-text">• Webhook / pager delivery</text>
-    <text x="896" y="386" class="font body-muted">deploy/helm/</text>
+    <rect x="880" y="296" width="190" height="118" rx="8" class="card"/>
   </g>
+  <path d="M 880 328 V 304 Q 880 296 888 296 H 1062 Q 1070 296 1070 304 V 328 Z" fill="#fbf7f5"/>
+  <line x1="880" y1="328" x2="1070" y2="328" class="divider"/>
+  <rect x="880" y="296" width="190" height="118" rx="8" class="card-border"/>
+  <rect x="896" y="308" width="8" height="8" rx="2" fill="#8c5a44"/>
+  <text x="912" y="316.5" class="font card-title">Alertmanager</text>
+  <g class="font body">
+    <circle cx="900" cy="346.2" r="1.6" class="bullet"/>
+    <text x="908" y="350">Deduplicates &amp; routes</text>
+    <circle cx="900" cy="365.2" r="1.6" class="bullet"/>
+    <text x="908" y="369">Webhook / pager delivery</text>
+  </g>
+  <rect x="896" y="382" width="86" height="18" rx="5" class="badge"/>
+  <text x="939" y="394.5" text-anchor="middle" class="mono badge-text">deploy/helm/</text>
 
-  <!-- Connector: Prometheus -> Grafana (right rail) -->
-  <path d="M 1068 184 L 1084 184 L 1084 510 L 1072 510" fill="none" stroke="#475569" stroke-width="2" marker-end="url(#arrow-slate)"/>
-
-  <!-- Card: Grafana -->
+  <!-- Grafana -->
   <g filter="url(#cardShadow)">
-    <rect x="882" y="454" width="186" height="112" rx="10" fill="#ffffff" stroke="#059669" stroke-width="1.5"/>
-    <path d="M 882 464 Q 882 454 892 454 L 1058 454 Q 1068 454 1068 464 L 1068 488 L 882 488 Z" fill="#059669"/>
-    <text x="896" y="476" class="font card-title">Grafana</text>
-    <text x="896" y="508" class="font body-text">• Fleet &amp; attack dashboards</text>
-    <text x="896" y="528" class="font body-text">• Hook latency observability</text>
-    <text x="896" y="548" class="font body-muted">deploy/grafana/</text>
+    <rect x="880" y="468" width="190" height="118" rx="8" class="card"/>
   </g>
+  <path d="M 880 500 V 476 Q 880 468 888 468 H 1062 Q 1070 468 1070 476 V 500 Z" fill="#f3f8f5"/>
+  <line x1="880" y1="500" x2="1070" y2="500" class="divider"/>
+  <rect x="880" y="468" width="190" height="118" rx="8" class="card-border"/>
+  <rect x="896" y="480" width="8" height="8" rx="2" fill="#3b6e5c"/>
+  <text x="912" y="488.5" class="font card-title">Grafana</text>
+  <g class="font body">
+    <circle cx="900" cy="518.2" r="1.6" class="bullet"/>
+    <text x="908" y="522">Fleet &amp; attack dashboards</text>
+    <circle cx="900" cy="537.2" r="1.6" class="bullet"/>
+    <text x="908" y="541">Hook latency observability</text>
+  </g>
+  <rect x="896" y="554" width="104" height="18" rx="5" class="badge"/>
+  <text x="948" y="566.5" text-anchor="middle" class="mono badge-text">deploy/grafana/</text>
 </svg>

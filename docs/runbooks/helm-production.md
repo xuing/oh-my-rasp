@@ -1,14 +1,10 @@
 # Helm Production Install Runbook
 
-This runbook covers installing the OhMyRasp control plane chart into a cluster
-that already has PostgreSQL, ClickHouse, Valkey, ingress, and TLS available.
-The chart deploys only the API, web console, migration Job, Services, optional
-Secret, and optional Ingress.
+This runbook covers installing the `ohmyrasp-control` Helm chart ([deploy/helm/ohmyrasp-control](../../deploy/helm/ohmyrasp-control)) into a Kubernetes cluster with existing PostgreSQL, ClickHouse, Valkey, ingress, and TLS infrastructure. The chart deploys `ohmyrasp-api`, `ohmyrasp-web`, the `ohmyrasp-migrate` pre-install/pre-upgrade hook Job, Services, optional Secret, optional PVC, and optional Ingress/NetworkPolicy/HPA/monitoring ConfigMaps.
 
 ## Backing Service Secret
 
-For production, keep DSNs and Valkey credentials in a Kubernetes Secret. Either
-let the chart create it:
+Keep DSNs and Valkey credentials in a Kubernetes Secret in production. Either let the chart create it:
 
 ```yaml
 secrets:
@@ -29,7 +25,7 @@ secrets:
   existingSecret: ohmyrasp-control-env
 ```
 
-An existing Secret must contain these keys:
+An existing Secret must provide these keys:
 
 ```text
 OHMYRASP_POSTGRES_DSN
@@ -39,15 +35,11 @@ OHMYRASP_VALKEY_USERNAME
 OHMYRASP_VALKEY_PASSWORD
 ```
 
-When `secrets.create=false` and `secrets.existingSecret=""`, the chart uses the
-plain values under `api.env`. That mode is intended for local rendering and
-non-sensitive development installs.
+When `secrets.create=false` and `secrets.existingSecret=""`, the chart falls back to plain `api.env` values (for local rendering and non-sensitive development installs only).
 
 ## Agent Artifact Storage
 
-The API serves generated bootstrap Agent ZIPs by default and can also store
-operator-uploaded Java Agent ZIPs. The chart mounts a writable artifact
-directory at `/var/lib/ohmyrasp/artifacts`:
+The API serves uploaded (`ohmyrasp-agent-<language>-<system_type>-<language_version>.zip`) or pre-staged filesystem Java Agent ZIP packages from `OHMYRASP_AGENT_ARTIFACT_DIR` (`/var/lib/ohmyrasp/artifacts` by default; generated bootstrap ZIPs are not created by the API):
 
 ```yaml
 api:
@@ -56,7 +48,7 @@ api:
     mountPath: /var/lib/ohmyrasp/artifacts
 ```
 
-Use a PVC for production uploads that must survive pod replacement:
+Enable a PVC (`ohmyrasp-agent-artifacts`) so uploaded ZIPs survive pod replacement:
 
 ```yaml
 api:
@@ -67,7 +59,7 @@ api:
       size: 20Gi
 ```
 
-To use a pre-created claim:
+Or bind a pre-created claim:
 
 ```yaml
 api:
@@ -77,10 +69,9 @@ api:
       existingClaim: ohmyrasp-agent-artifacts
 ```
 
-## Ingress And TLS
+## Ingress and TLS
 
-Enable ingress for the web service. The web container proxies `/api/` to the API
-Service, so a single host can serve both the console and API routes.
+Enable ingress for `ohmyrasp-web`. The web nginx container proxies `/api/` to `ohmyrasp-api`, so one host serves both the console and API:
 
 ```yaml
 ingress:
@@ -101,21 +92,18 @@ ingress:
         - rasp.example.com
 ```
 
-If the image packages are private, configure pull secrets:
+If pulling from a private registry, configure `imagePullSecrets`:
 
 ```yaml
 imagePullSecrets:
   - name: ghcr-pull
 ```
 
-## Pod Hardening And Availability
+## Pod Hardening and Availability
 
-The chart defaults to a non-root pod security context, drops Linux
-capabilities, disables service-account token automount, and uses a read-only
-root filesystem. The web container listens on port `8080` internally while the
-Service keeps the public service port at `80`.
+The chart sets `runAsNonRoot: true`, `seccompProfile.type: RuntimeDefault`, `allowPrivilegeEscalation: false`, `capabilities.drop: [ALL]`, `readOnlyRootFilesystem: true`, and `automountServiceAccountToken: false` by default. `ohmyrasp-web` listens on container port `8080` while Service `ohmyrasp-web` exposes port `80` (`web.writableRuntimeDirs.enabled=true` mounts `emptyDir` volumes at `/var/cache/nginx`, `/var/run`, and `/tmp`).
 
-Use resource requests and limits before enabling autoscaling:
+Set resource requests and limits before enabling autoscaling:
 
 ```yaml
 api:
@@ -136,8 +124,7 @@ web:
       memory: 512Mi
 ```
 
-The chart creates PodDisruptionBudgets for the API and web deployments by
-default:
+PodDisruptionBudgets (`minAvailable: 1`) are enabled by default for both `ohmyrasp-api` and `ohmyrasp-web`:
 
 ```yaml
 podDisruptionBudgets:
@@ -149,8 +136,7 @@ podDisruptionBudgets:
     minAvailable: 1
 ```
 
-Enable HPA only when the cluster has metrics-server or an equivalent metrics
-pipeline:
+Enable HPA when `metrics-server` is available:
 
 ```yaml
 autoscaling:
@@ -166,7 +152,7 @@ autoscaling:
     targetCPUUtilizationPercentage: 70
 ```
 
-Use affinity or topology spread constraints to keep replicas apart:
+Spread replicas across nodes with `topologySpreadConstraints`:
 
 ```yaml
 api:
@@ -187,9 +173,7 @@ web:
           app.kubernetes.io/name: ohmyrasp-web
 ```
 
-NetworkPolicies are available but disabled by default because external
-PostgreSQL, ClickHouse, Valkey, DNS, and ingress-controller selectors differ by
-cluster. Enable them only after adding the required egress and ingress peers:
+`networkPolicy.enabled` defaults to `false` because ingress-controller and database peers vary by cluster. When enabling `networkPolicy.egress.enabled=true`, `templates/networkpolicy.yaml` always permits `ohmyrasp-web` egress to `ohmyrasp-api:8080` and applies `networkPolicy.egress.api.to` / `networkPolicy.egress.web.to`:
 
 ```yaml
 networkPolicy:
@@ -215,8 +199,7 @@ networkPolicy:
       to: []
 ```
 
-If an enterprise baseline injects a service mesh sidecar or requires projected
-service-account tokens, override:
+If a service mesh or workload identity controller requires a mounted token, set:
 
 ```yaml
 serviceAccount:
@@ -225,9 +208,7 @@ serviceAccount:
 
 ## Monitoring Assets
 
-The chart can package Prometheus rules, the Grafana dashboard, and optional
-Alertmanager routing examples as ConfigMaps for clusters that use sidecar or
-config-sync discovery:
+The chart packages Prometheus alert rules (`ohmyrasp-prometheus-rules`), the Grafana dashboard (`ohmyrasp-grafana-dashboard`), and optional Alertmanager examples (`ohmyrasp-alertmanager-examples`) as ConfigMaps:
 
 ```yaml
 monitoring:
@@ -245,14 +226,11 @@ monitoring:
       alertmanager_config: "1"
 ```
 
-Do not install the enterprise Alertmanager example as-is with real traffic.
-Copy it into the platform Alertmanager workflow and replace placeholder
-webhooks, SMTP credentials, Slack URLs, and PagerDuty routing keys with managed
-Secrets.
+Do not apply `alertmanager.enterprise.example.yml` directly in production without replacing placeholder webhooks, SMTP credentials, Slack URLs, and PagerDuty routing keys with managed Secrets.
 
-## Render And Install
+## Render and Install
 
-Render production values before applying:
+Render and inspect production manifests:
 
 ```bash
 helm template ohmyrasp-control deploy/helm/ohmyrasp-control \
@@ -260,14 +238,13 @@ helm template ohmyrasp-control deploy/helm/ohmyrasp-control \
   -f values.production.yaml
 ```
 
-Validate the default, production-style, and hardened render paths with the same
-kubeconform gate used by CI:
+Run the CI kubeconform validation across default, production, and hardened profiles:
 
 ```bash
 deploy/scripts/validate-helm-manifests.sh
 ```
 
-Install or upgrade:
+Install or upgrade from the local chart (or from `oci://ghcr.io/<namespace>/charts/ohmyrasp-control --version <version>`):
 
 ```bash
 helm upgrade --install ohmyrasp-control deploy/helm/ohmyrasp-control \
@@ -276,13 +253,12 @@ helm upgrade --install ohmyrasp-control deploy/helm/ohmyrasp-control \
   --wait
 ```
 
-Verify rollout:
+Verify rollout (`ohmyrasp-migrate` uses `before-hook-creation,hook-succeeded`, so Helm deletes the Job after it succeeds):
 
 ```bash
 kubectl -n ohmyrasp rollout status deploy/ohmyrasp-api
 kubectl -n ohmyrasp rollout status deploy/ohmyrasp-web
-kubectl -n ohmyrasp get job ohmyrasp-migrate
+kubectl -n ohmyrasp get pods
 ```
 
-Then use the ingress hostname to log in and navigate Applications, Agents,
-Policies, Events, Observability, and Access & Audit.
+Log in via the ingress hostname and verify Applications, Agents, Policies, Events, Observability, and Access & Audit.

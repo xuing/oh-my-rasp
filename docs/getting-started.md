@@ -1,37 +1,55 @@
 # Getting Started
 
-This guide takes you from zero to a protected Java application in four
-steps: start the control plane, build the agent, attach it, and watch
-an attack get blocked.
-
----
+This guide covers two ways to run OhMyRASP: downloading pre-built release artifacts or building and running the control plane and Java agents locally with Docker.
 
 ## 1. Prerequisites
 
-### Docker-only path (recommended)
+### Option A: Pre-built releases
 
-Running everything — including building the agent jars — requires only:
+Download immutable release artifacts from [GitHub Releases](https://github.com/xuing/oh-my-rasp/releases) (latest tag `v0.2.0-alpha.1`). Each release ships **12** files plus GHCR container images and an OCI Helm chart:
+
+- **Standard Java agents**: `ohmyrasp-agent.jar` (JDK 25), `ohmyrasp-agent-java17.jar` (JDK 17 & 21), `ohmyrasp-agent-java11.jar` (JDK 11), `ohmyrasp-agent-java8.jar` (JDK 8)
+- **Standalone daemonless shirudo upatch JARs**: `ohmyrasp-jdk25.jar`, `ohmyrasp-java17.jar`, `ohmyrasp-java11.jar`, `ohmyrasp-java8.jar`
+- **Shirudo Beefile bundle**: `ohmyrasp-shirudo-upatches-<version>.tar.gz`
+- **Rust host daemon**: `ohmyrasp-daemon-linux-amd64.tar.gz`
+- **Control-plane Helm chart**: `ohmyrasp-control-<version>.tgz` (also pushed to `oci://ghcr.io/<namespace>/charts/ohmyrasp-control`)
+- **Checksums**: `SHA256SUMS.txt`
+- **Container images**: `ghcr.io/<namespace>/control-api:<version>` and `ghcr.io/<namespace>/control-web:<version>`
+
+Verify checksums and GitHub provenance attestations after downloading:
+
+```bash
+sha256sum -c SHA256SUMS.txt
+gh attestation verify ohmyrasp-agent.jar -R xuing/oh-my-rasp
+gh attestation verify ohmyrasp-shirudo-upatches-0.2.0-alpha.1.tar.gz -R xuing/oh-my-rasp
+gh attestation verify ohmyrasp-daemon-linux-amd64.tar.gz -R xuing/oh-my-rasp
+gh attestation verify ohmyrasp-control-0.2.0-alpha.1.tgz -R xuing/oh-my-rasp
+```
+
+See the [Release Runbook](runbooks/release.md) and [Helm Production Runbook](runbooks/helm-production.md) to deploy the published chart and images to Kubernetes.
+
+### Option B: Docker-from-source path
+
+Building and running the entire stack locally requires only:
 
 - Docker 24+
 - Docker Compose v2
 
-There is no need for a local JDK or Gradle installation. The agent build
-uses the `gradle:9.9.2-jdk25` Docker image, and the entire control plane builds
-locally from source via `docker compose`.
+No local JDK, Gradle, Go, Node.js, or Rust installation is required. The control-plane Compose file builds the Go API with `golang:1.27.4` and the React console with `node:26.13.1-alpine`, and the agent builds inside `gradle:9.9.2-jdk25`.
 
 ### Local toolchain (development only)
 
-Contributing to the project requires the following verified toolchain:
+Contributing to individual components directly on the host uses these verified versions:
 
-| Tool | Required version | Notes |
-|------|-----------------|-------|
-| Go | 1.26 | Go 1.25 + `GOTOOLCHAIN=auto` also works |
-| Node.js | 26 | Use the npm bundled with the current Node.js 26 release |
-| JDK | 25 | JDK, not just JRE — `javac` must be present |
-| Gradle | 9.8.1+ | Ubuntu's packaged `gradle` (4.4.1) is too old |
-| Rust / Cargo | 1.100.0 | Pinned by `daemon/rust-toolchain.toml` |
+| Tool | Required version | Source of truth / notes |
+|---|---|---|
+| Go | `1.26.7+` | `api/go.mod` (`golang:1.27.4` in `api/Dockerfile`); `GOTOOLCHAIN=auto` works from Go 1.25+ |
+| Node.js | `>=26` | `console/package.json` (`engines.node`) |
+| JDK | `25` | Full JDK with `javac`, not JRE only |
+| Gradle | `9.9.2` | Matches `gradle:9.9.2-jdk25` in `java-agent/Dockerfile` (distro packages such as Ubuntu's 4.4.1 are too old) |
+| Rust / Cargo | `1.100.0` (edition 2024) | Pinned by `daemon/rust-toolchain.toml` and `daemon/Cargo.toml` |
 
-#### Installing Gradle locally (no sudo required)
+#### Installing Gradle 9.9.2 locally (no sudo required)
 
 ```bash
 mkdir -p "$HOME/.local/opt" "$HOME/.local/bin"
@@ -46,9 +64,7 @@ ln -sfn "$HOME/.local/opt/gradle-9.9.2/bin/gradle" "$HOME/.local/bin/gradle"
 
 #### Installing JDK 25 locally (no sudo required)
 
-If the host only has a Java 25 JRE, Gradle will fail with
-`Toolchain installation ... does not provide the required capabilities:
-[JAVA_COMPILER]`. Extract the JDK packages locally:
+If the host only has a JRE, Gradle fails with `Toolchain installation ... does not provide the required capabilities: [JAVA_COMPILER]`. Extract the JDK packages locally:
 
 ```bash
 mkdir -p /tmp/ohmyrasp-jdk
@@ -63,30 +79,11 @@ export JAVA_HOME="$HOME/.local/jdks/openjdk-25/usr/lib/jvm/java-25-openjdk-amd64
 export PATH="$HOME/.local/bin:$JAVA_HOME/bin:$PATH"
 ```
 
-#### Known toolchain issues
-
-- Host Go `1.25.x` — add `GOTOOLCHAIN=auto` to your shell; `go mod
-  download` will fetch a compatible Go 1.26 toolchain automatically.
-- A generated password containing `/` breaks the PostgreSQL DSN during the
-  compose migration step. Always use URL-safe passwords (see the next
-  section).
-- `go generate ./...` completes successfully; `oapi-codegen` warns that
-  OpenAPI 3.1 is not fully supported — this is a known upstream limitation
-  and does not affect the build.
-- `npm ci` is required (not `npm install`) after dependency changes; the
-  lockfile must stay in sync.
-- Playwright 1.61.1 does not support the native `ubuntu26.04-x64` download
-  target. The `e2e:install`, `e2e`, and `e2e:live` scripts set
-  `PLAYWRIGHT_HOST_PLATFORM_OVERRIDE=ubuntu24.04-x64` automatically,
-  matching the upstream workaround for Microsoft Playwright issue #40117.
-
----
-
 ## 2. Start the Control Plane
 
 ### Configure environment
 
-Create `.env` from the example and fill every empty password field:
+Create `.env` from the example file and fill every blank password field:
 
 ```bash
 cp .env.example .env
@@ -98,13 +95,9 @@ Generate a URL-safe password for each blank field:
 openssl rand -hex 18
 ```
 
-> **Warning — slash in passwords:** The compose file interpolates
-> passwords directly into PostgreSQL DSNs. A password containing `/`
-> will cause the migration container to fail at startup with a DSN parse
-> error. Use hex output from `openssl rand -hex 18`, which is always
-> slash-free.
+> **Warning (slash in passwords):** `docker-compose.yml` interpolates passwords directly into `OHMYRASP_POSTGRES_DSN` and `OHMYRASP_CLICKHOUSE_DSN`. A password containing `/` causes the `migrate` container to fail at startup with a DSN parse error. Use hex output from `openssl rand -hex 18`.
 
-Required fields in `.env`:
+Blank password fields required in `.env`:
 
 ```text
 POSTGRES_PASSWORD=
@@ -113,6 +106,8 @@ VALKEY_PASSWORD=
 GRAFANA_ADMIN_PASSWORD=
 OHMYRASP_BOOTSTRAP_ADMIN_PASSWORD=
 ```
+
+Optional fields in `.env.example` include `OHMYRASP_BOOTSTRAP_APP_SECRET` and `OHMYRASP_METRICS_TOKEN` (when unset, `/metrics` is served unauthenticated and logs a startup warning).
 
 ### Start the stack
 
@@ -124,10 +119,7 @@ docker compose --env-file .env -f docker-compose.yml up -d --build
 docker compose --env-file .env -f docker-compose.yml ps
 ```
 
-All services are built from source; there are no pre-built images. The
-first build takes several minutes.
-
-Verify the API is up:
+The first build compiles `api`, `migrate`, and `web` from source and takes several minutes. Verify the API is healthy:
 
 ```bash
 curl -fsS http://127.0.0.1:18090/healthz
@@ -135,19 +127,24 @@ curl -fsS http://127.0.0.1:18090/healthz
 
 ### Service URLs
 
+Ports come from `.env.example` and `docker-compose.yml`:
+
 | Service | Default port | URL |
-|---------|-------------|-----|
-| Console | 18091 | `http://<host>:18091` |
-| API | 18090 | `http://<host>:18090` |
-| Grafana | 13000 | `http://<host>:13000` |
-| Prometheus | 19090 | `http://<host>:19090` |
-| Alertmanager | 19093 | `http://<host>:19093` |
-| ClickHouse HTTP | 18123 | `http://<host>:18123` |
+|---|---|---|
+| Console (`web`) | `18091` (`WEB_PORT`) | `http://<host>:18091` |
+| API (`api`) | `18090` (`API_PORT`) | `http://<host>:18090` |
+| Grafana | `13000` (`GRAFANA_PORT`) | `http://<host>:13000` |
+| Prometheus | `19090` (`PROMETHEUS_PORT`) | `http://<host>:19090` |
+| Alertmanager | `19093` (`ALERTMANAGER_PORT`) | `http://<host>:19093` |
+| ClickHouse HTTP | `18123` (`CLICKHOUSE_HTTP_PORT`) | `http://<host>:18123` |
+| ClickHouse Native | `19000` (`CLICKHOUSE_NATIVE_PORT`) | `localhost:19000` |
+| PostgreSQL | `15432` (`POSTGRES_PORT`) | `localhost:15432` |
+| Valkey | `16379` (`VALKEY_PORT`) | `localhost:16379` |
 
 ### Default credentials
 
 | Interface | Username | Password |
-|-----------|----------|----------|
+|---|---|---|
 | Console | `admin@ohmyrasp.local` | value of `OHMYRASP_BOOTSTRAP_ADMIN_PASSWORD` |
 | Grafana | `admin` | value of `GRAFANA_ADMIN_PASSWORD` |
 
@@ -161,53 +158,50 @@ docker compose --env-file .env -f docker-compose.yml down
 docker compose --env-file .env -f docker-compose.yml down -v
 ```
 
----
-
 ## 3. Protect a Java Application
 
-### Build the agent jar
+Skip the build commands below if you downloaded a pre-built JAR from GitHub Releases.
 
-No local JDK or Gradle is required. The build runs entirely inside the
-`gradle:9.9.2-jdk25` Docker image:
+### Build the agent JAR
+
+Run the build inside the `gradle:9.9.2-jdk25` Docker image:
 
 ```bash
 cd java-agent
-docker run --rm -v "$PWD":/workspace -w /workspace gradle:9.9.2-jdk25 \
+docker run --rm -u "$(id -u):$(id -g)" -e GRADLE_USER_HOME=/tmp/gradle-home \
+  -v "$PWD":/workspace -w /workspace gradle:9.9.2-jdk25 \
   gradle --no-daemon :agent-jdk25:agentJar
 ```
 
-Output: `java-agent/agent-jdk25/build/libs/ohmyrasp-agent.jar`
+Output: `java-agent/agent-jdk25/build/libs/ohmyrasp-agent.jar`.
 
-> **Note:** The Gradle task is named `agentJar`. The thin jar
-> (`ohmyrasp-agent-thin.jar`) produced by the plain `jar` task is not
-> the usable agent — always use the fat jar produced by `agentJar`.
+> **Note:** Always use the shaded fat JAR produced by `agentJar` (or `agentJava{8,11,17}Jar`). The thin JAR (`ohmyrasp-agent-thin.jar`) produced by the plain `jar` task lacks relocated ASM dependencies.
 
-#### Backport agents (Java 8 / 11 / 17)
-
-For applications running on older JVMs, build the corresponding backport
-jar. The task names differ from the primary agent:
+#### Backport agents (Java 8 / 11 / 17 & 21)
 
 ```bash
-# Java 8 backport:
-docker run --rm -v "$PWD":/workspace -w /workspace gradle:9.9.2-jdk25 \
+# Java 8:
+docker run --rm -u "$(id -u):$(id -g)" -e GRADLE_USER_HOME=/tmp/gradle-home \
+  -v "$PWD":/workspace -w /workspace gradle:9.9.2-jdk25 \
   gradle --no-daemon :agent-java8:agentJava8Jar
 # Output: java-agent/agent-java8/build/libs/ohmyrasp-agent-java8.jar
 
-# Java 11 backport:
-docker run --rm -v "$PWD":/workspace -w /workspace gradle:9.9.2-jdk25 \
+# Java 11:
+docker run --rm -u "$(id -u):$(id -g)" -e GRADLE_USER_HOME=/tmp/gradle-home \
+  -v "$PWD":/workspace -w /workspace gradle:9.9.2-jdk25 \
   gradle --no-daemon :agent-java11:agentJava11Jar
 # Output: java-agent/agent-java11/build/libs/ohmyrasp-agent-java11.jar
 
-# Java 17 backport:
-docker run --rm -v "$PWD":/workspace -w /workspace gradle:9.9.2-jdk25 \
+# Java 17 and Java 21:
+docker run --rm -u "$(id -u):$(id -g)" -e GRADLE_USER_HOME=/tmp/gradle-home \
+  -v "$PWD":/workspace -w /workspace gradle:9.9.2-jdk25 \
   gradle --no-daemon :agent-java17:agentJava17Jar
 # Output: java-agent/agent-java17/build/libs/ohmyrasp-agent-java17.jar
 ```
 
-### Attach the agent — standalone mode
+### Attach the agent: standalone mode
 
-Standalone mode requires no control plane. The agent runs in `monitor`
-or `block` mode and writes events to a local NDJSON log file:
+Standalone mode requires no control plane. The agent runs in `monitor` or `block` mode and writes NDJSON events locally:
 
 ```bash
 java -javaagent:/opt/ohmyrasp/ohmyrasp-agent.jar=mode=monitor \
@@ -215,79 +209,73 @@ java -javaagent:/opt/ohmyrasp/ohmyrasp-agent.jar=mode=monitor \
      -jar your-app.jar
 ```
 
-Switch mode at runtime without restarting the application:
+Switch mode at runtime without restarting the JVM by updating the polled control file (`/tmp/ohmyrasp-control.json` by default):
 
 ```bash
 echo '{"mode":"block"}' > /tmp/ohmyrasp-control.json
 ```
 
-### Attach the agent — connected to the control plane
+### Attach the agent: daemonless shirudo mode
 
-Before attaching, create an application in the console
-(`http://<host>:18091` → Applications → New Application) to obtain an
-`app_id` and `app_secret`.
+For immutable, daemonless deployments without `/tmp/ohmyrasp-control.json` or `/tmp/ohmyrasp-events.jsonl`, use the shirudo upatch JARs (`ohmyrasp-{java8,java11,java17,jdk25}.jar`) built via `:agent-*:shirudoUpatchJar`. They embed signed `META-INF/ohmyrasp-shirudo.properties` (`standalone=true`, `lock_config=true`, `mode=block`, `control=none`, `log=stderr`, `latency_sample=0`), start zero background threads, and install via `shirudo bpm install` or `-javaagent:/run/shirudo-java/<name>.jar`. See [Shirudo Java Upatches](../deploy/shirudo/README.md).
+
+### Attach the agent: connected to the control plane
+
+Create an application in the console (`http://<host>:18091` -> Applications) to obtain an `app_id`, `app_secret`, and `environment_id`. You can attach either through the [Rust Host Daemon](../daemon/README.md) (recommended for decoupling control-plane network I/O and offline buffering from the JVM) or pass credentials directly to the agent:
 
 ```bash
 java -javaagent:/opt/ohmyrasp/ohmyrasp-agent.jar=backend_url=http://127.0.0.1:18090,app_id=<app-id>,app_secret=<secret>,environment_id=<env-id>,mode=block \
      -jar your-app.jar
 ```
 
-Configuration can also be supplied via environment variables or system
-properties:
-
-| `javaagent` argument | Environment variable | System property |
-|----------------------|---------------------|-----------------|
+| `-javaagent` argument | Environment variable | System property |
+|---|---|---|
 | `backend_url` | `OHMYRASP_BACKEND_URL` | `-Dohmyrasp.backend_url` |
 | `app_id` | `OHMYRASP_APP_ID` | `-Dohmyrasp.app_id` |
 | `app_secret` | `OHMYRASP_APP_SECRET` | `-Dohmyrasp.app_secret` |
 | `environment_id` | `OHMYRASP_ENVIRONMENT_ID` | `-Dohmyrasp.environment_id` |
 | `mode` | `OHMYRASP_MODE` | `-Dohmyrasp.mode` |
 
----
-
 ## 4. See It Block an Attack
 
-### Option A — Daemon demo (quickest, single command)
+### Option A: Daemon demo
 
-> **Port collision warning:** The daemon demo binds to port `18090` by
-> default, which is the same port as the control-plane API. If you have
-> the control plane running, set `OHMYRASP_DEMO_PORT` before starting
-> the demo:
+> **Port collision warning:** `java-agent/docker-compose.daemon.yml` binds the protected Tomcat app to port `18090` by default, which collides with the control-plane `api` port. If the control plane is running, set `OHMYRASP_DEMO_PORT` first:
 >
 > ```bash
 > export OHMYRASP_DEMO_PORT=18095
 > ```
 
-Start the demo:
+Start the daemon demo (building the Rust daemon and Tomcat 11 playground images from source typically takes 1–2 minutes on first run):
 
 ```bash
 cd java-agent
-docker compose -f docker-compose.daemon.yml up -d --build
+docker compose -f docker-compose.daemon.yml up -d --build --wait
 ```
 
-This starts one agent-protected Tomcat 11 and the Rust host daemon. They
-share a volume for the event spool and control file. No control plane is
-required.
+`--wait` waits for Tomcat's `/rasp/health` healthcheck to pass before returning, and the demo starts `ohmyrasp-daemon` with `--default-mode=block` so a fresh volume enters blocking mode immediately (if you previously switched modes in the console, `down -v` resets the persisted `control.json`). This starts one agent-protected Tomcat 11 container and `ohmyrasp-daemon` sharing a volume for `events.jsonl` and `control.json`, with no control plane required.
 
 | Endpoint | URL |
-|----------|-----|
+|---|---|
 | Protected application | `http://localhost:${OHMYRASP_DEMO_PORT:-18090}` |
-| Daemon console | `http://localhost:7070` |
+| Daemon console | `http://localhost:${OHMYRASP_DAEMON_CONSOLE_PORT:-7070}` |
 
-Trigger a SQL injection attempt:
+Trigger a SQL injection attempt against `/rasp/sql`:
 
 ```bash
-curl -s "http://localhost:${OHMYRASP_DEMO_PORT:-18090}/rasp/sqli?id=1+OR+1=1" -L
+curl -i -G --data-urlencode "value=' OR '1'='1" \
+  "http://localhost:${OHMYRASP_DEMO_PORT:-18090}/rasp/sql"
 ```
 
-Expected result: the agent blocks the request and redirects to
-`/rasp/blocked`. The daemon console at `http://localhost:7070` shows the
-event in the live attack log along with hook latency percentiles.
+Expected result: `HTTP/1.1 302` with `Location: /rasp/blocked?hook=sql&algorithm=sql_userinput&...`. Inspect the logged `sql_userinput` block event from the daemon API or view it in a browser at `http://localhost:7070`:
 
-### Option B — Full comparative playground
+```bash
+curl -s "http://localhost:${OHMYRASP_DAEMON_CONSOLE_PORT:-7070}/api/events?limit=5"
+```
 
-The full playground starts three Tomcat version pairs (each version run
-once unprotected as a baseline and once with the agent):
+### Option B: Full comparative playground
+
+`java-agent/docker-compose.yml` starts three Tomcat version pairs (baseline without agent, and protected with the agent in `block` mode):
 
 ```bash
 cd java-agent
@@ -295,33 +283,25 @@ docker compose up -d --build
 ```
 
 | Tomcat version | Baseline | Protected |
-|----------------|----------|-----------|
+|---|---|---|
 | 9 | `http://localhost:18080/rasp/ui` | `http://localhost:18081/rasp/ui` |
 | 10 | `http://localhost:18082/rasp/ui` | `http://localhost:18083/rasp/ui` |
 | 11 | `http://localhost:18084/rasp/ui` | `http://localhost:18085/rasp/ui` |
 
-The `/rasp/ui` page is an interactive comparative runner. It fires the
-full test case set against any baseline/protected pair. Attack categories
-covered include SQL injection, command injection, JNDI/Log4Shell,
-deserialization, XXE, file read/write, SSRF, and expression injection
-(OGNL/SpEL/FreeMarker) — 42 verified algorithm signatures in total.
+`/rasp/ui` fires test cases across SQL injection, command injection, JNDI/Log4Shell, deserialization, XXE, file read/write, SSRF, Base64 AVX-512 tail-underflow, and expression injection (OGNL/SpEL/FreeMarker) covering **43** end-to-end verified algorithm signatures.
 
-### Option C — Automated acceptance script
+### Option C: Automated acceptance script
 
 ```bash
 cd java-agent
 bash scripts/acceptance.sh
 ```
 
-This builds the agent and playground, starts all three Tomcat
-baseline/protected pairs, exercises attack endpoints, and verifies that
-protected ports redirect to `/rasp/blocked` while baselines do not.
-
----
+This builds the agent and playground WARs (`playground` and `playground-javax`), starts all three Tomcat baseline/protected pairs, runs the attack suite, and verifies that protected ports redirect to `/rasp/blocked` and emit the expected NDJSON records while baselines do not.
 
 ## 5. Local Development Setup
 
-Install the console dependencies:
+Install console dependencies (`Node >= 26`):
 
 ```bash
 cd console
@@ -335,12 +315,11 @@ cd api
 go mod download
 ```
 
-If Go 1.25 is the host toolchain, add `GOTOOLCHAIN=auto` before running
-any `go` commands; the correct toolchain is downloaded automatically.
+If Go 1.25 is installed on the host, add `GOTOOLCHAIN=auto` before running `go` commands so Go downloads `1.26.7` automatically.
 
 ### Run tests
 
-Backend:
+Backend (`api/`):
 
 ```bash
 cd api
@@ -348,15 +327,26 @@ go generate ./...
 go test ./...
 ```
 
-Console:
+Console (`console/`):
 
 ```bash
 cd console
-npm run build
-npm test
+npm run build   # runs i18n:check, tsc -b, and vite build
+npm test        # runs i18n:check, lint, typecheck, and test:e2e
 ```
 
-Java agent (requires `JAVA_HOME` pointing to a JDK 25):
+Playwright end-to-end tests require Chromium (`npx playwright install chromium` on first run):
+
+```bash
+cd console
+npx playwright install chromium
+npm run test:e2e       # mocked API tests on http://127.0.0.1:5273
+npm run test:e2e:live  # live Compose tests against http://127.0.0.1:18091
+```
+
+`test:e2e:live` reads admin credentials from `OHMYRASP_E2E_ADMIN_PASSWORD` / `OHMYRASP_BOOTSTRAP_ADMIN_PASSWORD` (or the root `.env` file).
+
+Java agent (`java-agent/`, requires `JAVA_HOME` pointing to JDK 25 and Gradle `9.9.2`):
 
 ```bash
 cd java-agent
@@ -365,30 +355,18 @@ export PATH="$HOME/.local/bin:$JAVA_HOME/bin:$PATH"
 gradle test
 ```
 
-End-to-end tests require a Playwright-supported browser installation:
+Rust daemon (`daemon/`, uses Rust `1.100.0` via `rust-toolchain.toml`):
 
 ```bash
-cd console
-npm run e2e:install
-npm run e2e
+cd daemon
+cargo test
+cargo clippy --all-targets
 ```
 
 ### Troubleshooting
 
-- **PostgreSQL migration fails at startup** — check that none of the
-  `.env` passwords contain a `/`. Regenerate with `openssl rand -hex 18`.
-- **`gradle test` fails with `[JAVA_COMPILER]` error** — the host has a
-  JRE but not a JDK. Set `JAVA_HOME` to a JDK installation or extract the
-  JDK packages locally as described in the Prerequisites section above.
-- **`gradle` not found or wrong version** — Ubuntu's package manager
-  provides Gradle 4.4.1, which cannot build this project. Install Gradle
-  9.5.1+ under `$HOME/.local` as described above.
-- **`npm ci` fails after pulling changes** — run `npm ci` again from the
-  `console/` directory to synchronize the lockfile after dependency
-  updates.
-- **Playwright `e2e:install` fails on Ubuntu 26.04** — the scripts set
-  `PLAYWRIGHT_HOST_PLATFORM_OVERRIDE=ubuntu24.04-x64` automatically.
-  If you are running the install command manually, export that variable
-  first.
-- **`oapi-codegen` warns about OpenAPI 3.1** — this is expected and does
-  not affect the build.
+- **PostgreSQL or ClickHouse migration fails at startup**: check that none of the `.env` passwords contain `/`. Regenerate with `openssl rand -hex 18`.
+- **`gradle test` fails with `[JAVA_COMPILER]`**: the host has a JRE instead of a JDK. Set `JAVA_HOME` to a JDK 25 installation as shown in Prerequisites.
+- **`gradle` not found or wrong version**: Ubuntu's packaged `gradle` (`4.4.1`) cannot build this project. Install Gradle `9.9.2` under `$HOME/.local` or use `gradle:9.9.2-jdk25` via Docker.
+- **`npm ci` fails after pulling changes**: ensure Node.js `>= 26` is active and re-run `npm ci` inside `console/`.
+- **`oapi-codegen` warns about OpenAPI 3.1**: expected upstream warning during `go generate ./...`; it does not affect the generated bindings or build.

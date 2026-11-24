@@ -1,351 +1,209 @@
 # Detection Engineering
 
-OhMyRASP is a Java RASP (Runtime Application Self-Protection) agent that
-intercepts dangerous JDK operations inside the running JVM rather than
-inspecting traffic at a network boundary. This document explains how the
-detection pipeline is designed, what techniques it uses, what it has been
-validated against, and where its current limits are.
-
----
+OhMyRASP intercepts dangerous JDK operations inside the running JVM rather than inspecting traffic at a network boundary. This document describes the five-stage detection pipeline, active detection techniques, false-positive evaluation, and deployment limits.
 
 ## Detection pipeline
 
-Every detection decision passes through the same five-stage pipeline:
+Every detection decision passes through the same pipeline:
 
 ```
 ASM hook at sink
-  └─ ThreadLocal RequestContext taint correlation
+  └─ ThreadLocal<RequestContext> parameter correlation
        └─ StackWalker call-stack analysis
             └─ algorithm classification
                  └─ policy decision (off / monitor / block)
-                      └─ async NDJSON spool → Rust daemon → Go control plane
+                      ├─ daemon mode: async NDJSON spool -> Rust daemon -> Go control plane
+                      └─ standalone locked mode: structured JSON -> stderr
 ```
 
-**Stage 1 — ASM hook at sink.** `OhMyRaspTransformer` and `HookRegistry`
-rewrite JVM bytecode at class-load time to insert advice immediately before
-dangerous JDK call sites: `ProcessBuilder.start`, `Runtime.exec`,
-`InitialContext.lookup`, `ObjectInputStream.resolveClass`,
-`FileInputStream`/`FileOutputStream`, `DriverManager.getConnection`,
-`ZipEntry.getName`, `ScriptEngine.eval`, `Base64$Decoder.decode0`, and 23 more families (28 hook
-families total). The application source code is never touched.
+**Stage 1: ASM hook at sink.** `OhMyRaspTransformer` and `HookRegistry` rewrite JVM bytecode at class-load or retransform time to insert advice immediately before dangerous JDK and framework call sites. Representative hook points include `ProcessBuilder.start`, `Runtime.exec`, `InitialContext.lookup`, `ObjectInputStream.resolveClass`, `FileInputStream`/`FileOutputStream`, `DriverManager.getConnection`, `ZipEntry.getName`, `ScriptEngine.eval`, and `Base64$Decoder.decode0`. In `agent-jdk25`, `HookRegistry.defaults()` registers **28** hook modules; the `agent-java8`, `agent-java11`, and `agent-java17` backport tracks each register **24** ASM transformers. See [`DETECTION-COVERAGE.md`](../java-agent/docs/DETECTION-COVERAGE.md) for the complete module table. Application source code is never modified.
 
-**Stage 2 — RequestContext taint correlation.** A `ThreadLocal<RequestContext>`
-is populated at every HTTP request entry, covering both the `javax.servlet`
-and `jakarta.servlet` API namespaces. At sink invocation, detectors call
-`request.hasParameterIn(value)` to check whether the suspect value derives
-from a user-controlled request parameter before raising a taint-positive
-finding. SQL injection and OS command injection require confirmed taint before
-escalating to severity 95.
+**Stage 2: RequestContext parameter correlation.** A `ThreadLocal<RequestContext>` is populated at HTTP request entry across both `javax.servlet` and `jakarta.servlet` namespaces. At sink invocation, detectors call `RequestContext.hasParameterIn(value)` to check whether the sink argument contains a substring from a request parameter value (or a bounded request body) before raising a request-correlated finding. This is **request-parameter substring correlation**, not bytecode dataflow taint tracking. SQL injection and OS command injection require confirmed parameter correlation (or a structural signature) before escalating to severity 95.
 
-**Stage 3 — StackWalker call-stack analysis.** `OhMyRaspHooks` captures a
-live `StackWalker` trace (`RETAIN_CLASS_REFERENCE`, `SHOW_REFLECT_FRAMES`) at
-sink invocation. `detectCommand` inspects the trace for expression-engine
-frames (OGNL, MVEL, SpEL, Groovy, JEXL, Nashorn, Velocity, Jiffle, XStream),
-executable-listener frames (Solr `RunExecutableListener`),
-config-launcher frames, and reflective stacks. The presence of these frames
-changes both the algorithm label and the confidence score. The same
-`ProcessBuilder.start` call is therefore classified differently depending on
-whether it originates from Struts2/OGNL, a Spring bean-init chain, an XStream
-unmarshaller, or normal application code.
+**Stage 3: StackWalker call-stack analysis.** `OhMyRaspHooks` captures a live `StackWalker` trace (`RETAIN_CLASS_REFERENCE`, `SHOW_REFLECT_FRAMES`) at sink invocation. `detectCommand` inspects the trace for expression-engine frames (OGNL, MVEL, SpEL, Groovy, JEXL, Nashorn, Velocity, Jiffle, XStream), executable-listener frames (Solr `RunExecutableListener`), config-launcher frames, and reflective deserialization stacks. The presence of these frames changes both the algorithm label and the confidence score, classifying `ProcessBuilder.start` differently depending on whether it originates from Struts2/OGNL, a Spring bean-init chain, an XStream unmarshaller, or ordinary application code.
 
-**Stage 4 — Algorithm classification and policy decision.** The detector
-returns a named algorithm signature (e.g. `java8_jndi_remote_lookup`,
-`java17_request_path_confusion`) with a severity score and a recommended
-action. The active policy — `off`, `monitor`, or `block` — is read from a
-polled JSON control file updated by the Rust daemon. Mode changes reach the
-agent without a JVM restart.
+**Stage 4: Algorithm classification and policy decision.** The detector returns a named algorithm signature (such as `java8_jndi_remote_lookup` or `java17_request_path_confusion`) with a confidence score and recommended action. `AgentRuntime` applies the active mode (`off`, `monitor`, or `block`) and per-algorithm switches:
 
-**Stage 5 — Async NDJSON spool reporting.** Accepted findings are written
-asynchronously to a local NDJSON spool file. The Rust host daemon tails the
-spool and forwards events to the Go control plane. The agent never opens
-outbound network connections at detection time, so detection latency is
-independent of network reachability.
+- **Daemon-managed or local-control mode:** `AgentRuntime` polls a JSON control file (default `/tmp/ohmyrasp-control.json`) updated by the Rust host daemon or operator, applying mode, per-algorithm switches, and distributed policies without a JVM restart.
+- **Standalone locked mode (`META-INF/ohmyrasp-shirudo.properties`):** Shirudo Java upatch JARs bake in `standalone=true`, `lock_config=true`, `mode=block` (or `monitor` when built with `--mode monitor`), and `control=none`. Configuration is fixed at build time, ignores `/tmp/ohmyrasp-control.json` and runtime mode overrides, and starts zero control-poller threads.
 
----
+**Stage 5: Reporting.** Accepted findings are emitted as structured JSON:
+
+- **Daemon-managed mode:** `JsonEventLogger` queues findings asynchronously on a background daemon writer thread to a local NDJSON spool file (default `/tmp/ohmyrasp-events.jsonl`). The Rust host daemon tails the spool and forwards events to the Go control plane, keeping detection latency independent of network reachability.
+- **Standalone locked mode:** `log=stderr` and `latency_sample=0` write detection JSON lines directly to `stderr` with zero file-writer threads, no spool file, and no periodic `hook_latency` telemetry lines.
 
 ## Coverage numbers
 
-These counts are generated from the agent source and acceptance suite by
-`scripts/gen-detection-coverage.py` and checked by CI.
+These counts are generated from the agent source and acceptance suite by [`gen-detection-coverage.py`](../java-agent/scripts/gen-detection-coverage.py) and checked by CI:
 
 | Metric | Count |
-|--------|------:|
-| Hook families (ASM instrumentation points) | 28 |
-| Detector capabilities (engine entry points) | 54 |
-| Verified algorithm signatures (asserted by tests) | 43 |
+|---|---:|
+| Hook families (ASM instrumentation modules in `agent-jdk25`) | 28 |
+| Backport ASM transformers (`agent-java8`, `agent-java11`, `agent-java17`) | 24 each |
+| Detector capabilities (`DetectorEngine` `detect*` entry points) | 54 |
+| Verified algorithm signatures (asserted by acceptance tests) | 43 |
 | End-to-end vulnerability acceptance scenarios | 136 |
 | JDK lines exercised in acceptance matrix | 6 |
 | Vulhub component roots in scope | 53 |
 | Unique Vulhub CVE tokens tracked | 130 |
 
-A "verified algorithm signature" means an end-to-end acceptance test
-launched a real vulnerable application inside a Docker container under the
-agent, sent a real exploit payload, and asserted the named algorithm was
-detected and blocked. Signatures that are implemented but not yet covered by
-acceptance tests are not counted here.
+A "verified algorithm signature" means an end-to-end acceptance test launched a real vulnerable application inside a Docker container under the agent, sent an exploit payload, and asserted that the named algorithm was detected and blocked. Signatures implemented in `DetectorEngine` without an end-to-end acceptance assertion are not included in the 43 count.
 
-Acceptance scenario distribution by JDK line:
+Acceptance scenario distribution in [`DETECTION-COVERAGE.md`](../java-agent/docs/DETECTION-COVERAGE.md):
 
 | JDK line | Scenarios | Notes |
-|----------|----------:|-------|
-| Java 8 | 96 | Primary coverage baseline; most Vulhub images |
-| Java 17 | 12 | Tomcat 11, 10.1, 9; GeoServer, Struts2 upload |
-| Java 11 | 10 | Tomcat 10.1, 9; ActiveMQ, HertzBeat |
-| Java 21 | 3 | DataEase CVEs; agent-java17 binary on OpenJDK 21 JVM |
-| Java 7 legacy | 9 | Boundary scenarios only — agent injection not possible |
-| Java 6 legacy | 5 | Boundary scenarios only — agent injection not possible |
-
----
+|---|---:|---|
+| Java 8 | 96 | Primary coverage baseline across most Vulhub images |
+| Java 17 | 12 | Tomcat 11, 10.1, 9; GeoServer, Struts2 upload, TeamCity |
+| Java 11 | 10 | Tomcat 10.1, 9; ActiveMQ, ColdFusion, HertzBeat, HugeGraph, Metabase |
+| Java 21 | 3 | DataEase CVEs; `agent-java17` binary on OpenJDK 21 JVM |
+| Java 7 legacy | 9 | Boundary scenarios only; agent injection not supported |
+| Java 6 legacy | 5 | Boundary scenarios only; agent injection not supported |
+| Boundary script (`unknown`) | 1 | `confluence-setup-boundaries` (lacks a `-java*` filename suffix) |
+| **Total** | **136** | |
 
 ## Detection techniques
 
-### Taint correlation
+### Request-parameter substring correlation
 
-Request parameter values are tracked from HTTP entry through the
-`ThreadLocal<RequestContext>`. A detection is taint-positive only when the
-value at the dangerous sink contains a substring drawn from a request
-parameter. This is why `sql_userinput` and `command_userinput` carry the
-highest severity: they prove that untrusted input reached a dangerous
-operation, not merely that a dangerous operation occurred.
+Request parameter values (and bounded request bodies up to 8192 characters) are captured into `ThreadLocal<RequestContext>` at HTTP entry. `RequestContext.hasParameterIn(value)` checks whether a dangerous sink argument contains a parameter value of at least 2 characters, a parameter name of at least 8 characters with non-alphanumeric delimiters, or matches within the request body for sink values of at least 8 characters. This is value-level substring correlation, not bytecode dataflow taint tracking: if an application transforms a parameter string before reaching the sink in a way that breaks substring matching, correlation will not trigger, while structural and call-stack rules still evaluate the sink.
 
-Applications that call `ProcessBuilder` with purely internal arguments (e.g.
-a scheduled task with no user-controlled components) do not trip the
-taint-correlated path. The stack-analysis layer may still fire a lower-severity
-structural alert if an expression-engine frame is present.
+Applications that call `ProcessBuilder` with purely internal arguments do not trigger the parameter-correlated path. The call-stack analysis layer fires only if an expression-engine or gadget-chain frame is present.
 
 ### Call-stack structural analysis
 
-Expression-engine and RCE-gadget-chain stacks have a recognizable structure
-that appears in every framework-level exploit. `detectCommand` identifies:
+Expression-engine and RCE-gadget-chain stacks appear consistently across framework exploits. `detectCommand` inspects `StackWalker` frames for:
 
-- **Expression engines**: OGNL (Struts2), MVEL (Druid, OFBiz), SpEL (Spring),
-  Groovy, JEXL, Nashorn, Velocity, Jiffle (GeoServer), XStream
-- **Executable listeners**: Solr `RunExecutableListener`
-- **Config launchers**: Spring `ProcessBuilderFactoryBean` patterns
-- **Deep reflective stacks**: gadget-chain indicators from deserialization
+- **Expression engines:** OGNL (Struts2), MVEL (Druid, OFBiz, Unomi), SpEL (Spring), Groovy, JEXL, Nashorn, Velocity, Jiffle (GeoServer), XStream
+- **Executable listeners:** Solr `RunExecutableListener`
+- **Config launchers:** Spring `ProcessBuilderFactoryBean` and bean-initialization patterns
+- **Deep reflective stacks:** gadget-chain indicators from deserialization (`ObjectInputStream`, Axis2, AMF)
 
-This means a novel Struts2 bypass that still passes through OGNL evaluation
-is caught at the process sink without requiring an OGNL-specific request
-pattern. The same applies to Spring SpEL injections arriving through any
-entry point that eventually invokes a JDK process or file sink.
+A novel Struts2 bypass that passes through OGNL evaluation is caught at the process sink without requiring an OGNL-specific HTTP signature. The same applies to Spring SpEL injections reaching a process or file sink.
 
 ### SQL syntax-aware detection
 
-`detectSql` combines taint correlation with structural SQL pattern analysis.
-It does not rely on a single regex. The patterns are partitioned by intent:
+`detectSql` combines parameter correlation with structural SQL analysis across partitioned rule sets:
 
-- **`SQLI_USER_INPUT`** — classic injection structures: OR/AND tautologies,
-  `UNION SELECT`, comment prefixes (`--`, `#`, `/*`)
-- **`SQLI_STRUCTURAL`** — standalone structural injection signatures (quote-terminated
-  comments `['"]\s*--`, quote-terminated `OR`/`AND` tautologies, and unquoted
-  `OR <id>=<id>` tautologies) enforced across driver-wide JDBC `Statement` sinks
-  even outside an active HTTP request context, while leaving benign `WHERE 1=1 AND ...`
-  query-builder prefixes quiet
-- **`SQL_POLICY`** — schema enumeration (`information_schema`), file-export
-  keywords (`INTO OUTFILE`, `LOAD_FILE`)
-- **H2 code execution** — `CREATE ALIAS`, `CREATE TRIGGER` with `AS $$`
-  Java inline blocks; catches CVE-2022-23221 and variants
-- **Derby code execution** — `SQLJ.INSTALL_JAR`,
-  `LANGUAGE JAVA EXTERNAL NAME` procedure patterns
-- **`detectSqlRegex`** — GeoServer OGC filter CQL injection; GIS-specific
-  constructs (`strConcat`, Jiffle script fragments)
+- **`SQLI_USER_INPUT`:** injection structures correlated with request parameters (`OR`/`AND` tautologies, `UNION SELECT`, comment prefixes `--`, `#`, `/*`).
+- **`SQLI_STRUCTURAL`:** standalone structural injection signatures (quote-terminated comments `['"]\s*--`, quote-terminated `OR`/`AND` tautologies, and unquoted `OR <id>=<id>` tautologies) enforced across driver-wide JDBC `Statement` sinks even outside an active HTTP `RequestContext`, while leaving benign `WHERE 1=1 AND ...` query-builder prefixes quiet.
+- **`SQL_POLICY`:** schema enumeration (`information_schema`) and file-export keywords (`INTO OUTFILE`, `LOAD_FILE`).
+- **H2 code execution:** `CREATE ALIAS` and `CREATE TRIGGER` with `AS $$` Java inline blocks (covering CVE-2022-23221 and variants), plus H2 `INIT` URL checks in `detectJdbcUrl`.
+- **Derby code execution:** `SQLJ.INSTALL_JAR` and `LANGUAGE JAVA EXTERNAL NAME` procedure patterns.
+- **`detectSqlRegex`:** GeoServer OGC filter CQL injection (`strConcat`, Jiffle script fragments).
 
-False-positive rate on the 10-query benign SQL corpus: **0/10** (see
-false-positive methodology below).
+False-positive rate on the 10-query benign SQL corpus: **0/10** (see [False-positive methodology](#false-positive-methodology)).
 
 ### Deserialization defenses
 
-Multiple layers address the Java deserialization attack surface:
+Multiple hook modules and detectors cover Java deserialization surfaces:
 
-- **`detectDeserialization`** hooks `ObjectInputStream.resolveClass` and
-  matches class names against a known-dangerous gadget blocklist (Commons
-  Collections, BeanShell, Groovy, etc.) via `DeserializationGuard`.
-- **`detectPolymorphicType`** covers polymorphic-type deserialization:
-  `@type`, `javaClass`, and `class` JSON keys (Fastjson, Jackson);
-  YAML `!!` tags.
-- **`detectHessianType`** covers Hessian type-loading gadget chains.
-- **`detectHttpInvokerDeserialization`** and
-  **`detectHttpObjectStreamDeserialization`** cover Spring HTTP Invoker.
-- **`detectProtocolClassInstantiation`** covers ActiveMQ OpenWire
-  class-instantiation (CVE-2023-46604).
-- **`detectRmiRegistryBind`** covers RMI Registry gadget delivery.
-- **`detectSessionDeserialization`** covers serialized session-file
-  deserialization paths.
+- **`detectDeserialization`:** hooks `ObjectInputStream.resolveClass` and checks class names against a known-dangerous gadget blocklist (Commons Collections, BeanShell, Groovy, and related gadgets) via `DeserializationGuard`.
+- **`detectFastjsonClassResource`:** blocks URL-shaped class-resource lookups in Fastjson 1.2.83 immediately before `ParserConfig.checkAutoType` invokes the `ClassLoader`.
+- **`detectPolymorphicType`:** inspects `@type`, `javaClass`, and `class` JSON keys (Fastjson, Jackson) and YAML `!!` tags.
+- **`detectHessianType`:** covers Hessian type-loading gadget chains (active with or without an HTTP `RequestContext`).
+- **`detectHttpInvokerDeserialization` and `detectHttpObjectStreamDeserialization`:** cover Spring HTTP Invoker.
+- **`detectProtocolClassInstantiation`:** covers ActiveMQ OpenWire class instantiation (CVE-2023-46604, active with or without an HTTP `RequestContext`).
+- **`detectRmiRegistryBind`:** covers RMI Registry gadget delivery.
+- **`detectSessionDeserialization`:** covers serialized session-file deserialization paths.
 
-Fastjson CVE-2017-18349 and the 1.2.47 `@type` bypass, XStream
-CVE-2021-21351 and CVE-2021-29505, and WebLogic XMLDecoder CVE-2017-10271
-all have verified Java 8 acceptance runs.
+Fastjson CVE-2017-18349 and the 1.2.47 `@type` bypass, XStream CVE-2021-21351 and CVE-2021-29505, and WebLogic XMLDecoder CVE-2017-10271 all have verified Java 8 acceptance runs.
 
 ### Multi-form path-confusion decoding
 
-`request_path_confusion` decodes every incoming URI in six forms
-simultaneously:
+`request_path_confusion` decodes every incoming URI in six forms simultaneously:
 
 1. Raw (as received)
 2. URL-decoded (one pass)
 3. Double-decoded (two passes)
 4. Low-byte Unicode normalization
-5. Overlong UTF-8 decoding (e.g., `%c0%ae` → `.`)
+5. Overlong UTF-8 decoding (for example, `%c0%ae` -> `.`)
 6. Lenient percent-decode
 
-All six representations are compared. A mismatch that changes path semantics
-(e.g., a traversal sequence appearing only in one decoded form) fires the
-detector. This single generic detector catches:
-
-- Shiro semicolon traversal (CVE-2010-3863, CVE-2020-1957)
-- Nexus repeated encoded-slash
-- GlassFish overlong UTF-8 (CVE-2010-1000028)
-- Openfire `%u002e%u002e` encoding (CVE-2023-32315)
-- Spring high-Unicode ghost-bit collapse
-- Flink double-percent encoding
-- Jetty ConcatServlet `%2e/WEB-INF` traversal
-
-No product-specific path signatures are required.
+Comparing all six representations catches path-semantic mismatches (such as traversal sequences appearing only after decoding) without product-specific path signatures. Verified scenarios include Shiro semicolon traversal (CVE-2010-3863, CVE-2020-1957), Nexus repeated encoded-slash, GlassFish overlong UTF-8 (CVE-2010-1000028), Openfire `%u002e%u002e` encoding (CVE-2023-32315), Spring high-Unicode normalization, Flink double-percent encoding, and Jetty `ConcatServlet` `%2e/WEB-INF` traversal.
 
 ### Cryptographic default-secret verification
 
-These detectors perform actual cryptographic operations rather than
-pattern-matching on token shapes:
-
-- **JWT default HMAC secrets.** `detectJwtVerificationFailure` inspects JWT
-  Bearer tokens against a table of known default HMAC secrets (e.g.,
-  HugeGraph's published default). The token HMAC is verified under each
-  candidate key. A valid HMAC fires at severity 95. This catches active
-  exploitation of default-key deployments, not just the presence of a JWT.
-- **Apache Shiro default rememberMe key.** The encrypted cookie is decrypted
-  under the Shiro default AES key; if decryption yields a Java
-  object-stream magic header, the detector fires. CVE-2016-4437 has a
-  verified Java 8 acceptance run.
+- **JWT default HMAC secrets:** `detectJwtVerificationFailure` tests incoming Bearer JWTs against known default HMAC secrets (such as HugeGraph's published default). A valid HMAC under a default secret fires at severity 95.
+- **Apache Shiro default rememberMe key:** encrypted `rememberMe` cookies are decrypted under Shiro's default AES key; if decryption yields a Java object-stream magic header, the detector fires (verified in the CVE-2016-4437 Java 8 acceptance run).
 
 ### Base64 AVX-512 tail-underflow guard (CVE-2026-114938)
 
-`Base64HookModule` (and `Java{8,11,17}Base64Transformer` across the backport
-agents) instruments the JDK internal `java.util.Base64$Decoder.decode0([BII[B)I`
-sink across JDK 8, 11, 17, 21, and 25. Before the native AVX-512 stub can
-underflow the tail buffer and write past the destination array, a zero-allocation
-arithmetic predicate checks for non-MIME inputs of length `>= 65` with
-`1 <= (length & 63) <= 3`, `1 <= padding <= 2` (`padding <= remainder`), and
-strict Base64 alphabet characters. Matching candidates are rejected with a
-block exception and logged using length/padding/remainder/alphabet metadata
-only — raw input bytes are never recorded.
+[`Base64HookModule`](../java-agent/agent-jdk25/src/main/java/io/ohmyrasp/agent/asm/Base64HookModule.java) (and `Java{8,11,17}Base64Transformer` across the backport agents) instruments `java.util.Base64$Decoder.decode0([BII[B)I` across JDK 8, 11, 17, 21, and 25. Before the native x86-64 AVX-512 stub can underflow the tail buffer and write past the destination array, `DetectorEngine.isBase64TailUnderflowCandidate` performs a zero-allocation check for non-MIME inputs of length `>= 65` with `1 <= (length & 63) <= 3`, `1 <= padding <= 2` (`padding <= remainder`), and valid Base64 alphabet bytes (`+`/`/` for standard, `-`/`_` for URL-safe). Matching inputs are blocked (even outside an HTTP request context) and logged using length, padding, remainder, and alphabet metadata only; raw input bytes are never recorded.
 
 ### SSRF heuristics
 
-`detectUrl` and `detectXmlAttachmentReference` combine multiple heuristics:
+`detectUrl` and `detectXmlAttachmentReference` check:
 
-- **Cloud metadata endpoints**: `169.254.169.254`, `/latest/meta-data`
-- **Dangerous protocols**: `ldap`, `rmi`, `file`, `jar`, `dict`, `gopher`,
-  `sftp`, `tftp`
-- **Internal RFC-1918 address space**: 10.x, 172.16–31.x, 192.168.x
-- **Known DNS callback domains**: `ceye.io`, `dnslog.cn`,
-  `burpcollaborator.net`, and 12 others
-- **IP obfuscation forms**: decimal (`2130706433`), hex (`0x7f000001`),
-  octal (`0177.0.0.1`) encodings of loopback and RFC-1918 addresses
+- **Cloud metadata endpoints:** `169.254.169.254`, `/latest/meta-data`
+- **Dangerous protocols:** `ldap`, `rmi`, `file`, `jar`, `dict`, `gopher`, `sftp`, `tftp`
+- **Internal RFC-1918 address space:** `10.x`, `172.16-31.x`, `192.168.x`
+- **Known DNS callback domains:** `ceye.io`, `dnslog.cn`, `burpcollaborator.net`, and 12 others
+- **IP obfuscation forms:** decimal (`2130706433`), hex (`0x7f000001`), and octal (`0177.0.0.1`) encodings of loopback and RFC-1918 addresses
 
 ### Response-side data-leak detection
 
-`detectResponseDataLeak` inspects outbound response bodies (HTML, JSON, XML)
-for:
+`detectResponseDataLeak` inspects outbound response bodies (HTML, JSON, XML) for:
 
-- **Chinese national ID cards** — 18-digit format with checksum verification
-- **Mobile phone numbers** — validated against Chinese carrier prefix tables
-- **Payment card numbers** — Luhn-validated; card brand not distinguished
+- **Chinese national ID cards:** 18-digit format with checksum verification
+- **Mobile phone numbers:** validated against Chinese carrier prefix tables
+- **Payment card numbers:** Luhn-validated (card brand not distinguished)
 
-`detectXssEcho` confirms whether an XSS-like input payload is reflected
-verbatim in the response body, converting a one-sided injection alert into
-a confirmed reflection finding.
+`detectXssEcho` checks whether an XSS-like input payload is reflected verbatim in the response body.
 
-> **Wiring status — not yet active on live traffic.** Both response-side
-> detectors (`detectResponseDataLeak`, `detectXssEcho`) are implemented and
-> unit-tested, and the agent exposes the `beforeResponseDataLeak` /
-> `beforeXssEcho` hook entry points. However, **no bytecode transformer
-> currently installs those hooks onto a response-output sink** (e.g.
-> `HttpServletResponse.getWriter()` / `ServletOutputStream`), so the detectors
-> do not run during normal request handling. They are exercised today only via
-> the playground's direct invocation probes (the `response` and `xss-echo`
-> action cases in `VulnerableServlet`, which call the hooks reflectively).
-> Wiring response-body scanning onto the hot response path is
-> deferred pending a latency-conscious instrumentation design, because it would
-> scan every outbound body and the agent's standing goal is **no business
-> latency**. Treat response-side detection as a demonstrated capability, not an
-> active protection, until that wiring lands.
-
-Note: PII detection is oriented toward Chinese formats. International PII
-formats (US SSN, EU national identifiers) are not currently in scope.
+> **Wiring status: not yet active on live traffic.** Both `detectResponseDataLeak` and `detectXssEcho` are implemented and exposed via `OhMyRaspHooks.beforeResponseDataLeak` and `OhMyRaspHooks.beforeXssEcho`, but **no ASM hook module currently instruments a servlet response-output sink** (`HttpServletResponse.getWriter()` / `ServletOutputStream`). Today they execute only when called directly by the playground probes (`response` and `xss-echo` actions in [`VulnerableServlet.java`](../java-agent/playground/src/main/java/io/ohmyrasp/playground/VulnerableServlet.java)). Wiring response-body scanning onto the hot response path is deferred to avoid adding outbound-body scanning overhead on every request.
 
 ### Payload redaction before logging
 
-Before writing events to the NDJSON spool, detectors call `redact*Request`
-helpers. Expression payloads in file-upload filenames are recorded as
-`length=N engine=X` only, never echoed. Serialized client-state headers,
-expression-injection headers, and credential fields are stripped or
-truncated. Sensitive input never reaches log storage in plaintext.
+Before writing events to the NDJSON spool or `stderr`, detectors and `JsonEventLogger` redact sensitive fields:
 
----
+- `JsonEventLogger` masks sensitive HTTP headers (`authorization`, `cookie`, `set-cookie`, `x-api-key`, `api-key`, `x-auth-token`, `access-token`, `refresh-token`, `id-token`), sensitive parameters (`password`, `token`, `secret`, `apikey`, `credential`, and variants), and executable-source parameters (`script`, `source`, `command`, `cmd`, `payload`, `template`, `expression`, and variants).
+- Expression payloads in multipart upload filenames record `length=N` and `engine=X` metadata only.
 
 ## Validated against real exploits
 
 ### JDK and Tomcat compatibility matrix
 
-Each JDK era has a dedicated agent fat-jar with ASM dependencies relocated
-to avoid colliding with application-bundled ASM (Struts2 ships ASM 3.3;
-OhMyRASP ships a current version). The servlet hook instruments both
-`javax.servlet` and `jakarta.servlet` namespaces, so one binary covers
-Tomcat 9 through 11 without recompilation.
+Each JDK track produces a self-contained agent JAR with ASM relocated to `io.ohmyrasp.agent.shaded.asm` so it does not collide with application-bundled ASM (for example, Struts2 bundling ASM 3.3). The servlet hooks instrument both `javax.servlet` and `jakarta.servlet` namespaces, so one binary covers Tomcat 9 through 11 without recompilation. See [`agent.md`](agent.md) for artifact paths and build commands.
 
-| Agent artifact | Target JDK | Tomcat versions | Acceptance scenarios |
-|----------------|-----------|-----------------|---------------------:|
-| `agent-jdk25` (primary) | Java 25 | Tomcat 11, 10, 9 | (JDK 25 build) |
-| `agent-java17` | Java 17 | Tomcat 11, 10.1, 9 | 12 |
+| Agent track | Target JDK | Tomcat versions | Acceptance scenarios |
+|---|---|---|---:|
+| `agent-jdk25` (primary) | Java 25 | Tomcat 11, 10, 9 | (JDK 25 baseline/protected suite) |
+| `agent-java17` | Java 17 (and 21) | Tomcat 11, 10.1, 9 | 12 (Java 17) + 3 (Java 21) |
 | `agent-java11` | Java 11 | Tomcat 10.1, 9 | 10 |
 | `agent-java8` | Java 8 | Tomcat 10.0, 9, 8.5 | 96 |
 
-`agent-java17` has also been verified on an OpenJDK 21 JVM (3 DataEase
-acceptance scenarios). Java 25 is the primary development target and is not
-yet an LTS release; production deployments on Java 17 LTS should use
-`agent-java17`.
+Java 25 is the primary development target and is not an LTS release. Production deployments on Java 17 or Java 21 LTS should use `agent-java17`.
 
 ### Notable CVE acceptance runs
 
-The following vulnerabilities have end-to-end acceptance tests that launch
-the real Vulhub container, inject the agent, send a real exploit, and assert
-detection and block. This is not an exhaustive list; it is the set of
-well-known CVEs in the acceptance matrix.
+The table below highlights representative Vulhub scenarios verified end-to-end against real Docker containers (see [`DETECTION-COVERAGE.md`](../java-agent/docs/DETECTION-COVERAGE.md) and [`vulhub-coverage.md`](development/vulhub-coverage.md) for the complete 136-scenario list):
 
 | CVE / Advisory | Application | JDK tested |
-|----------------|-------------|-----------|
+|---|---|---|
 | CVE-2021-44228 (Log4Shell) | Solr JNDI lookup | Java 8 |
-| CVE-2017-18349, 1.2.47 bypass (Fastjson) | Fastjson `@type` | Java 8 |
+| CVE-2017-18349, 1.2.47 bypass | Fastjson `@type` | Java 8 |
 | CVE-2016-4437 (Shiro default key) | Apache Shiro | Java 8 |
-| CVE-2010-3863, CVE-2020-1957 (Shiro auth bypass) | Apache Shiro | Java 8 |
+| CVE-2010-3863, CVE-2020-1957 (path traversal) | Apache Shiro | Java 8 |
 | S2-001 through S2-067 (19 Struts2 scenarios) | Apache Struts2 | Java 8 / 17 |
 | CVE-2022-22965 (Spring4Shell) | Spring MVC / Tomcat | Java 8 |
-| CVE-2022-22947 (Spring Cloud Gateway) | Spring Gateway SpEL | Java 8 |
+| CVE-2022-22947 | Spring Cloud Gateway SpEL | Java 8 |
 | CVE-2020-1938 (Ghostcat) | Tomcat AJP | Java 8 |
-| CVE-2023-46604 (ActiveMQ OpenWire) | Apache ActiveMQ | Java 11 |
-| CVE-2021-21351, CVE-2021-29505 (XStream) | XStream gadget | Java 8 |
-| CVE-2020-14882/14883, CVE-2017-10271 (WebLogic) | Oracle WebLogic | Java 8 |
-| CVE-2022-24816, CVE-2023-25157, CVE-2024-36401 (GeoServer) | GeoServer | Java 17 |
-| CVE-2024-56511, CVE-2025-32966, CVE-2025-49001 (DataEase) | DataEase | Java 21 |
-| CVE-2019-3396, CVE-2021-26084, CVE-2022-26134, | Confluence | boundary |
-| CVE-2023-22515, CVE-2023-22527 | | script |
+| CVE-2023-46604 | Apache ActiveMQ OpenWire | Java 11 |
+| CVE-2021-21351, CVE-2021-29505 | XStream gadget | Java 8 |
+| CVE-2020-14882/14883, CVE-2017-10271 | Oracle WebLogic | Java 8 / Java 6 legacy |
+| CVE-2022-24816, CVE-2023-25157, CVE-2024-36401 | GeoServer | Java 17 |
+| CVE-2024-56511, CVE-2025-32966, CVE-2025-49001 | DataEase | Java 21 |
+| CVE-2019-3396, CVE-2021-26084, CVE-2022-26134, CVE-2023-22515, CVE-2023-22527 | Atlassian Confluence | boundary script (`unknown`) |
 
-Top application families by scenario count: Struts2 (19), Spring (10),
-WebLogic (7), OFBiz (6), ActiveMQ (5), Elasticsearch (5), Solr (5).
-
----
+Top application families by scenario count: Struts2 (19), Spring (10), WebLogic (7), OFBiz (6), ActiveMQ (5), Elasticsearch (5), Solr (5).
 
 ## False-positive methodology
 
-A curated corpus of 83 benign-but-realistic inputs across 14 detector
-categories is run against the live `DetectorEngine` with a realistic
-`RequestContext` (user-supplied values placed in request parameters). The
-report is generated by `scripts/fp-harness/FpReport.java` against the real
-engine, not a mock. The corpus includes the live `detectRequest` path (request
-parameters carrying benign HTML markup) so the most-invoked detector is measured.
+A curated corpus of **83** benign inputs across **14** detector categories is evaluated against the live `DetectorEngine` with a `RequestContext` carrying user-supplied values in request parameters. The report is generated by [`FpReport.java`](../java-agent/scripts/fp-harness/FpReport.java) against the real engine, including `detectRequest` on benign HTML parameter values.
 
 | Category | Benign inputs | False positives | FP rate |
-|----------|---:|---:|---:|
+|---|---:|---:|---:|
 | SQL queries | 10 | 0 | 0.0% |
 | OS commands | 8 | 0 | 0.0% |
 | Outbound URLs | 6 | 0 | 0.0% |
@@ -362,77 +220,25 @@ parameters carrying benign HTML markup) so the most-invoked detector is measured
 | Base64 decoding | 8 | 0 | 0.0% |
 | **Overall** | **83** | **0** | **0.0%** |
 
-The corpus is clean. The previous JNDI precision gap — legitimate Java EE
-names (`java:comp/env/jdbc/AppDataSource`,
-`java:comp/env/jms/QueueConnectionFactory`, `java:global/AppEjb/UserService`)
-tripping `jndi_disable_all` — was closed by making `detectJndi` scheme-aware:
-the detector now fires only when the lookup name resolves through a *remote*
-naming provider (`ldap`, `ldaps`, `rmi`, `iiop`, `corbaname`, `corbaloc`) — the
-JNDI-injection vector — and ignores the local `java:` namespace and bare
-relative names. This matches the scheme set the `agent-java8/11/17` backports
-already enforced, restoring cross-agent parity.
+`detectJndi` is scheme-aware across all four tracks: it fires only when the lookup name resolves through a remote naming provider (`ldap`, `ldaps`, `rmi`, `iiop`, `corbaname`, `corbaloc`) and ignores local `java:` JNDI names (`java:comp/env/jdbc/AppDataSource`, `java:global/...`) and bare relative names.
 
-**Framing.** This is a detector-precision measurement on 75 hand-curated
-benign strings. It is not a production false-positive rate measurement.
-Production traffic contains context that the corpus cannot reproduce: unusual
-framework middleware, custom parameter encoding, ORM-generated SQL. The
-corpus is useful for regression testing detector changes, not for quoting a
-deployment-level FP rate.
-
----
+**Framing:** This is a detector-precision regression check on 83 hand-curated benign inputs, not a production false-positive rate measurement. Production traffic introduces context that this corpus does not model, such as framework middleware wrappers, custom parameter encoding, and ORM-generated SQL.
 
 ## Known limitations
 
-The following limitations are stated plainly because they affect deployment
-decisions.
-
-**Java 25 primary agent requires a Java 25 toolchain to build.** The primary
-`agent-jdk25` artifact compiles with `JavaLanguageVersion.of(25)` and a
-GraalVM/Temurin 25 toolchain. Java 25 is not yet an LTS release. Operators
-running Java 17 LTS production environments must use the `agent-java17`
-artifact, which has 12 verified acceptance scenarios.
-
-**Java 6 and 7 environments cannot be protected by the agent.** The agent
-classfile (Java 8, major version 52) is rejected by Java 6 and 7 JVMs. The
-14 legacy-boundary scenarios in the acceptance matrix document real Vulhub
-exploits running against those runtimes but do not demonstrate agent-side
-blocking. They are recorded as "legacy runtime boundary" to be honest about
-the baseline.
-
-**Confluence acceptance coverage is a boundary script, not a full injection
-run.** Confluence requires an interactive license-setup step that prevents
-automated container starts. The acceptance script probes expected payloads
-against the setup boundary; it does not complete a full agent-injection and
-block cycle.
-
-**The false-positive corpus is 83 curated inputs, not production traffic.**
-The overall FP rate on this corpus is 0.0%, but a clean curated corpus should
-not be extrapolated to a production deployment rate.
-
-**Acceptance breadth is bounded by the 53 Vulhub roots in scope.** 136
-scenarios against real Docker containers is strong coverage for the
-frameworks tested, but enterprise middleware not represented in Vulhub may
-have unexercised attack surfaces.
-
-**Response data-leak detection covers Chinese PII formats only.** National
-ID card (format + checksum), mobile number (carrier prefix tables), and
-payment card (Luhn) are detected. US SSN, EU national identifiers, and other
-regional formats are not in scope.
-
----
+- **Java 25 build toolchain:** `agent-jdk25` builds with `JavaLanguageVersion.of(25)` and `options.release.set(25)`. Production Java 17 or Java 21 LTS deployments must use `agent-java17`.
+- **Java 6 and 7 JVMs are outside agent support:** Agent classfiles target Java 8 (`<= 52`) or newer and cannot load on Java 6 or 7 JVMs. The 14 `java6-legacy` and `java7-legacy` entries in the acceptance matrix document exploit baselines on those runtimes; they do not demonstrate agent blocking.
+- **Confluence setup boundary:** Confluence requires an interactive license-setup step that prevents unattended container startup. `acceptance-vulhub-confluence-setup-boundaries.sh` probes expected setup boundaries rather than completing full agent-injection and block assertions.
+- **Curated false-positive corpus:** The 0/83 result measures regression precision on curated inputs and must not be extrapolated directly to production FP rates.
+- **Vulhub scope:** Acceptance breadth covers the 53 Java/JVM Vulhub roots in scope (136 scenarios). Middleware patterns outside that corpus may exercise uninstrumented sinks.
+- **Regional PII scope:** `detectResponseDataLeak` covers Chinese national IDs, Chinese mobile prefixes, and Luhn payment cards (and is not yet wired to a servlet response hook). US SSNs, EU identifiers, and other regional formats are out of scope.
 
 ## Coverage ledgers
 
-Detailed tables of hooks, detectors, algorithm signatures, and acceptance
-scenarios are maintained as generated artifacts and checked by CI:
+Detailed tables of hooks, detectors, algorithm signatures, and acceptance scenarios are maintained in:
 
-- [`java-agent/docs/DETECTION-COVERAGE.md`](../java-agent/docs/DETECTION-COVERAGE.md)
-  — hook families, detector capabilities, verified algorithm signatures,
-  acceptance matrix
-- [`java-agent/docs/FALSE-POSITIVE-REPORT.md`](../java-agent/docs/FALSE-POSITIVE-REPORT.md)
-  — per-category false-positive measurements regenerated by
-  `scripts/fp-harness/FpReport.java`
-- [`docs/development/algorithm-coverage.md`](development/algorithm-coverage.md)
-  — algorithm-level narrative and per-scenario notes
-- [`docs/development/vulhub-coverage.md`](development/vulhub-coverage.md)
-  — Vulhub CVE tracking checklist with boundary classifications
+- [`java-agent/docs/DETECTION-COVERAGE.md`](../java-agent/docs/DETECTION-COVERAGE.md): generated hook families, detector capabilities, verified algorithm signatures, and acceptance matrix
+- [`java-agent/docs/FALSE-POSITIVE-REPORT.md`](../java-agent/docs/FALSE-POSITIVE-REPORT.md): generated per-category false-positive report from `FpReport.java`
+- [`docs/development/algorithm-coverage.md`](development/algorithm-coverage.md): algorithm-level narrative and per-scenario notes
+- [`docs/development/vulhub-coverage.md`](development/vulhub-coverage.md): Vulhub CVE tracking checklist with boundary classifications
+- [`deploy/shirudo/README.md`](../deploy/shirudo/README.md): standalone Shirudo Java upatch packaging and security boundary

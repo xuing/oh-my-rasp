@@ -1,14 +1,6 @@
 # Contributing to OhMyRASP
 
-Thank you for your interest in contributing. OhMyRASP is under active
-development and welcomes bug reports, feature ideas, documentation improvements,
-and code contributions of all sizes.
-
-This document covers the repository layout, local development paths, how to run
-each component's test suite, how to keep generated artefacts fresh, and what we
-look for in a pull request.
-
----
+This guide covers the repository layout, supported toolchains, component test suites, generated documentation checks, and pull request expectations.
 
 ## Table of Contents
 
@@ -21,7 +13,7 @@ look for in a pull request.
   - [React console](#react-console)
   - [Java agent](#java-agent)
   - [Daemon (Rust)](#daemon-rust)
-  - [Deployment and observability checks](#deployment-and-observability-checks)
+  - [Deployment, shirudo, and observability checks](#deployment-shirudo-and-observability-checks)
 - [Regenerating generated docs](#regenerating-generated-docs)
 - [Adding a new hook family or detector](#adding-a-new-hook-family-or-detector)
 - [Console i18n expectations](#console-i18n-expectations)
@@ -29,49 +21,34 @@ look for in a pull request.
 - [Pull request expectations](#pull-request-expectations)
 - [License](#license)
 
----
-
 ## Project layout
 
 ```text
-api/          Go control-plane API, migrations, OpenAPI contract, generated bindings
-console/      React 19 + Vite control-plane console (app-centric rewrite)
-java-agent/   Java agent (agent-jdk25 primary + agent-java8/11/17 backports)
-              and comparative Tomcat playgrounds
-daemon/       Rust host daemon (ohmyrasp-daemon)
-deploy/       Helm chart, observability assets, smoke and validation scripts
-docs/         Architecture notes, development ledgers, and operational runbooks
-web/          Legacy console (superseded by console/, retained for reference)
+api/              Go control-plane API, migrations, OpenAPI contract, generated bindings
+console/          React 19 + Vite 8 control-plane console (TypeScript 6, Tailwind CSS 4)
+java-agent/       Java agent (agent-jdk25 primary + agent-java8/11/17 backports) and Tomcat playgrounds
+daemon/           Rust host daemon (ohmyrasp-daemon)
+deploy/           Helm chart, observability assets, release/smoke scripts, and shirudo upatches (deploy/shirudo/)
+docs/             Architecture, detection, API, and console references, development ledgers, and runbooks
 ```
-
----
 
 ## Dev environment
 
 ### Docker-only path (recommended)
 
-All components can be built and tested through Docker images with no local
-toolchain beyond Docker itself. This is how CI runs and the safest way to get
-started. See [docs/getting-started.md](docs/getting-started.md) for the full
-stack bring-up procedure.
+All components can be built and tested in containers matching CI without installing local toolchains. See [docs/getting-started.md](docs/getting-started.md) for full stack bring-up.
 
 ### Local toolchain
 
-If you prefer a local install, the minimum versions required are:
+| Component | Tool | Version | Source of truth |
+|---|---|---|---|
+| API | Go | `1.26.7` (`1.25+` with `GOTOOLCHAIN=auto`; container uses `golang:1.27.4`) | `api/go.mod`, `api/Dockerfile` |
+| Console | Node.js & npm | `>=26` | `console/package.json`, `console/Dockerfile` |
+| Java agent | JDK | `25` (primary); `8`, `11`, `17` for backports | `java-agent/Dockerfile*` |
+| Java agent | Gradle | `9.9.2` (`gradle:9.9.2-jdk25`) | `java-agent/Dockerfile` |
+| Daemon | Rust / Cargo | `1.100.0` (edition 2024) | `daemon/rust-toolchain.toml`, `daemon/Cargo.toml` |
 
-| Component | Tool | Version |
-|-----------|------|---------|
-| API | Go | 1.26 (or 1.25+ with `GOTOOLCHAIN=auto`) |
-| Console | Node.js | 26+ |
-| Console | npm | Bundled with Node.js 26+ |
-| Java agent | JDK | 25 (primary); 8, 11, 17 for backport modules |
-| Java agent | Gradle | 9.8.1+ |
-| Daemon | Rust / Cargo | 1.100.0 (matches `daemon/rust-toolchain.toml`) |
-
-`docs/getting-started.md` documents verified installation steps for each
-toolchain on Ubuntu, including workarounds for restricted environments.
-
----
+`docs/getting-started.md` documents verified local installation steps on Ubuntu.
 
 ## Running the tests
 
@@ -79,10 +56,10 @@ toolchain on Ubuntu, including workarounds for restricted environments.
 
 ```bash
 # Via Docker (no local Go required):
-docker run --rm -v "$PWD/api":/src -w /src golang:1.26.5 go generate ./...
-docker run --rm -v "$PWD/api":/src -w /src golang:1.26.5 go test ./...
+docker run --rm -v "$PWD/api":/src -w /src golang:1.27.4 go generate ./...
+docker run --rm -v "$PWD/api":/src -w /src golang:1.27.4 go test ./...
 
-# Or with a local Go 1.26 toolchain:
+# Or with local Go 1.26.7+:
 cd api
 go generate ./...
 go test ./...
@@ -93,172 +70,127 @@ go test ./...
 ```bash
 cd console
 npm ci
-npm run build       # i18n:check + tsc + vite build
-npm test            # i18n:check + typecheck + playwright e2e
+npm run build       # i18n:check + tsc -b + vite build
+npm test            # i18n:check + lint + typecheck + test:e2e
 ```
 
-The individual steps that `npm test` composes are:
+Individual checks in `console/package.json`:
 
 ```bash
-npm run i18n:check  # enforces en/zh/ja key parity (scripts/i18n-coverage.ts)
-npm run typecheck   # tsc --noEmit
-npm run test:e2e    # Playwright end-to-end suite
+npm run i18n:check  # en/zh/ja key parity (console/scripts/i18n-coverage.ts)
+npm run lint        # eslint .
+npm run typecheck   # tsc -b --noEmit
+npm run test:e2e    # playwright test
 ```
 
 ### Java agent
 
-Unit tests run against the primary JDK 25 module:
+Run unit tests and `verifyShirudoUpatchJar` via Docker (matching `.github/workflows/agent.yml`):
 
 ```bash
-# Via Docker (no local JDK required):
-docker run --rm -v "$PWD/java-agent":/workspace -w /workspace gradle:9.9.2-jdk25 \
-  gradle --no-daemon :agent-jdk25:test
+docker run --rm -u "$(id -u):$(id -g)" -e GRADLE_USER_HOME=/tmp/gradle-home \
+  -v "$PWD/java-agent":/workspace -w /workspace gradle:9.9.2-jdk25 \
+  gradle --no-daemon clean check :agent-jdk25:agentJar \
+  :agent-java8:shirudoUpatchJar :agent-java11:shirudoUpatchJar \
+  :agent-java17:shirudoUpatchJar :agent-jdk25:shirudoUpatchJar
 ```
 
-The acceptance suite boots real vulnerable applications under the agent (Tomcat
-pairs on 18080/18081) and asserts detection and blocking:
+Run parity, Vulhub ledger, and Docker acceptance checks from `java-agent/`:
 
 ```bash
 cd java-agent
+bash scripts/check-detector-parity.sh
+python3 scripts/check-vulhub-java-coverage.py
 bash scripts/acceptance.sh
 ```
 
-Per-runtime acceptance scripts cover JDK 7/8/11/17/21 Vulhub scenarios and are
-named `scripts/acceptance-vulhub-<component>-<jdk>.sh`. The Java 21 runtime
-compatibility matrix lives in `scripts/acceptance-java21.sh`.
+Per-runtime Vulhub scripts are named `scripts/acceptance-vulhub-<component>-<jdk>.sh`. The Java 21 runtime compatibility matrix lives in `scripts/acceptance-java21.sh`.
 
 ### Daemon (Rust)
 
 ```bash
 cd daemon
-cargo build
-cargo test
+cargo fmt --check
+cargo clippy --locked --all-targets -- -D warnings
+cargo test --locked
+cargo build --locked --release
 ```
 
-A release binary with link-time optimisation and stripping:
-
-```bash
-cargo build --release
-```
-
-### Deployment and observability checks
+### Deployment, shirudo, and observability checks
 
 ```bash
 ./deploy/scripts/smoke-control-plane.sh
 ./deploy/scripts/validate-helm-manifests.sh
 ./deploy/scripts/validate-observability-assets.sh
-```
 
----
+# Shirudo Java upatch Beefile, JAR, and real-JVM smoke tests:
+./deploy/shirudo/build-all.sh --jar-only
+./deploy/shirudo/verify-shirudo-upatch.sh
+./deploy/shirudo/smoke-test.sh
+```
 
 ## Regenerating generated docs
 
-Two Markdown files under `java-agent/docs/` are derived, not hand-written. They
-must be regenerated after any change to hook modules, detector capabilities, or
-acceptance scenarios, and CI fails the build when they are stale.
+Six Markdown files are derived from source and checked in CI. Do not edit them by hand.
 
-**Detection coverage doc** — derived from `HookRegistry.java`,
-`DetectorEngine.java`, and the `acceptance-vulhub-*.sh` scenario scripts:
+**1. Detection coverage doc** (derived from `HookRegistry.java`, `DetectorEngine.java`, and `acceptance-vulhub-*.sh`):
 
 ```bash
 cd java-agent
-python3 scripts/gen-detection-coverage.py          # writes docs/DETECTION-COVERAGE.md
-python3 scripts/gen-detection-coverage.py --check  # fails if the committed file is stale
+python3 scripts/gen-detection-coverage.py          # writes java-agent/docs/DETECTION-COVERAGE.md
+python3 scripts/gen-detection-coverage.py --check  # fails if stale
 ```
 
-**False-positive report** — runs the FP harness against the real
-`DetectorEngine` inside the JDK 25 build image and counts benign-corpus
-detections:
+**2. False-positive report** (runs `scripts/fp-harness/FpReport.java` against `DetectorEngine`):
 
 ```bash
 cd java-agent
-bash scripts/run-fp-report.sh                      # writes docs/FALSE-POSITIVE-REPORT.md
+bash scripts/run-fp-report.sh                      # writes java-agent/docs/FALSE-POSITIVE-REPORT.md
 ```
 
-Commit both files together with the code change that caused them to change.
+**3. Shirudo upatch READMEs** (derived from `java-agent/` sources, `Beefile`s, and `FALSE-POSITIVE-REPORT.md`):
 
----
+```bash
+python3 deploy/shirudo/gen-readmes.py              # writes deploy/shirudo/README.md + 4 track READMEs
+python3 deploy/shirudo/gen-readmes.py --check      # fails if stale (also run by verify-shirudo-upatch.sh)
+```
+
+Commit regenerated docs in the same PR as the code change that triggered them.
 
 ## Adding a new hook family or detector
 
-1. Implement the hook module under
-   `java-agent/agent-jdk25/src/main/java/io/ohmyrasp/agent/asm/` and register
-   it in `HookRegistry.defaults()`.
+1. Implement the hook module under `java-agent/agent-jdk25/src/main/java/io/ohmyrasp/agent/asm/` and register it in `HookRegistry.defaults()`.
 2. Add the corresponding detector method(s) to `DetectorEngine`.
-3. Write a unit test covering the new detection path in `agent-jdk25/src/test/`.
+3. Write unit tests covering the new detection path in `agent-jdk25/src/test/`.
 4. Add or extend an acceptance scenario under `java-agent/scripts/`.
-5. Update `docs/development/algorithm-coverage.md` — this is the durable ledger
-   of every algorithm family and must be updated in the same patch as the new
-   hook. If the new coverage maps to a Vulhub scenario, also update
-   `docs/development/vulhub-coverage.md` in the same patch.
-6. Regenerate `java-agent/docs/DETECTION-COVERAGE.md` (see above) and commit it
-   with the rest of the change.
+5. Update `docs/development/algorithm-coverage.md` and, if mapped to a Vulhub scenario, `docs/development/vulhub-coverage.md` in the same patch.
+6. Regenerate `java-agent/docs/DETECTION-COVERAGE.md`, `java-agent/docs/FALSE-POSITIVE-REPORT.md`, and `deploy/shirudo/` READMEs, and verify `bash java-agent/scripts/check-detector-parity.sh`.
 
-Backport builds (`agent-java8`, `agent-java11`, `agent-java17`) should be
-updated when the new hook can be implemented against the older ASM / JDK
-surface. See the per-module notes in `docs/development/algorithm-coverage.md`
-for which constructs are available on each era track.
-
----
+Update backport builds (`agent-java8`, `agent-java11`, `agent-java17`) when the hook applies to earlier JDKs. See `docs/development/algorithm-coverage.md` for per-era capabilities.
 
 ## Console i18n expectations
 
-The console ships three locales: English (`en`), Simplified Chinese (`zh`), and
-Japanese (`ja`). The enforced rules are:
+The console ships English (`en`), Simplified Chinese (`zh`), and Japanese (`ja`) in `console/src/i18n/messages.ts`. `console/scripts/i18n-coverage.ts` enforces:
 
-1. The `zh` and `ja` translation tables in `console/src/i18n/messages.ts` must
-   have identical key sets (parity check).
-2. Every `t("key")` call found in TypeScript source files must have a
-   corresponding entry in both `zh` and `ja`.
+1. Identical key sets between `zh` and `ja`.
+2. Every `t("key")` call in TypeScript source files has entries in both `zh` and `ja`.
 
-The check runs automatically as part of `npm run build` and `npm test`:
-
-```bash
-npm run i18n:check
-```
-
-The script is `console/scripts/i18n-coverage.ts`. When adding a new string,
-add translations for all three locales in `messages.ts` before opening a PR.
-
----
+Run `npm run i18n:check` (included in `npm run build` and `npm test`) before opening a PR.
 
 ## Detection-rule contributions
 
-A new detection rule or hook family is most useful when there is observable
-evidence that it works. Contributions that add detection rules should include at
-least one of the following:
+Contributions that add detection rules or hook families should include runnable verification via either:
 
-- A **Vulhub acceptance scenario** (`java-agent/scripts/acceptance-vulhub-*.sh`)
-  that boots the vulnerable application, confirms exploitation in baseline mode,
-  and confirms blocking or detection in protected mode.
-- A **playground reproduction** using the comparative Tomcat testbed under
-  `java-agent/playground*/` that demonstrates the before/after behaviour.
-
-Both forms provide durable, runnable evidence that CI can replay.
-
----
+- A **Vulhub acceptance scenario** (`java-agent/scripts/acceptance-vulhub-*.sh`) proving baseline exploitation and protected-mode blocking.
+- A **playground reproduction** using the comparative Tomcat testbeds under `java-agent/playground*/`.
 
 ## Pull request expectations
 
-- **Small and focused.** One logical change per PR. A PR that adds a detector,
-  its unit test, its acceptance scenario, the updated algorithm-coverage ledger,
-  and the regenerated `DETECTION-COVERAGE.md` is an ideal shape.
-- **Tests pass.** Run the full test matrix for any component you touch before
-  opening a PR: `go test ./...` for API changes, `npm test` for console changes,
-  `gradle :agent-jdk25:test` plus the relevant acceptance script(s) for Java
-  agent changes, `cargo test` for daemon changes.
-- **Docs updated.** If your change affects how operators configure, deploy, or
-  use OhMyRASP, update the relevant file under `docs/`. If you changed
-  hook/detector definitions, regenerate the derived docs (see above).
-- **Generated files committed.** `java-agent/docs/DETECTION-COVERAGE.md` and
-  `java-agent/docs/FALSE-POSITIVE-REPORT.md` are CI-checked; commit fresh
-  copies whenever they would be affected by your change.
-- **No accidental scope.** Avoid reformatting or refactoring code outside the
-  area your PR is focused on — it makes review harder.
-
----
+- **Small and focused:** One logical change per PR. Avoid unrelated formatting or refactoring outside the PR scope.
+- **Tests pass:** Run the test suite for every component you touch (`go test ./...`, `npm test`, `gradle :agent-jdk25:check`, `cargo test --locked`, `verify-shirudo-upatch.sh`).
+- **Single source of truth & doc sync:** Keep each fact in one owning reference under `docs/` and link to source files and symbols rather than duplicating volatile lists. Update the owning doc in the same PR whenever behavior, flags, endpoints, or contracts change. Keep `docs/internal/` frozen as historical archive.
+- **Generated files committed:** Commit fresh outputs from `gen-detection-coverage.py`, `run-fp-report.sh`, and `deploy/shirudo/gen-readmes.py` whenever affected.
 
 ## License
 
-By contributing to OhMyRASP you agree that your contribution will be licensed
-under the [Apache License 2.0](LICENSE).
+By contributing to OhMyRASP you agree that your contribution will be licensed under the [Apache License 2.0](LICENSE).
