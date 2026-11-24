@@ -143,6 +143,9 @@ public final class FpReport {
     out.append("</details>\n");
 
     System.out.print(out);
+    if (List.of(args).contains("--check") && totalFp != 0) {
+      throw new AssertionError(totalFp + " benign inputs triggered detections:" + detail);
+    }
   }
 
   private static RequestContext request(String userParam) {
@@ -157,6 +160,19 @@ public final class FpReport {
 
   private static List<Case> sqlCorpus() {
     return List.of(
+        Case.tainted("select * from notes where title = 'union select'", "union select"),
+        Case.tainted("select * from notes where label = 'build--release'", "build--release"),
+        Case.of("insert into audit(message) values ('user''s sleep(5) example')"),
+        Case.tainted("/* mapped query */ select id from orders where id = 42", "42"),
+        Case.tainted("select id from orders where state = 'paid' -- billing report", "paid"),
+        Case.of("select id from catalog -- describes information_schema in the manual"),
+        Case.of("select table_name from information_schema.tables"),
+        Case.tainted("select id from orders where id = 42 union select id from returns", "42"),
+        Case.of("select id from invoices union /* archived */ all select id from archived_invoices"),
+        Case.tainted("select 'union select' as title union select description from articles", "union select"),
+        Case.tainted("select id from orders where state='OPEN' and 1=1", "OPEN"),
+        Case.tainted("select id from orders where state='OPEN' or 1=0", "OPEN"),
+        Case.tainted("select id from orders where state='PAID' or 1=1.5", "PAID"),
         Case.of("select id, name from users where status = 'active'"),
         Case.tainted("select * from orders where customer = 'O''Brien'", "O'Brien"),
         Case.of("select * from products where price between 100 and 200"),
@@ -183,6 +199,15 @@ public final class FpReport {
 
   private static List<Case> urlCorpus() {
     return List.of(
+        Case.tainted("https://orders.example.test/api/orders/4981", "4981"),
+        Case.tainted("https://search.example.test/?q=invoice", "invoice"),
+        Case.of("http://10.2.3.4/actuator/health"),
+        Case.of("http://127.0.0.1/ready"),
+        Case.of("https://169.254.169.254.docs.example.test/reference"),
+        Case.of("https://docs.example.test/latest/meta-data/guide"),
+        Case.of("https://0xdocs.example.test/reference"),
+        Case.of("https://notdnslog.cn/status"),
+        Case.tainted("https://images.example.test/preview?src=https://cdn.example.test/image", "https://cdn.example.test/image"),
         Case.of("https://api.stripe.com/v1/charges"),
         Case.of("https://hooks.slack.com/services/T000/B000/abcdef"),
         Case.of("https://www.googleapis.com/oauth2/v3/certs"),
@@ -193,6 +218,9 @@ public final class FpReport {
 
   private static List<Case> fileReadCorpus() {
     return List.of(
+        Case.tainted("/srv/orders/4981.json", "4981"),
+        Case.tainted("/srv/reports/annual.csv", "annual.csv"),
+        Case.tainted("/srv/images/drafts/../thumb.png", "drafts/../thumb.png"),
         Case.of("/var/app/uploads/photo.jpg"),
         Case.of("/opt/app/config/application.yml"),
         Case.of("/srv/data/reports/2026-05.csv"),
@@ -238,6 +266,8 @@ public final class FpReport {
     return List.of(
         Case.of("api.partner.example.com"),
         Case.of("db-primary.internal.example.com"),
+        Case.of("notdnslog.cn"),
+        Case.of("catalog.nonceye.io."),
         Case.of("smtp.example.com"),
         Case.of("storage.googleapis.com"));
   }

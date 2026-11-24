@@ -47,6 +47,14 @@ jobs:
             :agent-jdk25:shirudoUpatchJar \
             :playground:war \
             :playground-javax:war
+      - name: Verify benign corpus and generated false-positive report
+        working-directory: java-agent
+        run: |
+          set -euo pipefail
+          gradle_image="$(awk '$1 == "FROM" && $2 ~ /^gradle:/ { print $2; exit }' Dockerfile)"
+          docker run --rm --pull never --network none -v "$PWD:/workspace:ro" -w /workspace \
+            "$gradle_image" java -cp agent-jdk25/build/libs/ohmyrasp-agent.jar \
+            scripts/fp-harness/FpReport.java --check | diff -u docs/FALSE-POSITIVE-REPORT.md -
       - name: Stage and validate shirudo upatch packages
         run: |
           set -euo pipefail

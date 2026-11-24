@@ -1,5 +1,7 @@
 package io.ohmyrasp.agent.java17;
 
+import io.ohmyrasp.agent.net.NetworkHost;
+import io.ohmyrasp.agent.sql.SqlStatement;
 import java.io.File;
 import java.io.FileWriter;
 import java.io.IOException;
@@ -129,12 +131,6 @@ public final class Java17RaspHooks {
   private static final Pattern SQL_IDENTIFIER_KEYWORD_CONTROL =
       Pattern.compile(
           "(?is)(?:^|\\s)(?:where|join|union|select|insert|update|delete|drop|alter|create|merge|call|case|when|then|else|sleep|benchmark|order|group|having|limit|and|or)\\b");
-  private static final Pattern SQLI_STRUCTURAL =
-      Pattern.compile(
-          "(?is)(?:['\"]\\s*--|['\"]\\s*(?:or|and)\\s+(?:\\d+\\s*=\\s*\\d+|(['\"])([^'\"]{1,32})\\1\\s*=\\s*\\1\\2\\1)|\\bor\\s+(?:(\\d+)\\s*=\\s*\\3|(['\"])([^'\"]{1,32})\\4\\s*=\\s*\\4\\5\\4)\\b)");
-  private static final Pattern SQL_POLICY =
-      Pattern.compile(
-          "(?is)(?:\\bunion\\s+(?:all\\s+)?select\\b|\\binformation_schema\\b|\\binto\\s+(?:out|dump)file\\b|/\\*!|\\bload_file\\s*\\(|\\bsleep\\s*\\(|\\bbenchmark\\s*\\()");
   private static final Pattern SCRIPT_LITERAL_EXECUTE =
       Pattern.compile("(?is)[\"'][^\"'\\r\\n]{1,200}[\"']\\s*\\.\\s*execute\\s*\\(");
   private static final Pattern WINDOWS_ABSOLUTE_PATH = Pattern.compile("(?i)^[a-z]:/.*");
@@ -532,8 +528,13 @@ public final class Java17RaspHooks {
     if (sql == null || sql.trim().length() == 0) {
       return null;
     }
-    boolean structural = SQLI_STRUCTURAL.matcher(sql).find();
-    if (!structural && !SQL_POLICY.matcher(sql).find()) {
+    SqlStatement statement = new SqlStatement(sql);
+    RequestSnapshot snapshot = CURRENT_REQUEST.get();
+    boolean structural = statement.hasTruncatedLiteral()
+        || (statement.hasConstantDisjunction()
+            && (snapshot == null || snapshot.sqlInputs.stream().noneMatch(statement::isSubmittedConsoleSelect)));
+    if (!structural && !statement.matchesSinkPolicy()
+        && (snapshot == null || !snapshot.sqlInputs.stream().anyMatch(statement::matchesStructureFrom))) {
       return null;
     }
     return new Finding(
@@ -3059,16 +3060,16 @@ public final class Java17RaspHooks {
     String uri = requestUri(request);
     String xDeToken = requestHeader(request, "X-DE-TOKEN").trim();
     if (isCompactHmacJwt(xDeToken)) {
-      return new RequestSnapshot(uri, "X-DE-TOKEN", xDeToken);
+      return new RequestSnapshot(request, uri, "X-DE-TOKEN", xDeToken);
     }
     String authorization = requestHeader(request, "Authorization").trim();
     if (authorization.regionMatches(true, 0, "Bearer ", 0, "Bearer ".length())) {
       String bearer = authorization.substring("Bearer ".length()).trim();
       if (isCompactHmacJwt(bearer)) {
-        return new RequestSnapshot(uri, "Authorization: Bearer", bearer);
+        return new RequestSnapshot(request, uri, "Authorization: Bearer", bearer);
       }
     }
-    return new RequestSnapshot(uri, "", "");
+    return new RequestSnapshot(request, uri, "", "");
   }
 
   private static boolean isCompactHmacJwt(String token) {
@@ -4692,17 +4693,7 @@ public final class Java17RaspHooks {
   }
 
   private static String normalizeHost(String host) {
-    if (host == null) {
-      return "";
-    }
-    String normalized = host.trim().toLowerCase(Locale.ROOT);
-    if (normalized.startsWith("[") && normalized.endsWith("]")) {
-      normalized = normalized.substring(1, normalized.length() - 1);
-    }
-    if (normalized.endsWith(".")) {
-      normalized = normalized.substring(0, normalized.length() - 1);
-    }
-    return normalized;
+    return NetworkHost.normalize(host);
   }
 
   private static String lower(String value) {
@@ -4738,19 +4729,11 @@ public final class Java17RaspHooks {
   }
 
   private static boolean isCloudMetadataHost(String host) {
-    return "169.254.169.254".equals(host)
-        || "169.254.169.253".equals(host)
-        || "169.254.170.2".equals(host)
-        || "100.100.100.200".equals(host)
-        || "metadata.google.internal".equals(host)
-        || "fd00:ec2::254".equals(host);
+    return NetworkHost.isMetadata(host) || "169.254.169.253".equals(host);
   }
 
   private static boolean isLoopbackHost(String host) {
-    return "localhost".equals(host)
-        || host.startsWith("127.")
-        || "::1".equals(host)
-        || "0:0:0:0:0:0:0:1".equals(host);
+    return NetworkHost.isLoopback(host);
   }
 
   private static int fileReadConfidence(String path) {
@@ -4887,7 +4870,22 @@ public final class Java17RaspHooks {
     final String tokenSource;
     final String token;
 
-    RequestSnapshot(String uri, String tokenSource, String token) {
+    final List<String> sqlInputs;
+
+    RequestSnapshot(Object request, String uri, String tokenSource, String token) {
+      sqlInputs = new ArrayList<String>();
+      Object map = invoke(request, "getParameterMap");
+      if (map instanceof Map<?, ?>) {
+        for (Object value : ((Map<?, ?>) map).values()) {
+          List<String> items = new ArrayList<String>();
+          collectParameterValues(items, value);
+          for (String item : items) {
+            if (SqlStatement.mayControlStructure(item)) {
+              sqlInputs.add(item);
+            }
+          }
+        }
+      }
       this.uri = uri == null ? "" : uri;
       this.tokenSource = tokenSource == null ? "" : tokenSource;
       this.token = token == null ? "" : token;

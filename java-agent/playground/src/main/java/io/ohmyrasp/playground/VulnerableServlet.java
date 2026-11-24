@@ -2363,7 +2363,7 @@ public final class VulnerableServlet extends HttpServlet {
           hook(
               "beforeSql",
               new Class<?>[] {String.class},
-              "select 1 union select password from users");
+              "select sleep(3)");
       case "sql-regex" ->
           hook(
               "beforeSqlRegex",
@@ -4492,7 +4492,7 @@ public final class VulnerableServlet extends HttpServlet {
     return """
         [
           {"category":"request","name":"Scanner user agent","path":"/rasp/policy/request-scanner"},
-          {"category":"request","name":"Missing User-Agent","path":"/rasp/policy/request-unusual"},
+          {"category":"request","name":"Ordinary request without User-Agent","path":"/rasp/policy/request-unusual"},
           {"category":"request","name":"XSS parameter","path":"/rasp/request?q=%3Cscript%3Ealert(1)%3C/script%3E"},
           {"category":"request","name":"Java bean classloader binding","path":"/rasp/request?class.module.classLoader.resources.context.parent.pipeline.first.pattern=%25%7Bc2%7Di"},
           {"category":"request","name":"Internal service identity on control path","path":"/rasp/policy/request-internal-identity"},

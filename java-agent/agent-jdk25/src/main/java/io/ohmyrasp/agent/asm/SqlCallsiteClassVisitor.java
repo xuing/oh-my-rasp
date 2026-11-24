@@ -30,12 +30,12 @@ final class SqlCallsiteClassVisitor extends ClassVisitor {
               false);
         }
         if (isSqlStringCall(opcode, owner, methodName, methodDescriptor)) {
-          super.visitInsn(Opcodes.DUP);
+          super.visitInsn(Opcodes.DUP2);
           super.visitMethodInsn(
               Opcodes.INVOKESTATIC,
               "io/ohmyrasp/agent/hook/OhMyRaspHooks",
               "beforeSql",
-              "(Ljava/lang/String;)V",
+              "(Ljava/lang/Object;Ljava/lang/String;)V",
               false);
         }
         super.visitMethodInsn(opcode, owner, methodName, methodDescriptor, isInterface);

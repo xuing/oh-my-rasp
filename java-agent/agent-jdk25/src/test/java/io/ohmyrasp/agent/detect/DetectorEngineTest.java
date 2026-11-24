@@ -13,9 +13,85 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 
 final class DetectorEngineTest {
   private final DetectorEngine engine = new DetectorEngine();
+
+  @ParameterizedTest
+  @ValueSource(strings = {"union/* report */select 2", "union -- report\nselect 2"})
+  void recognizesRequestControlledUnion(String fragment) {
+    assertAlgorithm(engine.detectSql("select 1 " + fragment, request(Map.of("filter", List.of(fragment)))),
+        "sql_userinput");
+  }
+
+  @ParameterizedTest
+  @ValueSource(strings = {"select sleep/* diagnostics */(3)", "select 2 where id = 2 or/* predicate */1=1"})
+  void recognizesSqlStructureAcrossTokenSeparators(String query) {
+    assertAlgorithm(engine.detectSql(query, RequestContext.empty()), "sql_policy");
+  }
+
+  @ParameterizedTest
+  @ValueSource(strings = {
+      "http://metadata.google.internal./", "http://[fd00:ec2:0:0:0:0:0:254]/",
+      "http://100.100.100.200/", "http://[::ffff:169.254.169.254]/"
+  })
+  void recognizesMetadataDestination(String target) {
+    assertAlgorithm(engine.detectUrl(target, request()), "ssrf_aws");
+  }
+
+  @ParameterizedTest
+  @ValueSource(strings = {
+      "http://[::1]/asset", "http://[fd01::7]/asset", "http://[fe80::42]/asset",
+      "http://[::ffff:192.168.1.2]/asset"
+  })
+  void recognizesInternalXmlAttachmentDestination(String target) {
+    assertAlgorithm(engine.detectXmlAttachmentReference("cxf-aegis-xop", target, request()), "ssrf_userinput");
+  }
+
+  @Test
+  void recognizesFullyQualifiedCallbackDomain() {
+    assertAlgorithm(engine.detectDns("Test.Dnslog.Cn.", request()), "dns_blacklist");
+  }
+
+  @ParameterizedTest
+  @ValueSource(strings = {"../reports/private.txt", "../../backup/users.zip"})
+  void recognizesTraversalToOrdinaryFileTypes(String relative) {
+    assertAlgorithm(engine.detectFileRead("/srv/public/" + relative,
+        request(Map.of("path", List.of(relative))), false), "readFile_userinput");
+  }
+
+  @Test
+  void recognizesRequestRelativeToProtectedWebappDirectory() {
+    var ctx = request(Map.of("file", List.of("WEB-INF/web.xml")));
+    assertAlgorithm(engine.detectFileRead("/app/WEB-INF/web.xml", ctx, false), "readFile_userinput");
+  }
+
+  @Test
+  void keepsSqlEvidenceAfterDialectSpecificQuoting() {
+    // MySQL backslash quoting and adjacent unary minus are both legal in JDBC statements.
+    assertAlgorithm(engine.detectSql("select 'O\\'Brien' union select 2",
+        request(Map.of("filter", List.of("union select 2")))), "sql_userinput");
+    assertAlgorithm(engine.detectSql("select 4--2 union select 3",
+        request(Map.of("filter", List.of("union select 3")))), "sql_userinput");
+  }
+
+  @Test
+  void distinguishesConfiguredScopedAddressFromCopiedServiceUrl() {
+    assertTrue(engine.detectUrl("http://[fe80::42%25eth0]/health", request()).isEmpty());
+    String service = "http://inventory_api/records";
+    assertAlgorithm(engine.detectUrl(service, request(Map.of("url", List.of(service)))), "ssrf_userinput");
+  }
+
+  @Test
+  void comparesSuppliedUrlAuthorityAndPath() {
+    var ctx = request(Map.of("endpoint", List.of("https://media.example:443/files")));
+    assertAlgorithm(engine.detectUrl("https://media.example/files/42", ctx), "ssrf_userinput");
+    assertTrue(engine.detectUrl("https://media.example/fileset/42", ctx).isEmpty());
+    assertTrue(engine.detectUrl("https://media.example:8443/files/42", ctx).isEmpty());
+    assertTrue(engine.detectUrl("https://media.example.test/files/42", ctx).isEmpty());
+  }
 
   @Test
   void detectsSqlUserInput() {
@@ -30,7 +106,7 @@ final class DetectorEngineTest {
 
   @Test
   void detectsSqlPolicyFeatures() {
-    var result = engine.detectSql("select 1 union select password from users", request());
+    var result = engine.detectSql("select sleep(3)", request());
 
     assertTrue(result.isPresent());
     assertEquals("sql_policy", result.orElseThrow().algorithm());
@@ -1140,6 +1216,17 @@ final class DetectorEngineTest {
 
     assertTrue(result.isPresent());
     assertEquals("directory_userinput", result.orElseThrow().algorithm());
+  }
+
+  @Test
+  void separatesTomcatDeploymentScanFromApplicationDirectoryListing() {
+    var scan = List.of("java.io.File", "org.apache.catalina.webresources.DirResourceSet",
+        "org.apache.catalina.startup.ContextConfig", "java.lang.reflect.Method");
+    assertTrue(engine.detectDirectoryList("/app/WEB-INF/classes", RequestContext.empty(), scan).isEmpty());
+    assertAlgorithm(engine.detectDirectoryList("/root", RequestContext.empty(), scan), "directory_unwanted");
+    var app = List.of("java.io.File", "example.Initializer",
+        "org.apache.catalina.startup.ContextConfig", "java.lang.reflect.Method");
+    assertAlgorithm(engine.detectDirectoryList("/data", RequestContext.empty(), app), "directory_reflect");
   }
 
   @Test
@@ -2598,12 +2685,28 @@ final class DetectorEngineTest {
   }
 
   @Test
-  void detectsUnusualRequest() {
+  void distinguishesRequestSuppliedCatalogReferenceFromFixedCatalogQuery() {
+    var body = new RequestContext("POST", "/search", "", Map.of(), Map.of("content-type", "application/json"),
+        "{\"source\":\"information_schema.tables\"}");
+    assertAlgorithm(engine.detectSql("select table_name from information_schema.tables", body), "sql_userinput");
+    assertTrue(engine.detectSql("select 'information_schema.tables' as term", body).isEmpty());
+  }
+
+  @Test
+  void recognizesRequestSuppliedSqlCommentOutsideQuotedData() {
+    var context = request(Map.of("item", List.of("42 --")));
+    assertAlgorithm(engine.detectSql("select id from orders where id = 42 -- and active", context),
+        "sql_userinput");
+    assertTrue(engine.detectSql("select id from orders where reference = '42 --'", context).isEmpty());
+  }
+
+  @Test
+  void acceptsOrdinaryRequestWithoutUserAgent() {
     var context = new RequestContext("GET", "/rasp/request", "", Map.of(), Map.of());
 
     var result = engine.detectRequest(context);
 
-    assertAlgorithm(result, "request_unusual");
+    assertTrue(result.isEmpty());
   }
 
   @Test

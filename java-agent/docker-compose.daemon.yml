@@ -44,8 +44,6 @@ services:
       - daemon-shared:/opt/ohmyrasp/shared
     # Lets `up --wait` return only once Tomcat serves requests. The image has
     # no curl, so probe with bash's /dev/tcp and require a 200 status line.
-    # Send a User-Agent: in block mode the agent's request_unusual rule
-    # redirects requests that lack one. No start_interval: it needs Docker 25+.
     healthcheck:
       test:
         - CMD

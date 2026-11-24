@@ -5,27 +5,27 @@
 
 ## Method
 
-A curated corpus of **83** benign-but-plausible inputs across **14** detector categories is run through the engine. Each input is presented with a realistic request context; where a value would be user-supplied it is placed in a request parameter so taint-aware detectors evaluate it as in production. A *false positive* is any detector returning a detection for legitimate input. This is a detector-precision probe on benign traffic, **not** a production-traffic false-positive rate.
+A curated corpus of **110** benign-but-plausible inputs across **14** detector categories is run through the engine. Each input is presented with a realistic request context; where a value would be user-supplied it is placed in a request parameter so taint-aware detectors evaluate it as in production. A *false positive* is any detector returning a detection for legitimate input. This is a detector-precision probe on benign traffic, **not** a production-traffic false-positive rate.
 
 ## Result
 
 | Category | Benign inputs | False positives | FP rate |
 |----------|--------------:|----------------:|--------:|
-| SQL queries | 10 | 0 | 0.0% |
+| SQL queries | 23 | 0 | 0.0% |
 | OS commands | 8 | 0 | 0.0% |
-| Outbound URLs | 6 | 0 | 0.0% |
-| File reads | 5 | 0 | 0.0% |
+| Outbound URLs | 15 | 0 | 0.0% |
+| File reads | 8 | 0 | 0.0% |
 | File writes | 4 | 0 | 0.0% |
 | Deserialization classes | 6 | 0 | 0.0% |
 | Expressions | 5 | 0 | 0.0% |
 | OGNL expressions | 7 | 0 | 0.0% |
 | JNDI names | 3 | 0 | 0.0% |
-| DNS lookups | 4 | 0 | 0.0% |
+| DNS lookups | 6 | 0 | 0.0% |
 | Upload filenames | 6 | 0 | 0.0% |
 | JDBC URLs | 5 | 0 | 0.0% |
 | Request parameters | 6 | 0 | 0.0% |
 | Base64 decoding | 8 | 0 | 0.0% |
-| **Overall** | **83** | **0** | **0.0%** |
+| **Overall** | **110** | **0** | **0.0%** |
 
 No false positives observed across the corpus.
 
@@ -35,6 +35,19 @@ No false positives observed across the corpus.
 
 **SQL queries**
 
+- `select * from notes where title = 'union select'` (user input: `union select`)
+- `select * from notes where label = 'build--release'` (user input: `build--release`)
+- `insert into audit(message) values ('user''s sleep(5) example')`
+- `/* mapped query */ select id from orders where id = 42` (user input: `42`)
+- `select id from orders where state = 'paid' -- billing report` (user input: `paid`)
+- `select id from catalog -- describes information_schema in the manual`
+- `select table_name from information_schema.tables`
+- `select id from orders where id = 42 union select id from returns` (user input: `42`)
+- `select id from invoices union /* archived */ all select id from archived_invo...`
+- `select 'union select' as title union select description from articles` (user input: `union select`)
+- `select id from orders where state='OPEN' and 1=1` (user input: `OPEN`)
+- `select id from orders where state='OPEN' or 1=0` (user input: `OPEN`)
+- `select id from orders where state='PAID' or 1=1.5` (user input: `PAID`)
 - `select id, name from users where status = 'active'`
 - `select * from orders where customer = 'O''Brien'` (user input: `O'Brien`)
 - `select * from products where price between 100 and 200`
@@ -59,6 +72,15 @@ No false positives observed across the corpus.
 
 **Outbound URLs**
 
+- `https://orders.example.test/api/orders/4981` (user input: `4981`)
+- `https://search.example.test/?q=invoice` (user input: `invoice`)
+- `http://10.2.3.4/actuator/health`
+- `http://127.0.0.1/ready`
+- `https://169.254.169.254.docs.example.test/reference`
+- `https://docs.example.test/latest/meta-data/guide`
+- `https://0xdocs.example.test/reference`
+- `https://notdnslog.cn/status`
+- `https://images.example.test/preview?src=https://cdn.example.test/image` (user input: `https://cdn.example.test/image`)
 - `https://api.stripe.com/v1/charges`
 - `https://hooks.slack.com/services/T000/B000/abcdef`
 - `https://www.googleapis.com/oauth2/v3/certs`
@@ -68,6 +90,9 @@ No false positives observed across the corpus.
 
 **File reads**
 
+- `/srv/orders/4981.json` (user input: `4981`)
+- `/srv/reports/annual.csv` (user input: `annual.csv`)
+- `/srv/images/drafts/../thumb.png` (user input: `drafts/../thumb.png`)
 - `/var/app/uploads/photo.jpg`
 - `/opt/app/config/application.yml`
 - `/srv/data/reports/2026-05.csv`
@@ -118,6 +143,8 @@ No false positives observed across the corpus.
 
 - `api.partner.example.com`
 - `db-primary.internal.example.com`
+- `notdnslog.cn`
+- `catalog.nonceye.io.`
 - `smtp.example.com`
 - `storage.googleapis.com`
 

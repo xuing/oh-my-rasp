@@ -1092,7 +1092,6 @@ same patch as any new Java-compatible Vulhub replay.
 `logs/protected/events.jsonl`:
 
 - `request_scanner`
-- `request_unusual`
 - `xss_userinput`
 - `request_internal_identity`
 - `request_default_jwt_secret`
@@ -2008,8 +2007,22 @@ same patch as any new Java-compatible Vulhub replay.
   request; `scripts/acceptance-vulhub-metabase-41277-java11.sh` verifies the
   real Java 11 Vulhub container blocks this sink with
   `java11_file_sensitive_read`.
-- `readFile_userinput` covers request-controlled local file paths that reach a
-  Java file-read sink. This targets direct file-disclosure helpers such as the
+- Generic JDBC injection signatures use the lexical context of string literals and ordinary
+  comments. A union or catalog reference alone requires a matching request value
+  at the SQL operator. At the H2 console's direct JDBC execution site, a complete
+  submitted SELECT, including a common table expression used by a report, is
+  expected input. A constant predicate in that directly submitted report can
+  select all rows. File and timing function signatures still apply. A fixed conjunction
+  or unequal comparison in an application query can pass. The driver determines
+  whether dollar-quoted text is a literal. Comments between SQL tokens act as separators. A request-supplied
+  comment opener is checked at its position in the statement.
+- The primary agent accepts ordinary HTTP requests without a User-Agent. Tomcat
+  deployment directory scans are excluded from reflective-listing alerts when
+  the file API caller belongs to the deployment scanner outside an active request.
+- `readFile_userinput` checks direct path input, sensitive file targets, and relative
+  request paths whose parent segments escape their starting directory. An ordinary
+  extension does not suppress a request-controlled traversal. This applies at the
+  Java file-read sink. It covers direct file-disclosure helpers such as the
   Vulhub WebLogic weak-password lab `GET /hello/file.jsp?path=/etc/passwd`,
   while keeping the decision at the file API boundary rather than on endpoint
   names alone. The real WebLogic weak-password Vulhub legacy-boundary script
@@ -2330,8 +2343,11 @@ same patch as any new Java-compatible Vulhub replay.
   playground and acceptance suite include Vulhub-shaped Jenkins
   CVE-2024-23897 CLI vectors for `help 1 "@/proc/self/environ"` and
   `connect-node "@/etc/passwd"`.
-- `ssrf_userinput` covers outbound network requests to internal addresses or
-  raw URL values copied from the active request parameters. The Java 8/11/17
+- The primary agent's `ssrf_userinput` checks request-supplied destinations
+  and internal administrative routes. Business values in the path or query of
+  a fixed upstream and routine internal health checks can pass. XML attachment
+  resolvers also check internal IP literals, including IPv6. Cloud metadata and
+  DNS callback rules match destination hosts at DNS label boundaries. The Java 8/11/17
   URL hooks preserve same-thread servlet request parameter URLs and emit
   `java8_ssrf_request_parameter_url`, `java11_ssrf_request_parameter_url`, or
   `java17_ssrf_request_parameter_url` when the same absolute HTTP(S) URL is

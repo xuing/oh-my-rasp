@@ -2,6 +2,8 @@ package io.ohmyrasp.agent.detect;
 
 import io.ohmyrasp.agent.model.Detection;
 import io.ohmyrasp.agent.model.RequestContext;
+import io.ohmyrasp.agent.net.NetworkHost;
+import io.ohmyrasp.agent.sql.SqlStatement;
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
@@ -27,14 +29,10 @@ import javax.crypto.spec.SecretKeySpec;
 
 public final class DetectorEngine {
   private static final Pattern SQLI_USER_INPUT =
-      Pattern.compile(
-          "(?is)(?:'\\s*(?:or|and)\\s+(?:\\d+\\s*=\\s*\\d+|'[^']*'\\s*=\\s*'[^']*')|union\\s+select|--|/\\*|;\\s*(?:select|insert|update|delete|drop|alter)\\b)");
+      Pattern.compile("(?is)(?:/\\*!|;\\s*(?:select|insert|update|delete|drop|alter)\\b)");
   private static final Pattern SQL_POLICY =
       Pattern.compile(
           "(?is)(?:\\bunion\\s+(?:all\\s+)?select\\b|\\binformation_schema\\b|\\binto\\s+(?:out|dump)file\\b|/\\*!|\\bload_file\\s*\\(|\\bsleep\\s*\\(|\\bbenchmark\\s*\\()");
-  private static final Pattern SQLI_STRUCTURAL =
-      Pattern.compile(
-          "(?is)(?:['\"]\\s*--|['\"]\\s*(?:or|and)\\s+(?:\\d+\\s*=\\s*\\d+|(['\"])([^'\"]{1,32})\\1\\s*=\\s*\\1\\2\\1)|\\bor\\s+(?:(\\d+)\\s*=\\s*\\3|(['\"])([^'\"]{1,32})\\4\\s*=\\s*\\4\\5\\4)\\b)");
   private static final Pattern H2_CODE_CONTAINER =
       Pattern.compile("(?is)\\bcreate\\s+(?:alias|trigger)\\b");
   private static final Pattern H2_CODE_PRIMITIVE =
@@ -94,9 +92,11 @@ public final class DetectorEngine {
   private static final Pattern READ_SAFE_EXTENSION =
       Pattern.compile(
           "(?is).+\\.(?:docx?|dotx?|docm|dotm|xlsx?|xltx?|xlsm|xlsb|pptx?|ppsx?|ppsm|potx?|potm|7z|tar|gz|bz2|xz|rar|zip|jpe?g|png|gif|bmp|txt)$");
+  private static final Pattern INTERNAL_ADMIN_PATH = Pattern.compile(
+      "(?i)(?:^|/)(?:jolokia|manager|host-manager|admin|console|webtools|solr/admin|debug|server-status|actuator/(?:env|heapdump|shutdown))(?:[/;]|$)");
   private static final Pattern DNSLOG_DOMAIN =
       Pattern.compile(
-          "(?i).*((?:ceye|exeye|sslip|nip)\\.io|dnslog\\.cn|(?:vcap|bxss)\\.me|xip\\.(?:name|io)|burpcollaborator\\.net|tu4\\.org|2xss\\.cc|request\\.bin|requestbin\\.net|pipedream\\.net|canarytokens\\.com)$");
+          "(?i)(?:[a-z0-9_-]+\\.)*((?:ceye|exeye|sslip|nip)\\.io|dnslog\\.cn|(?:vcap|bxss)\\.me|xip\\.(?:name|io)|burpcollaborator\\.net|tu4\\.org|2xss\\.cc|request\\.bin|requestbin\\.net|pipedream\\.net|canarytokens\\.com)$");
   private static final Pattern DNSLOG_TEXT =
       Pattern.compile(
           "(?i).*((?:ceye|exeye|sslip|nip)\\.io|dnslog\\.cn|(?:vcap|bxss)\\.me|xip\\.(?:name|io)|burpcollaborator\\.net|tu4\\.org|2xss\\.cc|request\\.bin|requestbin\\.net|pipedream\\.net|canarytokens\\.com)(?:[/:?].*)?");
@@ -1408,16 +1408,6 @@ public final class DetectorEngine {
                   "uri", abbreviate(request.uri()),
                   "decoded", abbreviate(confusingPath.orElseThrow()))));
     }
-    if (userAgent.isBlank()) {
-      return Optional.of(
-          Detection.log(
-              "request",
-              "request_unusual",
-              50,
-              "HTTP request missing User-Agent",
-              request,
-              Map.of()));
-    }
     for (String value : request.allParameterValues()) {
       if (value != null && XSS_INPUT.matcher(value).find()) {
         return Optional.of(
@@ -1521,10 +1511,19 @@ public final class DetectorEngine {
   }
 
   public Optional<Detection> detectSql(String query, RequestContext request) {
+    return detectSql(query, request, null);
+  }
+
+  public Optional<Detection> detectSql(String query, RequestContext request, String jdbcClass) {
     if (query == null || query.isBlank()) {
       return Optional.empty();
     }
-    if (request.hasParameterIn(query) && SQLI_USER_INPUT.matcher(query).find()) {
+    SqlStatement statement = new SqlStatement(query, jdbcClass);
+    if ((request.hasParameterIn(query)
+            && (statement.matches(SQLI_USER_INPUT)
+            || request.parameters().values().stream().flatMap(List::stream)
+                .anyMatch(value -> statement.hasCommentFrom(value) || statement.matchesStructureFrom(value))))
+        || requestBodyControlsSql(statement, request)) {
       return Optional.of(
           Detection.log(
               "sql",
@@ -1557,8 +1556,10 @@ public final class DetectorEngine {
                   "query", abbreviate(query),
                   "requestControlled", String.valueOf(requestControlled))));
     }
-    boolean structuralSqlInjection = SQLI_STRUCTURAL.matcher(query).find();
-    if (structuralSqlInjection || SQL_POLICY.matcher(query).find()) {
+    boolean structuralSqlInjection = statement.hasTruncatedLiteral()
+        || (statement.hasConstantDisjunction() && request.parameters().values().stream()
+            .flatMap(List::stream).noneMatch(statement::isSubmittedConsoleSelect));
+    if (structuralSqlInjection || statement.matchesSinkPolicy()) {
       return Optional.of(
           Detection.log(
               "sql",
@@ -1568,17 +1569,23 @@ public final class DetectorEngine {
               request,
               Map.of("query", abbreviate(query))));
     }
-    if (query.toLowerCase(Locale.ROOT).contains("information_schema")) {
-      return Optional.of(
-          Detection.log(
-              "sql",
-              "sql_regex",
-              60,
-              "SQL query matched configured regex",
-              request,
-              Map.of("query", abbreviate(query))));
-    }
     return Optional.empty();
+  }
+
+  private static boolean requestBodyControlsSql(SqlStatement statement, RequestContext request) {
+    String body = request.body();
+    if (body.isEmpty() || !SqlStatement.mayControlStructure(body)) {
+      return false;
+    }
+    if (!jsonConfigBody(request)) {
+      return statement.matchesStructureFrom(body);
+    }
+    for (JsonStringField field : jsonStringFields(body)) {
+      if (statement.matchesStructureFrom(field.value())) {
+        return true;
+      }
+    }
+    return false;
   }
 
   public static boolean isBase64TailUnderflowCandidate(
@@ -1840,7 +1847,7 @@ public final class DetectorEngine {
               Map.of("url", abbreviate(rawUrl))));
     }
     String scheme = lower(uri.getScheme());
-    String host = lower(uri.getHost());
+    String host = NetworkHost.normalize(uri.getHost());
     String path = lower(uri.getPath());
     if (isLocalClasspathResource(rawUrl, scheme, path)) {
       return Optional.empty();
@@ -1858,7 +1865,7 @@ public final class DetectorEngine {
               request,
               Map.of("url", abbreviate(rawUrl))));
     }
-    if (host.contains("169.254.169.254") || path.contains("/latest/meta-data")) {
+    if (NetworkHost.isMetadata(host)) {
       return Optional.of(
           Detection.log(
               "ssrf",
@@ -1868,17 +1875,18 @@ public final class DetectorEngine {
               request,
               Map.of("url", abbreviate(rawUrl))));
     }
-    if (isInternalHost(host) || request.hasParameterIn(rawUrl)) {
+    if (requestControlsUrl(uri, rawUrl, request)
+        || (INTERNAL_ADMIN_PATH.matcher(path).find() && NetworkHost.isInternal(host))) {
       return Optional.of(
           Detection.log(
               "ssrf",
               "ssrf_userinput",
               90,
-              "Outbound request targets an internal or user-controlled address",
+              "Outbound request targets a request-supplied destination or an internal administrative route",
               request,
               Map.of("url", abbreviate(rawUrl), "host", host)));
     }
-    if (DNSLOG_DOMAIN.matcher(host).matches()) {
+    if (isCallbackHost(host)) {
       return Optional.of(
           Detection.log(
               "ssrf",
@@ -1921,7 +1929,7 @@ public final class DetectorEngine {
       return Optional.empty();
     }
     String scheme = lower(uri.getScheme());
-    String host = lower(uri.getHost());
+    String host = NetworkHost.normalize(uri.getHost());
     String path = lower(uri.getPath());
     if (isLocalClasspathResource(href, scheme, path)) {
       return Optional.empty();
@@ -1939,7 +1947,7 @@ public final class DetectorEngine {
     if (!scheme.equals("http") && !scheme.equals("https")) {
       return Optional.empty();
     }
-    if (host.contains("169.254.169.254") || path.contains("/latest/meta-data")) {
+    if (NetworkHost.isMetadata(host)) {
       return Optional.of(
           Detection.log(
               "ssrf",
@@ -1949,7 +1957,7 @@ public final class DetectorEngine {
               request,
               Map.of("mechanism", hook, "host", host, "href", abbreviate(href))));
     }
-    if (isInternalHost(host)) {
+    if (NetworkHost.isInternal(host)) {
       return Optional.of(
           Detection.log(
               "ssrf",
@@ -1959,7 +1967,7 @@ public final class DetectorEngine {
               request,
               Map.of("mechanism", hook, "host", host, "href", abbreviate(href))));
     }
-    if (DNSLOG_DOMAIN.matcher(host).matches()) {
+    if (isCallbackHost(host)) {
       return Optional.of(
           Detection.log(
               "ssrf",
@@ -2145,8 +2153,8 @@ public final class DetectorEngine {
     if (host == null || host.isBlank()) {
       return Optional.empty();
     }
-    String normalized = lower(host);
-    if (DNSLOG_DOMAIN.matcher(normalized).matches()) {
+    String normalized = NetworkHost.normalize(host);
+    if (isCallbackHost(normalized)) {
       return Optional.of(
           Detection.log(
               "dns",
@@ -2178,7 +2186,7 @@ public final class DetectorEngine {
       return Optional.empty();
     }
     String protocol = protocolOf(path);
-    if (request.hasParameterIn(path) || request.hasParameterIn(normalized)) {
+    if (requestControlsReadPath(path, normalized, request)) {
       if (protocol.equals("http") || protocol.equals("https")) {
         return Optional.of(
             Detection.log(
@@ -2198,9 +2206,6 @@ public final class DetectorEngine {
                 "File read used an unwanted user-controlled protocol",
                 request,
                 Map.of("path", abbreviate(path), "protocol", protocol)));
-      }
-      if (READ_SAFE_EXTENSION.matcher(normalized).matches()) {
-        return Optional.empty();
       }
       return Optional.of(
           Detection.log(
@@ -2234,6 +2239,48 @@ public final class DetectorEngine {
               Map.of("path", normalized)));
     }
     return Optional.empty();
+  }
+
+  private static boolean requestControlsReadPath(String path, String normalized, RequestContext request) {
+    String target = archivePath(path);
+    boolean sensitive = sensitiveFileLocation(normalized) || PROTECTED_WEBAPP_RESOURCE.matcher(normalized).find();
+    boolean reportDirect = sensitive || !READ_SAFE_EXTENSION.matcher(normalized).matches()
+        || !protocolOf(target).isEmpty();
+    for (List<String> values : request.parameters().values()) {
+      for (String value : values) {
+        String candidate = archivePath(value);
+        if (candidate.isEmpty()) {
+          continue;
+        }
+        if (isAbsolutePathLike(candidate) || !protocolOf(candidate).isEmpty()) {
+          if (reportDirect && target.equals(candidate)) {
+            return true;
+          }
+        } else if ((sensitive || escapesRelativeRoot(candidate))
+            && (target.equals(candidate) || target.endsWith("/" + candidate))) {
+          return true;
+        }
+      }
+    }
+    return ((reportDirect && (isAbsolutePathLike(target) || !protocolOf(target).isEmpty()))
+            || escapesRelativeRoot(target)) && bodyHasSinkValue(request, target);
+  }
+
+  private static boolean escapesRelativeRoot(String path) {
+    if (!path.contains("..")) {
+      return false;
+    }
+    int depth = 0;
+    for (String segment : path.split("/+")) {
+      if (segment.equals("..")) {
+        if (--depth < 0) {
+          return true;
+        }
+      } else if (!segment.isEmpty() && !segment.equals(".")) {
+        depth++;
+      }
+    }
+    return false;
   }
 
   public Optional<Detection> detectFileWrite(String path, RequestContext request) {
@@ -2338,7 +2385,8 @@ public final class DetectorEngine {
     if (normalized.isBlank()) {
       return Optional.empty();
     }
-    if (stackLooksReflective(stackClassNames)) {
+    if (stackLooksReflective(stackClassNames)
+        && (request.active() || !tomcatDeploymentListing(stackClassNames))) {
       return Optional.of(
           Detection.log(
               "directory",
@@ -3506,6 +3554,27 @@ public final class DetectorEngine {
     return single % 2 != 0 || doubleQuote % 2 != 0 || backtick % 2 != 0;
   }
 
+  private static boolean tomcatDeploymentListing(List<String> stack) {
+    // Anchor the exception at the File.list caller. A deployment frame further up the
+    // stack can also be present when application initialization code lists a directory.
+    int caller = stack.indexOf("java.io.File");
+    if (caller < 0) {
+      return false;
+    }
+    while (caller < stack.size() && "java.io.File".equals(stack.get(caller))) {
+      caller++;
+    }
+    if (caller == stack.size()) {
+      return false;
+    }
+    String frame = stack.get(caller);
+    return "org.apache.catalina.startup.HostConfig".equals(frame)
+        || "org.apache.catalina.startup.ContextConfig".equals(frame)
+        || ("org.apache.catalina.webresources.DirResourceSet".equals(frame)
+            && (stack.contains("org.apache.catalina.startup.ContextConfig")
+                || stack.contains("org.apache.jasper.servlet.TldScanner")));
+  }
+
   private static boolean stackLooksReflective(List<String> stackClassNames) {
     if (stackClassNames == null) {
       return false;
@@ -3706,25 +3775,90 @@ public final class DetectorEngine {
     };
   }
 
-  private static boolean isInternalHost(String host) {
-    if (host == null || host.isBlank()) {
+  private static boolean requestControlsUrl(URI destination, String rawUrl, RequestContext request) {
+    if (request == null || !request.active() || destination.getRawAuthority() == null) {
       return false;
     }
-    return host.equals("localhost")
-        || host.equals("0")
-        || host.equals("::1")
-        || host.startsWith("127.")
-        || host.startsWith("10.")
-        || host.startsWith("192.168.")
-        || host.startsWith("169.254.")
-        || host.matches("172\\.(1[6-9]|2\\d|3[0-1])\\..*");
+    for (var parameter : request.parameters().entrySet()) {
+      for (String value : parameter.getValue()) {
+        if (value == null || value.isBlank()) {
+          continue;
+        }
+        if (value.equals(rawUrl)) {
+          return true;
+        }
+        if (destination.getHost() != null
+            && ("host".equalsIgnoreCase(parameter.getKey()) || "hostname".equalsIgnoreCase(parameter.getKey()))
+            && NetworkHost.normalize(value).equals(NetworkHost.normalize(destination.getHost()))) {
+          return true;
+        }
+        if (matchesUrlBase(value, destination)) {
+          return true;
+        }
+      }
+    }
+    return bodyHasSinkValue(request, rawUrl);
+  }
+
+  private static boolean matchesUrlBase(String value, URI destination) {
+    if (!value.regionMatches(true, 0, "https://", 0, 8)
+        && !value.regionMatches(true, 0, "http://", 0, 7)) {
+      return false;
+    }
+    URI supplied;
+    try {
+      supplied = URI.create(value);
+    } catch (IllegalArgumentException ignored) {
+      return false;
+    }
+    if (supplied.getHost() == null || !supplied.getScheme().equalsIgnoreCase(destination.getScheme())
+        || !NetworkHost.normalize(supplied.getHost()).equals(NetworkHost.normalize(destination.getHost()))
+        || effectivePort(supplied) != effectivePort(destination)) {
+      return false;
+    }
+    String query = supplied.getRawQuery();
+    String base = supplied.getRawPath();
+    String path = destination.getRawPath();
+    return (query == null || query.equals(destination.getRawQuery()))
+        && (path.equals(base) || path.startsWith(base.endsWith("/") ? base : base + "/"));
+  }
+
+  private static boolean bodyHasSinkValue(RequestContext request, String value) {
+    String body = request.body();
+    if (body.isEmpty()) {
+      return false;
+    }
+    if (value.equals(body.trim())) {
+      return true;
+    }
+    if ((!body.contains(value) && body.indexOf('\\') < 0) || !jsonConfigBody(request)) {
+      return false;
+    }
+    for (JsonStringField field : jsonStringFields(body)) {
+      if (value.equals(field.value())) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  private static int effectivePort(URI uri) {
+    return uri.getPort() >= 0 ? uri.getPort() : ("https".equalsIgnoreCase(uri.getScheme()) ? 443 : 80);
+  }
+
+  private static boolean isCallbackHost(String host) {
+    return host.length() <= 253 && DNSLOG_DOMAIN.matcher(host).matches();
   }
 
   private static boolean looksObfuscatedHost(String host) {
     if (host == null || host.isBlank()) {
       return false;
     }
-    return host.startsWith("0x")
+    // URI.getHost retains the zone identifier of a scoped IPv6 address.
+    if (host.indexOf(':') >= 0) {
+      return false;
+    }
+    return host.matches("0x[0-9a-f]+")
         || host.matches("\\d+")
         || host.matches(".*%[0-9a-fA-F]{2}.*")
         || host.matches(".*[。｡．].*");
@@ -7716,7 +7850,7 @@ public final class DetectorEngine {
     if (SSRF_PROTOCOLS.contains(scheme)) {
       return scheme;
     }
-    if ((scheme.equals("http") || scheme.equals("https")) && isInternalHost(lower(uri.getHost()))) {
+    if ((scheme.equals("http") || scheme.equals("https")) && NetworkHost.isInternal(NetworkHost.normalize(uri.getHost()))) {
       return scheme;
     }
     return "";
@@ -9458,6 +9592,10 @@ public final class DetectorEngine {
     if (!isAbsolutePathLike(pathShape) && !containsParentSegment(pathShape)) {
       return false;
     }
+    return sensitiveFileLocation(normalized);
+  }
+
+  private static boolean sensitiveFileLocation(String normalized) {
     if (DANGEROUS_FILE_READ.matcher(normalized).find()) {
       return true;
     }

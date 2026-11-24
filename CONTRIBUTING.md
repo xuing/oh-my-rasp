@@ -185,6 +185,13 @@ Run `npm run i18n:check` (included in `npm run build` and `npm test`) before ope
 
 ## Detection-rule contributions
 
+Prioritize zero observed false positives on normal application workloads. Check
+the business result and the detection log against an uninstrumented run, including
+alerts that did not block the request. Before considering a heuristic with known
+false positives, run more than ten rounds with varied benign inputs and retest
+each refinement. If the ambiguity persists, recommend opt-in monitoring and
+document which legitimate actions produce alerts.
+
 Contributions that add detection rules or hook families should include runnable verification via either:
 
 - A **Vulhub acceptance scenario** (`java-agent/scripts/acceptance-vulhub-*.sh`) proving baseline exploitation and protected-mode blocking.

@@ -304,11 +304,20 @@ public final class OhMyRaspHooks {
   }
 
   public static void beforeSql(String query) {
+    inspectSql(null, query);
+  }
+
+  public static void beforeSql(Object jdbcReceiver, String query) {
+    inspectSql(jdbcReceiver, query);
+  }
+
+  private static void inspectSql(Object jdbcReceiver, String query) {
     if (detectionDisabled()) {
       return;
     }
     try {
-      emit(DETECTORS.detectSql(query, currentRequest()), true, true);
+      String jdbcClass = jdbcReceiver == null ? null : jdbcReceiver.getClass().getName();
+      emit(DETECTORS.detectSql(query, currentRequest(), jdbcClass), true, true);
     } catch (OhMyRaspBlockException blocked) {
       throw blocked;
     } catch (Throwable throwable) {

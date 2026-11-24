@@ -1719,6 +1719,30 @@ final class Java17RaspHooksTest {
   }
 
   @Test
+  void classifiesSqlTokensAndUrlHostsAtTheSink() throws Exception {
+    Path log = Files.createTempFile("ohmyrasp-java17-boundaries", ".jsonl");
+    Files.delete(log);
+    System.setProperty("ohmyrasp.java17.log", log.toString());
+    System.setProperty("ohmyrasp.java17.block", "true");
+
+    Java17RaspHooks.beforeSqlStatement("select 'union select' as search_term");
+    Java17RaspHooks.beforeUrlOpen(new URL("http://127.docs.example.test/admin"));
+    assertFalse(Files.exists(log));
+    Java17RaspHooks.beforeSqlStatement("select id from sales union all select id from refunds");
+    Java17RaspHooks.beforeSqlStatement("select table_name from information_schema.tables");
+    String fragment = "union/* report */select 2";
+    Java17RaspHooks.beforeHttpRequest(new RequestStub("GET", "/search", "").withParameter("filter", fragment));
+    try {
+      assertThrows(Java17RaspBlockException.class,
+          () -> Java17RaspHooks.beforeSqlStatement("select 1 " + fragment));
+    } finally {
+      Java17RaspHooks.afterHttpRequest();
+    }
+    assertThrows(Java17RaspBlockException.class,
+        () -> Java17RaspHooks.beforeUrlOpen(new URL("http://[::ffff:127.0.0.1]/admin")));
+  }
+
+  @Test
   void logsCloudMetadataUrlOpen() throws Exception {
     Path log = Files.createTempFile("ohmyrasp-java17-url-metadata", ".jsonl");
     Files.delete(log);

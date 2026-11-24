@@ -58,7 +58,8 @@ expect_body_contains() {
   local url="$1"
   local needle="$2"
   local body
-  body="$(curl -fsS "$url")"
+  shift 2
+  body="$(curl -fsS "$@" "$url")"
   if [[ "$body" != *"$needle"* ]]; then
     echo "expected ${url} to contain ${needle}" >&2
     exit 1
@@ -1006,7 +1007,7 @@ XML
   expect_not_blocked "$version" baseline_dataease_geo_whitelist_traversal --path-as-is "${baseline_url}/geo/../dataease/de2api/datasource/types"
 
   expect_block "$version" request_scanner -A "sqlmap/1.7" "${protected_url}/rasp/request"
-  expect_block "$version" request_unusual -H "User-Agent:" "${protected_url}/rasp/request"
+  expect_body_contains "${protected_url}/rasp/request" "request inspected" -H "User-Agent:"
   expect_block "$version" xss_userinput -G -A "Mozilla/5.0" --data-urlencode "q=<script>alert(1)</script>" "${protected_url}/rasp/request"
   expect_block "$version" request_internal_identity "${protected_url}/rasp/policy/request-internal-identity"
   expect_block "$version" request_nacos_cve_2021_29441_list_users -H "User-Agent: Nacos-Server" "${protected_url}/nacos/v1/auth/users?pageNo=1&pageSize=9"
@@ -1384,7 +1385,6 @@ XML
 
 required_algorithms=(
   request_scanner
-  request_unusual
   xss_userinput
   request_internal_identity
   request_default_jwt_secret
