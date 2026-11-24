@@ -40,7 +40,7 @@ done
 
 root=$(CDPATH= cd -- "$(dirname "$0")" && pwd)
 
-exec python3 - "$root" "$beefile_only" "$version" <<'PY'
+python3 - "$root" "$beefile_only" "$version" <<'PY'
 import os
 import re
 import struct
@@ -495,3 +495,9 @@ for pkg_name, allow_boot_cp in PACKAGES:
 
 print("ALL CHECKS PASSED")
 PY
+
+if [ -d "$root/../../java-agent" ] && [ -f "$root/gen-readmes.py" ]; then
+	python3 "$root/gen-readmes.py" --check
+else
+	echo "SKIP: java-agent/ not present; skipping gen-readmes.py --check"
+fi
