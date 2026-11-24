@@ -6,7 +6,7 @@ RUN npm ci --no-audit --no-fund
 COPY . .
 RUN npm run build
 
-FROM nginx:1.31.8-alpine
+FROM nginx:1.31.10-alpine
 LABEL org.opencontainers.image.title="OhMyRasp Sentinel Console" \
       org.opencontainers.image.description="Application-centric RASP control console"
 COPY nginx.conf /etc/nginx/conf.d/default.conf
