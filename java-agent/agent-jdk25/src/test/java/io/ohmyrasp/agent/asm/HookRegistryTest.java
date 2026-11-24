@@ -12,6 +12,7 @@ final class HookRegistryTest {
   void recognizesJvmAndMiddlewareHookTargets() {
     assertTrue(registry.isDirectTarget("java/lang/ProcessBuilder"));
     assertTrue(registry.isDirectTarget("java/lang/Runtime"));
+    assertTrue(registry.isDirectTarget("java/util/Base64$Decoder"));
     assertTrue(registry.isDirectTarget("java.nio.file.Files"));
     assertTrue(registry.isDirectTarget("java/util/zip/ZipInputStream"));
     assertTrue(registry.isDirectTarget("java.util.zip.ZipFile"));
@@ -74,6 +75,8 @@ final class HookRegistryTest {
     assertTrue(registry.isDirectTarget("com/caucho/hessian/io/SerializerFactory"));
     assertTrue(registry.isDirectTarget("org/apache/xmlrpc/parser/SerializableParser"));
     assertTrue(registry.isDirectTarget("org/h2/jdbc/JdbcStatement"));
+    assertTrue(registry.isDirectTarget("com/mysql/cj/jdbc/StatementImpl"));
+    assertTrue(registry.isDirectTarget("org/postgresql/jdbc/PgStatement"));
     assertTrue(registry.isDirectTarget("javax/activation/URLDataSource"));
     assertTrue(registry.isDirectTarget("jakarta/activation/URLDataSource"));
     assertTrue(registry.isDirectTarget("com/auth0/jwt/JWTVerifier"));

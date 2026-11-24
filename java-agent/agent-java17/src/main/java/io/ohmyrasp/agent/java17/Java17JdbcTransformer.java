@@ -21,6 +21,8 @@ public final class Java17JdbcTransformer implements ClassFileTransformer {
       Method.getMethod("void beforeSqlIdentifier(java.lang.String)");
   private static final Method BEFORE_MYBATIS_BOUND_SQL =
       Method.getMethod("void beforeMyBatisBoundSql(java.lang.String, java.lang.Object)");
+  private static final Method BEFORE_SQL_STATEMENT =
+      Method.getMethod("void beforeSqlStatement(java.lang.String)");
 
   @Override
   public byte[] transform(
@@ -50,15 +52,45 @@ public final class Java17JdbcTransformer implements ClassFileTransformer {
         || "org/h2/jdbc/JdbcConnection".equals(className)
         || "org/apache/ibatis/mapping/BoundSql".equals(className)
         || "org/apache/skywalking/oap/server/storage/plugin/jdbc/h2/dao/H2LogQueryDAO"
-            .equals(className);
+            .equals(className)
+        || isJdbcStatementClass(className);
+  }
+
+  private static boolean isJdbcStatementClass(String className) {
+    return className.startsWith("org/h2/jdbc/")
+        || className.startsWith("com/mysql/cj/jdbc/")
+        || className.startsWith("com/mysql/jdbc/")
+        || className.startsWith("org/postgresql/jdbc/")
+        || className.startsWith("org/mariadb/jdbc/")
+        || className.startsWith("org/sqlite/")
+        || className.startsWith("org/hsqldb/jdbc/")
+        || className.startsWith("org/apache/derby/impl/jdbc/")
+        || className.startsWith("oracle/jdbc/driver/")
+        || className.startsWith("com/microsoft/sqlserver/jdbc/")
+        || className.startsWith("com/zaxxer/hikari/pool/")
+        || className.startsWith("org/apache/commons/dbcp")
+        || className.startsWith("org/apache/tomcat/jdbc/pool/");
   }
 
   private static final class JdbcClassVisitor extends ClassVisitor {
     private final String className;
+    private boolean isInterface;
 
     JdbcClassVisitor(ClassVisitor delegate, String className) {
       super(Opcodes.ASM9, delegate);
       this.className = className;
+    }
+
+    @Override
+    public void visit(
+        int version,
+        int access,
+        String name,
+        String signature,
+        String superName,
+        String[] interfaces) {
+      this.isInterface = (access & Opcodes.ACC_INTERFACE) != 0;
+      super.visit(version, access, name, signature, superName, interfaces);
     }
 
     @Override
@@ -67,6 +99,17 @@ public final class Java17JdbcTransformer implements ClassFileTransformer {
       MethodVisitor methodVisitor = super.visitMethod(access, name, descriptor, signature, exceptions);
       if (methodVisitor == null) {
         return methodVisitor;
+      }
+      if (!isInterface
+          && (access & (Opcodes.ACC_ABSTRACT | Opcodes.ACC_NATIVE)) == 0
+          && isSqlStatementMethod(className, name, descriptor)) {
+        return new AdviceAdapter(Opcodes.ASM9, methodVisitor, access, name, descriptor) {
+          @Override
+          protected void onMethodEnter() {
+            loadArg(0);
+            invokeStatic(HOOKS, BEFORE_SQL_STATEMENT);
+          }
+        };
       }
       if (isSqlIdentifierMethod(className, name, descriptor)) {
         return new AdviceAdapter(Opcodes.ASM9, methodVisitor, access, name, descriptor) {
@@ -134,6 +177,18 @@ public final class Java17JdbcTransformer implements ClassFileTransformer {
           && "<init>".equals(name)
           && "(Lorg/apache/ibatis/session/Configuration;Ljava/lang/String;Ljava/util/List;Ljava/lang/Object;)V"
               .equals(descriptor);
+    }
+
+    private static boolean isSqlStatementMethod(
+        String className, String name, String descriptor) {
+      return isJdbcStatementClass(className)
+          && descriptor != null
+          && descriptor.startsWith("(Ljava/lang/String;")
+          && ("execute".equals(name)
+              || "executeQuery".equals(name)
+              || "executeUpdate".equals(name)
+              || "executeLargeUpdate".equals(name)
+              || "addBatch".equals(name));
     }
   }
 }

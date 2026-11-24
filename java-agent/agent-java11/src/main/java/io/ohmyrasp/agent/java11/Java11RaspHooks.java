@@ -129,6 +129,12 @@ public final class Java11RaspHooks {
   private static final Pattern SQL_IDENTIFIER_KEYWORD_CONTROL =
       Pattern.compile(
           "(?is)(?:^|\\s)(?:where|join|union|select|insert|update|delete|drop|alter|create|merge|call|case|when|then|else|sleep|benchmark|order|group|having|limit|and|or)\\b");
+  private static final Pattern SQLI_STRUCTURAL =
+      Pattern.compile(
+          "(?is)(?:['\"]\\s*--|['\"]\\s*(?:or|and)\\s+(?:\\d+\\s*=\\s*\\d+|(['\"])([^'\"]{1,32})\\1\\s*=\\s*\\1\\2\\1)|\\bor\\s+(?:(\\d+)\\s*=\\s*\\3|(['\"])([^'\"]{1,32})\\4\\s*=\\s*\\4\\5\\4)\\b)");
+  private static final Pattern SQL_POLICY =
+      Pattern.compile(
+          "(?is)(?:\\bunion\\s+(?:all\\s+)?select\\b|\\binformation_schema\\b|\\binto\\s+(?:out|dump)file\\b|/\\*!|\\bload_file\\s*\\(|\\bsleep\\s*\\(|\\bbenchmark\\s*\\()");
   private static final Pattern SCRIPT_LITERAL_EXECUTE =
       Pattern.compile("(?is)[\"'][^\"'\\r\\n]{1,200}[\"']\\s*\\.\\s*execute\\s*\\(");
   private static final Pattern WINDOWS_ABSOLUTE_PATH = Pattern.compile("(?i)^[a-z]:/.*");
@@ -158,6 +164,8 @@ public final class Java11RaspHooks {
   private static final ThreadLocal<String> LAST_LOGGED_ARCHIVE = new ThreadLocal<String>();
   private static final ThreadLocal<String> LAST_LOGGED_JDBC = new ThreadLocal<String>();
   private static final ThreadLocal<String> LAST_LOGGED_SQL_IDENTIFIER = new ThreadLocal<String>();
+  private static final ThreadLocal<String> LAST_LOGGED_SQL_STATEMENT = new ThreadLocal<String>();
+  private static final ThreadLocal<String> LAST_LOGGED_BASE64 = new ThreadLocal<String>();
   private static final ThreadLocal<String> LAST_LOGGED_CLASSLOADER = new ThreadLocal<String>();
   private static final ThreadLocal<String> LAST_LOGGED_SCRIPT = new ThreadLocal<String>();
   private static final ThreadLocal<String> LAST_LOGGED_JEXL = new ThreadLocal<String>();
@@ -428,6 +436,112 @@ public final class Java11RaspHooks {
   public static void beforeMyBatisBoundSql(String sql, Object parameterObject) {
     Finding finding = classifyMyBatisOrderMetadata(sql, parameterObject);
     inspectSqlIdentifierFinding(finding, "MyBatis.BoundSql");
+  }
+
+  public static void beforeSqlStatement(String sql) {
+    Finding finding = classifySqlStatement(sql);
+    if (finding == null) {
+      return;
+    }
+    String action = shouldBlock() ? "block" : "log";
+    String previous = LAST_LOGGED_SQL_STATEMENT.get();
+    if (!"block".equals(action) && finding.detailValue.equals(previous)) {
+      return;
+    }
+    LAST_LOGGED_SQL_STATEMENT.set(finding.detailValue);
+    appendEvent(finding, "Statement.execute", action);
+    if ("block".equals(action)) {
+      throw new Java11RaspBlockException("OhMyRASP Java 11 blocked suspicious SQL statement");
+    }
+  }
+
+  public static void beforeBase64Decode(
+      byte[] src, int sp, int sl, boolean isURL, boolean isMIME) {
+    // Pure arithmetic fast path first so benign Base64 decoding never triggers
+    // class initialization or allocates on the hot path.
+    if (!isBase64TailUnderflowCandidate(src, sp, sl, isURL, isMIME)) {
+      return;
+    }
+    int length = sl - sp;
+    int remainder = length & 63;
+    int padding = 0;
+    while (padding < 3 && src[sl - 1 - padding] == '=') {
+      padding++;
+    }
+    Finding finding =
+        new Finding(
+            "java11_base64_avx512_tail_underflow",
+            99,
+            "Base64.Decoder.decode0 rejected x64 AVX-512 tail-underflow candidate (CVE-2026-114938)",
+            "candidate",
+            "length="
+                + length
+                + ",padding="
+                + padding
+                + ",remainder="
+                + remainder
+                + ",alphabet="
+                + (isURL ? "URL-safe" : "standard")
+                + ",cve=CVE-2026-114938");
+    String action = shouldBlock() ? "block" : "log";
+    String previous = LAST_LOGGED_BASE64.get();
+    if (!"block".equals(action) && finding.detailValue.equals(previous)) {
+      return;
+    }
+    LAST_LOGGED_BASE64.set(finding.detailValue);
+    appendEvent(finding, "Base64.Decoder.decode0", action);
+    if ("block".equals(action)) {
+      throw new Java11RaspBlockException(
+          "OhMyRASP Java 11 blocked Base64 x64 tail-underflow candidate");
+    }
+  }
+
+  private static boolean isBase64TailUnderflowCandidate(
+      byte[] src, int sp, int sl, boolean isURL, boolean isMIME) {
+    if (isMIME || src == null || sp < 0 || sl < sp || sl > src.length) {
+      return false;
+    }
+    int length = sl - sp;
+    if (length < 65) {
+      return false;
+    }
+    int remainder = length & 63;
+    if (remainder < 1 || remainder > 3) {
+      return false;
+    }
+    int padding = 0;
+    while (padding < 3 && src[sl - 1 - padding] == '=') {
+      padding++;
+    }
+    if (padding < 1 || padding > 2 || padding > remainder) {
+      return false;
+    }
+    for (int i = sp; i < sl - padding; i++) {
+      int c = src[i] & 0xff;
+      if (!((c >= 'A' && c <= 'Z')
+          || (c >= 'a' && c <= 'z')
+          || (c >= '0' && c <= '9')
+          || (isURL ? (c == '-' || c == '_') : (c == '+' || c == '/')))) {
+        return false;
+      }
+    }
+    return true;
+  }
+
+  private static Finding classifySqlStatement(String sql) {
+    if (sql == null || sql.trim().length() == 0) {
+      return null;
+    }
+    boolean structural = SQLI_STRUCTURAL.matcher(sql).find();
+    if (!structural && !SQL_POLICY.matcher(sql).find()) {
+      return null;
+    }
+    return new Finding(
+        "java11_sql_statement_injection",
+        structural ? 90 : 85,
+        "Suspicious SQL injection pattern reached a Java 11 JDBC Statement sink",
+        "query",
+        abbreviate(sql, 1200));
   }
 
   private static void inspectSqlIdentifierFinding(Finding finding, String hook) {

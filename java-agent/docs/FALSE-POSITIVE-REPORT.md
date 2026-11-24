@@ -5,7 +5,7 @@
 
 ## Method
 
-A curated corpus of **75** benign-but-plausible inputs across **13** detector categories is run through the engine. Each input is presented with a realistic request context; where a value would be user-supplied it is placed in a request parameter so taint-aware detectors evaluate it as in production. A *false positive* is any detector returning a detection for legitimate input. This is a detector-precision probe on benign traffic, **not** a production-traffic false-positive rate.
+A curated corpus of **83** benign-but-plausible inputs across **14** detector categories is run through the engine. Each input is presented with a realistic request context; where a value would be user-supplied it is placed in a request parameter so taint-aware detectors evaluate it as in production. A *false positive* is any detector returning a detection for legitimate input. This is a detector-precision probe on benign traffic, **not** a production-traffic false-positive rate.
 
 ## Result
 
@@ -24,7 +24,8 @@ A curated corpus of **75** benign-but-plausible inputs across **13** detector ca
 | Upload filenames | 6 | 0 | 0.0% |
 | JDBC URLs | 5 | 0 | 0.0% |
 | Request parameters | 6 | 0 | 0.0% |
-| **Overall** | **75** | **0** | **0.0%** |
+| Base64 decoding | 8 | 0 | 0.0% |
+| **Overall** | **83** | **0** | **0.0%** |
 
 No false positives observed across the corpus.
 
@@ -145,5 +146,16 @@ No false positives observed across the corpus.
 - `<ul><li>one</li><li>two</li></ul>` (user input: `<ul><li>one</li><li>two</li></ul>`)
 - `prices: a < b, c > d` (user input: `prices: a < b, c > d`)
 - `online surveys and onboarding tips` (user input: `online surveys and onboarding tips`)
+
+**Base64 decoding**
+
+- `SGVsbG8sIHdvcmxkIQ==`
+- `AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA==`
+- `AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA==`
+- `AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=`
+- `AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA`
+- `AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA==` (user input: `urlsafe`)
+- `AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA` (user input: `urlsafe`)
+- `AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=\nA=` (user input: `mime`)
 
 </details>

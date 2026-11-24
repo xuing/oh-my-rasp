@@ -1,11 +1,28 @@
 package io.ohmyrasp.agent.asm;
 
 import org.objectweb.asm.MethodVisitor;
+import org.objectweb.asm.Opcodes;
 
 final class SqlHookModule implements HookModule {
   @Override
   public boolean matchesClass(String className) {
-    return className.equals("java/sql/DriverManager") || className.startsWith("org/h2/jdbc/");
+    return className.equals("java/sql/DriverManager") || isJdbcStatementClass(className);
+  }
+
+  private static boolean isJdbcStatementClass(String className) {
+    return className.startsWith("org/h2/jdbc/")
+        || className.startsWith("com/mysql/cj/jdbc/")
+        || className.startsWith("com/mysql/jdbc/")
+        || className.startsWith("org/postgresql/jdbc/")
+        || className.startsWith("org/mariadb/jdbc/")
+        || className.startsWith("org/sqlite/")
+        || className.startsWith("org/hsqldb/jdbc/")
+        || className.startsWith("org/apache/derby/impl/jdbc/")
+        || className.startsWith("oracle/jdbc/driver/")
+        || className.startsWith("com/microsoft/sqlserver/jdbc/")
+        || className.startsWith("com/zaxxer/hikari/pool/")
+        || className.startsWith("org/apache/commons/dbcp")
+        || className.startsWith("org/apache/tomcat/jdbc/pool/");
   }
 
   @Override
@@ -15,6 +32,9 @@ final class SqlHookModule implements HookModule {
       int access,
       String methodName,
       String descriptor) {
+    if ((access & (Opcodes.ACC_ABSTRACT | Opcodes.ACC_NATIVE)) != 0) {
+      return methodVisitor;
+    }
     if (className.equals("java/sql/DriverManager")
         && methodName.equals("getConnection")
         && descriptor.startsWith("(Ljava/lang/String;")) {
@@ -31,7 +51,7 @@ final class SqlHookModule implements HookModule {
             || methodName.equals("executeUpdate")
             || methodName.equals("executeLargeUpdate")
             || methodName.equals("addBatch")
-            || methodName.equals("prepareCommand"))
+            || (className.startsWith("org/h2/jdbc/") && methodName.equals("prepareCommand")))
         && descriptor.startsWith("(Ljava/lang/String;")) {
       return new EntryAdvice(methodVisitor, access, methodName, descriptor) {
         @Override

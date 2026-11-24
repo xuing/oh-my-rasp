@@ -308,11 +308,30 @@ public final class OhMyRaspHooks {
       return;
     }
     try {
-      emit(DETECTORS.detectSql(query, currentRequest()));
+      emit(DETECTORS.detectSql(query, currentRequest()), true, true);
     } catch (OhMyRaspBlockException blocked) {
       throw blocked;
     } catch (Throwable throwable) {
       quiet("beforeSql", throwable);
+    }
+  }
+
+  public static void beforeBase64Decode(
+      byte[] src, int sp, int sl, boolean isURL, boolean isMIME) {
+    // Pure arithmetic fast path first so benign Base64 decoding never triggers
+    // class initialization or allocates on the hot path.
+    if (!DetectorEngine.isBase64TailUnderflowCandidate(src, sp, sl, isURL, isMIME)) {
+      return;
+    }
+    if (detectionDisabled()) {
+      return;
+    }
+    try {
+      emit(DETECTORS.detectBase64Decode(src, sp, sl, isURL, isMIME, currentRequest()), true, true);
+    } catch (OhMyRaspBlockException blocked) {
+      throw blocked;
+    } catch (Throwable throwable) {
+      quiet("beforeBase64Decode", throwable);
     }
   }
 
@@ -1549,10 +1568,13 @@ public final class OhMyRaspHooks {
       return;
     }
     Detection event = policyEvaluation.detection();
-    if (!policyEvaluation.controlled() && legacyBlockEnabled() && activeRequest(value)) {
+    boolean blockScope = activeRequest(value) || allowNonRequestBlock;
+    if (!policyEvaluation.controlled()
+        && (legacyBlockEnabled() || runtime.mode() == DetectionMode.BLOCK)
+        && blockScope) {
       event = value.withAction("block");
     }
-    if (forceBlockEnabled() && activeRequest(value)) {
+    if (forceBlockEnabled() && blockScope) {
       event = event.withAction("block");
     }
     boolean willBlock =

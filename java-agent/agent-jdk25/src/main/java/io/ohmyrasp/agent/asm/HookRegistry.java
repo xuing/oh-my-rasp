@@ -9,6 +9,7 @@ public final class HookRegistry {
       new HookRegistry(
           List.of(
               new ProcessHookModule(),
+              new Base64HookModule(),
               new FileHookModule(),
               new ArchiveHookModule(),
               new NetworkHookModule(),

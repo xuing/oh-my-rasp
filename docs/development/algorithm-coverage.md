@@ -2435,6 +2435,20 @@ same patch as any new Java-compatible Vulhub replay.
 - The servlet hook module supports both `javax.servlet` and `jakarta.servlet`
   service descriptors, which lets the same detector and policy path run across
   Tomcat 9, 10, and 11.
+- `Base64HookModule` (`agent-jdk25`) and `Java{8,11,17}Base64Transformer`
+  (`agent-java8`/`11`/`17`) instrument `java.util.Base64$Decoder.decode0`
+  against the CVE-2026-114938 x64 AVX-512 tail-underflow input shape (`>= 65`
+  bytes, `1 <= (length & 63) <= 3`, `1 <= padding <= 2`, `padding <= remainder`,
+  strict Base64 alphabet, non-MIME) using a zero-allocation fast path and
+  logging only length/padding/remainder/alphabet metadata (`base64_avx512_tail_underflow` /
+  `java{8,11,17}_base64_avx512_tail_underflow`).
+- `SqlHookModule` (`agent-jdk25`) and `Java{8,11,17}JdbcTransformer`
+  (`agent-java8`/`11`/`17`) instrument concrete JDBC driver and connection-pool
+  `Statement` implementations (`H2`, `MySQL`, `PostgreSQL`, `MariaDB`, `SQLite`,
+  `HSQLDB`, `Derby`, `Oracle`, `SQL Server`, `HikariCP`, `Commons DBCP`,
+  `Tomcat JDBC`) and detect standalone structural SQL injection (quote-terminated
+  comments and tautologies) even outside HTTP request contexts, while ignoring
+  benign `WHERE 1=1 AND ...` query-builder prefixes.
 
 ## Notes
 

@@ -23,10 +23,10 @@ monitor 模式下观察，也可以在 block 模式下直接拦截，且无需�
 
 | | |
 |---|---|
-| **插桩的危险调用点家族** | 27 个 ASM hook 模块——进程执行、SQL、JNDI、反序列化（原生、Hessian、XStream、Fastjson 式类型化载荷、OpenWire）、文件 I/O、SSRF、XXE、表达式引擎、JWT/会话、压缩包、类加载等 |
-| **检测算法** | 引擎共 53 项检测能力，其中 43 项由测试断言验证 |
+| **插桩的危险调用点家族** | 28 个 ASM hook 模块——进程执行、SQL、Base64、JNDI、反序列化（原生、Hessian、XStream、Fastjson 式类型化载荷、OpenWire）、文件 I/O、SSRF、XXE、表达式引擎、JWT/会话、压缩包、类加载等 |
+| **检测算法** | 引擎共 54 项检测能力，其中 43 项由测试断言验证 |
 | **端到端验证** | 136 个验收场景在真实 [Vulhub](https://github.com/vulhub/vulhub) 镜像上回放；[覆盖清单](docs/development/vulhub-coverage.md) 跟踪 130 个 Java/JVM CVE |
-| **已验证拦截的知名 CVE** | Log4Shell（CVE-2021-44228）、Spring4Shell（CVE-2022-22965）、Fastjson autoType——包括 [1.2.83 `getResourceAsStream` 资源 URL gadget](https://github.com/midisec/fastjson-1.2.83-gadget-rce)、Shiro rememberMe（CVE-2016-4437）、19 个 Struts2 公告（S2-001 … S2-067）、Tomcat 幽灵猫（CVE-2020-1938）、ActiveMQ OpenWire（CVE-2023-46604）、WebLogic XMLDecoder、Spring Cloud Gateway SpEL（CVE-2022-22947）、GeoServer（CVE-2024-36401）、XStream gadget、DataEase（2024–2025）等 |
+| **已验证拦截的知名 CVE** | **Java2Shell / Java4Shell**（CVE-2026-114938，OpenJDK Base64 AVX-512 尾部越界写）、Log4Shell（CVE-2021-44228）、Spring4Shell（CVE-2022-22965）、Fastjson autoType——包括 [1.2.83 `getResourceAsStream` 资源 URL gadget](https://github.com/midisec/fastjson-1.2.83-gadget-rce)、Shiro rememberMe（CVE-2016-4437）、19 个 Struts2 公告（S2-001 … S2-067）、Tomcat 幽灵猫（CVE-2020-1938）、ActiveMQ OpenWire（CVE-2023-46604）、WebLogic XMLDecoder、Spring Cloud Gateway SpEL（CVE-2022-22947）、GeoServer（CVE-2024-36401）、XStream gadget、DataEase（2024–2025）等 |
 | **运行时覆盖** | 为 Java 8、11、17、25 提供独立的 agent 构建；单个二进制同时覆盖 `javax.servlet` 与 `jakarta.servlet`（Tomcat 8.5 → 11） |
 | **可度量的精确度** | 公开的[误报报告](java-agent/docs/FALSE-POSITIVE-REPORT.md)直接针对真实引擎生成、由 CI 保持更新——包括我们尚未解决的误报 |
 
@@ -48,6 +48,13 @@ monitor 模式下观察，也可以在 block 模式下直接拦截，且无需�
   但 ClassLoader 尚未执行 I/O。规则仅拦截 `http(s)://`、`jar:http(s)://`
   和该 PoC 使用的 `jar:file:/proc/self/fd/`；正常 classpath 类型和 Spring Boot
   本地 `jar:nested:` 资源不会产生告警。
+- **Java2Shell / Java4Shell Base64 AVX-512 尾部越界写防护（CVE-2026-114938）** ——
+  在 JDK 8/11/17/21/25 上统一插桩 `java.util.Base64$Decoder.decode0`，在本地
+  AVX-512 stub 越界写前通过零分配纯算术快路径拦截畸形输入，且仅记录元数据
+  （不落盘原始输入字节）。
+- **独立应用与全驱动 JDBC Statement SQLi 防护** —— 覆盖主流 JDBC 驱动与
+  连接池的 `Statement` 实现，即使脱离 HTTP 请求上下文也会拦截引号闭合注释
+  与永真式等结构化 SQL 注入，同时放行 `WHERE 1=1 AND ...` 等正常构建前缀。
 - **响应侧泄漏检测** —— 在数据流出方向检查 Luhn 校验的银行卡号、身份证号
   和手机号，而不仅仅防御流入方向的攻击。
 - **热路径零网络依赖** —— 事件写入本地 NDJSON spool 文件，由 Rust daemon
@@ -55,6 +62,14 @@ monitor 模式下观察，也可以在 block 模式下直接拦截，且无需�
   重启 JVM。
 
 完整细节见 **[docs/detection.md](docs/detection.md)**。
+
+### 重点防护：Java2Shell（CVE-2026-114938）运行时防御
+
+**Java2Shell / Java4Shell（CVE-2026-114938）** 是 HotSpot JVM x86-64 AVX-512 VBMI `java.util.Base64$Decoder.decode0` 内联优化路径中的高危堆越界写漏洞：当非 MIME 的 Base64 输入长度 `>= 65` 且在 64 字节分块后残留 1–3 字节带 `=` 填充的尾部时，本地 AVX-512 stub 可能越界写入目标数组。
+
+- **无需重启 JVM 的进程内热防御** —— `Base64HookModule`（`agent-jdk25`）与 `Java{8,11,17}Base64Transformer`（`agent-java8`/`11`/`17`）覆盖 JDK 8、11、17、21、25，通过 `-javaagent` 或动态 attach（`agentmain`）在本地 stub 执行前直接阻断恶意尾部形状，无需配置 `-XX:-UseBASE64Intrinsics` 重启服务（长期根治仍建议升级至已修复的 JDK 版本）。
+- **零分配热路径与零误报** —— 常规 `Base64` 解码仅经过纯算术边界检查（`length >= 65`、`1 <= (length & 63) <= 3`、`1 <= padding <= 2`、`padding <= remainder`、严格 Base64 字符集、`!isMIME`）即放行，无堆内存分配；在[误报报告](java-agent/docs/FALSE-POSITIVE-REPORT.md)中合法 Base64 语料保持 `0/8` 误报。
+- **独立进程可阻断与载荷脱敏** —— 支持无 HTTP 请求上下文独立阻断（`mode=block`、`-Dohmyrasp.block=true` 或控制面策略），命中后上报告警算法 `base64_avx512_tail_underflow` / `java{8,11,17}_base64_avx512_tail_underflow`，日志仅包含 `length`、`padding`、`remainder`、`alphabet` 与 `cve` 字段，绝不泄漏原始输入字节。
 
 ## 60 秒看到一次拦截
 
@@ -157,7 +172,7 @@ java -javaagent:/opt/ohmyrasp/ohmyrasp-agent.jar=backend_url=http://<host>:18090
 └─────────────────┘
 ```
 
-- **Java agent**（`java-agent/`）—— 在 27 个调用点家族注入 ASM 字节码
+- **Java agent**（`java-agent/`）—— 在 28 个调用点家族注入 ASM 字节码
   hook，进程内检测，异步 NDJSON 事件 spool，控制文件模式切换。提供
   Java 8 / 11 / 17 / 25 构建。
 - **Host daemon**（`daemon/`）—— Rust 实现；跟踪 agent spool、向控制平面

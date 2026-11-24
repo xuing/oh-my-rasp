@@ -66,7 +66,7 @@ final class SqlCallsiteClassVisitor extends ClassVisitor {
     if (opcode != Opcodes.INVOKEINTERFACE && opcode != Opcodes.INVOKEVIRTUAL) {
       return false;
     }
-    if (owner.equals("java/sql/Statement") && descriptor.startsWith("(Ljava/lang/String;")) {
+    if (owner.equals("java/sql/Statement") && descriptor.startsWith("(Ljava/lang/String;)")) {
       return name.equals("execute")
           || name.equals("executeQuery")
           || name.equals("executeUpdate")

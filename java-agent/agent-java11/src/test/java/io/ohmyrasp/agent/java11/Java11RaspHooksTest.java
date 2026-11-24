@@ -1,6 +1,8 @@
 package io.ohmyrasp.agent.java11;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -14,11 +16,18 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Arrays;
+import java.util.Base64;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.atomic.AtomicInteger;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
+import org.objectweb.asm.ClassReader;
+import org.objectweb.asm.ClassVisitor;
+import org.objectweb.asm.ClassWriter;
+import org.objectweb.asm.MethodVisitor;
+import org.objectweb.asm.Opcodes;
 
 final class Java11RaspHooksTest {
   private static final String HUGEGRAPH_DEFAULT_JWT =
@@ -2559,6 +2568,176 @@ final class Java11RaspHooksTest {
     assertTrue(text.contains("\"algorithm\":\"java11_xxe_external_entity_protocol\""));
     assertTrue(text.contains("\"action\":\"block\""));
     assertTrue(text.contains("http://127.0.0.1:9/evil.dtd"));
+  }
+
+  @Test
+  void instrumentsBase64DecoderWithTailUnderflowGuard() throws Exception {
+    byte[] transformed =
+        new Java11Base64Transformer()
+            .transform(
+                null,
+                "java/util/Base64$Decoder",
+                null,
+                null,
+                classBytesByName("java.util.Base64$Decoder"));
+    assertNotNull(transformed);
+    AtomicInteger hookCalls = new AtomicInteger();
+    new ClassReader(transformed)
+        .accept(
+            new ClassVisitor(Opcodes.ASM9) {
+              @Override
+              public MethodVisitor visitMethod(
+                  int access, String name, String desc, String sig, String[] ex) {
+                if (!"decode0".equals(name) || !"([BII[B)I".equals(desc)) {
+                  return null;
+                }
+                return new MethodVisitor(Opcodes.ASM9) {
+                  @Override
+                  public void visitMethodInsn(
+                      int opcode, String owner, String mName, String mDesc, boolean itf) {
+                    if (opcode == Opcodes.INVOKESTATIC
+                        && "io/ohmyrasp/agent/java11/Java11RaspHooks".equals(owner)
+                        && "beforeBase64Decode".equals(mName)
+                        && "([BIIZZ)V".equals(mDesc)) {
+                      hookCalls.incrementAndGet();
+                    }
+                  }
+                };
+              }
+            },
+            0);
+    assertEquals(1, hookCalls.get());
+  }
+
+  @Test
+  void logsAndBlocksBase64TailUnderflowWithoutExposingPayload() throws Exception {
+    Path log = Files.createTempFile("ohmyrasp-java11-base64", ".jsonl");
+    Files.delete(log);
+    System.setProperty("ohmyrasp.java11.log", log.toString());
+
+    byte[] validAligned = (repeatChar('A', 64) + "AA==").getBytes(StandardCharsets.ISO_8859_1);
+    byte[] candidate = (repeatChar('A', 64) + "A=").getBytes(StandardCharsets.ISO_8859_1);
+
+    Java11RaspHooks.beforeBase64Decode(validAligned, 0, validAligned.length, false, false);
+    Java11RaspHooks.beforeBase64Decode(candidate, 0, candidate.length, false, true);
+    assertFalse(Files.exists(log));
+
+    Java11RaspHooks.beforeBase64Decode(candidate, 0, candidate.length, false, false);
+    String logged = new String(Files.readAllBytes(log), StandardCharsets.UTF_8);
+    assertTrue(logged.contains("\"algorithm\":\"java11_base64_avx512_tail_underflow\""));
+    assertTrue(logged.contains("\"action\":\"log\""));
+    assertTrue(logged.contains("CVE-2026-114938"));
+    assertFalse(logged.contains("AAAA"));
+
+    System.setProperty("ohmyrasp.java11.block", "true");
+    assertThrows(
+        Java11RaspBlockException.class,
+        () -> Java11RaspHooks.beforeBase64Decode(candidate, 0, candidate.length, true, false));
+  }
+
+  @Test
+  void logsAndBlocksStructuralSqlStatementAndIgnoresBenignQueries() throws Exception {
+    Path log = Files.createTempFile("ohmyrasp-java11-sql-stmt", ".jsonl");
+    Files.delete(log);
+    System.setProperty("ohmyrasp.java11.log", log.toString());
+
+    Java11RaspHooks.beforeSqlStatement("SELECT * FROM users WHERE 1=1 AND status = 'active'");
+    Java11RaspHooks.beforeSqlStatement("SELECT * FROM orders WHERE customer = 'O''Brien'");
+    assertFalse(Files.exists(log));
+
+    Java11RaspHooks.beforeSqlStatement("SELECT * FROM users WHERE username = 'admin' OR 1=1'");
+    String logged = new String(Files.readAllBytes(log), StandardCharsets.UTF_8);
+    assertTrue(logged.contains("\"algorithm\":\"java11_sql_statement_injection\""));
+    assertTrue(logged.contains("\"action\":\"log\""));
+
+    System.setProperty("ohmyrasp.java11.block", "true");
+    assertThrows(
+        Java11RaspBlockException.class,
+        () -> Java11RaspHooks.beforeSqlStatement("SELECT * FROM users WHERE username = 'admin'--'"));
+  }
+
+  @Test
+  void jdbcTransformerInstrumentsConcreteStatementAndSkipsInterfaces() {
+    byte[] concreteBytes = syntheticJdbcStatementClass("org/h2/jdbc/JdbcStatement", false);
+    byte[] interfaceBytes = syntheticJdbcStatementClass("org/h2/jdbc/JdbcStatement", true);
+    Java11JdbcTransformer transformer = new Java11JdbcTransformer();
+
+    byte[] transformed =
+        transformer.transform(null, "org/h2/jdbc/JdbcStatement", null, null, concreteBytes);
+    assertNotNull(transformed);
+    assertEquals(1, countBeforeSqlStatementCalls(transformed));
+
+    byte[] interfaceTransformed =
+        transformer.transform(null, "org/h2/jdbc/JdbcStatement", null, null, interfaceBytes);
+    assertNotNull(interfaceTransformed);
+    assertEquals(0, countBeforeSqlStatementCalls(interfaceTransformed));
+  }
+
+  private static byte[] classBytesByName(String className) throws Exception {
+    String resourceName = "/" + className.replace('.', '/') + ".class";
+    try (InputStream input = ClassLoader.getSystemResourceAsStream(resourceName.substring(1))) {
+      if (input == null) {
+        throw new IllegalStateException("Missing class resource " + resourceName);
+      }
+      ByteArrayOutputStream output = new ByteArrayOutputStream();
+      byte[] buffer = new byte[4096];
+      int count;
+      while ((count = input.read(buffer)) >= 0) {
+        output.write(buffer, 0, count);
+      }
+      return output.toByteArray();
+    }
+  }
+
+  private static String repeatChar(char c, int count) {
+    char[] chars = new char[count];
+    Arrays.fill(chars, c);
+    return new String(chars);
+  }
+
+  private static byte[] syntheticJdbcStatementClass(String internalName, boolean isInterface) {
+    ClassWriter cw = new ClassWriter(0);
+    int classAccess =
+        isInterface ? (Opcodes.ACC_PUBLIC | Opcodes.ACC_INTERFACE | Opcodes.ACC_ABSTRACT) : Opcodes.ACC_PUBLIC;
+    cw.visit(Opcodes.V11, classAccess, internalName, null, "java/lang/Object", null);
+    int methodAccess = isInterface ? (Opcodes.ACC_PUBLIC | Opcodes.ACC_ABSTRACT) : Opcodes.ACC_PUBLIC;
+    MethodVisitor mv =
+        cw.visitMethod(methodAccess, "executeQuery", "(Ljava/lang/String;)Ljava/sql/ResultSet;", null, null);
+    if (!isInterface) {
+      mv.visitCode();
+      mv.visitInsn(Opcodes.ACONST_NULL);
+      mv.visitInsn(Opcodes.ARETURN);
+      mv.visitMaxs(1, 2);
+    }
+    mv.visitEnd();
+    cw.visitEnd();
+    return cw.toByteArray();
+  }
+
+  private static int countBeforeSqlStatementCalls(byte[] classBytes) {
+    AtomicInteger calls = new AtomicInteger();
+    new ClassReader(classBytes)
+        .accept(
+            new ClassVisitor(Opcodes.ASM9) {
+              @Override
+              public MethodVisitor visitMethod(
+                  int access, String name, String desc, String sig, String[] ex) {
+                return new MethodVisitor(Opcodes.ASM9) {
+                  @Override
+                  public void visitMethodInsn(
+                      int opcode, String owner, String mName, String mDesc, boolean itf) {
+                    if (opcode == Opcodes.INVOKESTATIC
+                        && "io/ohmyrasp/agent/java11/Java11RaspHooks".equals(owner)
+                        && "beforeSqlStatement".equals(mName)
+                        && "(Ljava/lang/String;)V".equals(mDesc)) {
+                      calls.incrementAndGet();
+                    }
+                  }
+                };
+              }
+            },
+            0);
+    return calls.get();
   }
 
   static final class JaxRsRequestStub {

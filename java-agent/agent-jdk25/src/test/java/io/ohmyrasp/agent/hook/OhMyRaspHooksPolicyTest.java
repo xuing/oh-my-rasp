@@ -4,6 +4,7 @@ import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
 import io.ohmyrasp.agent.policy.AgentPolicy;
+import java.nio.charset.StandardCharsets;
 import java.util.Collections;
 import java.util.Enumeration;
 import java.util.List;
@@ -65,6 +66,34 @@ final class OhMyRaspHooksPolicyTest {
                 "OpenWire",
                 "org.springframework.context.support.ClassPathXmlApplicationContext",
                 "http://attacker.example/poc.xml"));
+  }
+
+  @Test
+  void base64TailUnderflowBlocksWithoutHttpRequestUnderBlockFlagAndPolicy() {
+    byte[] candidate = ("A".repeat(64) + "A=").getBytes(StandardCharsets.ISO_8859_1);
+
+    System.setProperty("ohmyrasp.block", "true");
+    assertThrows(
+        OhMyRaspBlockException.class,
+        () -> OhMyRaspHooks.beforeBase64Decode(candidate, 0, candidate.length, false, false));
+    System.clearProperty("ohmyrasp.block");
+
+    OhMyRaspHooks.installPolicy(base64Policy("block"), "agent-one");
+    assertThrows(
+        OhMyRaspBlockException.class,
+        () -> OhMyRaspHooks.beforeBase64Decode(candidate, 0, candidate.length, false, false));
+
+    OhMyRaspHooks.installPolicy(base64Policy("log"), "agent-one");
+    assertDoesNotThrow(
+        () -> OhMyRaspHooks.beforeBase64Decode(candidate, 0, candidate.length, false, false));
+  }
+
+  @Test
+  void standaloneSqlStatementBlocksWithoutHttpRequestUnderBlockFlag() {
+    System.setProperty("ohmyrasp.block", "true");
+    assertThrows(
+        OhMyRaspBlockException.class,
+        () -> OhMyRaspHooks.beforeSql("SELECT * FROM users WHERE username = 'admin' OR 1=1'"));
   }
 
   private static AgentPolicy policy(String action) {
@@ -132,6 +161,28 @@ final class OhMyRaspHooksPolicyTest {
               "action": "%s",
               "severity": "critical",
               "expression": "algorithm == \\"deserialization_protocol_class\\""
+            }
+          ]
+        }
+        """
+            .formatted(action));
+  }
+
+  private static AgentPolicy base64Policy(String action) {
+    return AgentPolicy.parse(
+        """
+        {
+          "version": 4,
+          "status": "active",
+          "canary_percent": 100,
+          "rules": [
+            {
+              "name": "Base64 CVE-2026-114938 block",
+              "hook": "base64",
+              "algorithm": "base64_avx512_tail_underflow",
+              "action": "%s",
+              "severity": "critical",
+              "expression": "algorithm == \\"base64_avx512_tail_underflow\\""
             }
           ]
         }

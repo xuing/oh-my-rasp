@@ -2,6 +2,7 @@ import io.ohmyrasp.agent.detect.DetectorEngine;
 import io.ohmyrasp.agent.model.Detection;
 import io.ohmyrasp.agent.model.RequestContext;
 
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -51,7 +52,18 @@ public final class FpReport {
         new Category("DNS lookups", dnsCorpus(), (c, r) -> ENGINE.detectDns(c.payload(), r)),
         new Category("Upload filenames", uploadCorpus(), (c, r) -> ENGINE.detectFileUpload(c.payload(), r)),
         new Category("JDBC URLs", jdbcCorpus(), (c, r) -> ENGINE.detectJdbcUrl(c.payload(), r)),
-        new Category("Request parameters", requestParamCorpus(), (c, r) -> ENGINE.detectRequest(r)));
+        new Category("Request parameters", requestParamCorpus(), (c, r) -> ENGINE.detectRequest(r)),
+        new Category(
+            "Base64 decoding",
+            base64Corpus(),
+            (c, r) ->
+                ENGINE.detectBase64Decode(
+                    c.payload().getBytes(StandardCharsets.ISO_8859_1),
+                    0,
+                    c.payload().length(),
+                    "urlsafe".equals(c.userParam()),
+                    "mime".equals(c.userParam()),
+                    r)));
 
     int totalCases = 0;
     int totalFp = 0;
@@ -277,6 +289,18 @@ public final class FpReport {
         Case.tainted("<ul><li>one</li><li>two</li></ul>", "<ul><li>one</li><li>two</li></ul>"),
         Case.tainted("prices: a < b, c > d", "prices: a < b, c > d"),
         Case.tainted("online surveys and onboarding tips", "online surveys and onboarding tips"));
+  }
+
+  private static List<Case> base64Corpus() {
+    return List.of(
+        Case.of("SGVsbG8sIHdvcmxkIQ=="),
+        Case.of("A".repeat(64) + "AA=="),
+        Case.of("A".repeat(65) + "A=="),
+        Case.of("A".repeat(64) + "AAA="),
+        Case.of("A".repeat(64) + "AAAA"),
+        Case.tainted("A".repeat(64) + "AA==", "urlsafe"),
+        Case.tainted("A".repeat(66), "urlsafe"),
+        Case.tainted("A".repeat(64) + "A=\\nA=", "mime"));
   }
 
   private static String abbreviate(String value) {

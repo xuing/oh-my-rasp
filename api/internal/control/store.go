@@ -1158,6 +1158,7 @@ func isSupportedPolicyAlgorithm(hook string, algorithm string) bool {
 }
 
 var supportedPolicyAlgorithms = map[string]map[string]bool{
+	"base64":          {"base64_avx512_tail_underflow": true},
 	"command":         {"command_common": true, "command_dnslog": true, "command_error": true, "command_reflect": true, "command_userinput": true},
 	"deletefile":      {"deletefile_userinput": true},
 	"deserialization": {"deserialization_blacklist": true},
@@ -1229,7 +1230,7 @@ func defaultPolicyRuleName(algorithm string) string {
 
 func defaultPolicySeverity(hook string) string {
 	switch hook {
-	case "jndi", "sql", "command", "deserialization", "webshell", "xxe":
+	case "base64", "jndi", "sql", "command", "deserialization", "webshell", "xxe":
 		return "critical"
 	case "ssrf", "fileupload", "include", "writefile", "loadlibrary", "eval", "ognl":
 		return "high"

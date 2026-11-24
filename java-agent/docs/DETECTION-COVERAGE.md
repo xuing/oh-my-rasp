@@ -8,8 +8,8 @@
 
 | Metric | Count |
 |--------|------:|
-| Hook families (instrumentation points) | 27 |
-| Detector capabilities (engine entry points) | 53 |
+| Hook families (instrumentation points) | 28 |
+| Detector capabilities (engine entry points) | 54 |
 | Verified algorithm signatures (asserted by tests) | 43 |
 | End-to-end vulnerability acceptance scenarios | 136 |
 | JDK lines exercised | 6 |
@@ -23,6 +23,7 @@ rewrites a family of risky call sites and routes them to the detector engine.
 |--------|-------------|
 | Archive | `ArchiveHookModule` |
 | ArgumentParser | `ArgumentParserHookModule` |
+| Base64 | `Base64HookModule` |
 | ClassLoader | `ClassLoaderHookModule` |
 | Expression | `ExpressionHookModule` |
 | File | `FileHookModule` |
@@ -51,26 +52,26 @@ rewrites a family of risky call sites and routes them to the detector engine.
 
 ## Detector capabilities
 
-The engine exposes **53** detection entry points:
+The engine exposes **54** detection entry points:
 
-- `detectArchiveExtraction` · `detectArgumentFileExpansion` · `detectClassLoaderUrl`
-- `detectCommand` · `detectDeserialization` · `detectDirectoryList`
-- `detectDns` · `detectEval` · `detectExpression`
-- `detectFastjsonClassResource` · `detectFileDelete` · `detectFileRead`
-- `detectFileUpload` · `detectFileWrite` · `detectGeneratedScriptFileWrite`
-- `detectHessianType` · `detectHttpInvokerDeserialization` · `detectHttpObjectStreamDeserialization`
-- `detectInclude` · `detectJaasConfig` · `detectJavaCompilation`
-- `detectJdbcUrl` · `detectJmxMBeanInvoke` · `detectJndi`
-- `detectJwtVerificationFailure` · `detectLink` · `detectLoadLibrary`
-- `detectOgnl` · `detectPolymorphicType` · `detectProtocolClassInstantiation`
-- `detectRemoteJobSubmission` · `detectRename` · `detectRequest`
-- `detectResponseDataLeak` · `detectRmiRegistryBind` · `detectServletIncludeAttributes`
-- `detectSessionDeserialization` · `detectSpringConfigLocation` · `detectSql`
-- `detectSqlException` · `detectSqlRegex` · `detectUrl`
-- `detectWebdavUpload` · `detectWebshellCallable` · `detectWebshellCommand`
-- `detectWebshellEval` · `detectWebshellFileWrite` · `detectWebshellLdPreload`
-- `detectXmlAttachmentReference` · `detectXmlDecoderExpression` · `detectXmlRpcSerializableValue`
-- `detectXssEcho` · `detectXxeEntity`
+- `detectArchiveExtraction` · `detectArgumentFileExpansion` · `detectBase64Decode`
+- `detectClassLoaderUrl` · `detectCommand` · `detectDeserialization`
+- `detectDirectoryList` · `detectDns` · `detectEval`
+- `detectExpression` · `detectFastjsonClassResource` · `detectFileDelete`
+- `detectFileRead` · `detectFileUpload` · `detectFileWrite`
+- `detectGeneratedScriptFileWrite` · `detectHessianType` · `detectHttpInvokerDeserialization`
+- `detectHttpObjectStreamDeserialization` · `detectInclude` · `detectJaasConfig`
+- `detectJavaCompilation` · `detectJdbcUrl` · `detectJmxMBeanInvoke`
+- `detectJndi` · `detectJwtVerificationFailure` · `detectLink`
+- `detectLoadLibrary` · `detectOgnl` · `detectPolymorphicType`
+- `detectProtocolClassInstantiation` · `detectRemoteJobSubmission` · `detectRename`
+- `detectRequest` · `detectResponseDataLeak` · `detectRmiRegistryBind`
+- `detectServletIncludeAttributes` · `detectSessionDeserialization` · `detectSpringConfigLocation`
+- `detectSql` · `detectSqlException` · `detectSqlRegex`
+- `detectUrl` · `detectWebdavUpload` · `detectWebshellCallable`
+- `detectWebshellCommand` · `detectWebshellEval` · `detectWebshellFileWrite`
+- `detectWebshellLdPreload` · `detectXmlAttachmentReference` · `detectXmlDecoderExpression`
+- `detectXmlRpcSerializableValue` · `detectXssEcho` · `detectXxeEntity`
 
 ## Verified algorithm signatures
 

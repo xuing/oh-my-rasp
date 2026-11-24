@@ -49,13 +49,14 @@ The protected request path must not block on reporting. The agent enforces this:
 Coverage is **generated from source** so it can't drift — see
 [`docs/DETECTION-COVERAGE.md`](docs/DETECTION-COVERAGE.md). At a glance:
 
-- **27** hook families (instrumentation points): SQL, Process, File, Network/URL,
-  JNDI, deserialization (ObjectInputStream / polymorphic / Hessian / OpenWire /
-  HTTP-invoker / RMI), XXE, expression/EL, class loading, Spring config, JMX,
-  JAAS, JWT, servlet, archive extraction, multipart upload, and more.
-- **53** detector capabilities (engine entry points), including a dedicated
+- **28** hook families (instrumentation points): SQL, Process, Base64, File,
+  Network/URL, JNDI, deserialization (ObjectInputStream / polymorphic / Hessian
+  / OpenWire / HTTP-invoker / RMI), XXE, expression/EL, class loading, Spring
+  config, JMX, JAAS, JWT, servlet, archive extraction, multipart upload, and more.
+- **54** detector capabilities (engine entry points), including a dedicated
   Fastjson 1.2.83 class-resource boundary that blocks URL-shaped resources
-  immediately before `ParserConfig.checkAutoType` calls the ClassLoader.
+  immediately before `ParserConfig.checkAutoType` calls the ClassLoader, and a
+  CVE-2026-114938 `Base64.Decoder.decode0` x64 AVX-512 tail-underflow guard.
 - **42** algorithm signatures **verified** by the acceptance suite.
 - **127** end-to-end vulnerability acceptance scenarios across JDK 7/8/11/17/21.
 

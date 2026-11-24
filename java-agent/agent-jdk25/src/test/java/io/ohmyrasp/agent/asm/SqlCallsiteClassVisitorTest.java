@@ -4,6 +4,8 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 
 import java.io.IOException;
 import java.io.InputStream;
+import java.sql.SQLException;
+import java.sql.Statement;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicInteger;
 import javax.tools.JavaCompiler;
@@ -60,6 +62,48 @@ final class SqlCallsiteClassVisitorTest {
     assertEquals(1, compilerCalls.get());
   }
 
+  @Test
+  void injectsSqlHookOnlyForSingleStringStatementCallsites() throws IOException {
+    byte[] transformed = transform(classBytes(SqlStatementCallsiteFixture.class));
+    AtomicInteger singleArgHookCalls = new AtomicInteger();
+    AtomicInteger multiArgHookCalls = new AtomicInteger();
+
+    new ClassReader(transformed)
+        .accept(
+            new ClassVisitor(OhMyRaspTransformer.api()) {
+              @Override
+              public MethodVisitor visitMethod(
+                  int access, String name, String descriptor, String signature, String[] exceptions) {
+                MethodVisitor methodVisitor =
+                    super.visitMethod(access, name, descriptor, signature, exceptions);
+                return new MethodVisitor(OhMyRaspTransformer.api(), methodVisitor) {
+                  @Override
+                  public void visitMethodInsn(
+                      int opcode,
+                      String owner,
+                      String methodName,
+                      String methodDescriptor,
+                      boolean isInterface) {
+                    if (opcode == Opcodes.INVOKESTATIC
+                        && owner.equals("io/ohmyrasp/agent/hook/OhMyRaspHooks")
+                        && methodName.equals("beforeSql")) {
+                      if ("singleArg".equals(name)) {
+                        singleArgHookCalls.incrementAndGet();
+                      } else if ("twoArg".equals(name)) {
+                        multiArgHookCalls.incrementAndGet();
+                      }
+                    }
+                    super.visitMethodInsn(opcode, owner, methodName, methodDescriptor, isInterface);
+                  }
+                };
+              }
+            },
+            0);
+
+    assertEquals(1, singleArgHookCalls.get());
+    assertEquals(0, multiArgHookCalls.get());
+  }
+
   private static byte[] transform(byte[] original) {
     ClassReader reader = new ClassReader(original);
     ClassWriter writer = new ClassWriter(reader, ClassWriter.COMPUTE_MAXS);
@@ -81,6 +125,17 @@ final class SqlCallsiteClassVisitorTest {
   private static final class JavaCompilerCallsiteFixture {
     Boolean compile(JavaCompiler compiler, Iterable<? extends JavaFileObject> units) {
       return compiler.getTask(null, null, null, List.of("-proc:none"), null, units).call();
+    }
+  }
+
+  @SuppressWarnings("unused")
+  private static final class SqlStatementCallsiteFixture {
+    void singleArg(Statement statement, String sql) throws SQLException {
+      statement.executeQuery(sql);
+    }
+
+    void twoArg(Statement statement, String sql) throws SQLException {
+      statement.execute(sql, Statement.RETURN_GENERATED_KEYS);
     }
   }
 }

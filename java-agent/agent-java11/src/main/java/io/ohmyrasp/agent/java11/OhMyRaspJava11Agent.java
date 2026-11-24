@@ -88,6 +88,8 @@ public final class OhMyRaspJava11Agent {
         + "\"classloader_hook\":\"installed\","
         + "\"jdbc_hook\":\"installed\","
         + "\"sql_identifier_hook\":\"installed\","
+        + "\"sql_statement_hook\":\"installed\","
+        + "\"base64_hook\":\"installed\","
         + "\"script_hook\":\"installed\","
         + "\"jexl_hook\":\"installed\","
         + "\"el_hook\":\"installed\","
@@ -129,6 +131,7 @@ public final class OhMyRaspJava11Agent {
     instrumentation.addTransformer(new Java11JwtTransformer(), canRetransform);
     instrumentation.addTransformer(new Java11JavaBeansTransformer(), canRetransform);
     instrumentation.addTransformer(new Java11XxeTransformer(), canRetransform);
+    instrumentation.addTransformer(new Java11Base64Transformer(), canRetransform);
     if (!canRetransform) {
       return;
     }
@@ -198,6 +201,7 @@ public final class OhMyRaspJava11Agent {
     retransformByName(instrumentation, "com.auth0.jwt.algorithms.ECDSAAlgorithm");
     retransformByName(instrumentation, "com.sun.beans.decoder.DocumentHandler");
     retransformByName(instrumentation, "com.sun.org.apache.xerces.internal.impl.XMLEntityManager");
+    retransform(instrumentation, java.util.Base64.Decoder.class);
   }
 
   private static void retransform(Instrumentation instrumentation, Class<?> type) {

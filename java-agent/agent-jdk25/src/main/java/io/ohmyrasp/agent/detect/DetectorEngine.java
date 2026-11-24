@@ -32,6 +32,9 @@ public final class DetectorEngine {
   private static final Pattern SQL_POLICY =
       Pattern.compile(
           "(?is)(?:\\bunion\\s+(?:all\\s+)?select\\b|\\binformation_schema\\b|\\binto\\s+(?:out|dump)file\\b|/\\*!|\\bload_file\\s*\\(|\\bsleep\\s*\\(|\\bbenchmark\\s*\\()");
+  private static final Pattern SQLI_STRUCTURAL =
+      Pattern.compile(
+          "(?is)(?:['\"]\\s*--|['\"]\\s*(?:or|and)\\s+(?:\\d+\\s*=\\s*\\d+|(['\"])([^'\"]{1,32})\\1\\s*=\\s*\\1\\2\\1)|\\bor\\s+(?:(\\d+)\\s*=\\s*\\3|(['\"])([^'\"]{1,32})\\4\\s*=\\s*\\4\\5\\4)\\b)");
   private static final Pattern H2_CODE_CONTAINER =
       Pattern.compile("(?is)\\bcreate\\s+(?:alias|trigger)\\b");
   private static final Pattern H2_CODE_PRIMITIVE =
@@ -1554,12 +1557,13 @@ public final class DetectorEngine {
                   "query", abbreviate(query),
                   "requestControlled", String.valueOf(requestControlled))));
     }
-    if (SQL_POLICY.matcher(query).find()) {
+    boolean structuralSqlInjection = SQLI_STRUCTURAL.matcher(query).find();
+    if (structuralSqlInjection || SQL_POLICY.matcher(query).find()) {
       return Optional.of(
           Detection.log(
               "sql",
               "sql_policy",
-              85,
+              structuralSqlInjection ? 90 : 85,
               "SQL query matched injection policy features",
               request,
               Map.of("query", abbreviate(query))));
@@ -1575,6 +1579,64 @@ public final class DetectorEngine {
               Map.of("query", abbreviate(query))));
     }
     return Optional.empty();
+  }
+
+  public static boolean isBase64TailUnderflowCandidate(
+      byte[] src, int sp, int sl, boolean isURL, boolean isMIME) {
+    if (isMIME || src == null || sp < 0 || sl < sp || sl > src.length) {
+      return false;
+    }
+    int length = sl - sp;
+    if (length < 65) {
+      return false;
+    }
+    int remainder = length & 63;
+    if (remainder < 1 || remainder > 3) {
+      return false;
+    }
+    int padding = 0;
+    while (padding < 3 && src[sl - 1 - padding] == '=') {
+      padding++;
+    }
+    if (padding < 1 || padding > 2 || padding > remainder) {
+      return false;
+    }
+    for (int i = sp; i < sl - padding; i++) {
+      int c = src[i] & 0xff;
+      if (!((c >= 'A' && c <= 'Z')
+          || (c >= 'a' && c <= 'z')
+          || (c >= '0' && c <= '9')
+          || (isURL ? (c == '-' || c == '_') : (c == '+' || c == '/')))) {
+        return false;
+      }
+    }
+    return true;
+  }
+
+  public Optional<Detection> detectBase64Decode(
+      byte[] src, int sp, int sl, boolean isURL, boolean isMIME, RequestContext request) {
+    if (!isBase64TailUnderflowCandidate(src, sp, sl, isURL, isMIME)) {
+      return Optional.empty();
+    }
+    int length = sl - sp;
+    int remainder = length & 63;
+    int padding = 0;
+    while (padding < 3 && src[sl - 1 - padding] == '=') {
+      padding++;
+    }
+    return Optional.of(
+        Detection.log(
+            "base64",
+            "base64_avx512_tail_underflow",
+            99,
+            "Base64.Decoder.decode0 rejected x64 AVX-512 tail-underflow candidate (CVE-2026-114938)",
+            request,
+            Map.of(
+                "length", String.valueOf(length),
+                "padding", String.valueOf(padding),
+                "remainder", String.valueOf(remainder),
+                "alphabet", isURL ? "URL-safe" : "standard",
+                "cve", "CVE-2026-114938")));
   }
 
   public Optional<Detection> detectJdbcUrl(String url, RequestContext request) {
