@@ -1,4 +1,6 @@
 import com.github.jengelman.gradle.plugins.shadow.tasks.ShadowJar
+import java.util.Properties
+import java.util.jar.JarFile
 
 plugins {
     java
@@ -54,6 +56,173 @@ val agentJar = tasks.register<ShadowJar>("agentJar") {
     exclude("**/module-info.class")
 }
 
+val shirudoMode = (providers.gradleProperty("shirudoMode").orNull ?: "block").trim().lowercase()
+require(shirudoMode in setOf("block", "monitor")) {
+    "shirudoMode must be 'block' or 'monitor', got: '$shirudoMode'"
+}
+val shirudoLockConfig =
+    (providers.gradleProperty("shirudoLockConfig").orNull ?: "true").trim().lowercase()
+require(shirudoLockConfig in setOf("true", "false")) {
+    "shirudoLockConfig must be 'true' or 'false', got: '$shirudoLockConfig'"
+}
+
+val shirudoGeneratedDir = layout.buildDirectory.dir("generated/shirudo")
+
+val generateShirudoDefaults = tasks.register("generateShirudoDefaults") {
+    group = "build"
+    description = "Generates META-INF/ohmyrasp-shirudo.properties for shirudoUpatchJar."
+    val outDir = shirudoGeneratedDir
+    inputs.property("shirudoMode", shirudoMode)
+    inputs.property("shirudoLockConfig", shirudoLockConfig)
+    outputs.dir(outDir)
+    doLast {
+        val propsFile = outDir.get().file("META-INF/ohmyrasp-shirudo.properties").asFile
+        propsFile.parentFile.mkdirs()
+        propsFile.writeText(
+            """
+            standalone=true
+            lock_config=$shirudoLockConfig
+            mode=$shirudoMode
+            control=none
+            log=stderr
+            latency_sample=0
+            """.trimIndent() + "\n",
+            Charsets.UTF_8
+        )
+    }
+}
+
+val shirudoUpatchJar = tasks.register<ShadowJar>("shirudoUpatchJar") {
+    group = "build"
+    description = "Builds the standalone shirudo upatch Java agent jar with ASM relocated."
+    dependsOn(generateShirudoDefaults)
+    archiveBaseName.set("ohmyrasp-jdk25")
+    archiveClassifier.set("")
+    archiveVersion.set("")
+    duplicatesStrategy = DuplicatesStrategy.EXCLUDE
+    configurations = listOf(project.configurations.runtimeClasspath.get())
+
+    manifest {
+        attributes(
+            "Premain-Class" to "io.ohmyrasp.agent.OhMyRaspAgent",
+            "Agent-Class" to "io.ohmyrasp.agent.OhMyRaspAgent",
+            "Can-Redefine-Classes" to "true",
+            "Can-Retransform-Classes" to "true",
+            "Implementation-Title" to "OhMyRasp Java Agent (JDK 25 / shirudo upatch)",
+            "OhMyRasp-Shirudo-Upatch" to "true"
+        )
+    }
+
+    from(sourceSets.main.get().output)
+    from(shirudoGeneratedDir)
+    relocate("org.objectweb.asm", "io.ohmyrasp.agent.shaded.asm")
+    exclude("**/module-info.class", "META-INF/versions/**")
+}
+
+val verifyShirudoUpatchJar = tasks.register("verifyShirudoUpatchJar") {
+    group = "verification"
+    description = "Verifies shirudoUpatchJar size, manifest, baked properties, and classfile versions."
+    dependsOn(shirudoUpatchJar)
+    val jarProvider = shirudoUpatchJar.flatMap { it.archiveFile }
+    inputs.file(jarProvider)
+    inputs.property("shirudoMode", shirudoMode)
+    inputs.property("shirudoLockConfig", shirudoLockConfig)
+    doLast {
+        val jarFile = jarProvider.get().asFile
+        require(jarFile.isFile) { "Missing shirudo upatch jar: ${jarFile.absolutePath}" }
+        val sizeBytes = jarFile.length()
+        require(sizeBytes < 16L * 1024L * 1024L) {
+            "shirudoUpatchJar exceeds 16 MiB limit: $sizeBytes bytes"
+        }
+
+        var classCount = 0
+        JarFile(jarFile).use { jar ->
+            val manifestEntry = jar.getJarEntry("META-INF/MANIFEST.MF")
+                ?: error("Missing META-INF/MANIFEST.MF in ${jarFile.name}")
+            val manifestLines = jar.getInputStream(manifestEntry).bufferedReader(Charsets.UTF_8).readLines()
+            val mainSection = manifestLines.takeWhile { it.isNotEmpty() }
+            val premainLine = mainSection.firstOrNull { it.startsWith("Premain-Class:") }
+                ?: error("Missing Premain-Class in main manifest section of ${jarFile.name}")
+            require(premainLine.substringAfter("Premain-Class:").isNotBlank()) {
+                "Empty Premain-Class in ${jarFile.name}"
+            }
+
+            val propsEntry = jar.getJarEntry("META-INF/ohmyrasp-shirudo.properties")
+                ?: error("Missing META-INF/ohmyrasp-shirudo.properties in ${jarFile.name}")
+            val props = Properties()
+            jar.getInputStream(propsEntry).use { props.load(it.reader(Charsets.UTF_8)) }
+            require(props.getProperty("standalone") == "true") {
+                "Expected standalone=true, got: ${props.getProperty("standalone")}"
+            }
+            require(props.getProperty("control") == "none") {
+                "Expected control=none, got: ${props.getProperty("control")}"
+            }
+            require(props.getProperty("log") == "stderr") {
+                "Expected log=stderr, got: ${props.getProperty("log")}"
+            }
+            require(props.getProperty("latency_sample") == "0") {
+                "Expected latency_sample=0, got: ${props.getProperty("latency_sample")}"
+            }
+            require(props.getProperty("mode") == shirudoMode) {
+                "Expected mode=$shirudoMode, got: ${props.getProperty("mode")}"
+            }
+            require(props.getProperty("lock_config") == shirudoLockConfig) {
+                "Expected lock_config=$shirudoLockConfig, got: ${props.getProperty("lock_config")}"
+            }
+
+            val entries = jar.entries()
+            while (entries.hasMoreElements()) {
+                val entry = entries.nextElement()
+                val name = entry.name
+                require(!name.startsWith("META-INF/versions/")) {
+                    "Unexpected multi-release entry in ${jarFile.name}: $name"
+                }
+                require(!name.endsWith("module-info.class")) {
+                    "Unexpected module-info.class in ${jarFile.name}: $name"
+                }
+                if (!entry.isDirectory && name.endsWith(".class")) {
+                    classCount++
+                    jar.getInputStream(entry).use { input ->
+                        val header = ByteArray(8)
+                        var read = 0
+                        while (read < header.size) {
+                            val n = input.read(header, read, header.size - read)
+                            if (n < 0) break
+                            read += n
+                        }
+                        require(read == 8) { "Truncated classfile $name" }
+                        require(
+                            (header[0].toInt() and 0xFF) == 0xCA &&
+                                (header[1].toInt() and 0xFF) == 0xFE &&
+                                (header[2].toInt() and 0xFF) == 0xBA &&
+                                (header[3].toInt() and 0xFF) == 0xBE
+                        ) {
+                            "Invalid classfile magic in $name"
+                        }
+                        val major = ((header[6].toInt() and 0xFF) shl 8) or (header[7].toInt() and 0xFF)
+                        require(major <= 69) {
+                            "Class $name has major version $major > 69"
+                        }
+                    }
+                }
+            }
+        }
+        require(classCount > 0) { "No .class entries found in ${jarFile.name}" }
+        logger.lifecycle(
+            "Verified shirudoUpatchJar: {} ({} bytes, {} classes, mode={}, lock_config={})",
+            jarFile.absolutePath,
+            sizeBytes,
+            classCount,
+            shirudoMode,
+            shirudoLockConfig
+        )
+    }
+}
+
 tasks.assemble {
     dependsOn(agentJar)
+}
+
+tasks.check {
+    dependsOn(verifyShirudoUpatchJar)
 }

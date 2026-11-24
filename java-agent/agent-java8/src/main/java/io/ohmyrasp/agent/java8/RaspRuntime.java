@@ -3,6 +3,8 @@ package io.ohmyrasp.agent.java8;
 import java.io.File;
 import java.io.FileWriter;
 import java.io.IOException;
+import java.io.InputStream;
+import java.io.InputStreamReader;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -11,29 +13,173 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
+import java.util.Properties;
 import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 /**
  * Java 8 backport runtime: asynchronous event spool plus control-file-driven
- * detection mode. Mirrors the agent-jdk25 design using only Java 8 APIs.
+ * detection mode and optional shirudo upatch standalone configuration. Mirrors
+ * the agent-jdk25 design using only Java 8 APIs.
  *
  * <p>Deliberately self-contained and duplicated per backport module (no shared
  * module), so each backport jar stays independently buildable. Event reporting
- * runs on a background daemon thread so the protected request never blocks on a
- * file write; {@code OHMYRASP_LOG_SYNC=true} reverts to inline writes for
- * deterministic acceptance/CI runs. The detection mode (off/monitor/block) is
- * read from the daemon/operator control file and hot-reloaded by polling.
+ * runs on a background daemon thread when targeting a file path so the protected
+ * request never blocks on a file write; {@code OHMYRASP_LOG_SYNC=true} reverts
+ * to inline writes for deterministic acceptance/CI runs.
  */
-final class RaspRuntime {
+public final class RaspRuntime {
   enum Mode {
     OFF,
     MONITOR,
     BLOCK
+  }
+
+  static final String SHIRUDO_PROPERTIES_RESOURCE = "/META-INF/ohmyrasp-shirudo.properties";
+
+  private interface PropertyLookup {
+    String get(String key);
+  }
+
+  /** Immutable resolved runtime configuration. */
+  static final class Config {
+    final boolean standalone;
+    final boolean lockConfig;
+    final Mode mode;
+    final Path controlPath;
+    final boolean controlDisabled;
+    final String logPath;
+    final int latencySample;
+
+    private Config(
+        boolean standalone,
+        boolean lockConfig,
+        Mode mode,
+        Path controlPath,
+        boolean controlDisabled,
+        String logPath,
+        int latencySample) {
+      this.standalone = standalone;
+      this.lockConfig = lockConfig;
+      this.mode = mode;
+      this.controlPath = controlPath;
+      this.controlDisabled = controlDisabled;
+      this.logPath = logPath;
+      this.latencySample = latencySample;
+    }
+
+    static Config resolveCurrent() {
+      return resolve(
+          BAKED_PROPERTIES,
+          new PropertyLookup() {
+            public String get(String key) {
+              return System.getProperty(key);
+            }
+          },
+          new PropertyLookup() {
+            public String get(String key) {
+              return System.getenv(key);
+            }
+          });
+    }
+
+    static Config resolve(Properties baked, final Properties sysProps, final Map<String, String> env) {
+      return resolve(
+          baked,
+          new PropertyLookup() {
+            public String get(String key) {
+              return sysProps == null ? null : sysProps.getProperty(key);
+            }
+          },
+          new PropertyLookup() {
+            public String get(String key) {
+              return env == null ? null : env.get(key);
+            }
+          });
+    }
+
+    private static Config resolve(Properties baked, PropertyLookup sysProps, PropertyLookup env) {
+      boolean lockConfig = parseBoolean(bakedProperty(baked, "lock_config"));
+
+      String bakedStandalone = bakedProperty(baked, "standalone");
+      String standaloneRaw =
+          lockConfig
+              ? bakedStandalone
+              : firstNonBlank(
+                  sysProps.get("ohmyrasp.standalone"),
+                  env.get("OHMYRASP_STANDALONE"),
+                  bakedStandalone);
+      boolean standalone = parseBoolean(standaloneRaw);
+
+      String bakedMode = bakedProperty(baked, "mode");
+      String modeRaw =
+          lockConfig
+              ? bakedMode
+              : firstNonBlank(sysProps.get("ohmyrasp.mode"), env.get("OHMYRASP_MODE"), bakedMode);
+      Mode resolvedMode = parseMode(modeRaw);
+      if (resolvedMode == null && standalone) {
+        resolvedMode = Mode.BLOCK;
+      }
+
+      String bakedControl = bakedProperty(baked, "control");
+      String controlRaw =
+          lockConfig
+              ? bakedControl
+              : firstNonBlank(
+                  sysProps.get("ohmyrasp.control"), env.get("OHMYRASP_CONTROL"), bakedControl);
+      if (controlRaw == null) {
+        controlRaw = standalone ? "none" : "/tmp/ohmyrasp-control.json";
+      } else {
+        controlRaw = controlRaw.trim();
+      }
+      boolean controlDisabled = isControlDisabledValue(controlRaw);
+      Path controlPath = controlDisabled ? null : Paths.get(controlRaw);
+
+      String bakedLog = bakedProperty(baked, "log");
+      String logPath =
+          firstNonBlank(
+              sysProps.get("ohmyrasp.java8.log"),
+              sysProps.get("ohmyrasp.log"),
+              env.get("OHMYRASP_LOG"),
+              bakedLog);
+      if (logPath == null) {
+        if (standalone) {
+          logPath = "stderr";
+        }
+      } else {
+        logPath = logPath.trim();
+      }
+
+      String bakedLatencySample = bakedProperty(baked, "latency_sample");
+      String sampleRaw =
+          firstNonBlank(
+              sysProps.get("ohmyrasp.latency_sample"),
+              env.get("OHMYRASP_LATENCY_SAMPLE"),
+              bakedLatencySample);
+      int latencySample = standalone ? 0 : 10;
+      if (sampleRaw != null) {
+        try {
+          latencySample = Math.max(0, Integer.parseInt(sampleRaw.trim()));
+        } catch (NumberFormatException ignored) {
+          // keep default
+        }
+      }
+
+      return new Config(
+          standalone,
+          lockConfig,
+          resolvedMode,
+          controlPath,
+          controlDisabled,
+          logPath,
+          latencySample);
+    }
   }
 
   private RaspRuntime() {}
@@ -41,36 +187,58 @@ final class RaspRuntime {
   // ---- detection mode, polled from the control file -----------------------
 
   private static final Pattern MODE_PATTERN = Pattern.compile("\"mode\"\\s*:\\s*\"([a-zA-Z]+)\"");
-  private static final Path CONTROL_PATH = resolveControlPath();
-  private static volatile Mode mode; // null = unset -> legacy behavior
+  private static final Properties BAKED_PROPERTIES = loadBakedProperties();
+  private static final Config INITIAL_CONFIG = Config.resolveCurrent();
+  private static final Path CONTROL_PATH = INITIAL_CONFIG.controlPath;
+  private static volatile Mode mode = INITIAL_CONFIG.mode; // null = unset -> legacy behavior
   private static volatile long controlMtime = Long.MIN_VALUE;
 
+  // ---- asynchronous event spool -------------------------------------------
+
+  private static final BlockingQueue<String> QUEUE = new ArrayBlockingQueue<String>(8192);
+  private static final AtomicLong DROPPED = new AtomicLong();
+  private static final AtomicLong SAMPLE_COUNTER = new AtomicLong();
+  private static final boolean SYNC = syncFlag();
+  private static final int SAMPLE_RATE = INITIAL_CONFIG.latencySample;
+  private static final AtomicBoolean WRITER_STARTED = new AtomicBoolean(false);
+  private static volatile boolean running = true;
+  private static volatile String lastLogPath;
+
   static {
-    reloadControl();
-    Thread poller =
-        new Thread(
-            new Runnable() {
-              public void run() {
-                while (true) {
-                  try {
-                    Thread.sleep(pollMillis());
-                    reloadControl();
-                  } catch (InterruptedException e) {
-                    Thread.currentThread().interrupt();
-                    return;
-                  } catch (RuntimeException ignored) {
-                    // never let control polling disturb the application
+    if (!INITIAL_CONFIG.controlDisabled) {
+      reloadControl();
+      Thread poller =
+          new Thread(
+              new Runnable() {
+                public void run() {
+                  while (true) {
+                    try {
+                      Thread.sleep(pollMillis());
+                      reloadControl();
+                    } catch (InterruptedException e) {
+                      Thread.currentThread().interrupt();
+                      return;
+                    } catch (RuntimeException ignored) {
+                      // never let control polling disturb the application
+                    }
                   }
                 }
-              }
-            },
-            "ohmyrasp-java8-control");
-    poller.setDaemon(true);
-    poller.start();
+              },
+              "ohmyrasp-java8-control");
+      poller.setDaemon(true);
+      poller.start();
+    }
+    if (isFileLogTarget(INITIAL_CONFIG.logPath)) {
+      ensureWriterStarted();
+    }
   }
 
   static Mode mode() {
     return mode;
+  }
+
+  static Config initialConfig() {
+    return INITIAL_CONFIG;
   }
 
   /** True only when detection is explicitly OFF. */
@@ -78,14 +246,20 @@ final class RaspRuntime {
     return mode == Mode.OFF;
   }
 
-  /** BLOCK or unset (legacy env flag) permit blocking; MONITOR/OFF do not. */
+  /** BLOCK or standalone unset permit blocking; MONITOR/OFF do not; legacy falls back to flag. */
   static boolean blockingAllowed(boolean legacyEnvFlag) {
-    Mode current = mode;
-    if (current == Mode.BLOCK) {
+    return blockingAllowed(INITIAL_CONFIG.standalone, mode, legacyEnvFlag);
+  }
+
+  static boolean blockingAllowed(boolean standalone, Mode currentMode, boolean legacyEnvFlag) {
+    if (currentMode == Mode.BLOCK) {
       return true;
     }
-    if (current == Mode.MONITOR || current == Mode.OFF) {
+    if (currentMode == Mode.MONITOR || currentMode == Mode.OFF) {
       return false;
+    }
+    if (standalone) {
+      return true;
     }
     return legacyEnvFlag;
   }
@@ -113,7 +287,7 @@ final class RaspRuntime {
     }
   }
 
-  private static Mode parseMode(String token) {
+  static Mode parseMode(String token) {
     if (token == null) {
       return null;
     }
@@ -121,7 +295,10 @@ final class RaspRuntime {
     if (value.equals("off") || value.equals("disabled") || value.equals("none")) {
       return Mode.OFF;
     }
-    if (value.equals("monitor") || value.equals("record") || value.equals("observe") || value.equals("log")) {
+    if (value.equals("monitor")
+        || value.equals("record")
+        || value.equals("observe")
+        || value.equals("log")) {
       return Mode.MONITOR;
     }
     if (value.equals("block") || value.equals("blocking") || value.equals("protect")) {
@@ -130,10 +307,14 @@ final class RaspRuntime {
     return null;
   }
 
-  private static Path resolveControlPath() {
-    String configured =
-        firstNonBlank(System.getProperty("ohmyrasp.control"), System.getenv("OHMYRASP_CONTROL"));
-    return Paths.get(configured == null ? "/tmp/ohmyrasp-control.json" : configured);
+  private static boolean isControlDisabledValue(String value) {
+    if (value == null) {
+      return true;
+    }
+    String normalized = value.trim().toLowerCase(Locale.ROOT);
+    return normalized.equals("none")
+        || normalized.equals("off")
+        || normalized.equals("disabled");
   }
 
   private static long pollMillis() {
@@ -150,17 +331,78 @@ final class RaspRuntime {
     return 2000L;
   }
 
-  // ---- asynchronous event spool -------------------------------------------
+  /** Resolve the spool path the same way the detection writer does. */
+  public static String resolveLogPath() {
+    return Config.resolveCurrent().logPath;
+  }
 
-  private static final BlockingQueue<String> QUEUE = new ArrayBlockingQueue<String>(8192);
-  private static final AtomicLong DROPPED = new AtomicLong();
-  private static final AtomicLong SAMPLE_COUNTER = new AtomicLong();
-  private static final boolean SYNC = syncFlag();
-  private static final int SAMPLE_RATE = sampleRate();
-  private static volatile boolean running = true;
-  private static volatile String lastLogPath;
+  static boolean isFileLogTarget(String logPath) {
+    if (logPath == null) {
+      return false;
+    }
+    String trimmed = logPath.trim();
+    if (trimmed.length() == 0) {
+      return false;
+    }
+    String normalized = trimmed.toLowerCase(Locale.ROOT);
+    return !normalized.equals("stderr")
+        && !normalized.equals("stdout")
+        && !normalized.equals("none");
+  }
 
-  static {
+  /** Write a startup line synchronously, honoring stderr/stdout/none special targets. */
+  public static void writeStartupLine(String logPath, String line) {
+    if (emitSpecialTarget(logPath, line)) {
+      return;
+    }
+    appendBatch(logPath.trim(), Collections.singletonList(line));
+  }
+
+  /** Off the business hot path: enqueue an already-built event line. */
+  public static void writeEvent(String logPath, String line) {
+    if (emitSpecialTarget(logPath, line)) {
+      return;
+    }
+    String fileTarget = logPath.trim();
+    lastLogPath = fileTarget;
+    if (SYNC) {
+      appendBatch(fileTarget, Collections.singletonList(line));
+      return;
+    }
+    ensureWriterStarted();
+    if (!QUEUE.offer(line)) {
+      DROPPED.incrementAndGet();
+    }
+  }
+
+  static void emitMessage(String line) {
+    writeEvent(resolveLogPath(), line);
+  }
+
+  private static boolean emitSpecialTarget(String logPath, String line) {
+    if (logPath == null || logPath.trim().length() == 0) {
+      System.err.println(line);
+      return true;
+    }
+    String normalized = logPath.trim().toLowerCase(Locale.ROOT);
+    if (normalized.equals("stderr")) {
+      System.err.println(line);
+      return true;
+    }
+    if (normalized.equals("stdout")) {
+      System.out.println(line);
+      return true;
+    }
+    if (normalized.equals("none")) {
+      return true;
+    }
+    return false;
+  }
+
+  private static void ensureWriterStarted() {
+    if (!WRITER_STARTED.compareAndSet(false, true)) {
+      return;
+    }
     Thread writer =
         new Thread(
             new Runnable() {
@@ -182,37 +424,13 @@ final class RaspRuntime {
                 }));
   }
 
-  /** Resolve the spool path the same way the detection writer does. */
-  static String resolveLogPath() {
-    return firstNonBlank(
-        System.getProperty("ohmyrasp.java8.log"),
-        System.getProperty("ohmyrasp.log"),
-        System.getenv("OHMYRASP_LOG"));
-  }
-
-  /** Off the business hot path: enqueue an already-built event line. */
-  static void writeEvent(String logPath, String line) {
-    if (logPath == null) {
-      System.err.println(line);
-      return;
-    }
-    lastLogPath = logPath;
-    if (SYNC) {
-      appendBatch(logPath, Collections.singletonList(line));
-      return;
-    }
-    if (!QUEUE.offer(line)) {
-      DROPPED.incrementAndGet();
-    }
-  }
-
   /**
    * Record a sampled measurement of the overhead added to a (usually benign)
    * request as a telemetry line, so the daemon's latency panel reflects real
    * traffic. Suppressed in sync mode to keep acceptance output deterministic.
    */
   static void sampleLatency(long micros) {
-    if (SYNC || detectionOff() || micros < 0) {
+    if (SYNC || detectionOff() || micros < 0 || SAMPLE_RATE <= 0) {
       return;
     }
     if (SAMPLE_RATE > 1 && SAMPLE_COUNTER.incrementAndGet() % SAMPLE_RATE != 0) {
@@ -240,7 +458,7 @@ final class RaspRuntime {
         batch.add(first);
         QUEUE.drainTo(batch, 511);
         String target = lastLogPath;
-        if (target != null) {
+        if (isFileLogTarget(target)) {
           appendBatch(target, batch);
         }
       } catch (InterruptedException e) {
@@ -256,7 +474,7 @@ final class RaspRuntime {
     List<String> rest = new ArrayList<String>();
     QUEUE.drainTo(rest);
     String target = lastLogPath;
-    if (target != null && !rest.isEmpty()) {
+    if (isFileLogTarget(target) && !rest.isEmpty()) {
       appendBatch(target, rest);
     }
   }
@@ -291,10 +509,39 @@ final class RaspRuntime {
     }
   }
 
-  private static boolean syncFlag() {
-    String value =
-        firstNonBlank(System.getProperty("ohmyrasp.log.sync"), System.getenv("OHMYRASP_LOG_SYNC"));
-    if (value == null) {
+  private static Properties loadBakedProperties() {
+    Properties props = new Properties();
+    InputStream in = RaspRuntime.class.getResourceAsStream(SHIRUDO_PROPERTIES_RESOURCE);
+    if (in == null) {
+      in = ClassLoader.getSystemResourceAsStream("META-INF/ohmyrasp-shirudo.properties");
+    }
+    if (in == null) {
+      return props;
+    }
+    try {
+      props.load(new InputStreamReader(in, StandardCharsets.UTF_8));
+    } catch (IOException ignored) {
+      // treat unreadable properties as absent
+    } finally {
+      try {
+        in.close();
+      } catch (IOException ignored) {
+        // nothing useful to do
+      }
+    }
+    return props;
+  }
+
+  private static String bakedProperty(Properties baked, String key) {
+    if (baked == null) {
+      return null;
+    }
+    String value = baked.getProperty(key);
+    return hasText(value) ? value.trim() : null;
+  }
+
+  private static boolean parseBoolean(String value) {
+    if (!hasText(value)) {
       return false;
     }
     String normalized = value.trim().toLowerCase(Locale.ROOT);
@@ -304,32 +551,37 @@ final class RaspRuntime {
         || normalized.equals("on");
   }
 
-  private static int sampleRate() {
+  private static boolean syncFlag() {
     String value =
-        firstNonBlank(System.getProperty("ohmyrasp.latency_sample"), System.getenv("OHMYRASP_LATENCY_SAMPLE"));
-    if (value != null) {
-      try {
-        return Math.max(1, Integer.parseInt(value.trim()));
-      } catch (NumberFormatException ignored) {
-        // fall through
-      }
-    }
-    return 10;
+        firstNonBlank(System.getProperty("ohmyrasp.log.sync"), System.getenv("OHMYRASP_LOG_SYNC"));
+    return parseBoolean(value);
+  }
+
+  private static boolean hasText(String value) {
+    return value != null && value.trim().length() > 0;
   }
 
   private static String firstNonBlank(String first, String second) {
-    return firstNonBlank(first, second, null);
+    return firstNonBlank(first, second, null, null);
   }
 
   private static String firstNonBlank(String first, String second, String third) {
-    if (first != null && first.trim().length() > 0) {
+    return firstNonBlank(first, second, third, null);
+  }
+
+  private static String firstNonBlank(
+      String first, String second, String third, String fourth) {
+    if (hasText(first)) {
       return first;
     }
-    if (second != null && second.trim().length() > 0) {
+    if (hasText(second)) {
       return second;
     }
-    if (third != null && third.trim().length() > 0) {
+    if (hasText(third)) {
       return third;
+    }
+    if (hasText(fourth)) {
+      return fourth;
     }
     return null;
   }

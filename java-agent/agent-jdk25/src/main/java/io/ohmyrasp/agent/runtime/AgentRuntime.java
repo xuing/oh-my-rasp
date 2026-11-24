@@ -4,6 +4,7 @@ import io.ohmyrasp.agent.policy.SimpleJson;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.HashMap;
+import java.util.Locale;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicBoolean;
 
@@ -19,11 +20,12 @@ import java.util.concurrent.atomic.AtomicBoolean;
  * and polling avoids platform-specific watch quirks.
  *
  * <p>The agent never talks to the daemon directly: it reads this file and writes
- * its events to the spool file. If neither the daemon nor a control file is
- * present the agent runs fully standalone with legacy (unset-mode) behavior.
+ * its events to the spool file. When running standalone (or with baked-in
+ * {@link ShirudoDefaults}), control-file polling and direct cloud reporting can
+ * be disabled altogether.
  */
 public final class AgentRuntime {
-  private static final AgentRuntime INSTANCE = new AgentRuntime();
+  private static final AgentRuntime INSTANCE = new AgentRuntime(ShirudoDefaults.load());
 
   /** Default control file, matching the daemon's default. */
   private static final String DEFAULT_CONTROL = "/tmp/ohmyrasp-control.json";
@@ -31,6 +33,13 @@ public final class AgentRuntime {
   private volatile DetectionMode mode; // null = unset → legacy behavior
   private volatile Map<String, Boolean> algorithms = Map.of();
   private volatile long revision;
+
+  private volatile ShirudoDefaults defaults;
+  private volatile boolean standalone;
+  private volatile boolean controlPollingDisabled;
+  private volatile boolean directCloudDisabled;
+  private volatile String argLogTarget;
+  private volatile Integer argLatencySample;
 
   private Path controlPath;
   private volatile long lastModifiedMillis = Long.MIN_VALUE;
@@ -41,7 +50,14 @@ public final class AgentRuntime {
   private volatile java.util.function.Consumer<String> policyInstaller;
   private volatile String lastPolicyJson;
 
-  private AgentRuntime() {}
+  private AgentRuntime(ShirudoDefaults defaults) {
+    ShirudoDefaults active = defaults == null ? ShirudoDefaults.absent() : defaults;
+    this.defaults = active;
+    this.standalone = active.standalone();
+    this.directCloudDisabled = active.standalone() || active.lockConfig();
+    this.controlPollingDisabled =
+        active.standalone() || isControlDisabledToken(active.control());
+  }
 
   public static AgentRuntime get() {
     return INSTANCE;
@@ -49,7 +65,12 @@ public final class AgentRuntime {
 
   /** Creates an isolated instance for tests, leaving the shared singleton untouched. */
   static AgentRuntime newForTesting() {
-    return new AgentRuntime();
+    return new AgentRuntime(ShirudoDefaults.absent());
+  }
+
+  /** Creates an isolated instance seeded with baked-in defaults for tests. */
+  static AgentRuntime newForTesting(ShirudoDefaults defaults) {
+    return new AgentRuntime(defaults);
   }
 
   /**
@@ -62,19 +83,126 @@ public final class AgentRuntime {
 
   /** Initialise from configuration and start the control-file poller (idempotent). */
   public void start(String agentArgs) {
+    start(agentArgs, this.defaults);
+  }
+
+  /** Initialise from configuration and explicit {@link ShirudoDefaults} (idempotent). */
+  void start(String agentArgs, ShirudoDefaults defaults) {
     if (!started.compareAndSet(false, true)) {
       return;
     }
-    controlPath = Path.of(resolve(agentArgs, "control", "ohmyrasp.control", "OHMYRASP_CONTROL", DEFAULT_CONTROL));
+    ShirudoDefaults activeDefaults = defaults == null ? ShirudoDefaults.absent() : defaults;
+    this.defaults = activeDefaults;
+    boolean lockConfig = activeDefaults.lockConfig();
 
-    // Seed the initial mode from an explicit setting; the control file (when
-    // present) then takes over as the live source of truth.
-    DetectionMode explicit = DetectionMode.parse(resolve(agentArgs, "mode", "ohmyrasp.mode", "OHMYRASP_MODE", null));
-    if (explicit != null) {
-      mode = explicit;
+    boolean resolvedStandalone;
+    if (lockConfig) {
+      resolvedStandalone = activeDefaults.standalone();
+    } else {
+      String rawStandalone =
+          resolve(agentArgs, "standalone", "ohmyrasp.standalone", "OHMYRASP_STANDALONE", null);
+      resolvedStandalone =
+          rawStandalone != null ? ShirudoDefaults.parseBoolean(rawStandalone) : activeDefaults.standalone();
     }
+    this.standalone = resolvedStandalone;
+    this.directCloudDisabled = resolvedStandalone || lockConfig;
+
+    String rawLog = argValue(agentArgs, "log");
+    if (notBlank(rawLog)) {
+      this.argLogTarget = rawLog.trim();
+    }
+    String rawLatency = argValue(agentArgs, "latency_sample");
+    if (notBlank(rawLatency)) {
+      try {
+        this.argLatencySample = Integer.valueOf(rawLatency.trim());
+      } catch (NumberFormatException ignored) {
+        // Ignore invalid override and let sysprop/env/defaults apply.
+      }
+    }
+
+    String controlSetting;
+    if (lockConfig) {
+      controlSetting = activeDefaults.control();
+    } else {
+      controlSetting =
+          resolve(
+              agentArgs,
+              "control",
+              "ohmyrasp.control",
+              "OHMYRASP_CONTROL",
+              activeDefaults.control());
+    }
+    boolean disableControl = resolvedStandalone || isControlDisabledToken(controlSetting);
+    this.controlPollingDisabled = disableControl;
+
+    // Seed the initial mode from baked-in/explicit settings; when control polling is
+    // enabled, the control file (when present) takes over as the live source of truth.
+    DetectionMode resolvedMode;
+    if (lockConfig) {
+      resolvedMode = activeDefaults.mode();
+    } else {
+      DetectionMode explicit =
+          DetectionMode.parse(
+              resolve(agentArgs, "mode", "ohmyrasp.mode", "OHMYRASP_MODE", null));
+      resolvedMode = explicit != null ? explicit : activeDefaults.mode();
+    }
+    if (resolvedMode == null && resolvedStandalone) {
+      resolvedMode = DetectionMode.BLOCK;
+    }
+    if (resolvedMode != null) {
+      mode = resolvedMode;
+    }
+
+    if (disableControl) {
+      controlPath = null;
+      return;
+    }
+
+    controlPath = Path.of(notBlank(controlSetting) ? controlSetting.trim() : DEFAULT_CONTROL);
     reloadIfChanged();
     startPoller(pollIntervalMillis(agentArgs));
+  }
+
+  public boolean isStandalone() {
+    return standalone;
+  }
+
+  public boolean isControlPollingDisabled() {
+    return controlPollingDisabled;
+  }
+
+  public boolean isDirectCloudDisabled() {
+    return directCloudDisabled;
+  }
+
+  public ShirudoDefaults shirudoDefaults() {
+    return defaults;
+  }
+
+  public String defaultLogTarget() {
+    return defaults.log();
+  }
+
+  public Integer defaultLatencySample() {
+    return defaults.latencySample();
+  }
+
+  public String agentArgLogTarget() {
+    return argLogTarget;
+  }
+
+  public Integer agentArgLatencySample() {
+    return argLatencySample;
+  }
+
+  private static boolean isControlDisabledToken(String value) {
+    if (!notBlank(value)) {
+      return false;
+    }
+    return switch (value.trim().toLowerCase(Locale.ROOT)) {
+      case "none", "off", "disabled" -> true;
+      default -> false;
+    };
   }
 
   /** False only when detection is explicitly turned OFF. */

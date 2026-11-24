@@ -1,7 +1,6 @@
 package io.ohmyrasp.agent.java11;
 
 import java.io.File;
-import java.io.FileWriter;
 import java.io.FileInputStream;
 import java.io.FileOutputStream;
 import java.io.IOException;
@@ -10,6 +9,7 @@ import java.io.RandomAccessFile;
 import java.beans.Expression;
 import java.beans.Statement;
 import java.lang.instrument.Instrumentation;
+import java.net.URISyntaxException;
 import java.net.URL;
 import java.net.URLClassLoader;
 import java.rmi.server.RMIClassLoader;
@@ -34,16 +34,8 @@ public final class OhMyRaspJava11Agent {
     appendSelfToBootstrap(instrumentation);
     installTransformer(instrumentation);
     String message = startupMessage(mode, agentArgs, instrumentation);
-    String logPath =
-        firstNonBlank(
-            System.getProperty("ohmyrasp.java11.log"),
-            System.getProperty("ohmyrasp.log"),
-            System.getenv("OHMYRASP_LOG"));
-    if (logPath == null) {
-      System.err.println(message);
-      return;
-    }
-    appendLine(logPath, message);
+    String logPath = RaspRuntime.resolveLogPath();
+    RaspRuntime.writeStartupLine(logPath, message);
   }
 
   private static void appendSelfToBootstrap(Instrumentation instrumentation) {
@@ -56,9 +48,15 @@ public final class OhMyRaspJava11Agent {
           || OhMyRaspJava11Agent.class.getProtectionDomain().getCodeSource().getLocation() == null) {
         return;
       }
-      String path =
-          OhMyRaspJava11Agent.class.getProtectionDomain().getCodeSource().getLocation().getPath();
-      instrumentation.appendToBootstrapClassLoaderSearch(new JarFile(new File(path)));
+      URL location =
+          OhMyRaspJava11Agent.class.getProtectionDomain().getCodeSource().getLocation();
+      File jarFile;
+      try {
+        jarFile = new File(location.toURI());
+      } catch (URISyntaxException exception) {
+        jarFile = new File(location.getPath());
+      }
+      instrumentation.appendToBootstrapClassLoaderSearch(new JarFile(jarFile));
     } catch (IOException exception) {
       System.err.println("[OHMYRASP-JAVA11] unable to append agent jar to bootstrap search: " + exception);
     } catch (RuntimeException exception) {
@@ -225,48 +223,6 @@ public final class OhMyRaspJava11Agent {
         System.err.println("[OHMYRASP-JAVA11] unable to find or retransform " + className + ": " + throwable);
       }
     }
-  }
-
-  private static void appendLine(String logPath, String message) {
-    File target = new File(logPath);
-    File parent = target.getParentFile();
-    if (parent != null && !parent.exists() && !parent.mkdirs()) {
-      System.err.println("ohmyrasp java11 agent could not create log directory: " + parent);
-      return;
-    }
-    FileWriter writer = null;
-    try {
-      writer = new FileWriter(target, true);
-      writer.write(message);
-      writer.write(System.lineSeparator());
-    } catch (IOException exception) {
-      System.err.println("ohmyrasp java11 agent could not write startup event: " + exception);
-    } finally {
-      if (writer != null) {
-        try {
-          writer.close();
-        } catch (IOException ignored) {
-          // Nothing useful to do during agent startup.
-        }
-      }
-    }
-  }
-
-  private static String firstNonBlank(String first, String second, String third) {
-    if (hasText(first)) {
-      return first;
-    }
-    if (hasText(second)) {
-      return second;
-    }
-    if (hasText(third)) {
-      return third;
-    }
-    return null;
-  }
-
-  private static boolean hasText(String value) {
-    return value != null && value.trim().length() > 0;
   }
 
   private static String json(String value) {

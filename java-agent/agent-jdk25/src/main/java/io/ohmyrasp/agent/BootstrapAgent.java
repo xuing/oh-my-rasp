@@ -38,9 +38,11 @@ public final class BootstrapAgent {
 
     // The agent reports events asynchronously to its local spool (tailed by the
     // daemon). Direct cloud communication and heartbeats are off by default —
-    // that is the daemon's job now — but remain available for legacy single-
-    // process deployments via cloud_direct=true.
-    if (ControlPlaneConfig.directCloudEnabled(agentArgs)) {
+    // that is the daemon's job now — and suppressed entirely in standalone or
+    // locked-config mode, remaining available only for legacy deployments via
+    // cloud_direct=true.
+    if (!AgentRuntime.get().isDirectCloudDisabled()
+        && ControlPlaneConfig.directCloudEnabled(agentArgs)) {
       ControlPlaneClient controlPlane =
           ControlPlaneClient.start(ControlPlaneConfig.load(agentArgs), OhMyRaspHooks::installPolicy);
       if (controlPlane != null) {
@@ -52,11 +54,19 @@ public final class BootstrapAgent {
     DeserializationGuard.install();
     instrumentation.addTransformer(new OhMyRaspTransformer(hookRegistry), true);
     retransformAlreadyLoadedTargets(instrumentation, hookRegistry);
-    System.out.println(
-        "[OHMYRASP] agent started with ASM transformer, mode="
+    String startupMessage =
+        "[OHMYRASP] agent started with ASM transformer, standalone="
+            + AgentRuntime.get().isStandalone()
+            + ", mode="
             + describeMode()
             + ", args="
-            + (agentArgs == null ? "" : agentArgs));
+            + (agentArgs == null ? "" : agentArgs);
+    String logTarget = JsonEventLogger.get().logTarget();
+    if ("stderr".equals(logTarget)) {
+      System.err.println(startupMessage);
+    } else if (!"none".equals(logTarget)) {
+      System.out.println(startupMessage);
+    }
   }
 
   private static String describeMode() {

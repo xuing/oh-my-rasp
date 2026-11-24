@@ -1,0 +1,12 @@
+[package]
+name = "ohmyrasp-java8"
+description = "OhMyRASP standalone Java 8 runtime application self-protection agent"
+license = "Apache-2.0"
+authors = ["OhMyRASP Contributors"]
+
+[[upatches]]
+type = "java"
+source = "ohmyrasp-java8.jar"
+
+[upatches.tree]
+id = "ohmyrasp-java8"

@@ -1,0 +1,12 @@
+[package]
+name = "ohmyrasp-java17"
+description = "OhMyRASP standalone Java 17 and 21 runtime application self-protection agent"
+license = "Apache-2.0"
+authors = ["OhMyRASP Contributors"]
+
+[[upatches]]
+type = "java"
+source = "ohmyrasp-java17.jar"
+
+[upatches.tree]
+id = "ohmyrasp-java17"

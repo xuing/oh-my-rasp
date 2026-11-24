@@ -1,9 +1,10 @@
 package io.ohmyrasp.agent.java8;
 
 import java.io.File;
-import java.io.FileWriter;
 import java.io.IOException;
 import java.lang.instrument.Instrumentation;
+import java.net.URISyntaxException;
+import java.net.URL;
 import java.util.jar.JarFile;
 
 public final class OhMyRaspJava8Agent {
@@ -20,15 +21,8 @@ public final class OhMyRaspJava8Agent {
   private static void install(String mode, String agentArgs, Instrumentation instrumentation) {
     appendSelfToBootstrap(instrumentation);
     installTransformer(instrumentation);
-    String logPath = firstNonBlank(
-        System.getProperty("ohmyrasp.java8.log"),
-        System.getProperty("ohmyrasp.log"),
-        System.getenv("OHMYRASP_LOG"));
-    if (logPath == null) {
-      System.err.println(startupMessage(mode, agentArgs, instrumentation));
-      return;
-    }
-    appendLine(logPath, startupMessage(mode, agentArgs, instrumentation));
+    String logPath = RaspRuntime.resolveLogPath();
+    RaspRuntime.writeStartupLine(logPath, startupMessage(mode, agentArgs, instrumentation));
   }
 
   private static String startupMessage(
@@ -77,9 +71,17 @@ public final class OhMyRaspJava8Agent {
           || OhMyRaspJava8Agent.class.getProtectionDomain().getCodeSource().getLocation() == null) {
         return;
       }
-      String path =
-          OhMyRaspJava8Agent.class.getProtectionDomain().getCodeSource().getLocation().getPath();
-      instrumentation.appendToBootstrapClassLoaderSearch(new JarFile(new File(path)));
+      URL location =
+          OhMyRaspJava8Agent.class.getProtectionDomain().getCodeSource().getLocation();
+      File agentFile;
+      try {
+        agentFile = new File(location.toURI());
+      } catch (URISyntaxException e) {
+        agentFile = new File(location.getPath());
+      } catch (IllegalArgumentException e) {
+        agentFile = new File(location.getPath());
+      }
+      instrumentation.appendToBootstrapClassLoaderSearch(new JarFile(agentFile));
     } catch (IOException e) {
       System.err.println("[OHMYRASP-JAVA8] unable to append agent jar to bootstrap search: " + e);
     } catch (RuntimeException e) {
@@ -209,48 +211,6 @@ public final class OhMyRaspJava8Agent {
         System.err.println("[OHMYRASP-JAVA8] unable to find or retransform " + className + ": " + throwable);
       }
     }
-  }
-
-  private static void appendLine(String logPath, String message) {
-    File target = new File(logPath);
-    File parent = target.getParentFile();
-    if (parent != null && !parent.exists() && !parent.mkdirs()) {
-      System.err.println("ohmyrasp java8 agent could not create log directory: " + parent);
-      return;
-    }
-    FileWriter writer = null;
-    try {
-      writer = new FileWriter(target, true);
-      writer.write(message);
-      writer.write(System.lineSeparator());
-    } catch (IOException e) {
-      System.err.println("ohmyrasp java8 agent could not write startup event: " + e);
-    } finally {
-      if (writer != null) {
-        try {
-          writer.close();
-        } catch (IOException ignored) {
-          // Nothing useful to do during agent startup.
-        }
-      }
-    }
-  }
-
-  private static String firstNonBlank(String first, String second, String third) {
-    if (hasText(first)) {
-      return first;
-    }
-    if (hasText(second)) {
-      return second;
-    }
-    if (hasText(third)) {
-      return third;
-    }
-    return null;
-  }
-
-  private static boolean hasText(String value) {
-    return value != null && value.trim().length() > 0;
   }
 
   private static String json(String value) {

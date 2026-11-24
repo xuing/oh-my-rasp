@@ -4,6 +4,10 @@ import java.io.File;
 import java.io.IOException;
 import java.lang.instrument.Instrumentation;
 import java.lang.reflect.Method;
+import java.net.URISyntaxException;
+import java.net.URL;
+import java.security.CodeSource;
+import java.security.ProtectionDomain;
 import java.util.jar.JarFile;
 
 public final class OhMyRaspAgent {
@@ -29,12 +33,24 @@ public final class OhMyRaspAgent {
   }
 
   private static void appendSelfToBootstrap(Instrumentation instrumentation) {
-    String path = OhMyRaspAgent.class.getProtectionDomain().getCodeSource().getLocation().getPath();
+    ProtectionDomain domain = OhMyRaspAgent.class.getProtectionDomain();
+    CodeSource codeSource = domain == null ? null : domain.getCodeSource();
+    URL location = codeSource == null ? null : codeSource.getLocation();
+    if (location == null) {
+      System.err.println(
+          "[OHMYRASP] unable to append agent jar to bootstrap search: missing code source location");
+      return;
+    }
+    File jarFile;
     try {
-      instrumentation.appendToBootstrapClassLoaderSearch(new JarFile(new File(path)));
+      jarFile = new File(location.toURI());
+    } catch (URISyntaxException | IllegalArgumentException e) {
+      jarFile = new File(location.getPath());
+    }
+    try {
+      instrumentation.appendToBootstrapClassLoaderSearch(new JarFile(jarFile));
     } catch (IOException | RuntimeException e) {
       System.err.println("[OHMYRASP] unable to append agent jar to bootstrap search: " + e);
     }
   }
-
 }

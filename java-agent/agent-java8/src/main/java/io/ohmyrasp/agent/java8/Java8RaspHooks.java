@@ -4990,11 +4990,7 @@ public final class Java8RaspHooks {
     if (RaspRuntime.detectionOff()) {
       return;
     }
-    String logPath =
-        firstNonBlank(
-            System.getProperty("ohmyrasp.java8.log"),
-            System.getProperty("ohmyrasp.log"),
-            System.getenv("OHMYRASP_LOG"));
+    String logPath = RaspRuntime.resolveLogPath();
     String event =
         "{"
             + "\"event\":\"ohmyrasp-detection\","
@@ -5022,24 +5018,7 @@ public final class Java8RaspHooks {
             + json(finding.detailValue)
             + "\"}"
             + "}";
-    if (logPath == null) {
-      System.err.println(event);
-      return;
-    }
     RaspRuntime.writeEvent(logPath, event);
-  }
-
-  private static String firstNonBlank(String first, String second, String third) {
-    if (hasText(first)) {
-      return first;
-    }
-    if (hasText(second)) {
-      return second;
-    }
-    if (hasText(third)) {
-      return third;
-    }
-    return null;
   }
 
   private static boolean hasText(String value) {

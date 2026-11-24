@@ -3,7 +3,10 @@ package io.ohmyrasp.agent.log;
 import io.ohmyrasp.agent.control.ControlPlaneClient;
 import io.ohmyrasp.agent.model.Detection;
 import io.ohmyrasp.agent.model.RequestContext;
+import io.ohmyrasp.agent.runtime.AgentRuntime;
+import io.ohmyrasp.agent.runtime.ShirudoDefaults;
 import java.io.IOException;
+import java.io.PrintStream;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -90,6 +93,15 @@ public final class JsonEventLogger {
   private record Sample(
       Detection detection, String telemetryHook, long latencyUs, long ruleEvaluationUs) {}
 
+  private enum LogTarget {
+    FILE,
+    STDERR,
+    STDOUT,
+    NONE
+  }
+
+  private final LogTarget target;
+  private final String targetName;
   private final Path logPath;
   private final BlockingQueue<Sample> queue;
   private final AtomicLong dropped = new AtomicLong();
@@ -97,34 +109,121 @@ public final class JsonEventLogger {
   private final Object writeLock = new Object();
   private final boolean syncWrites;
   private final int latencySampleRate;
+  private final PrintStream customOut;
+  private final PrintStream customErr;
   private volatile boolean running = true;
   private volatile ControlPlaneClient controlPlaneClient;
 
   private JsonEventLogger() {
-    String configured = System.getProperty("ohmyrasp.log");
-    if (configured == null || configured.isBlank()) {
-      configured = System.getenv("OHMYRASP_LOG");
+    this(
+        ShirudoDefaults.load(),
+        AgentRuntime.get(),
+        null,
+        null,
+        flag("ohmyrasp.log.sync", "OHMYRASP_LOG_SYNC"),
+        null,
+        null);
+  }
+
+  private JsonEventLogger(
+      ShirudoDefaults defaults,
+      AgentRuntime runtime,
+      String targetOverride,
+      Integer latencySampleOverride,
+      boolean syncWrites,
+      PrintStream customOut,
+      PrintStream customErr) {
+    ShirudoDefaults activeDefaults = defaults == null ? ShirudoDefaults.load() : defaults;
+    boolean standalone =
+        activeDefaults.lockConfig()
+            ? activeDefaults.standalone()
+            : (flag("ohmyrasp.standalone", "OHMYRASP_STANDALONE")
+                || activeDefaults.standalone()
+                || (runtime != null && runtime.isStandalone()));
+
+    String configured = resolveTarget(activeDefaults, runtime, targetOverride, standalone);
+    String normalized = configured.trim().toLowerCase(Locale.ROOT);
+    switch (normalized) {
+      case "stderr" -> {
+        this.target = LogTarget.STDERR;
+        this.targetName = "stderr";
+        this.logPath = null;
+      }
+      case "stdout" -> {
+        this.target = LogTarget.STDOUT;
+        this.targetName = "stdout";
+        this.logPath = null;
+      }
+      case "none" -> {
+        this.target = LogTarget.NONE;
+        this.targetName = "none";
+        this.logPath = null;
+      }
+      default -> {
+        this.target = LogTarget.FILE;
+        this.logPath = Path.of(configured.trim());
+        this.targetName = this.logPath.toString();
+      }
     }
-    if (configured == null || configured.isBlank()) {
-      configured = "/tmp/ohmyrasp-events.jsonl";
-    }
-    logPath = Path.of(configured);
-    queue = new ArrayBlockingQueue<>(queueCapacity());
+
     // Acceptance/CI determinism: write inline so the event is on disk before the
     // hook returns. Trades the no-business-latency property for repeatability.
-    syncWrites = flag("ohmyrasp.log.sync", "OHMYRASP_LOG_SYNC");
-    latencySampleRate =
-        Math.max(1, intSetting("ohmyrasp.latency_sample", "OHMYRASP_LATENCY_SAMPLE", 10));
+    this.syncWrites = syncWrites;
+    this.customOut = customOut;
+    this.customErr = customErr;
 
-    Thread writer = new Thread(this::drainLoop, "ohmyrasp-event-writer");
-    writer.setDaemon(true);
-    writer.start();
-    Runtime.getRuntime()
-        .addShutdownHook(new Thread(this::shutdown, "ohmyrasp-event-writer-shutdown"));
+    int defaultSampleRate =
+        activeDefaults.latencySample() != null
+            ? activeDefaults.latencySample()
+            : (standalone ? 0 : 10);
+    if (latencySampleOverride != null) {
+      this.latencySampleRate = latencySampleOverride;
+    } else {
+      Integer argSample = runtime == null ? null : runtime.agentArgLatencySample();
+      this.latencySampleRate =
+          argSample != null
+              ? argSample
+              : intSetting("ohmyrasp.latency_sample", "OHMYRASP_LATENCY_SAMPLE", defaultSampleRate);
+    }
+
+    if (this.target == LogTarget.FILE) {
+      this.queue = new ArrayBlockingQueue<>(queueCapacity());
+      Thread writer = new Thread(this::drainLoop, "ohmyrasp-event-writer");
+      writer.setDaemon(true);
+      writer.start();
+      Runtime.getRuntime()
+          .addShutdownHook(new Thread(this::shutdown, "ohmyrasp-event-writer-shutdown"));
+    } else {
+      this.queue = null;
+    }
   }
 
   public static JsonEventLogger get() {
     return INSTANCE;
+  }
+
+  /** Creates an isolated logger for unit tests without touching {@link #INSTANCE}. */
+  public static JsonEventLogger newForTesting(
+      ShirudoDefaults defaults,
+      String targetOverride,
+      Integer latencySampleOverride,
+      boolean syncWrites,
+      PrintStream out,
+      PrintStream err) {
+    return new JsonEventLogger(
+        defaults, null, targetOverride, latencySampleOverride, syncWrites, out, err);
+  }
+
+  public String logTarget() {
+    return targetName;
+  }
+
+  public Path logPath() {
+    return logPath;
+  }
+
+  public int latencySampleRate() {
+    return latencySampleRate;
   }
 
   public void setControlPlaneClient(ControlPlaneClient controlPlaneClient) {
@@ -159,8 +258,8 @@ public final class JsonEventLogger {
    * unlike detection latency, which is only observed when an attack fires.
    */
   public void sampleHookLatency(String hook, long latencyUs) {
-    // Sync mode = deterministic, detection-only output for acceptance/CI.
-    if (syncWrites || latencyUs < 0) {
+    // Sync mode or non-positive sample rate disables periodic latency telemetry.
+    if (latencySampleRate <= 0 || syncWrites || latencyUs < 0) {
       return;
     }
     if (latencySampleRate > 1 && sampleCounter.incrementAndGet() % latencySampleRate != 0) {
@@ -170,6 +269,13 @@ public final class JsonEventLogger {
   }
 
   private void submit(Sample sample) {
+    if (target != LogTarget.FILE) {
+      if (target == LogTarget.NONE && controlPlaneClient == null) {
+        return;
+      }
+      flush(List.of(sample));
+      return;
+    }
     if (syncWrites) {
       flush(List.of(sample));
       return;
@@ -211,45 +317,58 @@ public final class JsonEventLogger {
         return;
       } catch (RuntimeException e) {
         // Never let the writer thread die from a transient failure.
-        System.err.println("[OHMYRASP] event writer error: " + e);
+        errStream().println("[OHMYRASP] event writer error: " + e);
       }
     }
   }
 
   private void flush(List<Sample> batch) {
-    StringBuilder fileBuffer = new StringBuilder(batch.size() * 256);
-    StringBuilder stdoutBuffer = new StringBuilder(batch.size() * 256);
+    StringBuilder fileBuffer = target == LogTarget.FILE ? new StringBuilder(batch.size() * 256) : null;
+    StringBuilder consoleBuffer = target == LogTarget.NONE ? null : new StringBuilder(batch.size() * 256);
     String separator = System.lineSeparator();
     for (Sample sample : batch) {
+      if (target == LogTarget.NONE) {
+        continue;
+      }
       String json =
           sample.detection() == null
               ? telemetryJson(sample.telemetryHook(), sample.latencyUs())
               : toJson(sample.detection(), sample.latencyUs());
-      fileBuffer.append(json).append(separator);
-      // Telemetry is high-volume and uninteresting on the console; keep it off stdout.
-      if (sample.detection() != null) {
-        stdoutBuffer.append("[OHMYRASP] ").append(json).append(separator);
+      if (fileBuffer != null) {
+        fileBuffer.append(json).append(separator);
+      }
+      // Telemetry is high-volume and uninteresting on the console; keep it off stdout/stderr.
+      if (consoleBuffer != null && sample.detection() != null) {
+        consoleBuffer.append("[OHMYRASP] ").append(json).append(separator);
       }
     }
-    // A lock so concurrent inline (sync-mode) writers never interleave a line.
-    synchronized (writeLock) {
-      try {
-        Path parent = logPath.getParent();
-        if (parent != null) {
-          Files.createDirectories(parent);
+    if (target == LogTarget.FILE && fileBuffer != null && fileBuffer.length() > 0) {
+      // A lock so concurrent inline (sync-mode) writers never interleave a line.
+      synchronized (writeLock) {
+        try {
+          Path parent = logPath.getParent();
+          if (parent != null) {
+            Files.createDirectories(parent);
+          }
+          Files.writeString(
+              logPath,
+              fileBuffer.toString(),
+              StandardCharsets.UTF_8,
+              StandardOpenOption.CREATE,
+              StandardOpenOption.APPEND);
+        } catch (IOException e) {
+          errStream().println("[OHMYRASP] failed to write event log: " + e);
         }
-        Files.writeString(
-            logPath,
-            fileBuffer.toString(),
-            StandardCharsets.UTF_8,
-            StandardOpenOption.CREATE,
-            StandardOpenOption.APPEND);
-      } catch (IOException e) {
-        System.err.println("[OHMYRASP] failed to write event log: " + e);
       }
     }
-    if (stdoutBuffer.length() > 0) {
-      System.out.print(stdoutBuffer);
+    if (consoleBuffer != null && consoleBuffer.length() > 0) {
+      synchronized (writeLock) {
+        if (target == LogTarget.STDERR) {
+          errStream().print(consoleBuffer);
+        } else if (target == LogTarget.STDOUT || target == LogTarget.FILE) {
+          outStream().print(consoleBuffer);
+        }
+      }
     }
 
     ControlPlaneClient client = controlPlaneClient;
@@ -265,6 +384,39 @@ public final class JsonEventLogger {
         }
       }
     }
+  }
+
+  private PrintStream outStream() {
+    return customOut != null ? customOut : System.out;
+  }
+
+  private PrintStream errStream() {
+    return customErr != null ? customErr : System.err;
+  }
+
+  private static String resolveTarget(
+      ShirudoDefaults defaults, AgentRuntime runtime, String targetOverride, boolean standalone) {
+    if (targetOverride != null && !targetOverride.isBlank()) {
+      return targetOverride;
+    }
+    if (runtime != null) {
+      String argLog = runtime.agentArgLogTarget();
+      if (argLog != null && !argLog.isBlank()) {
+        return argLog;
+      }
+    }
+    String configured = System.getProperty("ohmyrasp.log");
+    if (configured != null && !configured.isBlank()) {
+      return configured;
+    }
+    configured = System.getenv("OHMYRASP_LOG");
+    if (configured != null && !configured.isBlank()) {
+      return configured;
+    }
+    if (defaults.log() != null && !defaults.log().isBlank()) {
+      return defaults.log();
+    }
+    return standalone ? "stderr" : "/tmp/ohmyrasp-events.jsonl";
   }
 
   private void shutdown() {
