@@ -38,7 +38,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
-          node-version: node
+          node-version: lts/*
           check-latest: true
           cache: npm
           cache-dependency-path: console/package-lock.json
@@ -64,7 +64,7 @@ jobs:
             -w /workspace \
             "$gradle_image" \
             gradle --no-daemon --no-problems-report clean check \
-            :agent-jdk25:agentJar \
+            :agent-jdk25:jdk21Jars \
             :agent-java8:shirudoUpatchJar \
             :agent-java11:shirudoUpatchJar \
             :agent-java17:shirudoUpatchJar \
@@ -72,17 +72,15 @@ jobs:
       - name: Stage and validate shirudo upatch packages
         run: |
           set -euo pipefail
-          for track in java8 java11 java17 jdk25; do
-            cp "java-agent/agent-${track}/build/libs/ohmyrasp-${track}.jar" \
-              "deploy/shirudo/ohmyrasp-${track}/ohmyrasp-${track}.jar"
-          done
+          ./deploy/shirudo/stage-jars.sh
           ./deploy/shirudo/verify-shirudo-upatch.sh
           mkdir -p dist
-          tar -czf dist/ohmyrasp-shirudo-upatches.tar.gz -C deploy/shirudo \
+          tar -chzf dist/ohmyrasp-shirudo-upatches.tar.gz -C deploy/shirudo \
             README.md verify-shirudo-upatch.sh \
             ohmyrasp-java8/Beefile ohmyrasp-java8/README.md ohmyrasp-java8/build.sh ohmyrasp-java8/ohmyrasp-java8.jar \
             ohmyrasp-java11/Beefile ohmyrasp-java11/README.md ohmyrasp-java11/build.sh ohmyrasp-java11/ohmyrasp-java11.jar \
             ohmyrasp-java17/Beefile ohmyrasp-java17/README.md ohmyrasp-java17/build.sh ohmyrasp-java17/ohmyrasp-java17.jar \
+            ohmyrasp-jdk21/Beefile ohmyrasp-jdk21/README.md ohmyrasp-jdk21/build.sh ohmyrasp-jdk21/ohmyrasp-jdk21.jar \
             ohmyrasp-jdk25/Beefile ohmyrasp-jdk25/README.md ohmyrasp-jdk25/build.sh ohmyrasp-jdk25/ohmyrasp-jdk25.jar
       - name: Upload Java agent release artifacts
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
@@ -93,11 +91,14 @@ jobs:
             java-agent/agent-java11/build/libs/ohmyrasp-agent-java11.jar
             java-agent/agent-java17/build/libs/ohmyrasp-agent-java17.jar
             java-agent/agent-jdk25/build/libs/ohmyrasp-agent.jar
+            java-agent/agent-jdk25/build/jdk21/ohmyrasp-agent-jdk21.jar
+            java-agent/agent-jdk25/build/jdk21/ohmyrasp-jdk21.jar
             java-agent/agent-java8/build/libs/ohmyrasp-java8.jar
             java-agent/agent-java11/build/libs/ohmyrasp-java11.jar
             java-agent/agent-java17/build/libs/ohmyrasp-java17.jar
             java-agent/agent-jdk25/build/libs/ohmyrasp-jdk25.jar
             dist/ohmyrasp-shirudo-upatches.tar.gz
+            dist/jdk21/ohmyrasp-jdk21-shirudo.tar.gz
           if-no-files-found: error
           retention-days: 1
 
@@ -337,6 +338,7 @@ jobs:
           subject-path: |
             dist/*.jar
             dist/ohmyrasp-shirudo-upatches-*.tar.gz
+            dist/ohmyrasp-jdk21-shirudo.tar.gz
             dist/ohmyrasp-daemon-*.tar.gz
 
       - name: Create or update GitHub Release
@@ -345,7 +347,7 @@ jobs:
           VERSION: ${{ needs.release.outputs.version }}
           REF: v${{ needs.release.outputs.version }}
           DIST_DIR: dist
-          EXPECTED_ASSETS: 12
+          EXPECTED_ASSETS: 15
           IMAGE_NAMESPACE: ${{ needs.release.outputs.namespace }}
           REGISTRY: ghcr.io
           EVENT_NAME: ${{ github.event_name }}

@@ -223,6 +223,7 @@ final class ControlPlaneClientTest {
         waitForContaining(requests, "\"name\":\"java-runtime\"");
         waitForContaining(requests, "POST /api/v1/baseline-findings");
         waitForContaining(requests, "\"check_id\":\"jvm.debug.disabled\"");
+        waitForContaining(requests, "Java runtime is in the primary supported range");
         waitForContaining(requests, "POST /api/v1/events/performance");
 
         client.submitHookTelemetry(sqlDetection(), 1234, 55);

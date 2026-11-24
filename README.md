@@ -42,7 +42,7 @@ Every hook, detector, and Vulhub replay script lives in this repository and runs
 | Detection engine | 54 capabilities, 43 algorithm signatures asserted end-to-end | [docs/detection.md](docs/detection.md) |
 | Exploit replay suite | 136 scenarios across 53 [Vulhub](https://github.com/vulhub/vulhub) roots (130 CVEs tracked) | [vulhub-coverage.md](docs/development/vulhub-coverage.md) |
 | Benign corpus precision | `0 / 83` false positives across 14 categories | [FALSE-POSITIVE-REPORT.md](java-agent/docs/FALSE-POSITIVE-REPORT.md) |
-| Supported JVMs | Dedicated builds for JDK 8, 11, 17 (also Java 21), and 25 (`javax.servlet` & `jakarta.servlet`) | [docs/agent.md](docs/agent.md) |
+| Supported JVMs | Builds for JDK 8, 11, 17, and a shared JDK 21/25 build (`javax.servlet` & `jakarta.servlet`) | [docs/agent.md](docs/agent.md) |
 
 **Verified CVEs and exploit classes blocked:**
 - **OpenJDK Base64 AVX-512 tail-underflow (Java2Shell / Java4Shell, CVE-2026-114938)** across JDK 8–25
@@ -73,7 +73,10 @@ OhMyRASP ships ready-to-sign **[shirudo](https://github.com/shirudo-dev/shirudo)
 | `ohmyrasp-java8` | Java 8 (classfile `<= 52`) | `ohmyrasp-java8.jar` | `:agent-java8` |
 | `ohmyrasp-java11` | Java 11 (classfile `<= 55`) | `ohmyrasp-java11.jar` | `:agent-java11` |
 | `ohmyrasp-java17` | Java 17 & Java 21 (classfile `<= 61`) | `ohmyrasp-java17.jar` | `:agent-java17` |
-| `ohmyrasp-jdk25` | Java 25 (classfile `<= 69`) | `ohmyrasp-jdk25.jar` | `:agent-jdk25` |
+| `ohmyrasp-jdk21` | Java 21 (classfile `<= 65`) | `ohmyrasp-jdk21.jar` | `:agent-jdk25` |
+| `ohmyrasp-jdk25` | Java 21 & Java 25 (classfile `<= 65`) | `ohmyrasp-jdk25.jar` | `:agent-jdk25` |
+
+For JDK 21, download `ohmyrasp-agent-jdk21.jar` for the standard agent or `ohmyrasp-jdk21.jar` for Shirudo. Each is byte-for-byte identical to its JDK 25 counterpart.
 
 Each shirudo JAR embeds `META-INF/ohmyrasp-shirudo.properties` (`standalone=true`, `lock_config=true`, `mode=block`, `control=none`, `log=stderr`, `latency_sample=0`):
 
@@ -81,10 +84,10 @@ Each shirudo JAR embeds `META-INF/ohmyrasp-shirudo.properties` (`standalone=true
 - Ignores `/tmp/ohmyrasp-control.json` and hostile `OHMYRASP_MODE` / `OHMYRASP_CONTROL` overrides (`lock_config=true` is read strictly from the signed JAR).
 - Emits structured JSON detections directly to `stderr` without creating `/tmp/ohmyrasp-events.jsonl` or `hook_latency` noise.
 
-Build and sign all four `.bee` packages from source, or grab `ohmyrasp-shirudo-upatches-<version>.tar.gz` from [GitHub Releases](https://github.com/xuing/oh-my-rasp/releases):
+Build and sign all five `.bee` packages from source, or grab `ohmyrasp-shirudo-upatches-<version>.tar.gz` from [GitHub Releases](https://github.com/xuing/oh-my-rasp/releases):
 
 ```sh
-# Build & sign all 4 .bee packages with your operator ML-DSA-87 keys
+# Build & sign all 5 .bee packages with your operator ML-DSA-87 keys
 ./deploy/shirudo/build-all.sh 0.2.0 --keys-dir <keys>
 
 # Or build JARs only and run the real-JVM Temurin 8/11/17/21/25 smoke suite
@@ -111,7 +114,7 @@ docker run --rm -u "$(id -u):$(id -g)" -e GRADLE_USER_HOME=/tmp/gradle-home \
 # -> agent-jdk25/build/libs/ohmyrasp-agent.jar
 ```
 
-Use `:agent-java8:agentJava8Jar`, `:agent-java11:agentJava11Jar`, or `:agent-java17:agentJava17Jar` for earlier JDKs (use Java 17 on Java 21), or `:agent-*:shirudoUpatchJar` for daemonless shirudo builds.
+Use `:agent-java8:agentJava8Jar`, `:agent-java11:agentJava11Jar`, or `:agent-java17:agentJava17Jar` for earlier JDKs, or `:agent-*:shirudoUpatchJar` for daemonless shirudo builds.
 
 ### Attach to an application
 

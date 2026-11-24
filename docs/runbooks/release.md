@@ -8,14 +8,15 @@ artifacts to GitHub Container Registry.
 Each release publishes both GHCR control-plane artifacts and an immutable GitHub
 Release (`v<version>`):
 
-**GitHub Release assets (`12` files)**:
+**GitHub Release assets (`15` files)**:
 
 - Standard Java agents: `ohmyrasp-agent-java8.jar`, `ohmyrasp-agent-java11.jar`,
-  `ohmyrasp-agent-java17.jar`, `ohmyrasp-agent.jar`
+  `ohmyrasp-agent-java17.jar`, `ohmyrasp-agent-jdk21.jar`, `ohmyrasp-agent.jar`
 - Standalone daemonless shirudo Java upatch JARs: `ohmyrasp-java8.jar`,
-  `ohmyrasp-java11.jar`, `ohmyrasp-java17.jar`, `ohmyrasp-jdk25.jar`
+  `ohmyrasp-java11.jar`, `ohmyrasp-java17.jar`, `ohmyrasp-jdk21.jar`, `ohmyrasp-jdk25.jar`
+- JDK 21 Shirudo package ready to sign: `ohmyrasp-jdk21-shirudo.tar.gz`
 - shirudo Beefile bundle: `ohmyrasp-shirudo-upatches-<version>.tar.gz` (contains
-  the 4 package directories, `Beefile`s, `README.md`s, `build.sh`, and staged JARs)
+  the 5 package directories, `Beefile`s, `README.md`s, `build.sh`, and staged JARs)
 - Rust host daemon: `ohmyrasp-daemon-linux-amd64.tar.gz`
 - Helm chart archive: `ohmyrasp-control-<version>.tgz`
 - Checksums: `SHA256SUMS.txt`
@@ -35,7 +36,7 @@ Release (`v<version>`):
 
 The GitHub Release publisher (`deploy/scripts/publish-github-release.sh`) is
 idempotent: rerunning a release updates notes and `--clobber`s assets cleanly,
-verifies that all `12` assets are uploaded, marks pre-releases (`-*`) as
+verifies that all `15` assets are uploaded, marks pre-releases (`-*`) as
 prerelease without `Latest`, and reconciles `Latest` using SemVer ordering so
 backfilling an older release tag never steals `Latest` from a newer release.
 

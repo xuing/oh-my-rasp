@@ -1,13 +1,13 @@
 #!/bin/sh
-# Build the OhMyRASP JDK 25 shirudo upatch jar and optional .bee package:
+# Build the shared JDK 21/25 shirudo upatch jar and optional .bee package:
 #   deploy/shirudo/ohmyrasp-jdk25/build.sh [--jar-only] [--mode block|monitor] <version> [bpm build options...]
 
 set -eu
 
-track=jdk25
-pkg_name="ohmyrasp-${track}"
+pkg=$(CDPATH= cd -- "$(dirname "$0")" && pwd)
+pkg_name=${pkg##*/}
 jar_name="${pkg_name}.jar"
-gradle_task=":agent-${track}:shirudoUpatchJar"
+gradle_task=":agent-jdk25:shirudoUpatchJar"
 
 jar_only=0
 mode=block
@@ -64,7 +64,6 @@ if [ "$jar_only" -eq 0 ]; then
 	shift
 fi
 
-pkg=$(CDPATH= cd -- "$(dirname "$0")" && pwd)
 repo_root=$(CDPATH= cd -- "$pkg/../../.." && pwd)
 java_agent_dir="$repo_root/java-agent"
 start=$PWD
@@ -93,7 +92,7 @@ else
 		"-Pohmyrasp.mode=$mode"
 fi
 
-src_jar="$java_agent_dir/agent-${track}/build/libs/$jar_name"
+src_jar="$java_agent_dir/agent-jdk25/build/libs/ohmyrasp-jdk25.jar"
 [ -f "$src_jar" ] || { echo "missing built jar: $src_jar" >&2; exit 1; }
 cp "$src_jar" "$pkg/$jar_name"
 

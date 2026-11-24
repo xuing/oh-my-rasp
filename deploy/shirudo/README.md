@@ -19,7 +19,11 @@ with `shirudo bpm build`.
 | `ohmyrasp-java8` | Java 8 (classfile `<= 52`) | `ohmyrasp-java8.jar` | 24 ASM transformers | 43 algorithms | 96 (java8) |
 | `ohmyrasp-java11` | Java 11 (classfile `<= 55`) | `ohmyrasp-java11.jar` | 24 ASM transformers | 43 algorithms | 10 (java11) |
 | `ohmyrasp-java17` | Java 17 and Java 21 (classfile `<= 61`) | `ohmyrasp-java17.jar` | 24 ASM transformers | 43 algorithms | 12 (java17) + 3 (java21) |
-| `ohmyrasp-jdk25` | Java 25 (classfile `<= 69`) | `ohmyrasp-jdk25.jar` | 28 ASM hook modules | 54 `detect*` capabilities | 136 total scenarios across 6 JDK lines |
+| `ohmyrasp-jdk21` | Java 21 and Java 25 (classfile `<= 65`) | `ohmyrasp-jdk21.jar` | 28 ASM hook modules | 54 `detect*` capabilities | 136 total scenarios across 6 JDK lines |
+| `ohmyrasp-jdk25` | Java 21 and Java 25 (classfile `<= 65`) | `ohmyrasp-jdk25.jar` | 28 ASM hook modules | 54 `detect*` capabilities | 136 total scenarios across 6 JDK lines |
+
+Choose one primary package per JVM. The JDK 21 and 25 names contain the same agent bytecode.
+For JDK 21, extract `ohmyrasp-jdk21-shirudo.tar.gz` to sign the staged package with your operator keys.
 
 Benign-traffic precision across the curated engine corpus: **0 / 83** false positives across **14** categories (0.0%; see [FALSE-POSITIVE-REPORT.md](../../java-agent/docs/FALSE-POSITIVE-REPORT.md)).
 
@@ -27,7 +31,7 @@ Benign-traffic precision across the curated engine corpus: **0 / 83** false posi
 
 Each package injects ASM bytecode hooks at JVM class-load / retransform time across the following attack surfaces:
 
-| Security Category | What It Inspects & Blocks | Java 8 / 11 / 17 Transformers | JDK 25 Hook Modules |
+| Security Category | What It Inspects & Blocks | Java 8 / 11 / 17 Transformers | JDK 21/25 Hook Modules |
 |---|---|---|---|
 | **Command Execution & RCE** | Blocks exploit-grade `ProcessBuilder.start` / `Runtime.exec` calls (including OGNL, SpEL, MVEL, Groovy, JEXL, XStream, deserialization, and scheduler stacks) and Spark/YARN REST job submissions. | `Java*SparkRestTransformer`, `Java*YarnRestTransformer`, `Java*ProcessTransformer` | `ArgumentParserHookModule`, `ProcessHookModule` |
 | **OpenJDK Base64 AVX-512 Guard (CVE-2026-114938)** | Zero-allocation arithmetic boundary check on `java.util.Base64$Decoder.decode0` blocking x86-64 AVX-512 tail-underflow inputs (Java2Shell / Java4Shell) before the native intrinsic runs. | `Java*Base64Transformer` | `Base64HookModule` |
@@ -40,7 +44,7 @@ Each package injects ASM bytecode hooks at JVM class-load / retransform time acr
 ### Blocking Semantics Across Tracks
 
 - **`ohmyrasp-java8`, `ohmyrasp-java11`, `ohmyrasp-java17`**: With baked-in `mode=block`, exploit-grade sink detections (command execution, sensitive file reads/script writes, remote JNDI, deserialization gadgets, SQLi/JDBC, XXE, SSRF, Base64 CVE-2026-114938, and servlet path/JWT/cookie checks) throw `Java*RaspBlockException` both inside HTTP requests and in standalone JVMs.
-- **`ohmyrasp-jdk25`**: Enforces blocking (`OhMyRaspBlockException`) on all HTTP-request-correlated detections (`ThreadLocal<RequestContext>`) and explicitly marks `detectBase64Decode`, `detectHessianType`, `detectProtocolClassInstantiation`, `detectSql` for request-less blocking; non-request sink calls without HTTP context emit structured JSON detection alerts to `stderr`.
+- **`ohmyrasp-jdk21`, `ohmyrasp-jdk25`**: Enforces blocking (`OhMyRaspBlockException`) on all HTTP-request-correlated detections (`ThreadLocal<RequestContext>`) and explicitly marks `detectBase64Decode`, `detectHessianType`, `detectProtocolClassInstantiation`, `detectSql` for request-less blocking; non-request sink calls without HTTP context emit structured JSON detection alerts to `stderr`.
 
 ## Standalone Profile (`META-INF/ohmyrasp-shirudo.properties`)
 
@@ -55,7 +59,7 @@ Each shirudo upatch JAR embeds `META-INF/ohmyrasp-shirudo.properties` so it runs
 
 ## Build
 
-Build and sign all four `.bee` packages into the current working directory:
+Build and sign all five `.bee` packages into the current working directory:
 
 ```sh
 ./deploy/shirudo/build-all.sh 0.2.0 --keys-dir <keys>

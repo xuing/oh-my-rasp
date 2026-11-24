@@ -1,6 +1,6 @@
 # OhMyRasp
 
-OhMyRasp is a Java-native RASP proof of concept for JDK 25. It uses ASM class
+OhMyRasp is a Java-native RASP proof of concept for JDK 21 and 25. It uses ASM class
 transformation in a `-javaagent` to intercept risky runtime behavior, writes
 local JSONL security events, and can register with the control plane to send
 heartbeats, pull policy metadata, and upload detections through the API.

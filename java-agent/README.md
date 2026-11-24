@@ -1,4 +1,4 @@
-# OhMyRASP Java Agent (JDK 25)
+# OhMyRASP Java Agent (JDK 21 and 25)
 
 A Java-native Runtime Application Self-Protection agent. It uses ASM class
 transformation in a `-javaagent` to intercept risky runtime behavior, evaluates
@@ -6,8 +6,11 @@ detections in-process, writes local security events, and can block active-reques
 attacks. Detection is the core capability and stays in Java to exploit JVM-native
 context (stack walking, request thread-locals, reflective inspection).
 
-The agent is built for **JDK 25** (`agent` module). Dedicated backport builds
+The `agent-jdk25` module builds one JAR for **JDK 21 and 25** using the JDK 25 compiler with `--release 21`. Dedicated backport builds
 target older runtimes: `agent-java8` (release 8), `agent-java11`, `agent-java17`.
+
+Use `:agent-jdk25:jdk21Jars` to produce `build/jdk21/ohmyrasp-agent-jdk21.jar` and
+`build/jdk21/ohmyrasp-jdk21.jar` in the primary module. Each is a copy of its JDK 25 counterpart.
 
 ## Architecture: agent + daemon
 
@@ -153,7 +156,7 @@ docker run --rm -v "$PWD":/workspace -w /workspace gradle:9.9.2-jdk25 \
 
 ```
 java-agent/
-├── agent-jdk25/        JDK 25 agent (primary)
+├── agent-jdk25/        JDK 21/25 agent (primary)
 │   └── src/main/java/io/ohmyrasp/agent/
 │       ├── OhMyRaspAgent / BootstrapAgent   premain/agentmain entry + wiring
 │       ├── asm/         hook modules + ASM transformer (the only "hook" logic)

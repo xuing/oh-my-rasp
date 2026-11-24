@@ -2,7 +2,7 @@
 
 > **Generated** by `deploy/shirudo/gen-readmes.py` from `java-agent/` sources.
 
-The `ohmyrasp-jdk25` package installs the `ohmyrasp-jdk25` Java upatch: a standalone, daemonless OhMyRASP runtime self-protection agent targeting **Java 25** JVMs (classfile version `<= 69`). It registers **28 ASM hook modules** and **54 `DetectorEngine` capabilities**, backed by **136** end-to-end Vulhub acceptance scenarios.
+The `ohmyrasp-jdk25` package installs the `ohmyrasp-jdk25` Java upatch: a standalone, daemonless OhMyRASP runtime self-protection agent targeting **Java 21 and Java 25** JVMs (classfile version `<= 65`). It registers **28 ASM hook modules** and **54 `DetectorEngine` capabilities**, backed by **136** end-to-end Vulhub acceptance scenarios.
 
 ## Security Coverage
 

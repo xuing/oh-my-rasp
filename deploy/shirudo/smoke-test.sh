@@ -189,7 +189,7 @@ run_case() {
 	stderr_file="$tmp_dir/${image##*:}-${pkg}.err"
 
 	probe_mode="backport"
-	if [ "$pkg" = "ohmyrasp-jdk25" ]; then
+	if [ "$pkg" = "ohmyrasp-jdk21" ] || [ "$pkg" = "ohmyrasp-jdk25" ]; then
 		probe_mode="jdk25"
 	fi
 
@@ -256,7 +256,7 @@ hooks = " ".join(str(d.get("hook", "")).lower() for d in detections)
 if "jndi" not in hooks and "initialcontext" not in hooks:
     print(f"FAIL: {image} ({pkg}) missing JNDI detection event on stderr: {detections}", file=sys.stderr)
     sys.exit(1)
-if pkg == "ohmyrasp-jdk25":
+if pkg in ("ohmyrasp-jdk21", "ohmyrasp-jdk25"):
     if "base64" not in hooks:
         print(f"FAIL: {image} ({pkg}) missing base64 detection event on stderr: {detections}", file=sys.stderr)
         sys.exit(1)
@@ -276,6 +276,7 @@ run_case "eclipse-temurin:8" "ohmyrasp-java8"
 run_case "eclipse-temurin:11" "ohmyrasp-java11"
 run_case "eclipse-temurin:17" "ohmyrasp-java17"
 run_case "eclipse-temurin:21" "ohmyrasp-java17"
+run_case "eclipse-temurin:21" "ohmyrasp-jdk21"
 run_case "eclipse-temurin:25" "ohmyrasp-jdk25"
 
 echo "ALL SMOKE TESTS PASSED"

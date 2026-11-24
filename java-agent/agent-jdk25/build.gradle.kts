@@ -22,6 +22,11 @@ dependencies {
     testRuntimeOnly("org.junit.platform:junit-platform-launcher:6.1.3")
 }
 
+// Build once with the JDK 25 toolchain for both supported LTS runtimes.
+tasks.withType<JavaCompile>().configureEach {
+    options.release.set(21)
+}
+
 tasks.jar {
     archiveBaseName.set("ohmyrasp-agent-thin")
 }
@@ -47,7 +52,7 @@ val agentJar = tasks.register<ShadowJar>("agentJar") {
             "Agent-Class" to "io.ohmyrasp.agent.OhMyRaspAgent",
             "Can-Redefine-Classes" to "true",
             "Can-Retransform-Classes" to "true",
-            "Implementation-Title" to "OhMyRasp Java Agent (JDK 25)"
+            "Implementation-Title" to "OhMyRasp Java Agent (JDK 21 and 25)"
         )
     }
 
@@ -108,7 +113,7 @@ val shirudoUpatchJar = tasks.register<ShadowJar>("shirudoUpatchJar") {
             "Agent-Class" to "io.ohmyrasp.agent.OhMyRaspAgent",
             "Can-Redefine-Classes" to "true",
             "Can-Retransform-Classes" to "true",
-            "Implementation-Title" to "OhMyRasp Java Agent (JDK 25 / shirudo upatch)",
+            "Implementation-Title" to "OhMyRasp Java Agent (JDK 21 and 25 / shirudo upatch)",
             "OhMyRasp-Shirudo-Upatch" to "true"
         )
     }
@@ -200,8 +205,8 @@ val verifyShirudoUpatchJar = tasks.register("verifyShirudoUpatchJar") {
                             "Invalid classfile magic in $name"
                         }
                         val major = ((header[6].toInt() and 0xFF) shl 8) or (header[7].toInt() and 0xFF)
-                        require(major <= 69) {
-                            "Class $name has major version $major > 69"
+                        require(major <= 65) {
+                            "Class $name has major version $major > 65"
                         }
                     }
                 }
@@ -219,8 +224,16 @@ val verifyShirudoUpatchJar = tasks.register("verifyShirudoUpatchJar") {
     }
 }
 
+val jdk21Jars = tasks.register<Sync>("jdk21Jars") {
+    group = "build"
+    description = "Stages the shared agent and Shirudo JARs with their JDK 21 download names."
+    from(agentJar.flatMap { it.archiveFile }) { rename { "ohmyrasp-agent-jdk21.jar" } }
+    from(shirudoUpatchJar.flatMap { it.archiveFile }) { rename { "ohmyrasp-jdk21.jar" } }
+    into(layout.buildDirectory.dir("jdk21"))
+}
+
 tasks.assemble {
-    dependsOn(agentJar)
+    dependsOn(jdk21Jars)
 }
 
 tasks.check {
