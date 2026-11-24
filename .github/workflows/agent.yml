@@ -4,10 +4,12 @@ on:
   push:
     paths:
       - "java-agent/**"
+      - "deploy/shirudo/**"
       - ".github/workflows/agent.yml"
   pull_request:
     paths:
       - "java-agent/**"
+      - "deploy/shirudo/**"
       - ".github/workflows/agent.yml"
   schedule:
     # Re-resolve each JDK major every week so new CPU releases are tested even
@@ -32,13 +34,27 @@ jobs:
           gradle_image="$(awk '$1 == "FROM" && $2 ~ /^gradle:/ { print $2; exit }' java-agent/Dockerfile)"
           test -n "$gradle_image"
           docker run --pull always --rm \
+            -u "$(id -u):$(id -g)" \
+            -e GRADLE_USER_HOME=/tmp/gradle-home \
             -v "$PWD/java-agent:/workspace" \
             -w /workspace \
             "$gradle_image" \
-            gradle --no-daemon clean check \
+            gradle --no-daemon --no-problems-report clean check \
             :agent-jdk25:agentJar \
+            :agent-java8:shirudoUpatchJar \
+            :agent-java11:shirudoUpatchJar \
+            :agent-java17:shirudoUpatchJar \
+            :agent-jdk25:shirudoUpatchJar \
             :playground:war \
             :playground-javax:war
+      - name: Stage and validate shirudo upatch packages
+        run: |
+          set -euo pipefail
+          for track in java8 java11 java17 jdk25; do
+            cp "java-agent/agent-${track}/build/libs/ohmyrasp-${track}.jar" \
+              "deploy/shirudo/ohmyrasp-${track}/ohmyrasp-${track}.jar"
+          done
+          ./deploy/shirudo/verify-shirudo-upatch.sh
       - name: Upload agent compatibility artifacts
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
@@ -48,6 +64,10 @@ jobs:
             java-agent/agent-java11/build/libs/ohmyrasp-agent-java11.jar
             java-agent/agent-java17/build/libs/ohmyrasp-agent-java17.jar
             java-agent/agent-jdk25/build/libs/ohmyrasp-agent.jar
+            java-agent/agent-java8/build/libs/ohmyrasp-java8.jar
+            java-agent/agent-java11/build/libs/ohmyrasp-java11.jar
+            java-agent/agent-java17/build/libs/ohmyrasp-java17.jar
+            java-agent/agent-jdk25/build/libs/ohmyrasp-jdk25.jar
           if-no-files-found: error
           retention-days: 1
 

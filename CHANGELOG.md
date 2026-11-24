@@ -17,6 +17,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   nginx configuration.
 
 ### Added
+- Standalone daemonless shirudo Java upatch support across all four JDK tracks
+  (`ohmyrasp-java8.jar`, `ohmyrasp-java11.jar`, `ohmyrasp-java17.jar`,
+  `ohmyrasp-jdk25.jar`) with signed baked-in defaults
+  (`META-INF/ohmyrasp-shirudo.properties`), `deploy/shirudo/` `Beefile`
+  packaging, and real-JVM Docker smoke tests.
+- GitHub Release publishing in `ohmyrasp-release.yml` via
+  `deploy/scripts/publish-github-release.sh` (uploading Java agents, shirudo
+  upatch JARs/bundle, Rust daemon tarball, Helm chart, `SHA256SUMS.txt`, and
+  provenance attestations with SemVer-safe `Latest` reconciliation).
 - Continuous integration for the Java agent (`java-agent/**`) and the Rust
   daemon (`daemon/**`), which previously ran no automated tests.
 - Dependency scanning (Dependabot), CodeQL, `govulncheck`, and `cargo audit`.

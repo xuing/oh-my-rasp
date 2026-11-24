@@ -5,7 +5,22 @@ artifacts to GitHub Container Registry.
 
 ## Release Artifacts
 
-Each release publishes:
+Each release publishes both GHCR control-plane artifacts and an immutable GitHub
+Release (`v<version>`):
+
+**GitHub Release assets (`12` files)**:
+
+- Standard Java agents: `ohmyrasp-agent-java8.jar`, `ohmyrasp-agent-java11.jar`,
+  `ohmyrasp-agent-java17.jar`, `ohmyrasp-agent.jar`
+- Standalone daemonless shirudo Java upatch JARs: `ohmyrasp-java8.jar`,
+  `ohmyrasp-java11.jar`, `ohmyrasp-java17.jar`, `ohmyrasp-jdk25.jar`
+- shirudo Beefile bundle: `ohmyrasp-shirudo-upatches-<version>.tar.gz` (contains
+  the 4 package directories, `Beefile`s, `README.md`s, `build.sh`, and staged JARs)
+- Rust host daemon: `ohmyrasp-daemon-linux-amd64.tar.gz`
+- Helm chart archive: `ohmyrasp-control-<version>.tgz`
+- Checksums: `SHA256SUMS.txt`
+
+**GHCR container & OCI artifacts**:
 
 - API image: `ghcr.io/<namespace>/control-api:<version>`
 - API SHA image: `ghcr.io/<namespace>/control-api:sha-<short-sha>`
@@ -14,9 +29,15 @@ Each release publishes:
 - Helm chart: `oci://ghcr.io/<namespace>/charts/ohmyrasp-control`
 - BuildKit SBOM and max-mode provenance attestations attached to the pushed
   images.
-- GitHub signed provenance attestations for the API image, web image, and Helm
-  chart package.
+- GitHub signed provenance attestations for the API image, web image, Helm
+  chart package, Java agents, shirudo upatch bundle, and daemon tarball.
 - A mandatory Trivy vulnerability gate for the API and web release images.
+
+The GitHub Release publisher (`deploy/scripts/publish-github-release.sh`) is
+idempotent: rerunning a release updates notes and `--clobber`s assets cleanly,
+verifies that all `12` assets are uploaded, marks pre-releases (`-*`) as
+prerelease without `Latest`, and reconciles `Latest` using SemVer ordering so
+backfilling an older release tag never steals `Latest` from a newer release.
 
 The release workflow stamps `deploy/helm/ohmyrasp-control/Chart.yaml` and the
 default `values.yaml` image references before packaging the chart. The chart

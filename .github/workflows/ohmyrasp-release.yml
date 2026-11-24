@@ -12,11 +12,7 @@ on:
         type: string
 
 permissions:
-  id-token: write
   contents: read
-  packages: write
-  attestations: write
-  artifact-metadata: write
 
 jobs:
   test-api:
@@ -26,7 +22,7 @@ jobs:
         working-directory: api
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - uses: actions/setup-go@d8cbb8045d7f43706b9177cceb36c1f91a6644d5 # v7.1.0
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version: stable
           check-latest: true
@@ -49,11 +45,100 @@ jobs:
       - run: npm ci
       - run: npm run build
 
+  build-agents:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Check detector false-positive-suppression parity
+        working-directory: java-agent
+        run: bash scripts/check-detector-parity.sh
+      - name: Build, test, and verify Java agents and shirudo upatch JARs
+        run: |
+          set -euo pipefail
+          gradle_image="$(awk '$1 == "FROM" && $2 ~ /^gradle:/ { print $2; exit }' java-agent/Dockerfile)"
+          test -n "$gradle_image"
+          docker run --pull always --rm \
+            -u "$(id -u):$(id -g)" \
+            -e GRADLE_USER_HOME=/tmp/gradle-home \
+            -v "$PWD/java-agent:/workspace" \
+            -w /workspace \
+            "$gradle_image" \
+            gradle --no-daemon --no-problems-report clean check \
+            :agent-jdk25:agentJar \
+            :agent-java8:shirudoUpatchJar \
+            :agent-java11:shirudoUpatchJar \
+            :agent-java17:shirudoUpatchJar \
+            :agent-jdk25:shirudoUpatchJar
+      - name: Stage and validate shirudo upatch packages
+        run: |
+          set -euo pipefail
+          for track in java8 java11 java17 jdk25; do
+            cp "java-agent/agent-${track}/build/libs/ohmyrasp-${track}.jar" \
+              "deploy/shirudo/ohmyrasp-${track}/ohmyrasp-${track}.jar"
+          done
+          ./deploy/shirudo/verify-shirudo-upatch.sh
+          mkdir -p dist
+          tar -czf dist/ohmyrasp-shirudo-upatches.tar.gz -C deploy/shirudo \
+            README.md verify-shirudo-upatch.sh \
+            ohmyrasp-java8/Beefile ohmyrasp-java8/README.md ohmyrasp-java8/build.sh ohmyrasp-java8/ohmyrasp-java8.jar \
+            ohmyrasp-java11/Beefile ohmyrasp-java11/README.md ohmyrasp-java11/build.sh ohmyrasp-java11/ohmyrasp-java11.jar \
+            ohmyrasp-java17/Beefile ohmyrasp-java17/README.md ohmyrasp-java17/build.sh ohmyrasp-java17/ohmyrasp-java17.jar \
+            ohmyrasp-jdk25/Beefile ohmyrasp-jdk25/README.md ohmyrasp-jdk25/build.sh ohmyrasp-jdk25/ohmyrasp-jdk25.jar
+      - name: Upload Java agent release artifacts
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: release-agents
+          path: |
+            java-agent/agent-java8/build/libs/ohmyrasp-agent-java8.jar
+            java-agent/agent-java11/build/libs/ohmyrasp-agent-java11.jar
+            java-agent/agent-java17/build/libs/ohmyrasp-agent-java17.jar
+            java-agent/agent-jdk25/build/libs/ohmyrasp-agent.jar
+            java-agent/agent-java8/build/libs/ohmyrasp-java8.jar
+            java-agent/agent-java11/build/libs/ohmyrasp-java11.jar
+            java-agent/agent-java17/build/libs/ohmyrasp-java17.jar
+            java-agent/agent-jdk25/build/libs/ohmyrasp-jdk25.jar
+            dist/ohmyrasp-shirudo-upatches.tar.gz
+          if-no-files-found: error
+          retention-days: 1
+
+  build-daemon:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Test and build Rust daemon
+        working-directory: daemon
+        run: |
+          set -euo pipefail
+          cargo test --locked
+          cargo build --locked --release
+      - name: Package daemon release tarball
+        run: |
+          set -euo pipefail
+          mkdir -p dist
+          tar -czf dist/ohmyrasp-daemon-linux-amd64.tar.gz -C daemon/target/release ohmyrasp-daemon
+      - name: Upload daemon release artifact
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: release-daemon
+          path: dist/ohmyrasp-daemon-linux-amd64.tar.gz
+          if-no-files-found: error
+          retention-days: 1
+
   release:
     needs:
       - test-api
       - test-console
     runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      contents: read
+      packages: write
+      attestations: write
+      artifact-metadata: write
+    outputs:
+      version: ${{ steps.release.outputs.version }}
+      namespace: ${{ steps.release.outputs.namespace }}
+      short_sha: ${{ steps.release.outputs.short_sha }}
     env:
       REGISTRY: ghcr.io
     steps:
@@ -195,3 +280,73 @@ jobs:
         uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
         with:
           subject-path: dist/ohmyrasp-control-${{ steps.release.outputs.version }}.tgz
+
+      - name: Upload Helm chart archive
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: release-helm-chart
+          path: dist/ohmyrasp-control-${{ steps.release.outputs.version }}.tgz
+          if-no-files-found: error
+          retention-days: 1
+
+  github-release:
+    needs:
+      - release
+      - build-agents
+      - build-daemon
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      id-token: write
+      attestations: write
+      artifact-metadata: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Download release artifacts
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          path: dist-staging
+          merge-multiple: true
+
+      - name: Assemble release assets and checksums
+        env:
+          VERSION: ${{ needs.release.outputs.version }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p dist
+          find dist-staging -maxdepth 6 -type f \( -name '*.jar' -o -name '*.tar.gz' -o -name '*.tgz' \) -print0 |
+            while IFS= read -r -d '' f; do
+              base="$(basename "$f")"
+              if [[ "$base" == "ohmyrasp-shirudo-upatches.tar.gz" ]]; then
+                cp "$f" "dist/ohmyrasp-shirudo-upatches-${VERSION}.tar.gz"
+              else
+                cp "$f" "dist/$base"
+              fi
+            done
+          (
+            cd dist
+            LC_ALL=C sha256sum ./* > SHA256SUMS.txt
+          )
+          ls -lh dist
+
+      - name: Attest agent, shirudo upatch, and daemon release artifacts
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
+        with:
+          subject-path: |
+            dist/*.jar
+            dist/ohmyrasp-shirudo-upatches-*.tar.gz
+            dist/ohmyrasp-daemon-*.tar.gz
+
+      - name: Create or update GitHub Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          VERSION: ${{ needs.release.outputs.version }}
+          REF: v${{ needs.release.outputs.version }}
+          DIST_DIR: dist
+          EXPECTED_ASSETS: 12
+          IMAGE_NAMESPACE: ${{ needs.release.outputs.namespace }}
+          REGISTRY: ghcr.io
+          EVENT_NAME: ${{ github.event_name }}
+        run: ./deploy/scripts/publish-github-release.sh
