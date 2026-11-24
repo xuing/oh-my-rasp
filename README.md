@@ -149,23 +149,7 @@ Full walkthrough: [docs/getting-started.md](docs/getting-started.md).
 
 ## Architecture
 
-```text
-                      ┌──────────────────────┐
-                      │      Web Console     │
-                      │    React 19 + Vite   │
-                      └──────────┬───────────┘
-                                 │
-┌─────────────────┐   ┌──────────▼───────────┐   ┌─────────────────────┐
-│   Host Daemon   │──►│      Control API     │◄──│  Prometheus rules   │
-│      Rust       │   │     Go + OpenAPI     │   │  Alertmanager       │
-└───▲─────────┬───┘   └───┬──────┬───────┬───┘   │  Grafana            │
-    │ spool   │ control   │      │       │       └─────────────────────┘
-    │ (NDJSON)│ file      ▼      ▼       ▼
-┌───┴─────────▼───┐  PostgreSQL ClickHouse Valkey
-│   Java Agent    │   control   telemetry  cache
-│  ASM sink hooks │    state
-└─────────────────┘
-```
+![OhMyRASP Architecture](docs/images/architecture.svg)
 
 | Component | Stack | Role |
 |---|---|---|
