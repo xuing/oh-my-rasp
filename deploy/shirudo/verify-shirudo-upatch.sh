@@ -55,6 +55,7 @@ PACKAGES = [
     ("ohmyrasp-java8", False),
     ("ohmyrasp-java11", True),
     ("ohmyrasp-java17", True),
+    ("ohmyrasp-jdk21", True),
     ("ohmyrasp-jdk25", True),
 ]
 

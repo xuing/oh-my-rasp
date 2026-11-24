@@ -6,10 +6,11 @@ Writes:
   - deploy/shirudo/ohmyrasp-java8/README.md
   - deploy/shirudo/ohmyrasp-java11/README.md
   - deploy/shirudo/ohmyrasp-java17/README.md
+  - deploy/shirudo/ohmyrasp-jdk21/README.md
   - deploy/shirudo/ohmyrasp-jdk25/README.md
 
 Usage:
-  python3 deploy/shirudo/gen-readmes.py          # regenerate all 5 READMEs
+  python3 deploy/shirudo/gen-readmes.py          # regenerate all 6 READMEs
   python3 deploy/shirudo/gen-readmes.py --check  # exit non-zero if any file is stale
 """
 from __future__ import annotations
@@ -244,7 +245,6 @@ def extract_jdk25() -> dict[str, object]:
         "target_jvms": "Java 21 and Java 25",
         "classfile": "<= 65",
         "block_exception": "OhMyRaspBlockException",
-        "beefile": parse_beefile("ohmyrasp-jdk25"),
         "modules": modules,
         "capabilities": capabilities,
         "non_req_blocks": non_req_blocks,
@@ -280,6 +280,7 @@ def extract_fp_summary() -> tuple[int, int, int, str]:
 def render_top_readme(
     backports: list[dict[str, object]],
     jdk25: dict[str, object],
+    primary_packages: list[dict[str, str]],
     vulhub: dict[str, int],
     fp: tuple[int, int, int, str],
 ) -> str:
@@ -317,13 +318,15 @@ def render_top_readme(
             f"`{bf['source']}` | {len(b['transformers'])} ASM transformers | "
             f"{len(b['algorithms'])} algorithms | {note} |"
         )
-    bf25 = jdk25["beefile"]
-    assert isinstance(bf25, dict)
-    w(
-        f"| `{bf25['name']}` | {jdk25['target_jvms']} (classfile `{jdk25['classfile']}`) | "
-        f"`{bf25['source']}` | {len(jdk25['modules'])} ASM hook modules | "
-        f"{len(jdk25['capabilities'])} `detect*` capabilities | {vulhub['total']} total scenarios across 6 JDK lines |"
-    )
+    for bf in primary_packages:
+        w(
+            f"| `{bf['name']}` | {jdk25['target_jvms']} (classfile `{jdk25['classfile']}`) | "
+            f"`{bf['source']}` | {len(jdk25['modules'])} ASM hook modules | "
+            f"{len(jdk25['capabilities'])} `detect*` capabilities | {vulhub['total']} total scenarios across 6 JDK lines |"
+        )
+    w("")
+    w("Choose one primary package per JVM. The JDK 21 and 25 names contain the same agent bytecode.")
+    w("For JDK 21, extract `ohmyrasp-jdk21-shirudo.tar.gz` to sign the staged package with your operator keys.")
     w("")
     w(
         f"Benign-traffic precision across the curated engine corpus: **{fp_hits} / {fp_inputs}** "
@@ -354,7 +357,7 @@ def render_top_readme(
     w("### Blocking Semantics Across Tracks")
     w("")
     w("- **`ohmyrasp-java8`, `ohmyrasp-java11`, `ohmyrasp-java17`**: With baked-in `mode=block`, exploit-grade sink detections (command execution, sensitive file reads/script writes, remote JNDI, deserialization gadgets, SQLi/JDBC, XXE, SSRF, Base64 CVE-2026-114938, and servlet path/JWT/cookie checks) throw `Java*RaspBlockException` both inside HTTP requests and in standalone JVMs.")
-    w(f"- **`ohmyrasp-jdk25`**: Enforces blocking (`OhMyRaspBlockException`) on all HTTP-request-correlated detections (`ThreadLocal<RequestContext>`) and explicitly marks {non_req} for request-less blocking; non-request sink calls without HTTP context emit structured JSON detection alerts to `stderr`.")
+    w(f"- **`ohmyrasp-jdk21`, `ohmyrasp-jdk25`**: Enforces blocking (`OhMyRaspBlockException`) on all HTTP-request-correlated detections (`ThreadLocal<RequestContext>`) and explicitly marks {non_req} for request-less blocking; non-request sink calls without HTTP context emit structured JSON detection alerts to `stderr`.")
     w("")
     w("## Standalone Profile (`META-INF/ohmyrasp-shirudo.properties`)")
     w("")
@@ -369,7 +372,7 @@ def render_top_readme(
     w("")
     w("## Build")
     w("")
-    w("Build and sign all four `.bee` packages into the current working directory:")
+    w("Build and sign all five `.bee` packages into the current working directory:")
     w("")
     w("```sh")
     w("./deploy/shirudo/build-all.sh 0.2.0 --keys-dir <keys>")
@@ -540,9 +543,7 @@ def render_backport_readme(b: dict[str, object], vulhub: dict[str, int]) -> str:
     return "\n".join(lines) + "\n"
 
 
-def render_jdk25_readme(jdk25: dict[str, object], vulhub: dict[str, int]) -> str:
-    bf = jdk25["beefile"]
-    assert isinstance(bf, dict)
+def render_primary_readme(jdk25: dict[str, object], bf: dict[str, str], vulhub: dict[str, int]) -> str:
     pkg = bf["name"]
     jar = bf["source"]
     lines: list[str] = []
@@ -626,13 +627,15 @@ def main() -> int:
 
     backports = [extract_backport(t) for t in BACKPORT_TRACKS]
     jdk25 = extract_jdk25()
+    primary_packages = [parse_beefile(name) for name in ("ohmyrasp-jdk21", "ohmyrasp-jdk25")]
     vulhub = extract_vulhub_counts()
     fp = extract_fp_summary()
 
     outputs: dict[pathlib.Path, str] = {
-        SHIRUDO_DIR / "README.md": render_top_readme(backports, jdk25, vulhub, fp),
-        SHIRUDO_DIR / "ohmyrasp-jdk25" / "README.md": render_jdk25_readme(jdk25, vulhub),
+        SHIRUDO_DIR / "README.md": render_top_readme(backports, jdk25, primary_packages, vulhub, fp),
     }
+    for bf in primary_packages:
+        outputs[SHIRUDO_DIR / bf["name"] / "README.md"] = render_primary_readme(jdk25, bf, vulhub)
     for b in backports:
         outputs[SHIRUDO_DIR / str(b["pkg"]) / "README.md"] = render_backport_readme(b, vulhub)
 

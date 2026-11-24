@@ -9,6 +9,9 @@ context (stack walking, request thread-locals, reflective inspection).
 The `agent-jdk25` module builds one JAR for **JDK 21 and 25** using the JDK 25 compiler with `--release 21`. Dedicated backport builds
 target older runtimes: `agent-java8` (release 8), `agent-java11`, `agent-java17`.
 
+Use `:agent-jdk25:jdk21Jars` to produce `build/jdk21/ohmyrasp-agent-jdk21.jar` and
+`build/jdk21/ohmyrasp-jdk21.jar` in the primary module. Each is a copy of its JDK 25 counterpart.
+
 ## Architecture: agent + daemon
 
 The agent does one job — **detect and (optionally) block** — and offloads

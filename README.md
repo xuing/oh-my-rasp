@@ -73,7 +73,10 @@ OhMyRASP ships ready-to-sign **[shirudo](https://github.com/shirudo-dev/shirudo)
 | `ohmyrasp-java8` | Java 8 (classfile `<= 52`) | `ohmyrasp-java8.jar` | `:agent-java8` |
 | `ohmyrasp-java11` | Java 11 (classfile `<= 55`) | `ohmyrasp-java11.jar` | `:agent-java11` |
 | `ohmyrasp-java17` | Java 17 & Java 21 (classfile `<= 61`) | `ohmyrasp-java17.jar` | `:agent-java17` |
+| `ohmyrasp-jdk21` | Java 21 (classfile `<= 65`) | `ohmyrasp-jdk21.jar` | `:agent-jdk25` |
 | `ohmyrasp-jdk25` | Java 21 & Java 25 (classfile `<= 65`) | `ohmyrasp-jdk25.jar` | `:agent-jdk25` |
+
+For JDK 21, download `ohmyrasp-agent-jdk21.jar` for the standard agent or `ohmyrasp-jdk21.jar` for Shirudo. Each is byte-for-byte identical to its JDK 25 counterpart.
 
 Each shirudo JAR embeds `META-INF/ohmyrasp-shirudo.properties` (`standalone=true`, `lock_config=true`, `mode=block`, `control=none`, `log=stderr`, `latency_sample=0`):
 
@@ -81,10 +84,10 @@ Each shirudo JAR embeds `META-INF/ohmyrasp-shirudo.properties` (`standalone=true
 - Ignores `/tmp/ohmyrasp-control.json` and hostile `OHMYRASP_MODE` / `OHMYRASP_CONTROL` overrides (`lock_config=true` is read strictly from the signed JAR).
 - Emits structured JSON detections directly to `stderr` without creating `/tmp/ohmyrasp-events.jsonl` or `hook_latency` noise.
 
-Build and sign all four `.bee` packages from source, or grab `ohmyrasp-shirudo-upatches-<version>.tar.gz` from [GitHub Releases](https://github.com/xuing/oh-my-rasp/releases):
+Build and sign all five `.bee` packages from source, or grab `ohmyrasp-shirudo-upatches-<version>.tar.gz` from [GitHub Releases](https://github.com/xuing/oh-my-rasp/releases):
 
 ```sh
-# Build & sign all 4 .bee packages with your operator ML-DSA-87 keys
+# Build & sign all 5 .bee packages with your operator ML-DSA-87 keys
 ./deploy/shirudo/build-all.sh 0.2.0 --keys-dir <keys>
 
 # Or build JARs only and run the real-JVM Temurin 8/11/17/21/25 smoke suite

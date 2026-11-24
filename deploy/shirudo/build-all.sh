@@ -61,7 +61,7 @@ fi
 
 root=$(CDPATH= cd -- "$(dirname "$0")" && pwd)
 
-for pkg in ohmyrasp-java8 ohmyrasp-java11 ohmyrasp-java17 ohmyrasp-jdk25; do
+for pkg in ohmyrasp-java8 ohmyrasp-java11 ohmyrasp-java17 ohmyrasp-jdk21 ohmyrasp-jdk25; do
 	echo "==> building $pkg (mode=$mode, jar_only=$jar_only)"
 	if [ "$jar_only" -eq 1 ]; then
 		"$root/$pkg/build.sh" --jar-only --mode "$mode"

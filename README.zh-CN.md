@@ -73,7 +73,10 @@ OhMyRASP 不在网络边界对 HTTP 报文做正则猜谜，而是直接把检�
 | `ohmyrasp-java8` | Java 8（classfile `<= 52`） | `ohmyrasp-java8.jar` | `:agent-java8` |
 | `ohmyrasp-java11` | Java 11（classfile `<= 55`） | `ohmyrasp-java11.jar` | `:agent-java11` |
 | `ohmyrasp-java17` | Java 17 与 Java 21（classfile `<= 61`） | `ohmyrasp-java17.jar` | `:agent-java17` |
+| `ohmyrasp-jdk21` | Java 21（classfile `<= 65`） | `ohmyrasp-jdk21.jar` | `:agent-jdk25` |
 | `ohmyrasp-jdk25` | Java 21 与 Java 25（classfile `<= 65`） | `ohmyrasp-jdk25.jar` | `:agent-jdk25` |
+
+JDK 21 的标准 Agent 下载名为 `ohmyrasp-agent-jdk21.jar`，Shirudo 包使用 `ohmyrasp-jdk21.jar`。两者分别与对应的 JDK 25 产物逐字节一致。
 
 该系列包内置 `META-INF/ohmyrasp-shirudo.properties`（`standalone=true`、`lock_config=true`、`mode=block`、`control=none`、`log=stderr`、`latency_sample=0`）：
 
@@ -84,7 +87,7 @@ OhMyRASP 不在网络边界对 HTTP 报文做正则猜谜，而是直接把检�
 你可以从 [GitHub Releases](https://github.com/xuing/oh-my-rasp/releases) 直接下载预构建的 `ohmyrasp-shirudo-upatches-<version>.tar.gz` 签名发布，或在本地一键构建并运行实机容器冒烟测试：
 
 ```sh
-# 使用 Operator 的 ML-DSA-87 私钥构建并签名全部 4 个 .bee 包
+# 使用 Operator 的 ML-DSA-87 私钥构建并签名全部 5 个 .bee 包
 ./deploy/shirudo/build-all.sh 0.2.0 --keys-dir <keys>
 
 # 或仅构建 JAR 并运行 Beefile 校验与 Temurin 8/11/17/21/25 容器冒烟测试

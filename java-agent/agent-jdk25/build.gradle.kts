@@ -224,8 +224,16 @@ val verifyShirudoUpatchJar = tasks.register("verifyShirudoUpatchJar") {
     }
 }
 
+val jdk21Jars = tasks.register<Sync>("jdk21Jars") {
+    group = "build"
+    description = "Stages the shared agent and Shirudo JARs with their JDK 21 download names."
+    from(agentJar.flatMap { it.archiveFile }) { rename { "ohmyrasp-agent-jdk21.jar" } }
+    from(shirudoUpatchJar.flatMap { it.archiveFile }) { rename { "ohmyrasp-jdk21.jar" } }
+    into(layout.buildDirectory.dir("jdk21"))
+}
+
 tasks.assemble {
-    dependsOn(agentJar)
+    dependsOn(jdk21Jars)
 }
 
 tasks.check {
