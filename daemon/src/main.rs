@@ -28,7 +28,7 @@ use crate::cli::Cli;
 use crate::cloud::CloudClient;
 use crate::config::Config;
 use crate::console::AppState;
-use crate::control::{Controller, Mode};
+use crate::control::Controller;
 use crate::model::AgentEvent;
 use crate::store::EventStore;
 use crate::util::now_rfc3339;
@@ -45,12 +45,18 @@ async fn main() -> Result<()> {
 
     // Shared state.
     let store = Arc::new(EventStore::new(config.store.capacity));
-    let default_mode = Mode::parse(&config.control.default_mode).unwrap_or(Mode::Monitor);
+    let default_mode = config.control.mode()?;
     let controller = Arc::new(Controller::load_or_init(
         &config.control.path,
         default_mode,
     )?);
-    tracing::info!(mode = default_mode.as_str(), "control file initialised");
+    // Log the effective mode: an existing control file wins over default_mode.
+    tracing::info!(
+        mode = controller.snapshot().mode.as_str(),
+        default_mode = default_mode.as_str(),
+        path = %config.control.path.display(),
+        "control file loaded"
+    );
 
     // Cloud uplink (optional). Standalone when not usable.
     let client = if config.cloud.usable() {

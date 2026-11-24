@@ -19,6 +19,8 @@ from_start = false
 # JSON control file the daemon OWNS and the agent POLLS (mode + algorithm toggles).
 path = "/tmp/ohmyrasp-control.json"
 # Initial mode if no control file exists yet: "off" | "monitor" | "block".
+# An existing control file keeps its mode. Invalid values fail startup.
+# Env: OHMYRASP_DAEMON_DEFAULT_MODE; flag: --default-mode.
 default_mode = "monitor"
 
 [console]

@@ -10,13 +10,19 @@
 //! configuration: it tails the agent's default spool file and serves the
 //! console on `127.0.0.1:7070` with the cloud uplink disabled.
 
+use std::env::VarError;
 use std::net::SocketAddr;
 use std::path::{Path, PathBuf};
 
-use anyhow::{Context, Result};
+use anyhow::{Context, Result, anyhow};
 use serde::Deserialize;
 
 use crate::cli::Cli;
+use crate::control::Mode;
+
+/// Environment lookup used by [`Config::apply_env`]; `std::env::var` in
+/// production.
+type EnvLookup = dyn Fn(&str) -> std::result::Result<String, VarError>;
 
 /// Default spool file written by the Java agent's `JsonEventLogger`.
 pub const DEFAULT_SPOOL: &str = "/tmp/ohmyrasp-events.jsonl";
@@ -88,6 +94,20 @@ impl Default for ControlConfig {
             path: PathBuf::from(DEFAULT_CONTROL),
             default_mode: "monitor".into(),
         }
+    }
+}
+
+impl ControlConfig {
+    /// The parsed `default_mode`. A typo must fail startup: silently falling
+    /// back to `monitor` would leave an operator who asked for `block`
+    /// unprotected while the agent still logs detections.
+    pub fn mode(&self) -> Result<Mode> {
+        Mode::parse(&self.default_mode).ok_or_else(|| {
+            anyhow!(
+                "invalid control default_mode {:?}; expected off, monitor or block",
+                self.default_mode
+            )
+        })
     }
 }
 
@@ -190,13 +210,20 @@ impl Default for StoreConfig {
 impl Config {
     /// Build the effective configuration from file + env + CLI layers.
     pub fn load(cli: &Cli) -> Result<Self> {
+        Self::load_with_env(cli, &|key| std::env::var(key))
+    }
+
+    /// [`Config::load`] with an injectable environment lookup, so tests can
+    /// exercise the full layering without mutating the process environment.
+    fn load_with_env(cli: &Cli, env: &EnvLookup) -> Result<Self> {
         let mut config = match Self::config_path(cli) {
             Some(path) => Self::from_file(&path)
                 .with_context(|| format!("loading config file {}", path.display()))?,
             None => Self::default(),
         };
-        config.apply_env();
+        config.apply_env(env);
         config.apply_cli(cli);
+        config.control.mode()?;
         Ok(config)
     }
 
@@ -214,43 +241,53 @@ impl Config {
         Ok(config)
     }
 
-    fn apply_env(&mut self) {
-        if let Ok(v) = std::env::var("OHMYRASP_DAEMON_LOG") {
+    fn apply_env(&mut self, env: &EnvLookup) {
+        if let Ok(v) = env("OHMYRASP_DAEMON_LOG") {
             self.log.level = v;
         }
-        if let Ok(v) = std::env::var("OHMYRASP_DAEMON_SPOOL_PATH") {
+        if let Ok(v) = env("OHMYRASP_DAEMON_SPOOL_PATH") {
             self.spool.path = v.into();
         }
-        if let Ok(v) = std::env::var("OHMYRASP_DAEMON_CONTROL_PATH") {
+        if let Ok(v) = env("OHMYRASP_DAEMON_CONTROL_PATH") {
             self.control.path = v.into();
         }
-        if let Ok(v) = std::env::var("OHMYRASP_DAEMON_CONSOLE_BIND")
+        // Unlike the other keys, a non-UTF-8 value is kept (lossily) rather
+        // than skipped, so validation rejects it instead of silently keeping
+        // the built-in `monitor`.
+        match env("OHMYRASP_DAEMON_DEFAULT_MODE") {
+            Ok(v) => self.control.default_mode = v,
+            Err(VarError::NotUnicode(raw)) => {
+                self.control.default_mode = raw.to_string_lossy().into_owned();
+            }
+            Err(VarError::NotPresent) => {}
+        }
+        if let Ok(v) = env("OHMYRASP_DAEMON_CONSOLE_BIND")
             && let Ok(addr) = v.parse()
         {
             self.console.bind = addr;
         }
-        if let Ok(v) = std::env::var("OHMYRASP_DAEMON_CLOUD_ENABLED") {
+        if let Ok(v) = env("OHMYRASP_DAEMON_CLOUD_ENABLED") {
             self.cloud.enabled = matches!(
                 v.trim().to_ascii_lowercase().as_str(),
                 "1" | "true" | "yes" | "on"
             );
         }
-        if let Ok(v) = std::env::var("OHMYRASP_BACKEND_URL") {
+        if let Ok(v) = env("OHMYRASP_BACKEND_URL") {
             self.cloud.backend_url = v;
         }
-        if let Ok(v) = std::env::var("OHMYRASP_APP_ID") {
+        if let Ok(v) = env("OHMYRASP_APP_ID") {
             self.cloud.app_id = v;
         }
-        if let Ok(v) = std::env::var("OHMYRASP_APP_SECRET") {
+        if let Ok(v) = env("OHMYRASP_APP_SECRET") {
             self.cloud.app_secret = v;
         }
-        if let Ok(v) = std::env::var("OHMYRASP_ENVIRONMENT_ID") {
+        if let Ok(v) = env("OHMYRASP_ENVIRONMENT_ID") {
             self.cloud.environment_id = v;
         }
-        if let Ok(v) = std::env::var("OHMYRASP_HOSTNAME") {
+        if let Ok(v) = env("OHMYRASP_HOSTNAME") {
             self.cloud.hostname = v;
         }
-        if let Ok(v) = std::env::var("OHMYRASP_VERSION") {
+        if let Ok(v) = env("OHMYRASP_VERSION") {
             self.cloud.version = v;
         }
     }
@@ -261,6 +298,9 @@ impl Config {
         }
         if let Some(v) = &cli.control {
             self.control.path = v.clone();
+        }
+        if let Some(v) = &cli.default_mode {
+            self.control.default_mode = v.clone();
         }
         if let Some(v) = cli.console_bind {
             self.console.bind = v;
@@ -290,4 +330,101 @@ pub fn hostname() -> String {
                 .filter(|h| !h.is_empty())
         })
         .unwrap_or_else(|| "unknown".into())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use clap::Parser;
+
+    fn config_from_args(args: &[&str]) -> Config {
+        let cli =
+            Cli::try_parse_from(std::iter::once("ohmyrasp-daemon").chain(args.iter().copied()))
+                .expect("valid args");
+        let mut config = Config::default();
+        config.apply_cli(&cli);
+        config
+    }
+
+    fn load(args: &[&str], env: &[(&str, &str)]) -> Result<Config> {
+        let cli =
+            Cli::try_parse_from(std::iter::once("ohmyrasp-daemon").chain(args.iter().copied()))
+                .expect("valid args");
+        let env: Vec<(String, String)> = env
+            .iter()
+            .map(|(k, v)| (k.to_string(), v.to_string()))
+            .collect();
+        Config::load_with_env(&cli, &move |key| {
+            env.iter()
+                .find(|(k, _)| k == key)
+                .map(|(_, v)| v.clone())
+                .ok_or(VarError::NotPresent)
+        })
+    }
+
+    const MODE_ENV: &str = "OHMYRASP_DAEMON_DEFAULT_MODE";
+
+    #[test]
+    fn env_default_mode_is_applied() {
+        let config = load(&[], &[(MODE_ENV, "block")]).unwrap();
+        assert_eq!(config.control.mode().unwrap(), Mode::Block);
+    }
+
+    #[test]
+    fn cli_default_mode_beats_env() {
+        let config = load(&["--default-mode", "block"], &[(MODE_ENV, "off")]).unwrap();
+        assert_eq!(config.control.mode().unwrap(), Mode::Block);
+        // A valid flag also rescues an unusable env value.
+        let config = load(&["--default-mode", "block"], &[(MODE_ENV, "")]).unwrap();
+        assert_eq!(config.control.mode().unwrap(), Mode::Block);
+    }
+
+    #[test]
+    fn load_rejects_invalid_env_default_mode() {
+        for bad in ["", "  ", "blcok"] {
+            let err = load(&[], &[(MODE_ENV, bad)]).unwrap_err().to_string();
+            assert!(err.contains("default_mode"), "{bad:?}: {err}");
+        }
+    }
+
+    #[test]
+    fn non_utf8_env_default_mode_is_rejected() {
+        use std::os::unix::ffi::OsStringExt;
+        let cli = Cli::try_parse_from(["ohmyrasp-daemon"]).unwrap();
+        let err = Config::load_with_env(&cli, &|key| {
+            if key == MODE_ENV {
+                Err(VarError::NotUnicode(std::ffi::OsString::from_vec(
+                    b"bl\xffck".to_vec(),
+                )))
+            } else {
+                Err(VarError::NotPresent)
+            }
+        })
+        .unwrap_err();
+        assert!(err.to_string().contains("default_mode"), "{err}");
+    }
+
+    #[test]
+    fn default_mode_is_monitor() {
+        assert_eq!(Config::default().control.mode().unwrap(), Mode::Monitor);
+    }
+
+    #[test]
+    fn cli_default_mode_overrides_builtin() {
+        let config = config_from_args(&["--default-mode", "block"]);
+        assert_eq!(config.control.mode().unwrap(), Mode::Block);
+    }
+
+    #[test]
+    fn invalid_default_mode_is_rejected() {
+        let config = config_from_args(&["--default-mode", "blcok"]);
+        let err = config.control.mode().unwrap_err().to_string();
+        assert!(err.contains("blcok"), "{err}");
+    }
+
+    #[test]
+    fn toml_default_mode_is_read() {
+        let config: Config = toml::from_str("[control]\ndefault_mode = \"off\"\n").unwrap();
+        assert_eq!(config.control.mode().unwrap(), Mode::Off);
+    }
 }

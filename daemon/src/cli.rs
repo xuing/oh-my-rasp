@@ -22,6 +22,11 @@ pub struct Cli {
     #[arg(long, value_name = "FILE")]
     pub control: Option<PathBuf>,
 
+    /// Mode written to the control file when none exists yet: off, monitor or
+    /// block (default monitor). An existing control file keeps its mode.
+    #[arg(long, value_name = "MODE")]
+    pub default_mode: Option<String>,
+
     /// Override the console bind address (e.g. 127.0.0.1:7070).
     #[arg(long, value_name = "ADDR")]
     pub console_bind: Option<SocketAddr>,

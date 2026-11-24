@@ -6,9 +6,14 @@
 # business-latency panel (async + telemetry on), and live mode switching from
 # the daemon console.
 #
-#   docker compose -f docker-compose.daemon.yml up -d --build
-#   open http://localhost:7070            # daemon console
-#   curl http://localhost:18090/          # benign traffic → latency panel
+#   docker compose -f docker-compose.daemon.yml up -d --build --wait   # waits for /rasp/health
+#   curl -i -G --data-urlencode "value=' OR '1'='1" "http://localhost:18090/rasp/sql"
+#   curl -s "http://localhost:7070/api/events?limit=5"  # or open http://localhost:7070 in a browser
+#   curl http://localhost:18090/rasp/ui                 # testbed UI & latency traffic
+#
+# The daemon owns the control file, so its --default-mode (block here) is what
+# the agent enforces on a fresh volume; it overrides -Dohmyrasp.block. Mode
+# changes made in the console persist in the volume until `down -v`.
 #
 name: ohmyrasp-daemon-demo
 
@@ -37,6 +42,21 @@ services:
         -Dohmyrasp.block=true
     volumes:
       - daemon-shared:/opt/ohmyrasp/shared
+    # Lets `up --wait` return only once Tomcat serves requests. The image has
+    # no curl, so probe with bash's /dev/tcp and require a 200 status line.
+    # Send a User-Agent: in block mode the agent's request_unusual rule
+    # redirects requests that lack one. No start_interval: it needs Docker 25+.
+    healthcheck:
+      test:
+        - CMD
+        - bash
+        - -c
+        - >-
+          exec 3<>/dev/tcp/127.0.0.1/8080 && printf 'GET /rasp/health HTTP/1.0\r\nHost: localhost\r\nUser-Agent: compose-healthcheck\r\n\r\n' >&3 && head -n1 <&3 | grep -q '^HTTP/1\.[01] 200 '
+      interval: 5s
+      timeout: 5s
+      retries: 3
+      start_period: 120s
 
   daemon:
     build:
@@ -47,6 +67,7 @@ services:
     command:
       - --spool=/opt/ohmyrasp/shared/events.jsonl
       - --control=/opt/ohmyrasp/shared/control.json
+      - --default-mode=block
       - --console-bind=0.0.0.0:7070
       - --from-start
     ports:
