@@ -10,7 +10,7 @@ Writes:
   - deploy/shirudo/ohmyrasp-jdk25/README.md
 
 Usage:
-  python3 deploy/shirudo/gen-readmes.py          # regenerate all 6 READMEs
+  python3 deploy/shirudo/gen-readmes.py          # regenerate the top-level and per-package READMEs
   python3 deploy/shirudo/gen-readmes.py --check  # exit non-zero if any file is stale
 """
 from __future__ import annotations
@@ -372,16 +372,16 @@ def render_top_readme(
     w("")
     w("## Build")
     w("")
-    w("Build and sign all five `.bee` packages into the current working directory:")
+    w("Build and sign all `.bee` packages into the current working directory:")
     w("")
     w("```sh")
-    w("./deploy/shirudo/build-all.sh 0.2.0 --keys-dir <keys>")
+    w('./deploy/shirudo/build-all.sh "<version>" --keys-dir "<keys>"')
     w("```")
     w("")
     w("Build a single package (for example `ohmyrasp-java17`):")
     w("")
     w("```sh")
-    w("./deploy/shirudo/ohmyrasp-java17/build.sh 0.2.0 --keys-dir <keys>")
+    w('./deploy/shirudo/ohmyrasp-java17/build.sh "<version>" --keys-dir "<keys>"')
     w("```")
     w("")
     w("Stage only the `.jar` artifacts without invoking `shirudo bpm build` (for example before verification or smoke tests without operator keys):")
@@ -390,7 +390,7 @@ def render_top_readme(
     w("./deploy/shirudo/build-all.sh --jar-only")
     w("```")
     w("")
-    w("Both `build.sh` and `build-all.sh` accept `--mode block|monitor` (default: `block`) and honor `SHIRUDO_BIN` when `shirudo` is not on `PATH`. If `gradle` is not installed locally, the build scripts invoke `gradle:9.8.1-jdk25` via Docker under the caller's UID/GID.")
+    w("Both `build.sh` and `build-all.sh` accept `--mode block|monitor` (default: `block`) and honor `SHIRUDO_BIN` when `shirudo` is not on `PATH`. If `gradle` is not installed locally, the build scripts run the Gradle Docker image pinned in each `build.sh` under the caller's UID/GID.")
     w("")
     w("## Load, Unload, and How `shirudo` Attaches the Agent")
     w("")

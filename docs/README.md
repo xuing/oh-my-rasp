@@ -14,8 +14,8 @@ Current system documentation, operational runbooks, development ledgers, and gen
 |---|---|
 | Platform overview & data flow | [Architecture](architecture.md) |
 | Runtime detection pipeline & limits | [Detection](detection.md) |
-| Java agent (`java-agent/`), hooks & 4 JDK tracks | [Agent](agent.md) |
-| React 19 control-plane frontend (`console/`) | [Console](console.md) |
+| Java agent (`java-agent/`), hooks & JDK tracks | [Agent](agent.md) |
+| React control-plane frontend (`console/`) | [Console](console.md) |
 | Go control-plane REST API (`api/`) | [API Reference](api-reference.md) |
 
 ## Operations

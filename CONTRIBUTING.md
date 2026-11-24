@@ -25,7 +25,7 @@ This guide covers the repository layout, supported toolchains, component test su
 
 ```text
 api/              Go control-plane API, migrations, OpenAPI contract, generated bindings
-console/          React 19 + Vite 8 control-plane console (TypeScript 6, Tailwind CSS 4)
+console/          React + Vite control-plane console (TypeScript, Tailwind CSS)
 java-agent/       Java agent (agent-jdk25 primary + agent-java8/11/17 backports) and Tomcat playgrounds
 daemon/           Rust host daemon (ohmyrasp-daemon)
 deploy/           Helm chart, observability assets, release/smoke scripts, and shirudo upatches (deploy/shirudo/)
@@ -42,11 +42,11 @@ All components can be built and tested in containers matching CI without install
 
 | Component | Tool | Version | Source of truth |
 |---|---|---|---|
-| API | Go | `1.26.7` (`1.25+` with `GOTOOLCHAIN=auto`; container uses `golang:1.27.4`) | `api/go.mod`, `api/Dockerfile` |
-| Console | Node.js & npm | `>=26` | `console/package.json`, `console/Dockerfile` |
+| API | Go | version pinned in `api/go.mod` (set `GOTOOLCHAIN=auto` if the host Go is older); container image pinned in `api/Dockerfile` | `api/go.mod`, `api/Dockerfile` |
+| Console | Node.js & npm | range in `console/package.json` (`engines.node`) | `console/package.json`, `console/Dockerfile` |
 | Java agent | JDK | `25` (primary); `8`, `11`, `17` for backports | `java-agent/Dockerfile*` |
-| Java agent | Gradle | `9.9.2` (`gradle:9.9.2-jdk25`) | `java-agent/Dockerfile` |
-| Daemon | Rust / Cargo | `1.100.0` (edition 2024) | `daemon/rust-toolchain.toml`, `daemon/Cargo.toml` |
+| Java agent | Gradle | Gradle on JDK 25 (builder image pinned in `java-agent/Dockerfile`) | `java-agent/Dockerfile` |
+| Daemon | Rust / Cargo | toolchain pinned in `daemon/rust-toolchain.toml` (edition 2024 in `daemon/Cargo.toml`) | `daemon/rust-toolchain.toml`, `daemon/Cargo.toml` |
 
 `docs/getting-started.md` documents verified local installation steps on Ubuntu.
 
@@ -56,10 +56,11 @@ All components can be built and tested in containers matching CI without install
 
 ```bash
 # Via Docker (no local Go required):
-docker run --rm -v "$PWD/api":/src -w /src golang:1.27.4 go generate ./...
-docker run --rm -v "$PWD/api":/src -w /src golang:1.27.4 go test ./...
+GO_IMAGE="$(awk '$1 == "FROM" && $2 ~ /^golang:/ { print $2; exit }' api/Dockerfile)"
+docker run --rm -v "$PWD/api":/src -w /src "$GO_IMAGE" go generate ./...
+docker run --rm -v "$PWD/api":/src -w /src "$GO_IMAGE" go test ./...
 
-# Or with local Go 1.26.7+:
+# Or with a local Go matching api/go.mod:
 cd api
 go generate ./...
 go test ./...
@@ -88,8 +89,9 @@ npm run test:e2e    # playwright test
 Run unit tests and `verifyShirudoUpatchJar` via Docker (matching `.github/workflows/agent.yml`):
 
 ```bash
+GRADLE_IMAGE="$(awk '$1 == "FROM" && $2 ~ /^gradle:/ { print $2; exit }' java-agent/Dockerfile)"
 docker run --rm -u "$(id -u):$(id -g)" -e GRADLE_USER_HOME=/tmp/gradle-home \
-  -v "$PWD/java-agent":/workspace -w /workspace gradle:9.9.2-jdk25 \
+  -v "$PWD/java-agent":/workspace -w /workspace "$GRADLE_IMAGE" \
   gradle --no-daemon clean check :agent-jdk25:agentJar \
   :agent-java8:shirudoUpatchJar :agent-java11:shirudoUpatchJar \
   :agent-java17:shirudoUpatchJar :agent-jdk25:shirudoUpatchJar
@@ -131,27 +133,31 @@ cargo build --locked --release
 
 ## Regenerating generated docs
 
-Six Markdown files are derived from source and checked in CI. Do not edit them by hand.
+These Markdown files (and the README "By the numbers" regions) are derived from source. Do not edit them by hand. `python3 scripts/check-docs.py` runs the `--check` mode of the detection-coverage and Shirudo README generators in CI and fails when they are stale; the false-positive report is regenerated with its script.
 
-**1. Detection coverage doc** (derived from `HookRegistry.java`, `DetectorEngine.java`, and `acceptance-vulhub-*.sh`):
+Hand-written docs must not restate release versions, pinned toolchain or image versions, or code-base counts; link to the fact's home instead. The rules and the full list of checks are in [AGENTS.md](AGENTS.md#documentation).
 
-```bash
-cd java-agent
-python3 scripts/gen-detection-coverage.py          # writes java-agent/docs/DETECTION-COVERAGE.md
-python3 scripts/gen-detection-coverage.py --check  # fails if stale
-```
+Run them in this order: the coverage generator and the Shirudo README generator both read the false-positive report.
 
-**2. False-positive report** (runs `scripts/fp-harness/FpReport.java` against `DetectorEngine`):
+**1. False-positive report** (runs `scripts/fp-harness/FpReport.java` against `DetectorEngine`):
 
 ```bash
 cd java-agent
 bash scripts/run-fp-report.sh                      # writes java-agent/docs/FALSE-POSITIVE-REPORT.md
 ```
 
+**2. Detection coverage doc** (derived from `HookRegistry.java`, `DetectorEngine.java`, and `acceptance-vulhub-*.sh`):
+
+```bash
+cd java-agent
+python3 scripts/gen-detection-coverage.py          # writes java-agent/docs/DETECTION-COVERAGE.md and the README "By the numbers" regions
+python3 scripts/gen-detection-coverage.py --check  # fails if stale
+```
+
 **3. Shirudo upatch READMEs** (derived from `java-agent/` sources, `Beefile`s, and `FALSE-POSITIVE-REPORT.md`):
 
 ```bash
-python3 deploy/shirudo/gen-readmes.py              # writes deploy/shirudo/README.md + 4 track READMEs
+python3 deploy/shirudo/gen-readmes.py              # writes deploy/shirudo/README.md and the per-package READMEs
 python3 deploy/shirudo/gen-readmes.py --check      # fails if stale (also run by verify-shirudo-upatch.sh)
 ```
 

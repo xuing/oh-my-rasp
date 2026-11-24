@@ -1,22 +1,22 @@
 # Console
 
-The `console/` directory contains the OhMyRasp control-plane web frontend. It is a single-page React 19 application served same-origin with the Go control-plane API.
+The `console/` directory contains the OhMyRasp control-plane web frontend. It is a single-page React application served same-origin with the Go control-plane API.
 
 ## Technology Stack
 
-Verified against `console/package.json`:
+Versions are pinned in `console/package.json` and `console/Dockerfile`:
 
-| Layer | Package / Version |
+| Layer | Package |
 |---|---|
-| Runtime requirement | Node.js `>=26` (`node:26.13.1-alpine` in `console/Dockerfile`) |
-| UI framework | `react` `^19.3.1`, `react-dom` `^19.3.1` |
-| Type checking | TypeScript 6 (`typescript` `npm:@typescript/typescript6@^6.0.2`) and `@typescript/native` (`npm:typescript@^7.0.2`) |
-| Build tool | `vite` `^8.3.8` (`@vitejs/plugin-react` `^6.3.0`) |
-| Routing | `@tanstack/react-router` `^1.170.46` |
-| Data fetching | `@tanstack/react-query` `^5.108.4` |
-| Styling | `tailwindcss` `^4.3.5`, `@tailwindcss/vite` `^4.3.5` (CSS-first `@theme` in `src/styles.css`) |
-| Animation & icons | `motion` `^14.14.0`, `lucide-react` `^1.79.0` |
-| E2E tests | `@playwright/test` `^1.65.1` |
+| Runtime requirement | Node.js (range in `engines.node`; Node Alpine image tag in `console/Dockerfile`) |
+| UI framework | `react`, `react-dom` |
+| Type checking | `typescript` and `@typescript/native` (aliases defined in `package.json`) |
+| Build tool | `vite` (`@vitejs/plugin-react`) |
+| Routing | `@tanstack/react-router` |
+| Data fetching | `@tanstack/react-query` |
+| Styling | `tailwindcss`, `@tailwindcss/vite` (CSS-first `@theme` in `src/styles.css`) |
+| Animation & icons | `motion`, `lucide-react` |
+| E2E tests | `@playwright/test` |
 | i18n | Built-in `useT()` / `translate()` (`en`, `zh`, `ja`) verified by `scripts/i18n-coverage.ts` |
 
 ## Navigation, Scoping, and Error Handling
@@ -47,7 +47,7 @@ Legacy URL paths (`/dashboard`, `/events`, `/agents`, `/dependencies`, `/safe/de
 
 ## Local Development
 
-Run from `console/` (Node.js `>=26` required):
+Run from `console/` (Node.js range in `engines.node` of `console/package.json`):
 
 ```bash
 npm ci
@@ -99,7 +99,7 @@ npm run test:e2e:live
 
 ## Container and Nginx Proxy
 
-`console/Dockerfile` builds `dist/` with `node:26.13.1-alpine` and serves it from `nginx:1.31.10-alpine` on port `8080` (`WEB_PORT=18091` in `docker-compose.yml`). `console/nginx.conf`:
+`console/Dockerfile` builds `dist/` with a Node Alpine image and serves it from an nginx Alpine image (tags in `console/Dockerfile`) on port `8080` (`WEB_PORT=18091` in `docker-compose.yml`). `console/nginx.conf`:
 
 - Proxies `/api/` to `http://api:8080/api/` with `Host`, `X-Forwarded-For`, and `X-Forwarded-Proto`.
 - Serves `/assets/` with `Cache-Control: public, immutable` (`expires 1y`) and falls back SPA routes to `/index.html`.

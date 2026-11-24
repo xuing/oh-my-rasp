@@ -153,7 +153,7 @@ Log in with an admin account and verify applications, Agents, policies, events, 
 
 ## Compose Volume Notes
 
-- `postgres:19.0` mounts `postgres-data` at `/var/lib/postgresql` (not `/var/lib/postgresql/data`) in [docker-compose.yml](../../docker-compose.yml); PostgreSQL 19 stores its cluster under `19/docker` inside that volume. For existing PostgreSQL 18 installations, follow the [18 to 19 migration](./upgrade-downgrade.md#postgresql-18-to-19) before starting the new stack.
+- The `postgres` service mounts `postgres-data` at `/var/lib/postgresql` (not `/var/lib/postgresql/data`) in [docker-compose.yml](../../docker-compose.yml); the image stores its cluster under a per-major subdirectory (`<major>/docker`) inside that volume. For existing PostgreSQL 18 installations, follow the [18 to 19 migration](./upgrade-downgrade.md#postgresql-18-to-19) before starting the new stack.
 - Prometheus reads `deploy/prometheus/prometheus.yml`, and alert rules, Grafana dashboards, and Alertmanager configs are mounted from `deploy/helm/ohmyrasp-control/files/`. Keep those host files readable by container users (`0755` directories, `0644` files):
 
 ```bash

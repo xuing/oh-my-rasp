@@ -4,26 +4,28 @@ OhMyRASP instruments running JVMs (JDK 8, 11, 17, 21, and 25) via a `-javaagent`
 
 ## Runtime tracks and artifacts
 
-Four Gradle subprojects build self-contained fat JARs with ASM (`org.ow2.asm:asm:9.11.1` and `asm-commons:9.11.1`) relocated under `io.ohmyrasp.agent.shaded.asm` via ShadowJar so the agent does not collide with ASM copies bundled by instrumented applications (such as Spring CGLIB, Hibernate, or Struts2).
+Each Gradle subproject below builds a self-contained fat JAR with ASM (`asm` and `asm-commons`, version in each `agent-*/build.gradle.kts`) relocated under `io.ohmyrasp.agent.shaded.asm` via ShadowJar so the agent does not collide with ASM copies bundled by instrumented applications (such as Spring CGLIB, Hibernate, or Struts2).
 
 | Track | Target JVMs | Standard agent task & JAR | Shirudo standalone task & JAR |
 |---|---|---|---|
-| `agent-jdk25` (primary) | Java 25 (`<= 69`) | `:agent-jdk25:agentJar`<br>`java-agent/agent-jdk25/build/libs/ohmyrasp-agent.jar` | `:agent-jdk25:shirudoUpatchJar`<br>`java-agent/agent-jdk25/build/libs/ohmyrasp-jdk25.jar` |
+| `agent-jdk25` (primary) | Java 21 and 25 (`<= 65`) | `:agent-jdk25:agentJar`<br>`java-agent/agent-jdk25/build/libs/ohmyrasp-agent.jar` | `:agent-jdk25:shirudoUpatchJar`<br>`java-agent/agent-jdk25/build/libs/ohmyrasp-jdk25.jar` |
 | `agent-java17` | Java 17 and 21 (`<= 61`) | `:agent-java17:agentJava17Jar`<br>`java-agent/agent-java17/build/libs/ohmyrasp-agent-java17.jar` | `:agent-java17:shirudoUpatchJar`<br>`java-agent/agent-java17/build/libs/ohmyrasp-java17.jar` |
 | `agent-java11` | Java 11 (`<= 55`) | `:agent-java11:agentJava11Jar`<br>`java-agent/agent-java11/build/libs/ohmyrasp-agent-java11.jar` | `:agent-java11:shirudoUpatchJar`<br>`java-agent/agent-java11/build/libs/ohmyrasp-java11.jar` |
 | `agent-java8` | Java 8 (`<= 52`) | `:agent-java8:agentJava8Jar`<br>`java-agent/agent-java8/build/libs/ohmyrasp-agent-java8.jar` | `:agent-java8:shirudoUpatchJar`<br>`java-agent/agent-java8/build/libs/ohmyrasp-java8.jar` |
 
-All four tracks compile with `JavaLanguageVersion.of(25)` using `options.release` set to `25`, `17`, `11`, or `8` respectively. In [`agent-java8/build.gradle.kts`](../java-agent/agent-java8/build.gradle.kts), `agentJava8Jar` sets `Boot-Class-Path: ohmyrasp-agent-java8.jar`, while `shirudoUpatchJar` omits `Boot-Class-Path` so OpenJDK 8 bootstrap search works directly with the sealed `/run/shirudo-java/ohmyrasp-java8.jar` path under the 1024-byte `JAVA_TOOL_OPTIONS` limit.
+All tracks compile with `JavaLanguageVersion.of(25)` using `options.release` set to `21` (`agent-jdk25`, which serves JDK 21 and 25), `17`, `11`, or `8` respectively. In [`agent-java8/build.gradle.kts`](../java-agent/agent-java8/build.gradle.kts), `agentJava8Jar` sets `Boot-Class-Path: ohmyrasp-agent-java8.jar`, while `shirudoUpatchJar` omits `Boot-Class-Path` so OpenJDK 8 bootstrap search works directly with the sealed `/run/shirudo-java/ohmyrasp-java8.jar` path under the 1024-byte `JAVA_TOOL_OPTIONS` limit.
 
-Gradle and the JDK 25 build image (`gradle:9.9.2-jdk25` in [`java-agent/Dockerfile`](../java-agent/Dockerfile)) are pinned for reproducible builds:
+Gradle and the JDK 25 build image (pinned in [`java-agent/Dockerfile`](../java-agent/Dockerfile)) are pinned for reproducible builds. Resolve the image from the Dockerfile the same way CI does:
 
 ```bash
+GRADLE_IMAGE="$(awk '$1 == "FROM" && $2 ~ /^gradle:/ { print $2; exit }' java-agent/Dockerfile)"
+
 # Build standard primary agent + run unit tests and checks
-docker run --rm -v "$PWD/java-agent":/workspace -w /workspace gradle:9.9.2-jdk25 \
+docker run --rm -v "$PWD/java-agent":/workspace -w /workspace "$GRADLE_IMAGE" \
   gradle --no-daemon clean check :agent-jdk25:agentJar
 
-# Build and verify all 4 Shirudo standalone upatch JARs
-docker run --rm -v "$PWD/java-agent":/workspace -w /workspace gradle:9.9.2-jdk25 \
+# Build and verify every Shirudo standalone upatch JAR
+docker run --rm -v "$PWD/java-agent":/workspace -w /workspace "$GRADLE_IMAGE" \
   gradle --no-daemon \
   :agent-java8:verifyShirudoUpatchJar \
   :agent-java11:verifyShirudoUpatchJar \
@@ -41,8 +43,8 @@ Under `java-agent/agent-jdk25/src/main/java/io/ohmyrasp/agent/`:
 
 - **`OhMyRaspAgent`:** `premain` / `agentmain` entry point. Appends the agent JAR to the bootstrap classloader search (`Instrumentation.appendToBootstrapClassLoaderSearch`) and reflectively invokes `BootstrapAgent.start` on the bootstrap loader (`ClassLoader == null`) so JDK classes like `ProcessBuilder` and `Base64$Decoder` can resolve hook classes directly.
 - **`BootstrapAgent`:** Wires `AgentRuntime`'s policy installer callback (`AgentPolicy.parse`), starts `AgentRuntime`, optionally starts `ControlPlaneClient` when `cloud_direct=true` is enabled and not suppressed by `standalone`/`lock_config`, installs `DeserializationGuard`, registers `OhMyRaspTransformer`, and retransforms already-loaded target classes.
-- **`asm/` (`HookRegistry`, `OhMyRaspTransformer`, `HookClassVisitor`, `SqlCallsiteClassVisitor`, `*HookModule`):** `HookRegistry.defaults()` registers **28** `HookModule` implementations. `OhMyRaspTransformer` skips agent/ASM/reflection internals and non-target JDK classes (`isJdkClass(name) && !registry.isDirectTarget(name)`), expanding frames with `ClassReader.EXPAND_FRAMES` and rewriting call sites with `COMPUTE_MAXS`.
-- **`detect/DetectorEngine`:** Exposes **54** `detect*` methods implementing signature classification, request-parameter substring correlation (`RequestContext.hasParameterIn`), `StackWalker` frame inspection, six-form path-confusion decoding, SQL syntax analysis, and CVE-2026-114938 Base64 tail-underflow checks. See [`detection.md`](detection.md) and [`DETECTION-COVERAGE.md`](../java-agent/docs/DETECTION-COVERAGE.md).
+- **`asm/` (`HookRegistry`, `OhMyRaspTransformer`, `HookClassVisitor`, `SqlCallsiteClassVisitor`, `*HookModule`):** `HookRegistry.defaults()` registers every `HookModule` implementation (see [`DETECTION-COVERAGE.md`](../java-agent/docs/DETECTION-COVERAGE.md) for the generated module table). `OhMyRaspTransformer` skips agent/ASM/reflection internals and non-target JDK classes (`isJdkClass(name) && !registry.isDirectTarget(name)`), expanding frames with `ClassReader.EXPAND_FRAMES` and rewriting call sites with `COMPUTE_MAXS`.
+- **`detect/DetectorEngine`:** Exposes the `detect*` methods implementing signature classification, request-parameter substring correlation (`RequestContext.hasParameterIn`), `StackWalker` frame inspection, six-form path-confusion decoding, SQL syntax analysis, and CVE-2026-114938 Base64 tail-underflow checks. See [`detection.md`](detection.md) and [`DETECTION-COVERAGE.md`](../java-agent/docs/DETECTION-COVERAGE.md).
 - **`hook/` (`OhMyRaspHooks`, `DeserializationGuard`, `OhMyRaspBlockException`):** Static hook entry points invoked by instrumented bytecode. Manages `ThreadLocal<RequestContext>`, evaluates `AgentPolicy`, applies `AgentRuntime` mode and per-algorithm switches, logs detections, sends HTTP redirects to `/rasp/blocked` when a servlet response is active, and throws `OhMyRaspBlockException` when blocking.
 - **`runtime/` (`AgentRuntime`, `DetectionMode`, `ShirudoDefaults`):** Holds the active `DetectionMode` (`off`, `monitor`, `block`), per-algorithm overrides, control-file poller (`ohmyrasp-control-poller` daemon thread), and baked `META-INF/ohmyrasp-shirudo.properties` loader.
 - **`log/JsonEventLogger`:** Emits NDJSON detection events and periodic `hook_latency` telemetry (`latency_us`) while redacting sensitive headers, sensitive parameters, and executable-source parameters. For file targets, a bounded `ArrayBlockingQueue` (capacity `max(256, ohmyrasp.log.queue)`, default `8192`) feeds a background daemon writer thread (`ohmyrasp-event-writer`) with a JVM shutdown drain hook. Events dropped under sustained saturation are counted in `droppedCount()`. Setting `ohmyrasp.log.sync=true` (`OHMYRASP_LOG_SYNC=true`) forces inline file writes and disables periodic latency sampling for deterministic CI and acceptance runs.
@@ -54,7 +56,7 @@ Under `java-agent/agent-jdk25/src/main/java/io/ohmyrasp/agent/`:
 Each backport track is self-contained under `java-agent/agent-java{8,11,17}/src/main/java/io/ohmyrasp/agent/java{8,11,17}/` with no shared runtime library dependency:
 
 - `OhMyRaspJava{8,11,17}Agent`: entry point (`premain`/`agentmain`) and transformer registration.
-- **24** `Java{8,11,17}*Transformer` classes covering **43** algorithm signatures.
+- `Java{8,11,17}*Transformer` classes covering the algorithm signatures listed in [`DETECTION-COVERAGE.md`](../java-agent/docs/DETECTION-COVERAGE.md).
 - `Java{8,11,17}RaspHooks` and `Java{8,11,17}RaspBlockException`: self-contained hook and detection logic.
 - `RaspRuntime`: mirrors `AgentRuntime` + `JsonEventLogger` using only the target JDK's APIs, including `META-INF/ohmyrasp-shirudo.properties` support, async file spooling, and `control.json` polling.
 
@@ -141,7 +143,7 @@ bash java-agent/scripts/acceptance-java11.sh    # Tomcat 10.1, 9
 bash java-agent/scripts/acceptance-java17.sh    # Tomcat 11, 10.1, 9
 bash java-agent/scripts/acceptance-java21.sh    # agent-java17 on Temurin 21 (Tomcat 11, 10, 9)
 
-# 136 Vulhub CVE replay scripts (individual per-CVE scripts)
+# Vulhub CVE replay scripts (individual per-CVE scripts)
 ls java-agent/scripts/acceptance-vulhub-*.sh
 
 # Regenerate coverage and false-positive reports

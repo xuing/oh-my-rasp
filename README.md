@@ -6,7 +6,7 @@ Self-hosted Java RASP built on ASM bytecode instrumentation, `StackWalker` call-
 [![Release](https://img.shields.io/github/v/release/xuing/oh-my-rasp?include_prereleases)](https://github.com/xuing/oh-my-rasp/releases)
 [![License](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
 [![Java agents](https://img.shields.io/badge/Java-8%20%7C%2011%20%7C%2017%20%7C%2025-ED8B00?logo=openjdk&logoColor=white)](java-agent/)
-[![Exploit scenarios](https://img.shields.io/badge/exploit_scenarios-136_verified-success)](docs/development/vulhub-coverage.md)
+[![Exploit scenarios](https://img.shields.io/badge/exploit_replay-Vulhub-success)](docs/development/vulhub-coverage.md)
 
 **Languages:** English | [简体中文](README.zh-CN.md)
 
@@ -42,24 +42,26 @@ OhMyRASP fits self-hosted Java services on JDK 8, 11, 17, 21, or 25 where you wa
 
 - **Signature-based detection, not bytecode taint tracking:** Sinks correlate arguments against `ThreadLocal<RequestContext>` request parameters via substring matching and inspect live call stacks. Arbitrary multi-hop string transformations or async executor boundaries without HTTP context are outside taint correlation unless covered by a stack or sink rule.
 - **JVM-process trust boundary:** A `-javaagent` runs inside the JVM it protects. `root` or the JVM-launching user can omit `-javaagent` or override environment variables unless you deploy signed shirudo JARs (`lock_config=true`) alongside kernel enforcement (such as shirudo BPF upatches).
-- **Pre-release status:** `v0.2.0-alpha.1` is an experimental pre-release. APIs, policy schemas, and packaging formats may change before `1.0`.
+- **Pre-release status:** OhMyRASP is experimental pre-1.0 software. APIs, policy schemas, and packaging formats may change before `1.0`.
 
 ## By the numbers
 
 Every hook, detector, and Vulhub replay script lives in this repository and runs in CI.
 
+<!-- BEGIN GENERATED metrics (java-agent/scripts/gen-detection-coverage.py) — do not edit between markers -->
 | Metric | Value | Source |
 |---|---|---|
 | Instrumented sink families | 28 ASM hook modules (`agent-jdk25`); 24 ASM transformers per backport (`java8`, `java11`, `java17`) | [DETECTION-COVERAGE.md](java-agent/docs/DETECTION-COVERAGE.md) |
-| Detection engine | 54 `DetectorEngine` capabilities, 43 verified algorithm signatures asserted end-to-end | [docs/detection.md](docs/detection.md) |
+| Detection engine | 54 `DetectorEngine` capabilities, 43 verified algorithm signatures asserted end-to-end | [DETECTION-COVERAGE.md](java-agent/docs/DETECTION-COVERAGE.md) |
 | Exploit replay suite | 136 scenarios across 53 [Vulhub](https://github.com/vulhub/vulhub) roots (130 CVEs tracked) | [vulhub-coverage.md](docs/development/vulhub-coverage.md) |
 | Benign corpus precision | `0 / 83` false positives across 14 categories | [FALSE-POSITIVE-REPORT.md](java-agent/docs/FALSE-POSITIVE-REPORT.md) |
 | Supported JVMs | Builds for JDK 8, 11, 17, and a shared JDK 21/25 build (`javax.servlet` & `jakarta.servlet`) | [docs/agent.md](docs/agent.md) |
+<!-- END GENERATED metrics -->
 
 **Verified CVEs and exploit classes blocked:**
 - **OpenJDK Base64 AVX-512 tail-underflow (Java2Shell / Java4Shell, CVE-2026-114938)** across JDK 8–25
 - **JNDI & Deserialization:** Log4Shell (CVE-2021-44228), Fastjson `autoType` and [1.2.83 `getResourceAsStream`](https://github.com/midisec/fastjson-1.2.83-gadget-rce), Shiro `rememberMe` (CVE-2016-4437), ActiveMQ OpenWire (CVE-2023-46604), XStream, WebLogic XMLDecoder
-- **Expression & Template RCE:** 19 Struts2 OGNL advisories (S2-001 through S2-067), Spring4Shell (CVE-2022-22965), Spring Cloud Gateway SpEL (CVE-2022-22947), GeoServer (CVE-2024-36401), DataEase (2024–2025)
+- **Expression & Template RCE:** Struts2 OGNL advisories (S2-001 and later), Spring4Shell (CVE-2022-22965), Spring Cloud Gateway SpEL (CVE-2022-22947), GeoServer (CVE-2024-36401), DataEase (2024–2025)
 - **Servlet, File & SQL:** Tomcat Ghostcat (CVE-2020-1938), Shiro/GlassFish/Jetty path confusion, standalone & driver-wide JDBC `Statement` SQLi
 
 ## How detection works
@@ -96,11 +98,11 @@ Each shirudo JAR embeds `META-INF/ohmyrasp-shirudo.properties` (`standalone=true
 - Ignores `/tmp/ohmyrasp-control.json` and hostile `OHMYRASP_MODE` / `OHMYRASP_CONTROL` overrides (`lock_config=true` is read strictly from the signed JAR).
 - Emits structured JSON detections directly to `stderr` without creating `/tmp/ohmyrasp-events.jsonl` or `hook_latency` noise.
 
-Build and sign all five `.bee` packages from source, or grab `ohmyrasp-shirudo-upatches-<version>.tar.gz` from [GitHub Releases](https://github.com/xuing/oh-my-rasp/releases):
+Build and sign all `.bee` packages from source, or grab `ohmyrasp-shirudo-upatches-<version>.tar.gz` from [GitHub Releases](https://github.com/xuing/oh-my-rasp/releases):
 
 ```sh
-# Build & sign all 5 .bee packages with your operator ML-DSA-87 keys
-./deploy/shirudo/build-all.sh 0.2.0 --keys-dir <keys>
+# Build & sign all .bee packages with your operator ML-DSA-87 keys
+./deploy/shirudo/build-all.sh "<version>" --keys-dir "<keys>"
 
 # Or build JARs only and run Beefile/JAR checks + Temurin 8/11/17/21/25 smoke tests
 ./deploy/shirudo/build-all.sh --jar-only
@@ -112,28 +114,26 @@ See [deploy/shirudo/README.md](deploy/shirudo/README.md) for `shirudo bpm instal
 
 ## Quick Start
 
-### Option A: Download pre-built artifacts (`v0.2.0-alpha.1`)
+### Option A: Download pre-built artifacts
 
-The `v0.2.0-alpha.1` release on [GitHub Releases](https://github.com/xuing/oh-my-rasp/releases) publishes **12 release assets** (later releases add JDK 21 builds; see the [release runbook](docs/runbooks/release.md)):
-
-- **Standard Java agents:** `ohmyrasp-agent-java8.jar`, `ohmyrasp-agent-java11.jar`, `ohmyrasp-agent-java17.jar`, `ohmyrasp-agent.jar`
-- **Shirudo standalone Java upatch JARs:** `ohmyrasp-java8.jar`, `ohmyrasp-java11.jar`, `ohmyrasp-java17.jar`, `ohmyrasp-jdk25.jar`
-- **Bundles & archives:** `ohmyrasp-shirudo-upatches-<version>.tar.gz`, `ohmyrasp-daemon-linux-amd64.tar.gz`, `ohmyrasp-control-<version>.tgz`, `SHA256SUMS.txt`
+Each release on [GitHub Releases](https://github.com/xuing/oh-my-rasp/releases) publishes the standard Java agent JARs, the standalone shirudo upatch JARs and Shirudo bundle, the Rust daemon tarball, the Helm chart archive, and `SHA256SUMS.txt`; the full asset list is in the [release runbook](docs/runbooks/release.md).
 
 Container images (`ghcr.io/xuing/control-api`, `ghcr.io/xuing/control-web`) and the OCI Helm chart (`oci://ghcr.io/xuing/charts/ohmyrasp-control`) are published alongside the release assets. Verify checksums and GitHub artifact attestations before deploying:
 
 ```bash
+VERSION="<version>"   # the release you downloaded, without the leading v
 sha256sum -c SHA256SUMS.txt
-gh attestation verify ohmyrasp-shirudo-upatches-<version>.tar.gz -R xuing/oh-my-rasp
-gh attestation verify ohmyrasp-control-<version>.tgz -R xuing/oh-my-rasp
+gh attestation verify "ohmyrasp-shirudo-upatches-${VERSION}.tar.gz" -R xuing/oh-my-rasp
+gh attestation verify "ohmyrasp-control-${VERSION}.tgz" -R xuing/oh-my-rasp
 ```
 
 ### Option B: Build the agent locally (Docker only)
 
 ```bash
 cd java-agent
+GRADLE_IMAGE="$(awk '$1 == "FROM" && $2 ~ /^gradle:/ { print $2; exit }' Dockerfile)"
 docker run --rm -u "$(id -u):$(id -g)" -e GRADLE_USER_HOME=/tmp/gradle-home \
-  -v "$PWD":/workspace -w /workspace gradle:9.9.2-jdk25 \
+  -v "$PWD":/workspace -w /workspace "$GRADLE_IMAGE" \
   gradle --no-daemon :agent-jdk25:agentJar
 # -> agent-jdk25/build/libs/ohmyrasp-agent.jar
 ```
@@ -180,10 +180,10 @@ Full walkthrough: [docs/getting-started.md](docs/getting-started.md).
 
 | Component | Stack | Role |
 |---|---|---|
-| `java-agent/` | Java 8/11/17/25, ASM 9.11.1 (shaded) | In-JVM sink hooks, detection engine, NDJSON spool, shirudo standalone JARs |
-| `daemon/` | Rust 1.100.0 (edition 2024) | Tails agent spools, forwards events, serves local live console, injects agents |
-| `api/` | Go 1.26.7, OpenAPI 3.1 | RBAC, app/fleet inventory, policy rollout/canary/rollback, telemetry ingestion |
-| `console/` | React 19, Vite 8, TypeScript 6, Tailwind CSS 4 | Fleet dashboards, threat triage, policy editor, latency & posture views (EN/中文/日本語) |
+| `java-agent/` | Java 8/11/17/25, ASM (shaded) | In-JVM sink hooks, detection engine, NDJSON spool, shirudo standalone JARs |
+| `daemon/` | Rust (edition 2024) | Tails agent spools, forwards events, serves local live console, injects agents |
+| `api/` | Go, OpenAPI 3.1 | RBAC, app/fleet inventory, policy rollout/canary/rollback, telemetry ingestion |
+| `console/` | React, Vite, TypeScript, Tailwind CSS | Fleet dashboards, threat triage, policy editor, latency & posture views (EN/中文/日本語) |
 | `deploy/` | Helm, Compose, shirudo | Kubernetes Helm chart, observability assets, [shirudo Java upatch packages](deploy/shirudo/README.md) |
 
 More detail: [docs/architecture.md](docs/architecture.md).
@@ -192,18 +192,20 @@ More detail: [docs/architecture.md](docs/architecture.md).
 
 ```bash
 # Go control plane
-docker run --rm -v "$PWD/api":/src -w /src golang:1.27.4 go test ./...
+GO_IMAGE="$(awk '$1 == "FROM" && $2 ~ /^golang:/ { print $2; exit }' api/Dockerfile)"
+docker run --rm -v "$PWD/api":/src -w /src "$GO_IMAGE" go test ./...
 
 # Web console
-cd console && npm ci && npm run build && npm test
+(cd console && npm ci && npm run build && npm test)
 
 # Rust daemon
-cd daemon && cargo test --locked
+(cd daemon && cargo test --locked)
 
-# Java agent unit tests + 136-scenario Docker acceptance suite
-docker run --rm -v "$PWD/java-agent":/workspace -w /workspace gradle:9.9.2-jdk25 \
+# Java agent unit tests + Vulhub Docker acceptance suite
+GRADLE_IMAGE="$(awk '$1 == "FROM" && $2 ~ /^gradle:/ { print $2; exit }' java-agent/Dockerfile)"
+docker run --rm -v "$PWD/java-agent":/workspace -w /workspace "$GRADLE_IMAGE" \
   gradle --no-daemon :agent-jdk25:check
-cd java-agent && bash scripts/acceptance.sh
+(cd java-agent && bash scripts/acceptance.sh)
 
 # Shirudo upatch Beefile/JAR checks + Temurin 8/11/17/21/25 smoke tests
 ./deploy/shirudo/build-all.sh --jar-only

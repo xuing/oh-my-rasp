@@ -6,24 +6,19 @@ This guide covers two ways to run OhMyRASP: downloading pre-built release artifa
 
 ### Option A: Pre-built releases
 
-Download immutable release artifacts from [GitHub Releases](https://github.com/xuing/oh-my-rasp/releases) (latest tag `v0.2.0-alpha.1`). Each release ships **12** files plus GHCR container images and an OCI Helm chart:
+Download immutable release artifacts from [GitHub Releases](https://github.com/xuing/oh-my-rasp/releases). Each release ships the artifacts listed in the [Release Runbook](runbooks/release.md) (standard Java agent JARs, standalone shirudo upatch JARs and bundle, the Rust host daemon tarball, the Helm chart archive, and checksums) plus GHCR container images (`ghcr.io/<namespace>/control-api:<version>`, `ghcr.io/<namespace>/control-web:<version>`) and an OCI Helm chart (`oci://ghcr.io/<namespace>/charts/ohmyrasp-control`).
 
-- **Standard Java agents**: `ohmyrasp-agent.jar` (JDK 25), `ohmyrasp-agent-java17.jar` (JDK 17 & 21), `ohmyrasp-agent-java11.jar` (JDK 11), `ohmyrasp-agent-java8.jar` (JDK 8)
-- **Standalone daemonless shirudo upatch JARs**: `ohmyrasp-jdk25.jar`, `ohmyrasp-java17.jar`, `ohmyrasp-java11.jar`, `ohmyrasp-java8.jar`
-- **Shirudo Beefile bundle**: `ohmyrasp-shirudo-upatches-<version>.tar.gz`
-- **Rust host daemon**: `ohmyrasp-daemon-linux-amd64.tar.gz`
-- **Control-plane Helm chart**: `ohmyrasp-control-<version>.tgz` (also pushed to `oci://ghcr.io/<namespace>/charts/ohmyrasp-control`)
-- **Checksums**: `SHA256SUMS.txt`
-- **Container images**: `ghcr.io/<namespace>/control-api:<version>` and `ghcr.io/<namespace>/control-web:<version>`
+Pick the standard agent JAR that matches your JDK: `ohmyrasp-agent.jar` (JDK 25), `ohmyrasp-agent-jdk21.jar` (JDK 21), `ohmyrasp-agent-java17.jar` (JDK 17), `ohmyrasp-agent-java11.jar` (JDK 11), `ohmyrasp-agent-java8.jar` (JDK 8). The shirudo upatch JARs follow the same pattern (`ohmyrasp-{jdk25,jdk21,java17,java11,java8}.jar`). Releases cut before the JDK 21 builds existed have no `jdk21` JARs; on JDK 21 use their `java17` JARs instead.
 
 Verify checksums and GitHub provenance attestations after downloading:
 
 ```bash
+VERSION="<version>"   # the release you downloaded, without the leading v
 sha256sum -c SHA256SUMS.txt
 gh attestation verify ohmyrasp-agent.jar -R xuing/oh-my-rasp
-gh attestation verify ohmyrasp-shirudo-upatches-0.2.0-alpha.1.tar.gz -R xuing/oh-my-rasp
+gh attestation verify "ohmyrasp-shirudo-upatches-${VERSION}.tar.gz" -R xuing/oh-my-rasp
 gh attestation verify ohmyrasp-daemon-linux-amd64.tar.gz -R xuing/oh-my-rasp
-gh attestation verify ohmyrasp-control-0.2.0-alpha.1.tgz -R xuing/oh-my-rasp
+gh attestation verify "ohmyrasp-control-${VERSION}.tgz" -R xuing/oh-my-rasp
 ```
 
 See the [Release Runbook](runbooks/release.md) and [Helm Production Runbook](runbooks/helm-production.md) to deploy the published chart and images to Kubernetes.
@@ -35,31 +30,33 @@ Building and running the entire stack locally requires only:
 - Docker 24+
 - Docker Compose v2
 
-No local JDK, Gradle, Go, Node.js, or Rust installation is required. The control-plane Compose file builds the Go API with `golang:1.27.4` and the React console with `node:26.13.1-alpine`, and the agent builds inside `gradle:9.9.2-jdk25`.
+No local JDK, Gradle, Go, Node.js, or Rust installation is required. The control-plane Compose file builds the Go API and the React console, and the agent builds, inside the builder images pinned in each component's `Dockerfile` (`api/`, `console/`, `java-agent/`).
 
 ### Local toolchain (development only)
 
-Contributing to individual components directly on the host uses these verified versions:
+Contributing to individual components directly on the host uses these versions (read them from the pin files):
 
 | Tool | Required version | Source of truth / notes |
 |---|---|---|
-| Go | `1.26.7+` | `api/go.mod` (`golang:1.27.4` in `api/Dockerfile`); `GOTOOLCHAIN=auto` works from Go 1.25+ |
-| Node.js | `>=26` | `console/package.json` (`engines.node`) |
+| Go | version pinned in `api/go.mod` | Builder image pinned in `api/Dockerfile`; set `GOTOOLCHAIN=auto` if the host Go is older |
+| Node.js | range in `console/package.json` (`engines.node`) | Builder image pinned in `console/Dockerfile` |
 | JDK | `25` | Full JDK with `javac`, not JRE only |
-| Gradle | `9.9.2` | Matches `gradle:9.9.2-jdk25` in `java-agent/Dockerfile` (distro packages such as Ubuntu's 4.4.1 are too old) |
-| Rust / Cargo | `1.100.0` (edition 2024) | Pinned by `daemon/rust-toolchain.toml` and `daemon/Cargo.toml` |
+| Gradle | version of the image pinned in `java-agent/Dockerfile` | Gradle on JDK 25; distro packages (for example Ubuntu's) are too old |
+| Rust / Cargo | toolchain pinned in `daemon/rust-toolchain.toml` | Edition 2024 (`daemon/Cargo.toml`) |
 
-#### Installing Gradle 9.9.2 locally (no sudo required)
+#### Installing Gradle locally (no sudo required)
+
+Run from the repository root. The version comes from the Gradle image pinned in `java-agent/Dockerfile`, and the checksum is fetched from Gradle's own distribution server:
 
 ```bash
+GRADLE_VERSION="$(awk '$1 == "FROM" && $2 ~ /^gradle:/ { sub(/^gradle:/, "", $2); sub(/-.*/, "", $2); print $2; exit }' java-agent/Dockerfile)"
+GRADLE_URL="https://services.gradle.org/distributions/gradle-${GRADLE_VERSION}-bin.zip"
 mkdir -p "$HOME/.local/opt" "$HOME/.local/bin"
-curl -fsSL https://services.gradle.org/distributions/gradle-9.9.2-bin.zip \
-  -o /tmp/gradle-9.9.2-bin.zip
-printf '%s  %s\n' \
-  '971fcd7150ca4ba04852c0b2ca0d2d0ab9468e14b03473eab19528809914c76b' \
-  '/tmp/gradle-9.9.2-bin.zip' | sha256sum -c -
-unzip -q /tmp/gradle-9.9.2-bin.zip -d "$HOME/.local/opt"
-ln -sfn "$HOME/.local/opt/gradle-9.9.2/bin/gradle" "$HOME/.local/bin/gradle"
+curl -fsSL "$GRADLE_URL" -o "/tmp/gradle-${GRADLE_VERSION}-bin.zip" &&
+  GRADLE_SHA256="$(curl -fsSL "${GRADLE_URL}.sha256")" &&
+  printf '%s  %s\n' "$GRADLE_SHA256" "/tmp/gradle-${GRADLE_VERSION}-bin.zip" | sha256sum -c - &&
+  unzip -q "/tmp/gradle-${GRADLE_VERSION}-bin.zip" -d "$HOME/.local/opt" &&
+  ln -sfn "$HOME/.local/opt/gradle-${GRADLE_VERSION}/bin/gradle" "$HOME/.local/bin/gradle"
 ```
 
 #### Installing JDK 25 locally (no sudo required)
@@ -164,12 +161,13 @@ Skip the build commands below if you downloaded a pre-built JAR from GitHub Rele
 
 ### Build the agent JAR
 
-Run the build inside the `gradle:9.9.2-jdk25` Docker image:
+Run the build inside the Gradle Docker image pinned in `java-agent/Dockerfile`:
 
 ```bash
 cd java-agent
+GRADLE_IMAGE="$(awk '$1 == "FROM" && $2 ~ /^gradle:/ { print $2; exit }' Dockerfile)"
 docker run --rm -u "$(id -u):$(id -g)" -e GRADLE_USER_HOME=/tmp/gradle-home \
-  -v "$PWD":/workspace -w /workspace gradle:9.9.2-jdk25 \
+  -v "$PWD":/workspace -w /workspace "$GRADLE_IMAGE" \
   gradle --no-daemon :agent-jdk25:agentJar
 ```
 
@@ -177,26 +175,34 @@ Output: `java-agent/agent-jdk25/build/libs/ohmyrasp-agent.jar`.
 
 > **Note:** Always use the shaded fat JAR produced by `agentJar` (or `agentJava{8,11,17}Jar`). The thin JAR (`ohmyrasp-agent-thin.jar`) produced by the plain `jar` task lacks relocated ASM dependencies.
 
-#### Backport agents (Java 8 / 11 / 17 & 21)
+#### Backport agents (Java 8 / 11 / 17) and the JDK 21 JAR
+
+Run these from `java-agent/` with `GRADLE_IMAGE` set as above.
 
 ```bash
 # Java 8:
 docker run --rm -u "$(id -u):$(id -g)" -e GRADLE_USER_HOME=/tmp/gradle-home \
-  -v "$PWD":/workspace -w /workspace gradle:9.9.2-jdk25 \
+  -v "$PWD":/workspace -w /workspace "$GRADLE_IMAGE" \
   gradle --no-daemon :agent-java8:agentJava8Jar
 # Output: java-agent/agent-java8/build/libs/ohmyrasp-agent-java8.jar
 
 # Java 11:
 docker run --rm -u "$(id -u):$(id -g)" -e GRADLE_USER_HOME=/tmp/gradle-home \
-  -v "$PWD":/workspace -w /workspace gradle:9.9.2-jdk25 \
+  -v "$PWD":/workspace -w /workspace "$GRADLE_IMAGE" \
   gradle --no-daemon :agent-java11:agentJava11Jar
 # Output: java-agent/agent-java11/build/libs/ohmyrasp-agent-java11.jar
 
-# Java 17 and Java 21:
+# Java 17:
 docker run --rm -u "$(id -u):$(id -g)" -e GRADLE_USER_HOME=/tmp/gradle-home \
-  -v "$PWD":/workspace -w /workspace gradle:9.9.2-jdk25 \
+  -v "$PWD":/workspace -w /workspace "$GRADLE_IMAGE" \
   gradle --no-daemon :agent-java17:agentJava17Jar
 # Output: java-agent/agent-java17/build/libs/ohmyrasp-agent-java17.jar
+
+# Java 21 (copies of the JDK 25 JARs under another name):
+docker run --rm -u "$(id -u):$(id -g)" -e GRADLE_USER_HOME=/tmp/gradle-home \
+  -v "$PWD":/workspace -w /workspace "$GRADLE_IMAGE" \
+  gradle --no-daemon :agent-jdk25:jdk21Jars
+# Output: java-agent/agent-jdk25/build/jdk21/ohmyrasp-agent-jdk21.jar
 ```
 
 ### Attach the agent: standalone mode
@@ -217,7 +223,7 @@ echo '{"mode":"block"}' > /tmp/ohmyrasp-control.json
 
 ### Attach the agent: daemonless shirudo mode
 
-For immutable, daemonless deployments without `/tmp/ohmyrasp-control.json` or `/tmp/ohmyrasp-events.jsonl`, use the shirudo upatch JARs (`ohmyrasp-{java8,java11,java17,jdk25}.jar`) built via `:agent-*:shirudoUpatchJar`. They embed signed `META-INF/ohmyrasp-shirudo.properties` (`standalone=true`, `lock_config=true`, `mode=block`, `control=none`, `log=stderr`, `latency_sample=0`), start zero background threads, and install via `shirudo bpm install` or `-javaagent:/run/shirudo-java/<name>.jar`. See [Shirudo Java Upatches](../deploy/shirudo/README.md).
+For immutable, daemonless deployments without `/tmp/ohmyrasp-control.json` or `/tmp/ohmyrasp-events.jsonl`, use the shirudo upatch JARs (`ohmyrasp-{java8,java11,java17,jdk21,jdk25}.jar`) built via `:agent-*:shirudoUpatchJar` (the `jdk21` copy comes from `:agent-jdk25:jdk21Jars`). They embed signed `META-INF/ohmyrasp-shirudo.properties` (`standalone=true`, `lock_config=true`, `mode=block`, `control=none`, `log=stderr`, `latency_sample=0`), start zero background threads, and install via `shirudo bpm install` or `-javaagent:/run/shirudo-java/<name>.jar`. See [Shirudo Java Upatches](../deploy/shirudo/README.md).
 
 ### Attach the agent: connected to the control plane
 
@@ -288,7 +294,7 @@ docker compose up -d --build
 | 10 | `http://localhost:18082/rasp/ui` | `http://localhost:18083/rasp/ui` |
 | 11 | `http://localhost:18084/rasp/ui` | `http://localhost:18085/rasp/ui` |
 
-`/rasp/ui` fires test cases across SQL injection, command injection, JNDI/Log4Shell, deserialization, XXE, file read/write, SSRF, Base64 AVX-512 tail-underflow, and expression injection (OGNL/SpEL/FreeMarker) covering **43** end-to-end verified algorithm signatures.
+`/rasp/ui` fires test cases across SQL injection, command injection, JNDI/Log4Shell, deserialization, XXE, file read/write, SSRF, Base64 AVX-512 tail-underflow, and expression injection (OGNL/SpEL/FreeMarker) covering the end-to-end verified algorithm signatures listed in [DETECTION-COVERAGE.md](../java-agent/docs/DETECTION-COVERAGE.md).
 
 ### Option C: Automated acceptance script
 
@@ -301,7 +307,7 @@ This builds the agent and playground WARs (`playground` and `playground-javax`),
 
 ## 5. Local Development Setup
 
-Install console dependencies (`Node >= 26`):
+Install console dependencies (Node.js range in `console/package.json` `engines.node`):
 
 ```bash
 cd console
@@ -315,7 +321,7 @@ cd api
 go mod download
 ```
 
-If Go 1.25 is installed on the host, add `GOTOOLCHAIN=auto` before running `go` commands so Go downloads `1.26.7` automatically.
+If your host Go is older than the version in `api/go.mod`, add `GOTOOLCHAIN=auto` before running `go` commands so Go downloads the required toolchain automatically.
 
 ### Run tests
 
@@ -346,7 +352,7 @@ npm run test:e2e:live  # live Compose tests against http://127.0.0.1:18091
 
 `test:e2e:live` reads admin credentials from `OHMYRASP_E2E_ADMIN_PASSWORD` / `OHMYRASP_BOOTSTRAP_ADMIN_PASSWORD` (or the root `.env` file).
 
-Java agent (`java-agent/`, requires `JAVA_HOME` pointing to JDK 25 and Gradle `9.9.2`):
+Java agent (`java-agent/`, requires `JAVA_HOME` pointing to JDK 25 and the Gradle version from Prerequisites):
 
 ```bash
 cd java-agent
@@ -355,7 +361,7 @@ export PATH="$HOME/.local/bin:$JAVA_HOME/bin:$PATH"
 gradle test
 ```
 
-Rust daemon (`daemon/`, uses Rust `1.100.0` via `rust-toolchain.toml`):
+Rust daemon (`daemon/`, uses the Rust toolchain pinned in `rust-toolchain.toml`):
 
 ```bash
 cd daemon
@@ -367,6 +373,6 @@ cargo clippy --all-targets
 
 - **PostgreSQL or ClickHouse migration fails at startup**: check that none of the `.env` passwords contain `/`. Regenerate with `openssl rand -hex 18`.
 - **`gradle test` fails with `[JAVA_COMPILER]`**: the host has a JRE instead of a JDK. Set `JAVA_HOME` to a JDK 25 installation as shown in Prerequisites.
-- **`gradle` not found or wrong version**: Ubuntu's packaged `gradle` (`4.4.1`) cannot build this project. Install Gradle `9.9.2` under `$HOME/.local` or use `gradle:9.9.2-jdk25` via Docker.
-- **`npm ci` fails after pulling changes**: ensure Node.js `>= 26` is active and re-run `npm ci` inside `console/`.
+- **`gradle` not found or wrong version**: Ubuntu's packaged `gradle` is too old to build this project. Install the Gradle version from Prerequisites under `$HOME/.local` or use the Gradle image pinned in `java-agent/Dockerfile` via Docker.
+- **`npm ci` fails after pulling changes**: ensure the active Node.js satisfies `engines.node` in `console/package.json` and re-run `npm ci` inside `console/`.
 - **`oapi-codegen` warns about OpenAPI 3.1**: expected upstream warning during `go generate ./...`; it does not affect the generated bindings or build.

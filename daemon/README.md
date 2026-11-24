@@ -24,7 +24,7 @@ The agent interacts only with the two local files (`events.jsonl` out, `control.
 
 Pre-built `ohmyrasp-daemon-linux-amd64.tar.gz` binaries are published on [GitHub Releases](https://github.com/xuing/oh-my-rasp/releases) alongside `SHA256SUMS.txt` and GitHub provenance attestations (`gh attestation verify ohmyrasp-daemon-linux-amd64.tar.gz -R xuing/oh-my-rasp`).
 
-Building from source requires Rust `1.100.0` (edition 2024), pinned in `rust-toolchain.toml` and `Cargo.toml`:
+Building from source requires the Rust toolchain pinned in [`rust-toolchain.toml`](./rust-toolchain.toml) (edition 2024, rustup installs it automatically):
 
 ```bash
 cargo build --release --locked   # -> target/release/ohmyrasp-daemon
@@ -75,7 +75,7 @@ Environment variables read by `Config::apply_env`: `OHMYRASP_DAEMON_LOG`, `OHMYR
 
 ## Container and Demo Stack
 
-`Dockerfile` uses a multi-stage `rust:1.100.0-slim` -> `debian:13-slim` build (`reqwest` with `rustls`, no OpenSSL runtime dependency; `ca-certificates` included for HTTPS uplinks) and exposes port `7070`:
+`Dockerfile` uses a multi-stage Rust slim builder -> Debian slim runtime build (tags in [`Dockerfile`](./Dockerfile)) (`reqwest` with `rustls`, no OpenSSL runtime dependency; `ca-certificates` included for HTTPS uplinks) and exposes port `7070`:
 
 ```bash
 docker build -t ohmyrasp/daemon:dev .

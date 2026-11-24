@@ -4,7 +4,7 @@ This runbook covers the OhMyRASP control-plane Prometheus metrics, alert rules, 
 
 ## Local Compose
 
-Start the stack from the repository root (`prom/prometheus:v3.16.0`, `prom/alertmanager:v0.35.0`, `grafana/grafana:13.3.1`):
+Start the stack from the repository root (Prometheus, Alertmanager, and Grafana images pinned in [docker-compose.yml](../../docker-compose.yml)):
 
 ```bash
 docker compose -f docker-compose.yml up -d --build
@@ -52,7 +52,7 @@ Responses are cached in-memory for `OHMYRASP_METRICS_CACHE_TTL` (default `10s`) 
 
 ## Alerts
 
-`deploy/helm/ohmyrasp-control/files/prometheus/ohmyrasp-control-rules.yml` defines nine alerts under group `ohmyrasp-control`:
+`deploy/helm/ohmyrasp-control/files/prometheus/ohmyrasp-control-rules.yml` defines the following alerts under group `ohmyrasp-control`:
 
 - `OhMyRaspAPIDown` (`critical`): `absent(ohmyrasp_api_up) or ohmyrasp_api_up == 0` for `2m`.
 - `OhMyRaspMetricsScrapeError` (`warning`): `max(ohmyrasp_metrics_scrape_error) > 0` for `5m`.

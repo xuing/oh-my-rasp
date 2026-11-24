@@ -1,12 +1,12 @@
 # OhMyRASP Console
 
-Application-centric React 19 frontend for the OhMyRasp control plane (`console/`).
+Application-centric React frontend for the OhMyRasp control plane (`console/`).
 
 See [`../docs/console.md`](../docs/console.md) for the full screen inventory, technology stack, nginx security headers, and E2E setup, and [`CONVENTIONS.md`](CONVENTIONS.md) for the mandatory i18n and theming rules every UI change must follow.
 
 ## Quick Start
 
-Requires Node.js `>=26` (`console/package.json`).
+Requires the Node.js range in `engines.node` of `console/package.json`.
 
 ```bash
 npm ci

@@ -1,0 +1,27 @@
+name: docs
+
+# Fails when hand-written docs restate facts that drift (release tags, pinned
+# versions, code-base counts, the release asset list) or a generated doc is
+# stale. No path filter: a change to a Dockerfile, a workflow, or the agent
+# sources can make a doc wrong without touching any Markdown.
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  check-docs:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # Release tags are the source of truth for "never write a released version".
+          fetch-depth: 0
+      - name: Test the docs checker
+        run: python3 -m unittest discover -s scripts -p 'test_check_docs.py'
+      - name: Check docs against their sources of truth
+        run: python3 scripts/check-docs.py

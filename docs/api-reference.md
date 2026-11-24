@@ -1,6 +1,6 @@
 # Control-Plane API Reference
 
-The OhMyRASP control-plane API (`ohmyrasp-api`, module `github.com/ohmyrasp/control-plane`, Go `1.26.7`) is an OpenAPI 3.1 HTTP service built with `net/http`, `chi`, `oapi-codegen` strict-server bindings, and `slog`. Source of truth: [openapi.yaml](../api/api/openapi.yaml), [server.go](../api/internal/httpapi/server.go), and [main.go](../api/cmd/ohmyrasp-api/main.go).
+The OhMyRASP control-plane API (`ohmyrasp-api`, module `github.com/ohmyrasp/control-plane`, Go version pinned in [`api/go.mod`](../api/go.mod)) is an OpenAPI 3.1 HTTP service built with `net/http`, `chi`, `oapi-codegen` strict-server bindings, and `slog`. Source of truth: [openapi.yaml](../api/api/openapi.yaml), [server.go](../api/internal/httpapi/server.go), and [main.go](../api/cmd/ohmyrasp-api/main.go).
 
 ## Authentication Models
 
@@ -23,7 +23,7 @@ Operator RBAC roles defined in [rbac.go](../api/internal/httpapi/rbac.go):
 
 ## REST API Endpoints
 
-All 68 paths from [openapi.yaml](../api/api/openapi.yaml) are listed below by domain, alongside legacy daemon compatibility routes implemented in [server.go](../api/internal/httpapi/server.go).
+All paths from [openapi.yaml](../api/api/openapi.yaml) are listed below by domain, alongside legacy daemon compatibility routes implemented in [server.go](../api/internal/httpapi/server.go).
 
 ### Health, Version, and Metrics
 
@@ -209,12 +209,13 @@ OHMYRASP_CLICKHOUSE_DSN='clickhouse://ohmyrasp:ohmyrasp@localhost:19000?database
 go run ./cmd/ohmyrasp-migrate
 ```
 
-Flags: `-postgres-dsn`, `-clickhouse-dsn`, `-skip-postgres`, `-skip-clickhouse`, `-timeout` (default `30s`). Without a host Go toolchain:
+Flags: `-postgres-dsn`, `-clickhouse-dsn`, `-skip-postgres`, `-skip-clickhouse`, `-timeout` (default `30s`). Without a host Go toolchain (the builder image is resolved from `api/Dockerfile`, as CI does):
 
 ```bash
+GO_IMAGE="$(awk '$1 == "FROM" && $2 ~ /^golang:/ { print $2; exit }' Dockerfile)"   # run from api/
 docker run --rm --network host \
   -e OHMYRASP_POSTGRES_DSN='postgres://ohmyrasp:ohmyrasp@localhost:15432/ohmyrasp?sslmode=disable' \
-  -v "$PWD":/src -w /src golang:1.27.4 \
+  -v "$PWD":/src -w /src "$GO_IMAGE" \
   go run ./cmd/ohmyrasp-migrate -skip-clickhouse
 ```
 
@@ -223,7 +224,8 @@ docker run --rm --network host \
 After editing `api/api/openapi.yaml`, regenerate `api/internal/generated/openapi.gen.go` from `api/`:
 
 ```bash
-docker run --rm -v "$PWD":/src -w /src golang:1.27.4 go generate ./...
+GO_IMAGE="$(awk '$1 == "FROM" && $2 ~ /^golang:/ { print $2; exit }' Dockerfile)"   # run from api/
+docker run --rm -v "$PWD":/src -w /src "$GO_IMAGE" go generate ./...
 ```
 
 `go test ./...` verifies `internal/generated/openapi.gen.go` stays aligned with `api/openapi.yaml`. `/metrics` and `/v1/service/*` stay hand-written outside strict JSON codegen.
@@ -233,47 +235,46 @@ docker run --rm -v "$PWD":/src -w /src golang:1.27.4 go generate ./...
 Run unit and contract tests from `api/`:
 
 ```bash
-docker run --rm -v "$PWD":/src -w /src golang:1.27.4 go test ./...
+GO_IMAGE="$(awk '$1 == "FROM" && $2 ~ /^golang:/ { print $2; exit }' Dockerfile)"   # run from api/
+docker run --rm -v "$PWD":/src -w /src "$GO_IMAGE" go test ./...
 ```
 
-PostgreSQL integration test (`postgres:19.0`):
+The integration tests use the PostgreSQL, ClickHouse, and Valkey service containers from [`.github/docker-compose.ci-services.yml`](../.github/docker-compose.ci-services.yml) (images pinned there; host ports `55432`, `59000`, and `56379`, with the credentials defined in that file). The commands below run from `api/`.
+
+PostgreSQL integration test:
 
 ```bash
-docker run -d --rm --name ohmyrasp-postgres-test \
-  -e POSTGRES_USER=ohmyrasp \
-  -e POSTGRES_PASSWORD=ohmyrasp \
-  -e POSTGRES_DB=ohmyrasp \
-  -p 55432:5432 postgres:19.0
+GO_IMAGE="$(awk '$1 == "FROM" && $2 ~ /^golang:/ { print $2; exit }' Dockerfile)"   # run from api/
+docker compose -f ../.github/docker-compose.ci-services.yml up -d --wait postgres
 
 docker run --rm --network host \
   -e OHMYRASP_POSTGRES_TEST_DSN='postgres://ohmyrasp:ohmyrasp@localhost:55432/ohmyrasp?sslmode=disable' \
-  -v "$PWD":/src -w /src golang:1.27.4 \
+  -v "$PWD":/src -w /src "$GO_IMAGE" \
   go test ./internal/storage/postgres -run TestStoreIntegrationPostgresWorkflow -count=1 -v
 ```
 
-ClickHouse integration test (`clickhouse/clickhouse-server:26.10.12.13`):
+ClickHouse integration test:
 
 ```bash
-docker run -d --rm --name ohmyrasp-clickhouse-test \
-  -e CLICKHOUSE_USER=ohmyrasp \
-  -e CLICKHOUSE_PASSWORD=ohmyrasp \
-  -e CLICKHOUSE_DB=default \
-  -p 59000:9000 clickhouse/clickhouse-server:26.10.12.13
+GO_IMAGE="$(awk '$1 == "FROM" && $2 ~ /^golang:/ { print $2; exit }' Dockerfile)"   # run from api/
+docker compose -f ../.github/docker-compose.ci-services.yml up -d --wait clickhouse
 
 docker run --rm --network host \
   -e OHMYRASP_CLICKHOUSE_TEST_DSN='clickhouse://ohmyrasp:ohmyrasp@localhost:59000?database=default' \
-  -v "$PWD":/src -w /src golang:1.27.4 \
+  -v "$PWD":/src -w /src "$GO_IMAGE" \
   go test ./internal/storage/clickhouse -run TestAnalyticsIntegrationClickHouseWorkflow -count=1 -v
 ```
 
-Valkey integration test (`valkey/valkey:9.2.0`):
+Valkey integration test:
 
 ```bash
-docker run -d --rm --name ohmyrasp-valkey-test \
-  -p 56379:6379 valkey/valkey:9.2.0
+GO_IMAGE="$(awk '$1 == "FROM" && $2 ~ /^golang:/ { print $2; exit }' Dockerfile)"   # run from api/
+docker compose -f ../.github/docker-compose.ci-services.yml up -d --wait valkey
 
 docker run --rm --network host \
   -e OHMYRASP_VALKEY_TEST_ADDR='localhost:56379' \
-  -v "$PWD":/src -w /src golang:1.27.4 \
+  -v "$PWD":/src -w /src "$GO_IMAGE" \
   go test ./internal/storage/valkey -run TestCacheIntegrationValkeyWorkflow -count=1 -v
 ```
+
+Stop the service containers afterwards with `docker compose -f ../.github/docker-compose.ci-services.yml down`.

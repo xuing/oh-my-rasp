@@ -6,7 +6,7 @@
 [![Release](https://img.shields.io/github/v/release/xuing/oh-my-rasp?include_prereleases)](https://github.com/xuing/oh-my-rasp/releases)
 [![License](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
 [![Java agents](https://img.shields.io/badge/Java-8%20%7C%2011%20%7C%2017%20%7C%2025-ED8B00?logo=openjdk&logoColor=white)](java-agent/)
-[![Exploit scenarios](https://img.shields.io/badge/exploit_scenarios-136_verified-success)](docs/development/vulhub-coverage.md)
+[![Exploit scenarios](https://img.shields.io/badge/exploit_replay-Vulhub-success)](docs/development/vulhub-coverage.md)
 
 **语言：** [English](README.md) | 简体中文
 
@@ -42,24 +42,26 @@ OhMyRASP 适合运行在 JDK 8、11、17、21 或 25 上的自托管 Java 服务
 
 - **基于特征与子串关联，而非字节码数据流污点追踪：** 检测器在 sink 处通过 `ThreadLocal<RequestContext>` 进行请求参数子串匹配并分析实时调用栈；跨多层字符串变换或脱离 HTTP 上下文的异步执行链不会做字节码级数据流传播，除非命中调用栈或 sink 特征规则。
 - **JVM 进程内信任边界：** `-javaagent` 运行在被保护 JVM 内部。`root` 或启动 JVM 的用户可以直接去掉 `-javaagent` 或覆盖未锁定环境变量；如需抗 `root` 篡改边界，需将签名 shirudo JAR（`lock_config=true`）与内核级强制策略（例如 shirudo BPF upatch）组合部署。
-- **预发布阶段：** `v0.2.0-alpha.1` 为实验性预发布版本，API、策略 schema 与打包格式在 `1.0` 前仍可能调整。
+- **预发布阶段：** OhMyRASP 目前为实验性预发布软件，API、策略 schema 与打包格式在 `1.0` 前仍可能调整。
 
 ## 实测数据与漏洞覆盖
 
 全部 hook、检测器与 Vulhub 回放脚本均在仓库内开源，并由 CI 持续回归。
 
+<!-- BEGIN GENERATED metrics (java-agent/scripts/gen-detection-coverage.py) — do not edit between markers -->
 | 维度 | 当前状态 | 依据 |
 |---|---|---|
-| 插桩调用点家族 | 28 个 ASM hook 模块（`agent-jdk25`）；各回溯版（`java8` / `java11` / `java17`）各 24 个 ASM transformer | [DETECTION-COVERAGE.md](java-agent/docs/DETECTION-COVERAGE.md) |
-| 检测引擎 | 54 项 `DetectorEngine` 检测能力，其中 43 个算法签名由端到端测试断言 | [docs/detection.md](docs/detection.md) |
+| 插桩调用点家族 | 28 个 ASM hook 模块（`agent-jdk25`）；回溯版（`java8` / `java11` / `java17`）各 24 个 ASM transformer | [DETECTION-COVERAGE.md](java-agent/docs/DETECTION-COVERAGE.md) |
+| 检测引擎 | 54 项 `DetectorEngine` 检测能力，其中 43 个算法签名由端到端测试断言 | [DETECTION-COVERAGE.md](java-agent/docs/DETECTION-COVERAGE.md) |
 | 漏洞回放矩阵 | 136 个场景，覆盖 53 个 [Vulhub](https://github.com/vulhub/vulhub) 组件根（追踪 130 个 CVE） | [vulhub-coverage.md](docs/development/vulhub-coverage.md) |
 | 正常语料误报率 | 14 类共 83 条真实构造正常输入，`0 / 83` 误报 | [FALSE-POSITIVE-REPORT.md](java-agent/docs/FALSE-POSITIVE-REPORT.md) |
 | 运行时支持 | JDK 8、11、17 各有独立构建，21 和 25 共用主 Agent；兼容 `javax.servlet` 与 `jakarta.servlet` | [docs/agent.md](docs/agent.md) |
+<!-- END GENERATED metrics -->
 
 **已验证拦截的代表性漏洞：**
 - **OpenJDK Base64 AVX-512 尾部越界写（Java2Shell / Java4Shell，CVE-2026-114938）**，覆盖 JDK 8–25
 - **JNDI 与反序列化：** Log4Shell（CVE-2021-44228）、Fastjson `autoType` 与 [1.2.83 `getResourceAsStream`](https://github.com/midisec/fastjson-1.2.83-gadget-rce)、Shiro `rememberMe`（CVE-2016-4437）、ActiveMQ OpenWire（CVE-2023-46604）、XStream、WebLogic XMLDecoder
-- **表达式与模板 RCE：** 19 个 Struts2 OGNL 漏洞（S2-001 至 S2-067）、Spring4Shell（CVE-2022-22965）、Spring Cloud Gateway SpEL（CVE-2022-22947）、GeoServer（CVE-2024-36401）、DataEase（2024–2025）
+- **表达式与模板 RCE：** Struts2 OGNL 漏洞（S2-001 起）、Spring4Shell（CVE-2022-22965）、Spring Cloud Gateway SpEL（CVE-2022-22947）、GeoServer（CVE-2024-36401）、DataEase（2024–2025）
 - **Servlet、文件与 SQL：** Tomcat 幽灵猫（CVE-2020-1938）、Shiro/GlassFish/Jetty 路径混淆绕过、独立应用及全驱动 JDBC `Statement` SQL 注入
 
 ## 检测引擎工作原理
@@ -99,8 +101,8 @@ JDK 21 的标准 Agent 下载名为 `ohmyrasp-agent-jdk21.jar`，Shirudo 包使�
 你可以从 [GitHub Releases](https://github.com/xuing/oh-my-rasp/releases) 直接下载预构建的 `ohmyrasp-shirudo-upatches-<version>.tar.gz`，或在本地构建并运行实机容器冒烟测试：
 
 ```sh
-# 使用 Operator 的 ML-DSA-87 私钥构建并签名全部 5 个 .bee 包
-./deploy/shirudo/build-all.sh 0.2.0 --keys-dir <keys>
+# 使用 Operator 的 ML-DSA-87 私钥构建并签名全部 .bee 包
+./deploy/shirudo/build-all.sh "<version>" --keys-dir "<keys>"
 
 # 或仅构建 JAR 并运行 Beefile 校验与 Temurin 8/11/17/21/25 容器冒烟测试
 ./deploy/shirudo/build-all.sh --jar-only
@@ -112,28 +114,26 @@ JDK 21 的标准 Agent 下载名为 `ohmyrasp-agent-jdk21.jar`，Shirudo 包使�
 
 ## 快速开始
 
-### 方式 A：下载预构建 Release 制品（`v0.2.0-alpha.1`）
+### 方式 A：下载预构建 Release 制品
 
-[GitHub Releases](https://github.com/xuing/oh-my-rasp/releases) 上的 `v0.2.0-alpha.1` 包含 **12 个 Release 资产**（之后的版本另含 JDK 21 构建，见[发布手册](docs/runbooks/release.md)）：
-
-- **标准 Java Agent JAR：** `ohmyrasp-agent-java8.jar`、`ohmyrasp-agent-java11.jar`、`ohmyrasp-agent-java17.jar`、`ohmyrasp-agent.jar`
-- **Shirudo 独立 Java upatch JAR：** `ohmyrasp-java8.jar`、`ohmyrasp-java11.jar`、`ohmyrasp-java17.jar`、`ohmyrasp-jdk25.jar`
-- **打包制品与校验：** `ohmyrasp-shirudo-upatches-<version>.tar.gz`、`ohmyrasp-daemon-linux-amd64.tar.gz`、`ohmyrasp-control-<version>.tgz`、`SHA256SUMS.txt`
+每个 [GitHub Releases](https://github.com/xuing/oh-my-rasp/releases) 版本会发布标准 Java Agent JAR、Shirudo 独立 Java upatch JAR 与 Shirudo 打包制品、Rust 守护进程压缩包、Helm Chart 压缩包以及 `SHA256SUMS.txt`；完整资产清单见[发布手册](docs/runbooks/release.md)。
 
 同时发布 GHCR 容器镜像（`ghcr.io/xuing/control-api`、`ghcr.io/xuing/control-web`）与 OCI Helm Chart（`oci://ghcr.io/xuing/charts/ohmyrasp-control`）。部署前请校验哈希与 GitHub 构建证明：
 
 ```bash
+VERSION="<version>"   # 下载的 Release 版本号，不含开头的 v
 sha256sum -c SHA256SUMS.txt
-gh attestation verify ohmyrasp-shirudo-upatches-<version>.tar.gz -R xuing/oh-my-rasp
-gh attestation verify ohmyrasp-control-<version>.tgz -R xuing/oh-my-rasp
+gh attestation verify "ohmyrasp-shirudo-upatches-${VERSION}.tar.gz" -R xuing/oh-my-rasp
+gh attestation verify "ohmyrasp-control-${VERSION}.tgz" -R xuing/oh-my-rasp
 ```
 
 ### 方式 B：本地构建 Agent（仅需 Docker）
 
 ```bash
 cd java-agent
+GRADLE_IMAGE="$(awk '$1 == "FROM" && $2 ~ /^gradle:/ { print $2; exit }' Dockerfile)"
 docker run --rm -u "$(id -u):$(id -g)" -e GRADLE_USER_HOME=/tmp/gradle-home \
-  -v "$PWD":/workspace -w /workspace gradle:9.9.2-jdk25 \
+  -v "$PWD":/workspace -w /workspace "$GRADLE_IMAGE" \
   gradle --no-daemon :agent-jdk25:agentJar
 # -> agent-jdk25/build/libs/ohmyrasp-agent.jar
 ```
@@ -180,10 +180,10 @@ java -javaagent:/opt/ohmyrasp/ohmyrasp-agent.jar=backend_url=http://<host>:18090
 
 | 模块 | 技术栈 | 职责 |
 |---|---|---|
-| `java-agent/` | Java 8/11/17/25, ASM 9.11.1（已 shade） | JVM 内置 hook、检测引擎、NDJSON spool、shirudo 独立包 |
-| `daemon/` | Rust 1.100.0（edition 2024） | 跟踪 agent spool、上报事件、本地实时控制台、注入管理 |
-| `api/` | Go 1.26.7, OpenAPI 3.1 | RBAC、应用与实例清单、策略下发/灰度/回滚、遥测摄入 |
-| `console/` | React 19, Vite 8, TypeScript 6, Tailwind CSS 4 | 概览仪表盘、威胁处置、策略编辑测试、延迟与基线视图（EN/中文/日本語） |
+| `java-agent/` | Java 8/11/17/25, ASM（已 shade） | JVM 内置 hook、检测引擎、NDJSON spool、shirudo 独立包 |
+| `daemon/` | Rust（edition 2024） | 跟踪 agent spool、上报事件、本地实时控制台、注入管理 |
+| `api/` | Go, OpenAPI 3.1 | RBAC、应用与实例清单、策略下发/灰度/回滚、遥测摄入 |
+| `console/` | React, Vite, TypeScript, Tailwind CSS | 概览仪表盘、威胁处置、策略编辑测试、延迟与基线视图（EN/中文/日本語） |
 | `deploy/` | Helm, Compose, shirudo | Kubernetes Helm chart、可观测性资产、[shirudo Java upatch 包](deploy/shirudo/README.md) |
 
 更多细节见 [docs/architecture.md](docs/architecture.md)。
@@ -192,18 +192,20 @@ java -javaagent:/opt/ohmyrasp/ohmyrasp-agent.jar=backend_url=http://<host>:18090
 
 ```bash
 # Go 控制平面
-docker run --rm -v "$PWD/api":/src -w /src golang:1.27.4 go test ./...
+GO_IMAGE="$(awk '$1 == "FROM" && $2 ~ /^golang:/ { print $2; exit }' api/Dockerfile)"
+docker run --rm -v "$PWD/api":/src -w /src "$GO_IMAGE" go test ./...
 
 # Web 控制台
-cd console && npm ci && npm run build && npm test
+(cd console && npm ci && npm run build && npm test)
 
 # Rust 守护进程
-cd daemon && cargo test --locked
+(cd daemon && cargo test --locked)
 
-# Java agent 单元测试 + 136 场景 Docker 验收矩阵
-docker run --rm -v "$PWD/java-agent":/workspace -w /workspace gradle:9.9.2-jdk25 \
+# Java agent 单元测试 + Vulhub Docker 验收矩阵
+GRADLE_IMAGE="$(awk '$1 == "FROM" && $2 ~ /^gradle:/ { print $2; exit }' java-agent/Dockerfile)"
+docker run --rm -v "$PWD/java-agent":/workspace -w /workspace "$GRADLE_IMAGE" \
   gradle --no-daemon :agent-jdk25:check
-cd java-agent && bash scripts/acceptance.sh
+(cd java-agent && bash scripts/acceptance.sh)
 
 # Shirudo upatch Beefile/JAR 校验与 Temurin 8/11/17/21/25 容器冒烟测试
 ./deploy/shirudo/build-all.sh --jar-only

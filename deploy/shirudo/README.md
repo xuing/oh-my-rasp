@@ -59,16 +59,16 @@ Each shirudo upatch JAR embeds `META-INF/ohmyrasp-shirudo.properties` so it runs
 
 ## Build
 
-Build and sign all five `.bee` packages into the current working directory:
+Build and sign all `.bee` packages into the current working directory:
 
 ```sh
-./deploy/shirudo/build-all.sh 0.2.0 --keys-dir <keys>
+./deploy/shirudo/build-all.sh "<version>" --keys-dir "<keys>"
 ```
 
 Build a single package (for example `ohmyrasp-java17`):
 
 ```sh
-./deploy/shirudo/ohmyrasp-java17/build.sh 0.2.0 --keys-dir <keys>
+./deploy/shirudo/ohmyrasp-java17/build.sh "<version>" --keys-dir "<keys>"
 ```
 
 Stage only the `.jar` artifacts without invoking `shirudo bpm build` (for example before verification or smoke tests without operator keys):
@@ -77,7 +77,7 @@ Stage only the `.jar` artifacts without invoking `shirudo bpm build` (for exampl
 ./deploy/shirudo/build-all.sh --jar-only
 ```
 
-Both `build.sh` and `build-all.sh` accept `--mode block|monitor` (default: `block`) and honor `SHIRUDO_BIN` when `shirudo` is not on `PATH`. If `gradle` is not installed locally, the build scripts invoke `gradle:9.8.1-jdk25` via Docker under the caller's UID/GID.
+Both `build.sh` and `build-all.sh` accept `--mode block|monitor` (default: `block`) and honor `SHIRUDO_BIN` when `shirudo` is not on `PATH`. If `gradle` is not installed locally, the build scripts run the Gradle Docker image pinned in each `build.sh` under the caller's UID/GID.
 
 ## Load, Unload, and How `shirudo` Attaches the Agent
 
