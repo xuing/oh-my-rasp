@@ -86,8 +86,12 @@ jobs:
             jar: agent-java17/build/libs/ohmyrasp-agent-java17.jar
           - java: "21"
             jar: agent-java17/build/libs/ohmyrasp-agent-java17.jar
+          - java: "21"
+            jar: agent-jdk25/build/libs/ohmyrasp-agent.jar
+            upatch: agent-jdk25/build/libs/ohmyrasp-jdk25.jar
           - java: "25"
             jar: agent-jdk25/build/libs/ohmyrasp-agent.jar
+            upatch: agent-jdk25/build/libs/ohmyrasp-jdk25.jar
     steps:
       - name: Download agent compatibility artifacts
         uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
@@ -102,3 +106,6 @@ jobs:
           check-latest: true
       - name: Start the agent on JDK ${{ matrix.java }}
         run: java -javaagent:"java-agent/${{ matrix.jar }}" -version
+      - name: Start the standalone agent on JDK ${{ matrix.java }}
+        if: matrix.upatch
+        run: java -javaagent:"java-agent/${{ matrix.upatch }}" -version

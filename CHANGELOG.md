@@ -33,6 +33,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `CODE_OF_CONDUCT.md`.
 
 ### Changed
+- The default Compose database is PostgreSQL 19. Existing PostgreSQL 18 deployments can follow the [volume migration and rollback procedure](docs/runbooks/upgrade-downgrade.md#postgresql-18-to-19).
+- The primary Java agent and standalone `ohmyrasp-jdk25.jar` run on both JDK 21 and 25. Both artifacts are compiled with the JDK 25 LTS toolchain targeting Java 21.
 - README: removed a broken model-self-assessment badge and corrected the
   detection description to accurately state that detection is signature-based
   with request-parameter correlation and call-stack analysis layered on top

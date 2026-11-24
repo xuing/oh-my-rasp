@@ -241,8 +241,8 @@ def extract_jdk25() -> dict[str, object]:
     return {
         "track": "jdk25",
         "pkg": "ohmyrasp-jdk25",
-        "target_jvms": "Java 25",
-        "classfile": "<= 69",
+        "target_jvms": "Java 21 and Java 25",
+        "classfile": "<= 65",
         "block_exception": "OhMyRaspBlockException",
         "beefile": parse_beefile("ohmyrasp-jdk25"),
         "modules": modules,
@@ -335,7 +335,7 @@ def render_top_readme(
     w("")
     w("Each package injects ASM bytecode hooks at JVM class-load / retransform time across the following attack surfaces:")
     w("")
-    w("| Security Category | What It Inspects & Blocks | Java 8 / 11 / 17 Transformers | JDK 25 Hook Modules |")
+    w("| Security Category | What It Inspects & Blocks | Java 8 / 11 / 17 Transformers | JDK 21/25 Hook Modules |")
     w("|---|---|---|---|")
     sample_bp = backports[0]["grouped"]
     assert isinstance(sample_bp, dict)

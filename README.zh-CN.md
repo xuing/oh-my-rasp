@@ -42,7 +42,7 @@ open http://localhost:7070
 | 检测引擎 | 54 项检测能力，其中 43 个算法签名由端到端测试断言 | [docs/detection.md](docs/detection.md) |
 | 漏洞回放矩阵 | 136 个场景，覆盖 53 个 [Vulhub](https://github.com/vulhub/vulhub) 组件根（追踪 130 个 CVE） | [vulhub-coverage.md](docs/development/vulhub-coverage.md) |
 | 正常语料误报率 | 14 类共 83 条真实构造正常输入，`0 / 83` 误报 | [FALSE-POSITIVE-REPORT.md](java-agent/docs/FALSE-POSITIVE-REPORT.md) |
-| 运行时支持 | JDK 8、11、17（兼容 21）、25 独立构建；同包兼容 `javax.servlet` 与 `jakarta.servlet` | [docs/agent.md](docs/agent.md) |
+| 运行时支持 | JDK 8、11、17 各有独立构建，21 和 25 共用主 Agent；兼容 `javax.servlet` 与 `jakarta.servlet` | [docs/agent.md](docs/agent.md) |
 
 **已验证拦截的代表性漏洞：**
 - **OpenJDK Base64 AVX-512 尾部越界写（Java2Shell / Java4Shell，CVE-2026-114938）**，覆盖 JDK 8–25
@@ -73,7 +73,7 @@ OhMyRASP 不在网络边界对 HTTP 报文做正则猜谜，而是直接把检�
 | `ohmyrasp-java8` | Java 8（classfile `<= 52`） | `ohmyrasp-java8.jar` | `:agent-java8` |
 | `ohmyrasp-java11` | Java 11（classfile `<= 55`） | `ohmyrasp-java11.jar` | `:agent-java11` |
 | `ohmyrasp-java17` | Java 17 与 Java 21（classfile `<= 61`） | `ohmyrasp-java17.jar` | `:agent-java17` |
-| `ohmyrasp-jdk25` | Java 25（classfile `<= 69`） | `ohmyrasp-jdk25.jar` | `:agent-jdk25` |
+| `ohmyrasp-jdk25` | Java 21 与 Java 25（classfile `<= 65`） | `ohmyrasp-jdk25.jar` | `:agent-jdk25` |
 
 该系列包内置 `META-INF/ohmyrasp-shirudo.properties`（`standalone=true`、`lock_config=true`、`mode=block`、`control=none`、`log=stderr`、`latency_sample=0`）：
 
@@ -111,7 +111,7 @@ docker run --rm -u "$(id -u):$(id -g)" -e GRADLE_USER_HOME=/tmp/gradle-home \
 # -> agent-jdk25/build/libs/ohmyrasp-agent.jar
 ```
 
-旧版 JDK 请构建 `:agent-java8:agentJava8Jar`、`:agent-java11:agentJava11Jar` 或 `:agent-java17:agentJava17Jar`（Java 21 使用 Java 17 版）；无守护进程 shirudo 构建使用 `:agent-*:shirudoUpatchJar`。
+旧版 JDK 请构建 `:agent-java8:agentJava8Jar`、`:agent-java11:agentJava11Jar` 或 `:agent-java17:agentJava17Jar`（Java 21 和 25 共用上面的主 Agent）；无守护进程 shirudo 构建使用 `:agent-*:shirudoUpatchJar`。
 
 ### 挂载到目标应用
 

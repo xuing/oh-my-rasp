@@ -476,14 +476,14 @@ public final class ControlPlaneClient implements AutoCloseable {
             Map.of("input_arguments", inputArguments)));
 
     int major = javaMajorVersion(System.getProperty("java.version", ""));
-    boolean jdk25 = major == 25;
+    boolean supportedRuntime = major == 21 || major == 25;
     findings.add(
         baselineFinding(
             "jvm.version.supported",
-            jdk25 ? "Java runtime is in the primary supported range" : "Java runtime is outside the primary supported range",
+            supportedRuntime ? "Java runtime is in the primary supported range" : "Java runtime is outside the primary supported range",
             "runtime",
-            jdk25 ? "info" : "medium",
-            jdk25 ? "passed" : "warning",
+            supportedRuntime ? "info" : "medium",
+            supportedRuntime ? "passed" : "warning",
             "java-" + (major == 0 ? "unknown" : major),
             "Use the agent build matching the runtime LTS line before production rollout.",
             Map.of(

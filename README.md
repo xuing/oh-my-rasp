@@ -42,7 +42,7 @@ Every hook, detector, and Vulhub replay script lives in this repository and runs
 | Detection engine | 54 capabilities, 43 algorithm signatures asserted end-to-end | [docs/detection.md](docs/detection.md) |
 | Exploit replay suite | 136 scenarios across 53 [Vulhub](https://github.com/vulhub/vulhub) roots (130 CVEs tracked) | [vulhub-coverage.md](docs/development/vulhub-coverage.md) |
 | Benign corpus precision | `0 / 83` false positives across 14 categories | [FALSE-POSITIVE-REPORT.md](java-agent/docs/FALSE-POSITIVE-REPORT.md) |
-| Supported JVMs | Dedicated builds for JDK 8, 11, 17 (also Java 21), and 25 (`javax.servlet` & `jakarta.servlet`) | [docs/agent.md](docs/agent.md) |
+| Supported JVMs | Builds for JDK 8, 11, 17, and a shared JDK 21/25 build (`javax.servlet` & `jakarta.servlet`) | [docs/agent.md](docs/agent.md) |
 
 **Verified CVEs and exploit classes blocked:**
 - **OpenJDK Base64 AVX-512 tail-underflow (Java2Shell / Java4Shell, CVE-2026-114938)** across JDK 8–25
@@ -73,7 +73,7 @@ OhMyRASP ships ready-to-sign **[shirudo](https://github.com/shirudo-dev/shirudo)
 | `ohmyrasp-java8` | Java 8 (classfile `<= 52`) | `ohmyrasp-java8.jar` | `:agent-java8` |
 | `ohmyrasp-java11` | Java 11 (classfile `<= 55`) | `ohmyrasp-java11.jar` | `:agent-java11` |
 | `ohmyrasp-java17` | Java 17 & Java 21 (classfile `<= 61`) | `ohmyrasp-java17.jar` | `:agent-java17` |
-| `ohmyrasp-jdk25` | Java 25 (classfile `<= 69`) | `ohmyrasp-jdk25.jar` | `:agent-jdk25` |
+| `ohmyrasp-jdk25` | Java 21 & Java 25 (classfile `<= 65`) | `ohmyrasp-jdk25.jar` | `:agent-jdk25` |
 
 Each shirudo JAR embeds `META-INF/ohmyrasp-shirudo.properties` (`standalone=true`, `lock_config=true`, `mode=block`, `control=none`, `log=stderr`, `latency_sample=0`):
 
@@ -111,7 +111,7 @@ docker run --rm -u "$(id -u):$(id -g)" -e GRADLE_USER_HOME=/tmp/gradle-home \
 # -> agent-jdk25/build/libs/ohmyrasp-agent.jar
 ```
 
-Use `:agent-java8:agentJava8Jar`, `:agent-java11:agentJava11Jar`, or `:agent-java17:agentJava17Jar` for earlier JDKs (use Java 17 on Java 21), or `:agent-*:shirudoUpatchJar` for daemonless shirudo builds.
+Use `:agent-java8:agentJava8Jar`, `:agent-java11:agentJava11Jar`, or `:agent-java17:agentJava17Jar` for earlier JDKs, or `:agent-*:shirudoUpatchJar` for daemonless shirudo builds.
 
 ### Attach to an application
 
