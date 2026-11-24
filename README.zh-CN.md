@@ -149,23 +149,7 @@ java -javaagent:/opt/ohmyrasp/ohmyrasp-agent.jar=backend_url=http://<host>:18090
 
 ## 架构
 
-```text
-                      ┌──────────────────────┐
-                      │      Web 控制台       │
-                      │    React 19 + Vite   │
-                      └──────────┬───────────┘
-                                 │
-┌─────────────────┐   ┌──────────▼───────────┐   ┌─────────────────────┐
-│   Host Daemon   │──►│      控制平面 API     │◄──│  Prometheus 规则     │
-│      Rust       │   │     Go + OpenAPI     │   │  Alertmanager       │
-└───▲─────────┬───┘   └───┬──────┬───────┬───┘   │  Grafana            │
-    │ spool   │ 控制      │      │       │       └─────────────────────┘
-    │ (NDJSON)│ 文件      ▼      ▼       ▼
-┌───┴─────────▼───┐  PostgreSQL ClickHouse Valkey
-│   Java Agent    │   控制状态    遥测数据   缓存
-│  ASM 调用点钩子  │
-└─────────────────┘
-```
+![OhMyRASP 系统架构图](docs/images/architecture.svg)
 
 | 模块 | 技术栈 | 职责 |
 |---|---|---|
