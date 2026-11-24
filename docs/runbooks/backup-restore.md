@@ -162,10 +162,10 @@ alert deliveries, and audit logs are visible.
 
 ## Compose Volume Notes
 
-PostgreSQL 18 containers expect the named volume to be mounted at
-`/var/lib/postgresql`, not `/var/lib/postgresql/data`. The included Compose file
-uses the PostgreSQL 18-compatible parent directory mount so future major-version
-upgrades can use PostgreSQL's versioned data subdirectories.
+Compose mounts the PostgreSQL data volume at `/var/lib/postgresql`. PostgreSQL
+19 stores its cluster under `19/docker` inside that volume. For existing
+PostgreSQL 18 installations, follow the [18 to 19 migration](./upgrade-downgrade.md#postgresql-18-to-19)
+before starting the new stack.
 
 Prometheus reads `deploy/prometheus/prometheus.yml` from the host. The file and
 its parent directories must be readable/traversable by the Prometheus container

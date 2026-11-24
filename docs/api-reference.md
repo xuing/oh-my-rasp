@@ -167,7 +167,7 @@ docker run -d --rm --name ohmyrasp-postgres-test \
   -e POSTGRES_USER=ohmyrasp \
   -e POSTGRES_PASSWORD=ohmyrasp \
   -e POSTGRES_DB=ohmyrasp \
-  -p 55432:5432 postgres:18.7
+  -p 55432:5432 postgres:19.0
 
 docker run --rm --network host \
   -e OHMYRASP_POSTGRES_TEST_DSN='postgres://ohmyrasp:ohmyrasp@localhost:55432/ohmyrasp?sslmode=disable' \

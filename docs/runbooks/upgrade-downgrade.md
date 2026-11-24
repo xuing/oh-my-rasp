@@ -23,9 +23,68 @@ curl -fsS http://localhost:18091/
 5. Pause scheduled maintenance jobs or external automation that might mutate
    policies, users, settings, or alert rules during the upgrade.
 
+## PostgreSQL 18 to 19
+
+New Compose installations initialize PostgreSQL 19 on first start. For an
+existing PostgreSQL 18 deployment, use a maintenance window to restore the
+control-plane database onto a fresh volume. These steps assume the single
+database and role created by the standard Compose stack. Provision any custom
+roles, databases, or extensions on the target as part of your migration.
+
+1. On the deployed 18 revision, keep the same Compose project and `.env`.
+   Pause external writers and stop the application. Run the following in one
+   Bash session. The backup directory is private to the current user.
+
+   ```bash
+   set -euo pipefail
+   backup_dir=$(mktemp -d "$HOME/ohmyrasp-pg18-XXXXXXXX")
+   old_volume=$(docker inspect "$(docker compose ps -q postgres)" \
+     --format '{{range .Mounts}}{{if eq .Destination "/var/lib/postgresql"}}{{.Name}}{{end}}{{end}}')
+   test -n "$old_volume"
+   git rev-parse HEAD > "$backup_dir/source-revision"
+   printf '%s\n' "$old_volume" > "$backup_dir/source-volume"
+
+   docker compose stop web api migrate
+   pg() {
+     docker compose exec -T postgres sh -ec 'exec "$@" -U "$POSTGRES_USER" -d "$POSTGRES_DB"' sh "$@"
+   }
+   counts='SELECT (SELECT count(*) FROM schema_migrations), (SELECT count(*) FROM users), (SELECT count(*) FROM applications), (SELECT count(*) FROM policies)'
+   pg psql -XAt -v ON_ERROR_STOP=1 -c "$counts" > "$backup_dir/before.counts"
+   pg pg_dump --format=custom --no-owner > "$backup_dir/postgres.dump"
+   docker compose exec -T postgres pg_restore --list < "$backup_dir/postgres.dump" > /dev/null
+   docker compose stop postgres
+   ```
+
+2. Check out the target revision containing PostgreSQL 19. Preserve the project
+   name and credentials. Start only PostgreSQL and restore the dump. The new
+   volume name includes the unique backup directory suffix.
+
+   ```bash
+   export POSTGRES_VOLUME_NAME="${old_volume}-19-${backup_dir##*-}"
+   docker compose up -d --no-deps --wait postgres
+   pg psql -XAt -c 'SHOW server_version'
+   pg pg_restore --no-owner --exit-on-error --single-transaction < "$backup_dir/postgres.dump"
+   pg psql -XAt -v ON_ERROR_STOP=1 -c "$counts" > "$backup_dir/after.counts"
+   diff -u "$backup_dir/before.counts" "$backup_dir/after.counts"
+   printf 'POSTGRES_VOLUME_NAME=%s\n' "$POSTGRES_VOLUME_NAME"
+   ```
+
+3. Save the printed `POSTGRES_VOLUME_NAME` setting in the deployment's `.env`
+   for subsequent Compose invocations. Start the stack with
+   `docker compose up -d --build`, check `/readyz`, and verify the expected
+   applications and policies before reopening traffic. Keep the 18 volume and
+   dump through the rollback window.
+
+If validation fails before writes resume, stop the new services, check out
+the revision recorded in `source-revision`, and restore the original volume
+setting in `.env` and the shell. Run `docker compose up -d --build` with the
+original 18 volume. After 19 accepts writes, reconcile those writes before
+rolling back to the 18 snapshot.
+
 ## Docker Compose Upgrade
 
-Run from the repository root after checking out the target source revision:
+When upgrading from PostgreSQL 18, complete the [database migration](#postgresql-18-to-19) first.
+For routine application upgrades, run from the repository root after checking out the target revision:
 
 ```bash
 export COMPOSE_FILE=docker-compose.yml

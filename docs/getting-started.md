@@ -116,6 +116,9 @@ OHMYRASP_BOOTSTRAP_ADMIN_PASSWORD=
 
 ### Start the stack
 
+Existing Compose installations with PostgreSQL 18 data should complete the
+[18 to 19 migration](runbooks/upgrade-downgrade.md#postgresql-18-to-19) before starting this version.
+
 ```bash
 docker compose --env-file .env -f docker-compose.yml up -d --build
 docker compose --env-file .env -f docker-compose.yml ps
