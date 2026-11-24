@@ -1,8 +1,13 @@
 # OhMyRASP Shirudo Java Upatch Packages
 
 This directory packages OhMyRASP's standalone, daemonless Java runtime
-self-protection agents as [shirudo](https://github.com/shirudo) Java
+self-protection agents as [shirudo](https://github.com/shirudo-dev/shirudo) Java
 upatches (`.bee` packages and signed `.upatch` artifacts).
+
+Pre-built staged JARs and the full `deploy/shirudo/` bundle
+(`ohmyrasp-shirudo-upatches-<version>.tar.gz`) are also published on
+[GitHub Releases](https://github.com/xuing/oh-my-rasp/releases), ready to sign
+directly with `shirudo bpm build`.
 
 ## Packages
 

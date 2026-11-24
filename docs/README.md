@@ -29,6 +29,7 @@
 | [Helm Production](runbooks/helm-production.md) | Deploying to Kubernetes with the production Helm chart. |
 | [Observability](runbooks/observability.md) | Configuring metrics, tracing, and alerting for the platform itself. |
 | [Release](runbooks/release.md) | Release checklist and artifact publishing steps. |
+| [Shirudo Java Upatches](../deploy/shirudo/README.md) | Daemonless, ML-DSA-87-signed Java upatch packaging for shirudo targets. |
 | [Upgrade and Downgrade](runbooks/upgrade-downgrade.md) | Upgrading or rolling back the platform in a running environment. |
 
 ## Development
