@@ -1,6 +1,8 @@
 package io.ohmyrasp.agent.hook;
 
 import io.ohmyrasp.agent.file.HostReadPath;
+import io.ohmyrasp.agent.file.HostFileSystem;
+import io.ohmyrasp.agent.file.ArchiveEntryContext;
 import io.ohmyrasp.agent.file.WindowsDataStream;
 import io.ohmyrasp.agent.file.HostDirectory;
 import io.ohmyrasp.agent.jmx.JmxDispatch;
@@ -46,7 +48,7 @@ public final class OhMyRaspHooks {
   private static final ThreadLocal<RequestContext> REQUEST =
       ThreadLocal.withInitial(RequestContext::empty);
   private static final ThreadLocal<Object> RESPONSE = new ThreadLocal<>();
-  private static final ThreadLocal<String> ARCHIVE_ENTRY = new ThreadLocal<>();
+  private static final ArchiveEntryContext ARCHIVE_ENTRY = new ArchiveEntryContext();
   private static final ServletDispatchScope<RequestContext, Object> DISPATCH =
       new ServletDispatchScope<>(REQUEST, RESPONSE, ARCHIVE_ENTRY);
   private static final StackWalker STACK_WALKER =
@@ -714,6 +716,13 @@ public final class OhMyRaspHooks {
       emit(DETECTORS.detectJmxFileWrite(path, scope, "stream_open", currentRequest()));
   }
 
+  public static void beforeUnixChannelWrite(java.nio.file.Path path, int directoryFd, boolean write) {
+    if (!write) return;
+    var open = ARCHIVE_ENTRY.atChannelOpen(path, directoryFd);
+    if (open != null && !detectionDisabled()) emit(DETECTORS.detectArchiveExtraction(open, currentRequest()));
+    beforeJmxChannelWrite(path, directoryFd, true);
+  }
+
   public static void beforeJmxChannelWrite(java.nio.file.Path path, int directoryFd, boolean write) {
     JmxWriteScope scope = write ? JmxWriteScope.current() : null;
     if (scope != null && !detectionDisabled() && (directoryFd < 0 || path.isAbsolute()))
@@ -817,26 +826,18 @@ public final class OhMyRaspHooks {
   }
 
   public static void beforeFileWrite(String path, List<String> stackClassNames) {
-    inspectFileWrite(path, stackClassNames, null);
-  }
-
-  private static void inspectFileWrite(String path, List<String> stackClassNames, Object operand) {
     if (detectionDisabled()) {
       return;
     }
-    String archiveEntry = ARCHIVE_ENTRY.get();
+    String archiveEntry = ARCHIVE_ENTRY.take();
     try {
       emit(DETECTORS.detectArchiveExtraction(archiveEntry, path, currentRequest()));
-      if (java.io.File.separatorChar != '\\' || WindowsDataStream.parse(path) == null || !HostReadPath.isHostPath(operand))
+      if (java.io.File.separatorChar != '\\' || WindowsDataStream.parse(path) == null)
         emit(DETECTORS.detectFileWrite(path, currentRequest(), stackClassNames));
     } catch (OhMyRaspBlockException blocked) {
       throw blocked;
     } catch (Throwable throwable) {
       quiet("beforeFileWrite", throwable);
-    } finally {
-      if (archiveEntry != null) {
-        ARCHIVE_ENTRY.remove();
-      }
     }
   }
 
@@ -858,7 +859,7 @@ public final class OhMyRaspHooks {
     if (detectionDisabled()) {
       return;
     }
-    beforeFileWrite(pathFrom(file));
+    if (ARCHIVE_ENTRY.hostDestination(file)) beforeFileWrite(pathFrom(file));
   }
 
   public static void beforeFileDelete(Object file) {
@@ -1070,18 +1071,18 @@ public final class OhMyRaspHooks {
     if (detectionDisabled()) {
       return;
     }
-    inspectFileWrite(pathFrom(path), stackTraceClassNames(), path);
+    if (ARCHIVE_ENTRY.hostDestination(path)) beforeFileWrite(pathFrom(path));
   }
 
   public static void beforePathWrite(Object path, List<String> stackClassNames) {
     if (detectionDisabled()) {
       return;
     }
-    inspectFileWrite(pathFrom(path), stackClassNames, path);
+    if (ARCHIVE_ENTRY.hostDestination(path)) beforeFileWrite(pathFrom(path), stackClassNames);
   }
 
   public static GeneratedLineWrite beginGeneratedLines(Object target) {
-    if (detectionDisabled() || !currentRequest().active() || !(target instanceof java.nio.file.Path)) return null;
+    if (detectionDisabled() || !currentRequest().active() || !(target instanceof java.nio.file.Path) || !HostFileSystem.contains(target)) return null;
     try {
       String path = pathFrom(target);
       return DETECTORS.generatedScriptCandidate(path) ? new GeneratedLineWrite(path) : null;
@@ -1106,7 +1107,8 @@ public final class OhMyRaspHooks {
 
   public static void beforeEncodedScriptWrite(byte[] bytes, Object target, String text, java.nio.charset.Charset charset) {
     // The immediately following Files.write(byte[]) observes a complete small UTF-8 input itself.
-    if (text == null || detectionDisabled() || (charset == StandardCharsets.UTF_8 && bytes.length <= 8192)) return;
+    if (text == null || detectionDisabled() || (charset == StandardCharsets.UTF_8 && bytes.length <= 8192)
+        || !HostFileSystem.contains(target)) return;
     try {
       String path = pathFrom(target);
       RequestContext request = currentRequest();
@@ -1122,7 +1124,7 @@ public final class OhMyRaspHooks {
   }
 
   public static void beforeGeneratedScriptFileWrite(Object path, Object content) {
-    if (detectionDisabled()) {
+    if (detectionDisabled() || !HostFileSystem.contains(path)) {
       return;
     }
     try {
@@ -1180,12 +1182,9 @@ public final class OhMyRaspHooks {
   public static void afterArchiveEntry(Object entry) {
     try {
       String name = archiveEntryName(entry);
-      if (name.isBlank()) {
-        ARCHIVE_ENTRY.remove();
-      } else {
-        ARCHIVE_ENTRY.set(name);
-      }
+      ARCHIVE_ENTRY.observe(name);
     } catch (Throwable throwable) {
+      ARCHIVE_ENTRY.remove();
       quiet("afterArchiveEntry", throwable);
     }
   }
@@ -1969,7 +1968,7 @@ public final class OhMyRaspHooks {
       return "";
     }
     if (entry instanceof ZipEntry zipEntry) {
-      return zipEntry.getName() == null ? "" : zipEntry.getName();
+      return zipEntry.getName();
     }
     return invokeString(entry, "getName").orElse("");
   }

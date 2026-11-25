@@ -278,6 +278,12 @@ a deferred read retains the originating request for policy evaluation. [XOP pack
 
 At a writable Windows file open, the primary agent applies the ordinary file policy to the base file of an explicitly named default data stream. Named data streams can contain legitimate metadata. An explicit `writeFile_NTFS` selector can monitor or block attempts to open a named data stream for writing. Its event records the requested stream name and base path. Select action `log` to observe normal usage. The hooks cover the JDK output stream, writable random-access file and Windows NIO dispatcher. An upload filename alone does not establish the destination filesystem. [Windows file streams](https://learn.microsoft.com/en-us/windows/win32/fileio/file-streams)
 
+### Host writes and archive entries
+
+Host-file and generated-script write checks use the destination filesystem. A virtual archive member can have the same spelling as a host path. Writing that member consumes the pending archive name and does not apply host-file policy to its contents. A provider can still perform independently observable host operations.
+
+With a pending archive name, the Unix channel hook checks the JDK's validated write flag and the host operand before opening the file. For a relative open against a directory descriptor on Linux it resolves the directory held by that descriptor. When the directory cannot be identified the agent skips that correlation. The evidence records the opening attempt, not a completed extraction. It does not recover names rewritten by an application or passed between threads.
+
 ### Host file deletion
 
 An operator can confine request-selected file deletion to a directory by passing `-Dohmyrasp.file.delete_root=/absolute/allowed/directory` at JVM startup. Choose the enclosing directory within which requests may move between subdirectories. The rule checks operations originating under this root. Jobs using independent directories keep their existing behavior. Without a configured root, relative names containing parent segments alone produce no delete finding.

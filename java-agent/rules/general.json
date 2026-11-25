@@ -100,7 +100,7 @@
     "xxe_protocol": "The XML parser selects an external protocol. At the instrumented transport boundary the agent can check local catalog provenance."
   },
   "backports": {
-    "archive_entry_traversal_write": "An archive member selects an escaping destination at a file-write boundary.",
+    "archive_entry_traversal_write": "An observed archive member selects an absolute or escaping relative host-write operand at a file API or Unix channel open.",
     "classloader_remote_codebase": "A remote codebase is supplied to a Java class-loading API.",
     "command_execution_exploit_primitive": "Process arguments or a deserialization context supply the evidence. Other branches use a product-specific caller.",
     "command_execution_shell_meta": "With decision_basis=request_shell_syntax, request input contributes shell control syntax at process launch. The Windows branch uses a command-text heuristic.",

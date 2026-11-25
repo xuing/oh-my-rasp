@@ -1833,17 +1833,21 @@ public final class DetectorEngine {
 
   public Optional<Detection> detectArchiveExtraction(
       String entryName, String targetPath, RequestContext request) {
-    if (!EscapingPath.matches(entryName, targetPath)) {
-      return Optional.empty();
-    }
-    return Optional.of(
-        Detection.log(
-            "archive",
-            "archive_traversal",
-            95,
-            "Archive extraction target escapes the intended directory",
-            request,
-            Map.of("entry", abbreviate(entryName), "target", abbreviate(targetPath))));
+    return classifyArchiveExtraction(entryName, targetPath, request, null);
+  }
+
+  public Optional<Detection> detectArchiveExtraction(
+      io.ohmyrasp.agent.file.ArchiveEntryContext.ChannelWrite open, RequestContext request) {
+    return classifyArchiveExtraction(open.member, open.target, request, open.basis);
+  }
+
+  private static Optional<Detection> classifyArchiveExtraction(String member, String target, RequestContext request, String basis) {
+    if (!EscapingPath.matches(member, target)) return Optional.empty();
+    Map<String, String> details = basis == null
+        ? Map.of("entry", abbreviate(member), "target", abbreviate(target))
+        : Map.of("entry", abbreviate(member), "target", abbreviate(target), "decision_basis", basis);
+    return Optional.of(Detection.log("archive", "archive_traversal", 95,
+        "Archive extraction target escapes the intended directory", request, details));
   }
 
   public Optional<Detection> detectFileDelete(String path, RequestContext request) {

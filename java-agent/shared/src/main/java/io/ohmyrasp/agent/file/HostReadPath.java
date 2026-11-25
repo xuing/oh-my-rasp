@@ -82,7 +82,7 @@ public final class HostReadPath {
   }
 
   public static boolean isHostPath(Object value) {
-    return !(value instanceof Path) || ((Path) value).getFileSystem() == FileSystems.getDefault();
+    return HostFileSystem.contains(value);
   }
 
   public static String location(String path) {

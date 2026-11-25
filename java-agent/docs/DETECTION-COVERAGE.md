@@ -231,7 +231,7 @@ The descriptions live in the [general catalog](../rules/general.json) and [produ
 
 | Algorithm identifier | Cross-product evidence | Product or component dependency |
 |---|---|---|
-| `java8_archive_entry_traversal_write`, `java11_archive_entry_traversal_write`, `java17_archive_entry_traversal_write` | An archive member selects an escaping destination at a file-write boundary. | — |
+| `java8_archive_entry_traversal_write`, `java11_archive_entry_traversal_write`, `java17_archive_entry_traversal_write` | An observed archive member selects an absolute or escaping relative host-write operand at a file API or Unix channel open. | — |
 | `java8_base64_avx512_tail_underflow`, `java11_base64_avx512_tail_underflow`, `java17_base64_avx512_tail_underflow` | — | The input shape corresponds to a JDK decoder implementation defect. |
 | `java8_classloader_remote_codebase`, `java11_classloader_remote_codebase`, `java17_classloader_remote_codebase` | A remote codebase is supplied to a Java class-loading API. | — |
 | `java8_command_execution_exploit_primitive`, `java11_command_execution_exploit_primitive`, `java17_command_execution_exploit_primitive` | Process arguments or a deserialization context supply the evidence. Other branches use a product-specific caller. | decision_basis=configured_listener identifies the Solr executable listener. Other component-specific callers share this ID with general process branches. |

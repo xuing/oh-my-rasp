@@ -24,7 +24,7 @@ public final class UnixReadVisitor {
         mv.visitVarInsn(Opcodes.ALOAD, 1);
         mv.visitVarInsn(Opcodes.ILOAD, 0);
         flag("write");
-        mv.visitMethodInsn(Opcodes.INVOKESTATIC, hooks, "beforeJmxChannelWrite", "(Ljava/nio/file/Path;IZ)V", false);
+        mv.visitMethodInsn(Opcodes.INVOKESTATIC, hooks, "beforeUnixChannelWrite", "(Ljava/nio/file/Path;IZ)V", false);
         mv.visitVarInsn(Opcodes.ALOAD, 1);
         mv.visitVarInsn(Opcodes.ALOAD, flags);
         mv.visitFieldInsn(Opcodes.GETFIELD, FLAGS, "read", "Z");

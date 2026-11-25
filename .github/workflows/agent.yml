@@ -176,6 +176,8 @@ jobs:
       - name: Check literal stream-like names on Linux
         if: startsWith(matrix.jar, 'agent-jdk25/')
         run: python3 java-agent/scripts/fp-harness/check-file-streams.py "java-agent/${{ matrix.jar }}"
+      - name: Verify ZIP and host write destinations
+        run: python3 java-agent/scripts/fp-harness/check-write-namespace.py "java-agent/${{ matrix.jar }}"
       - name: Verify host filesystem read decisions
         run: python3 java-agent/scripts/fp-harness/check-file-read.py "java-agent/${{ matrix.jar }}"
       - name: Verify report identifiers against an in-memory SQLite database

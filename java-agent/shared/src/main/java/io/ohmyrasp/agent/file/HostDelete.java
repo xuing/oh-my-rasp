@@ -72,11 +72,7 @@ public final class HostDelete {
     if (!anchorChecked) {
       anchorChecked = true;
       if (!relative) absolute = operand.toAbsolutePath();
-      else if (directoryFd >= 0) {
-        Path handle = Paths.get("/proc/self/fd", Integer.toString(directoryFd));
-        Path directory = Files.readSymbolicLink(handle);
-        if (directory.isAbsolute() && Files.isSameFile(directory, handle)) absolute = directory.resolve(operand);
-      }
+      else if (directoryFd >= 0) absolute = HostFileSystem.absoluteOperand(operand, directoryFd);
     }
     return absolute;
   }

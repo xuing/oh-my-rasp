@@ -1,6 +1,7 @@
 package io.ohmyrasp.agent.java11;
 
 import io.ohmyrasp.agent.file.EscapingPath;
+import io.ohmyrasp.agent.file.ArchiveEntryContext;
 import io.ohmyrasp.agent.file.HostReadPath;
 import io.ohmyrasp.agent.file.HostDirectory;
 import io.ohmyrasp.agent.jmx.JmxDispatch;
@@ -157,7 +158,7 @@ public final class Java11RaspHooks {
       new ThreadLocal<List<String>>();
   private static final ThreadLocal<RequestSnapshot> CURRENT_REQUEST =
       new ThreadLocal<RequestSnapshot>();
-  private static final ThreadLocal<String> ARCHIVE_ENTRY = new ThreadLocal<String>();
+  private static final ArchiveEntryContext ARCHIVE_ENTRY = new ArchiveEntryContext();
   private static final ServletDispatchScope<RequestSnapshot, List<String>> DISPATCH =
       new ServletDispatchScope<RequestSnapshot, List<String>>(CURRENT_REQUEST, CURRENT_REQUEST_URLS, ARCHIVE_ENTRY);
   private static final ThreadLocal<String> LAST_LOGGED_ARCHIVE = new ThreadLocal<String>();
@@ -445,12 +446,12 @@ public final class Java11RaspHooks {
   }
 
   public static void beforeFileWrite(Object path) {
+    if (!ARCHIVE_ENTRY.hostDestination(path)) return;
     String rawPath = pathValue(path);
     String normalizedPath = normalizePath(rawPath);
-    String entry = ARCHIVE_ENTRY.get();
+    String entry = ARCHIVE_ENTRY.take();
     if (entry != null) {
-      ARCHIVE_ENTRY.remove();
-      emitFileFinding(classifyArchiveWrite(entry, rawPath), LAST_LOGGED_ARCHIVE, "ArchiveEntry.write");
+      emitFileFinding(classifyArchiveWrite(entry, rawPath, null), LAST_LOGGED_ARCHIVE, "ArchiveEntry.write");
     }
     if (isTomcatWarExpansionStack() || isTomcatJspCompilationStack()) {
       return;
@@ -645,11 +646,7 @@ public final class Java11RaspHooks {
   }
 
   public static void afterArchiveEntryName(String name) {
-    if (EscapingPath.mayEscape(name)) {
-      ARCHIVE_ENTRY.set(name);
-    } else {
-      ARCHIVE_ENTRY.remove();
-    }
+    ARCHIVE_ENTRY.observe(name);
   }
 
   public static void beforeJdbcConnection(String url) {
@@ -926,6 +923,14 @@ public final class Java11RaspHooks {
 
   public static void beforeJmxStreamWrite(String path, int write) {
     if (write != 0 && JmxWriteScope.current() != null) inspectJmxFileWrite(path, "stream_open");
+  }
+
+  public static void beforeUnixChannelWrite(java.nio.file.Path path, int directoryFd, boolean write) {
+    if (!write) return;
+    ArchiveEntryContext.ChannelWrite open = ARCHIVE_ENTRY.atChannelOpen(path, directoryFd);
+    if (open != null && !RaspRuntime.detectionOff())
+      emitFileFinding(classifyArchiveWrite(open.member, open.target, open.basis), null, "ArchiveEntry.write");
+    beforeJmxChannelWrite(path, directoryFd, true);
   }
 
   public static void beforeJmxChannelWrite(java.nio.file.Path path, int directoryFd, boolean write) {
@@ -1710,7 +1715,7 @@ public final class Java11RaspHooks {
         normalizePath(filename), basis, evaluation.policyDigest);
   }
 
-  private static Finding classifyArchiveWrite(String entry, String path) {
+  private static Finding classifyArchiveWrite(String entry, String path, String basis) {
     if (!EscapingPath.matches(entry, path)) {
       return null;
     }
@@ -1719,7 +1724,7 @@ public final class Java11RaspHooks {
         92,
         "Archive entry traversal reached a Java 11 file write sink",
         "entry",
-        entry + " -> " + path);
+        entry + " -> " + path, basis);
   }
 
   private static Finding classifyJdbcUrl(String url) {
