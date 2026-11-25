@@ -14,6 +14,10 @@ Hooks call the public [DetectorEngine facade](../java-agent/agent-jdk25/src/main
 
 | Evidence at the decision point | Implementation |
 |---|---|
+| HTTP configuration and naming lookups | [RequestConfigurationDetector](../java-agent/agent-jdk25/src/main/java/io/ohmyrasp/agent/detect/RequestConfigurationDetector.java) |
+| Template loading and expression-bearing request fields | [RequestTemplateDetector](../java-agent/agent-jdk25/src/main/java/io/ohmyrasp/agent/detect/RequestTemplateDetector.java) and [RequestExpressionDetector](../java-agent/agent-jdk25/src/main/java/io/ohmyrasp/agent/detect/RequestExpressionDetector.java) |
+| XML entities and polymorphic binding in request data | [RequestPayloadDetector](../java-agent/agent-jdk25/src/main/java/io/ohmyrasp/agent/detect/RequestPayloadDetector.java) |
+| Remote sources and filesystem targets in a request | [RequestResourceDetector](../java-agent/agent-jdk25/src/main/java/io/ohmyrasp/agent/detect/RequestResourceDetector.java) |
 | JDBC statement, connection options, or database error | [JdbcDetector](../java-agent/agent-jdk25/src/main/java/io/ohmyrasp/agent/detect/JdbcDetector.java) |
 | SQL-like fields in a request, selected by policy | [SqlRequestIndicators](../java-agent/agent-jdk25/src/main/java/io/ohmyrasp/agent/detect/SqlRequestIndicators.java) |
 | Host write targets, archive extraction, generated content and deletion | [HostFileMutationDetector](../java-agent/agent-jdk25/src/main/java/io/ohmyrasp/agent/detect/HostFileMutationDetector.java) |

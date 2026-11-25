@@ -17,6 +17,12 @@ import java.util.regex.Pattern;
 final class RemoteResourceDetector {
   private RemoteResourceDetector() {}
 
+  static final Set<String> SSRF_PROTOCOLS =
+      Set.of("file", "gopher", "dict", "ftp", "ldap", "jar", "netdoc");
+
+  static final Set<String> JNDI_LOOKUP_PROTOCOLS =
+      Set.of("ldap", "ldaps", "rmi", "dns", "iiop", "corba", "corbaname", "corbaloc", "nis");
+
   // A lookup whose name resolves through a *remote* naming provider is the
   // JNDI-injection vector (Log4Shell-class). Local container lookups in the
   // `java:` namespace (java:comp/env/..., java:global/..., java:module/...) and

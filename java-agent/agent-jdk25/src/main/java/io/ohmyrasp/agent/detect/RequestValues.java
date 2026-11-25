@@ -47,4 +47,16 @@ final class RequestValues {
     }
     return Optional.empty();
   }
+
+  static String jsonBodyParameter(String name) {
+    return "body." + (name == null || name.isBlank() ? "<unnamed>" : name);
+  }
+
+  static RequestContext redactBodyRequest(RequestContext request) {
+    if (request == null) {
+      return RequestContext.empty();
+    }
+    return new RequestContext(
+        request.method(), request.uri(), request.query(), request.parameters(), request.headers());
+  }
 }
