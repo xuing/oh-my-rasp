@@ -2682,4 +2682,6 @@ above.
 - [x] XStream - CVE-2021-29505 `RegistryImpl_Stub` RMI XML gadget (`request_xstream_cve_2021_29505_registryimpl_rmi_xml_gadget`; real Java8 acceptance: `scripts/acceptance-vulhub-xstream-29505-java8.sh` blocks `java8_deserialization_gadget_class`)
 
 ## Candidates
+
+- [ ] `fastjson/1.2.83-rce` was added after the audited snapshot. The primary and backport agents have a [Fastjson resource lookup rule](../detection.md#deserialization-defenses). The [primary agent test](../../java-agent/agent-jdk25/src/test/java/io/ohmyrasp/agent/asm/FastjsonResourceHookTest.java) checks the hook in the Fastjson library. Application-level verification for this environment is pending. [Upstream catalogue](https://github.com/vulhub/vulhub/blob/9b90d4276f84feed6333286afeb7e1250379a1da/environments.toml)
 - [ ] _Add the next Java Vulhub candidate here before probing it._
