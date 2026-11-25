@@ -94,6 +94,24 @@ class EvidenceTest(unittest.TestCase):
                               ("jndiRoute", "URLContext.lookup\0" + name)])
             self.assertEqual(rows[-1]["status"], "source evidence required")
 
+    def test_codebase_display_cannot_identify_loader_selection(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            case = Path(tmp) / "vulhub-codebase-protected"
+            case.mkdir()
+            records = [{"event": "ohmyrasp-java8-agent-start"}]
+            for hook, basis in (("RMIClassLoader", None), ("URLClassLoader", None),
+                                ("RMIClassLoader", "rmi_codebase_loader_selection"),
+                                ("URLClassLoader", "classloader_url_configuration")):
+                details = {"codebase": hook + " https https://reports.invalid/catalog/"}
+                if basis:
+                    details["decision_basis"] = basis
+                records.append({"hook": hook, "action": "block", "algorithm": "java8_classloader_remote_codebase",
+                                "details": details})
+            (case / "events.jsonl").write_text("\n".join(map(json.dumps, records)))
+            _, rows, batches, _, _ = decisions.collect(case.parent)
+            self.assertEqual([r["status"] for r in rows[:2]], ["source evidence required"] * 2)
+            self.assertEqual([method for _, method, _ in batches["8"]], ["beforeRmiCodebaseLoader", "beforeClassLoaderUrl"])
+
     def test_jaas_configuration_does_not_prove_login(self):
         rule = "java8_jaas_jndi_remote_provider"
         url = "ldap://reports.invalid/empty"

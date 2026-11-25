@@ -192,14 +192,7 @@ coverage, separate from the Java 25 behavioral replay suite:
   `java8_jdbc_mysql_deserialization`, normal JDBC URL smoke traffic emits no
   detection, and block mode records `action:"block"` before throwing
   `Java8RaspBlockException` on Temurin 8.
-- [x] Add the eighth functional Java 8 era behavior hook: `URLClassLoader`
-  constructors, `URLClassLoader.addURL`, and `RMIClassLoader` codebase APIs are
-  transformed by the dedicated Java 8 agent, remote HTTP(S)/FTP/LDAP/RMI
-  codebases and `jar:`-wrapped remote codebases emit
-  `java8_classloader_remote_codebase`, local `file:` classpath URLs emit no
-  detection, Felix/OSGi internal `http://felix.extensions:<port>/`
-  extension-bundle codebases emit no detection, and block mode records
-  `action:"block"` before throwing `Java8RaspBlockException` on Temurin 8.
+- [x] Check [URL classpath configuration and JDK RMI loader selection](../detection.md#rmi-codebase-selection).
 - [x] Add the ninth functional Java 8 era behavior hook:
   `ScriptEngine.eval(String...)` is transformed through `AbstractScriptEngine`,
   Nashorn, and `ScriptEngineImpl` implementations, runtime/reflective runtime,
@@ -1749,15 +1742,7 @@ coverage, separate from the Java 25 behavioral replay suite:
   public URL traffic emits no detection, and block mode records
   `action:"block"` before throwing `Java11RaspBlockException` on Temurin 11,
   Tomcat 10.1/JDK11, and Tomcat 9/JDK11.
-- [x] Add the seventh functional Java 11 era behavior hook:
-  `URLClassLoader` constructors, `URLClassLoader.addURL`, and
-  `RMIClassLoader` codebase APIs are transformed by the dedicated Java 11
-  agent, remote HTTP(S)/FTP/LDAP/RMI codebases and `jar:`-wrapped remote
-  codebases emit `java11_classloader_remote_codebase`, local `file:` classpath
-  URLs and Felix/OSGi internal `http://felix.extensions:<port>/`
-  extension-bundle codebases emit no detection, and block mode records
-  `action:"block"` before throwing `Java11RaspBlockException` on Temurin 11,
-  Tomcat 10.1/JDK11, and Tomcat 9/JDK11.
+- [x] Check [URL classpath configuration and JDK RMI loader selection](../detection.md#rmi-codebase-selection).
 - [x] Add the eighth functional Java 11 era behavior hook:
   `DriverManager.getConnection` and direct H2 `org.h2.jdbc.JdbcConnection`
   constructors are transformed by the dedicated Java 11 agent, H2 `INIT`
@@ -1885,15 +1870,7 @@ coverage, separate from the Java 25 behavioral replay suite:
   traffic emits no detection, and block mode records `action:"block"` before
   throwing `Java17RaspBlockException` on Temurin 17, Tomcat 11/JDK17,
   Tomcat 10.1/JDK17, and Tomcat 9/JDK17.
-- [x] Add the Java 17 era remote classloader codebase behavior hook:
-  `URLClassLoader` constructors, `URLClassLoader.addURL`, and
-  `RMIClassLoader` codebase APIs are transformed by the dedicated Java 17
-  agent, remote HTTP(S)/FTP/LDAP/RMI codebases and `jar:`-wrapped remote
-  codebases emit `java17_classloader_remote_codebase`, local `file:` classpath
-  URLs and Felix/OSGi internal `http://felix.extensions:<port>/`
-  extension-bundle codebases emit no detection, and block mode records
-  `action:"block"` before throwing `Java17RaspBlockException` on Temurin 17,
-  Tomcat 11/JDK17, Tomcat 10.1/JDK17, and Tomcat 9/JDK17.
+- [x] Check [URL classpath configuration and JDK RMI loader selection](../detection.md#rmi-codebase-selection).
 - [x] Add the Java 17 era JDBC URL primitive behavior hook:
   `DriverManager.getConnection` and direct H2 `org.h2.jdbc.JdbcConnection`
   constructors are transformed by the dedicated Java 17 agent, H2 `INIT`
@@ -2517,7 +2494,7 @@ above.
 - [x] Apereo CAS - 4.1 encrypted WebFlow execution state deserialization (`deserialization_apereo_cas_4_1_webflow_execution_state`; real Java8 acceptance: `scripts/acceptance-vulhub-apereo-cas-415-java8.sh` blocks `java8_deserialization_gadget_class`)
 - [x] Apache JMeter - CVE-2018-1297 RMI distributed test deserialization (`deserialization_jmeter_cve_2018_1297_rmi_transport`; real Java8 acceptance: `scripts/acceptance-vulhub-jmeter-1297-java8.sh` blocks `java8_deserialization_gadget_class`)
 - [x] Apache Log4j - CVE-2017-5645 TCP SocketServer deserialization (`deserialization_log4j_cve_2017_5645_socket_server`; real Java8 acceptance: `scripts/acceptance-vulhub-log4j-5645-java8.sh` blocks `java8_deserialization_gadget_class`)
-- [x] Java RMI - remote RMIClassLoader codebase class loading (`classloader_java_rmi_codebase_remote_classload`; real Java8 acceptance: `scripts/acceptance-vulhub-rmi-codebase-java8.sh` blocks `java8_classloader_remote_codebase`)
+- [x] Java RMI - remote RMIClassLoader codebase class loading (`classloader_java_rmi_codebase_remote_classload`; historical Java8 acceptance: `scripts/acceptance-vulhub-rmi-codebase-java8.sh` recorded `java8_classloader_remote_codebase` on the RMI annotation). Current application outcome awaits end-to-end verification.
 - [x] Java RMI Registry - JDK <= 8u111 bind deserialization (`deserialization_java_rmi_registry_bind`; real Java8 acceptance: `scripts/acceptance-vulhub-rmi-registry-direct-java8.sh` blocks `java8_deserialization_gadget_class`)
 - [x] Java RMI Registry - JDK < 8u232-b09 UnicastRef/JRMP bypass (`deserialization_java_rmi_registry_bind_bypass`; real Java8 acceptance: `scripts/acceptance-vulhub-rmi-registry-bypass-java8.sh` blocks `java8_deserialization_gadget_class`)
 

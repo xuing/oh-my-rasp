@@ -470,20 +470,9 @@ same patch as any new Java-compatible Vulhub replay.
   positions at JDBC. See [MyBatis dynamic SQL](../detection.md#mybatis-dynamic-sql)
   for policy behavior and the [Vulhub ledger](vulhub-coverage.md) for the
   earlier MeterSphere evidence.
-- The Java 8 era track hooks `URLClassLoader` constructors, `addURL`, and
-  `RMIClassLoader` codebase APIs. Remote HTTP(S), FTP, LDAP, or RMI codebases,
-  including `jar:` URLs that wrap one of those remote schemes, log
-  `java8_classloader_remote_codebase`; local `file:` classpath URLs are
-  ignored. Felix/OSGi internal extension-bundle codebases whose host is
-  exactly `felix.extensions` are also ignored so GlassFish/Felix startup does
-  not look like attacker-controlled remote bytecode loading.
-  `scripts/acceptance-vulhub-rmi-codebase-java8.sh` provides real Vulhub
-  application evidence: `vulhub/j2ee:8u222` `java/rmi-codebase` baseline sends
-  an `ICalc.sum(List)` call carrying a serializable class annotated with a
-  temporary HTTP `java.rmi.server.codebase` and creates
-  `/tmp/ohmyrasp-rmi-codebase-success` during server-side deserialization,
-  while protected mode blocks `RMIClassLoader` before the remote class can be
-  loaded.
+- Java 8 records URL classpath configuration and selection of the JDK RMI codebase loader.
+  The historical `java/rmi-codebase` application result used an annotation-entry hook.
+  [Current codebase policy](../detection.md#rmi-codebase-selection)
   `scripts/acceptance-vulhub-liferay-7961-java8.sh` provides real Vulhub
   application evidence for Liferay Portal CVE-2020-7961 on OpenJDK 8:
   baseline posts the JSONWS typed C3P0/Jackson parameter, loads
@@ -721,13 +710,7 @@ same patch as any new Java-compatible Vulhub replay.
 - The Java 11 era track reports cloud metadata, request-selected loopback
   administrative destinations and request-selected internal HTTP endpoints at the
   [JDK transport boundaries](../detection.md#http-transport-evidence).
-- The Java 11 era track hooks `URLClassLoader` constructors and `addURL`, plus
-  `RMIClassLoader` codebase APIs. Remote HTTP(S), FTP, LDAP, and RMI
-  codebases, including `jar:` URLs that wrap remote schemes, log or block
-  `java11_classloader_remote_codebase`; local `file:` classpath URLs are
-  ignored, as are Felix/OSGi internal `felix.extensions` extension-bundle
-  codebases. The Java 11 Tomcat 10.1/Tomcat 9 matrix verifies URLClassLoader and
-  RMIClassLoader remote codebase behavior.
+- Java 11 uses the shared [codebase checks](../detection.md#rmi-codebase-selection).
 - The Java 11 era track hooks `DriverManager.getConnection` and direct H2
   `org.h2.jdbc.JdbcConnection` constructors. H2 `INIT` URLs carrying
   `RUNSCRIPT`, alias, trigger, runtime, JNDI, or classloader primitives log or
@@ -1956,17 +1939,8 @@ same patch as any new Java-compatible Vulhub replay.
   real Java 8 Vulhub acceptance verifies the lower-level
   `java8_file_generated_plot_script_command` sink against both OpenTSDB 2.4.0
   and 2.4.1.
-- `classloader_remote` covers Java classloader codebase sources that use remote
-  schemes such as HTTP, HTTPS, LDAP, or RMI, including `RMIClassLoader`
-  codebase loading. This targets Vulhub `java/rmi-codebase`-style remote
-  bytecode loading while ignoring local `file:`, application classpath JAR
-  resources, and Felix/OSGi internal `felix.extensions` extension-bundle
-  pseudo-codebases. The playground and acceptance suite include a direct
-  RMIClassLoader-shaped codebase replay and log only mechanism, scheme,
-  abbreviated URL, and request-control status. The Java 8 runtime track also
-  proves the real `vulhub/j2ee:8u222` RMI server through a
-  baseline/protected acceptance in
-  `scripts/acceptance-vulhub-rmi-codebase-java8.sh`.
+- `classloader_remote` covers URL classpath configuration and JDK RMI codebase-loader selection.
+  [Codebase policy](../detection.md#rmi-codebase-selection)
 - `jmx_remote_config` covers request-time JMX/MBean invocations that mutate
   runtime configuration with a remote Spring/XBean-style config source. This
   targets Jolokia management-bridge RCE chains such as ActiveMQ
