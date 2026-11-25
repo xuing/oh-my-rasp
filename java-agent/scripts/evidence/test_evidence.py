@@ -113,6 +113,16 @@ class EvidenceTest(unittest.TestCase):
             self.assertEqual(rows[3]["status"], "source evidence required")
             self.assertEqual([method for _, method, _ in batches["8"]], ["beforeRmiCodebaseLoader", "onClassDefinitionSource"])
 
+    def test_spring_initialization_stack_cannot_replay_the_dispatch(self):
+        rule = "java11_command_execution_exploit_primitive"
+        old = decisions.process_evidence_limit("ProcessBuilder.start", rule, "11",
+                                                "Spring bean initialization reached a Java 11 process sink", {})
+        current = decisions.process_evidence_limit("Spring.initMethod", rule, "11", "",
+                                                    {"decision_basis": "remote_bean_init_dispatch"})
+        self.assertEqual(old[0], "source evidence required")
+        self.assertIn("frames", old[1])
+        self.assertIn("receiver", current[1])
+
     def test_jaas_configuration_does_not_prove_login(self):
         rule = "java8_jaas_jndi_remote_provider"
         url = "ldap://reports.invalid/empty"

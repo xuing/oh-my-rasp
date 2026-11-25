@@ -34,12 +34,7 @@ same patch as any new Java-compatible Vulhub replay.
   from database Java routine stacks such as Derby, H2, or HSQLDB is treated the
   same way. Process execution reached from JAI-EXT/Jiffle runtime stacks is
   treated the same way for GeoServer/JAI-EXT CVE-2022-24816-style payloads.
-  Process execution reached during Spring `ApplicationContext`
-  refresh and `AbstractAutowireCapableBeanFactory` bean initialization is also
-  treated as exploit-grade behavior, covering remote Spring XML/XBean
-  configuration chains without inspecting payload strings; plain
-  `Runtime.exec("touch ...")` or `Runtime.exec("id")` outside those stacks
-  remains quiet.
+  Spring initialization uses the [definition and receiver checks](../detection.md#spring-process-initialization).
   Process execution reached while Java object stream deserialization is active
   is also treated as exploit-grade behavior, including standard
   `ObjectInputStream`, Axis2 `SafeObjectInputStream`, and BlazeDS AMF
@@ -52,25 +47,13 @@ same patch as any new Java-compatible Vulhub replay.
   The 2026-06-06 full LTS Tomcat rerun after this stack-correlation refinement
   passed Java 17 Tomcat 11 -> 10.1 -> 9, Java 11 Tomcat 10.1 -> 9, and
   Java 8 Tomcat 10.0 -> 9 -> 8.5.
-  Exact OS/system inventory probes such as `getconf CLK_TCK`,
-  `getconf PAGE_SIZE`, `getconf PAGESIZE`, `lscpu -p=cpu,node`, and
-  `vcgencmd measure_temp`, `dmidecode -t 4`, and `cpuid -1r`, plus local
-  identity checks such as `id hadoop`, stay quiet even from Spring
-  bean-initialization stacks, matching GeoServer OSHI startup behavior and
-  Linkis service-user readiness checks.
   Process execution reached from XStream XML unmarshalling or Struts2 REST
   XStream handler stacks is also treated as exploit-grade behavior, covering
   XML polymorphic gadget chains without requiring suspicious command text.
   Scheduler script execution stacks such as XXL-JOB `ScriptJobHandler` also
   map shell interpreters running generated script files to
   `java8_command_execution_shell_meta`, while ordinary shell script execution
-  outside scheduler stacks remains quiet. kkFileView
-  `cn.keking.service.OfficePluginManager` LibreOffice cleanup commands for
-  `soffice.bin` process counting and termination are ignored only from that
-  stack to avoid protected-mode startup false positives. Apache Tika
-  `ExternalParser.check` availability probes for media tools such as `ffmpeg`,
-  `exiftool`, and `tesseract`, plus local browser launch chains that open only
-  `localhost`/`127.0.0.1` URLs, are also treated as normal startup behavior.
+  outside scheduler stacks remains quiet.
   `scripts/acceptance-vulhub-solr-runexec-java8.sh` provides real Vulhub
   application evidence: Solr 7.0.1 CVE-2017-12629 baseline adds a post-commit
   `RunExecutableListener` and creates `/tmp/ohmyrasp-solr12629-success`, while
@@ -634,10 +617,7 @@ same patch as any new Java-compatible Vulhub replay.
   the exploit-primitive command family for parity with the Java 8 Unomi
   evidence. Database Java routine stacks such as Derby, H2, and HSQLDB are also
   attributed to the exploit-primitive command family for parity with the Java 8
-  Nacos evidence. Spring `ApplicationContext` refresh and
-  `AbstractAutowireCapableBeanFactory` bean-initialization stacks are attributed
-  to the same family when they reach a process sink, covering remote Spring
-  XML/XBean configuration chains without inspecting payload strings. XStream
+  Nacos evidence. For Spring, see [process initialization](../detection.md#spring-process-initialization). XStream
   XML unmarshalling and Struts2 REST XStream handler stacks are attributed to
   the same family when they reach a process sink, matching the Java 8 S2-052
   evidence. JAI-EXT/Jiffle runtime stacks are attributed to the same command
@@ -645,17 +625,11 @@ same patch as any new Java-compatible Vulhub replay.
   Scheduler script execution stacks such as XXL-JOB `ScriptJobHandler` map
   shell interpreters running generated script files to
   `java11_command_execution_shell_meta`, while ordinary shell script execution
-  outside scheduler stacks remains quiet. Exact OS/system inventory probes such
-  as `getconf CLK_TCK`, `getconf PAGE_SIZE`, `getconf PAGESIZE`,
-  `lscpu -p=cpu,node`, `vcgencmd measure_temp`, `dmidecode -t 4`, and
-  `cpuid -1r` stay quiet even from Spring bean-initialization stacks, matching
-  GeoServer OSHI startup behavior.
+  outside scheduler stacks remains quiet.
   HugeGraph 1.2.0 provides real Vulhub
   application evidence for `java11_command_execution_exploit_primitive`; the
-  ActiveMQ CVE-2023-46604 acceptance also verifies the Spring XML bean-init
-  path blocks the OpenWire-triggered `ProcessBuilder.start` before the marker
-  file is created. The Java 11 track still needs more application acceptance
-  before claiming complete Java 11 vulnerability coverage.
+  historical ActiveMQ CVE-2023-46604 acceptance recorded a Spring initialization stack.
+  Verification of the current policy in ActiveMQ is pending.
 - The Java 11 era track also hooks `InitialContext.lookup` and `lookupLink`.
   Remote LDAP/RMI/IIOP/CORBA naming URLs log or block
   `java11_jndi_remote_lookup`; local `java:comp/env` lookups are ignored. The
@@ -855,19 +829,12 @@ same patch as any new Java-compatible Vulhub replay.
   RMIClassLoader remote codebases. Process sinks reached from MVEL, OGNL,
   Groovy, Apache Commons JEXL, Spring SpEL, Spring WebFlow, or database Java
   routine stacks are also attributed to the exploit-primitive command family
-  for parity with the Java 8 Unomi and Nacos evidence. Process sinks reached
-  during Spring `ApplicationContext` refresh and
-  `AbstractAutowireCapableBeanFactory` bean initialization are treated the same
-  way, matching the Java 11 ActiveMQ CVE-2023-46604 evidence. Process sinks
+  for parity with the Java 8 Unomi and Nacos evidence. Spring uses the [shared lifecycle guard](../detection.md#spring-process-initialization). Process sinks
   reached from XStream XML unmarshalling and Struts2 REST XStream handler
   stacks are also treated as exploit primitives, matching the Java 8 S2-052
   evidence. Process sinks reached from JAI-EXT/Jiffle runtime stacks are also
   treated as exploit primitives, matching the real GeoServer CVE-2022-24816
-  Vulhub acceptance. Exact OS/system inventory probes such as `getconf CLK_TCK`,
-  `getconf PAGE_SIZE`, `getconf PAGESIZE`, `lscpu -p=cpu,node`,
-  `vcgencmd measure_temp`, `dmidecode -t 4`, and `cpuid -1r` stay quiet even
-  from Spring bean-initialization stacks, matching GeoServer OSHI startup
-  behavior. Scheduler script
+  Vulhub acceptance. Scheduler script
   execution stacks such as XXL-JOB `ScriptJobHandler` also map generated shell
   script files to `java17_command_execution_shell_meta`. It also logs or blocks
   `java17_jdbc_h2_code_execution`, `java17_jdbc_derby_code_loading`, and
@@ -2105,11 +2072,8 @@ same patch as any new Java-compatible Vulhub replay.
   such as the CVE-2023-46604 remote XML payload shape. The playground and
   acceptance suite include the direct Vulhub-shaped ActiveMQ `/api/openwire`
   flow with an OpenWire-selected Spring context class and remote `poc.xml`.
-  `scripts/acceptance-vulhub-activemq-46604-java11.sh` provides real Vulhub
-  application evidence: baseline loads the remote Spring XML and creates
-  `/tmp/ohmyrasp-activemq46604-success`, while protected mode blocks the
-  Spring bean-init `ProcessBuilder.start` sink as
-  `java11_command_execution_exploit_primitive`.
+  The historical application evidence and current verification status are recorded in
+  the [Vulhub coverage ledger](vulhub-coverage.md).
 - `deserialization_http_invoker` covers Spring HTTP Invoker endpoints when they
   deserialize a Java object stream for a remote invocation request. This targets
   Dubbo HTTP protocol/Spring remoting shapes such as CVE-2019-17564 at the

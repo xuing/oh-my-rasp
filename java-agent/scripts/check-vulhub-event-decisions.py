@@ -92,6 +92,11 @@ def file_read_limit(value, basis):
 
 
 def process_evidence_limit(hook, algorithm, track, message, details):
+    if algorithm == f"java{track}_command_execution_exploit_primitive":
+        if hook == "Spring.initMethod":
+            return "source evidence required", "parsed definition, selected method and process receiver require live observation"
+        if details.get("decision_basis") == "bean_initialization" or message == f"Spring bean initialization reached a Java {track} process sink":
+            return "source evidence required", "initialization frames cannot establish the XML origin or selected lifecycle receiver"
     if hook not in {"Runtime.exec(String)", "Runtime.exec(String[])", "ProcessBuilder.start",
                     "ProcessBuilder.startPipeline", "ProcessImpl.start"}:
         return None
