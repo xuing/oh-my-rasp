@@ -2041,8 +2041,8 @@ coverage, separate from the Java 25 behavioral replay suite:
   containers for S2-066/CVE-2023-50164 and S2-067/CVE-2024-53677. The
   baseline multipart uploads use `fileFileName=../shell.jsp` and
   `top.fileFileName=../shell.jsp` to write and execute `/shell.jsp`; the
-  protected Java 17 agent blocks both server-side JSP writes with
-  `java17_file_script_write`.
+  protected Java 17 agent blocks both uploads at the multipart filename with
+  `fileUpload_multipart_script`, and no `shell.jsp` is written.
 - [x] Run the first real Java 17 JimuReport Vulhub application acceptance:
   `acceptance/vulhub/jimureport/java17.sh` starts
   `vulhub/jimureport:1.6.0` plus MySQL baseline/protected containers for
@@ -2528,8 +2528,8 @@ The matrix indexes upstream README paths. Checked entries have a ledger or alias
 - [x] Apache Struts2 - S2-057 / CVE-2018-11776 namespace path OGNL (`request_struts2_cve_2018_11776_s2057_namespace_path`; real Java8 acceptance: `acceptance/vulhub/struts2/s2057-java8.sh` blocks `java8_command_execution_exploit_primitive`)
 - [x] Apache Struts2 - S2-059 / CVE-2019-0230 forced OGNL request expression (`request_struts2_cve_2019_0230_s2059_forced_ognl`; real Java8 acceptance: `acceptance/vulhub/struts2/s2059-java8.sh` blocks `java8_command_execution_exploit_primitive`)
 - [x] Apache Struts2 - S2-061 / CVE-2020-17530 FreeMarker Execute multipart payload (`request_struts2_cve_2020_17530_s2061_freemarker_execute`; real Java8 acceptance: `acceptance/vulhub/struts2/s2061-java8.sh` blocks `java8_command_execution_exploit_primitive`)
-- [x] Apache Struts2 - S2-066 / CVE-2023-50164 upload filename override (`request_struts2_cve_2023_50164_s2066_upload_filename_override`; real Java17 acceptance: `acceptance/vulhub/struts2/upload-java17.sh` blocks `java17_file_script_write`)
-- [x] Apache Struts2 - S2-067 / CVE-2024-53677 upload filename override (`request_struts2_cve_2024_53677_s2067_upload_filename_override`; real Java17 acceptance: `acceptance/vulhub/struts2/upload-java17.sh` blocks `java17_file_script_write`)
+- [x] Apache Struts2 - S2-066 / CVE-2023-50164 upload filename override (`request_struts2_cve_2023_50164_s2066_upload_filename_override`; real Java17 acceptance: `acceptance/vulhub/struts2/upload-java17.sh` blocks `fileUpload_multipart_script`)
+- [x] Apache Struts2 - S2-067 / CVE-2024-53677 upload filename override (`request_struts2_cve_2024_53677_s2067_upload_filename_override`; real Java17 acceptance: `acceptance/vulhub/struts2/upload-java17.sh` blocks `fileUpload_multipart_script`)
 - [x] Apache Tomcat - CVE-2017-12615 DefaultServlet JSP PUT shape (`request_tomcat_cve_2017_12615_server_side_script_put`; real Java8 acceptance: `acceptance/vulhub/tomcat/12615-java8.sh` blocks `java8_file_script_write`)
 - [x] Apache Tomcat - CVE-2020-1938 / CNVD-2020-10487 Ghostcat AJP include replay (`request_tomcat_cnvd_2020_10487_ghostcat_include`; real Java8 acceptance: `acceptance/vulhub/tomcat/1938-java8.sh` blocks `java8_request_forged_include_attribute`)
 - [x] Apache Tomcat - CVE-2025-24813 session file deserialization (`deserialization_tomcat_cve_2025_24813_session_file`; real Java8 acceptance: `acceptance/vulhub/tomcat/24813-java8.sh` blocks `java8_request_session_file_deserialization`)

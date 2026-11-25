@@ -925,7 +925,8 @@ same patch as any new Java-compatible Vulhub replay.
   `fileFileName=../shell.jsp` and `top.fileFileName=../shell.jsp` multipart
   fields to write `/usr/local/tomcat/webapps/ROOT/shell.jsp` and verifies the
   JSP executes; protected mode injects `agent-java17`, keeps Tomcat WAR
-  deployment quiet, and blocks both writes with `java17_file_script_write`.
+  deployment quiet, and blocks both uploads at the multipart filename with
+  `fileUpload_multipart_script`, so no `shell.jsp` is written.
 - `acceptance/vulhub/jimureport/java17.sh` runs the first real
   JimuReport Java 17 Vulhub application acceptance. It starts
   `vulhub/jimureport:1.6.0` plus MySQL baseline/protected pairs for
