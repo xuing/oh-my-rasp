@@ -69,6 +69,7 @@ For Shirudo locked daemonless JARs (`ohmyrasp-{java8,java11,java17,jdk25}.jar`),
 ## Acceptance and false-positive suites
 
 - **Unit tests:** `agent-jdk25/src/test` covers the hook registry, SQL callsite rewriting, Fastjson/Base64 hooks, policy evaluation, `DetectorEngine`, `AgentRuntime`, and Shirudo standalone defaults.
+- **Backport unit tests:** the behaviour contract for `agent-java8`, `agent-java11` and `agent-java17` is written once, against the java8 line, in `backport-tests/src/test/java`. `agent-java8` compiles it directly; `agent-java11` and `agent-java17` compile a copy that `generateBackportTests` writes to their `build/generated/backport-tests`, using the replacement table in `gradle/backport-tests.gradle.kts`. Edit the canonical file, never the generated copy. A test that only one line can run stays in that line's own `src/test` with a first-line comment saying why.
 - **Acceptance suite:** `scripts/acceptance.sh` (Tomcat 11/10/9 on JDK 25), `scripts/acceptance-java{8,11,17,21}.sh`, and the `scripts/acceptance-vulhub-*.sh` scenarios boot real applications and assert detection and blocking.
 - **False-positive report:** `scripts/run-fp-report.sh` runs `scripts/fp-harness/FpReport.java` against `DetectorEngine` and writes `docs/FALSE-POSITIVE-REPORT.md`.
 
@@ -89,6 +90,7 @@ java-agent/
 │   │   └── control/                  legacy direct-cloud client (off by default)
 │   └── src/test/                     JUnit 6 unit tests
 ├── agent-java8 / -java11 / -java17   self-contained backport builds
+├── backport-tests/                   the one shared unit-test tree for the three backport builds
 ├── playground* /                     comparative servlet test apps (Jakarta & Javax)
 ├── scripts/                          acceptance suite + coverage/FP generators
 └── docs/                             generated DETECTION-COVERAGE.md + FALSE-POSITIVE-REPORT.md
