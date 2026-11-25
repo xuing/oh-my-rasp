@@ -51,6 +51,20 @@ class EvidenceTest(unittest.TestCase):
         self.assertIsNone(decisions.source_for("HttpServlet.service", "request_internal_identity", "8"))
         self.assertIsNone(decisions.source_for("HttpServlet.service", "java11_request_internal_identity", "8"))
 
+    def test_verifier_diagnostic_cannot_establish_filter_continuation(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            case = root / "vulhub-fixture-protected"
+            case.mkdir()
+            records = [{"event": "ohmyrasp-java17-agent-start"}]
+            for hook in ("com.auth0.jwt.JWTVerifier.verify", "FilterChain.doFilter"):
+                records.append({"action": "block", "algorithm": "java17_request_jwt_verification_failure",
+                                "hook": hook, "details": {"exception": "SignatureVerificationException"}})
+            (case / "events.jsonl").write_text("\n".join(map(json.dumps, records)))
+            _, rows, batches, _, _ = decisions.collect(root)
+            self.assertEqual([r["status"] for r in rows], ["source evidence required"] * 2)
+            self.assertFalse(batches)
+
     def test_sql_identifier_summary_does_not_stand_in_for_original_input(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)

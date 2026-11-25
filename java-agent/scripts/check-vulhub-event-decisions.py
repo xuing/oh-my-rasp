@@ -146,6 +146,11 @@ def collect(logs):
                 if not track or (algorithm_track and algorithm_track[1] != track):
                     row["status"] = "unknown or inconsistent agent track"
                     continue
+                if (hook in ("com.auth0.jwt.JWTVerifier.verify", "FilterChain.doFilter")
+                        and algorithm == f"java{track}_request_jwt_verification_failure"):
+                    row.update(status="source evidence required",
+                               evidence_limit="credential selection, verifier outcome and filter-chain handoff unavailable")
+                    continue
                 if hook == "URL.openConnection":
                     row["evidence_limit"] = "factory event only; actual HTTP transport and selected route unknown"
                 if hook in {"FileSystem.list", "DirectoryStream.open", "SecureDirectoryStream.open"}:
