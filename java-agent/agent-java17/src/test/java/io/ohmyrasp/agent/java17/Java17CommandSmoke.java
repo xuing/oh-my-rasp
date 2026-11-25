@@ -1,3 +1,4 @@
+// Line-specific, not in backport-tests/: uses a local script engine instead of Nashorn, plus a version-specific XMLDecoder payload; java8 differs.
 package io.ohmyrasp.agent.java17;
 
 import java.beans.XMLDecoder;

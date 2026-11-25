@@ -1,3 +1,4 @@
+// Line-specific, not in backport-tests/: uses the JDK 8 Nashorn ScriptEngineManager and reflective JdbcRowSetImpl setup; Java 11/17 use a local script engine.
 package io.ohmyrasp.agent.java8;
 
 import java.beans.XMLDecoder;
