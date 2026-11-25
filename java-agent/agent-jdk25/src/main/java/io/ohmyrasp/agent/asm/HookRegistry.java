@@ -1,8 +1,10 @@
 package io.ohmyrasp.agent.asm;
 
+import io.ohmyrasp.agent.sql.JdbcSqlMethod;
 import java.util.List;
 import java.util.Locale;
 import org.objectweb.asm.MethodVisitor;
+import org.objectweb.asm.Opcodes;
 
 public final class HookRegistry {
   private static final HookRegistry DEFAULT =
@@ -69,9 +71,14 @@ public final class HookRegistry {
       MethodVisitor methodVisitor,
       int access,
       String methodName,
-      String descriptor) {
+      String descriptor, boolean jdbcImplementation) {
     for (HookModule module : modules) {
-      if (!module.matchesClass(className)) {
+      boolean jdbcMethod = jdbcImplementation && module instanceof SqlHookModule
+          && (access & Opcodes.ACC_STATIC) == 0
+          && (JdbcSqlMethod.preparesSql(methodName, descriptor) || JdbcSqlMethod.executesSql(methodName, descriptor));
+      boolean multipart = module instanceof MultipartUploadHookModule
+          && io.ohmyrasp.agent.http.MultipartFilenameVisitor.specificGetter(methodName, descriptor);
+      if (!jdbcMethod && !multipart && !module.matchesClass(className)) {
         continue;
       }
       MethodVisitor next = module.visitMethod(className, methodVisitor, access, methodName, descriptor);

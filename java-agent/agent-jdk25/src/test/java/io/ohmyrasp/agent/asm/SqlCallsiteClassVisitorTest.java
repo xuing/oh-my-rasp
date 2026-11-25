@@ -1,9 +1,18 @@
 package io.ohmyrasp.agent.asm;
 
+import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertSame;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 
+import io.ohmyrasp.agent.sql.JdbcSqlMethod;
 import java.io.IOException;
 import java.io.InputStream;
+import java.lang.reflect.InvocationTargetException;
+import java.lang.reflect.Proxy;
+import java.sql.CallableStatement;
+import java.sql.Connection;
+import java.sql.PreparedStatement;
 import java.sql.SQLException;
 import java.sql.Statement;
 import java.util.List;
@@ -16,6 +25,7 @@ import org.objectweb.asm.ClassVisitor;
 import org.objectweb.asm.ClassWriter;
 import org.objectweb.asm.MethodVisitor;
 import org.objectweb.asm.Opcodes;
+import org.objectweb.asm.Type;
 
 final class SqlCallsiteClassVisitorTest {
   @Test
@@ -63,7 +73,7 @@ final class SqlCallsiteClassVisitorTest {
   }
 
   @Test
-  void injectsSqlHookOnlyForSingleStringStatementCallsites() throws IOException {
+  void injectsSqlHookForSingleAndMultipleArgumentStatementCallsites() throws IOException {
     byte[] transformed = transform(classBytes(SqlStatementCallsiteFixture.class));
     AtomicInteger singleArgHookCalls = new AtomicInteger();
     AtomicInteger multiArgHookCalls = new AtomicInteger();
@@ -101,13 +111,80 @@ final class SqlCallsiteClassVisitorTest {
             0);
 
     assertEquals(1, singleArgHookCalls.get());
-    assertEquals(0, multiArgHookCalls.get());
+    assertEquals(1, multiArgHookCalls.get());
+  }
+
+  @Test
+  void recognizesStandardJdbcTemplatesAndLeavesBoundValuesAlone() {
+    for (var method : Connection.class.getMethods()) {
+      boolean preparation = method.getName().equals("prepareStatement") || method.getName().equals("prepareCall");
+      assertEquals(preparation, JdbcSqlMethod.preparesSql(method.getName(), Type.getMethodDescriptor(method)),
+          method.toGenericString());
+    }
+    for (Class<?> type : List.of(Statement.class, PreparedStatement.class, CallableStatement.class)) {
+      for (var method : type.getMethods()) {
+        String name = method.getName();
+        boolean sqlArgument = method.getParameterCount() > 0 && method.getParameterTypes()[0] == String.class
+            && List.of("execute", "executeQuery", "executeUpdate", "executeLargeUpdate", "addBatch").contains(name);
+        assertEquals(sqlArgument, JdbcSqlMethod.executesSql(name, Type.getMethodDescriptor(method)),
+            method.toGenericString());
+      }
+    }
+  }
+
+  @Test
+  void preservesReceiverOptionsWideLocalsReturnsAndDriverExceptions() throws Exception {
+    byte[] bytes = transform(classBytes(OptionsFixture.class));
+    Class<?> fixture = new ClassLoader(getClass().getClassLoader()) {
+      Class<?> defineFixture() {
+        return defineClass(OptionsFixture.class.getName(), bytes, 0, bytes.length);
+      }
+    }.defineFixture();
+    var invoke = fixture.getMethod("invoke", Connection.class, Statement.class, int.class,
+        String.class, String[].class, long.class);
+    String sql = "select 7";
+    String[] columns = {"id", "updated"};
+    var expectedFailure = new SQLException("driver failure");
+    Statement statement = (Statement) Proxy.newProxyInstance(getClass().getClassLoader(),
+        new Class<?>[]{Statement.class}, (self, method, args) -> {
+          assertSame(sql, args[0]);
+          assertSame(columns, args[1]);
+          if (method.getName().equals("executeUpdate")) throw expectedFailure;
+          return 3000000000L;
+        });
+    Connection connection = (Connection) Proxy.newProxyInstance(getClass().getClassLoader(),
+        new Class<?>[]{Connection.class}, (self, method, args) -> {
+          assertEquals("prepareStatement", method.getName());
+          assertArrayEquals(new Object[]{sql, 1003, 1007, 2}, args);
+          return null;
+        });
+
+    assertEquals(10L, invoke.invoke(null, connection, statement, 0, sql, columns, 10L));
+    assertEquals(3000000010L, invoke.invoke(null, connection, statement, 1, sql, columns, 10L));
+    assertSame(expectedFailure, assertThrows(InvocationTargetException.class,
+        () -> invoke.invoke(null, connection, statement, 2, sql, columns, 10L)).getCause());
+  }
+
+  public static class OptionsFixture {
+    public static long invoke(Connection conn, Statement stmt, int branch, String sql,
+        String[] columns, long total) throws SQLException {
+      switch (branch) {
+        case 0:
+          try (PreparedStatement unused = conn.prepareStatement(sql, 1003, 1007, 2)) {
+            return total;
+          }
+        case 1:
+          return total + stmt.executeLargeUpdate(sql, columns);
+        default:
+          return total + stmt.executeUpdate(sql, columns);
+      }
+    }
   }
 
   private static byte[] transform(byte[] original) {
     ClassReader reader = new ClassReader(original);
     ClassWriter writer = new ClassWriter(reader, ClassWriter.COMPUTE_MAXS);
-    reader.accept(new SqlCallsiteClassVisitor(writer), ClassReader.EXPAND_FRAMES);
+    reader.accept(new SqlCallsiteClassVisitor(reader, writer), ClassReader.EXPAND_FRAMES);
     return writer.toByteArray();
   }
 

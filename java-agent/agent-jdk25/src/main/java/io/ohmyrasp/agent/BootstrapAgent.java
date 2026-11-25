@@ -1,5 +1,6 @@
 package io.ohmyrasp.agent;
 
+import io.ohmyrasp.agent.sql.JdbcSqlMethod;
 import io.ohmyrasp.agent.asm.HookRegistry;
 import io.ohmyrasp.agent.asm.OhMyRaspTransformer;
 import io.ohmyrasp.agent.control.ControlPlaneClient;
@@ -16,6 +17,7 @@ public final class BootstrapAgent {
   private BootstrapAgent() {}
 
   public static void start(String agentArgs, Instrumentation instrumentation) {
+    io.ohmyrasp.agent.xml.SystemArchiveOrigins.initialize(instrumentation);
     HookRegistry hookRegistry = HookRegistry.defaults();
 
     // Local runtime control: detection mode + algorithm switches, hot-reloaded
@@ -93,12 +95,14 @@ public final class BootstrapAgent {
     if (!instrumentation.isRetransformClassesSupported()) {
       return;
     }
-    for (Class<?> loaded : instrumentation.getAllLoadedClasses()) {
+    Class<?>[] classes = instrumentation.getAllLoadedClasses();
+    var multipartOwners = io.ohmyrasp.agent.http.MultipartFilename.loadedOwners(classes);
+    for (Class<?> loaded : classes) {
       if (!instrumentation.isModifiableClass(loaded)) {
         continue;
       }
       String name = loaded.getName();
-      if (hookRegistry.isRetransformTarget(name)) {
+      if (hookRegistry.isRetransformTarget(name) || multipartOwners.contains(loaded) || JdbcSqlMethod.isJdbcImplementation(loaded)) {
         try {
           instrumentation.retransformClasses(loaded);
         } catch (Throwable throwable) {

@@ -1,8 +1,21 @@
 package io.ohmyrasp.agent.detect;
 
+import io.ohmyrasp.agent.file.HostReadPath;
+import io.ohmyrasp.agent.file.HostDelete;
+import io.ohmyrasp.agent.file.HostDirectory;
+import io.ohmyrasp.agent.file.EscapingPath;
+import io.ohmyrasp.agent.http.ArchiveUploadPolicy;
+import io.ohmyrasp.agent.http.PercentEncodedText;
+import io.ohmyrasp.agent.jmx.JmxDispatch;
+import io.ohmyrasp.agent.jmx.JmxWriteScope;
 import io.ohmyrasp.agent.model.Detection;
 import io.ohmyrasp.agent.model.RequestContext;
+import io.ohmyrasp.agent.net.HttpTransportObservation;
 import io.ohmyrasp.agent.net.NetworkHost;
+import io.ohmyrasp.agent.rules.general.RequestShellSyntax;
+import io.ohmyrasp.agent.rules.product.rocketmq.RocketMqFilterServer;
+import io.ohmyrasp.agent.rules.product.solr.SolrExecutableListener;
+import io.ohmyrasp.agent.process.PosixShellCommand;
 import io.ohmyrasp.agent.sql.SqlStatement;
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
@@ -28,8 +41,6 @@ import javax.crypto.spec.IvParameterSpec;
 import javax.crypto.spec.SecretKeySpec;
 
 public final class DetectorEngine {
-  private static final Pattern SQLI_USER_INPUT =
-      Pattern.compile("(?is)(?:/\\*!|;\\s*(?:select|insert|update|delete|drop|alter)\\b)");
   private static final Pattern SQL_POLICY =
       Pattern.compile(
           "(?is)(?:\\bunion\\s+(?:all\\s+)?select\\b|\\binformation_schema\\b|\\binto\\s+(?:out|dump)file\\b|/\\*!|\\bload_file\\s*\\(|\\bsleep\\s*\\(|\\bbenchmark\\s*\\()");
@@ -43,9 +54,12 @@ public final class DetectorEngine {
   private static final Pattern H2_INIT_SETTING = Pattern.compile("(?is)(?:^|;)\\s*init\\s*=");
   private static final Pattern BASE64_CONFIG_VALUE =
       Pattern.compile("(?is)^[A-Za-z0-9+/=_-]{32,8192}$");
-  private static final Pattern DERBY_CODE_LOADING =
-      Pattern.compile(
-          "(?is)(?:\\bsqlj\\s*\\.\\s*(?:install|replace)_jar\\s*\\(|\\bsyscs_util\\s*\\.\\s*syscs_set_database_property\\s*\\(\\s*['\"]derby\\.database\\.classpath['\"]|\\blanguage\\s+java\\b.{0,240}\\bexternal\\s+name\\b|\\bparameter\\s+style\\s+java\\b.{0,240}\\bexternal\\s+name\\b)");
+  private static final Pattern DERBY_JAR_OPERATION =
+      Pattern.compile("(?is)(?:\\bsqlj\\s*\\.\\s*(?:install|replace)_jar\\s*\\(|"
+          + "\\bsyscs_util\\s*\\.\\s*syscs_set_database_property\\s*\\(\\s*['\"]derby\\.database\\.classpath['\"])");
+  private static final Pattern DERBY_ROUTINE_LANGUAGE =
+      Pattern.compile("(?i)\\b(?:language\\s+java|parameter\\s+style\\s+java)\\b");
+  private static final Pattern DERBY_EXTERNAL_NAME = Pattern.compile("(?i)\\bexternal\\s+name\\b");
   private static final Pattern MYSQL_JDBC_AUTO_DESERIALIZE =
       Pattern.compile("(?is)(?:[?&;]|^)\\s*autodeserialize\\s*=\\s*(?:true|1|yes)\\b");
   private static final Pattern MYSQL_JDBC_DESERIALIZATION_TRIGGER =
@@ -61,6 +75,8 @@ public final class DetectorEngine {
   private static final Pattern COMMAND_COMMON =
       Pattern.compile(
           "(?is)(?:cat\\s+/etc/passwd|nc\\b.{0,40}\\s-e\\s+/bin/(?:ba)?sh|bash\\s+-i\\b|/dev/tcp/|curl\\b.{0,80}\\|\\s*(?:sh|bash)|wget\\b.{0,80}\\|\\s*(?:sh|bash)|\\{echo,.{10,400}\\}\\|\\{base64,-d\\})");
+  private static final Pattern WINDOWS_SHELL =
+      Pattern.compile("(?i)(?:.*[/\\\\])?(?:cmd|pwsh|powershell)(?:\\.exe)?");
   private static final Pattern COMMAND_META = Pattern.compile("[;&|`$<>]|\\$\\{?IFS\\}?");
   private static final Pattern COMMAND_SENSITIVE_AFTER_JOIN =
       Pattern.compile("(?is)(?:;|&&|\\|\\|?|`)\\s*(?:cat|bash|sh|nc|curl|wget|python|perl|php)\\b");
@@ -69,10 +85,16 @@ public final class DetectorEngine {
   private static final Pattern GENERATED_SCRIPT_EXTENSION =
       Pattern.compile("(?is).+\\.(?:gnuplot|gp|plt|plot|cmd|sh|bash|ps1)$");
   private static final Pattern GENERATED_SCRIPT_EXEC_PRIMITIVE =
-      Pattern.compile("(?is)(?:^|[^\\w])(?:system\\s*(?:\\(|[\"'])|exec\\s*\\(|shell\\s*\\(|`[^`]{1,240}`)");
-  private static final Pattern DANGEROUS_FILE_READ =
-      Pattern.compile(
-          "(?is)(?:^|/)(?:etc/(?:issue|passwd|shadow|apache2/apache2\\.conf)|proc/self/environ|root/\\.ssh|root/\\.bash_(?:history|profile)|\\.bash_history|\\.zsh_history|\\.mysql_history|id_rsa|windows/system32/(?:inetsrv/metabase\\.xml|drivers/etc/hosts))$");
+      Pattern.compile("(?is)(?:^|[^\\w])(system\\s*(?:\\(|[\"'])|exec\\s*\\(|shell\\s*\\(|`[^`]{1,240}`)");
+  private static final String UNIX_READ_TARGET =
+      "etc/(?:issue|passwd|shadow|apache2/apache2\\.conf)|proc/self/environ|root/\\.ssh|root/\\.bash_(?:history|profile)";
+  private static final String WINDOWS_READ_TARGET = "windows/system32/(?:inetsrv/metabase\\.xml|drivers/etc/hosts)";
+  private static final String PRIVATE_READ_NAME = "\\.bash_history|\\.zsh_history|\\.mysql_history|id_rsa";
+  // Higher-level argument and URI detectors can receive a path fragment. Host opens have a native root.
+  private static final Pattern DANGEROUS_FILE_READ = Pattern.compile("(?is)(?:^|/)(?:"
+      + UNIX_READ_TARGET + "|" + WINDOWS_READ_TARGET + "|" + PRIVATE_READ_NAME + ")$");
+  private static final Pattern SENSITIVE_HOST_READ = Pattern.compile("^(?:/(?:" + UNIX_READ_TARGET
+      + ")|[a-z]:/" + WINDOWS_READ_TARGET + "|(?:.*/)?(?:" + PRIVATE_READ_NAME + "))$");
   private static final Pattern SCRIPT_FILE =
       Pattern.compile("(?is).+\\.(?:aspx?|jspx?|php[345]?|phar|phtml|sh|py|pl|rb|so|dll|dylib|ashx|cer|asa)\\.?$");
   private static final Pattern SCRIPT_FILE_REQUEST_PATH =
@@ -85,8 +107,6 @@ public final class DetectorEngine {
   private static final Pattern HTML_FILE = Pattern.compile("(?is).+\\.(?:htm|html|js)$");
   private static final Pattern EXECUTABLE_FILE =
       Pattern.compile("(?is).+\\.(?:exe|dll|scr|vbs|cmd|bat)$");
-  private static final Pattern JAVA_ARCHIVE_FILE =
-      Pattern.compile("(?is).+\\.(?:jar|war|ear|class)\\.?$");
   private static final Pattern NTFS_STREAM = Pattern.compile("(?is).*::\\$(?:data|index)$");
   private static final Pattern WINDOWS_ABSOLUTE_PATH = Pattern.compile("(?i)^[a-z]:/.*");
   private static final Pattern READ_SAFE_EXTENSION =
@@ -673,8 +693,7 @@ public final class DetectorEngine {
           "bsh.",
           "com.mchange.v2.c3p0.",
           "com.rometools.rome.feed.impl.",
-          "com.sun.syndication.feed.impl.",
-          "org.apache.commons.beanutils.");
+          "com.sun.syndication.feed.impl.");
   private static final Set<String> DESERIALIZATION_TYPE_PREFIXES =
       Set.of(
           "org.apache.commons.collections.functors.",
@@ -1260,41 +1279,6 @@ public final class DetectorEngine {
                   "uri", abbreviate(request.uri()),
                   "method", request.method())));
     }
-    Optional<SqlSortInjectionMatch> sqlSortInjection = sqlSortInjection(request);
-    if (sqlSortInjection.isPresent()) {
-      SqlSortInjectionMatch match = sqlSortInjection.orElseThrow();
-      RequestContext redactedRequest = redactSqlSortInjectionRequest(request);
-      return Optional.of(
-          Detection.log(
-              "request",
-              "request_sql_sort_injection",
-              90,
-              "Request JSON sort field carries a SQL control expression",
-              redactedRequest,
-              Map.of(
-                  "field", match.field(),
-                  "valueLength", String.valueOf(match.valueLength()),
-                  "uri", abbreviate(request.uri()),
-                  "method", request.method())));
-    }
-    Optional<SqlIdentifierInjectionMatch> sqlIdentifierInjection =
-        sqlIdentifierInjection(request);
-    if (sqlIdentifierInjection.isPresent()) {
-      SqlIdentifierInjectionMatch match = sqlIdentifierInjection.orElseThrow();
-      RequestContext redactedRequest = redactBodyRequest(request);
-      return Optional.of(
-          Detection.log(
-              "request",
-              "request_sql_identifier_injection",
-              90,
-              "Request JSON identifier field carries a SQL control expression",
-              redactedRequest,
-              Map.of(
-                  "field", match.field(),
-                  "valueLength", String.valueOf(match.valueLength()),
-                  "uri", abbreviate(request.uri()),
-                  "method", request.method())));
-    }
     Optional<OgcFilterSqlInjectionMatch> ogcFilterSqlInjection = ogcFilterSqlInjection(request);
     if (ogcFilterSqlInjection.isPresent()) {
       OgcFilterSqlInjectionMatch match = ogcFilterSqlInjection.orElseThrow();
@@ -1518,11 +1502,18 @@ public final class DetectorEngine {
     if (query == null || query.isBlank()) {
       return Optional.empty();
     }
-    SqlStatement statement = new SqlStatement(query, jdbcClass);
-    if ((request.hasParameterIn(query)
-            && (statement.matches(SQLI_USER_INPUT)
-            || request.parameters().values().stream().flatMap(List::stream)
-                .anyMatch(value -> statement.hasCommentFrom(value) || statement.matchesStructureFrom(value))))
+    return classifySql(new SqlStatement(query, jdbcClass), request);
+  }
+
+  public Optional<Detection> detectSql(String query, RequestContext request, Object jdbcReceiver) {
+    if (query == null || query.isBlank()) return Optional.empty();
+    return classifySql(SqlStatement.fromJdbc(query, jdbcReceiver), request);
+  }
+
+  private Optional<Detection> classifySql(SqlStatement statement, RequestContext request) {
+    String query = statement.source();
+    if (request.parameters().values().stream().flatMap(List::stream)
+            .anyMatch(value -> statement.hasCommentFrom(value) || statement.matchesStructureFrom(value))
         || requestBodyControlsSql(statement, request)) {
       return Optional.of(
           Detection.log(
@@ -1533,7 +1524,8 @@ public final class DetectorEngine {
               request,
               Map.of("query", abbreviate(query))));
     }
-    if (h2DangerousSql(query)) {
+    if (statement.hasCommand(H2_REMOTE_RUNSCRIPT)
+        || statement.definesSourceMatching(H2_CODE_CONTAINER, H2_CODE_PRIMITIVE)) {
       return Optional.of(
           Detection.log(
               "sql",
@@ -1543,7 +1535,8 @@ public final class DetectorEngine {
               request,
               Map.of("query", abbreviate(query))));
     }
-    if (request.active() && DERBY_CODE_LOADING.matcher(query).find()) {
+    if (request.active() && (statement.matches(DERBY_JAR_OPERATION)
+        || statement.hasClausesInOneCommand(DERBY_ROUTINE_LANGUAGE, DERBY_EXTERNAL_NAME))) {
       boolean requestControlled = request.hasParameterIn(query);
       return Optional.of(
           Detection.log(
@@ -1731,6 +1724,11 @@ public final class DetectorEngine {
 
   public Optional<Detection> detectCommand(
       List<String> command, RequestContext request, List<String> stackClassNames) {
+    return detectCommand(command, request, stackClassNames, false);
+  }
+
+  public Optional<Detection> detectCommand(List<String> command, RequestContext request,
+      List<String> stackClassNames, boolean reflectionPolicy) {
     String joined = command == null ? "" : String.join(" ", command);
     if (joined.isBlank()) {
       return Optional.empty();
@@ -1747,8 +1745,8 @@ public final class DetectorEngine {
               request,
               Map.of("command", abbreviate(joined))));
     }
-    Optional<String> executableListener = executableListenerFrame(stackClassNames);
-    if (executableListener.isPresent()) {
+    String executableListener = SolrExecutableListener.frame(stackClassNames);
+    if (executableListener != null) {
       return Optional.of(
           Detection.log(
               "command",
@@ -1758,10 +1756,10 @@ public final class DetectorEngine {
               request,
               Map.of(
                   "command", abbreviate(joined),
-                  "listener", abbreviate(executableListener.orElseThrow()))));
+                  "listener", abbreviate(executableListener))));
     }
-    Optional<String> configLauncher = configCommandLauncherFrame(stackClassNames);
-    if (configLauncher.isPresent()) {
+    String configLauncher = RocketMqFilterServer.directOwner(stackClassNames);
+    if (configLauncher != null) {
       return Optional.of(
           Detection.log(
               "command",
@@ -1771,19 +1769,15 @@ public final class DetectorEngine {
               request,
               Map.of(
                   "command", abbreviate(joined),
-                  "launcher", abbreviate(configLauncher.orElseThrow()))));
+                  "launcher", abbreviate(configLauncher))));
     }
-    if (stackLooksReflective(stackClassNames)) {
-      return Optional.of(
-          Detection.log(
-              "command",
-              "command_reflect",
-              90,
-              "Command execution reached from reflective or generated code",
-              request,
-              Map.of("command", abbreviate(joined))));
-    }
-    if (request.hasParameterIn(joined) && COMMAND_META.matcher(joined).find()) {
+    PosixShellCommand shell = PosixShellCommand.from(command);
+    boolean windowsShell = java.io.File.separatorChar == '\\'
+        || (command.get(0) != null && WINDOWS_SHELL.matcher(command.get(0)).matches());
+    boolean requestSyntax = shell != null && shell.hasOperator()
+        && (request.parameters().values().stream().anyMatch(values -> RequestShellSyntax.matches(shell, values))
+            || bodyHasSinkValue(request, shell.source()));
+    if (requestSyntax || (windowsShell && request.hasParameterIn(joined) && COMMAND_META.matcher(joined).find())) {
       return Optional.of(
           Detection.log(
               "command",
@@ -1813,10 +1807,11 @@ public final class DetectorEngine {
               request,
               Map.of("command", abbreviate(joined))));
     }
-    if (COMMAND_SENSITIVE_AFTER_JOIN.matcher(joined).find()
-        || hasUnbalancedQuotes(joined)
-        || joined.contains("$IFS")
-        || joined.contains("${IFS}")) {
+    boolean syntaxError = windowsShell
+        ? hasUnbalancedQuotes(joined) || COMMAND_SENSITIVE_AFTER_JOIN.matcher(joined).find()
+            || joined.contains("$IFS") || joined.contains("${IFS}")
+        : shell != null && shell.hasUnclosedQuote();
+    if (syntaxError) {
       return Optional.of(
           Detection.log(
               "command",
@@ -1826,10 +1821,19 @@ public final class DetectorEngine {
               request,
               Map.of("command", abbreviate(joined))));
     }
+    if (reflectionPolicy && processInvokedReflectively(stackClassNames)) {
+      return Optional.of(Detection.log("command", "command_reflect", 70,
+          "Reflection dispatched the process API selected by policy", request,
+          Map.of("command", abbreviate(joined), "decision_basis", "process_dispatch")));
+    }
     return Optional.empty();
   }
 
   public Optional<Detection> detectUrl(String rawUrl, RequestContext request) {
+    return detectUrl(rawUrl, request, false);
+  }
+
+  public Optional<Detection> detectUrl(String rawUrl, RequestContext request, boolean includeDestinationPolicy) {
     if (rawUrl == null || rawUrl.isBlank()) {
       return Optional.empty();
     }
@@ -1849,10 +1853,13 @@ public final class DetectorEngine {
     String scheme = lower(uri.getScheme());
     String host = NetworkHost.normalize(uri.getHost());
     String path = lower(uri.getPath());
-    if (isLocalClasspathResource(rawUrl, scheme, path)) {
+    if (scheme.equals("file") && (!request.active() || !fileUrlNeedsInspection(uri, rawUrl, request))) {
       return Optional.empty();
     }
-    if (!request.active() && ("file".equals(scheme) || "jar".equals(scheme))) {
+    if (isLocalArchiveUrl(rawUrl, scheme)) {
+      return Optional.empty();
+    }
+    if (!request.active() && "jar".equals(scheme)) {
       return Optional.empty();
     }
     if (SSRF_PROTOCOLS.contains(scheme)) {
@@ -1865,7 +1872,24 @@ public final class DetectorEngine {
               request,
               Map.of("url", abbreviate(rawUrl))));
     }
-    if (NetworkHost.isMetadata(host)) {
+    return classifyNetworkDestination(uri, rawUrl, host, path, request, includeDestinationPolicy, null, false);
+  }
+
+  public Optional<Detection> classifyHttpTransport(java.net.URL url, RequestContext request, boolean includeDestinationPolicy, String peer, boolean redirected) {
+    String address = HttpTransportObservation.address(url);
+    URI uri = HttpTransportObservation.comparisonUri(url, address);
+    return classifyNetworkDestination(uri, address, NetworkHost.normalize(url.getHost()),
+        lower(uri == null ? url.getPath() : uri.getPath()), request, includeDestinationPolicy, peer, redirected);
+  }
+
+  public Optional<Detection> classifyHttpTransport(URI uri, RequestContext request, boolean includeDestinationPolicy, String peer, boolean redirected) {
+    return classifyNetworkDestination(uri, HttpTransportObservation.address(uri), NetworkHost.normalize(uri.getHost()),
+        lower(uri.getPath()), request, includeDestinationPolicy, peer, redirected);
+  }
+
+  private Optional<Detection> classifyNetworkDestination(URI uri, String rawUrl, String host, String path,
+      RequestContext request, boolean includeDestinationPolicy, String peer, boolean redirected) {
+    if (NetworkHost.isMetadata(host) || (peer != null && NetworkHost.isMetadata(peer))) {
       return Optional.of(
           Detection.log(
               "ssrf",
@@ -1875,16 +1899,14 @@ public final class DetectorEngine {
               request,
               Map.of("url", abbreviate(rawUrl))));
     }
-    if (requestControlsUrl(uri, rawUrl, request)
-        || (INTERNAL_ADMIN_PATH.matcher(path).find() && NetworkHost.isInternal(host))) {
-      return Optional.of(
-          Detection.log(
-              "ssrf",
-              "ssrf_userinput",
-              90,
-              "Outbound request targets a request-supplied destination or an internal administrative route",
-              request,
-              Map.of("url", abbreviate(rawUrl), "host", host)));
+    boolean internal = NetworkHost.isInternal(host) || (peer != null && NetworkHost.isInternal(peer));
+    boolean admin = internal && INTERNAL_ADMIN_PATH.matcher(path).find();
+    boolean supplied = redirected || requestControlsUrl(uri, rawUrl, host, request);
+    boolean http = uri == null || "http".equalsIgnoreCase(uri.getScheme()) || "https".equalsIgnoreCase(uri.getScheme());
+    if ((!http && (supplied || admin)) || (internal && (supplied || (admin && requestControlsAdminPath(uri, request))))) {
+      return Optional.of(Detection.log("ssrf", "ssrf_userinput", 90,
+          "Request input selects an internal HTTP destination", request,
+          Map.of("url", abbreviate(rawUrl), "host", host)));
     }
     if (isCallbackHost(host)) {
       return Optional.of(
@@ -1905,6 +1927,11 @@ public final class DetectorEngine {
               "Outbound request host appears obfuscated",
               request,
               Map.of("url", abbreviate(rawUrl), "host", host)));
+    }
+    if (includeDestinationPolicy && (admin || supplied)) {
+      return Optional.of(Detection.log("ssrf", "ssrf_userinput", 80,
+          "Outbound destination matches a managed egress policy candidate", request,
+          Map.of("url", abbreviate(rawUrl), "host", host, "policy_basis", "destination_only")));
     }
     return Optional.empty();
   }
@@ -1931,7 +1958,7 @@ public final class DetectorEngine {
     String scheme = lower(uri.getScheme());
     String host = NetworkHost.normalize(uri.getHost());
     String path = lower(uri.getPath());
-    if (isLocalClasspathResource(href, scheme, path)) {
+    if (isLocalArchiveUrl(href, scheme)) {
       return Optional.empty();
     }
     if (SSRF_PROTOCOLS.contains(scheme)) {
@@ -2085,27 +2112,18 @@ public final class DetectorEngine {
                   "argument", abbreviate(matched),
                   "requestControlled", String.valueOf(request.hasParameterIn(matched)))));
     }
-    Optional<String> scriptTarget = safeArguments.stream()
-        .map(DetectorEngine::jmxScriptWriteTarget)
-        .flatMap(Optional::stream)
-        .findFirst();
-    if (scriptTarget.isEmpty()) {
-      return Optional.empty();
-    }
-    String matched = scriptTarget.orElseThrow();
-    int confidence = request.hasParameterIn(matched) ? 100 : 90;
-    return Optional.of(
-        Detection.log(
-            "jmx",
-            "jmx_file_write",
-            confidence,
-            "Request-time MBean invocation writes a server-side script target",
-            request,
-            Map.of(
-                "mbean", abbreviate(String.valueOf(mbeanName)),
-                "operation", operationName,
-                "path", abbreviate(matched),
-                "requestControlled", String.valueOf(request.hasParameterIn(matched)))));
+    return Optional.empty();
+  }
+
+  public Optional<Detection> detectJmxFileWrite(String path, JmxWriteScope scope,
+      String api, RequestContext request) {
+    if (!request.active() || scope == null || !SCRIPT_FILE.matcher(normalizePath(path)).matches()
+        || !scope.selects(path)) return Optional.empty();
+    boolean controlled = request.hasParameterIn(path);
+    return Optional.of(Detection.log("jmx", "jmx_file_write", controlled ? 100 : 90,
+        "A managed operation opens its selected script destination for writing", request,
+        Map.of("path", abbreviate(path), "mbean", abbreviate(scope.bean()), "operation", scope.operation(),
+            "file_operation", api, "decision_basis", "selected_write_open", "requestControlled", String.valueOf(controlled))));
   }
 
   public Optional<Detection> detectArgumentFileExpansion(
@@ -2168,11 +2186,25 @@ public final class DetectorEngine {
   }
 
   public Optional<Detection> detectFileRead(String path, RequestContext request, boolean xmlParserStack) {
-    String normalized = normalizePath(path);
-    if (normalized.isBlank()) {
-      return Optional.empty();
-    }
-    if (xmlParserStack && DANGEROUS_FILE_READ.matcher(normalized).find()) {
+    return detectFileRead(path, request, xmlParserStack, false);
+  }
+
+  public Optional<Detection> detectFileRead(String path, RequestContext request, boolean xmlParserStack,
+      boolean includeLocationPolicy) {
+    return detectFileRead(path, request, () -> xmlParserStack, includeLocationPolicy);
+  }
+
+  public Optional<Detection> detectFileRead(String path, RequestContext request,
+      java.util.function.BooleanSupplier xmlParserStack, boolean includeLocationPolicy) {
+    return detectFileRead(path, request, xmlParserStack, includeLocationPolicy, HostReadPath.OpenPolicy.PATH_ONLY);
+  }
+
+  public Optional<Detection> detectFileRead(String path, RequestContext request,
+      java.util.function.BooleanSupplier xmlParserStack, boolean includeLocationPolicy, HostReadPath.OpenPolicy links) {
+    if (path == null || path.isBlank()) return Optional.empty();
+    String location = HostReadPath.location(path);
+    boolean sensitive = SENSITIVE_HOST_READ.matcher(location).matches() && HostReadPath.confirmsLocation(path);
+    if (sensitive && xmlParserStack.getAsBoolean()) {
       return Optional.of(
           Detection.log(
               "xxe",
@@ -2180,13 +2212,15 @@ public final class DetectorEngine {
               90,
               "XML parser attempted to read a sensitive local file",
               request,
-              Map.of("path", normalized)));
+              Map.of("path", location)));
     }
     if (!request.active()) {
       return Optional.empty();
     }
     String protocol = protocolOf(path);
-    if (requestControlsReadPath(path, normalized, request)) {
+    boolean protectedSelection = sensitive || ((isSystemDirectory(location) || isProtectedRequestResource(location))
+        && HostReadPath.confirmsLocation(path));
+    if (requestControlsReadPath(path, request, protectedSelection, protectedSelection || !protocol.isEmpty())) {
       if (protocol.equals("http") || protocol.equals("https")) {
         return Optional.of(
             Detection.log(
@@ -2214,9 +2248,9 @@ public final class DetectorEngine {
               90,
               "File read path is controlled by request input",
               request,
-              Map.of("path", normalized)));
+              Map.of("path", location)));
     }
-    if (DANGEROUS_FILE_READ.matcher(normalized).find()) {
+    if (sensitive && !HostReadPath.isHostsFile(location)) {
       return Optional.of(
           Detection.log(
               "readFile",
@@ -2224,31 +2258,46 @@ public final class DetectorEngine {
               85,
               "Sensitive local file read detected",
               request,
-              Map.of("path", normalized)));
+              Map.of("path", location)));
     }
-    if (normalized.startsWith("/etc/")
-        || normalized.startsWith("/proc/")
-        || normalized.startsWith("/root/")) {
-      return Optional.of(
-          Detection.log(
-              "readFile",
-              "readFile_outsideWebroot",
-              65,
-              "File read appears outside the web root",
-              request,
-              Map.of("path", normalized)));
+    if ((includeLocationPolicy || links != HostReadPath.OpenPolicy.PATH_ONLY) && protocol.isEmpty()
+        && (request.parameters().values().stream().anyMatch(values -> HostReadPath.selected(path, values))
+        || (isAbsolutePathLike(path) && bodyHasSinkValue(request, path)))) {
+      String resolved = links.resolvedLocation(path);
+      if (!resolved.isEmpty() && !resolved.equals(location)
+          && (SENSITIVE_HOST_READ.matcher(resolved).matches() || isProtectedRequestResource(resolved))) {
+        return Optional.of(Detection.log("readFile", "readFile_userinput", 90,
+            "Request-selected path resolves to a protected host file", request,
+            Map.of("path", resolved, "decision_basis", "resolved_request_file")));
+      }
+      if (includeLocationPolicy) {
+        return Optional.of(Detection.log("readFile", "readFile_userinput", 65,
+            "Request supplied the path of an ordinary file", request,
+            Map.of("path", location, "decision_basis", "requested_path_only")));
+      }
+    }
+    if (includeLocationPolicy && isSystemDirectory(location) && HostReadPath.confirmsLocation(path)) {
+      return Optional.of(Detection.log("readFile", "readFile_outsideWebroot", 65,
+          "Local read targets a system directory covered by file access policy", request,
+          Map.of("path", location, "decision_basis", "system_directory")));
     }
     return Optional.empty();
   }
 
-  private static boolean requestControlsReadPath(String path, String normalized, RequestContext request) {
-    String target = archivePath(path);
-    boolean sensitive = sensitiveFileLocation(normalized) || PROTECTED_WEBAPP_RESOURCE.matcher(normalized).find();
-    boolean reportDirect = sensitive || !READ_SAFE_EXTENSION.matcher(normalized).matches()
-        || !protocolOf(target).isEmpty();
+  private static boolean isProtectedRequestResource(String path) {
+    return HostReadPath.isHostsFile(path) || path.contains("/.ssh/") || looksLikeApplicationSecretPath(path)
+        || PROTECTED_WEBAPP_RESOURCE.matcher(path).find();
+  }
+
+  private static boolean isSystemDirectory(String path) {
+    return path.startsWith("/etc/") || path.startsWith("/proc/") || path.startsWith("/root/");
+  }
+
+  private static boolean requestControlsReadPath(String path, RequestContext request, boolean sensitive, boolean reportDirect) {
+    String target = HostReadPath.inputName(path);
     for (List<String> values : request.parameters().values()) {
       for (String value : values) {
-        String candidate = archivePath(value);
+        String candidate = HostReadPath.inputName(value);
         if (candidate.isEmpty()) {
           continue;
         }
@@ -2256,7 +2305,7 @@ public final class DetectorEngine {
           if (reportDirect && target.equals(candidate)) {
             return true;
           }
-        } else if ((sensitive || escapesRelativeRoot(candidate))
+        } else if (((sensitive && candidate.contains("/")) || escapesRelativeRoot(candidate))
             && (target.equals(candidate) || target.endsWith("/" + candidate))) {
           return true;
         }
@@ -2303,8 +2352,8 @@ public final class DetectorEngine {
               request,
               Map.of("path", normalized)));
     }
-    if (stackLooksReflective(stackClassNames)
-        && (normalized.endsWith(".jsp") || normalized.endsWith(".jspx"))) {
+    if ((normalized.endsWith(".jsp") || normalized.endsWith(".jspx"))
+        && fileOperationFromDynamicCode(stackClassNames)) {
       return Optional.of(
           Detection.log(
               "writeFile",
@@ -2327,7 +2376,7 @@ public final class DetectorEngine {
                   "path", normalized,
                   "persistence", abbreviate(configPersistence.orElseThrow()))));
     }
-    if (SCRIPT_FILE.matcher(normalized).matches()) {
+    if (request.active() && SCRIPT_FILE.matcher(normalized).matches()) {
       return Optional.of(
           Detection.log(
               "writeFile",
@@ -2342,12 +2391,7 @@ public final class DetectorEngine {
 
   public Optional<Detection> detectArchiveExtraction(
       String entryName, String targetPath, RequestContext request) {
-    String entry = archivePath(entryName);
-    String target = archivePath(targetPath);
-    if (entry.isBlank() || target.isBlank() || !dangerousArchiveEntry(entry)) {
-      return Optional.empty();
-    }
-    if (!targetUsesDangerousArchiveEntry(entry, target)) {
+    if (!EscapingPath.matches(entryName, targetPath)) {
       return Optional.empty();
     }
     return Optional.of(
@@ -2361,18 +2405,39 @@ public final class DetectorEngine {
   }
 
   public Optional<Detection> detectFileDelete(String path, RequestContext request) {
-    String normalized = normalizePath(path);
-    if (!normalized.isBlank() && request.hasParameterIn(normalized)) {
-      return Optional.of(
-          Detection.log(
-              "deleteFile",
-              "deleteFile_userinput",
-              80,
-              "File delete path is controlled by request input",
-              request,
-              Map.of("path", normalized)));
+    if (path == null || path.isEmpty()) return Optional.empty();
+    try {
+      return detectFileDelete(new HostDelete(Path.of(path), -1, false, false), request, false);
+    } catch (java.nio.file.InvalidPathException invalid) {
+      return Optional.empty();
     }
-    return Optional.empty();
+  }
+
+  public Optional<Detection> detectFileDelete(HostDelete entry, RequestContext request, boolean explicitPathPolicy) {
+    if (!request.active()) return Optional.empty();
+    HostDelete.Basis basis = HostDelete.Basis.NONE;
+    for (List<String> values : request.parameters().values()) {
+      for (String value : values) {
+        HostDelete.Basis match = entry.match(value);
+        if (match.ordinal() > basis.ordinal()) basis = match;
+      }
+    }
+    if (basis != HostDelete.Basis.ESCAPING_ENTRY && !request.body().isEmpty()) {
+      if (jsonConfigBody(request)) {
+        for (JsonStringField field : jsonStringFields(request.body())) {
+          HostDelete.Basis match = entry.match(field.value());
+          if (match.ordinal() > basis.ordinal()) basis = match;
+        }
+      } else {
+        HostDelete.Basis match = entry.match(request.body().trim());
+        if (match.ordinal() > basis.ordinal()) basis = match;
+      }
+    }
+    if (basis == HostDelete.Basis.NONE || (basis == HostDelete.Basis.REQUESTED_PATH_ONLY && !explicitPathPolicy))
+      return Optional.empty();
+    return Optional.of(Detection.log("deleteFile", "deleteFile_userinput", 85,
+        "Request selected an entry for removal", request, Map.of("path", abbreviate(entry.path()),
+            "decision_basis", basis.name().toLowerCase(java.util.Locale.ROOT))));
   }
 
   public Optional<Detection> detectDirectoryList(String path, RequestContext request) {
@@ -2381,42 +2446,44 @@ public final class DetectorEngine {
 
   public Optional<Detection> detectDirectoryList(
       String path, RequestContext request, List<String> stackClassNames) {
-    String normalized = normalizePath(path);
-    if (normalized.isBlank()) {
-      return Optional.empty();
+    return directoryListings(path, request, null, false, false, false, algorithm -> false, () -> stackClassNames)
+        .stream().findFirst();
+  }
+
+  public boolean requestSelectsDirectory(String path, RequestContext request, boolean descriptorRelative) {
+    return request.active() && (request.parameters().values().stream()
+        .anyMatch(values -> HostDirectory.selected(path, values, descriptorRelative)) || bodyHasSinkValue(request, path));
+  }
+
+  public List<Detection> directoryListings(String path, RequestContext request, java.nio.file.DirectoryStream<?> opened,
+      boolean descriptorRelative, boolean observed, boolean selectedWalk, java.util.function.Predicate<String> enabledPolicy,
+      java.util.function.Supplier<List<String>> stack) {
+    if (path == null || path.isEmpty()) return List.of();
+    boolean selected = requestSelectsDirectory(path, request, descriptorRelative);
+    boolean locationRule = enabledPolicy.test("directory_unwanted");
+    boolean reflectiveRule = enabledPolicy.test("directory_reflect");
+    if (!selected && !selectedWalk && !locationRule && !reflectiveRule) return List.of();
+
+    String root = selected || selectedWalk || locationRule
+        ? (observed ? HostDirectory.protectedRoot(path, opened, descriptorRelative) : HostDirectory.namedRoot(path)) : "";
+    String display = root.isEmpty() ? path : root;
+    List<Detection> findings = new java.util.ArrayList<>();
+    if ((selected || selectedWalk) && !root.isEmpty()) {
+      findings.add(Detection.log("directory", "directory_userinput", 90, "Request selected a protected directory listing",
+          request, Map.of("path", root, "decision_basis", observed ? (selected ? "selected_directory" : "selected_directory_walk") : "directory_argument")));
+    } else if (selected && enabledPolicy.test("directory_userinput")) {
+      findings.add(Detection.log("directory", "directory_userinput", 65, "Request supplied an ordinary directory path",
+          request, Map.of("path", display, "decision_basis", "requested_path_only")));
     }
-    if (stackLooksReflective(stackClassNames)
-        && (request.active() || !tomcatDeploymentListing(stackClassNames))) {
-      return Optional.of(
-          Detection.log(
-              "directory",
-              "directory_reflect",
-              90,
-              "Reflective stack listed a directory",
-              request,
-              Map.of("path", normalized)));
+    if (locationRule && !root.isEmpty()) {
+      findings.add(Detection.log("directory", "directory_unwanted", 70, "Directory selected by location policy",
+          request, Map.of("path", root, "decision_basis", "directory_location")));
     }
-    if (request.hasParameterIn(normalized)) {
-      return Optional.of(
-          Detection.log(
-              "directory",
-              "directory_userinput",
-              85,
-              "Directory listing path is controlled by request input",
-              request,
-              Map.of("path", normalized)));
+    if (reflectiveRule && fileOperationFromDynamicCode(stack.get(), true)) {
+      findings.add(Detection.log("directory", "directory_reflect", 70, "Directory listed through dynamic dispatch",
+          request, Map.of("path", display, "decision_basis", "directory_dispatch")));
     }
-    if (normalized.equals("/etc") || normalized.equals("/proc") || normalized.equals("/root")) {
-      return Optional.of(
-          Detection.log(
-              "directory",
-              "directory_unwanted",
-              70,
-              "Sensitive directory listing detected",
-              request,
-              Map.of("path", normalized)));
-    }
-    return Optional.empty();
+    return findings;
   }
 
   public Optional<Detection> detectInclude(
@@ -2449,7 +2516,20 @@ public final class DetectorEngine {
     return Optional.empty();
   }
 
+  public Optional<Detection> deniedArchiveUpload(String filename, RequestContext request, ArchiveUploadPolicy.Decision decision) {
+    String basis = decision.denialBasis();
+    if (basis == null || !ArchiveUploadPolicy.isArchive(filename)) return Optional.empty();
+    return Optional.of(Detection.log("fileUpload", "fileUpload_java_archive", 90,
+        "Java archive upload conflicts with the application's deployment policy", request,
+        Map.of("filename", normalizePath(filename), "decision_basis", basis)));
+  }
+
   public Optional<Detection> detectFileUpload(String filename, RequestContext request) {
+    return detectFileUpload(filename, request, ArchiveUploadPolicy.Decision.UNSPECIFIED, false);
+  }
+
+  public Optional<Detection> detectFileUpload(
+      String filename, RequestContext request, ArchiveUploadPolicy.Decision decision, boolean managedPolicy) {
     String normalized = normalizePath(filename);
     if (normalized.isBlank()) {
       return Optional.empty();
@@ -2492,18 +2572,18 @@ public final class DetectorEngine {
               request,
               Map.of("filename", normalized)));
     }
-    Optional<String> javaArchiveContext = javaArchiveUploadContext(request);
-    if (JAVA_ARCHIVE_FILE.matcher(normalized).matches() && javaArchiveContext.isPresent()) {
-      return Optional.of(
-          Detection.log(
-              "fileUpload",
-              "fileUpload_java_archive",
-              90,
-              "Multipart upload contains a Java executable archive for a deployment endpoint",
-              request,
-              Map.of(
-                  "filename", normalized,
-                  "context", abbreviate(javaArchiveContext.orElseThrow()))));
+    if (ArchiveUploadPolicy.isArchive(normalized)) {
+      if (decision.denialBasis() != null) return deniedArchiveUpload(normalized, request, decision);
+      if (managedPolicy) {
+        // Existing centrally managed rules may explicitly select this metadata candidate.
+        Optional<String> context = javaArchiveUploadContext(request);
+        if (context.isPresent()) {
+          return Optional.of(Detection.log("fileUpload", "fileUpload_java_archive", 90,
+              "Java archive submitted on a deployment surface", request,
+              Map.of("filename", normalized, "context", abbreviate(context.get()),
+                  "decision_basis", "deployment_context")));
+        }
+      }
     }
     if (HTML_FILE.matcher(normalized).matches()) {
       return Optional.of(
@@ -3446,10 +3526,11 @@ public final class DetectorEngine {
     if (normalized.isBlank() || content == null || content.isBlank() || !request.active()) {
       return Optional.empty();
     }
-    if (!generatedScriptPath(normalized) || !GENERATED_SCRIPT_EXEC_PRIMITIVE.matcher(content).find()) {
-      return Optional.empty();
-    }
-    if (!request.hasParameterIn(content) && !request.hasParameterIn(path)) {
+    if (!generatedScriptPath(normalized)) return Optional.empty();
+    if (GENERATED_SCRIPT_EXTENSION.matcher(normalized).matches() || content.startsWith("#!")) {
+      if (!GENERATED_SCRIPT_EXEC_PRIMITIVE.matcher(content).find()
+          || (!request.hasParameterIn(content) && !request.hasParameterIn(path))) return Optional.empty();
+    } else if (!requestSuppliesGeneratedOperation(content, request)) {
       return Optional.empty();
     }
     return Optional.of(
@@ -3494,31 +3575,24 @@ public final class DetectorEngine {
   }
 
   public Optional<Detection> detectXxeEntity(String name, String systemId, RequestContext request) {
-    String value = systemId == null ? "" : systemId;
-    if (value.startsWith("\\\\") || value.startsWith("//")) {
-      return Optional.of(
-          Detection.log(
-              "xxe",
-              "xxe_protocol",
-              100,
-              "XML external entity uses SMB/UNC path",
-              request,
-              Map.of("name", String.valueOf(name), "systemId", abbreviate(value))));
+    return detectXxeEntity(name, systemId, request, false);
+  }
+
+  public Optional<Detection> detectXxeEntity(String name, String systemId, RequestContext request, boolean parserOpen) {
+    if ("[xml]".equals(name) || systemId == null) {
+      return Optional.empty();
     }
-    if (value.contains(":")) {
-      String protocol = lower(value.substring(0, value.indexOf(':')));
-      if (SSRF_PROTOCOLS.contains(protocol) || "http".equals(protocol) || "https".equals(protocol)) {
-        return Optional.of(
-            Detection.log(
-                "xxe",
-                "xxe_protocol",
-                90,
-                "XML external entity uses protocol " + protocol,
-                request,
-                Map.of("name", String.valueOf(name), "systemId", abbreviate(value))));
-      }
+    boolean unc = systemId.startsWith("\\\\") || systemId.startsWith("//");
+    int colon = systemId.indexOf(':');
+    String protocol = colon < 0 ? "" : lower(systemId.substring(0, colon));
+    if (!unc && !SSRF_PROTOCOLS.contains(protocol) && !"http".equals(protocol) && !"https".equals(protocol)) {
+      return Optional.empty();
     }
-    return Optional.empty();
+    return Optional.of(Detection.log(
+        "xxe", "xxe_protocol", unc ? 100 : 90,
+        unc ? "XML external entity uses SMB/UNC path" : "XML external entity uses protocol " + protocol,
+        request, Map.of("name", String.valueOf(name), "systemId", abbreviate(systemId),
+            "decision_basis", parserOpen ? "parser_url_open" : "declared_identifier")));
   }
 
   private static boolean isSqlExceptionSignal(
@@ -3554,82 +3628,66 @@ public final class DetectorEngine {
     return single % 2 != 0 || doubleQuote % 2 != 0 || backtick % 2 != 0;
   }
 
-  private static boolean tomcatDeploymentListing(List<String> stack) {
-    // Anchor the exception at the File.list caller. A deployment frame further up the
-    // stack can also be present when application initialization code lists a directory.
-    int caller = stack.indexOf("java.io.File");
-    if (caller < 0) {
+  private static boolean fileOperationFromDynamicCode(List<String> stack) {
+    return fileOperationFromDynamicCode(stack, false);
+  }
+
+  private static boolean directoryApiFrame(String name) {
+    return "java.io.File".equals(name) || "java.nio.file.Files".equals(name)
+        || "sun.nio.fs.UnixFileSystemProvider".equals(name) || "sun.nio.fs.WindowsFileSystemProvider".equals(name)
+        || "sun.nio.fs.UnixSecureDirectoryStream".equals(name);
+  }
+
+  private static boolean fileOperationFromDynamicCode(List<String> stack, boolean directory) {
+    if (stack == null || stack.isEmpty()) {
       return false;
     }
-    while (caller < stack.size() && "java.io.File".equals(stack.get(caller))) {
-      caller++;
+    int caller = 0;
+    for (int i = 0; i < stack.size(); i++) {
+      String frame = stack.get(i);
+      if ("java.io.File".equals(frame) || "java.io.FileOutputStream".equals(frame)
+          || "java.nio.file.Files".equals(frame) || (directory && directoryApiFrame(frame))) {
+        caller = i + 1;
+        while (caller < stack.size() && (frame.equals(stack.get(caller)) || (directory && directoryApiFrame(stack.get(caller))))) {
+          caller++;
+        }
+        break;
+      }
     }
-    if (caller == stack.size()) {
-      return false;
+    // Bootstrap and lifecycle methods often use reflection above an ordinary
+    // application caller. Attribute reflective dispatch only at the file API.
+    if (caller < stack.size() && isReflectionFrame(lower(stack.get(caller)))) {
+      return true;
     }
+    return stack.stream().anyMatch(frame -> isEvaluatedCodeFrame(lower(frame)));
+  }
+
+  private static boolean isEvaluatedCodeFrame(String name) {
+    return name.contains("javax.script") || name.contains("springframework.expression")
+        || name.contains("ognl") || name.contains("mvel") || name.contains("templatesimpl");
+  }
+
+  private static boolean isReflectionFrame(String name) {
+    return name.contains("java.lang.reflect") || name.contains("sun.reflect")
+        || name.contains("jdk.internal.reflect") || name.contains("generatedmethodaccessor");
+  }
+
+  private static boolean processInvokedReflectively(List<String> stack) {
+    if (stack == null || stack.isEmpty()) return false;
+    int caller = 0;
+    for (int i = 0; i < stack.size(); i++) {
+      String frame = stack.get(i);
+      if ("java.lang.ProcessImpl".equals(frame) || "java.lang.ProcessBuilder".equals(frame) || "java.lang.Runtime".equals(frame)) {
+        caller = i + 1;
+        while (caller < stack.size() && ("java.lang.ProcessBuilder".equals(stack.get(caller))
+            || "java.lang.Runtime".equals(stack.get(caller)))) caller++;
+        break;
+      }
+    }
+    if (caller == stack.size()) return false;
     String frame = stack.get(caller);
-    return "org.apache.catalina.startup.HostConfig".equals(frame)
-        || "org.apache.catalina.startup.ContextConfig".equals(frame)
-        || ("org.apache.catalina.webresources.DirResourceSet".equals(frame)
-            && (stack.contains("org.apache.catalina.startup.ContextConfig")
-                || stack.contains("org.apache.jasper.servlet.TldScanner")));
-  }
-
-  private static boolean stackLooksReflective(List<String> stackClassNames) {
-    if (stackClassNames == null) {
-      return false;
-    }
-    for (String frame : stackClassNames) {
-      String normalized = lower(frame);
-      if (normalized.contains("java.lang.reflect")
-          || normalized.contains("sun.reflect")
-          || normalized.contains("jdk.internal.reflect")
-          || normalized.contains("javax.script")
-          || normalized.contains("springframework.expression")
-          || normalized.contains("ognl")
-          || normalized.contains("mvel")
-          || normalized.contains("templatesimpl")
-          || normalized.contains("generatedmethodaccessor")) {
-        return true;
-      }
-    }
-    return false;
-  }
-
-  private static Optional<String> executableListenerFrame(List<String> stackClassNames) {
-    if (stackClassNames == null) {
-      return Optional.empty();
-    }
-    for (String frame : stackClassNames) {
-      if (frame == null || frame.isBlank()) {
-        continue;
-      }
-      String normalized = lower(frame).replace('/', '.');
-      if (normalized.equals("solr.runexecutablelistener")
-          || normalized.endsWith(".runexecutablelistener")
-          || normalized.contains("$runexecutablelistener")) {
-        return Optional.of(frame);
-      }
-    }
-    return Optional.empty();
-  }
-
-  private static Optional<String> configCommandLauncherFrame(List<String> stackClassNames) {
-    if (stackClassNames == null) {
-      return Optional.empty();
-    }
-    for (String frame : stackClassNames) {
-      if (frame == null || frame.isBlank()) {
-        continue;
-      }
-      String normalized = lower(frame).replace('/', '.');
-      if (normalized.equals("org.apache.rocketmq.broker.filtersrv.filterserverutil")
-          || normalized.equals("org.apache.rocketmq.broker.filtersrv.filterservermanager")
-          || normalized.startsWith("org.apache.rocketmq.broker.filtersrv.filterservermanager$")) {
-        return Optional.of(frame);
-      }
-    }
-    return Optional.empty();
+    return frame != null && (frame.startsWith("java.lang.reflect.") || frame.startsWith("jdk.internal.reflect.")
+        || frame.startsWith("sun.reflect."));
   }
 
   private static Optional<String> configPersistenceFrame(List<String> stackClassNames) {
@@ -3704,6 +3762,74 @@ public final class DetectorEngine {
     return normalizePath(decoded);
   }
 
+  /** An untyped temporary file can also be data. Require a copied operation in code position,
+   * or a complete request-supplied operand to that operation. Never search unrelated fields for authority. */
+  private static boolean requestSuppliesGeneratedOperation(String content, RequestContext request) {
+    var operations = GENERATED_SCRIPT_EXEC_PRIMITIVE.matcher(content);
+    int cursor = 0;
+    char quote = 0;
+    boolean escape = false, comment = false;
+    while (operations.find()) {
+      int start = operations.start(1), end = operations.end(1);
+      while (cursor < start) {
+        char c = content.charAt(cursor++);
+        if (comment) {
+          if (c == '\n') comment = false;
+        } else if (escape) {
+          escape = false;
+        } else if (c == '\\') {
+          escape = true;
+        } else if (quote != 0) {
+          if (c == quote) quote = 0;
+        } else if (c == '"' || c == '\'') {
+          quote = c;
+        } else if (c == '#') {
+          comment = true;
+        }
+      }
+      if (quote != 0 || comment || escape) continue;
+      String operation = content.substring(start, end);
+      String argument = generatedOperationArgument(content, start, end);
+      for (List<String> values : request.parameters().values()) {
+        for (String value : values) {
+          if (value == null || value.isBlank()) continue;
+          if (value.equals(argument)) return true;
+          for (int offset = value.indexOf(operation); offset >= 0; offset = value.indexOf(operation, offset + 1)) {
+            if (start >= offset && content.startsWith(value, start - offset)) return true;
+          }
+        }
+      }
+    }
+    return false;
+  }
+
+  private static String generatedOperationArgument(String content, int start, int end) {
+    if (content.charAt(start) == '`') return content.substring(start + 1, end - 1);
+    int first = end - 1;
+    if (content.charAt(first) == '(') {
+      first++;
+      while (first < content.length() && Character.isWhitespace(content.charAt(first))) first++;
+    }
+    if (first == content.length()) return "";
+    char delimiter = content.charAt(first);
+    if (delimiter != '"' && delimiter != '\'') {
+      int stop = first;
+      while (stop < content.length() && !Character.isWhitespace(content.charAt(stop))
+          && ",);".indexOf(content.charAt(stop)) < 0) stop++;
+      return content.substring(first, stop);
+    }
+    for (int at = first + 1; at < content.length(); at++) {
+      char c = content.charAt(at);
+      if (c == '\\') at++;
+      else if (c == delimiter) return content.substring(first + 1, at);
+    }
+    return "";
+  }
+
+  public boolean generatedScriptCandidate(String path) {
+    return generatedScriptPath(normalizePath(path));
+  }
+
   private static boolean generatedScriptPath(String normalizedPath) {
     if (normalizedPath == null || normalizedPath.isBlank()) {
       return false;
@@ -3721,43 +3847,25 @@ public final class DetectorEngine {
       return "";
     }
     for (String frame : stackClassNames) {
-      String normalized = lower(frame);
-      if (normalized.contains("springframework.expression") || normalized.contains("spel")) {
-        return "spel";
-      }
-      if (normalized.contains("velocity") || normalized.contains("freemarker")) {
-        return "template";
-      }
-      if (normalized.contains("javascript")
-          || normalized.contains("nashorn")
-          || normalized.contains("rhino")) {
-        return "javascript";
-      }
-      if (normalized.contains("xpath") || normalized.contains("jxpath")) {
-        return "xpath";
-      }
-      if (normalized.contains("jexl")) {
-        return "jexl";
-      }
-      if (normalized.contains("javax.el")
-          || normalized.contains("jakarta.el")
-          || normalized.contains("org.apache.el")) {
-        return "el";
-      }
-      if (normalized.contains("groovy")
-          || normalized.contains("gremlin")
-          || normalized.contains("scriptsecurity.sandbox.groovy")) {
-        return "groovy";
-      }
-      if (normalized.contains("javax.script") || normalized.contains("scriptengine")) {
-        return "script";
-      }
-      if (normalized.contains("ognl")) {
-        return "ognl";
-      }
-      if (normalized.contains("mvel")) {
-        return "mvel";
-      }
+      if (frame == null) continue;
+      if (frame.startsWith("org.springframework.expression.") || frame.startsWith("org.springframework.webflow.expression.")) return "spel";
+      if (frame.startsWith("org.apache.velocity.") || frame.startsWith("freemarker.")) return "template";
+      if (frame.startsWith("org.mozilla.javascript.") || frame.startsWith("jdk.nashorn.")
+          || frame.startsWith("org.openjdk.nashorn.") || frame.startsWith("com.oracle.truffle.js.")) return "javascript";
+      if (frame.startsWith("org.apache.commons.jxpath.") || frame.startsWith("javax.xml.xpath.")
+          || frame.startsWith("org.apache.xpath.") || frame.startsWith("com.sun.org.apache.xpath.internal.")
+          || frame.startsWith("net.sf.saxon.xpath.")) return "xpath";
+      if (frame.startsWith("org.apache.commons.jexl.") || frame.startsWith("org.apache.commons.jexl2.")
+          || frame.startsWith("org.apache.commons.jexl3.")) return "jexl";
+      if (frame.startsWith("javax.el.") || frame.startsWith("jakarta.el.") || frame.startsWith("org.apache.el.")) return "el";
+      if (frame.startsWith("groovy.") || frame.startsWith("org.codehaus.groovy.") || frame.startsWith("org.apache.groovy.")
+          || frame.startsWith("org.apache.tinkerpop.gremlin.groovy.")
+          || frame.startsWith("org.jenkinsci.plugins.scriptsecurity.sandbox.groovy.")) return "groovy";
+      if (frame.startsWith("javax.script.")) return "script";
+      if (frame.startsWith("ognl.") || frame.startsWith("org.apache.commons.ognl.")
+          || frame.startsWith("com.opensymphony.xwork2.ognl.")) return "ognl";
+      if (frame.startsWith("org.mvel.") || frame.startsWith("org.mvel2.")
+          || frame.startsWith("org.elasticsearch.common.mvel2.")) return "mvel";
     }
     return "";
   }
@@ -3775,8 +3883,20 @@ public final class DetectorEngine {
     };
   }
 
-  private static boolean requestControlsUrl(URI destination, String rawUrl, RequestContext request) {
-    if (request == null || !request.active() || destination.getRawAuthority() == null) {
+  public boolean requestSuppliesHttpUrl(URI uri, String address, String host, RequestContext request) {
+    return requestControlsUrl(uri, address, NetworkHost.normalize(host), request);
+  }
+
+  private static boolean requestControlsAdminPath(URI destination, RequestContext request) {
+    if (request == null || !request.active() || destination == null) return false;
+    String path = destination.getRawPath();
+    if (path == null || !path.startsWith("/")) return false;
+    return request.parameters().values().stream().anyMatch(values -> values.contains(path))
+        || bodyHasSinkValue(request, path);
+  }
+
+  private static boolean requestControlsUrl(URI destination, String rawUrl, String host, RequestContext request) {
+    if (request == null || !request.active() || (host.isEmpty() && (destination == null || destination.getRawAuthority() == null))) {
       return false;
     }
     for (var parameter : request.parameters().entrySet()) {
@@ -3787,12 +3907,12 @@ public final class DetectorEngine {
         if (value.equals(rawUrl)) {
           return true;
         }
-        if (destination.getHost() != null
+        if (!host.isEmpty()
             && ("host".equalsIgnoreCase(parameter.getKey()) || "hostname".equalsIgnoreCase(parameter.getKey()))
-            && NetworkHost.normalize(value).equals(NetworkHost.normalize(destination.getHost()))) {
+            && NetworkHost.destinationKey(value).equals(NetworkHost.destinationKey(host))) {
           return true;
         }
-        if (matchesUrlBase(value, destination)) {
+        if (destination != null && matchesUrlBase(value, destination)) {
           return true;
         }
       }
@@ -3812,7 +3932,7 @@ public final class DetectorEngine {
       return false;
     }
     if (supplied.getHost() == null || !supplied.getScheme().equalsIgnoreCase(destination.getScheme())
-        || !NetworkHost.normalize(supplied.getHost()).equals(NetworkHost.normalize(destination.getHost()))
+        || !NetworkHost.destinationKey(supplied.getHost()).equals(NetworkHost.destinationKey(destination.getHost()))
         || effectivePort(supplied) != effectivePort(destination)) {
       return false;
     }
@@ -3864,15 +3984,46 @@ public final class DetectorEngine {
         || host.matches(".*[。｡．].*");
   }
 
-  private static boolean isLocalClasspathResource(String rawUrl, String scheme, String path) {
+  private static boolean isLocalArchiveUrl(String rawUrl, String scheme) {
     String normalized = lower(rawUrl);
-    if ("jar".equals(scheme)
-        && (normalized.startsWith("jar:file:") || normalized.startsWith("jar:nested:"))) {
+    return "jar".equals(scheme)
+        && (normalized.startsWith("jar:file:") || normalized.startsWith("jar:nested:"));
+  }
+
+  private static boolean fileUrlNeedsInspection(URI uri, String rawUrl, RequestContext request) {
+    String path = uri.getPath();
+    if (path == null || !path.startsWith("/") || path.startsWith("//")
+        || path.indexOf('\\') >= 0 || path.indexOf('\0') >= 0 || uri.getRawAuthority() != null) {
       return true;
     }
-    return "file".equals(scheme)
-        && path.startsWith("/usr/local/tomcat/lib/")
-        && path.endsWith(".jar");
+    String normalized = normalizePath(path);
+    boolean sensitive = sensitiveFileLocation(normalized);
+    boolean deploymentResource = PROTECTED_WEBAPP_RESOURCE.matcher(normalized).find();
+    if (sensitive || requestControlsReadPath(path, request, deploymentResource,
+        deploymentResource || !READ_SAFE_EXTENSION.matcher(normalized).matches() || !protocolOf(path).isEmpty())
+        || bodyHasSinkValue(request, rawUrl)) {
+      return true;
+    }
+    // A fixed application path can be opened by URL APIs during a request.
+    // Check whether a request value actually supplies the local URL or base.
+    for (List<String> values : request.parameters().values()) {
+      for (String value : values) {
+        if (value == null || !value.regionMatches(true, 0, "file:", 0, 5)) {
+          continue;
+        }
+        try {
+          URI supplied = URI.create(value);
+          String base = supplied.getPath();
+          if (supplied.getRawAuthority() == null && base != null && !base.isEmpty()
+              && (path.equals(base) || path.startsWith(base.endsWith("/") ? base : base + "/"))) {
+            return true;
+          }
+        } catch (IllegalArgumentException ignored) {
+          // Ordinary text can start with a URI scheme.
+        }
+      }
+    }
+    return false;
   }
 
   private static boolean h2DangerousSql(String value) {
@@ -8349,6 +8500,26 @@ public final class DetectorEngine {
     return String.join("&", parts);
   }
 
+  /** Optional observations for policies that explicitly select request metadata. */
+  public List<Detection> sqlRequestMetadata(RequestContext request, java.util.function.Predicate<String> selected) {
+    List<Detection> candidates = new ArrayList<>();
+    if (selected.test("request_sql_sort_injection")) {
+      sqlSortInjection(request).ifPresent(match -> candidates.add(sqlMetadataFinding(request,
+          "request_sql_sort_injection", match.field(), match.valueLength())));
+    }
+    if (selected.test("request_sql_identifier_injection")) {
+      sqlIdentifierInjection(request).ifPresent(match -> candidates.add(sqlMetadataFinding(request,
+          "request_sql_identifier_injection", match.field(), match.valueLength())));
+    }
+    return candidates;
+  }
+
+  private static Detection sqlMetadataFinding(RequestContext request, String algorithm, String field, int length) {
+    return Detection.log("request", algorithm, 90, "A request field contains SQL-like text",
+        new RequestContext(request.method(), request.uri(), "", Map.of(), Map.of()),
+        Map.of("field", field, "valueLength", String.valueOf(length), "decision_basis", "request_metadata"));
+  }
+
   private static Optional<SqlSortInjectionMatch> sqlSortInjection(RequestContext request) {
     if (request == null
         || !request.active()
@@ -8435,14 +8606,6 @@ public final class DetectorEngine {
     }
     return SQL_IDENTIFIER_INJECTION_VALUE.matcher(decoded).find()
         || SQL_POLICY.matcher(decoded).find();
-  }
-
-  private static RequestContext redactSqlSortInjectionRequest(RequestContext request) {
-    if (request == null) {
-      return RequestContext.empty();
-    }
-    return new RequestContext(
-        request.method(), request.uri(), request.query(), request.parameters(), request.headers());
   }
 
   private static Optional<String> jwtHmacAlgorithm(String headerPart) {
@@ -8754,10 +8917,13 @@ public final class DetectorEngine {
     }
     String path = uri.split("\\?", 2)[0];
     boolean sensitiveControlPath = SENSITIVE_CONTROL_PATH.matcher(path).find();
-    for (String variant : pathVariants(path)) {
-      String normalized = variant.replace('\\', '/');
+    List<String> variants = decodedPathVariants(path);
+    int decodedCount = variants.size();
+    addLowByteVariants(variants, path);
+    for (int i = 0; i < variants.size(); i++) {
+      String normalized = variants.get(i).replace('\\', '/');
       if (hasConfusingDotSegment(normalized)
-          || (sensitiveControlPath && hasPathControlCharacter(normalized))) {
+          || (sensitiveControlPath && i < decodedCount && hasPathControlCharacter(normalized))) {
         return Optional.of(normalized);
       }
       Optional<String> canonicalControlPath = canonicalSensitiveControlPath(normalized);
@@ -8819,32 +8985,41 @@ public final class DetectorEngine {
   }
 
   private static List<String> pathVariants(String path) {
+    List<String> variants = decodedPathVariants(path);
+    addLowByteVariants(variants, path);
+    return variants;
+  }
+
+  private static List<String> decodedPathVariants(String path) {
     var variants = new ArrayList<String>();
     addVariant(variants, path);
     addOverlongUtf8Variants(variants, path);
-    String once = percentDecode(path);
+    String once = PercentEncodedText.decode(path, false);
     addVariant(variants, once);
     addVariant(variants, decodeUnicodeEscapes(once));
     addLenientPercentVariants(variants, once);
     addOverlongUtf8Variants(variants, once);
-    String twice = percentDecode(once);
+    String twice = PercentEncodedText.decode(once, false);
     addVariant(variants, twice);
     addVariant(variants, decodeUnicodeEscapes(twice));
     addLenientPercentVariants(variants, twice);
     addOverlongUtf8Variants(variants, twice);
     addLenientPercentVariants(variants, path);
+    return variants;
+  }
+
+  private static void addLowByteVariants(List<String> variants, String path) {
     String ghost = lowByteUnicodeDecode(path);
     if (!ghost.equals(path)) {
       addVariant(variants, ghost);
       addVariant(variants, decodeUnicodeEscapes(ghost));
       addOverlongUtf8Variants(variants, ghost);
-      String decodedGhost = percentDecode(ghost);
+      String decodedGhost = PercentEncodedText.decode(ghost, false);
       addVariant(variants, decodedGhost);
       addVariant(variants, decodeUnicodeEscapes(decodedGhost));
       addLenientPercentVariants(variants, decodedGhost);
       addOverlongUtf8Variants(variants, decodedGhost);
     }
-    return variants;
   }
 
   private static void addOverlongUtf8Variants(List<String> variants, String value) {
@@ -8893,27 +9068,13 @@ public final class DetectorEngine {
 
   private static boolean looksLikeRemoteJmxConfig(String argument) {
     String normalized = lower(argument.trim());
-    if (normalized.isBlank() || !containsRemoteProtocol(normalized)) {
+    if (normalized.isBlank() || !containsRemoteProtocol(normalized) || !JmxDispatch.isLocationArgument(argument)) {
       return false;
     }
     return normalized.contains("brokerconfig=")
         || normalized.contains("xbean:")
         || normalized.contains("spring:")
         || (normalized.contains("config") && normalized.contains(".xml"));
-  }
-
-  private static Optional<String> jmxScriptWriteTarget(String argument) {
-    if (argument == null || argument.isBlank()) {
-      return Optional.empty();
-    }
-    var matcher = SCRIPT_FILE_TOKEN.matcher(argument);
-    while (matcher.find()) {
-      String target = normalizePath(matcher.group());
-      if (SCRIPT_FILE.matcher(target).matches()) {
-        return Optional.of(target);
-      }
-    }
-    return Optional.empty();
   }
 
   private static boolean containsRemoteProtocol(String value) {
@@ -8991,34 +9152,7 @@ public final class DetectorEngine {
   }
 
   private static String jettyLenientPercentDecode(String value) {
-    if (value == null || value.indexOf('%') < 0) {
-      return value == null ? "" : value;
-    }
-    StringBuilder decoded = new StringBuilder(value.length());
-    boolean changed = false;
-    for (int i = 0; i < value.length(); i++) {
-      char ch = value.charAt(i);
-      if (ch == '%' && i + 2 < value.length()) {
-        int high = jettyLenientHexDigit(value.charAt(i + 1));
-        int low = jettyLenientHexDigit(value.charAt(i + 2));
-        if (high >= 0 && low >= 0) {
-          decoded.append((char) ((high << 4) + low));
-          changed = true;
-          i += 2;
-          continue;
-        }
-      }
-      decoded.append(ch);
-    }
-    return changed ? decoded.toString() : value;
-  }
-
-  private static int jettyLenientHexDigit(char ch) {
-    if (ch > 0x7f) {
-      return -1;
-    }
-    int digit = ((ch & 0x1f) + ((ch >> 6) * 0x19) - 0x10);
-    return digit >= 0 && digit <= 15 ? digit : -1;
+    return PercentEncodedText.decode(value, true);
   }
 
   private static String overlongUtf8Decode(String value) {
@@ -9206,6 +9340,9 @@ public final class DetectorEngine {
   }
 
   private static boolean deserializationGadgetType(String className) {
+    if (className.equals("org.apache.commons.beanutils.BeanComparator")) {
+      return true;
+    }
     for (String prefix : DESERIALIZATION_GADGET_PREFIXES) {
       if (className.startsWith(prefix)) {
         return true;
@@ -9642,14 +9779,6 @@ public final class DetectorEngine {
     return path == null ? "" : path.trim().replace('\\', '/');
   }
 
-  private static boolean dangerousArchiveEntry(String entry) {
-    return containsParentSegment(entry)
-        || entry.startsWith("/")
-        || entry.startsWith("//")
-        || WINDOWS_ABSOLUTE_PATH.matcher(entry).matches()
-        || entry.indexOf('\0') >= 0;
-  }
-
   private static boolean dangerousUploadFilename(String filename) {
     if (filename == null || filename.isBlank()) {
       return false;
@@ -9752,14 +9881,6 @@ public final class DetectorEngine {
       }
     }
     return false;
-  }
-
-  private static boolean targetUsesDangerousArchiveEntry(String entry, String target) {
-    String lowerEntry = lower(entry);
-    String lowerTarget = lower(target);
-    return containsParentSegment(target)
-        || target.indexOf('\0') >= 0
-        || lowerTarget.contains(lowerEntry);
   }
 
   private static boolean containsParentSegment(String path) {

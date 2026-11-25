@@ -1,12 +1,12 @@
 package io.ohmyrasp.agent.asm;
 
+import io.ohmyrasp.agent.xml.AttachmentFileVisitor;
 import org.objectweb.asm.MethodVisitor;
 
 final class XmlAttachmentHookModule implements HookModule {
   @Override
   public boolean matchesClass(String className) {
-    return className.equals("javax/activation/URLDataSource")
-        || className.equals("jakarta/activation/URLDataSource");
+    return AttachmentFileVisitor.matches(className);
   }
 
   @Override
@@ -16,6 +16,8 @@ final class XmlAttachmentHookModule implements HookModule {
       int access,
       String methodName,
       String descriptor) {
+    methodVisitor = AttachmentFileVisitor.wrap(className, methodVisitor, access, methodName, descriptor,
+        org.objectweb.asm.Type.getObjectType("io/ohmyrasp/agent/hook/OhMyRaspHooks"));
     if (methodName.equals("<init>") && descriptor.equals("(Ljava/net/URL;)V")) {
       return new EntryAdvice(methodVisitor, access, methodName, descriptor) {
         @Override

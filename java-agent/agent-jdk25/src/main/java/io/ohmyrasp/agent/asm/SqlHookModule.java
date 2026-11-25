@@ -1,28 +1,18 @@
 package io.ohmyrasp.agent.asm;
 
+import io.ohmyrasp.agent.sql.JdbcSqlMethod;
+import io.ohmyrasp.agent.sql.MyBatisSqlVisitor;
 import org.objectweb.asm.MethodVisitor;
 import org.objectweb.asm.Opcodes;
 
 final class SqlHookModule implements HookModule {
   @Override
   public boolean matchesClass(String className) {
-    return className.equals("java/sql/DriverManager") || isJdbcStatementClass(className);
+    return className.equals("java/sql/DriverManager") || isJdbcStatementClass(className) || MyBatisSqlVisitor.matches(className);
   }
 
   private static boolean isJdbcStatementClass(String className) {
-    return className.startsWith("org/h2/jdbc/")
-        || className.startsWith("com/mysql/cj/jdbc/")
-        || className.startsWith("com/mysql/jdbc/")
-        || className.startsWith("org/postgresql/jdbc/")
-        || className.startsWith("org/mariadb/jdbc/")
-        || className.startsWith("org/sqlite/")
-        || className.startsWith("org/hsqldb/jdbc/")
-        || className.startsWith("org/apache/derby/impl/jdbc/")
-        || className.startsWith("oracle/jdbc/driver/")
-        || className.startsWith("com/microsoft/sqlserver/jdbc/")
-        || className.startsWith("com/zaxxer/hikari/pool/")
-        || className.startsWith("org/apache/commons/dbcp")
-        || className.startsWith("org/apache/tomcat/jdbc/pool/");
+    return JdbcSqlMethod.driverOrPoolPackage(className);
   }
 
   @Override
@@ -35,6 +25,10 @@ final class SqlHookModule implements HookModule {
     if ((access & (Opcodes.ACC_ABSTRACT | Opcodes.ACC_NATIVE)) != 0) {
       return methodVisitor;
     }
+    if (MyBatisSqlVisitor.matches(className)) {
+      return MyBatisSqlVisitor.wrap(className, methodVisitor, access, methodName, descriptor,
+          "io/ohmyrasp/agent/hook/OhMyRaspHooks");
+    }
     if (className.equals("java/sql/DriverManager")
         && methodName.equals("getConnection")
         && descriptor.startsWith("(Ljava/lang/String;")) {
@@ -46,7 +40,8 @@ final class SqlHookModule implements HookModule {
         }
       };
     }
-    if ((methodName.equals("execute")
+    if ((JdbcSqlMethod.preparesSql(methodName, descriptor)
+            || methodName.equals("execute")
             || methodName.equals("executeQuery")
             || methodName.equals("executeUpdate")
             || methodName.equals("executeLargeUpdate")
@@ -56,8 +51,14 @@ final class SqlHookModule implements HookModule {
       return new EntryAdvice(methodVisitor, access, methodName, descriptor) {
         @Override
         protected void onMethodEnter() {
-          loadArg(0);
-          invokeHook("beforeSql", "(Ljava/lang/String;)V");
+          if ((access & Opcodes.ACC_STATIC) == 0) {
+            loadThis();
+            loadArg(0);
+            invokeHook("beforeSql", "(Ljava/lang/Object;Ljava/lang/String;)V");
+          } else {
+            loadArg(0);
+            invokeHook("beforeSql", "(Ljava/lang/String;)V");
+          }
         }
       };
     }

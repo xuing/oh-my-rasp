@@ -1,14 +1,14 @@
 package io.ohmyrasp.agent.asm;
 
+import io.ohmyrasp.agent.jmx.JmxDispatchVisitor;
+import io.ohmyrasp.agent.hook.OhMyRaspHooks;
 import org.objectweb.asm.MethodVisitor;
+import org.objectweb.asm.Type;
 
 final class JmxHookModule implements HookModule {
-  private static final String JMX_INVOKE_DESCRIPTOR =
-      "(Ljavax/management/ObjectName;Ljava/lang/String;[Ljava/lang/Object;[Ljava/lang/String;)Ljava/lang/Object;";
-
   @Override
   public boolean matchesClass(String className) {
-    return className.equals("com/sun/jmx/mbeanserver/JmxMBeanServer");
+    return JmxDispatchVisitor.TARGET.equals(className);
   }
 
   @Override
@@ -18,19 +18,6 @@ final class JmxHookModule implements HookModule {
       int access,
       String methodName,
       String descriptor) {
-    if (methodName.equals("invoke") && descriptor.equals(JMX_INVOKE_DESCRIPTOR)) {
-      return new EntryAdvice(methodVisitor, access, methodName, descriptor) {
-        @Override
-        protected void onMethodEnter() {
-          loadArg(0);
-          loadArg(1);
-          loadArg(2);
-          invokeHook(
-              "beforeJmxMBeanInvoke",
-              "(Ljava/lang/Object;Ljava/lang/String;Ljava/lang/Object;)V");
-        }
-      };
-    }
-    return methodVisitor;
+    return JmxDispatchVisitor.wrap(methodVisitor, access, methodName, descriptor, Type.getType(OhMyRaspHooks.class));
   }
 }

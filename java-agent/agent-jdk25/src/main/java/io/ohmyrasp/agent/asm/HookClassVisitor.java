@@ -6,11 +6,13 @@ import org.objectweb.asm.MethodVisitor;
 final class HookClassVisitor extends ClassVisitor {
   private final String className;
   private final HookRegistry registry;
+  private final boolean jdbcImplementation;
 
-  HookClassVisitor(String className, HookRegistry registry, ClassVisitor delegate) {
+  HookClassVisitor(String className, HookRegistry registry, ClassVisitor delegate, boolean jdbcImplementation) {
     super(OhMyRaspTransformer.api(), delegate);
     this.className = className;
     this.registry = registry;
+    this.jdbcImplementation = jdbcImplementation;
   }
 
   @Override
@@ -20,6 +22,6 @@ final class HookClassVisitor extends ClassVisitor {
     if (methodVisitor == null) {
       return null;
     }
-    return registry.visitMethod(className, methodVisitor, access, name, descriptor);
+    return registry.visitMethod(className, methodVisitor, access, name, descriptor, jdbcImplementation);
   }
 }

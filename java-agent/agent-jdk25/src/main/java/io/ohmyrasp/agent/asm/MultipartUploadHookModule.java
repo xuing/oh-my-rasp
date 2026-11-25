@@ -1,42 +1,15 @@
 package io.ohmyrasp.agent.asm;
 
+import io.ohmyrasp.agent.http.MultipartFilenameVisitor;
 import org.objectweb.asm.MethodVisitor;
-import org.objectweb.asm.Opcodes;
+import org.objectweb.asm.Type;
 
 final class MultipartUploadHookModule implements HookModule {
-  @Override
-  public boolean matchesClass(String className) {
-    return className.equals("javax/servlet/http/Part")
-        || className.equals("jakarta/servlet/http/Part")
-        || className.equals("org/apache/catalina/core/ApplicationPart")
-        || className.equals("io/undertow/servlet/spec/PartImpl")
-        || className.equals("org/apache/commons/fileupload/disk/DiskFileItem")
-        || className.equals("org/eclipse/jetty/util/MultiPartInputStreamParser$MultiPart")
-        || className.equals("org/eclipse/jetty/server/MultiPartFormInputStream$MultiPart");
-  }
+  private static final Type HOOKS = Type.getObjectType("io/ohmyrasp/agent/hook/OhMyRaspHooks");
 
-  @Override
-  public MethodVisitor visitMethod(
-      String className,
-      MethodVisitor methodVisitor,
-      int access,
-      String methodName,
-      String descriptor) {
-    boolean fileNameMethod =
-        methodName.equals("getSubmittedFileName")
-            || (className.equals("org/apache/commons/fileupload/disk/DiskFileItem")
-                && methodName.equals("getName"));
-    if (!fileNameMethod || !descriptor.equals("()Ljava/lang/String;")) {
-      return methodVisitor;
-    }
-    return new EntryAdvice(methodVisitor, access, methodName, descriptor) {
-      @Override
-      protected void onMethodExit(int opcode) {
-        if (opcode == Opcodes.ARETURN) {
-          dup();
-          invokeHook("beforeFileUpload", "(Ljava/lang/String;)V");
-        }
-      }
-    };
+  @Override public boolean matchesClass(String className) { return MultipartFilenameVisitor.known(className, false); }
+
+  @Override public MethodVisitor visitMethod(String owner, MethodVisitor visitor, int access, String name, String desc) {
+    return MultipartFilenameVisitor.wrap(owner, visitor, access, name, desc, HOOKS, false);
   }
 }

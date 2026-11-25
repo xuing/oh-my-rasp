@@ -1,11 +1,12 @@
 package io.ohmyrasp.agent.asm;
 
+import io.ohmyrasp.agent.xml.XmlEntityOpenVisitor;
 import org.objectweb.asm.MethodVisitor;
 
 final class XxeHookModule implements HookModule {
   @Override
   public boolean matchesClass(String className) {
-    return className.equals("com/sun/org/apache/xerces/internal/impl/XMLEntityManager");
+    return XmlEntityOpenVisitor.matches(className);
   }
 
   @Override
@@ -15,16 +16,7 @@ final class XxeHookModule implements HookModule {
       int access,
       String methodName,
       String descriptor) {
-    if (methodName.equals("setupCurrentEntity") && descriptor.startsWith("(Ljava/lang/String;")) {
-      return new EntryAdvice(methodVisitor, access, methodName, descriptor) {
-        @Override
-        protected void onMethodEnter() {
-          loadArg(0);
-          loadArg(1);
-          invokeHook("beforeXmlEntity", "(Ljava/lang/String;Ljava/lang/Object;)V");
-        }
-      };
-    }
-    return methodVisitor;
+    return XmlEntityOpenVisitor.wrap(className, methodVisitor, access, methodName, descriptor,
+        "io/ohmyrasp/agent/hook/OhMyRaspHooks");
   }
 }

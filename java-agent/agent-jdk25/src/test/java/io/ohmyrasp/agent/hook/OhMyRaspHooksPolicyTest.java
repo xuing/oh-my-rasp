@@ -2,6 +2,8 @@ package io.ohmyrasp.agent.hook;
 
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertSame;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 
 import io.ohmyrasp.agent.policy.AgentPolicy;
 import java.nio.charset.StandardCharsets;
@@ -19,6 +21,37 @@ final class OhMyRaspHooksPolicyTest {
     OhMyRaspHooks.exitHttpRequest();
     System.clearProperty("ohmyrasp.block");
     System.clearProperty("ohmyrasp.force_block");
+  }
+
+  @Test
+  void exitingAnInnerDispatchRestoresTheOuterRequest() {
+    enterSqlRequest();
+    var outer = OhMyRaspHooks.currentRequest();
+    OhMyRaspHooks.enterHttpRequest(null, null);
+    try {
+      assertFalse(OhMyRaspHooks.currentRequest().active());
+    } finally {
+      OhMyRaspHooks.exitHttpRequest();
+    }
+    assertSame(outer, OhMyRaspHooks.currentRequest());
+  }
+
+  @Test
+  void globalBlockCannotPromoteAnArchiveMetadataObservation() {
+    System.setProperty("ohmyrasp.force_block", "true");
+    System.setProperty("ohmyrasp.block", "true");
+    OhMyRaspHooks.enterHttpRequest(new FakeRequest("/plugin/add"), new FakeResponse());
+    assertDoesNotThrow(() -> OhMyRaspHooks.beforeFileUpload("release.jar"));
+    for (String action : List.of("log", "block")) {
+      OhMyRaspHooks.installPolicy(AgentPolicy.parse("""
+          {"rules":[{"algorithm":"fileUpload_java_archive","action":"%s"}]}
+          """.formatted(action)), "agent-one");
+      if (action.equals("log")) {
+        assertDoesNotThrow(() -> OhMyRaspHooks.beforeFileUpload("release.jar"));
+      } else {
+        assertThrows(OhMyRaspBlockException.class, () -> OhMyRaspHooks.beforeFileUpload("release.jar"));
+      }
+    }
   }
 
   @Test
@@ -199,12 +232,17 @@ final class OhMyRaspHooksPolicyTest {
   }
 
   public static final class FakeRequest {
+    private final String path;
+
+    FakeRequest() { this("/login"); }
+    FakeRequest(String path) { this.path = path; }
+
     public String getMethod() {
       return "GET";
     }
 
     public String getRequestURI() {
-      return "/login";
+      return path;
     }
 
     public String getQueryString() {

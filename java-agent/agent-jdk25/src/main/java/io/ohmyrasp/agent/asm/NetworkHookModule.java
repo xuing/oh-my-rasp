@@ -1,11 +1,12 @@
 package io.ohmyrasp.agent.asm;
 
+import io.ohmyrasp.agent.net.HttpTransportVisitor;
 import org.objectweb.asm.MethodVisitor;
 
 final class NetworkHookModule implements HookModule {
   @Override
   public boolean matchesClass(String className) {
-    return className.equals("java/net/URL") || className.equals("java/net/InetAddress");
+    return HttpTransportVisitor.matches(className) || className.equals("java/net/InetAddress");
   }
 
   @Override
@@ -15,14 +16,9 @@ final class NetworkHookModule implements HookModule {
       int access,
       String methodName,
       String descriptor) {
-    if (className.equals("java/net/URL") && methodName.equals("openConnection")) {
-      return new EntryAdvice(methodVisitor, access, methodName, descriptor) {
-        @Override
-        protected void onMethodEnter() {
-          loadThis();
-          invokeHook("beforeUrlOpen", "(Ljava/lang/Object;)V");
-        }
-      };
+    if (HttpTransportVisitor.matches(className)) {
+      return HttpTransportVisitor.wrap(className, methodVisitor, access, methodName, descriptor,
+          "io/ohmyrasp/agent/hook/OhMyRaspHooks");
     }
     if (className.equals("java/net/InetAddress")
         && methodName.equals("getAllByName")

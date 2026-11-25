@@ -1,47 +1,16 @@
 package io.ohmyrasp.agent.asm;
 
+import io.ohmyrasp.agent.process.ProcessLaunchVisitor;
 import org.objectweb.asm.MethodVisitor;
+import org.objectweb.asm.Type;
 
 final class ProcessHookModule implements HookModule {
-  @Override
-  public boolean matchesClass(String className) {
-    return className.equals("java/lang/ProcessBuilder") || className.equals("java/lang/Runtime");
+  @Override public boolean matchesClass(String className) {
+    return ProcessLaunchVisitor.matches(className);
   }
 
-  @Override
-  public MethodVisitor visitMethod(
-      String className,
-      MethodVisitor methodVisitor,
-      int access,
-      String methodName,
-      String descriptor) {
-    if (methodName.equals("start") && descriptor.equals("()Ljava/lang/Process;")) {
-      return new EntryAdvice(methodVisitor, access, methodName, descriptor) {
-        @Override
-        protected void onMethodEnter() {
-          loadThis();
-          invokeHook("beforeProcessBuilderStart", "(Ljava/lang/ProcessBuilder;)V");
-        }
-      };
-    }
-    if (methodName.equals("exec") && descriptor.startsWith("(Ljava/lang/String;")) {
-      return new EntryAdvice(methodVisitor, access, methodName, descriptor) {
-        @Override
-        protected void onMethodEnter() {
-          loadArg(0);
-          invokeHook("beforeRuntimeExecString", "(Ljava/lang/String;)V");
-        }
-      };
-    }
-    if (methodName.equals("exec") && descriptor.startsWith("([Ljava/lang/String;")) {
-      return new EntryAdvice(methodVisitor, access, methodName, descriptor) {
-        @Override
-        protected void onMethodEnter() {
-          loadArg(0);
-          invokeHook("beforeRuntimeExecArray", "([Ljava/lang/String;)V");
-        }
-      };
-    }
-    return methodVisitor;
+  @Override public MethodVisitor visitMethod(String className, MethodVisitor visitor, int access, String name, String descriptor) {
+    return ProcessLaunchVisitor.wrap(className, visitor, access, name, descriptor,
+        Type.getObjectType("io/ohmyrasp/agent/hook/OhMyRaspHooks"));
   }
 }

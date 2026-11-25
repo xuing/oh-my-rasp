@@ -1,5 +1,6 @@
 package io.ohmyrasp.agent.asm;
 
+import io.ohmyrasp.agent.sql.JdbcSqlMethod;
 import java.lang.instrument.ClassFileTransformer;
 import java.security.ProtectionDomain;
 import org.objectweb.asm.ClassReader;
@@ -26,17 +27,25 @@ public final class OhMyRaspTransformer implements ClassFileTransformer {
       Class<?> classBeingRedefined,
       ProtectionDomain protectionDomain,
       byte[] classfileBuffer) {
-    if (className == null || classfileBuffer == null || shouldSkip(className)) {
+    if (className == null || classfileBuffer == null || className.startsWith("io/ohmyrasp/agent/")) {
       return null;
     }
     try {
+      boolean loadedJdbc = JdbcSqlMethod.isJdbcImplementation(classBeingRedefined);
+      boolean skip = shouldSkip(className);
+      if (skip && !loadedJdbc && loader == null) return null;
+      ClassReader reader = new ClassReader(classfileBuffer);
+      boolean jdbc = loadedJdbc || JdbcSqlMethod.directJdbcInterface(reader.getInterfaces());
+      boolean multipartCaller = loader != null && io.ohmyrasp.agent.http.MultipartFilenameVisitor.multipartCaller(reader);
+      if (skip && !jdbc && !multipartCaller && !io.ohmyrasp.agent.http.MultipartFilenameVisitor.mentionsGetter(reader)) return null;
       if (Boolean.getBoolean("ohmyrasp.debug") && registry.isDirectTarget(className)) {
         System.err.println("[OHMYRASP] transforming hook target " + className);
       }
-      ClassReader reader = new ClassReader(classfileBuffer);
       ClassWriter writer = new ClassWriter(reader, ClassWriter.COMPUTE_MAXS);
-      ClassVisitor visitor = new SqlCallsiteClassVisitor(writer);
-      visitor = new HookClassVisitor(className, registry, visitor);
+      ClassVisitor visitor = new HookClassVisitor(className, registry, writer, jdbc);
+      if (multipartCaller) visitor = new io.ohmyrasp.agent.http.MultipartCollectionVisitor(visitor,
+          org.objectweb.asm.Type.getObjectType("io/ohmyrasp/agent/hook/OhMyRaspHooks"));
+      visitor = new SqlCallsiteClassVisitor(reader, visitor);
       reader.accept(visitor, ClassReader.EXPAND_FRAMES);
       return writer.toByteArray();
     } catch (Throwable throwable) {
@@ -48,8 +57,7 @@ public final class OhMyRaspTransformer implements ClassFileTransformer {
   }
 
   private boolean shouldSkip(String className) {
-    if (className.startsWith("io/ohmyrasp/agent/")
-        || className.startsWith("org/objectweb/asm/")
+    if (className.startsWith("org/objectweb/asm/")
         || className.startsWith("java/lang/instrument/")
         || className.startsWith("jdk/internal/reflect/")
         || className.startsWith("sun/reflect/")) {

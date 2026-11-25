@@ -1,12 +1,41 @@
 package io.ohmyrasp.agent.asm;
 
+import io.ohmyrasp.agent.sql.JdbcSqlMethod;
+import java.util.HashMap;
+import java.util.Map;
+import org.objectweb.asm.ClassReader;
 import org.objectweb.asm.ClassVisitor;
 import org.objectweb.asm.MethodVisitor;
 import org.objectweb.asm.Opcodes;
+import org.objectweb.asm.Type;
 
 final class SqlCallsiteClassVisitor extends ClassVisitor {
-  SqlCallsiteClassVisitor(ClassVisitor delegate) {
+  private final ClassReader original;
+  private Map<String, Integer> localLimits;
+
+  SqlCallsiteClassVisitor(ClassReader original, ClassVisitor delegate) {
     super(OhMyRaspTransformer.api(), delegate);
+    this.original = original;
+  }
+
+  // Only classes calling a multi-argument JDBC overload need scratch space.
+  // Read the original limits once and append temporary slots after application locals.
+  private int optionBase(String name, String descriptor) {
+    if (localLimits == null) {
+      localLimits = new HashMap<>();
+      original.accept(new ClassVisitor(api) {
+        @Override
+        public MethodVisitor visitMethod(int access, String n, String desc, String sig, String[] exceptions) {
+          return new MethodVisitor(api) {
+            @Override
+            public void visitMaxs(int maxStack, int maxLocals) {
+              localLimits.put(n + desc, maxLocals);
+            }
+          };
+        }
+      }, ClassReader.SKIP_DEBUG | ClassReader.SKIP_FRAMES);
+    }
+    return localLimits.get(name + descriptor);
   }
 
   @Override
@@ -30,6 +59,15 @@ final class SqlCallsiteClassVisitor extends ClassVisitor {
               false);
         }
         if (isSqlStringCall(opcode, owner, methodName, methodDescriptor)) {
+          Type[] args = Type.getArgumentTypes(methodDescriptor);
+          int base = args.length == 1 ? 0 : optionBase(name, descriptor);
+          if (base + args.length - 1 > 65535) {
+            super.visitMethodInsn(opcode, owner, methodName, methodDescriptor, isInterface);
+            return;
+          }
+          for (int i = args.length - 1; i > 0; i--) {
+            mv.visitVarInsn(args[i].getOpcode(Opcodes.ISTORE), base + i - 1);
+          }
           super.visitInsn(Opcodes.DUP2);
           super.visitMethodInsn(
               Opcodes.INVOKESTATIC,
@@ -37,6 +75,9 @@ final class SqlCallsiteClassVisitor extends ClassVisitor {
               "beforeSql",
               "(Ljava/lang/Object;Ljava/lang/String;)V",
               false);
+          for (int i = 1; i < args.length; i++) {
+            mv.visitVarInsn(args[i].getOpcode(Opcodes.ILOAD), base + i - 1);
+          }
         }
         super.visitMethodInsn(opcode, owner, methodName, methodDescriptor, isInterface);
       }
@@ -66,17 +107,7 @@ final class SqlCallsiteClassVisitor extends ClassVisitor {
     if (opcode != Opcodes.INVOKEINTERFACE && opcode != Opcodes.INVOKEVIRTUAL) {
       return false;
     }
-    if (owner.equals("java/sql/Statement") && descriptor.startsWith("(Ljava/lang/String;)")) {
-      return name.equals("execute")
-          || name.equals("executeQuery")
-          || name.equals("executeUpdate")
-          || name.equals("executeLargeUpdate")
-          || name.equals("addBatch");
-    }
-    if (owner.equals("java/sql/Connection")
-        && descriptor.equals("(Ljava/lang/String;)Ljava/sql/PreparedStatement;")) {
-      return name.equals("prepareStatement") || name.equals("prepareCall") || name.equals("nativeSQL");
-    }
-    return false;
+    if (owner.equals("java/sql/Connection")) return JdbcSqlMethod.preparesSql(name, descriptor);
+    return owner.equals("java/sql/Statement") && JdbcSqlMethod.executesSql(name, descriptor);
   }
 }

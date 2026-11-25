@@ -1,6 +1,9 @@
 package io.ohmyrasp.agent.asm;
 
+import io.ohmyrasp.agent.hook.OhMyRaspHooks;
 import org.objectweb.asm.MethodVisitor;
+import org.objectweb.asm.Type;
+import org.objectweb.asm.commons.Method;
 
 final class ServletHookModule implements HookModule {
   private static final String JAKARTA_SERVICE =
@@ -30,17 +33,18 @@ final class ServletHookModule implements HookModule {
             || descriptor.equals(JAVAX_SERVICE)
             || descriptor.equals(JAKARTA_GENERIC_SERVICE)
             || descriptor.equals(JAVAX_GENERIC_SERVICE))) {
-      return new EntryAdvice(methodVisitor, access, methodName, descriptor) {
+      return new ServletDispatchAdvice(OhMyRaspTransformer.api(), methodVisitor, access, methodName, descriptor) {
         @Override
-        protected void onMethodEnter() {
+        protected void enterDispatch() {
           loadArg(0);
           loadArg(1);
-          invokeHook("enterHttpRequest", "(Ljava/lang/Object;Ljava/lang/Object;)V");
+          invokeStatic(Type.getType(OhMyRaspHooks.class),
+              new Method("enterHttpRequest", "(Ljava/lang/Object;Ljava/lang/Object;)V"));
         }
 
         @Override
-        protected void onMethodExit(int opcode) {
-          invokeHook("exitHttpRequest", "()V");
+        protected void exitDispatch() {
+          invokeStatic(Type.getType(OhMyRaspHooks.class), new Method("exitHttpRequest", "()V"));
         }
       };
     }
