@@ -10,10 +10,14 @@ import java.util.Base64;
 
 /** Calls only detector entry points. Inputs are data, including class names and script text. */
 public final class EvidenceProbe {
-  public static final class PathOnlyRequest {
+  public static final class RecordedRequest {
     private final String uri;
 
-    PathOnlyRequest(String uri) { this.uri = uri; }
+    private final String userAgent;
+
+    RecordedRequest(String uri, String userAgent) { this.uri = uri; this.userAgent = userAgent; }
+
+    public String getHeader(String name) { return "User-Agent".equalsIgnoreCase(name) ? userAgent : null; }
 
     public String getRequestURI() { return uri; }
   }
@@ -36,7 +40,14 @@ public final class EvidenceProbe {
         case "requestPath":
           methodName = "beforeHttpRequest";
           parameters[0] = Object.class;
-          arguments[0] = new PathOnlyRequest(value);
+          arguments[0] = new RecordedRequest(value, null);
+          break;
+        case "requestIdentity":
+          int delimiter = value.indexOf('\0');
+          if (delimiter < 0) throw new IllegalArgumentException("missing identity argument boundary");
+          methodName = "beforeHttpRequest";
+          parameters[0] = Object.class;
+          arguments[0] = new RecordedRequest(value.substring(delimiter + 1), value.substring(0, delimiter));
           break;
         case "archiveWrite":
           String[] paths = value.split(" -> ", -1);
@@ -79,7 +90,7 @@ public final class EvidenceProbe {
       boolean blocked = false;
       try {
         method.invoke(null, arguments);
-        if ("requestPath".equals(fields[0])) hooks.getMethod("afterHttpRequest").invoke(null);
+        if ("beforeHttpRequest".equals(methodName)) hooks.getMethod("afterHttpRequest").invoke(null);
       } catch (InvocationTargetException failure) {
         if (!failure.getCause().getClass().getName().equals(prefix + "RaspBlockException")) {
           throw new IllegalStateException("detector failed: " + failure.getCause().getClass().getName());

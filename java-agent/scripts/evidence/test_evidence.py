@@ -41,6 +41,16 @@ class EvidenceTest(unittest.TestCase):
             self.assertEqual(len(summary["decisions"]), 1)
             self.assertNotIn("PRIVATE-VALUE", json.dumps(inventory))
 
+    def test_service_header_requires_two_unambiguous_recorded_fields(self):
+        self.assertEqual(decisions.identity_arguments("user-agent=report client uri=/reports/health"),
+                         "report client\0/reports/health")
+        for raw in ("user-agent=client uri=/one uri=/two", "user-agent=report... uri=/ok",
+                    "user-agent=one\0two uri=/ok", "user-agent=report uri=/path?private",
+                    "user-agent=report uri=relative", "user-agent=report uri=/" + "📊" * 600):
+            self.assertIsNone(decisions.identity_arguments(raw))
+        self.assertIsNone(decisions.source_for("HttpServlet.service", "request_internal_identity", "8"))
+        self.assertIsNone(decisions.source_for("HttpServlet.service", "java11_request_internal_identity", "8"))
+
     def test_missing_context_and_multi_argument_commands_are_not_invented(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)

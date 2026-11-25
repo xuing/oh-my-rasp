@@ -22,7 +22,6 @@ ROOT = Path(__file__).resolve().parents[1]
 # Known fields holding the observed argument (possibly normalized by the detector).
 # Summaries of entire requests, call stacks or argv are not equivalent arguments.
 SOURCES = {
-    "HttpServlet.service": ("requestPath", "uri", "/reports/weekly"),
     "ArchiveEntry.write": ("archiveWrite", "entry", "../report.csv -> /srv/orders/report.csv"),
     "FileInputStream.open": ("beforeFileRead", "path", "/srv/orders/report.csv"),
     "RandomAccessFile.open": ("beforeFileRead", "path", "/srv/orders/report.csv"),
@@ -39,6 +38,33 @@ SOURCES = {
     "DriverManager.getConnection": ("beforeJdbcConnection", "jdbc_url", "jdbc:h2:mem:orders"),
     "org.h2.jdbc.JdbcConnection.<init>": ("beforeH2JdbcConnection", "jdbc_url", "jdbc:h2:mem:orders"),
 }
+SERVLET_SOURCES = {
+    "request_path_confusion": ("requestPath", "uri", "/reports/weekly"),
+    "request_internal_identity": ("requestIdentity", "request", "nacos-server\0/reports/health"),
+}
+
+
+def source_for(hook, algorithm, track):
+    if hook == "HttpServlet.service":
+        prefix = f"java{track}_"
+        return SERVLET_SOURCES.get(algorithm[len(prefix):]) if algorithm.startswith(prefix) else None
+    return SOURCES.get(hook)
+
+
+def identity_arguments(value):
+    """The writer used the trimmed, lowercase user-agent and the unmodified servlet URI."""
+    try:
+        units = len(value.encode("utf-16-le")) // 2
+    except UnicodeEncodeError:
+        return None
+    if value.count(" uri=") != 1 or units > 1200:
+        return None
+    match = re.fullmatch(r"user-agent=([^\x00-\x1f\x7f]+) uri=(/[^\s?#\x00-\x1f\x7f]*)", value)
+    if not match or match[1].strip() != match[1] or match[1].endswith(("...", "…")):
+        return None
+    return match[1] + "\0" + match[2]
+
+
 START = re.compile(r"ohmyrasp-java(8|11|17)-agent-start")
 
 
@@ -146,16 +172,30 @@ def collect(logs):
                     row["status"] = "argument evidence required"
                     row["evidence_limit"] = "combined display text cannot establish resolved MBean dispatch or the original argument types"
                     continue
-                if hook not in SOURCES or (hook == "HttpServlet.service" and algorithm != f"java{track}_request_path_confusion"):
+                if (hook == "FileOutputStream.write" and algorithm == f"java{track}_file_generated_plot_script_command"
+                        and isinstance(details, dict) and set(details) == {"path"}):
+                    row["status"] = "source evidence required"
+                    row["evidence_limit"] = "target path only; original write bytes and their association with the stream are missing"
+                    continue
+                source_spec = source_for(hook, algorithm, track)
+                if source_spec is None:
                     row["status"] = "no offline adapter"
                     continue
-                method, field, _ = SOURCES[hook]
+                method, field, _ = source_spec
                 value = details.get(field) if isinstance(details, dict) else None
                 if method == "beforeXmlEntity" and isinstance(details, dict) and "decision_basis" not in details:
                     row["evidence_limit"] = "entity source recorded; actual transport opening unknown"
                 if not isinstance(value, str) or not value or "[redacted]" in value or value.endswith(("...", "…")):
                     row["status"] = "argument unavailable"
                     continue
+                if method == "requestIdentity":
+                    arguments = identity_arguments(value)
+                    if arguments is None:
+                        row["status"] = "argument unavailable"
+                        continue
+                    row["evidence_limit"] = "normalized header and URI classifier only; caller identity and authorization unknown"
+                    row["_expected_detail"] = ("request", value, "identity_fields_matched")
+                    value = arguments
                 if method == "requestPath":
                     # The old event stored both strings in one abbreviated field. Only the
                     # original operand is an input; the normalized string is an independent check.
@@ -164,7 +204,7 @@ def collect(logs):
                         row["status"] = "argument unavailable"
                         continue
                     row["evidence_limit"] = "URI classifier and normalized result only; original servlet dispatch and authorization unknown"
-                    row["_expected_path_detail"] = value
+                    row["_expected_detail"] = ("uri", value, "normalized_path_matched")
                     value = parts[0]
                 if hook == "MultipartUpload.filename" and algorithm == "fileUpload_java_archive":
                     if details.get("multipart_source") == "active_request_lookup":
@@ -203,11 +243,15 @@ def collect(logs):
 
 def check_batch(java, tmp, root, track, cases, controls):
     jar = root / f"agent-java{track}/build/libs/ohmyrasp-agent-java{track}.jar"
-    for hook in sorted({row["hook"] for row, _, _ in cases}):
-        method, _, safe = SOURCES[hook]
-        control = {"track": track, "hook": hook}
-        controls.append(control)
-        cases.append((control, method, safe))
+    probes = {(row["hook"], source_for(row["hook"], row["algorithm"], track)) for row, _, _ in cases}
+    for hook, (method, _, safe) in sorted(probes):
+        samples = [safe]
+        if method == "requestIdentity":
+            samples.append("report-client/1.0\0/admin/reports")
+        for sample in samples:
+            control = {"track": track, "hook": hook, "probe": method}
+            controls.append(control)
+            cases.append((control, method, sample))
     log = tmp / "decision.jsonl"
     cmd = [java, "-Dohmyrasp.log.sync=true", "-Dohmyrasp.control=none", "-Dohmyrasp.mode=block",
            f"-Dohmyrasp.java{track}.block=true", f"-Dohmyrasp.java{track}.log={log}",
@@ -224,12 +268,12 @@ def check_batch(java, tmp, root, track, cases, controls):
             ok = blocked == "true" and decisions == [(row["algorithm"], "block")]
         else:
             ok = blocked == "false" and not decisions
-        expected_path = row.pop("_expected_path_detail", None)
-        if expected_path is not None:
+        expected_detail = row.pop("_expected_detail", None)
+        if expected_detail is not None:
+            key, value, result_key = expected_detail
             findings = [e for e in events if e.get("hook") == row["hook"]]
-            row["normalized_path_matched"] = (len(findings) == 1 and
-                                              findings[0].get("details", {}).get("uri") == expected_path)
-            ok = ok and row["normalized_path_matched"]
+            row[result_key] = len(findings) == 1 and findings[0].get("details", {}).get(key) == value
+            ok = ok and row[result_key]
         row["status"] = "matched" if ok else "mismatch"
         if not ok:
             row.update(blocked=blocked == "true", observed=decisions)
