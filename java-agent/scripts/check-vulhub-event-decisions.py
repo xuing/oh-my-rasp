@@ -104,6 +104,9 @@ def process_evidence_limit(hook, algorithm, track, message, details):
     primitive = algorithm == f"java{track}_command_execution_exploit_primitive"
     argument_only = basis == "command_arguments" or (
         basis is None and message == f"Suspicious command execution reached a Java {track} process sink")
+    if algorithm == f"java{track}_command_execution_shell_meta" and (
+            basis == "shell_arguments" or message == f"Suspicious shell metacharacter command reached a Java {track} shell command"):
+        return "source evidence required", "legacy shell text does not establish request input at a program operator"
     if ((primitive and not argument_only) or basis in {"request_shell_syntax", "configuration_launcher", "scheduled_script"}
             or message == f"Scheduler script job reached a Java {track} shell script process sink"):
         reason = "original request or launch stack unavailable"
