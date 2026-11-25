@@ -46,6 +46,9 @@ def main():
                                          for e in events):
                         raise SystemExit(f"unexpected {namespace} Java {track} {mode} receipts: {events}")
                     continue
+                if not events or (events[0]["algorithm"], events[0]["action"]) != ("xss_echo", mode):
+                    raise SystemExit(f"unexpected {namespace} {mode} response policy receipts: {events}")
+                events = events[1:]
                 markup = events[:2]
                 if [(e["algorithm"], e["action"]) for e in markup] != [("xss_userinput", "log"), ("xss_userinput", mode)]:
                     raise SystemExit(f"unexpected {namespace} {mode} input policy receipts: {markup}")

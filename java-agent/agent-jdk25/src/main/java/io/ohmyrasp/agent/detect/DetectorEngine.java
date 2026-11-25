@@ -1690,16 +1690,6 @@ public final class DetectorEngine {
                 Map.of("value", abbreviate(value))));
       }
     }
-    if (request.active() && XSS_INPUT.matcher(content).find()) {
-      return Optional.of(
-          Detection.log(
-              "response",
-              "xss_echo",
-              60,
-              "Response contains XSS-like content",
-              request,
-              Map.of("value", abbreviate(content))));
-    }
     return Optional.empty();
   }
 

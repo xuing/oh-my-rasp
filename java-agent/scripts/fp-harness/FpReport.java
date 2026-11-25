@@ -114,6 +114,10 @@ public final class FpReport {
                 new RequestContext("POST", "/plugin/add", "", Map.of(), Map.of()))),
         new Category("Upload filenames", uploadCorpus(), (c, r) -> ENGINE.detectFileUpload(c.payload(), r)),
         new Category("JDBC URLs", jdbcCorpus(), (c, r) -> ENGINE.detectJdbcUrl(c.payload(), r)),
+        new Category("Application response markup", List.of(
+            Case.tainted("<script src='/assets/report.js'></script>", "weekly"),
+            Case.tainted("<p>&lt;script&gt;</p>", "<script>")),
+            (c, r) -> ENGINE.detectXssEcho(c.payload(), r)),
         new Category("Request parameters", requestParamCorpus(), (c, r) -> ENGINE.detectRequest(r)),
         new Category(
             "Base64 decoding",

@@ -4123,7 +4123,7 @@ public final class VulnerableServlet extends HttpServlet {
           hook(
               "beforeXssEcho",
               new Class<?>[] {String.class},
-              "hello " + value(request, "q", "<script>alert(1)</script>"));
+              "hello " + value(request, "q", "weekly"));
       case "webshell-eval" ->
           hook(
               "beforeWebshellEval",

@@ -16,6 +16,8 @@ public class ServletAdmissionCheck extends HttpServlet {
   private int calls;
   private int redirects;
   private String note;
+  private String output;
+  private String mediaType;
 
   private boolean errorDispatch;
   private boolean dispatchNested;
@@ -25,6 +27,7 @@ public class ServletAdmissionCheck extends HttpServlet {
 
   @Override protected void doPost(HttpServletRequest request, HttpServletResponse response)
       throws ServletException, java.io.IOException {
+    if (output != null) OhMyRaspHooks.beforeXssEcho(output);
     calls++;
     if (note != null && !java.util.List.of(note).equals(OhMyRaspHooks.currentRequest().parameters().get("note")))
       throw new AssertionError("documentation text changed");
@@ -62,6 +65,7 @@ public class ServletAdmissionCheck extends HttpServlet {
     };
     ServletResponse res = (ServletResponse) Proxy.newProxyInstance(getClass().getClassLoader(),
         new Class<?>[]{HttpServletResponse.class}, (proxy, method, args) -> {
+          if (method.getName().equals("getContentType")) return mediaType;
           if (method.getName().equals("sendRedirect")) {
             redirects++;
             if (!redirectAvailable) throw new IllegalStateException("response committed");
@@ -75,7 +79,7 @@ public class ServletAdmissionCheck extends HttpServlet {
       if (parameterDenial != null && blocked != parameterDenial) throw new AssertionError("nested denial replaced");
       rejected = true;
     }
-    if (rejected != (parameterDenial != null || (deny && !redirectAvailable)) || calls != previous + (deny ? 0 : dispatchNested ? 2 : 1)
+    if (rejected != (parameterDenial != null || (deny && (!redirectAvailable || output != null))) || calls != previous + (deny ? 0 : dispatchNested ? 2 : 1)
         || redirects != previousRedirects + (deny && parameterDenial == null ? 1 : 0) || OhMyRaspHooks.currentRequest().active())
       throw new AssertionError("unexpected dispatch: denied=" + rejected + ", calls=" + calls + ", redirects=" + redirects);
   }
@@ -83,6 +87,22 @@ public class ServletAdmissionCheck extends HttpServlet {
   public static void main(String[] args) throws Exception {
     ServletAdmissionCheck servlet = new ServletAdmissionCheck();
     boolean block = args[0].equals("block");
+    servlet.mediaType = "text/html";
+    servlet.output = "<script src='/assets/report.js'></script>";
+    servlet.check("report-client", false, true);
+    servlet.note = "<script>";
+    servlet.output = "Documentation: " + servlet.note;
+    servlet.check("report-client", false, true);
+    OhMyRaspHooks.installPolicy(AgentPolicy.parse("{\"rules\":[{\"algorithm\":\"xss_echo\",\"action\":\"block\"}]}"), "test");
+    servlet.mediaType = "application/json";
+    servlet.check("report-client", false, true);
+    servlet.mediaType = "text/html; charset=UTF-8";
+    servlet.output = "Documentation: &lt;script&gt;";
+    servlet.check("report-client", false, true);
+    servlet.output = "Documentation: " + servlet.note;
+    servlet.check("report-client", block, true);
+    servlet.output = null;
+    OhMyRaspHooks.installPolicy(AgentPolicy.absent(), "");
     servlet.note = "The <script> element is documented here.";
     servlet.check("report-client", false, true);
     OhMyRaspHooks.installPolicy(AgentPolicy.parse("{\"rules\":[{\"hook\":\"request\",\"action\":\"block\"}]}"), "test");

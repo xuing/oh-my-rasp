@@ -475,7 +475,7 @@ attempt at the indicated phase. The remote application's outcome needs separate 
 
 On the primary agent, `xss_userinput` requires a policy explicitly selecting the algorithm. A log action observes matching request parameters, and a block action denies their submission in block mode. An application can accept markup as documentation or store it as ordinary text.
 
-`detectXssEcho` checks whether an XSS-like input payload is reflected verbatim in the response body.
+The response hook `beforeXssEcho` honors an explicit `xss_echo` policy for HTML and XHTML responses. It looks for a markup-bearing request parameter verbatim in the supplied output. Application-owned scripts alone produce no finding. A match establishes text overlap; determining browser execution requires the rendering context.
 
 > **Wiring status: not yet active on live traffic.** Both `detectResponseDataLeak` and `detectXssEcho` are implemented and exposed via `OhMyRaspHooks.beforeResponseDataLeak` and `OhMyRaspHooks.beforeXssEcho`, but **no ASM hook module currently instruments a servlet response-output sink** (`HttpServletResponse.getWriter()` / `ServletOutputStream`). Today they execute only when called directly by the playground probes (`response` and `xss-echo` actions in [`VulnerableServlet.java`](../java-agent/playground/src/main/java/io/ohmyrasp/playground/VulnerableServlet.java)). Wiring response-body scanning onto the hot response path is deferred to avoid adding outbound-body scanning overhead on every request.
 

@@ -226,7 +226,7 @@ The descriptions live in the [general catalog](../rules/general.json) and [produ
 | `xml_decoder_runtime` | JavaBeans XML decoding is correlated with runtime invocation or a script-file operation. | — |
 | `xml_decoder_webshell` | JavaBeans XML decoding is correlated with runtime invocation or a script-file operation. | — |
 | `xpath_runtime` | Runtime execution primitives occur in an expression or execution is observed under an evaluator. A library hook identifies the evaluation context. | — |
-| `xss_echo` | An explicit policy can observe or deny markup indicators in submitted text before the application handles it. | — |
+| `xss_echo` | An explicit response policy matches verbatim request markup in content supplied to the HTML response hook. | — |
 | `xss_userinput` | An explicit policy can observe or deny markup indicators in submitted text before the application handles it. | — |
 | `xxe_file` | An XML external entity refers to a file. | — |
 | `xxe_protocol` | The XML parser selects an external protocol. At the instrumented transport boundary the agent can check local catalog provenance. | — |

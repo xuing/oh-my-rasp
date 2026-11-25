@@ -1655,11 +1655,14 @@ public final class OhMyRaspHooks {
   }
 
   public static void beforeXssEcho(String content) {
-    if (detectionDisabled()) {
-      return;
-    }
+    Object response = RESPONSE.get();
+    if (detectionDisabled() || response == null || !POLICY.selectsAlgorithm("xss_echo")) return;
     try {
-      emit(DETECTORS.detectXssEcho(content, currentRequest()));
+      String type = invokeString(ServletContracts.of(response), response, "getContentType").orElse("");
+      int separator = type.indexOf(';');
+      String mediaType = (separator < 0 ? type : type.substring(0, separator)).trim();
+      if ("text/html".equalsIgnoreCase(mediaType) || "application/xhtml+xml".equalsIgnoreCase(mediaType))
+        emit(DETECTORS.detectXssEcho(content, currentRequest()));
     } catch (OhMyRaspBlockException blocked) {
       throw blocked;
     } catch (Throwable throwable) {

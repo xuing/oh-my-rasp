@@ -2738,10 +2738,9 @@ final class DetectorEngineTest {
   }
 
   @Test
-  void detectsXssEchoContentWithoutRequestParameter() {
-    var result = engine.detectXssEcho("hello <script>alert(1)</script>", request());
-
-    assertAlgorithm(result, "xss_echo");
+  void ignoresApplicationScriptWithoutMatchingRequestParameter() {
+    var result = engine.detectXssEcho("<script src='/assets/report.js'></script>", request(Map.of("q", List.of("weekly"))));
+    assertTrue(result.isEmpty());
   }
 
   @Test

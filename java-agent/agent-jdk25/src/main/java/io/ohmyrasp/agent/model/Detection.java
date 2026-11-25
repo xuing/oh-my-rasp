@@ -35,7 +35,7 @@ public record Detection(
   public boolean requiresExplicitRule() {
     if (details == null) return false;
     String basis = details.get("decision_basis");
-    return "request_scanner".equals(algorithm) || "xss_userinput".equals(algorithm)
+    return "request_scanner".equals(algorithm) || "xss_userinput".equals(algorithm) || "xss_echo".equals(algorithm)
         || ("request_remote_job_submission".equals(algorithm) && ("artifact_descriptor_only".equals(basis) || "command_descriptor_only".equals(basis)))
         || ("writeFile_NTFS".equals(algorithm) && "named_data_stream".equals(basis))
         || ("deleteFile_userinput".equals(algorithm) && "requested_path_only".equals(basis))
