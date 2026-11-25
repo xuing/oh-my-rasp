@@ -1,5 +1,6 @@
 package io.ohmyrasp.agent.java8;
 
+import io.ohmyrasp.agent.jmx.JmxDispatchVisitor;
 import java.lang.instrument.ClassFileTransformer;
 import java.security.ProtectionDomain;
 import org.objectweb.asm.ClassReader;
@@ -8,16 +9,9 @@ import org.objectweb.asm.ClassWriter;
 import org.objectweb.asm.MethodVisitor;
 import org.objectweb.asm.Opcodes;
 import org.objectweb.asm.Type;
-import org.objectweb.asm.commons.AdviceAdapter;
-import org.objectweb.asm.commons.Method;
 
 public final class Java8JmxTransformer implements ClassFileTransformer {
-  private static final String JMX_INVOKE_DESCRIPTOR =
-      "(Ljavax/management/ObjectName;Ljava/lang/String;[Ljava/lang/Object;[Ljava/lang/String;)Ljava/lang/Object;";
   private static final Type HOOKS = Type.getType(Java8RaspHooks.class);
-  private static final Method BEFORE_JMX_MBEAN_INVOKE =
-      Method.getMethod(
-          "void beforeJmxMBeanInvoke(java.lang.Object, java.lang.String, java.lang.Object)");
 
   @Override
   public byte[] transform(
@@ -28,7 +22,7 @@ public final class Java8JmxTransformer implements ClassFileTransformer {
       byte[] classfileBuffer) {
     if (className == null
         || classfileBuffer == null
-        || !"com/sun/jmx/mbeanserver/JmxMBeanServer".equals(className)) {
+        || !JmxDispatchVisitor.TARGET.equals(className)) {
       return null;
     }
     try {
@@ -53,20 +47,7 @@ public final class Java8JmxTransformer implements ClassFileTransformer {
     public MethodVisitor visitMethod(
         int access, String name, String descriptor, String signature, String[] exceptions) {
       MethodVisitor methodVisitor = super.visitMethod(access, name, descriptor, signature, exceptions);
-      if (methodVisitor == null
-          || !"invoke".equals(name)
-          || !JMX_INVOKE_DESCRIPTOR.equals(descriptor)) {
-        return methodVisitor;
-      }
-      return new AdviceAdapter(Opcodes.ASM9, methodVisitor, access, name, descriptor) {
-        @Override
-        protected void onMethodEnter() {
-          loadArg(0);
-          loadArg(1);
-          loadArg(2);
-          invokeStatic(HOOKS, BEFORE_JMX_MBEAN_INVOKE);
-        }
-      };
+      return JmxDispatchVisitor.wrap(methodVisitor, access, name, descriptor, HOOKS);
     }
   }
 }

@@ -1,5 +1,6 @@
 package io.ohmyrasp.agent.java8;
 
+import io.ohmyrasp.agent.asm.ServletDispatchAdvice;
 import java.lang.instrument.ClassFileTransformer;
 import java.lang.reflect.InvocationTargetException;
 import java.security.ProtectionDomain;
@@ -10,13 +11,14 @@ import org.objectweb.asm.ClassWriter;
 import org.objectweb.asm.MethodVisitor;
 import org.objectweb.asm.Opcodes;
 import org.objectweb.asm.Type;
-import org.objectweb.asm.commons.AdviceAdapter;
 import org.objectweb.asm.commons.Method;
 
 public final class Java8ServletTransformer implements ClassFileTransformer {
   private static final Type HOOKS = Type.getType(Java8RaspHooks.class);
   private static final Method BEFORE_HTTP_REQUEST =
       Method.getMethod("void beforeHttpRequest(java.lang.Object)");
+  private static final Method BEFORE_CONTAINER_REQUEST =
+      Method.getMethod("void beforeContainerRequest(java.lang.Object)");
   private static final Method AFTER_HTTP_REQUEST = Method.getMethod("void afterHttpRequest()");
   private static final String HOOKS_CLASS_NAME = "io.ohmyrasp.agent.java8.Java8RaspHooks";
   private static final Type CLASS_LOADER = Type.getType(ClassLoader.class);
@@ -126,86 +128,24 @@ public final class Java8ServletTransformer implements ClassFileTransformer {
       if (methodVisitor == null) {
         return null;
       }
-      if ("service".equals(name) && isServiceDescriptor(descriptor)) {
+      if (("service".equals(name) && isServiceDescriptor(descriptor))
+          || ("doFilterInternal".equals(name) && isFilterDescriptor(descriptor))
+          || ("process".equals(name) && JERSEY_CONTAINER_REQUEST.equals(descriptor))
+          || ("invoke".equals(name) && TOMCAT_CONNECTOR_VALVE.equals(descriptor))) {
+        boolean beforeServlet = "invoke".equals(name) || "doFilterInternal".equals(name);
         return new ReflectiveAdviceAdapter(Opcodes.ASM9, methodVisitor, access, name, descriptor) {
           @Override
-          protected void onMethodEnter() {
+          protected void enterDispatch() {
             if (reflectiveHook) {
-              invokeReflectiveHook("beforeHttpRequest", true);
+              invokeReflectiveHook(beforeServlet ? "beforeContainerRequest" : "beforeHttpRequest", true);
             } else {
               loadArg(0);
-              invokeStatic(HOOKS, BEFORE_HTTP_REQUEST);
+              invokeStatic(HOOKS, beforeServlet ? BEFORE_CONTAINER_REQUEST : BEFORE_HTTP_REQUEST);
             }
           }
 
           @Override
-          protected void onMethodExit(int opcode) {
-            if (reflectiveHook) {
-              invokeReflectiveHook("afterHttpRequest", false);
-            } else {
-              invokeStatic(HOOKS, AFTER_HTTP_REQUEST);
-            }
-          }
-        };
-      }
-      if ("doFilterInternal".equals(name) && isFilterDescriptor(descriptor)) {
-        return new ReflectiveAdviceAdapter(Opcodes.ASM9, methodVisitor, access, name, descriptor) {
-          @Override
-          protected void onMethodEnter() {
-            if (reflectiveHook) {
-              invokeReflectiveHook("beforeHttpRequest", true);
-            } else {
-              loadArg(0);
-              invokeStatic(HOOKS, BEFORE_HTTP_REQUEST);
-            }
-          }
-
-          @Override
-          protected void onMethodExit(int opcode) {
-            if (reflectiveHook) {
-              invokeReflectiveHook("afterHttpRequest", false);
-            } else {
-              invokeStatic(HOOKS, AFTER_HTTP_REQUEST);
-            }
-          }
-        };
-      }
-      if ("process".equals(name) && JERSEY_CONTAINER_REQUEST.equals(descriptor)) {
-        return new ReflectiveAdviceAdapter(Opcodes.ASM9, methodVisitor, access, name, descriptor) {
-          @Override
-          protected void onMethodEnter() {
-            if (reflectiveHook) {
-              invokeReflectiveHook("beforeHttpRequest", true);
-            } else {
-              loadArg(0);
-              invokeStatic(HOOKS, BEFORE_HTTP_REQUEST);
-            }
-          }
-
-          @Override
-          protected void onMethodExit(int opcode) {
-            if (reflectiveHook) {
-              invokeReflectiveHook("afterHttpRequest", false);
-            } else {
-              invokeStatic(HOOKS, AFTER_HTTP_REQUEST);
-            }
-          }
-        };
-      }
-      if ("invoke".equals(name) && TOMCAT_CONNECTOR_VALVE.equals(descriptor)) {
-        return new ReflectiveAdviceAdapter(Opcodes.ASM9, methodVisitor, access, name, descriptor) {
-          @Override
-          protected void onMethodEnter() {
-            if (reflectiveHook) {
-              invokeReflectiveHook("beforeHttpRequest", true);
-            } else {
-              loadArg(0);
-              invokeStatic(HOOKS, BEFORE_HTTP_REQUEST);
-            }
-          }
-
-          @Override
-          protected void onMethodExit(int opcode) {
+          protected void exitDispatch() {
             if (reflectiveHook) {
               invokeReflectiveHook("afterHttpRequest", false);
             } else {
@@ -229,7 +169,7 @@ public final class Java8ServletTransformer implements ClassFileTransformer {
     }
   }
 
-  private abstract static class ReflectiveAdviceAdapter extends AdviceAdapter {
+  private abstract static class ReflectiveAdviceAdapter extends ServletDispatchAdvice {
     ReflectiveAdviceAdapter(
         int api, MethodVisitor methodVisitor, int access, String name, String descriptor) {
       super(api, methodVisitor, access, name, descriptor);

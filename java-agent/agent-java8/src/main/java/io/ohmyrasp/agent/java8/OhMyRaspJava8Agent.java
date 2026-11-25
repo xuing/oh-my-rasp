@@ -1,5 +1,9 @@
 package io.ohmyrasp.agent.java8;
 
+import io.ohmyrasp.agent.net.HttpTransportVisitor;
+import io.ohmyrasp.agent.sql.JdbcSqlMethod;
+import io.ohmyrasp.agent.sql.MyBatisSqlVisitor;
+import io.ohmyrasp.agent.xml.XmlEntityOpenVisitor;
 import java.io.File;
 import java.io.IOException;
 import java.lang.instrument.Instrumentation;
@@ -20,6 +24,7 @@ public final class OhMyRaspJava8Agent {
 
   private static void install(String mode, String agentArgs, Instrumentation instrumentation) {
     appendSelfToBootstrap(instrumentation);
+    io.ohmyrasp.agent.xml.SystemArchiveOrigins.initialize(instrumentation);
     installTransformer(instrumentation);
     String logPath = RaspRuntime.resolveLogPath();
     RaspRuntime.writeStartupLine(logPath, startupMessage(mode, agentArgs, instrumentation));
@@ -130,31 +135,19 @@ public final class OhMyRaspJava8Agent {
     retransformByName(instrumentation, "org.apache.spark.deploy.rest.SubmitRequestServlet");
     retransformByName(instrumentation, "org.apache.spark.deploy.rest.StandaloneSubmitRequestServlet");
     retransformByName(instrumentation, "org.apache.hadoop.yarn.server.resourcemanager.webapp.RMWebServices");
-    retransform(instrumentation, ProcessBuilder.class);
+    if (io.ohmyrasp.agent.process.ProcessLaunchVisitor.platformHandoff()) retransformByName(instrumentation, "java.lang.ProcessImpl");
+    else retransform(instrumentation, ProcessBuilder.class);
     retransform(instrumentation, Runtime.class);
     retransform(instrumentation, javax.naming.InitialContext.class);
     retransform(instrumentation, java.io.ObjectInputStream.class);
     retransformByName(instrumentation, "sun.rmi.server.MarshalInputStream");
     retransformByName(instrumentation, "com.alibaba.fastjson.parser.ParserConfig");
     retransformByName(instrumentation, "com.caucho.hessian.io.SerializerFactory");
-    retransform(instrumentation, java.io.File.class);
     retransform(instrumentation, java.io.FileInputStream.class);
     retransform(instrumentation, java.io.FileOutputStream.class);
     retransform(instrumentation, java.io.RandomAccessFile.class);
     retransform(instrumentation, java.nio.file.Files.class);
-    retransformByName(instrumentation, "javax.servlet.http.Part");
-    retransformByName(instrumentation, "jakarta.servlet.http.Part");
-    retransformByName(instrumentation, "org.apache.catalina.core.ApplicationPart");
-    retransformByName(instrumentation, "io.undertow.servlet.spec.PartImpl");
-    retransformByName(instrumentation, "org.apache.commons.fileupload.disk.DiskFileItem");
-    retransformByName(instrumentation, "org.eclipse.jetty.util.MultiPartInputStreamParser$MultiPart");
-    retransformByName(instrumentation, "org.eclipse.jetty.server.MultiPartFormInputStream$MultiPart");
-    retransformByName(instrumentation, "org.springframework.web.multipart.MultipartFile");
-    retransformByName(instrumentation, "org.springframework.web.multipart.commons.CommonsMultipartFile");
-    retransformByName(
-        instrumentation,
-        "org.springframework.web.multipart.support.StandardMultipartHttpServletRequest$StandardMultipartFile");
-    retransformByName(instrumentation, "org.springframework.mock.web.MockMultipartFile");
+    retransformByName(instrumentation, "sun.nio.fs.UnixChannelFactory");
     retransform(instrumentation, java.net.URL.class);
     retransform(instrumentation, java.util.zip.ZipEntry.class);
     retransform(instrumentation, java.sql.DriverManager.class);
@@ -179,13 +172,23 @@ public final class OhMyRaspJava8Agent {
     retransform(instrumentation, javax.security.auth.login.AppConfigurationEntry.class);
     retransform(instrumentation, java.beans.Expression.class);
     retransform(instrumentation, java.beans.Statement.class);
-    retransformByName(instrumentation, "com.sun.jmx.mbeanserver.JmxMBeanServer");
+    retransformByName(instrumentation, io.ohmyrasp.agent.jmx.JmxDispatchVisitor.TARGET.replace('/', '.'));
     retransformByName(instrumentation, "com.auth0.jwt.JWTVerifier");
     retransformByName(instrumentation, "com.auth0.jwt.algorithms.HMACAlgorithm");
     retransformByName(instrumentation, "com.auth0.jwt.algorithms.RSAAlgorithm");
     retransformByName(instrumentation, "com.auth0.jwt.algorithms.ECDSAAlgorithm");
     retransformByName(instrumentation, "com.sun.beans.decoder.DocumentHandler");
-    retransformByName(instrumentation, "com.sun.org.apache.xerces.internal.impl.XMLEntityManager");
+    Class<?>[] loadedClasses = instrumentation.getAllLoadedClasses();
+    java.util.Set<Class<?>> multipartOwners = io.ohmyrasp.agent.http.MultipartFilename.loadedOwners(loadedClasses);
+    for (Class<?> loaded : loadedClasses) {
+      String internalName = loaded.getName().replace('.', '/');
+      if (multipartOwners.contains(loaded) || io.ohmyrasp.agent.http.MultipartFilenameVisitor.known(internalName, true)
+          || io.ohmyrasp.agent.file.DirectoryListVisitor.matches(internalName) || io.ohmyrasp.agent.xml.AttachmentFileVisitor.matches(internalName) || XmlEntityOpenVisitor.matches(internalName) || MyBatisSqlVisitor.matches(internalName)
+          || (HttpTransportVisitor.matches(internalName) && !"java/net/URL".equals(internalName))
+          || JdbcSqlMethod.isJdbcImplementation(loaded)) {
+        retransform(instrumentation, loaded);
+      }
+    }
     retransformByName(instrumentation, "com.sun.tools.javac.api.JavacTool");
     retransform(instrumentation, java.util.Base64.Decoder.class);
   }

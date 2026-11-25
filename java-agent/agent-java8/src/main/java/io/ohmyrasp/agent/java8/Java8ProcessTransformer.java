@@ -1,5 +1,6 @@
 package io.ohmyrasp.agent.java8;
 
+import io.ohmyrasp.agent.process.ProcessLaunchVisitor;
 import java.lang.instrument.ClassFileTransformer;
 import java.security.ProtectionDomain;
 import org.objectweb.asm.ClassReader;
@@ -8,18 +9,9 @@ import org.objectweb.asm.ClassWriter;
 import org.objectweb.asm.MethodVisitor;
 import org.objectweb.asm.Opcodes;
 import org.objectweb.asm.Type;
-import org.objectweb.asm.commons.AdviceAdapter;
-import org.objectweb.asm.commons.Method;
 
 public final class Java8ProcessTransformer implements ClassFileTransformer {
   private static final Type HOOKS = Type.getType(Java8RaspHooks.class);
-  private static final Method BEFORE_PROCESS_BUILDER_START =
-      Method.getMethod("void beforeProcessBuilderStart(java.lang.ProcessBuilder)");
-  private static final Method BEFORE_RUNTIME_EXEC_STRING =
-      Method.getMethod("void beforeRuntimeExecString(java.lang.String)");
-  private static final Method BEFORE_RUNTIME_EXEC_ARRAY =
-      Method.getMethod("void beforeRuntimeExecArray(java.lang.String[])");
-
   @Override
   public byte[] transform(
       ClassLoader loader,
@@ -27,7 +19,7 @@ public final class Java8ProcessTransformer implements ClassFileTransformer {
       Class<?> classBeingRedefined,
       ProtectionDomain protectionDomain,
       byte[] classfileBuffer) {
-    if (className == null || classfileBuffer == null || !isTarget(className)) {
+    if (className == null || classfileBuffer == null || !ProcessLaunchVisitor.matches(className)) {
       return null;
     }
     try {
@@ -41,10 +33,6 @@ public final class Java8ProcessTransformer implements ClassFileTransformer {
       }
       return null;
     }
-  }
-
-  private static boolean isTarget(String className) {
-    return "java/lang/ProcessBuilder".equals(className) || "java/lang/Runtime".equals(className);
   }
 
   private static final class ProcessClassVisitor extends ClassVisitor {
@@ -62,40 +50,7 @@ public final class Java8ProcessTransformer implements ClassFileTransformer {
       if (methodVisitor == null) {
         return null;
       }
-      if ("java/lang/ProcessBuilder".equals(className)
-          && "start".equals(name)
-          && "()Ljava/lang/Process;".equals(descriptor)) {
-        return new AdviceAdapter(Opcodes.ASM9, methodVisitor, access, name, descriptor) {
-          @Override
-          protected void onMethodEnter() {
-            loadThis();
-            invokeStatic(HOOKS, BEFORE_PROCESS_BUILDER_START);
-          }
-        };
-      }
-      if ("java/lang/Runtime".equals(className)
-          && "exec".equals(name)
-          && descriptor.startsWith("(Ljava/lang/String;")) {
-        return new AdviceAdapter(Opcodes.ASM9, methodVisitor, access, name, descriptor) {
-          @Override
-          protected void onMethodEnter() {
-            loadArg(0);
-            invokeStatic(HOOKS, BEFORE_RUNTIME_EXEC_STRING);
-          }
-        };
-      }
-      if ("java/lang/Runtime".equals(className)
-          && "exec".equals(name)
-          && descriptor.startsWith("([Ljava/lang/String;")) {
-        return new AdviceAdapter(Opcodes.ASM9, methodVisitor, access, name, descriptor) {
-          @Override
-          protected void onMethodEnter() {
-            loadArg(0);
-            invokeStatic(HOOKS, BEFORE_RUNTIME_EXEC_ARRAY);
-          }
-        };
-      }
-      return methodVisitor;
+      return ProcessLaunchVisitor.wrap(className, methodVisitor, access, name, descriptor, HOOKS);
     }
   }
 }

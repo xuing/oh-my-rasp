@@ -103,11 +103,15 @@ public final class Java8CommandSmoke {
       return;
     }
     if ("archive-traversal".equals(mode)) {
-      ZipEntry entry = new ZipEntry("../../webapps/ROOT/shell.jsp");
-      entry.getName();
-      FileOutputStream output = new FileOutputStream("/tmp/archive-shell.jsp");
-      output.write("blocked".getBytes("UTF-8"));
-      output.close();
+      File target = File.createTempFile("ohmyrasp-archive-member-", ".txt");
+      try {
+        String name = new ZipEntry(target.getAbsolutePath()).getName();
+        try (FileOutputStream output = new FileOutputStream(name)) {
+          output.write(1);
+        }
+      } finally {
+        java.nio.file.Files.deleteIfExists(target.toPath());
+      }
       return;
     }
     if ("jdbc-normal".equals(mode)) {
