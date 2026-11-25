@@ -162,6 +162,10 @@ def collect(logs):
                 if not track or (algorithm_track and algorithm_track[1] != track):
                     row["status"] = "unknown or inconsistent agent track"
                     continue
+                if hook == "OpenWire.createThrowable" and algorithm == f"java{track}_deserialization_protocol_class":
+                    row.update(status="source evidence required",
+                               evidence_limit="recorded name alone cannot verify the original constructor and its declaring class hierarchy")
+                    continue
                 if hook == "AppConfigurationEntry.<init>" and algorithm == f"java{track}_jaas_jndi_remote_provider":
                     row.update(status="source evidence required",
                                evidence_limit="configuration declaration only; no login module routing operand recorded")

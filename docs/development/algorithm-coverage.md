@@ -2064,16 +2064,9 @@ same patch as any new Java-compatible Vulhub replay.
   mode hooks Tomcat `AuthenticatorBase.invoke` early and blocks
   `java8_request_session_file_deserialization` before the protected DNS
   lookup occurs.
-- `deserialization_protocol_class` covers message-protocol unmarshalling that
-  attempts to instantiate an attacker-selected Java class, with ActiveMQ
-  OpenWire throwable unmarshalling as the runtime hook. It is distinct from
-  ordinary Java object streams and JSON/YAML polymorphic type resolution, and
-  catches dangerous gadget families or Spring/XBean application context classes
-  such as the CVE-2023-46604 remote XML payload shape. The playground and
-  acceptance suite include the direct Vulhub-shaped ActiveMQ `/api/openwire`
-  flow with an OpenWire-selected Spring context class and remote `poc.xml`.
-  The historical application evidence and current verification status are recorded in
-  the [Vulhub coverage ledger](vulhub-coverage.md).
+- The OpenWire rule for CVE-2023-46604 checks the actual constructor at the
+  protocol's exception slot. [Detection behavior](../detection.md) ·
+  [Historical application evidence](vulhub-coverage.md)
 - `deserialization_http_invoker` covers Spring HTTP Invoker endpoints when they
   deserialize a Java object stream for a remote invocation request. This targets
   Dubbo HTTP protocol/Spring remoting shapes such as CVE-2019-17564 at the

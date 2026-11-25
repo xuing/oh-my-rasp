@@ -123,6 +123,19 @@ class EvidenceTest(unittest.TestCase):
         self.assertIn("frames", old[1])
         self.assertIn("receiver", current[1])
 
+    def test_openwire_class_name_does_not_recreate_the_resolved_constructor(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            case = Path(tmp) / "vulhub-types-protected"
+            case.mkdir()
+            records = [{"event": "ohmyrasp-java11-agent-start"},
+                       {"action": "block", "algorithm": "java11_deserialization_protocol_class",
+                        "hook": "OpenWire.createThrowable", "details": {"class": "reports.Value",
+                                                                      "decision_basis": "non_throwable_constructor"}}]
+            (case / "events.jsonl").write_text("\n".join(map(json.dumps, records)))
+            _, rows, batches, _, _ = decisions.collect(case.parent)
+            self.assertEqual(rows[0]["status"], "source evidence required")
+            self.assertFalse(batches)
+
     def test_jaas_configuration_does_not_prove_login(self):
         rule = "java8_jaas_jndi_remote_provider"
         url = "ldap://reports.invalid/empty"
