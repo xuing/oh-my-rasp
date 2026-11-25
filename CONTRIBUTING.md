@@ -154,6 +154,27 @@ family or to named lines and says why. Nothing else lists probes:
 `python3 -m unittest discover -s java-agent/probes -p 'test_*.py'` checks the
 registry against the build files and the CI matrix.
 
+#### Invokedynamic call sites
+
+Hook methods run inside JDK classes such as `FileInputStream`, `URL` and
+`ProcessImpl`, and the agent JAR is on the bootstrap class path. A lambda, a method
+reference, a record's generated `toString`/`equals`/`hashCode` or a pattern-matching
+`switch` is an `invokedynamic` call site that the JVM links the first time it runs.
+Linking loads and generates classes and can read files, so it can re-enter a hooked
+API or fail during early startup. In `agent-java8`, `agent-java11` and
+`agent-java17`, write anonymous classes or static nested classes instead, and write
+`equals`/`hashCode`/`toString` by hand. `var`, text blocks, `switch` expressions over
+strings or enums, and `instanceof` patterns compile without `invokedynamic` and are fine.
+String concatenation is reported but not gated.
+
+After building the JARs, `python3 java-agent/scripts/check-dynamic-calls.py --check`
+compares them with
+[`java-agent/scripts/dynamic-calls.baseline.json`](java-agent/scripts/dynamic-calls.baseline.json)
+and names the class, method and construct that grew. The primary `jdk25` line is
+recorded but not gated. If the new code provably never runs inside a hook, run the
+tool with `--update` in the same change and say why in the commit message.
+`--summary` shows the counts and `--build-root` works as it does for `probes/run.py`.
+
 Run unit tests and `verifyShirudoUpatchJar` via Docker (matching `.github/workflows/agent.yml`):
 
 ```bash
