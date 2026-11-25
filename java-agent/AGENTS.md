@@ -1,0 +1,38 @@
+# Java agent rules
+
+What lives where under `java-agent/`, which command checks a change, and the rules that are easy to break here. Build and packaging details are in [README.md](README.md); the full contributor workflow is in [../CONTRIBUTING.md](../CONTRIBUTING.md#java-agent).
+
+## Layout
+
+| Path | Holds |
+|---|---|
+| `agent-jdk25/` | The primary agent, for JDK 21 and 25. |
+| `agent-java8/`, `agent-java11/`, `agent-java17/` | The backport lines. Three separate source trees, each written for its own JDK. |
+| `shared/` | Sources compiled into every line. |
+| `backport-tests/` | The unit tests of the three backport lines, written once. |
+| `probes/` | Packaged-agent probes, one directory each, and the registry that runs them. |
+| `acceptance/` | End-to-end suites: `runtime/` per JDK, `vulhub/<component>/` per Vulhub target. |
+| `rules/` | Rule descriptions. The detection coverage doc is generated from them. |
+| `scripts/` | Generators and checkers. |
+
+## After a change
+
+```bash
+python3 scripts/gates.py run --changed                 # from the repo root: the checks this change triggers
+java-agent/scripts/check-agent.sh --line java17 file-read   # one line: unit tests, then one probe on that line's JDK
+java-agent/scripts/check-agent.sh --help               # lines and probes
+```
+
+`check-agent.sh` takes several lines at once (`--line java8,java11,java17`) and `all` in place of a probe name.
+
+## Rules
+
+**A backport change reaches all three lines.** `agent-java8`, `agent-java11` and `agent-java17` may differ in syntax, never in what they decide. Make the same behaviour change in each line in the same commit, and put its test in `backport-tests/`, where one test runs on all three. A test that only one line can run stays in that line's `src/test` and says why in its first line.
+
+**`shared/` stays Java 8 source.** The Java 8 line compiles it with `--release 8`.
+
+**Probes are registered by directory.** A new probe is a directory under `probes/` with a `check.py`, plus a `probe.toml` when it needs staged fixtures or applies to some lines only (give the reason). Do not name a probe in a workflow or script: both call `probes/run.py`.
+
+**Acceptance scripts are found by path.** A new one goes in `acceptance/vulhub/<component>/<scenario>-<jdk>.sh` or `acceptance/runtime/`. A script anywhere else is not counted by the coverage tooling.
+
+**A new rule id needs a description.** Add it to `rules/general.json` or `rules/product.json`, then regenerate the docs as [../AGENTS.md](../AGENTS.md) describes.

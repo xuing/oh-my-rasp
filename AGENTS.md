@@ -2,6 +2,15 @@
 
 Build, test and PR workflow live in [CONTRIBUTING.md](CONTRIBUTING.md). This file holds the rules that are easy to break without noticing.
 
+## After a change
+
+```bash
+python3 scripts/gates.py changed          # which checks this change triggers, and why
+python3 scripts/gates.py run --changed    # run them
+```
+
+`scripts/gates.py` holds the table of checks per path. Add `--slow` before a pull request that touches the Java agents: it runs every probe on every agent line. Rules for one component live beside it: [java-agent/AGENTS.md](java-agent/AGENTS.md).
+
 ## Java source files
 
 Keep each Java file at or below 5,000 physical lines. Split production code and tests by responsibility. Run `python3 scripts/check-java-size.py` to check the working tree.
