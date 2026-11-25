@@ -34,6 +34,8 @@ def main():
             events = [r for l in log.read_text().splitlines() if (r := json.loads(l)).get("kind") == "detection"
                       or r.get("event") == "ohmyrasp-detection"]
             observed = Counter((e["details"].get("operation", e["hook"]), e["details"].get("decision_basis")) for e in events)
+            if any(e["details"].get("requestControlled") == "true" for e in events):
+                raise SystemExit("shared report name was treated as control over the directory URL")
             expected = {("InitialContext.lookup", "url_scheme_selection"): 3,
                         ("InitialContext.lookupLink", "url_scheme_selection"): 1,
                         ("URLContext.lookup", "provider_root_lookup"): 1}

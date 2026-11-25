@@ -108,28 +108,23 @@ final class RemoteResourceDetector {
     if (name == null || name.isBlank()) {
       return Optional.empty();
     }
-    String lookup = name;
-    var remote = JNDI_REMOTE_LOOKUP.matcher(lookup);
+    var remote = JNDI_REMOTE_LOOKUP.matcher(name);
     if (!remote.find()) {
-      // Local container lookups (java:comp/env/..., java:global/..., relative
-      // names) are legitimate; only a remote naming provider is the attack vector.
       return Optional.empty();
     }
     String scheme = remote.group(1).toLowerCase(Locale.ROOT);
-    boolean requestControlled = request != null && request.hasParameterIn(lookup);
     return Optional.of(
         Detection.log(
             "jndi",
             "jndi_disable_all",
-            requestControlled ? 100 : 95,
-            "JNDI lookup selects a listed naming scheme",
+            95,
+            "JNDI lookup name matches the remote-scheme policy",
             request,
             Map.of(
-                "name", abbreviate(lookup),
+                "name", abbreviate(name),
                 "operation", operation,
                 "decision_basis", LookupRoute.basis(operation),
-                "scheme", scheme,
-                "requestControlled", String.valueOf(requestControlled))));
+                "scheme", scheme)));
   }
 
   static Optional<Detection> detectJaasConfig(
