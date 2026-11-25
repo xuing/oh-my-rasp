@@ -1,5 +1,6 @@
 import io.ohmyrasp.agent.detect.DetectorEngine;
 import io.ohmyrasp.agent.detect.JdbcDetector;
+import io.ohmyrasp.agent.detect.ProcessDetector;
 import io.ohmyrasp.agent.model.Detection;
 import io.ohmyrasp.agent.model.RequestContext;
 
@@ -55,18 +56,18 @@ public final class FpReport {
             (c, r) -> ENGINE.detectRequest(new RequestContext("POST", "/reports/query", "",
                 Map.of(), Map.of("content-type", "application/json"), c.payload()))),
         new Category("SQL queries", sqlCorpus(), (c, r) -> JdbcDetector.detectSql(c.payload(), r)),
-        new Category("OS commands", commandCorpus(), (c, r) -> ENGINE.detectCommand(splitCommand(c.payload()), r)),
+        new Category("OS commands", commandCorpus(), (c, r) -> ProcessDetector.detectCommand(splitCommand(c.payload()), r)),
         new Category("Inline shell reports", List.of(
             Case.of("printf '%s' 'example: cat /etc/passwd'"),
             Case.of("printf '%s' weekly # example: cat /etc/passwd"),
             Case.of("cat /etc/passwd.example")),
-            (c, r) -> ENGINE.detectCommand(List.of("/bin/sh", "-c", c.payload()), r)),
+            (c, r) -> ProcessDetector.detectCommand(List.of("/bin/sh", "-c", c.payload()), r)),
         new Category("Process dispatch", List.of(
             Case.of("java.lang.reflect.Method"),
             Case.of("example.spelling.MonthlyReport"),
             Case.of("example.javascriptnotes.Catalog"),
             Case.of("example.velocitymetrics.Recorder")),
-            (c, r) -> ENGINE.detectCommand(List.of("printf", "%s", "weekly"), r,
+            (c, r) -> ProcessDetector.detectCommand(List.of("printf", "%s", "weekly"), r,
                 List.of("java.lang.ProcessImpl", "java.lang.ProcessBuilder", c.payload()))),
         new Category("Spark job descriptors", List.of(
             Case.of("{\"action\":\"CreateSubmissionRequest\",\"appResource\":\"https://artifacts.example.test/reports.jar\",\"mainClass\":\"reports.Weekly\"}")),

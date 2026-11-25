@@ -11,6 +11,7 @@ import io.ohmyrasp.agent.jmx.JmxDispatch;
 import io.ohmyrasp.agent.jmx.JmxWriteScope;
 import io.ohmyrasp.agent.detect.DetectorEngine;
 import io.ohmyrasp.agent.detect.JdbcDetector;
+import io.ohmyrasp.agent.detect.ProcessDetector;
 import io.ohmyrasp.agent.detect.SqlRequestIndicators;
 import io.ohmyrasp.agent.http.ArchiveUploadPolicy;
 import io.ohmyrasp.agent.http.MultipartFilename;
@@ -337,7 +338,7 @@ public final class OhMyRaspHooks {
   public static void beforeProcessLaunch(String[] argv) {
     if (detectionDisabled()) return;
     try {
-      var finding = DETECTORS.detectCommand(java.util.Arrays.asList(argv), currentRequest(), stackTraceClassNames(),
+      var finding = ProcessDetector.detectCommand(java.util.Arrays.asList(argv), currentRequest(), stackTraceClassNames(),
           POLICY.selectsAlgorithm("command_reflect"));
       if (finding.isEmpty()) return;
       String api = io.ohmyrasp.agent.process.ProcessLaunch.api();
@@ -369,7 +370,7 @@ public final class OhMyRaspHooks {
       return;
     }
     try {
-      emit(DETECTORS.detectCommand(processBuilder.command(), currentRequest(), stackClassNames, POLICY.selectsAlgorithm("command_reflect")));
+      emit(ProcessDetector.detectCommand(processBuilder.command(), currentRequest(), stackClassNames, POLICY.selectsAlgorithm("command_reflect")));
     } catch (OhMyRaspBlockException blocked) {
       throw blocked;
     } catch (Throwable throwable) {
@@ -383,7 +384,7 @@ public final class OhMyRaspHooks {
     }
     try {
       List<String> items = List.of(PosixShellCommand.runtimeArguments(command));
-      emit(DETECTORS.detectCommand(items, currentRequest(), stackTraceClassNames(), POLICY.selectsAlgorithm("command_reflect")));
+      emit(ProcessDetector.detectCommand(items, currentRequest(), stackTraceClassNames(), POLICY.selectsAlgorithm("command_reflect")));
     } catch (OhMyRaspBlockException blocked) {
       throw blocked;
     } catch (Throwable throwable) {
@@ -400,7 +401,7 @@ public final class OhMyRaspHooks {
       if (command != null) {
         Collections.addAll(items, command);
       }
-      emit(DETECTORS.detectCommand(items, currentRequest(), stackTraceClassNames(), POLICY.selectsAlgorithm("command_reflect")));
+      emit(ProcessDetector.detectCommand(items, currentRequest(), stackTraceClassNames(), POLICY.selectsAlgorithm("command_reflect")));
     } catch (OhMyRaspBlockException blocked) {
       throw blocked;
     } catch (Throwable throwable) {
@@ -1690,7 +1691,7 @@ public final class OhMyRaspHooks {
       return;
     }
     try {
-      emit(DETECTORS.detectWebshellCommand(List.of(command), currentRequest()));
+      emit(ProcessDetector.detectWebshellCommand(List.of(command), currentRequest()));
     } catch (OhMyRaspBlockException blocked) {
       throw blocked;
     } catch (Throwable throwable) {

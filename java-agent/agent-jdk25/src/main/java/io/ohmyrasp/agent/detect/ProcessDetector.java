@@ -18,7 +18,7 @@ import java.util.Set;
 import java.util.regex.Pattern;
 
 /** Process launches and command features, including direct runtime callers. */
-final class ProcessDetector {
+public final class ProcessDetector {
   private ProcessDetector() {}
 
   private static final Set<String> FILE_READERS = Set.of("cat");
@@ -33,16 +33,16 @@ final class ProcessDetector {
   private static final Pattern REMOTE_JOB_SHELL_COMMAND =
       Pattern.compile("(?is)(?:^|\\W)(?:bash|sh|cmd|powershell|pwsh|nc|curl|wget)\\b");
 
-  static Optional<Detection> detectCommand(List<String> command, RequestContext request) {
+  public static Optional<Detection> detectCommand(List<String> command, RequestContext request) {
     return detectCommand(command, request, List.of());
   }
 
-  static Optional<Detection> detectCommand(
+  public static Optional<Detection> detectCommand(
       List<String> command, RequestContext request, List<String> stackClassNames) {
     return detectCommand(command, request, stackClassNames, false);
   }
 
-  static Optional<Detection> detectCommand(List<String> command, RequestContext request,
+  public static Optional<Detection> detectCommand(List<String> command, RequestContext request,
       List<String> stackClassNames, boolean reflectionPolicy) {
     String joined = command == null ? "" : String.join(" ", command);
     if (joined.isBlank()) {
@@ -142,7 +142,7 @@ final class ProcessDetector {
     return Optional.empty();
   }
 
-  static Optional<Detection> detectWebshellCommand(
+  public static Optional<Detection> detectWebshellCommand(
       List<String> command, RequestContext request) {
     String joined = command == null ? "" : String.join(" ", command);
     if (!joined.isBlank() && request.hasParameterIn(joined)) {

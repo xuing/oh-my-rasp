@@ -1,6 +1,7 @@
 package io.ohmyrasp.agent.detect;
 
 import static io.ohmyrasp.agent.detect.DeserializationTypes.normalizeJavaTypeName;
+import static io.ohmyrasp.agent.detect.DetectorStrings.abbreviate;
 import static io.ohmyrasp.agent.detect.DetectorStrings.containsPathToken;
 import static io.ohmyrasp.agent.detect.DetectorStrings.extensionOf;
 import static io.ohmyrasp.agent.detect.DetectorStrings.lower;
@@ -558,20 +559,6 @@ public final class DetectorEngine {
                 "remainder", String.valueOf(remainder),
                 "alphabet", isURL ? "URL-safe" : "standard",
                 "cve", "CVE-2026-114938")));
-  }
-
-  public Optional<Detection> detectCommand(List<String> command, RequestContext request) {
-    return ProcessDetector.detectCommand(command, request);
-  }
-
-  public Optional<Detection> detectCommand(
-      List<String> command, RequestContext request, List<String> stackClassNames) {
-    return ProcessDetector.detectCommand(command, request, stackClassNames);
-  }
-
-  public Optional<Detection> detectCommand(List<String> command, RequestContext request,
-      List<String> stackClassNames, boolean reflectionPolicy) {
-    return ProcessDetector.detectCommand(command, request, stackClassNames, reflectionPolicy);
   }
 
   public Optional<Detection> detectUrl(String rawUrl, RequestContext request) {
@@ -1679,11 +1666,6 @@ public final class DetectorEngine {
               Map.of("function", String.valueOf(function), "code", abbreviate(code))));
     }
     return Optional.empty();
-  }
-
-  public Optional<Detection> detectWebshellCommand(
-      List<String> command, RequestContext request) {
-    return ProcessDetector.detectWebshellCommand(command, request);
   }
 
   public Optional<Detection> detectWebshellFileWrite(
@@ -2862,13 +2844,5 @@ public final class DetectorEngine {
       doubleDigit = !doubleDigit;
     }
     return sum % 10 == 0;
-  }
-
-  public static String abbreviate(String value) {
-    return DetectorStrings.abbreviate(value);
-  }
-
-  public static List<String> commandFromObject(Object command) {
-    return ProcessDetector.commandFromObject(command);
   }
 }
