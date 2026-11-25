@@ -486,12 +486,32 @@ final class Java8ShirudoStandaloneTest {
   }
 
   @Test
-  void malformedBakedPropertiesFallBackToDefaultsWithoutAbortingInitialisation() throws Exception {
-    // Properties.load throws IllegalArgumentException on a malformed unicode escape. The line
-    // before it must not survive as a partial read either.
-    Path malformed = bakedResource("log=/tmp/partial.jsonl\nstandalone=true\nbad=\\u00zz\n");
-    Class<?> broken = loadIsolatedRuntime(asyncInit(), malformed);
-    assertTrue(bakedProperties(broken).isEmpty(), bakedProperties(broken).toString());
+  void malformedBakedPropertiesKeepTheKeysReadBeforeTheBadLine() throws Exception {
+    // Properties.load throws IllegalArgumentException on a malformed unicode escape. Initialisation
+    // goes on, and the keys read before that line stay: a damaged later line must not erase an
+    // already-read lock and let a hostile system property or environment switch detection off.
+    Path malformed =
+        bakedResource(
+            "standalone=true\nlock_config=true\nmode=block\nbad=\\u00zz\nlog=/tmp/after.jsonl\n");
+    Map<String, String> init = asyncInit();
+    init.put("ohmyrasp.mode", "off");
+    init.put("ohmyrasp.standalone", "false");
+    Class<?> broken = loadIsolatedRuntime(init, malformed);
+    Properties baked = bakedProperties(broken);
+    assertEquals("true", baked.getProperty("lock_config"), baked.toString());
+    assertEquals("block", baked.getProperty("mode"), baked.toString());
+    assertNull(baked.getProperty("log"), "nothing after the malformed line is read");
+    Method mode = broken.getDeclaredMethod("mode");
+    mode.setAccessible(true);
+    assertEquals("BLOCK", String.valueOf(mode.invoke(null)), "-Dohmyrasp.mode=off is ignored");
+
+    Properties sysProps = new Properties();
+    sysProps.setProperty("ohmyrasp.mode", "off");
+    Map<String, String> env = new HashMap<String, String>();
+    env.put("OHMYRASP_MODE", "off");
+    RaspRuntime.Config config = RaspRuntime.Config.resolve(baked, sysProps, env);
+    assertTrue(config.lockConfig);
+    assertEquals(RaspRuntime.Mode.BLOCK, config.mode, "OHMYRASP_MODE=off is ignored");
     Method resolveLogPath = broken.getMethod("resolveLogPath");
     resolveLogPath.invoke(null);
 

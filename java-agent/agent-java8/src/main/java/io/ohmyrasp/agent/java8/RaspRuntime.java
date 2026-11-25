@@ -515,8 +515,8 @@ public final class RaspRuntime {
       props.load(new InputStreamReader(in, StandardCharsets.UTF_8));
     } catch (IOException | RuntimeException e) {
       // An unreadable or malformed resource (Properties.load throws IllegalArgumentException on a
-      // malformed unicode escape) is treated as absent, not partly read, and never aborts start-up.
-      props = new Properties();
+      // malformed unicode escape) never aborts start-up. The keys read before the bad line stay,
+      // so a damaged later line cannot erase an already-read lock_config or mode.
     } finally {
       try {
         in.close();
