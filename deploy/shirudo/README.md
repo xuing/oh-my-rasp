@@ -16,11 +16,11 @@ with `shirudo bpm build`.
 
 | Package | Target JVMs | Upatch / JAR | Instrumentation | Detection Scope | Vulhub Replay |
 |---|---|---|---|---|---|
-| `ohmyrasp-java8` | Java 8 (classfile `<= 52`) | `ohmyrasp-java8.jar` | 24 ASM transformers | 44 algorithms | 96 (java8) |
-| `ohmyrasp-java11` | Java 11 (classfile `<= 55`) | `ohmyrasp-java11.jar` | 24 ASM transformers | 44 algorithms | 10 (java11) |
-| `ohmyrasp-java17` | Java 17 and Java 21 (classfile `<= 61`) | `ohmyrasp-java17.jar` | 24 ASM transformers | 44 algorithms | 12 (java17) + 3 (java21) |
-| `ohmyrasp-jdk21` | Java 21 and Java 25 (classfile `<= 65`) | `ohmyrasp-jdk21.jar` | 30 ASM hook modules | 56 `detect*` capabilities | 136 total scenarios across 6 JDK lines |
-| `ohmyrasp-jdk25` | Java 21 and Java 25 (classfile `<= 65`) | `ohmyrasp-jdk25.jar` | 30 ASM hook modules | 56 `detect*` capabilities | 136 total scenarios across 6 JDK lines |
+| `ohmyrasp-java8` | Java 8 (classfile `<= 52`) | `ohmyrasp-java8.jar` | 25 ASM transformers | 44 algorithms | 96 (java8) |
+| `ohmyrasp-java11` | Java 11 (classfile `<= 55`) | `ohmyrasp-java11.jar` | 25 ASM transformers | 44 algorithms | 10 (java11) |
+| `ohmyrasp-java17` | Java 17 and Java 21 (classfile `<= 61`) | `ohmyrasp-java17.jar` | 25 ASM transformers | 44 algorithms | 12 (java17) + 3 (java21) |
+| `ohmyrasp-jdk21` | Java 21 and Java 25 (classfile `<= 65`) | `ohmyrasp-jdk21.jar` | 31 ASM hook modules | 56 `detect*` capabilities | 136 total scenarios across 6 JDK lines |
+| `ohmyrasp-jdk25` | Java 21 and Java 25 (classfile `<= 65`) | `ohmyrasp-jdk25.jar` | 31 ASM hook modules | 56 `detect*` capabilities | 136 total scenarios across 6 JDK lines |
 
 Choose one primary package per JVM. The JDK 21 and 25 names contain the same agent bytecode.
 For JDK 21, extract `ohmyrasp-jdk21-shirudo.tar.gz` to sign the staged package with your operator keys.
@@ -34,6 +34,7 @@ Each package injects ASM bytecode hooks at JVM class-load / retransform time acr
 | Security Category | What It Inspects & Blocks | Java 8 / 11 / 17 Transformers | JDK 21/25 Hook Modules |
 |---|---|---|---|
 | **Command Execution & RCE** | Blocks exploit-grade `ProcessBuilder.start` / `Runtime.exec` calls (including OGNL, SpEL, MVEL, Groovy, JEXL, XStream, deserialization, and scheduler stacks) and Spark/YARN REST job submissions. | `Java*SparkRestTransformer`, `Java*YarnRestTransformer`, `Java*ProcessTransformer` | `ArgumentParserHookModule`, `ProcessHookModule` |
+| **Elasticsearch LZ4 Transport (CVE-2026-82303)** | In block mode, isolates the declared compressed transport block and checks the decoder consumed its exact length. | `Java*ElasticLz4Transformer` | `ElasticLz4HookModule` |
 | **OpenJDK Base64 AVX-512 Guard (CVE-2026-114938)** | Zero-allocation arithmetic boundary check on `java.util.Base64$Decoder.decode0` blocking x86-64 AVX-512 tail-underflow inputs (Java2Shell / Java4Shell) before the native intrinsic runs. | `Java*Base64Transformer` | `Base64HookModule` |
 | **SQL Injection & JDBC** | Detects and blocks structural SQL injection across JDBC `Statement` drivers, MyBatis `BoundSql` order-by identifiers, GeoServer OGC CQL filters, H2 `INIT` code execution, Derby SQLJ loading, and MySQL `autoDeserialize` URLs. | `Java*JdbcTransformer` | `SqlHookModule` |
 | **JNDI, Deserialization & XML/XXE** | Blocks remote `InitialContext.lookup` (`ldap`/`rmi`/`iiop`/`corba`), dangerous `ObjectInputStream` / RMI / OpenWire / Hessian / Fastjson `autoType` / `1.2.83` class-resource gadgets, XMLDecoder graphs, and external XML entities (XXE). | `Java*JndiTransformer`, `Java*DeserializationTransformer`, `Java*FastjsonTransformer`, `Java*HessianTransformer`, `Java*JavaBeansTransformer`, `Java*XxeTransformer` | `HessianHookModule`, `HttpInvokerHookModule`, `JavaBeansHookModule`, `JndiHookModule`, `ObjectInputStreamHookModule`, `OpenWireHookModule`, `PolymorphicDeserializationHookModule`, `RmiRegistryHookModule`, `SessionHookModule`, `XmlAttachmentHookModule`, `XmlRpcHookModule`, `XxeHookModule` |

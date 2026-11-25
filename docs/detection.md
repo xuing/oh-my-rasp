@@ -243,6 +243,23 @@ Comparing all six representations catches path-semantic mismatches (such as trav
 - **JWT default HMAC secrets:** The primary agent tests incoming Bearer JWTs against known default HMAC secrets (such as HugeGraph's published default). A valid HMAC under a default secret fires at severity 95.
 - **Apache Shiro default rememberMe key:** encrypted `rememberMe` cookies are decrypted under Shiro's default AES key; if decryption yields a Java object-stream magic header, the detector fires (verified in the CVE-2016-4437 Java 8 acceptance run).
 
+### Elasticsearch LZ4 transport block isolation (CVE-2026-82303)
+
+In block mode the Java agents, including the standalone Shirudo packages, repair
+the legacy array decoder call in `Lz4TransportDecompressor.decodeBlock` on each
+instrumented node. If the input resides in a larger buffer, the guard copies
+only the declared compressed block before invoking Elasticsearch's selected decoder.
+An exact standalone block can be used in place. The decoder must report consuming
+exactly the declared length before Elasticsearch can publish output pages. An invalid
+extent or consumption mismatch fails the transport read with an I/O error.
+
+Monitor and off modes keep the original decoder behavior. Deploy the agent in
+block mode on each affected JVM for this mitigation. The upstream fixed
+ByteBuffer call site is outside the rewrite. This is a transport repair that
+works without an HTTP request. The copy adds allocation and bandwidth cost for
+shared buffers. Upgrading to a vendor-fixed release provides the permanent fix.
+[Elastic security advisory](https://discuss.elastic.co/t/391840) · [Upstream transport fix](https://github.com/elastic/elasticsearch/pull/161345)
+
 ### Base64 AVX-512 tail-underflow guard (CVE-2026-114938)
 
 [`Base64HookModule`](../java-agent/agent-jdk25/src/main/java/io/ohmyrasp/agent/asm/Base64HookModule.java) (and `Java{8,11,17}Base64Transformer` across the backport agents) instruments `java.util.Base64$Decoder.decode0([BII[B)I` across JDK 8, 11, 17, 21, and 25. Before the native x86-64 AVX-512 stub can underflow the tail buffer and write past the destination array, `DetectorEngine.isBase64TailUnderflowCandidate` performs a zero-allocation check for non-MIME inputs of length `>= 65` with `1 <= (length & 63) <= 3`, `1 <= padding <= 2` (`padding <= remainder`), and valid Base64 alphabet bytes (`+`/`/` for standard, `-`/`_` for URL-safe). Matching inputs are blocked (even outside an HTTP request context) and logged using length, padding, remainder, and alphabet metadata only; raw input bytes are never recorded.

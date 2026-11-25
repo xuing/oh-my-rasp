@@ -51,7 +51,7 @@ Every hook, detector, and Vulhub replay script lives in this repository and runs
 <!-- BEGIN GENERATED metrics (java-agent/scripts/gen-detection-coverage.py) — do not edit between markers -->
 | Metric | Value | Source |
 |---|---|---|
-| Instrumented sink families | 30 ASM hook modules (`agent-jdk25`); 24 ASM transformers per backport (`java8`, `java11`, `java17`) | [DETECTION-COVERAGE.md](java-agent/docs/DETECTION-COVERAGE.md) |
+| Instrumented sink families | 31 ASM hook modules (`agent-jdk25`); 25 ASM transformers per backport (`java8`, `java11`, `java17`) | [DETECTION-COVERAGE.md](java-agent/docs/DETECTION-COVERAGE.md) |
 | Detection engine | 56 `DetectorEngine` capabilities, 43 verified algorithm signatures asserted end-to-end | [DETECTION-COVERAGE.md](java-agent/docs/DETECTION-COVERAGE.md) |
 | Exploit replay suite | 136 scenarios across 53 [Vulhub](https://github.com/vulhub/vulhub) roots (130 CVEs tracked) | [vulhub-coverage.md](docs/development/vulhub-coverage.md) |
 | Benign corpus precision | `0 / 181` false positives across 25 categories | [FALSE-POSITIVE-REPORT.md](java-agent/docs/FALSE-POSITIVE-REPORT.md) |

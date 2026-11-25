@@ -189,6 +189,12 @@ uses inert records, an application resolver and a BeanShell scalar. It checks
 the type actually read, resolver exceptions, and decisions on independent streams.
 Use `--beanshell-jar` to run the probe using a local copy of the fixture library.
 
+The [Elasticsearch LZ4 check](java-agent/scripts/fp-harness/check-elastic-lz4.py)
+runs a release compressor and transport decoder without a cluster. A recording
+delegate checks the source array extent and independently tests consumption
+mismatch handling on valid data. Run `java-agent/scripts/check-jdk25.sh elastic-lz4`
+or pass the agent and a matching Elasticsearch classpath directory to the probe.
+
 The primary [serial filter check](java-agent/scripts/fp-harness/check-serial-filter.py)
 verifies application filter registration, JDK rejection and ordinary data reads
 in separate JVMs. Run it locally with `java-agent/scripts/check-jdk25.sh serial-filter`.

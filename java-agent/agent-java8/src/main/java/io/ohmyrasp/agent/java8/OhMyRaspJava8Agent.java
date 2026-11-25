@@ -1,5 +1,6 @@
 package io.ohmyrasp.agent.java8;
 
+import io.ohmyrasp.agent.rules.product.elasticsearch.Lz4TransportVisitor;
 import io.ohmyrasp.agent.net.HttpTransportVisitor;
 import io.ohmyrasp.agent.sql.JdbcSqlMethod;
 import io.ohmyrasp.agent.sql.MyBatisSqlVisitor;
@@ -122,6 +123,7 @@ public final class OhMyRaspJava8Agent {
     instrumentation.addTransformer(new Java8JwtTransformer(), canRetransform);
     instrumentation.addTransformer(new Java8JavaBeansTransformer(), canRetransform);
     instrumentation.addTransformer(new Java8XxeTransformer(), canRetransform);
+    instrumentation.addTransformer(new Java8ElasticLz4Transformer(), canRetransform);
     instrumentation.addTransformer(new Java8Base64Transformer(), canRetransform);
     if (!canRetransform) {
       return;
@@ -175,7 +177,8 @@ public final class OhMyRaspJava8Agent {
     java.util.Set<Class<?>> multipartOwners = io.ohmyrasp.agent.http.MultipartFilename.loadedOwners(loadedClasses);
     for (Class<?> loaded : loadedClasses) {
       String internalName = loaded.getName().replace('.', '/');
-      if (io.ohmyrasp.agent.rules.product.yarn.YarnSubmitVisitor.OWNER.equals(internalName)
+      if (Lz4TransportVisitor.OWNER.equals(internalName)
+          || io.ohmyrasp.agent.rules.product.yarn.YarnSubmitVisitor.OWNER.equals(internalName)
           || io.ohmyrasp.agent.rules.product.spark.SparkSubmitVisitor.OWNER.equals(internalName)
           || io.ohmyrasp.agent.rules.product.dataease.FilterVerificationVisitor.OWNER.equals(internalName)
           || multipartOwners.contains(loaded) || io.ohmyrasp.agent.http.MultipartFilenameVisitor.known(internalName, true)

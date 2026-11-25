@@ -61,3 +61,10 @@ tasks.register<Sync>("stageServletProbe") {
     from(rootProject.project(":playground-java8-jakarta").configurations.named("compileClasspath")) { include("jakarta.servlet-api-*.jar") }
     into(layout.buildDirectory.dir("servlet-probe"))
 }
+
+// A real transport codec for the isolated release check; it is outside the agent classpaths.
+tasks.register<Sync>("stageElasticLz4Probe") {
+    val release = rootProject.dependencies.create("org.elasticsearch:elasticsearch:8.19.23")
+    from(rootProject.configurations.detachedConfiguration(release))
+    into(layout.buildDirectory.dir("elastic-lz4-probe"))
+}

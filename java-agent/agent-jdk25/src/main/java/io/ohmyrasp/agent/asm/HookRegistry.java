@@ -12,6 +12,7 @@ public final class HookRegistry {
           List.of(
               new ProcessHookModule(),
               new Base64HookModule(),
+              new ElasticLz4HookModule(),
               new FileHookModule(),
               new ArchiveHookModule(),
               new NetworkHookModule(),

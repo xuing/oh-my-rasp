@@ -1372,6 +1372,10 @@ public final class OhMyRaspHooks {
     }
   }
 
+  public static boolean enforceElasticLz4Bounds() {
+    return AgentRuntime.get().mode() == DetectionMode.BLOCK || blockingEnabled();
+  }
+
   /**
    * {@code true} when the agent is currently allowed to actively block (as
    * opposed to monitor/off). Used by the serial-filter guard to reject dangerous

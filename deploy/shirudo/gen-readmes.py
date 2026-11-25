@@ -63,6 +63,7 @@ TRANSFORMER_CATEGORY = {
     "Process": "Command Execution & RCE",
     "SparkRest": "Command Execution & RCE",
     "YarnRest": "Command Execution & RCE",
+    "ElasticLz4": "Elasticsearch LZ4 Transport (CVE-2026-82303)",
     "Base64": "OpenJDK Base64 AVX-512 Guard (CVE-2026-114938)",
     "Jdbc": "SQL Injection & JDBC",
     "Jndi": "JNDI, Deserialization & XML/XXE",
@@ -90,6 +91,7 @@ TRANSFORMER_CATEGORY = {
 MODULE_CATEGORY = {
     "Process": "Command Execution & RCE",
     "ArgumentParser": "Command Execution & RCE",
+    "ElasticLz4": "Elasticsearch LZ4 Transport (CVE-2026-82303)",
     "Base64": "OpenJDK Base64 AVX-512 Guard (CVE-2026-114938)",
     "Sql": "SQL Injection & JDBC",
     "Jndi": "JNDI, Deserialization & XML/XXE",
@@ -123,6 +125,9 @@ CATEGORY_DESCRIPTIONS = {
         "Blocks exploit-grade `ProcessBuilder.start` / `Runtime.exec` calls (including "
         "OGNL, SpEL, MVEL, Groovy, JEXL, XStream, deserialization, and scheduler stacks) "
         "and Spark/YARN REST job submissions."
+    ),
+    "Elasticsearch LZ4 Transport (CVE-2026-82303)": (
+        "In block mode, isolates the declared compressed transport block and checks the decoder consumed its exact length."
     ),
     "OpenJDK Base64 AVX-512 Guard (CVE-2026-114938)": (
         "Zero-allocation arithmetic boundary check on `java.util.Base64$Decoder.decode0` "

@@ -4530,6 +4530,8 @@ public final class Java17RaspHooks {
     return builder.toString();
   }
 
+  public static boolean enforceElasticLz4Bounds() { return shouldBlock(); }
+
   private static boolean shouldBlock() {
     String property = System.getProperty("ohmyrasp.java17.block");
     if (property == null || property.trim().length() == 0) {
