@@ -10,10 +10,15 @@ public final class SqliteIdentifierCheck {
     int before = calls;
     boolean denied = false;
     try (HttpTransportCheck.Scope scope = new HttpTransportCheck.Scope(track, label);
-         Statement stmt = prepared ? db.prepareStatement(query) : db.createStatement();
-         ResultSet result = prepared ? ((PreparedStatement)stmt).executeQuery() : stmt.executeQuery(query)) {
-      if (!result.next() || result.getInt(1) != 7 || !label.equals(result.getMetaData().getColumnLabel(1)))
-        throw new AssertionError("incorrect report result for " + name);
+         Statement stmt = prepared ? db.prepareStatement(query) : db.createStatement()) {
+      if (prepared) {
+        PreparedStatement ps = (PreparedStatement) stmt;
+        if (ps.getParameterMetaData().getParameterCount() > 0) ps.setInt(1, 7);
+      }
+      try (ResultSet result = prepared ? ((PreparedStatement)stmt).executeQuery() : stmt.executeQuery(query)) {
+        if (!result.next() || result.getInt(1) != 7 || !label.equals(result.getMetaData().getColumnLabel(1)))
+          throw new AssertionError("incorrect report result for " + name);
+      }
     } catch (Exception failure) {
       if (!HttpTransportCheck.blocked(failure)) throw failure;
       denied = true;
@@ -43,7 +48,11 @@ public final class SqliteIdentifierCheck {
       check(db, track, mode, "sort", "SELECT 7 AS [weekly -- total] ORDER BY [weekly -- total]", "weekly -- total", false, true);
       check(db, track, mode, "cr-comment", "SELECT 7 AS weekly -- report\r benchmark(7)", "weekly", false, false);
       check(db, track, mode, "lf-expression", "SELECT -- report\r\n benchmark(7) AS weekly", "weekly", true, true);
+      check(db, track, mode, "named-parameter", "SELECT $benchmark(weekly) AS weekly", "weekly", false, true);
       Connection pool = pooled(db);
+      check(pool, track, mode, "parameter-namespace", "SELECT $reports::benchmark(weekly) AS weekly", "weekly", false, true);
+      check(pool, track, mode, "function-after-parameter", "SELECT benchmark($report(--weekly)) AS weekly", "weekly", true, true);
+      check(db, track, mode, "after-parameter-suffix", "SELECT $report(--weekly) AS weekly, benchmark(7)", "weekly", true, true);
       check(pool, track, mode, "pooled-cr-comment", "SELECT 7 AS weekly --report\r benchmark(7)", "weekly", false, true);
       check(pool, track, mode, "pooled-title", "SELECT 7 AS [benchmark(7) samples]", "benchmark(7) samples", false, true);
       check(pool, track, mode, "pooled-expression", "SELECT 7 AS [reviewer's total], benchmark(7)", "reviewer's total", true, true);

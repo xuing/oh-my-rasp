@@ -185,6 +185,8 @@ An ordinary Bean can launch a local helper during startup. The process still pas
 
 Zero false positives on the benign SQL corpus (see [False-positive methodology](#false-positive-methodology)).
 
+SQLite named bind parameters are data tokens, including names with namespace segments and parenthesized suffixes. The concrete driver check resumes after the parameter. [SQLite parameter grammar](https://www.sqlite.org/lang_expr.html#parameters)
+
 SQLite line comments extend through a bare carriage return and end at a line feed or the end of the statement. The agent uses the concrete driver grammar at JDBC handoff. For an unknown driver it defers signatures in text whose interpretation depends on the comment terminator. [SQLite comment syntax](https://www.sqlite.org/lang_comment.html)
 
 At JDBC handoff, the lexer recognizes square-bracket identifiers for SQLite and SQL Server. SQLite ends the name at the first closing bracket. SQL Server permits a doubled closing bracket inside the name. The concrete PostgreSQL driver retains array-expression semantics. When a pool has no driver identity, bracket-dependent findings can be deferred to the driver. [SQLite identifier tokens](https://www.sqlite.org/draft/tokenreq.html) · [SQL Server delimited identifiers](https://learn.microsoft.com/en-us/sql/t-sql/functions/quotename-transact-sql)

@@ -11,6 +11,17 @@ import org.junit.jupiter.api.Test;
 
 class SqlStatementTest {
   @Test
+  void sqliteVariableNamesAreDataAndStopAtTheClosingParenthesis() {
+    String sqlite = "org.sqlite.jdbc4.JDBC4PreparedStatement";
+    for (String prefix : List.of("$", ":", "@", "#")) {
+      assertFalse(new SqlStatement("SELECT " + prefix + "reports::benchmark(weekly)", sqlite).matchesSinkPolicy());
+      assertFalse(new SqlStatement("SELECT " + prefix + "report(--daily)", sqlite).hasCommentFrom("--daily"));
+      assertTrue(new SqlStatement("SELECT " + prefix + "report(--daily), benchmark(7)", sqlite).matchesSinkPolicy());
+    }
+    assertTrue(new SqlStatement("SELECT :label /*! report */").matchesSinkPolicy());
+  }
+
+  @Test
   void sqliteLineCommentsEndOnlyAtLf() {
     String comment = "select 7 --report\r benchmark(7)";
     for (String driver : List.of("org.sqlite.jdbc4.JDBC4Statement", "reports.StatementWrapper", "")) {
