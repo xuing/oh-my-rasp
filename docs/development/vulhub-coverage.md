@@ -1114,7 +1114,9 @@ coverage, separate from the Java 25 behavioral replay suite:
 - The current [Spark submit rule](../detection.md#spark-rest-submission-authorization)
   checks the deployment role at validated submission. A
   [packaged-agent test](../../java-agent/scripts/fp-harness/check-spark-submit.py)
-  compares authorized and denied dispatch of the same report job. The historical
+  compares authorized and denied dispatch of the same report job. On Java 8,
+  the Spark 2.3.1 release servlet also parsed and validated that job with an in-process
+  recording handler. The block-mode role denial prevented the handoff. The historical
   run below exercised the earlier descriptor rule.
 - [x] Run the real Java 8 Apache Spark Vulhub application acceptance:
   `scripts/acceptance-vulhub-spark-java8.sh` starts standalone Spark 2.3.1

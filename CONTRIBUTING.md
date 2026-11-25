@@ -196,6 +196,9 @@ in separate JVMs. Run it locally with `java-agent/scripts/check-jdk25.sh serial-
 The [Spark submit check](java-agent/scripts/fp-harness/check-spark-submit.py)
 uses Javax and Jakarta servlet requests with a recording handler. It checks
 role decisions for a fixed report job. Pass `--api-dir` to use local servlet jars.
+With a Spark 2.3.1 distribution and a compatible JDK, add
+`--spark-classpath '/path/to/spark/jars/*'` to exercise Spark's original parser
+and validator against a handler that only counts submissions.
 
 The [JWT filter check](java-agent/scripts/fp-harness/check-jwt-verification.py)
 runs a local filter fixture with java-jwt and a deny-only downstream receiver.
