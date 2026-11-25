@@ -10,7 +10,7 @@ This directory holds the durable technical ledgers kept in sync with the Java ag
 
 [`vulhub-coverage.md`](vulhub-coverage.md) tracks Vulhub component and CVE replay coverage, expected baseline exploitation proof, matching Java LTS agent, and protected-side block condition.
 
-`python3 java-agent/scripts/check-vulhub-java-coverage.py` cross-references this checklist against the acceptance scripts in `java-agent/scripts/`. CI fails if a checked entry has no matching acceptance script or if an acceptance script covers an unlisted target. Update this file in the same patch as any new Vulhub target, moving entries out of candidates only after both baseline exploitation and protected-side blocking pass.
+`python3 java-agent/scripts/check-vulhub-java-coverage.py` cross-references this checklist against the acceptance scripts in `java-agent/acceptance/`. CI fails if a checked entry has no matching acceptance script or if an acceptance script covers an unlisted target. Update this file in the same patch as any new Vulhub target, moving entries out of candidates only after both baseline exploitation and protected-side blocking pass.
 
 ## Auto-generated docs
 

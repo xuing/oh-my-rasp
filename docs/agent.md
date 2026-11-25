@@ -135,16 +135,16 @@ End-to-end verification scripts in `java-agent/scripts/`:
 
 ```bash
 # Tomcat 11 -> 10 -> 9 baseline/protected suite (JDK 25)
-bash java-agent/scripts/acceptance.sh
+bash java-agent/acceptance/runtime/jdk25.sh
 
 # Backport Tomcat compatibility matrices (baseline + protected)
-bash java-agent/scripts/acceptance-java8.sh     # Tomcat 10.0, 9, 8.5
-bash java-agent/scripts/acceptance-java11.sh    # Tomcat 10.1, 9
-bash java-agent/scripts/acceptance-java17.sh    # Tomcat 11, 10.1, 9
-bash java-agent/scripts/acceptance-java21.sh    # agent-java17 on Temurin 21 (Tomcat 11, 10, 9)
+bash java-agent/acceptance/runtime/java8.sh     # Tomcat 10.0, 9, 8.5
+bash java-agent/acceptance/runtime/java11.sh    # Tomcat 10.1, 9
+bash java-agent/acceptance/runtime/java17.sh    # Tomcat 11, 10.1, 9
+bash java-agent/acceptance/runtime/java21.sh    # agent-java17 on Temurin 21 (Tomcat 11, 10, 9)
 
 # Vulhub CVE replay scripts (individual per-CVE scripts)
-ls java-agent/scripts/acceptance-vulhub-*.sh
+ls java-agent/acceptance/vulhub/*/*.sh
 
 # Regenerate coverage and false-positive reports
 python3 java-agent/scripts/gen-detection-coverage.py --check

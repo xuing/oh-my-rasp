@@ -44,14 +44,14 @@ class EvidenceTest(unittest.TestCase):
             (root / "environments.toml").write_text(
                 '[[environment]]\npath="app/one"\ncve=["CVE-2000-0001"]\n'
                 '[[environment]]\npath="app/two"\ncve=["CVE-2000-0001"]\n')
-            scripts = root / "scripts"
-            scripts.mkdir()
-            name = "acceptance-vulhub-example.sh"
+            scripts = root / "acceptance"
+            (scripts / "vulhub" / "app").mkdir(parents=True)
+            name = "vulhub/app/example-java8.sh"
             (scripts / name).write_text('# path app/one\nprotected_dir="logs/vulhub-example-protected"\n')
             (run / "events.jsonl").write_text(
                 '{"hook":"example","algorithm":"test","action":"block","details":{"path":"PRIVATE-VALUE"}}\n'
                 '{"hook":"http","algorithm":"latency","action":"observe","kind":"telemetry"}\ninvalid\n')
-            inventory = build_report(root, {"app"}, [(7, f"CVE-2000-0001 `scripts/{name}`")], scripts, logs)
+            inventory = build_report(root, {"app"}, [(7, f"CVE-2000-0001 `acceptance/{name}`")], scripts, logs)
             a, b = inventory["environments"]
             self.assertEqual(a["exact_path_script_references"], [name])
             self.assertEqual(b["exact_path_script_references"], [])

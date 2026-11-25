@@ -26,6 +26,9 @@ JAVA_AGENT = REPO_ROOT / "java-agent"
 SCRIPTS_DIR = JAVA_AGENT / "scripts"
 FP_REPORT = JAVA_AGENT / "docs" / "FALSE-POSITIVE-REPORT.md"
 
+sys.path.insert(0, str(SCRIPTS_DIR))
+import acceptance_scripts  # noqa: E402
+
 JDK_ORDER = ["java7-legacy", "java8", "java11", "java17", "java21", "java6-legacy"]
 
 BACKPORT_TRACKS = [
@@ -247,9 +250,9 @@ def extract_jdk25() -> dict[str, object]:
 def extract_vulhub_counts() -> dict[str, int]:
     counts: dict[str, int] = {}
     total = 0
-    for script in sorted(SCRIPTS_DIR.glob("acceptance-vulhub-*.sh")):
+    for script in acceptance_scripts.vulhub_scripts():
         total += 1
-        stem = script.stem[len("acceptance-vulhub-") :]
+        stem = acceptance_scripts.legacy_stem(script)
         jdk = next((j for j in JDK_ORDER if stem.endswith("-" + j)), "other")
         counts[jdk] = counts.get(jdk, 0) + 1
     counts["total"] = total
