@@ -46,13 +46,7 @@ public final class DeserializationGuard {
   private static void installViaFactory(ObjectInputFilter previous) {
     try {
       ObjectInputFilter.Config.setSerialFilterFactory(
-          (current, next) -> {
-            // `current` is the JVM-wide filter already in effect (falling back to
-            // the one we captured); keep OhMyRasp's check in front of it and of
-            // any stream-specific filter.
-            ObjectInputFilter base = mergedFilter(current != null ? current : previous);
-            return next == null ? base : chain(base, next);
-          });
+          (current, next) -> composeStreamFilter(previous, current, next));
     } catch (Throwable unexpected) {
       // The factory is also one-shot and rejects installation once a stream has
       // been filtered. Nothing more we can safely do; the app's filter stays.
@@ -74,14 +68,22 @@ public final class DeserializationGuard {
     };
   }
 
-  private static ObjectInputFilter chain(ObjectInputFilter first, ObjectInputFilter second) {
-    return info -> {
-      ObjectInputFilter.Status status = first.checkInput(info);
-      if (status != ObjectInputFilter.Status.UNDECIDED) {
-        return status;
-      }
-      return second.checkInput(info);
-    };
+  static ObjectInputFilter composeStreamFilter(
+      ObjectInputFilter previous, ObjectInputFilter current, ObjectInputFilter next) {
+    if (current == null) {
+      // At stream construction the JDK supplies the global filter as next.
+      return mergedFilter(mergeDistinct(previous, next));
+    }
+    // The existing stream filter already includes our guard and the global
+    // filter. Keep both when the application adds its stream-specific policy.
+    return next == previous ? current : mergeDistinct(current, next);
+  }
+
+  private static ObjectInputFilter mergeDistinct(ObjectInputFilter first, ObjectInputFilter second) {
+    if (first == null) {
+      return second;
+    }
+    return second == null || first == second ? first : ObjectInputFilter.merge(first, second);
   }
 
   static ObjectInputFilter.Status check(ObjectInputFilter.FilterInfo info) {
@@ -97,28 +99,12 @@ public final class DeserializationGuard {
     if (className == null || className.isBlank()) {
       return ObjectInputFilter.Status.UNDECIDED;
     }
-    boolean dangerous;
     try {
-      dangerous = OhMyRaspHooks.isDangerousDeserialization(className);
-    } catch (Throwable unexpected) {
-      // Fail-safe: never let the guard break deserialization on our account.
-      return ObjectInputFilter.Status.UNDECIDED;
-    }
-    // Record the attempt through the normal hook (telemetry + request-scoped
-    // policy/block). A request-scoped block decision surfaces as an exception,
-    // which we translate into REJECTED; nothing else may escape into the app.
-    try {
-      OhMyRaspHooks.beforeDeserializationClass(className);
+      OhMyRaspHooks.beforeSerialFilterClass(className);
     } catch (OhMyRaspBlockException blocked) {
       return ObjectInputFilter.Status.REJECTED;
     } catch (Throwable unexpected) {
-      // An unexpected hook failure must not break deserialization; fall through.
-    }
-    // Enforce at the serial-filter level even without an active request (RMI,
-    // caches): reject known-dangerous gadget classes when blocking is enabled.
-    // Benign classes always fall through to UNDECIDED.
-    if (dangerous && OhMyRaspHooks.blockingEnabled()) {
-      return ObjectInputFilter.Status.REJECTED;
+      // A detector error must not override the application's own filters.
     }
     return ObjectInputFilter.Status.UNDECIDED;
   }

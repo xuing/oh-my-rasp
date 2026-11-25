@@ -857,6 +857,17 @@ public final class OhMyRaspHooks {
     }
   }
 
+  static void beforeSerialFilterClass(String className) {
+    if (detectionDisabled()) {
+      return;
+    }
+    // Preserve the serial guard's explicit non-HTTP enforcement scope, but let
+    // the same policy and algorithm switches decide both the action and the log.
+    boolean outsideRequest = blockingEnabled() && isDangerousDeserialization(className);
+    emit(DETECTORS.detectDeserialization(className, currentRequest(), stackTraceClassNames()),
+        true, outsideRequest);
+  }
+
   /**
    * Non-emitting check used by {@link DeserializationGuard}: {@code true} when
    * the class is a known-dangerous deserialization gadget. Fail-safe — any

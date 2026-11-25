@@ -4,6 +4,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import io.ohmyrasp.agent.policy.AgentPolicy;
 import java.io.ObjectInputFilter;
 import java.io.ObjectInputFilter.FilterInfo;
 import java.io.ObjectInputFilter.Status;
@@ -34,6 +35,7 @@ final class DeserializationGuardTest {
 
   @AfterEach
   void reset() {
+    OhMyRaspHooks.installPolicy(AgentPolicy.absent(), "");
     System.clearProperty("ohmyrasp.block");
     System.clearProperty("ohmyrasp.force_block");
     OhMyRaspHooks.exitHttpRequest();
@@ -112,6 +114,43 @@ final class DeserializationGuardTest {
 
     assertEquals(
         Status.UNDECIDED, merged.checkInput(new FakeFilterInfo(java.util.ArrayList.class)));
+  }
+
+  @Test
+  void preservesRejectionFromEitherApplicationFilter() {
+    var info = new FakeFilterInfo(java.util.ArrayList.class);
+    for (Status global : Status.values()) {
+      for (Status stream : Status.values()) {
+        for (boolean block : new boolean[] {false, true}) {
+          System.setProperty("ohmyrasp.block", Boolean.toString(block));
+          var calls = new AtomicInteger();
+          ObjectInputFilter previous = ignored -> {
+            calls.incrementAndGet();
+            return global;
+          };
+          ObjectInputFilter initial = DeserializationGuard.composeStreamFilter(previous, null, previous);
+          ObjectInputFilter updated = DeserializationGuard.composeStreamFilter(previous, initial, ignored -> stream);
+          Status expected = global == Status.REJECTED || stream == Status.REJECTED ? Status.REJECTED
+              : global == Status.ALLOWED || stream == Status.ALLOWED ? Status.ALLOWED : Status.UNDECIDED;
+          assertEquals(expected, updated.checkInput(info), global + " / " + stream);
+          assertEquals(1, calls.get());
+          Status forListedType = updated.checkInput(new FakeFilterInfo(java.lang.Runtime.class));
+          assertEquals(block ? Status.REJECTED : expected, forListedType);
+          assertEquals(block ? 1 : 2, calls.get());
+        }
+      }
+    }
+  }
+
+  @Test
+  void explicitLogPolicyAlsoAppliesToSerialFilterWithoutRequest() {
+    System.setProperty("ohmyrasp.block", "true");
+    OhMyRaspHooks.installPolicy(AgentPolicy.parse("""
+        {"version":1,"status":"active","canary_percent":100,"rules":[
+          {"name":"Observe deserialization","hook":"deserialization","algorithm":"deserialization_blacklist",
+           "action":"log","severity":"high","expression":"algorithm == \\"deserialization_blacklist\\""}]}
+        """), "agent-one");
+    assertEquals(Status.UNDECIDED, DeserializationGuard.check(DANGEROUS_GADGET));
   }
 
   /** Minimal {@link FilterInfo} that only carries a serial class. */
