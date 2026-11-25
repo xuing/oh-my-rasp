@@ -493,16 +493,6 @@ public final class DetectorEngine {
     return Optional.empty();
   }
 
-  public Optional<Detection> detectRemoteJobSubmission(
-      String mechanism, String descriptor, RequestContext request) {
-    return detectRemoteJobSubmission(mechanism, descriptor, request, false);
-  }
-
-  public Optional<Detection> detectRemoteJobSubmission(String mechanism, String descriptor,
-      RequestContext request, boolean descriptorPolicy) {
-    return RemoteJobDetector.detect(mechanism, descriptor, request, descriptorPolicy);
-  }
-
   public static boolean isBase64TailUnderflowCandidate(
       byte[] src, int sp, int sl, boolean isURL, boolean isMIME) {
     if (isMIME || src == null || sp < 0 || sl < sp || sl > src.length) {
@@ -752,16 +742,6 @@ public final class DetectorEngine {
               Map.of("mechanism", hook, "host", host, "href", abbreviate(href))));
     }
     return Optional.empty();
-  }
-
-  public Optional<Detection> detectClassLoaderUrl(
-      String rawUrl, String mechanism, RequestContext request) {
-    return RemoteResourceDetector.detectClassLoaderUrl(rawUrl, mechanism, request);
-  }
-
-  public Optional<Detection> detectSpringConfigLocation(
-      String location, String mechanism, RequestContext request) {
-    return RemoteResourceDetector.detectSpringConfigLocation(location, mechanism, request);
   }
 
   public Optional<Detection> detectJmxMBeanInvoke(
@@ -1299,23 +1279,10 @@ public final class DetectorEngine {
     return Optional.empty();
   }
 
-  public Optional<Detection> detectJndi(String name, RequestContext request) {
-    return detectJndi(name, request, "declared_lookup");
-  }
-
-  public Optional<Detection> detectJndi(String name, RequestContext request, String operation) {
-    return RemoteResourceDetector.detectJndi(name, request, operation);
-  }
-
   public Optional<Detection> detectJaasConfig(
       String config, String mechanism, RequestContext request) {
     // Compatibility for declaration-only callers. Runtime policy uses the login module lookup.
     return Optional.empty();
-  }
-
-  public Optional<Detection> detectJwtVerificationFailure(
-      String mechanism, String exceptionClass, String message, RequestContext request) {
-    return CredentialDetector.detectJwtVerificationFailure(mechanism, exceptionClass, message, request);
   }
 
   public Optional<Detection> detectDeserialization(String className, RequestContext request) {

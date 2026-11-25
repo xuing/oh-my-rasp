@@ -1,6 +1,8 @@
 import io.ohmyrasp.agent.detect.DetectorEngine;
 import io.ohmyrasp.agent.detect.JdbcDetector;
 import io.ohmyrasp.agent.detect.ProcessDetector;
+import io.ohmyrasp.agent.detect.RemoteJobDetector;
+import io.ohmyrasp.agent.detect.RemoteResourceDetector;
 import io.ohmyrasp.agent.model.Detection;
 import io.ohmyrasp.agent.model.RequestContext;
 
@@ -71,13 +73,13 @@ public final class FpReport {
                 List.of("java.lang.ProcessImpl", "java.lang.ProcessBuilder", c.payload()))),
         new Category("Spark job descriptors", List.of(
             Case.of("{\"action\":\"CreateSubmissionRequest\",\"appResource\":\"https://artifacts.example.test/reports.jar\",\"mainClass\":\"reports.Weekly\"}")),
-            (c, r) -> ENGINE.detectRemoteJobSubmission("Spark REST", c.payload(),
-                new RequestContext("POST", "/v1/submissions/create", "", Map.of(), Map.of()))),
+            (c, r) -> RemoteJobDetector.detect("Spark REST", c.payload(),
+                new RequestContext("POST", "/v1/submissions/create", "", Map.of(), Map.of()), false)),
         new Category("YARN job descriptors", List.of(
             Case.of("{\"am-container-spec\":{\"commands\":{\"command\":\"java reports.Weekly\"}}}"),
             Case.of("{\"am-container-spec\":{\"commands\":{\"command\":\"echo cat /etc/passwd\"}}}")),
-            (c, r) -> ENGINE.detectRemoteJobSubmission("YARN", c.payload(),
-                new RequestContext("POST", "/ws/v1/cluster/apps", "", Map.of(), Map.of()))),
+            (c, r) -> RemoteJobDetector.detect("YARN", c.payload(),
+                new RequestContext("POST", "/ws/v1/cluster/apps", "", Map.of(), Map.of()), false)),
         new Category("Outbound URLs", urlCorpus(), (c, r) -> ENGINE.detectUrl(c.payload(), r)),
         new Category("File reads", fileReadCorpus(), (c, r) -> ENGINE.detectFileRead(c.payload(), r, false)),
         new Category("Directory listings", List.of(
@@ -108,7 +110,7 @@ public final class FpReport {
         new Category("Deserialization classes", deserializationCorpus(), (c, r) -> ENGINE.detectDeserialization(c.payload(), r)),
         new Category("Expressions", expressionCorpus(), (c, r) -> ENGINE.detectExpression("spel", c.payload(), r)),
         new Category("OGNL expressions", ognlCorpus(), (c, r) -> ENGINE.detectOgnl(c.payload(), r)),
-        new Category("JNDI names", jndiCorpus(), (c, r) -> ENGINE.detectJndi(c.payload(), r)),
+        new Category("JNDI names", jndiCorpus(), (c, r) -> RemoteResourceDetector.detectJndi(c.payload(), r)),
         new Category("DNS lookups", dnsCorpus(), (c, r) -> ENGINE.detectDns(c.payload(), r)),
         new Category("Ordinary deployment uploads", List.of(
             Case.of("weekly.jar"), Case.of("component.war"), Case.of("connector.ear")),

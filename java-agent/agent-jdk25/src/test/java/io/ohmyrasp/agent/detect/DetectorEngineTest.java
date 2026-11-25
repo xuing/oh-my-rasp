@@ -866,7 +866,7 @@ final class DetectorEngineTest {
   @Test
   void detectsRemoteUrlClassLoaderCodebase() {
     var result =
-        engine.detectClassLoaderUrl(
+        RemoteResourceDetector.detectClassLoaderUrl(
             "http://attacker.example/evil.jar",
             "URLClassLoader",
             request(Map.of("codebase", List.of("http://attacker.example/evil.jar"))));
@@ -877,7 +877,7 @@ final class DetectorEngineTest {
   @Test
   void detectsJarWrappedRemoteClassLoaderCodebase() {
     var result =
-        engine.detectClassLoaderUrl(
+        RemoteResourceDetector.detectClassLoaderUrl(
             "jar:http://attacker.example/evil.jar!/payload/",
             "URLClassLoader",
             request());
@@ -888,7 +888,7 @@ final class DetectorEngineTest {
   @Test
   void detectsRmiClassLoaderCodebase() {
     var result =
-        engine.detectClassLoaderUrl(
+        RemoteResourceDetector.detectClassLoaderUrl(
             "ldap://attacker.example/Exploit",
             "RMIClassLoader",
             request());
@@ -899,7 +899,7 @@ final class DetectorEngineTest {
   @Test
   void ignoresLocalUrlClassLoaderCodebase() {
     var result =
-        engine.detectClassLoaderUrl(
+        RemoteResourceDetector.detectClassLoaderUrl(
             "file:/usr/local/tomcat/webapps/ROOT/WEB-INF/lib/app.jar",
             "URLClassLoader",
             request());
@@ -910,7 +910,7 @@ final class DetectorEngineTest {
   @Test
   void detectsRemoteSpringConfigLocation() {
     var result =
-        engine.detectSpringConfigLocation(
+        RemoteResourceDetector.detectSpringConfigLocation(
             "http://attacker.example/poc.xml",
             "SpringConfig",
             request(Map.of("config", List.of("http://attacker.example/poc.xml"))));
@@ -921,7 +921,7 @@ final class DetectorEngineTest {
   @Test
   void detectsXbeanRemoteSpringConfigLocation() {
     var result =
-        engine.detectSpringConfigLocation(
+        RemoteResourceDetector.detectSpringConfigLocation(
             "xbean:http://attacker.example/poc.xml",
             "SpringConfig",
             request());
@@ -932,7 +932,7 @@ final class DetectorEngineTest {
   @Test
   void detectsJarWrappedRemoteSpringConfigLocation() {
     var result =
-        engine.detectSpringConfigLocation(
+        RemoteResourceDetector.detectSpringConfigLocation(
             "jar:http://attacker.example/poc.jar!/beans.xml",
             "SpringConfig",
             request());
@@ -943,11 +943,11 @@ final class DetectorEngineTest {
   @Test
   void ignoresLocalSpringConfigLocation() {
     assertTrue(
-        engine
+        RemoteResourceDetector
             .detectSpringConfigLocation("classpath:applicationContext.xml", "SpringConfig", request())
             .isEmpty());
     assertTrue(
-        engine
+        RemoteResourceDetector
             .detectSpringConfigLocation("file:/opt/app/applicationContext.xml", "SpringConfig", request())
             .isEmpty());
   }
@@ -1699,7 +1699,7 @@ final class DetectorEngineTest {
 
   @Test
   void detectsJndi() {
-    var result = engine.detectJndi("ldap://127.0.0.1:1389/a", request());
+    var result = RemoteResourceDetector.detectJndi("ldap://127.0.0.1:1389/a", request());
 
     assertTrue(result.isPresent());
     assertEquals("jndi_disable_all", result.orElseThrow().algorithm());
@@ -1707,7 +1707,7 @@ final class DetectorEngineTest {
 
   @Test
   void detectsJndiRemoteRmiScheme() {
-    var result = engine.detectJndi("rmi://attacker.example.com:1099/Exploit", request());
+    var result = RemoteResourceDetector.detectJndi("rmi://attacker.example.com:1099/Exploit", request());
 
     assertTrue(result.isPresent());
     assertEquals("jndi_disable_all", result.orElseThrow().algorithm());
@@ -1717,17 +1717,17 @@ final class DetectorEngineTest {
   void ignoresLocalContainerJndiNames() {
     // Legitimate Java EE / container-managed lookups must not trip the detector
     // (closes the documented 100% JNDI false-positive precision gap).
-    assertTrue(engine.detectJndi("java:comp/env/jdbc/AppDataSource", request()).isEmpty());
-    assertTrue(engine.detectJndi("java:comp/env/jms/QueueConnectionFactory", request()).isEmpty());
-    assertTrue(engine.detectJndi("java:global/AppEjb/UserService", request()).isEmpty());
-    assertTrue(engine.detectJndi("jdbc/AppDataSource", request()).isEmpty());
+    assertTrue(RemoteResourceDetector.detectJndi("java:comp/env/jdbc/AppDataSource", request()).isEmpty());
+    assertTrue(RemoteResourceDetector.detectJndi("java:comp/env/jms/QueueConnectionFactory", request()).isEmpty());
+    assertTrue(RemoteResourceDetector.detectJndi("java:global/AppEjb/UserService", request()).isEmpty());
+    assertTrue(RemoteResourceDetector.detectJndi("jdbc/AppDataSource", request()).isEmpty());
   }
 
   @Test
   void declaredDirectoryDoesNotEstablishLoginModuleRouting() {
     String config = "com.sun.security.auth.module.JndiLoginModule required user.provider.url=ldap://reports.invalid/weekly;";
     assertTrue(engine.detectJaasConfig(config, "KafkaSasl", request()).isEmpty());
-    var routed = engine.detectJndi("ldap://reports.invalid/weekly", request(), "JndiLoginModule.lookup");
+    var routed = RemoteResourceDetector.detectJndi("ldap://reports.invalid/weekly", request(), "JndiLoginModule.lookup");
     assertAlgorithm(routed, "jndi_jaas_config");
     assertEquals("url_scheme_selection", routed.orElseThrow().details().get("decision_basis"));
   }
@@ -2818,7 +2818,7 @@ final class DetectorEngineTest {
             Map.of("user-agent", "JUnit", "x-de-token", forgedJwt()));
 
     var result =
-        engine.detectJwtVerificationFailure(
+        CredentialDetector.detectJwtVerificationFailure(
             "auth0-java-jwt",
             "com.auth0.jwt.exceptions.SignatureVerificationException",
             "The Token's Signature resulted invalid when verified using the Algorithm: HmacSHA256",
@@ -2832,7 +2832,7 @@ final class DetectorEngineTest {
   @Test
   void ignoresJwtVerificationFailureWithoutJwtHeader() {
     var result =
-        engine.detectJwtVerificationFailure(
+        CredentialDetector.detectJwtVerificationFailure(
             "auth0-java-jwt",
             "com.auth0.jwt.exceptions.SignatureVerificationException",
             "invalid signature",
@@ -2852,7 +2852,7 @@ final class DetectorEngineTest {
             Map.of("user-agent", "JUnit", "authorization", "Bearer " + forgedJwt()));
 
     var result =
-        engine.detectJwtVerificationFailure(
+        CredentialDetector.detectJwtVerificationFailure(
             "auth0-java-jwt",
             "com.auth0.jwt.exceptions.SignatureVerificationException",
             "invalid signature",
@@ -2876,8 +2876,8 @@ final class DetectorEngineTest {
         """;
     var context = new RequestContext("POST", "/v1/submissions/create", "", Map.of(), Map.of());
 
-    assertTrue(engine.detectRemoteJobSubmission("Spark REST", descriptor, context).isEmpty());
-    var result = engine.detectRemoteJobSubmission("Spark REST", descriptor, context, true);
+    assertTrue(RemoteJobDetector.detect("Spark REST", descriptor, context, false).isEmpty());
+    var result = RemoteJobDetector.detect("Spark REST", descriptor, context, true);
 
     assertAlgorithm(result, "request_remote_job_submission");
     assertEquals("https", result.orElseThrow().details().get("artifactScheme"));
@@ -2901,8 +2901,8 @@ final class DetectorEngineTest {
         """;
     var context = new RequestContext("POST", "/ws/v1/cluster/apps", "", Map.of(), Map.of());
 
-    assertTrue(engine.detectRemoteJobSubmission("YARN", descriptor, context).isEmpty());
-    var result = engine.detectRemoteJobSubmission("YARN", descriptor, context, true);
+    assertTrue(RemoteJobDetector.detect("YARN", descriptor, context, false).isEmpty());
+    var result = RemoteJobDetector.detect("YARN", descriptor, context, true);
     assertTrue(result.orElseThrow().requiresExplicitRule());
 
     assertAlgorithm(result, "request_remote_job_submission");
@@ -2913,7 +2913,7 @@ final class DetectorEngineTest {
   void artifactMetadataDoesNotMaskAnIndependentSchedulerCommandFinding() {
     String descriptor = "{\"appResource\":\"https://reports.invalid/weekly.jar\",\"mainClass\":\"Weekly\","
         + "\"command\":\"cat /etc/passwd\"}";
-    var finding = engine.detectRemoteJobSubmission("job", descriptor, requestUri("/jobs/run"), true).orElseThrow();
+    var finding = RemoteJobDetector.detect("job", descriptor, requestUri("/jobs/run"), true).orElseThrow();
     assertTrue(finding.details().containsKey("commandLength"));
     assertFalse(finding.requiresExplicitRule());
   }
@@ -2926,7 +2926,7 @@ final class DetectorEngineTest {
         """;
 
     var result =
-        engine.detectRemoteJobSubmission("HTTP JSON", descriptor, requestUri("/repository/upload"));
+        RemoteJobDetector.detect("HTTP JSON", descriptor, requestUri("/repository/upload"), false);
 
     assertTrue(result.isEmpty());
   }
@@ -2939,7 +2939,7 @@ final class DetectorEngineTest {
         """;
 
     var result =
-        engine.detectRemoteJobSubmission("Spark REST", descriptor, requestUri("/v1/submissions/create"));
+        RemoteJobDetector.detect("Spark REST", descriptor, requestUri("/v1/submissions/create"), false);
 
     assertTrue(result.isEmpty());
   }

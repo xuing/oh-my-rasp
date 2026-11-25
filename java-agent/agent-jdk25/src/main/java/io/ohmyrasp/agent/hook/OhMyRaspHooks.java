@@ -9,9 +9,12 @@ import io.ohmyrasp.agent.file.WindowsDataStream;
 import io.ohmyrasp.agent.file.HostDirectory;
 import io.ohmyrasp.agent.jmx.JmxDispatch;
 import io.ohmyrasp.agent.jmx.JmxWriteScope;
+import io.ohmyrasp.agent.detect.CredentialDetector;
 import io.ohmyrasp.agent.detect.DetectorEngine;
 import io.ohmyrasp.agent.detect.JdbcDetector;
 import io.ohmyrasp.agent.detect.ProcessDetector;
+import io.ohmyrasp.agent.detect.RemoteJobDetector;
+import io.ohmyrasp.agent.detect.RemoteResourceDetector;
 import io.ohmyrasp.agent.detect.SqlRequestIndicators;
 import io.ohmyrasp.agent.http.ArchiveUploadPolicy;
 import io.ohmyrasp.agent.http.MultipartFilename;
@@ -202,7 +205,7 @@ public final class OhMyRaspHooks {
     }
     try {
       RequestContext context = new RequestContext(method, uri, query, parameters, headers);
-      emit(DETECTORS.detectJwtVerificationFailure(mechanism, exceptionClass, message, context));
+      emit(CredentialDetector.detectJwtVerificationFailure(mechanism, exceptionClass, message, context));
     } catch (OhMyRaspBlockException blocked) {
       throw blocked;
     } catch (Throwable throwable) {
@@ -275,7 +278,7 @@ public final class OhMyRaspHooks {
       return;
     }
     try {
-      emit(DETECTORS.detectRemoteJobSubmission(mechanism, descriptor, currentRequest(),
+      emit(RemoteJobDetector.detect(mechanism, descriptor, currentRequest(),
           POLICY.selectsAlgorithm("request_remote_job_submission")));
     } catch (OhMyRaspBlockException blocked) {
       throw blocked;
@@ -678,13 +681,13 @@ public final class OhMyRaspHooks {
       RequestContext request = currentRequest();
       if (LookupRoute.LOGIN_LOOKUP.equals(operation)) {
         if (request.active() && AgentRuntime.get().isAlgorithmEnabled("jndi_jaas_config")) {
-          emit(DETECTORS.detectJndi(url, request, operation));
+          emit(RemoteResourceDetector.detectJndi(url, request, operation));
           if (!POLICY.loaded()) return;
         }
         // A managed policy may enforce the general naming rule independently.
         operation = "InitialContext.lookup";
       }
-      emit(DETECTORS.detectJndi(url, request, operation));
+      emit(RemoteResourceDetector.detectJndi(url, request, operation));
     } catch (OhMyRaspBlockException blocked) {
       throw blocked;
     } catch (Throwable failure) {
@@ -712,7 +715,7 @@ public final class OhMyRaspHooks {
   }
 
   public static void onClassDefinitionSource(String source) {
-    if (!detectionDisabled()) emit(DETECTORS.detectClassLoaderUrl(source, "URLClassLoader", currentRequest()));
+    if (!detectionDisabled()) emit(RemoteResourceDetector.detectClassLoaderUrl(source, "URLClassLoader", currentRequest()));
   }
 
   public static void beforeRmiClassLoaderCodebase(String codebase) {
@@ -740,7 +743,7 @@ public final class OhMyRaspHooks {
   private static void beforeSpringConfigLocations(String mechanism, Object locations) {
     try {
       for (String location : springConfigLocations(locations)) {
-        emit(DETECTORS.detectSpringConfigLocation(location, mechanism, currentRequest()));
+        emit(RemoteResourceDetector.detectSpringConfigLocation(location, mechanism, currentRequest()));
       }
     } catch (OhMyRaspBlockException blocked) {
       throw blocked;
@@ -752,7 +755,7 @@ public final class OhMyRaspHooks {
   private static void beforeClassLoaderSources(String mechanism, Object sources) {
     try {
       for (String source : CodebaseUrls.elements(sources)) {
-        emit(DETECTORS.detectClassLoaderUrl(source, mechanism, currentRequest()));
+        emit(RemoteResourceDetector.detectClassLoaderUrl(source, mechanism, currentRequest()));
       }
     } catch (OhMyRaspBlockException blocked) {
       throw blocked;

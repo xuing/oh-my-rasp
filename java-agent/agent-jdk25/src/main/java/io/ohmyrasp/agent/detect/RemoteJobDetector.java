@@ -16,7 +16,7 @@ import java.util.Set;
 import java.util.regex.Pattern;
 
 /** Descriptor-level job rules. Spark submit authorization is evaluated separately at servlet dispatch. */
-final class RemoteJobDetector {
+public final class RemoteJobDetector {
   private RemoteJobDetector() {}
 
   private static final Pattern REMOTE_JOB_ARTIFACT =
@@ -48,7 +48,7 @@ final class RemoteJobDetector {
   private static final Set<String> REMOTE_JOB_PATH_ACTIONS =
       Set.of("create", "submit", "submissions", "run", "execute", "apps", "batches");
 
-  static Optional<Detection> detect(
+  public static Optional<Detection> detect(
       String mechanism, String descriptor, RequestContext request, boolean descriptorPolicy) {
     RequestContext safeRequest = request == null ? RequestContext.empty() : request;
     String safeDescriptor = descriptor == null ? "" : descriptor;

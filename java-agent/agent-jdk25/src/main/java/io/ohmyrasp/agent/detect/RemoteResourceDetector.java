@@ -14,7 +14,7 @@ import java.util.Set;
 import java.util.regex.Pattern;
 
 /** Class loading, naming and configuration APIs that select remote sources. */
-final class RemoteResourceDetector {
+public final class RemoteResourceDetector {
   private RemoteResourceDetector() {}
 
   static final Set<String> SSRF_PROTOCOLS =
@@ -35,7 +35,7 @@ final class RemoteResourceDetector {
   private static final Set<String> REMOTE_CONFIG_PROTOCOLS =
       Set.of("http", "https", "ftp", "ldap", "rmi");
 
-  static Optional<Detection> detectClassLoaderUrl(
+  public static Optional<Detection> detectClassLoaderUrl(
       String rawUrl, String mechanism, RequestContext request) {
     if (rawUrl == null || rawUrl.isBlank()) {
       return Optional.empty();
@@ -61,7 +61,7 @@ final class RemoteResourceDetector {
                 "decision_basis", rmi ? "rmi_codebase_loader_selection" : "url_class_definition")));
   }
 
-  static Optional<Detection> detectSpringConfigLocation(
+  public static Optional<Detection> detectSpringConfigLocation(
       String location, String mechanism, RequestContext request) {
     if (location == null || location.isBlank()) {
       return Optional.empty();
@@ -88,7 +88,7 @@ final class RemoteResourceDetector {
                 "requestControlled", String.valueOf(request.hasParameterIn(normalized)))));
   }
 
-  static Optional<Detection> detectJndi(String name, RequestContext request, String operation) {
+  public static Optional<Detection> detectJndi(String name, RequestContext request, String operation) {
     if (name == null || name.isBlank()) {
       return Optional.empty();
     }
@@ -145,5 +145,9 @@ final class RemoteResourceDetector {
     } catch (IllegalArgumentException e) {
       return Optional.empty();
     }
+  }
+
+  public static Optional<Detection> detectJndi(String name, RequestContext request) {
+    return detectJndi(name, request, "declared_lookup");
   }
 }
