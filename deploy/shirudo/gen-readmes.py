@@ -28,6 +28,7 @@ FP_REPORT = JAVA_AGENT / "docs" / "FALSE-POSITIVE-REPORT.md"
 
 sys.path.insert(0, str(SCRIPTS_DIR))
 import acceptance_scripts  # noqa: E402
+import detector_entry_points  # noqa: E402
 
 JDK_ORDER = ["java7-legacy", "java8", "java11", "java17", "java21", "java6-legacy"]
 
@@ -221,11 +222,10 @@ def extract_backport(track_info: dict[str, str]) -> dict[str, object]:
 def extract_jdk25() -> dict[str, object]:
     src_dir = JAVA_AGENT / "agent-jdk25" / "src" / "main" / "java" / "io" / "ohmyrasp" / "agent"
     reg_text = (src_dir / "asm" / "HookRegistry.java").read_text(encoding="utf-8")
-    det_text = (src_dir / "detect" / "DetectorEngine.java").read_text(encoding="utf-8")
     gradle_text = (JAVA_AGENT / "agent-jdk25" / "build.gradle.kts").read_text(encoding="utf-8")
 
     modules = sorted(set(re.findall(r"new ([A-Za-z0-9]+HookModule)\(", reg_text)))
-    capabilities = sorted(set(re.findall(r"\bpublic\s+Optional<Detection>\s+detect([A-Z][A-Za-z0-9]+)\(", det_text)))
+    capabilities = detector_entry_points.capabilities()
     baked_keys = sorted(set(re.findall(r"^(standalone|lock_config|mode|control|log|latency_sample)=", gradle_text, re.M)))
 
     grouped: dict[str, list[str]] = {cat: [] for cat in CATEGORY_ORDER}
@@ -550,7 +550,7 @@ def render_primary_readme(jdk25: dict[str, object], bf: dict[str, str], vulhub: 
         f"The `{pkg}` package installs the `{pkg}` Java upatch: a standalone, daemonless "
         f"OhMyRASP runtime self-protection agent targeting **{jdk25['target_jvms']}** JVMs "
         f"(classfile version `{jdk25['classfile']}`). It registers **{len(jdk25['modules'])} "
-        f"ASM hook modules** and **{len(jdk25['capabilities'])} `DetectorEngine` capabilities**, "
+        f"ASM hook modules** and **{len(jdk25['capabilities'])} detector capabilities**, "
         f"backed by **{vulhub['total']}** end-to-end Vulhub acceptance scenarios."
     )
     w("")
@@ -567,7 +567,7 @@ def render_primary_readme(jdk25: dict[str, object], bf: dict[str, str], vulhub: 
         m_list = ", ".join(f"`{m}`" for m in items)
         w(f"| **{cat}** | {CATEGORY_DESCRIPTIONS[cat]} | {m_list} |")
     w("")
-    w("<details><summary>All DetectorEngine capabilities (" + str(len(jdk25["capabilities"])) + ")</summary>")
+    w("<details><summary>All detector capabilities (" + str(len(jdk25["capabilities"])) + ")</summary>")
     w("")
     for cap in jdk25["capabilities"]:
         w(f"- `detect{cap}`")
