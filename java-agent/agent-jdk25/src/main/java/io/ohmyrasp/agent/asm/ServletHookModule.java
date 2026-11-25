@@ -39,7 +39,14 @@ final class ServletHookModule implements HookModule {
           loadArg(0);
           loadArg(1);
           invokeStatic(Type.getType(OhMyRaspHooks.class),
-              new Method("enterHttpRequest", "(Ljava/lang/Object;Ljava/lang/Object;)V"));
+              new Method("admitServletRequest", "(Ljava/lang/Object;Ljava/lang/Object;)Z"));
+          var admitted = newLabel();
+          ifZCmp(NE, admitted);
+          // Denied entry already restored the parent dispatch. Skip normal method-exit cleanup.
+          mv.visitInsn(RETURN);
+          mark(admitted);
+          Type[] args = Type.getArgumentTypes(descriptor);
+          mv.visitFrame(F_NEW, 3, new Object[]{className, args[0].getInternalName(), args[1].getInternalName()}, 0, null);
         }
 
         @Override

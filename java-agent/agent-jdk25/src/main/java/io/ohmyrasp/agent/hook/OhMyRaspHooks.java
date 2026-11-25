@@ -78,6 +78,16 @@ public final class OhMyRaspHooks {
     }
   }
 
+  public static boolean admitServletRequest(Object request, Object response) {
+    try {
+      enterHttpRequest(request, response);
+      return true;
+    } catch (OhMyRaspBlockException blocked) {
+      if (blocked.redirected()) return false;
+      throw blocked;
+    }
+  }
+
   private static void inspectHttpRequest(Object request, Object response) {
     if (detectionDisabled()) {
       return;
@@ -2076,8 +2086,7 @@ public final class OhMyRaspHooks {
     }
     JsonEventLogger.get().record(redactHttpObservation(recorded), elapsedMicros(started), ruleEvaluationUs);
     if (willBlock) {
-      if (mayRedirect) redirectToBlockPage(event);
-      throw new OhMyRaspBlockException(event);
+      throw new OhMyRaspBlockException(event, mayRedirect && redirectToBlockPage(event));
     }
   }
 
@@ -2122,10 +2131,10 @@ public final class OhMyRaspHooks {
         || "true".equalsIgnoreCase(System.getenv("OHMYRASP_FORCE_BLOCK"));
   }
 
-  private static void redirectToBlockPage(Detection detection) {
+  private static boolean redirectToBlockPage(Detection detection) {
     Object response = RESPONSE.get();
     if (response == null) {
-      return;
+      return false;
     }
     String location =
         "/rasp/blocked?hook="
@@ -2137,11 +2146,13 @@ public final class OhMyRaspHooks {
     try {
       Method sendRedirect = response.getClass().getMethod("sendRedirect", String.class);
       sendRedirect.invoke(response, location);
+      return true;
     } catch (ReflectiveOperationException | RuntimeException e) {
       if (Boolean.getBoolean("ohmyrasp.debug")) {
         System.err.println("[OHMYRASP] redirect failed: " + e);
       }
     }
+    return false;
   }
 
   private static String encode(String value) {

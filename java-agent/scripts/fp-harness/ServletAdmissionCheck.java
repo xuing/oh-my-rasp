@@ -38,7 +38,7 @@ public class ServletAdmissionCheck extends HttpServlet {
     boolean rejected = false;
     try { service((ServletRequest) req, res); }
     catch (OhMyRaspBlockException blocked) { rejected = true; }
-    if (rejected != deny || calls != previous + (deny ? 0 : 1)
+    if (rejected != (deny && !redirectAvailable) || calls != previous + (deny ? 0 : 1)
         || redirects != previousRedirects + (deny ? 1 : 0) || OhMyRaspHooks.currentRequest().active())
       throw new AssertionError("unexpected dispatch: denied=" + rejected + ", calls=" + calls + ", redirects=" + redirects);
   }

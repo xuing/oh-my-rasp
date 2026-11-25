@@ -60,7 +60,7 @@ ASM hook at sink
 
 The primary agent records `log` when a managed block rule matches outside its enforcement scope in block mode. In monitor mode, it records a would-be block as `monitor`.
 
-On the primary agent a block decision at servlet entry stops dispatch before application code runs, including when the response cannot redirect. Scanner-like User-Agent metadata requires a policy selecting `request_scanner`. [Servlet admission check](../java-agent/scripts/fp-harness/ServletAdmissionCheck.java)
+On the primary agent a block decision at servlet entry stops dispatch before application code runs, including when the response cannot redirect. A successful redirect returns directly from the servlet entry point so the container can deliver the 302 response. Scanner-like User-Agent metadata requires a policy selecting `request_scanner`. [Servlet admission check](../java-agent/scripts/fp-harness/ServletAdmissionCheck.java)
 
 ## Coverage numbers
 
