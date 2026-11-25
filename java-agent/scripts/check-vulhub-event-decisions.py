@@ -162,6 +162,11 @@ def collect(logs):
                 if not track or (algorithm_track and algorithm_track[1] != track):
                     row["status"] = "unknown or inconsistent agent track"
                     continue
+                if hook in ("Hessian.SerializerFactory.getDeserializer", "Hessian.allocate") and algorithm == f"java{track}_deserialization_hessian_type":
+                    reason = ("factory lookup alone cannot establish an object allocation" if hook.endswith("getDeserializer") else
+                              "the recorded binary name omits the allocation operand and its class hierarchy")
+                    row.update(status="source evidence required", evidence_limit=reason)
+                    continue
                 if hook == "OpenWire.createThrowable" and algorithm == f"java{track}_deserialization_protocol_class":
                     row.update(status="source evidence required",
                                evidence_limit="recorded name alone cannot verify the original constructor and its declaring class hierarchy")

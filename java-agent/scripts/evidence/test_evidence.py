@@ -123,6 +123,19 @@ class EvidenceTest(unittest.TestCase):
         self.assertIn("frames", old[1])
         self.assertIn("receiver", current[1])
 
+    def test_hessian_wire_name_and_allocation_name_do_not_reconstruct_the_class(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            case = Path(tmp) / "vulhub-hessian-protected"
+            case.mkdir()
+            records = [{"event": "ohmyrasp-java11-agent-start"}]
+            for hook in ("Hessian.SerializerFactory.getDeserializer", "Hessian.allocate"):
+                records.append({"action": "block", "algorithm": "java11_deserialization_hessian_type",
+                                "hook": hook, "details": {"class": "reports.Monthly"}})
+            (case / "events.jsonl").write_text("\n".join(map(json.dumps, records)))
+            _, rows, batches, _, _ = decisions.collect(case.parent)
+            self.assertEqual([r["status"] for r in rows], ["source evidence required"] * 2)
+            self.assertFalse(batches)
+
     def test_openwire_class_name_does_not_recreate_the_resolved_constructor(self):
         with tempfile.TemporaryDirectory() as tmp:
             case = Path(tmp) / "vulhub-types-protected"

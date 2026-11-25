@@ -2622,7 +2622,7 @@ above.
 - [x] Mojarra JSF - ViewState deserialization (`request_mojarra_jsf_viewstate_deserialization`; real Java7 legacy boundary: `scripts/acceptance-vulhub-mojarra-viewstate-java7-legacy.sh`)
 - [x] Neo4j Shell - CVE-2021-34371 RMI `setSessionVariable` deserialization (`deserialization_neo4j_cve_2021_34371_shell_rmi`; real Java8 acceptance: `scripts/acceptance-vulhub-neo4j-34371-java8.sh` blocks `java8_deserialization_gadget_class`)
 - [x] XXL-JOB - unauthenticated executor shell job submission (`request_xxl_job_executor_run_shell`; real Java8 acceptance: `scripts/acceptance-vulhub-xxljob-java8.sh` blocks `java8_command_execution_shell_meta`)
-- [x] XXL-JOB - Hessian API type deserialization (`deserialization_xxl_job_hessian_api`; real Java8 Vulhub probe remains a dependency-version boundary because current `vulhub/xxl-job:2.2.0-admin` lacks the old Hessian classes)
+- [x] XXL-JOB - Hessian API type deserialization (`deserialization_xxl_job_hessian_api`; real Java8 Vulhub probe remains a dependency-version boundary because current `vulhub/xxl-job:2.2.0-admin` lacks the old Hessian classes) The [codec allocation check](../../java-agent/scripts/fp-harness/HessianAllocationCheck.java) verifies in-memory records independently.
 
 ### Linkis / kkFileView / TeamCity
 

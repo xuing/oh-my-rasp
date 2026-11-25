@@ -278,10 +278,7 @@ same patch as any new Java-compatible Vulhub replay.
   BeanShell interpreter/proxy gadgets, Groovy closure gadgets, Spring factory
   gadgets, and `ProcessBuilder` log `java8_deserialization_gadget_class`;
   ordinary class resolution, such as string deserialization, is ignored.
-  The Java 8 era track also hooks Hessian `SerializerFactory.getDeserializer`
-  type resolution and emits `java8_deserialization_hessian_type` for dangerous
-  Hessian wire types such as `org.apache.commons.beanutils.BeanComparator`
-  while ignoring benign DTO/container types.
+  Hessian uses the [shared allocation policy](../detection.md#deserialization-defenses).
   `scripts/acceptance-vulhub-dubbo-java8.sh` provides real Vulhub application
   evidence: Dubbo 2.7.3 CVE-2019-17564 baseline deserializes a
   CommonsCollections6 HTTP Invoker body and creates
@@ -644,11 +641,7 @@ same patch as any new Java-compatible Vulhub replay.
   ignored. The Java 11 Tomcat matrix baseline-tests a crafted high-risk class
   descriptor and protected-block-tests it under the dedicated Java 11
   agent.
-- The Java 11 era track also hooks Hessian
-  `SerializerFactory.getDeserializer` type resolution and emits
-  `java11_deserialization_hessian_type` for dangerous Hessian wire types such
-  as `org.apache.commons.beanutils.BeanComparator`, while ordinary
-  DTO/container types stay quiet.
+- Java 11 applies the [Hessian allocation policy](../detection.md#deserialization-defenses).
 - The Java 11 era track hooks `FileInputStream`, `FileOutputStream`,
   `RandomAccessFile`, `File.renameTo`, and `java.nio.file.Files` content
   read/write, byte-channel open, path-to-path copy, and path-to-path move APIs.
@@ -814,8 +807,7 @@ same patch as any new Java-compatible Vulhub replay.
   `java17_command_execution_exploit_primitive`,
   `java17_command_execution_shell_meta`, `java17_jndi_remote_lookup`,
   `java17_deserialization_gadget_class`, `java17_file_sensitive_read`, and
-  `java17_deserialization_hessian_type` for dangerous Hessian
-  `SerializerFactory.getDeserializer` wire types, and
+  `java17_deserialization_hessian_type` at listed Hessian class allocations, and
   `java17_file_script_write`, `java17_file_generated_plot_script_command` for
   generated plot script command directives,
   `java17_archive_entry_traversal_write` for ZipEntry and SevenZipBinding
@@ -2097,20 +2089,9 @@ same patch as any new Java-compatible Vulhub replay.
   `/jbossmq-httpil/HTTPServerILServlet` CommonsCollections5 object-stream
   baseline on Java 7u221/JBoss AS 4.0.5 and records the same Java 7 runtime
   boundary for current Java 8+ LTS agents.
-- `deserialization_hessian_type` covers Hessian/Burlap-style RPC
-  deserialization when the wire type name resolves to a known dangerous gadget,
-  Java runtime/JNDI class, Spring/XBean application context, or other blocked
-  construction type. This targets older XXL-JOB Hessian-RCE style executor
-  chains without blocking ordinary Hessian requests that only carry benign
-  maps, lists, DTOs, or primitives. The playground and acceptance suite include
-  the Vulhub-shaped XXL-JOB `POST /xxl-job-admin/api` Hessian request with
-  `Content-Type: x-application/hessian`. The Java 8/11/17 backports now carry
-  era-prefixed Hessian type hooks (`java8_deserialization_hessian_type`,
-  `java11_deserialization_hessian_type`, and
-  `java17_deserialization_hessian_type`); the current Vulhub
-  `xxl-job/unacc` 2.2.0 image was probed and records only a non-graduated
-  candidate because its admin/core jars do not contain the old Hessian
-  dependency referenced by the README for pre-2.2.0 deployments.
+- `deserialization_hessian_type` applies at built-in Hessian object allocation.
+  The local verification uses inert records with both codec distributions.
+  The [XXL-JOB entry](vulhub-coverage.md) records the dependency boundary for the Vulhub image.
 - `deserialization_xmlrpc_serialized` covers Apache XML-RPC extension values
   where a `<serializable>` XML element is decoded and passed to
   `ObjectInputStream` during request handling. This targets Apache OFBiz XMLRPC
