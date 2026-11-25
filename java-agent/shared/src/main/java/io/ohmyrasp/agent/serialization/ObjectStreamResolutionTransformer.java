@@ -1,5 +1,6 @@
 package io.ohmyrasp.agent.serialization;
 
+import io.ohmyrasp.agent.jmx.JmxAttributeReadVisitor;
 import io.ohmyrasp.agent.rules.product.activemq.OpenWireThrowableVisitor;
 import java.lang.instrument.ClassFileTransformer;
 import java.security.ProtectionDomain;
@@ -9,7 +10,7 @@ import org.objectweb.asm.ClassWriter;
 import org.objectweb.asm.MethodVisitor;
 import org.objectweb.asm.Opcodes;
 
-/** Backport transformer for JDK stream resolution and OpenWire exception construction. */
+/** Backport transformer for JDK stream resolution, JMX attribute reads and OpenWire exception construction. */
 public abstract class ObjectStreamResolutionTransformer implements ClassFileTransformer {
   private static final String STREAM = "java/io/ObjectInputStream";
   private final String hooks;
@@ -19,21 +20,23 @@ public abstract class ObjectStreamResolutionTransformer implements ClassFileTran
   @Override public final byte[] transform(ClassLoader loader, String name, Class<?> redefined,
       ProtectionDomain domain, byte[] bytes) {
     boolean openWire = OpenWireThrowableVisitor.matches(name);
-    if (bytes == null || (!STREAM.equals(name) && !openWire)) return null;
+    boolean jmxAttribute = JmxAttributeReadVisitor.OWNER.equals(name);
+    if (bytes == null || (!STREAM.equals(name) && !openWire && !jmxAttribute)) return null;
     try {
-      return weave(bytes, openWire);
+      return weave(bytes, openWire, jmxAttribute);
     } catch (RuntimeException error) {
       if (Boolean.getBoolean("ohmyrasp.debug")) System.err.println("[OHMYRASP] deserialization transform failed for " + name + ": " + error);
       return null;
     }
   }
 
-  private byte[] weave(byte[] bytes, final boolean openWire) {
+  private byte[] weave(byte[] bytes, final boolean openWire, final boolean jmxAttribute) {
     ClassReader reader = new ClassReader(bytes);
     ClassWriter writer = new ClassWriter(reader, ClassWriter.COMPUTE_MAXS);
     reader.accept(new ClassVisitor(Opcodes.ASM9, writer) {
       @Override public MethodVisitor visitMethod(int access, String name, String desc, String signature, String[] exceptions) {
         MethodVisitor original = super.visitMethod(access, name, desc, signature, exceptions);
+        if (jmxAttribute) return JmxAttributeReadVisitor.wrap(original, access, name, desc, hooks);
         if (openWire) return OpenWireThrowableVisitor.wrap(original, access, name, desc, hooks);
         if (!"readNonProxyDesc".equals(name) && !"readProxyDesc".equals(name)) return original;
         return new MethodVisitor(Opcodes.ASM9, original) {

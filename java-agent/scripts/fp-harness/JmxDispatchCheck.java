@@ -76,6 +76,32 @@ public class JmxDispatchCheck {
     }
   }
 
+  private static void checkAttributeRead(String track, String mode) throws Exception {
+    for (Object value : new Object[]{null, "weekly", Integer.valueOf(7)}) {
+      BadAttributeValueExpException original = new BadAttributeValueExpException(value);
+      java.io.ByteArrayOutputStream buffer = new java.io.ByteArrayOutputStream();
+      try (java.io.ObjectOutputStream out = new java.io.ObjectOutputStream(buffer)) {
+        out.writeObject(original);
+      }
+      try (java.io.ObjectInputStream in = new java.io.ObjectInputStream(new java.io.ByteArrayInputStream(buffer.toByteArray()))) {
+        Object restored = in.readObject();
+        if (restored.getClass() != original.getClass() || !original.toString().equals(restored.toString()))
+          throw new AssertionError("JMX exception changed during round trip");
+      }
+    }
+    Class<?> hooks = Class.forName("main".equals(track) ? "io.ohmyrasp.agent.hook.OhMyRaspHooks"
+        : "io.ohmyrasp.agent.java" + track + ".Java" + track + "RaspHooks");
+    java.lang.reflect.Method select = hooks.getMethod("jmxAttributeDisplayReceiver", Object.class);
+    Selection report = new Selection();
+    Object receiver = select.invoke(null, report);
+    if ("block".equals(mode)) {
+      String identity = System.identityHashCode(report) + "@" + report.getClass().getName();
+      if (!identity.equals(receiver)) throw new AssertionError("missing identity display");
+    } else if (report != receiver) throw new AssertionError("monitor changed display receiver");
+    Integer count = Integer.valueOf(7);
+    if (select.invoke(null, count) != count || report.rendered != 0) throw new AssertionError("unexpected conversion");
+  }
+
   public static void main(String[] args) throws Exception {
     String track = args[0], mode = args[1];
     boolean observe = "observe".equals(mode);
@@ -92,6 +118,7 @@ public class JmxDispatchCheck {
     Selection selection = new Selection();
     String source = "https://catalog.example.invalid/config.xml";
     try (HttpTransportCheck.Scope scope = new HttpTransportCheck.Scope(track, "weekly")) {
+      checkAttributeRead(track, mode);
       boolean denied = false;
       try {
         server.invoke(name, "updateSelection", new Object[]{selection}, new String[]{"java.lang.Object"});

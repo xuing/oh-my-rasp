@@ -37,8 +37,7 @@ public final class StreamTypeNames {
           "org.apache.commons.collections.functors.InvokerTransformer",
           "org.apache.commons.collections4.functors.InvokerTransformer",
           "org.codehaus.groovy.runtime.ConvertedClosure",
-          "org.springframework.beans.factory.ObjectFactory",
-          "javax.management.BadAttributeValueExpException");
+          "org.springframework.beans.factory.ObjectFactory");
 
   public static final Set<String> CONFIG_CONTEXT_TYPES =
       names(
@@ -48,7 +47,11 @@ public final class StreamTypeNames {
           "com.bea.core.repackaged.springframework.context.support.FileSystemXmlApplicationContext",
           "com.bea.core.repackaged.springframework.context.support.ClassPathXmlApplicationContext");
 
-  public static boolean explicitlyListed(String name) { return EXPLICIT_TYPES.contains(name); }
+  public static boolean explicitlyListedForNativeRead(String name) { return EXPLICIT_TYPES.contains(name); }
+
+  public static boolean explicitlyListed(String name) {
+    return explicitlyListedForNativeRead(name) || "javax.management.BadAttributeValueExpException".equals(name);
+  }
 
   private static final Pattern DESERIALIZATION_GADGET_CLASS =
       Pattern.compile(

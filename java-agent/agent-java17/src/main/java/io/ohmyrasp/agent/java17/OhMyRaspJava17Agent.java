@@ -190,6 +190,7 @@ public final class OhMyRaspJava17Agent {
           || io.ohmyrasp.agent.rules.product.spring.SpringProcessVisitor.matches(internalName)
           || io.ohmyrasp.agent.loading.CodebaseVisitor.RMI_ROUTER.equals(internalName)
           || io.ohmyrasp.agent.loading.CodebaseVisitor.directoryResource(internalName)
+          || io.ohmyrasp.agent.jmx.JmxAttributeReadVisitor.OWNER.equals(internalName)
           || Lz4TransportVisitor.OWNER.equals(internalName)
           || io.ohmyrasp.agent.naming.JndiLookupVisitor.URL_CONTEXT.equals(internalName)
           || io.ohmyrasp.agent.naming.JndiLookupVisitor.LOGIN_MODULE.equals(internalName)

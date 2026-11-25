@@ -2,6 +2,7 @@
 """Check resolved JMX dispatch and preservation of application arguments in the packaged agent."""
 import argparse
 import json
+import os
 from pathlib import Path
 import subprocess
 import tempfile
@@ -19,7 +20,9 @@ def main():
     write = "jmx_file_write" if track == "main" else f"java{track}_jmx_script_file_write"
     source = Path(__file__).parent
     with tempfile.TemporaryDirectory(prefix="jmx-dispatch-") as work:
-        subprocess.run(["javac", "-d", work, source / "HttpTransportCheck.java", source / "JmxDispatchCheck.java"], check=True)
+        subprocess.run(["javac", "-cp", str(jar), "-d", work, source / "HttpTransportCheck.java",
+                        source / "JmxDispatchCheck.java", source / "JmxAttributeLayoutCheck.java"], check=True)
+        subprocess.run(["java", "-cp", os.pathsep.join((work, str(jar))), "JmxAttributeLayoutCheck", track], check=True)
         for mode in ("block", "monitor"):
             log = Path(work) / f"{mode}.jsonl"
             subprocess.run(["java", "-Xverify:all", f"-javaagent:{jar}", "-Dohmyrasp.standalone=true",

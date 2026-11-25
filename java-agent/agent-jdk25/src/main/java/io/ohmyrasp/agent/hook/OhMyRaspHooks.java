@@ -1377,7 +1377,13 @@ public final class OhMyRaspHooks {
     }
   }
 
-  public static boolean enforceElasticLz4Bounds() {
+  public static Object jmxAttributeDisplayReceiver(Object value) {
+    return io.ohmyrasp.agent.jmx.JmxAttributeDisplay.receiver(value, runtimeRepairEnabled());
+  }
+
+  public static boolean enforceElasticLz4Bounds() { return runtimeRepairEnabled(); }
+
+  private static boolean runtimeRepairEnabled() {
     return AgentRuntime.get().mode() == DetectionMode.BLOCK || blockingEnabled();
   }
 

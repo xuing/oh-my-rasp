@@ -343,6 +343,7 @@ public final class FpReport {
         Case.of("org.apache.commons.collections4.functors.ChainedTransformer"),
         Case.of("org.apache.commons.collections4.functors.ConstantTransformer"),
         Case.of("org.apache.commons.collections4.functors.EqualPredicate"),
+        Case.of("javax.management.BadAttributeValueExpException"),
         Case.of("org.codehaus.groovy.runtime.GStringImpl"),
         Case.of("org.codehaus.groovy.runtime.NumberAwareComparator"),
         Case.of("org.apache.commons.beanutils.BasicDynaBean"),

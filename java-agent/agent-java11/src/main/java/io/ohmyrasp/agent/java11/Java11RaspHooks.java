@@ -4095,6 +4095,10 @@ public final class Java11RaspHooks {
     return builder.toString();
   }
 
+  public static Object jmxAttributeDisplayReceiver(Object value) {
+    return io.ohmyrasp.agent.jmx.JmxAttributeDisplay.receiver(value, shouldBlock());
+  }
+
   public static boolean enforceElasticLz4Bounds() { return shouldBlock(); }
 
   private static boolean shouldBlock() {

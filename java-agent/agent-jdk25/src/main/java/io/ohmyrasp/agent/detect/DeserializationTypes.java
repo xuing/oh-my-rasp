@@ -25,13 +25,14 @@ final class DeserializationTypes {
   private static final Set<String> POLYMORPHIC_CONSTRUCTION_BLACKLIST =
       Set.of("org.h2.jdbc.JdbcConnection");
 
-  private static boolean listedClass(String name) {
-    return StreamTypeNames.explicitlyListed(name) || "io.ohmyrasp.playground.EvilSerialized".equals(name);
+  private static boolean listedClass(String name, boolean nativeStream) {
+    return (nativeStream ? StreamTypeNames.explicitlyListedForNativeRead(name) : StreamTypeNames.explicitlyListed(name))
+        || "io.ohmyrasp.playground.EvilSerialized".equals(name);
   }
 
   static int xmlGadgetClassPriority(String className) {
     if (POLYMORPHIC_CONSTRUCTION_BLACKLIST.contains(className)
-        || listedClass(className)) {
+        || listedClass(className, false)) {
       return 0;
     }
     if (deserializationGadgetType(className)) {
@@ -53,7 +54,7 @@ final class DeserializationTypes {
         || className.startsWith("org.apache.commons.collections4.functors.")) {
       return nativeStream ? StreamTypeNames.listed(className) : StreamTypeNames.listedForConstruction(className);
     }
-    if (listedClass(className)) {
+    if (listedClass(className, nativeStream)) {
       return true;
     }
     if (deserializationGadgetType(className)) {
