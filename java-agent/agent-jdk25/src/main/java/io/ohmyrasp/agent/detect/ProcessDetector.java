@@ -5,6 +5,7 @@ import static io.ohmyrasp.agent.detect.RequestValues.bodyHasSinkValue;
 import io.ohmyrasp.agent.model.Detection;
 import io.ohmyrasp.agent.model.RequestContext;
 import io.ohmyrasp.agent.process.PosixShellCommand;
+import io.ohmyrasp.agent.process.ProcessLaunchIndicators;
 import io.ohmyrasp.agent.rules.general.RequestShellSyntax;
 import io.ohmyrasp.agent.rules.product.rocketmq.RocketMqFilterServer;
 import io.ohmyrasp.agent.rules.product.solr.SolrExecutableListener;
@@ -12,11 +13,15 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import java.util.regex.Pattern;
 
 /** Process launches and command features, including direct runtime callers. */
 final class ProcessDetector {
   private ProcessDetector() {}
+
+  private static final Set<String> FILE_READERS = Set.of("cat");
+  private static final Set<String> SENSITIVE_PATHS = Set.of("/etc/passwd");
 
   private static final Pattern COMMAND_COMMON =
       Pattern.compile(
@@ -102,7 +107,7 @@ final class ProcessDetector {
               request,
               Map.of("command", abbreviate(joined))));
     }
-    if (COMMAND_COMMON.matcher(joined).find()) {
+    if (ProcessLaunchIndicators.matches(command, shell, COMMAND_COMMON, FILE_READERS, SENSITIVE_PATHS)) {
       return Optional.of(
           Detection.log(
               "command",

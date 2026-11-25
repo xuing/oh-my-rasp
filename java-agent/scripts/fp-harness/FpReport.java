@@ -247,6 +247,8 @@ public final class FpReport {
         Case.of("curl http://notdnslog.cn/report"),
         Case.of("curl https://reports.example.test/guide/dnslog.cn/a"),
         Case.of("curl -o probe.dnslog.cn https://reports.example.test/weekly"),
+        Case.of("printf %s cat /etc/passwd"),
+        Case.of("cat /etc/passwd.example"),
         Case.of("git status"),
         Case.of("/usr/bin/convert input.png output.jpg"),
         Case.of("ffmpeg -i input.mp4 -vcodec copy output.mp4"),

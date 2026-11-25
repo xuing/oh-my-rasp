@@ -16,6 +16,7 @@ import io.ohmyrasp.agent.http.ServletQueryParameters;
 import io.ohmyrasp.agent.net.HttpTransportObservation;
 import io.ohmyrasp.agent.net.NetworkHost;
 import io.ohmyrasp.agent.process.PosixShellCommand;
+import io.ohmyrasp.agent.process.ProcessLaunchIndicators;
 import io.ohmyrasp.agent.process.ShellControlSource;
 import io.ohmyrasp.agent.rules.product.solr.SolrExecutableListener;
 import io.ohmyrasp.agent.sql.SqlStatement;
@@ -50,13 +51,12 @@ public final class Java17RaspHooks {
       Pattern.compile("[;&|`$<>]|\\$\\{?IFS\\}?");
   private static final Pattern EXPLOIT_COMMAND =
       Pattern.compile(
-          "(?is)(?:cat\\s+/etc/(?:passwd|shadow)|/proc/self/environ|bash\\s+-i\\b|/dev/tcp/|nc\\b.{0,60}\\s-e\\s+/bin/(?:ba)?sh|curl\\b.{0,160}\\|\\s*(?:sh|bash)|wget\\b.{0,160}\\|\\s*(?:sh|bash)|\\{echo,.{10,500}\\}\\|\\{base64,-d\\})");
+          "(?is)(?:cat\\s+/etc/(?:passwd|shadow)|/proc/self/environ|bash\\s+-i\\b|/dev/tcp/|nc\\b.{0,60}\\s-e\\s+/bin/(?:ba)?sh|curl\\b.{0,160}\\|\\s*(?:sh|bash)|wget\\b.{0,160}\\|\\s*(?:sh|bash)|\\{echo,.{10,500}\\}\\|\\{base64,-d\\})|(?:^|\\s)(?:cat|more|less|head|tail)\\s+/(?:etc/(?:passwd|shadow)|proc/self/environ)(?:\\s|$)");
   private static final byte[] SHIRO_DEFAULT_REMEMBERME_KEY =
       decodeBase64OrEmpty("kPH+bIxk5D2deZiIxcaaaA==");
   private static final int MAX_DEFAULT_CRYPTO_COOKIE_LENGTH = 12000;
-  private static final Pattern SENSITIVE_DIRECT_READ =
-      Pattern.compile(
-          "(?is)(?:^|\\s)(?:cat|more|less|head|tail)\\s+/(?:etc/(?:passwd|shadow)|proc/self/environ)(?:\\s|$)");
+  private static final List<String> FILE_READERS = java.util.Arrays.asList("cat", "more", "less", "head", "tail");
+  private static final List<String> SENSITIVE_PATHS = java.util.Arrays.asList("/etc/passwd", "/etc/shadow", "/proc/self/environ");
   private static final Pattern REMOTE_JNDI_LOOKUP =
       Pattern.compile("(?is)^\\s*(ldap|ldaps|rmi|iiop|corbaname|corbaloc)://[^\\s\\u0000]{1,2048}");
   private static final Pattern JAAS_REMOTE_PROVIDER =
@@ -1168,8 +1168,6 @@ public final class Java17RaspHooks {
     }
     String executable = command[0] == null ? "" : command[0].trim();
     boolean shell = SHELL.matcher(executable).matches();
-    boolean exploit = EXPLOIT_COMMAND.matcher(joined).find();
-    boolean sensitiveDirectRead = SENSITIVE_DIRECT_READ.matcher(joined).find();
     String firstArgument = command.length > 1 ? command[1] : "";
     if (shell && isSchedulerScriptExecutionStack(stack) && isScriptFilePath(firstArgument)) {
       return new Finding(
@@ -1179,7 +1177,9 @@ public final class Java17RaspHooks {
           "command",
           joined, "scheduled_script");
     }
-    if (exploit || sensitiveDirectRead) {
+    List<String> argv = java.util.Arrays.asList(command);
+    PosixShellCommand posix = PosixShellCommand.from(argv);
+    if (ProcessLaunchIndicators.matches(argv, posix, EXPLOIT_COMMAND, FILE_READERS, SENSITIVE_PATHS)) {
       return new Finding(
           "java17_command_execution_exploit_primitive",
           95,
@@ -1187,7 +1187,6 @@ public final class Java17RaspHooks {
           "command",
           joined, "command_arguments");
     }
-    PosixShellCommand posix = PosixShellCommand.from(java.util.Arrays.asList(command));
     if (posix != null) {
       RequestSnapshot request = CURRENT_REQUEST.get();
       ShellControlSource source = ShellControlSource.classify(

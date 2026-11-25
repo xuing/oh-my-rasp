@@ -62,6 +62,11 @@ public class ProcessLaunchCheck {
     try {
       for (int n = 0; n < rounds; n++) {
         check(track, mode, "ordinary", "weekly", false, ProcessLaunchCheck::ordinary);
+        String example = "example: cat /etc/passwd";
+        check(track, mode, "print-command-text", "weekly", false,
+            () -> exited(new ProcessBuilder("/usr/bin/printf", "%s", example).start(), example));
+        check(track, mode, "print-positional-data", "weekly", false, () -> exited(
+            new ProcessBuilder("/bin/sh", "-c", "printf '%s' \"$1\"", "report", example).start(), example));
         check(track, mode, "spelling-report", "weekly", false, SpellingReport::format);
         check(track, mode, "empty-runtime", PROGRAM, false, () -> {
           try {

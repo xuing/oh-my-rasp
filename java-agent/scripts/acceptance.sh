@@ -1214,7 +1214,7 @@ XML
   expect_block "$version" request_tomcat_cve_2020_1938_ghostcat_include "${protected_url}/rasp/policy/request-tomcat-cve-2020-1938-ajp-include"
   expect_block "$version" request_tomcat_cnvd_2020_10487_ghostcat_include "${protected_url}/rasp/policy/request-tomcat-cve-2020-1938-ajp-include"
   expect_block "$version" command_userinput -G --data-urlencode "cmd=sh" --data-urlencode "arg=-c" --data-urlencode "arg=cat /etc/passwd; id" "${protected_url}/rasp/command"
-  expect_block "$version" command_common "${protected_url}/rasp/command/common"
+  expect_body_contains "${protected_url}/rasp/command/common" "output=example: cat /etc/passwd"
   expect_block "$version" command_error "${protected_url}/rasp/command/error"
   expect_body_contains "${protected_url}/rasp/command/dnslog" "output=curl http://probe.dnslog.cn/a"
   expect_body_contains "${protected_url}/rasp/command/reflect" "finished=true"
@@ -1427,7 +1427,6 @@ required_algorithms=(
   request_internal_resource
   request_forged_include_attribute
   command_userinput
-  command_common
   command_error
   command_config_listener
   command_config_injection

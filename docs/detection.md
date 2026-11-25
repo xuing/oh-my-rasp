@@ -229,6 +229,11 @@ alone as an explicitly selected `command_reflect` policy. An ordinary report job
 invoked by a reflective framework has its own caller at the process API.
 [JDK process builder](https://docs.oracle.com/en/java/javase/21/docs/api/java.base/java/lang/ProcessBuilder.html)
 
+For common process indicators the agent distinguishes direct tool operands from
+inline shell source. A fixed POSIX shell program can take report text in a
+positional parameter. The command indicator check reads the program argument and
+keeps those later arguments out of its source scan.
+
 For a direct network tool launch, the primary agent checks recognized destination
 operands against its callback-domain policy. The event carries the normalized host.
 This evidence describes the requested destination at process start. Network delivery

@@ -34,10 +34,8 @@ public final class PosixShellCommand {
     }
   }
 
-  public static PosixShellCommand from(List<String> argv) {
-    if (argv == null || argv.isEmpty()) {
-      return null;
-    }
+  static int executableIndex(List<String> argv) {
+    if (argv == null || argv.isEmpty()) return 0;
     int i = 0;
     if ("env".equals(basename(argv.get(i)))) {
       i++;
@@ -55,6 +53,14 @@ public final class PosixShellCommand {
         }
       }
     }
+    return i;
+  }
+
+  public static PosixShellCommand from(List<String> argv) {
+    if (argv == null || argv.isEmpty()) {
+      return null;
+    }
+    int i = executableIndex(argv);
     if (i >= argv.size()) {
       return null;
     }

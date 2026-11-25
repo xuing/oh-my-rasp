@@ -434,6 +434,15 @@ final class DetectorEngineTest {
   }
 
   @Test
+  void checksFileReaderOperandsAtLaunch() {
+    assertAlgorithm(engine.detectCommand(List.of("/bin/cat", "--", "/etc/passwd"), request()), "command_common");
+    assertTrue(engine.detectCommand(List.of("cat", "/etc/passwd.example"), request()).isEmpty());
+    assertTrue(engine.detectCommand(List.of("cat", "--help", "/etc/passwd"), request()).isEmpty());
+    assertAlgorithm(engine.detectCommand(List.of("/usr/bin/env", "LC_ALL=C", "sh", "-c", "cat /etc/passwd"),
+        request()), "command_common");
+  }
+
+  @Test
   void detectsCommonDangerousCommand() {
     var result = engine.detectCommand(List.of("bash", "-i", ">&", "/dev/tcp/127.0.0.1/4444"), request());
 
