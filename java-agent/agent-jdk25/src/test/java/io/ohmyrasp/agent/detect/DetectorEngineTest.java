@@ -1685,14 +1685,14 @@ final class DetectorEngineTest {
 
   @Test
   void detectsRenameWebshell() {
-    var result = engine.detectRename("avatar.jpg", "shell.jsp", request());
+    var result = HostFileMutationDetector.detectRename("avatar.jpg", "shell.jsp", request());
 
     assertAlgorithm(result, "rename_webshell");
   }
 
   @Test
   void detectsLinkWebshell() {
-    var result = engine.detectLink("avatar.jpg", "shell.jsp", "hard", request());
+    var result = HostFileMutationDetector.detectLink("avatar.jpg", "shell.jsp", "hard", request());
 
     assertAlgorithm(result, "link_webshell");
   }
@@ -2763,7 +2763,7 @@ final class DetectorEngineTest {
   @Test
   void detectsWebshellFilePutContents() {
     var result =
-        engine.detectWebshellFileWrite(
+        HostFileMutationDetector.detectWebshellFileWrite(
             "shell.jsp", "<% out.println(1); %>", request(Map.of("file", List.of("shell.jsp"))));
 
     assertAlgorithm(result, "webshell_file_put_contents");

@@ -1076,7 +1076,7 @@ public final class OhMyRaspHooks {
       return;
     }
     try {
-      emit(DETECTORS.detectRename(source, destination, currentRequest()));
+      emit(HostFileMutationDetector.detectRename(source, destination, currentRequest()));
     } catch (OhMyRaspBlockException blocked) {
       throw blocked;
     } catch (Throwable throwable) {
@@ -1089,7 +1089,7 @@ public final class OhMyRaspHooks {
       return;
     }
     try {
-      emit(DETECTORS.detectLink(source, destination, type, currentRequest()));
+      emit(HostFileMutationDetector.detectLink(source, destination, type, currentRequest()));
     } catch (OhMyRaspBlockException blocked) {
       throw blocked;
     } catch (Throwable throwable) {
@@ -1712,7 +1712,7 @@ public final class OhMyRaspHooks {
       return;
     }
     try {
-      emit(DETECTORS.detectWebshellFileWrite(path, content, currentRequest()));
+      emit(HostFileMutationDetector.detectWebshellFileWrite(path, content, currentRequest()));
     } catch (OhMyRaspBlockException blocked) {
       throw blocked;
     } catch (Throwable throwable) {

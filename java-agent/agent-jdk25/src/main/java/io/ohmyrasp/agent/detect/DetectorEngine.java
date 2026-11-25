@@ -38,9 +38,6 @@ public final class DetectorEngine {
       Pattern.compile(
           "(?is).+\\.(?:aspx?|jspx?|php[345]?|phar|phtml|sh|py|pl|rb|so|dll|dylib|ashx|cer|asa)(?:[;/\\\\].*|\\.*$)");
 
-  private static final Pattern CLEAN_FILE =
-      Pattern.compile("(?is).+\\.(?:jpg|jpeg|png|gif|bmp|txt|rar|zip)$");
-
   private static final Pattern SENSITIVE_CONTROL_PATH =
       Pattern.compile(
           "(?i)(?:^|/)(?:auth|admin|user|users|role|roles|permission|permissions|ops|manage|management|console)(?:/|$)");
@@ -441,40 +438,6 @@ public final class DetectorEngine {
     return Optional.empty();
   }
 
-  public Optional<Detection> detectRename(String source, String destination, RequestContext request) {
-    if (CLEAN_FILE.matcher(normalizePath(source)).matches()
-        && HostFileMutationDetector.isScriptTarget(normalizePath(destination))) {
-      return Optional.of(
-          Detection.log(
-              "rename",
-              "rename_webshell",
-              90,
-              "Rename converted a non-script file into a server-side script",
-              request,
-              Map.of("source", normalizePath(source), "destination", normalizePath(destination))));
-    }
-    return Optional.empty();
-  }
-
-  public Optional<Detection> detectLink(
-      String source, String destination, String type, RequestContext request) {
-    if (CLEAN_FILE.matcher(normalizePath(source)).matches()
-        && HostFileMutationDetector.isScriptTarget(normalizePath(destination))) {
-      return Optional.of(
-          Detection.log(
-              "link",
-              "link_webshell",
-              90,
-              "Link converted a non-script file into a server-side script",
-              request,
-              Map.of(
-                  "source", normalizePath(source),
-                  "destination", normalizePath(destination),
-                  "type", String.valueOf(type))));
-    }
-    return Optional.empty();
-  }
-
   public Optional<Detection> detectJaasConfig(
       String config, String mechanism, RequestContext request) {
     // Compatibility for declaration-only callers. Runtime policy uses the login module lookup.
@@ -744,23 +707,6 @@ public final class DetectorEngine {
               "Dynamic code execution is controlled by request input",
               request,
               Map.of("function", String.valueOf(function), "code", abbreviate(code))));
-    }
-    return Optional.empty();
-  }
-
-  public Optional<Detection> detectWebshellFileWrite(
-      String path, String content, RequestContext request) {
-    String normalized = normalizePath(path);
-    if (HostFileMutationDetector.isScriptTarget(normalized)
-        && (request.hasParameterIn(path) || request.hasParameterIn(content))) {
-      return Optional.of(
-          Detection.log(
-              "webshell",
-              "webshell_file_put_contents",
-              95,
-              "Request-controlled content is written to a server-side script",
-              request,
-              Map.of("path", normalized, "content", abbreviate(content))));
     }
     return Optional.empty();
   }

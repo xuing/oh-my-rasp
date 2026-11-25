@@ -34,6 +34,9 @@ public final class HostFileMutationDetector {
   private static final Pattern SCRIPT_FILE =
       Pattern.compile("(?is).+\\.(?:aspx?|jspx?|php[345]?|phar|phtml|sh|py|pl|rb|so|dll|dylib|ashx|cer|asa)\\.?$");
 
+  private static final Pattern CLEAN_FILE =
+      Pattern.compile("(?is).+\\.(?:jpg|jpeg|png|gif|bmp|txt|rar|zip)$");
+
   public static Optional<Detection> detectJmxFileWrite(String path, JmxWriteScope scope,
       String api, RequestContext request) {
     if (!request.active() || scope == null) return Optional.empty();
@@ -343,4 +346,55 @@ public final class HostFileMutationDetector {
   static boolean isScriptTarget(String normalized) { return SCRIPT_FILE.matcher(normalized).matches(); }
 
   static boolean containsGeneratedOperation(String value) { return GENERATED_SCRIPT_EXEC_PRIMITIVE.matcher(value).find(); }
+
+  public static Optional<Detection> detectRename(String source, String destination, RequestContext request) {
+    if (CLEAN_FILE.matcher(normalizePath(source)).matches()
+        && HostFileMutationDetector.isScriptTarget(normalizePath(destination))) {
+      return Optional.of(
+          Detection.log(
+              "rename",
+              "rename_webshell",
+              90,
+              "Rename converted a non-script file into a server-side script",
+              request,
+              Map.of("source", normalizePath(source), "destination", normalizePath(destination))));
+    }
+    return Optional.empty();
+  }
+
+  public static Optional<Detection> detectLink(
+      String source, String destination, String type, RequestContext request) {
+    if (CLEAN_FILE.matcher(normalizePath(source)).matches()
+        && HostFileMutationDetector.isScriptTarget(normalizePath(destination))) {
+      return Optional.of(
+          Detection.log(
+              "link",
+              "link_webshell",
+              90,
+              "Link converted a non-script file into a server-side script",
+              request,
+              Map.of(
+                  "source", normalizePath(source),
+                  "destination", normalizePath(destination),
+                  "type", String.valueOf(type))));
+    }
+    return Optional.empty();
+  }
+
+  public static Optional<Detection> detectWebshellFileWrite(
+      String path, String content, RequestContext request) {
+    String normalized = normalizePath(path);
+    if (HostFileMutationDetector.isScriptTarget(normalized)
+        && (request.hasParameterIn(path) || request.hasParameterIn(content))) {
+      return Optional.of(
+          Detection.log(
+              "webshell",
+              "webshell_file_put_contents",
+              95,
+              "Request-controlled content is written to a server-side script",
+              request,
+              Map.of("path", normalized, "content", abbreviate(content))));
+    }
+    return Optional.empty();
+  }
 }
