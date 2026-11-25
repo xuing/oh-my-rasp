@@ -52,7 +52,7 @@ OhMyRASP 适合运行在 JDK 8、11、17、21 或 25 上的自托管 Java 服务
 | 维度 | 当前状态 | 依据 |
 |---|---|---|
 | 插桩调用点家族 | 30 个 ASM hook 模块（`agent-jdk25`）；回溯版（`java8` / `java11` / `java17`）各 24 个 ASM transformer | [DETECTION-COVERAGE.md](java-agent/docs/DETECTION-COVERAGE.md) |
-| 检测引擎 | 59 项检测能力，验收脚本中有 44 个算法签名断言 | [DETECTION-COVERAGE.md](java-agent/docs/DETECTION-COVERAGE.md) |
+| 检测引擎 | 60 项检测能力，验收脚本中有 44 个算法签名断言 | [DETECTION-COVERAGE.md](java-agent/docs/DETECTION-COVERAGE.md) |
 | 漏洞回放矩阵 | 136 个场景，覆盖 53 个 [Vulhub](https://github.com/vulhub/vulhub) 组件根（追踪 130 个 CVE） | [vulhub-coverage.md](docs/development/vulhub-coverage.md) |
 | 正常语料误报率 | 26 类共 194 条真实构造正常输入，`0 / 194` 误报 | [FALSE-POSITIVE-REPORT.md](java-agent/docs/FALSE-POSITIVE-REPORT.md) |
 | 运行时支持 | JDK 8、11、17 各有独立构建，21 和 25 共用主 Agent；兼容 `javax.servlet` 与 `jakarta.servlet` | [docs/agent.md](docs/agent.md) |

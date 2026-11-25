@@ -181,7 +181,7 @@ public final class FpReport {
 
     StringBuilder out = new StringBuilder();
     out.append("# OhMyRASP False-Positive Report\n\n");
-    out.append("> **Generated** by `scripts/FpReport.java` against the real `DetectorEngine`.\n");
+    out.append("> **Generated** by `scripts/FpReport.java` against the real detector classes.\n");
     out.append("> Re-run via `scripts/run-fp-report.sh` after changing detectors.\n\n");
     out.append("## Method\n\n");
     out.append("A curated corpus of **").append(totalCases).append("** benign-but-plausible inputs across **")

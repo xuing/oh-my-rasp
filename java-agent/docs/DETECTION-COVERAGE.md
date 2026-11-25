@@ -9,7 +9,7 @@
 | Metric | Count |
 |--------|------:|
 | Hook families (instrumentation points) | 30 |
-| Detector capabilities (public `detect*` entry points) | 59 |
+| Detector capabilities (public `detect*` entry points) | 60 |
 | Algorithm signatures asserted in acceptance scripts | 44 |
 | End-to-end vulnerability acceptance scenarios | 136 |
 | JDK lines exercised | 6 |
@@ -54,7 +54,7 @@ rewrites a family of risky call sites and routes them to a detector class.
 
 ## Detector capabilities
 
-The detector classes in `agent-jdk25/src/main/java/io/ohmyrasp/agent/detect/` expose **59**
+The detector classes in `agent-jdk25/src/main/java/io/ohmyrasp/agent/detect/` expose **60**
 distinct public `detect*` entry points. Hooks call the class that owns each one;
 `DetectorEngine.detectRequest` runs the request-level detectors in a fixed first-match order.
 
@@ -71,6 +71,7 @@ distinct public `detect*` entry points. Hooks call the class that owns each one;
 | `JdbcDetector` | `detectJdbcUrl` · `detectSql` · `detectSqlException` · `detectSqlRegex` |
 | `NetworkDestinationDetector` | `detectDns` · `detectUrl` · `detectXmlAttachmentReference` · `detectXxeEntity` |
 | `ProcessDetector` | `detectCommand` · `detectWebshellCommand` · `detectWebshellLdPreload` |
+| `RemoteJobDetector` | `detectRemoteJob` |
 | `RemoteResourceDetector` | `detectClassLoaderUrl` · `detectJaasConfig` · `detectJmxMBeanInvoke` · `detectJndi` · `detectSpringConfigLocation` |
 | `ResponseContentDetector` | `detectMarkupParameter` · `detectResponseDataLeak` · `detectXssEcho` |
 

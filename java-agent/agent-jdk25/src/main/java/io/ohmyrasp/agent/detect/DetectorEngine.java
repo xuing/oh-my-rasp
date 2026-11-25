@@ -786,4 +786,22 @@ public final class DetectorEngine {
   private static String archivePath(String path) {
     return path == null ? "" : path.trim().replace('\\', '/');
   }
+
+  static {
+    // These rules were part of this class and initialised with it, when the hooks first create the engine.
+    // Keep that: a detector class that first initialises inside an instrumented JDK call (a DNS lookup, a
+    // Base64 decode) would compile its patterns on the application's thread, in the middle of that call.
+    for (Class<?> family : List.of(
+        Base64DecodeDetector.class, CodeExecutionDetector.class, CredentialDetector.class,
+        DeserializationDetector.class, FileAccessDetector.class, FilePaths.class, FileUploadDetector.class,
+        HostFileMutationDetector.class, JdbcDetector.class, NetworkDestinationDetector.class,
+        ProcessDetector.class, RemoteJobDetector.class, RemoteResourceDetector.class,
+        ResponseContentDetector.class)) {
+      try {
+        java.lang.invoke.MethodHandles.lookup().ensureInitialized(family);
+      } catch (IllegalAccessException e) {
+        throw new ExceptionInInitializerError(e);
+      }
+    }
+  }
 }

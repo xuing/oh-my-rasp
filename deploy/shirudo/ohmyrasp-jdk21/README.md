@@ -2,7 +2,7 @@
 
 > **Generated** by `deploy/shirudo/gen-readmes.py` from `java-agent/` sources.
 
-The `ohmyrasp-jdk21` package installs the `ohmyrasp-jdk21` Java upatch: a standalone, daemonless OhMyRASP runtime self-protection agent targeting **Java 21 and Java 25** JVMs (classfile version `<= 65`). It registers **30 ASM hook modules** and **59 detector capabilities**, backed by **136** end-to-end Vulhub acceptance scenarios.
+The `ohmyrasp-jdk21` package installs the `ohmyrasp-jdk21` Java upatch: a standalone, daemonless OhMyRASP runtime self-protection agent targeting **Java 21 and Java 25** JVMs (classfile version `<= 65`). It registers **30 ASM hook modules** and **60 detector capabilities**, backed by **136** end-to-end Vulhub acceptance scenarios.
 
 ## Security Coverage
 
@@ -18,7 +18,7 @@ The `ohmyrasp-jdk21` package installs the `ohmyrasp-jdk21` Java upatch: a standa
 | **Expression Engines, Scripting, ClassLoading & JMX** | Inspects Nashorn/Rhino `ScriptEngine`, JEXL, Jakarta/JSP EL, `JavacTool`/Janino compilation, remote `URLClassLoader`/`RMIClassLoader` codebases, and mutating JMX MBean invocations. | `ClassLoaderHookModule`, `ExpressionHookModule`, `JavaCompilationHookModule`, `JmxHookModule`, `SpringConfigHookModule` |
 | **Other / Newly Added** | Additional ASM instrumentation hooks detected in agent sources. | `SparkSubmitHookModule`, `YarnSubmitHookModule` |
 
-<details><summary>All detector capabilities (59)</summary>
+<details><summary>All detector capabilities (60)</summary>
 
 - `detectArchiveExtraction`
 - `detectArgumentFileExpansion`
@@ -55,6 +55,7 @@ The `ohmyrasp-jdk21` package installs the `ohmyrasp-jdk21` Java upatch: a standa
 - `detectOpenWireThrowable`
 - `detectPolymorphicType`
 - `detectProtocolClassInstantiation`
+- `detectRemoteJob`
 - `detectRename`
 - `detectRequest`
 - `detectResponseDataLeak`
