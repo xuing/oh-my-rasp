@@ -75,7 +75,9 @@ final class HookRegistryTest {
     assertTrue(registry.isDirectTarget("java/io/ObjectInputStream"));
     assertTrue(registry.isDirectTarget("org/apache/activemq/openwire/v12/BaseDataStreamMarshaller"));
     assertTrue(registry.isDirectTarget("org/springframework/remoting/httpinvoker/HttpInvokerServiceExporter"));
-    assertTrue(registry.isDirectTarget("com/caucho/hessian/io/SerializerFactory"));
+    assertFalse(registry.isDirectTarget("com/caucho/hessian/io/SerializerFactory"));
+    assertTrue(registry.isDirectTarget("com/caucho/hessian/io/UnsafeDeserializer"));
+    assertTrue(registry.isDirectTarget("com/alibaba/com/caucho/hessian/io/JavaDeserializer"));
     assertTrue(registry.isDirectTarget("org/apache/xmlrpc/parser/SerializableParser"));
     assertTrue(registry.isDirectTarget("org/h2/jdbc/JdbcStatement"));
     assertTrue(registry.isDirectTarget("com/mysql/cj/jdbc/StatementImpl"));

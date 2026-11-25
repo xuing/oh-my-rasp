@@ -1,7 +1,7 @@
 package io.ohmyrasp.agent.detect;
 
 import static io.ohmyrasp.agent.detect.DeserializationTypes.dangerousDeserializationType;
-import static io.ohmyrasp.agent.detect.DeserializationTypes.dangerousHessianType;
+import io.ohmyrasp.agent.rules.product.hessian.HessianAllocationTypes;
 import static io.ohmyrasp.agent.detect.DeserializationTypes.dangerousPolymorphicType;
 import static io.ohmyrasp.agent.detect.DeserializationTypes.deserializationGadgetType;
 import static io.ohmyrasp.agent.detect.DeserializationTypes.normalizeJavaTypeName;
@@ -310,28 +310,11 @@ final class DeserializationDetector {
                 "contentType", abbreviate(contentType))));
   }
 
-  static Optional<Detection> detectHessianType(String type, RequestContext request) {
-    if (type == null || type.isBlank()) {
-      return Optional.empty();
-    }
-    RequestContext safeRequest = request == null ? RequestContext.empty() : request;
-    String normalized = normalizeJavaTypeName(type);
-    if (!dangerousHessianType(normalized)) {
-      return Optional.empty();
-    }
-    boolean gadgetFamily = deserializationGadgetType(normalized);
-    return Optional.of(
-        Detection.log(
-            "deserialization",
-            "deserialization_hessian_type",
-            safeRequest.active() ? 95 : 90,
-            "Hessian RPC deserialization attempted to resolve a dangerous type",
-            safeRequest,
-            Map.of(
-                "protocol", "hessian",
-                "class", normalized,
-                "originalClass", abbreviate(type),
-                "gadgetFamily", String.valueOf(gadgetFamily))));
+  static Optional<Detection> detectHessianAllocation(Class<?> selected, String basis, RequestContext request) {
+    if (!HessianAllocationTypes.listed(selected)) return Optional.empty();
+    return Optional.of(Detection.log("deserialization", "deserialization_hessian_type", 95,
+        "Hessian selected a listed type for allocation", request == null ? RequestContext.empty() : request,
+        Map.of("protocol", "hessian", "class", selected.getName(), "decision_basis", basis)));
   }
 
   static Optional<Detection> detectXmlRpcSerializableValue(

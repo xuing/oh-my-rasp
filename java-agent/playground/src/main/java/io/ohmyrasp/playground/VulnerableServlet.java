@@ -1328,8 +1328,6 @@ public final class VulnerableServlet extends HttpServlet {
 
   private static String xxlJobHessianApi(HttpServletRequest request) throws Exception {
     byte[] body = request.getInputStream().readAllBytes();
-    String type = value(request, "class", "org.apache.commons.beanutils.BeanComparator");
-    hook("beforeHessianType", new Class<?>[] {String.class}, type);
     return "xxl-job-hessian-api=" + body.length;
   }
 
@@ -4019,11 +4017,9 @@ public final class VulnerableServlet extends HttpServlet {
               "beforeObjectInputStream",
               new Class<?>[] {Object.class},
               new PlaygroundServletInputStream());
-      case "deserialization-hessian-type" ->
-          hook(
-              "beforeHessianType",
-              new Class<?>[] {String.class},
-              value(request, "class", "org.apache.commons.beanutils.BeanComparator"));
+      case "deserialization-hessian-type" -> {
+        return "Hessian type declared";
+      }
       case "deserialization-xmlrpc-serialized" ->
           hook(
               "beforeXmlRpcSerializableValue",

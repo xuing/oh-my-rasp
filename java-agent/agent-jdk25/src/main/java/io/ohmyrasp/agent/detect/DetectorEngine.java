@@ -5,7 +5,7 @@ import static io.ohmyrasp.agent.detect.HostFileMutationDetector.fileOperationFro
 import static io.ohmyrasp.agent.detect.HostFileMutationDetector.unsafeConfigPersistencePath;
 import io.ohmyrasp.agent.file.ArchiveEntryContext;
 
-import static io.ohmyrasp.agent.detect.DeserializationTypes.PROTOCOL_CONFIG_INSTANTIATION_TYPES;
+import static io.ohmyrasp.agent.serialization.StreamTypeNames.CONFIG_CONTEXT_TYPES;
 import static io.ohmyrasp.agent.detect.DeserializationTypes.dangerousPolymorphicType;
 import static io.ohmyrasp.agent.detect.DeserializationTypes.normalizeJavaTypeName;
 import static io.ohmyrasp.agent.detect.DeserializationTypes.xmlGadgetClassPriority;
@@ -2075,7 +2075,12 @@ public final class DetectorEngine {
   }
 
   public Optional<Detection> detectHessianType(String type, RequestContext request) {
-    return DeserializationDetector.detectHessianType(type, request);
+    // Compatibility for declarations with no class allocation.
+    return Optional.empty();
+  }
+
+  public Optional<Detection> detectHessianType(Class<?> selected, String basis, RequestContext request) {
+    return DeserializationDetector.detectHessianAllocation(selected, basis, request);
   }
 
   public Optional<Detection> detectXmlRpcSerializableValue(
@@ -3438,7 +3443,7 @@ public final class DetectorEngine {
   private static boolean dangerousJavaConfigConstructor(String value) {
     for (String variant : decodedVariants(value)) {
       String normalized = lower(variant).replace('/', '.');
-      for (String type : PROTOCOL_CONFIG_INSTANTIATION_TYPES) {
+      for (String type : CONFIG_CONTEXT_TYPES) {
         String normalizedType = lower(type);
         int classIndex = normalized.indexOf(normalizedType);
         if (classIndex < 0) {

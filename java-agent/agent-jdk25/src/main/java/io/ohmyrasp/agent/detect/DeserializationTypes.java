@@ -1,45 +1,11 @@
 package io.ohmyrasp.agent.detect;
 
 import java.util.Set;
+import io.ohmyrasp.agent.serialization.StreamTypeNames;
 
 /** Type names and class families used by deserialization and request classifiers. */
 final class DeserializationTypes {
   private DeserializationTypes() {}
-
-  private static final Set<String> DESERIALIZATION_BLACKLIST =
-      Set.of(
-          "com.sun.org.apache.xalan.internal.xsltc.trax.TemplatesImpl",
-          "org.apache.xalan.xsltc.trax.TemplatesImpl",
-          "com.sun.rowset.JdbcRowSetImpl",
-          "java.lang.Runtime",
-          "java.lang.ProcessBuilder",
-          "java.lang.ClassLoader",
-          "java.net.URLClassLoader",
-          "javax.script.ScriptEngineManager",
-          "javax.naming.InitialContext",
-          "javax.naming.ldap.Rdn$RdnEntry",
-          "javax.sql.rowset.BaseRowSet",
-          "sun.rmi.registry.RegistryImpl_Stub",
-          "org.mozilla.javascript.NativeJavaObject",
-          "org.mozilla.javascript.NativeJavaArray",
-          "org.mozilla.javascript.ScriptableObject",
-          "org.mozilla.javascript.tools.shell.Environment",
-          "org.springframework.context.support.FileSystemXmlApplicationContext",
-          "org.springframework.context.support.ClassPathXmlApplicationContext",
-          "org.apache.commons.collections.functors.InvokerTransformer",
-          "org.apache.commons.collections4.functors.InvokerTransformer",
-          "org.codehaus.groovy.runtime.ConvertedClosure",
-          "org.springframework.beans.factory.ObjectFactory",
-          "javax.management.BadAttributeValueExpException",
-          "io.ohmyrasp.playground.EvilSerialized");
-
-  static final Set<String> PROTOCOL_CONFIG_INSTANTIATION_TYPES =
-      Set.of(
-          "org.springframework.context.support.FileSystemXmlApplicationContext",
-          "org.springframework.context.support.ClassPathXmlApplicationContext",
-          "org.apache.xbean.spring.context.ResourceXmlApplicationContext",
-          "com.bea.core.repackaged.springframework.context.support.FileSystemXmlApplicationContext",
-          "com.bea.core.repackaged.springframework.context.support.ClassPathXmlApplicationContext");
 
   private static final Set<String> DESERIALIZATION_GADGET_PREFIXES =
       Set.of(
@@ -62,9 +28,13 @@ final class DeserializationTypes {
   private static final Set<String> POLYMORPHIC_CONSTRUCTION_BLACKLIST =
       Set.of("org.h2.jdbc.JdbcConnection");
 
+  private static boolean listedClass(String name) {
+    return StreamTypeNames.explicitlyListed(name) || "io.ohmyrasp.playground.EvilSerialized".equals(name);
+  }
+
   static int xmlGadgetClassPriority(String className) {
     if (POLYMORPHIC_CONSTRUCTION_BLACKLIST.contains(className)
-        || DESERIALIZATION_BLACKLIST.contains(className)) {
+        || listedClass(className)) {
       return 0;
     }
     if (deserializationGadgetType(className)) {
@@ -77,7 +47,7 @@ final class DeserializationTypes {
     if (className.isBlank()) {
       return false;
     }
-    if (DESERIALIZATION_BLACKLIST.contains(className)) {
+    if (listedClass(className)) {
       return true;
     }
     if (deserializationGadgetType(className)) {
@@ -94,12 +64,6 @@ final class DeserializationTypes {
   static boolean dangerousPolymorphicType(String className) {
     return POLYMORPHIC_CONSTRUCTION_BLACKLIST.contains(className)
         || dangerousDeserializationType(className);
-  }
-
-  static boolean dangerousHessianType(String className) {
-    return dangerousDeserializationType(className)
-        || POLYMORPHIC_CONSTRUCTION_BLACKLIST.contains(className)
-        || PROTOCOL_CONFIG_INSTANTIATION_TYPES.contains(className);
   }
 
   static boolean deserializationGadgetType(String className) {

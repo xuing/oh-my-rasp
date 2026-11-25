@@ -149,7 +149,6 @@ public final class OhMyRaspJava17Agent {
     retransform(instrumentation, javax.naming.InitialContext.class);
     retransform(instrumentation, ObjectInputStream.class);
     retransformByName(instrumentation, "com.alibaba.fastjson.parser.ParserConfig");
-    retransformByName(instrumentation, "com.caucho.hessian.io.SerializerFactory");
     retransform(instrumentation, File.class);
     retransform(instrumentation, FileInputStream.class);
     retransform(instrumentation, FileOutputStream.class);
@@ -186,7 +185,8 @@ public final class OhMyRaspJava17Agent {
     java.util.Set<Class<?>> multipartOwners = io.ohmyrasp.agent.http.MultipartFilename.loadedOwners(loadedClasses);
     for (Class<?> loaded : loadedClasses) {
       String internalName = loaded.getName().replace('.', '/');
-      if (io.ohmyrasp.agent.rules.product.activemq.OpenWireThrowableVisitor.matches(internalName)
+      if (io.ohmyrasp.agent.rules.product.hessian.HessianAllocationVisitor.matches(internalName)
+          || io.ohmyrasp.agent.rules.product.activemq.OpenWireThrowableVisitor.matches(internalName)
           || io.ohmyrasp.agent.rules.product.spring.SpringProcessVisitor.matches(internalName)
           || io.ohmyrasp.agent.loading.CodebaseVisitor.RMI_ROUTER.equals(internalName)
           || io.ohmyrasp.agent.loading.CodebaseVisitor.directoryResource(internalName)

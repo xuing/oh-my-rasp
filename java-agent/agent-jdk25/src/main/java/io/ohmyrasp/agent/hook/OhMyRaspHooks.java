@@ -1478,17 +1478,10 @@ public final class OhMyRaspHooks {
     }
   }
 
-  public static void beforeHessianType(String type) {
-    if (detectionDisabled()) {
-      return;
-    }
-    try {
-      emit(DETECTORS.detectHessianType(type, currentRequest()), true, true);
-    } catch (OhMyRaspBlockException blocked) {
-      throw blocked;
-    } catch (Throwable throwable) {
-      quiet("beforeHessianType", throwable);
-    }
+  public static void beforeHessianType(String type) {}
+
+  public static void beforeHessianAllocation(Class<?> selected, String basis) {
+    if (!detectionDisabled()) emit(DETECTORS.detectHessianType(selected, basis, currentRequest()), true, true);
   }
 
   public static void beforeXmlRpcSerializableValue(String mechanism) {

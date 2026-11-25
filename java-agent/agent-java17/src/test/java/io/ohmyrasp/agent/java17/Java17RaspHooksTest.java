@@ -1296,12 +1296,12 @@ final class Java17RaspHooksTest {
 
     assertThrows(
         Java17RaspBlockException.class,
-        () -> Java17RaspHooks.beforeHessianType("[Lorg/apache/commons/beanutils/BeanComparator;"));
+        () -> Java17RaspHooks.beforeHessianAllocation(ProcessBuilder.class, "hessian_constructor"));
 
     String text = new String(Files.readAllBytes(log), StandardCharsets.UTF_8);
     assertTrue(text.contains("\"algorithm\":\"java17_deserialization_hessian_type\""));
     assertTrue(text.contains("\"action\":\"block\""));
-    assertTrue(text.contains("\"class\":\"org.apache.commons.beanutils.BeanComparator\""));
+    assertTrue(text.contains("\"class\":\"java.lang.ProcessBuilder\""));
   }
 
   @Test

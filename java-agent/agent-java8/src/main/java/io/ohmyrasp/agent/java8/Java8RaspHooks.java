@@ -129,7 +129,6 @@ public final class Java8RaspHooks {
       Pattern.compile("(?is)[\"'][^\"'\\r\\n]{1,200}[\"']\\s*\\.\\s*execute\\s*\\(");
   private static final ThreadLocal<String> LAST_LOGGED_REQUEST = new ThreadLocal<String>();
   private static final ThreadLocal<String> LAST_LOGGED_COMMAND = new ThreadLocal<String>();
-  private static final ThreadLocal<String> LAST_LOGGED_HESSIAN_TYPE = new ThreadLocal<String>();
   private static final ThreadLocal<String> LAST_LOGGED_FILE_READ = new ThreadLocal<String>();
   private static final ThreadLocal<String> LAST_LOGGED_FILE_WRITE = new ThreadLocal<String>();
   private static final ThreadLocal<String> LAST_LOGGED_FILE_UPLOAD = new ThreadLocal<String>();
@@ -365,21 +364,15 @@ public final class Java8RaspHooks {
     return true;
   }
 
-  public static void beforeHessianType(String type) {
-    Finding finding = classifyHessianType(type);
-    if (finding == null) {
-      return;
-    }
-    String action = shouldBlock() ? "block" : "log";
-    String previous = LAST_LOGGED_HESSIAN_TYPE.get();
-    if (!"block".equals(action) && finding.detailValue.equals(previous)) {
-      return;
-    }
-    LAST_LOGGED_HESSIAN_TYPE.set(finding.detailValue);
-    appendEvent(finding, "Hessian.SerializerFactory.getDeserializer", action);
-    if ("block".equals(action)) {
-      throw new Java8RaspBlockException("OhMyRASP Java 8 blocked suspicious Hessian deserialization type");
-    }
+  public static void beforeHessianType(String type) {}
+
+  public static void beforeHessianAllocation(Class<?> selected, String basis) {
+    if (RaspRuntime.detectionOff() || !io.ohmyrasp.agent.rules.product.hessian.HessianAllocationTypes.listed(selected)) return;
+    Finding finding = new Finding("java8_deserialization_hessian_type", 95,
+        "Hessian selected a listed type for allocation", "class", selected.getName(), basis);
+    boolean block = shouldBlock();
+    appendEvent(finding, "Hessian.allocate", block ? "block" : "log");
+    if (block) throw new Java8RaspBlockException("OhMyRASP blocked a listed Hessian allocation");
   }
 
   public static void beforeFileRead(Object path) {
@@ -1299,19 +1292,6 @@ public final class Java8RaspHooks {
         "Remote JNDI lookup reached a Java 8 naming sink",
         "lookup",
         lookup, LookupRoute.basis(operation));
-  }
-
-  private static Finding classifyHessianType(String type) {
-    String normalized = normalizeJavaTypeName(type);
-    if (normalized.length() == 0 || !StreamTypeNames.listed(normalized)) {
-      return null;
-    }
-    return new Finding(
-        "java8_deserialization_hessian_type",
-        deserializationConfidence(normalized),
-        "Hessian deserialization attempted to resolve a dangerous Java 8 type",
-        "class",
-        normalized);
   }
 
   private static int deserializationConfidence(String className) {

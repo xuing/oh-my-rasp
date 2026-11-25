@@ -2296,31 +2296,13 @@ final class DetectorEngineTest {
   }
 
   @Test
-  void detectsHessianDangerousTypeResolution() {
-    var result = engine.detectHessianType("org.apache.commons.beanutils.BeanComparator", request());
-
+  void checksTheSelectedHessianAllocation() {
+    assertTrue(engine.detectHessianType("java.lang.ProcessBuilder", request()).isEmpty());
+    assertTrue(engine.detectHessianType(java.util.HashMap.class, "hessian_constructor", request()).isEmpty());
+    assertTrue(engine.detectHessianType(ProcessBuilder[].class, "hessian_constructor", request()).isEmpty());
+    var result = engine.detectHessianType(ProcessBuilder.class, "hessian_constructor", RequestContext.empty());
     assertAlgorithm(result, "deserialization_hessian_type");
-    assertEquals(
-        "org.apache.commons.beanutils.BeanComparator",
-        result.orElseThrow().details().get("class"));
-    assertEquals("true", result.orElseThrow().details().get("gadgetFamily"));
-  }
-
-  @Test
-  void detectsHessianSpringContextTypeResolution() {
-    var result =
-        engine.detectHessianType(
-            "org.springframework.context.support.ClassPathXmlApplicationContext",
-            RequestContext.empty());
-
-    assertAlgorithm(result, "deserialization_hessian_type");
-  }
-
-  @Test
-  void ignoresBenignHessianTypeResolution() {
-    var result = engine.detectHessianType("java.util.HashMap", request());
-
-    assertTrue(result.isEmpty());
+    assertEquals("hessian_constructor", result.orElseThrow().details().get("decision_basis"));
   }
 
   @Test

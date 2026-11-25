@@ -102,7 +102,7 @@ The descriptions live in the [general catalog](../rules/general.json) and [produ
 | `deserialization_cluster_message` | — | Known cluster, logging or remoting implementation frames supply transport provenance. |
 | `deserialization_fastjson_resource_url` | — | Fastjson autoType resolves a URL-shaped class resource. |
 | `deserialization_gadget` | — | Known class families, type-resolution behavior or unmarshaller implementations affect the judgment. |
-| `deserialization_hessian_type` | — | Known class families, type-resolution behavior or unmarshaller implementations affect the judgment. |
+| `deserialization_hessian_type` | — | A built-in Hessian decoder selects a class covered by the allocation policy for reflection or Unsafe allocation. |
 | `deserialization_http_invoker` | — | The HTTP remoting invocation mechanism determines where object-stream input is expected. |
 | `deserialization_http_object_stream` | A Java object stream is read from an HTTP request body. | — |
 | `deserialization_jms_object_message` | Object deserialization is correlated with a particular messaging or RPC transport. | — |
@@ -242,7 +242,7 @@ The descriptions live in the [general catalog](../rules/general.json) and [produ
 | `deleteFile_userinput` | A request-selected deletion escapes a configured filesystem root. | — |
 | `java8_deserialization_fastjson_resource_url`, `java11_deserialization_fastjson_resource_url`, `java17_deserialization_fastjson_resource_url` | — | Fastjson autoType reaches a URL-shaped resource lookup. |
 | `java8_deserialization_gadget_class`, `java11_deserialization_gadget_class`, `java17_deserialization_gadget_class` | — | The stream resolver selected a listed class or a proxy implementing a listed interface. The event identifies the resolution operation. |
-| `java8_deserialization_hessian_type`, `java11_deserialization_hessian_type`, `java17_deserialization_hessian_type` | — | Hessian type resolution is checked against known dangerous types. |
+| `java8_deserialization_hessian_type`, `java11_deserialization_hessian_type`, `java17_deserialization_hessian_type` | — | A built-in Hessian decoder selects a class covered by the allocation policy for reflection or Unsafe allocation. |
 | `java8_deserialization_protocol_class`, `java11_deserialization_protocol_class`, `java17_deserialization_protocol_class` | — | The constructor selected for an OpenWire exception belongs to a class outside the Throwable hierarchy. |
 | `java8_directory_userinput`, `java11_directory_userinput`, `java17_directory_userinput` | A request-selected protected directory or walk reaches a listing operation. | — |
 | `java8_el_runtime_execution`, `java11_el_runtime_execution`, `java17_el_runtime_execution` | An expression at the Unified EL evaluation boundary contains runtime execution syntax. | — |

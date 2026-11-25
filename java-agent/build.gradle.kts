@@ -92,3 +92,11 @@ tasks.register<Sync>("stageOpenWireProbe") {
     }
     into(layout.buildDirectory.dir("openwire-probe"))
 }
+
+// Local DTO round trips only; these codecs are not agent runtime dependencies.
+tasks.register<Sync>("stageHessianProbe") {
+    val libraries = listOf("com.caucho:hessian:4.0.66@jar", "com.alibaba:hessian-lite:3.2.5@jar")
+        .map { rootProject.dependencies.create(it) }
+    from(rootProject.configurations.detachedConfiguration(*libraries.toTypedArray()).apply { isTransitive = false })
+    into(layout.buildDirectory.dir("hessian-probe"))
+}

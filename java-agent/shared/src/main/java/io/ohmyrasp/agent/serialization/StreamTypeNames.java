@@ -1,10 +1,54 @@
 package io.ohmyrasp.agent.serialization;
 
+import java.util.Arrays;
+import java.util.Collections;
+import java.util.HashSet;
+import java.util.Set;
 import java.util.regex.Pattern;
 
 /** Binary names and families used by the backport type classifiers. Java names are case-sensitive. */
 public final class StreamTypeNames {
   private StreamTypeNames() {}
+
+  private static Set<String> names(String... values) {
+    return Collections.unmodifiableSet(new HashSet<String>(Arrays.asList(values)));
+  }
+
+  private static final Set<String> EXPLICIT_TYPES =
+      names(
+          "com.sun.org.apache.xalan.internal.xsltc.trax.TemplatesImpl",
+          "org.apache.xalan.xsltc.trax.TemplatesImpl",
+          "com.sun.rowset.JdbcRowSetImpl",
+          "java.lang.Runtime",
+          "java.lang.ProcessBuilder",
+          "java.lang.ClassLoader",
+          "java.net.URLClassLoader",
+          "javax.script.ScriptEngineManager",
+          "javax.naming.InitialContext",
+          "javax.naming.ldap.Rdn$RdnEntry",
+          "javax.sql.rowset.BaseRowSet",
+          "sun.rmi.registry.RegistryImpl_Stub",
+          "org.mozilla.javascript.NativeJavaObject",
+          "org.mozilla.javascript.NativeJavaArray",
+          "org.mozilla.javascript.ScriptableObject",
+          "org.mozilla.javascript.tools.shell.Environment",
+          "org.springframework.context.support.FileSystemXmlApplicationContext",
+          "org.springframework.context.support.ClassPathXmlApplicationContext",
+          "org.apache.commons.collections.functors.InvokerTransformer",
+          "org.apache.commons.collections4.functors.InvokerTransformer",
+          "org.codehaus.groovy.runtime.ConvertedClosure",
+          "org.springframework.beans.factory.ObjectFactory",
+          "javax.management.BadAttributeValueExpException");
+
+  public static final Set<String> CONFIG_CONTEXT_TYPES =
+      names(
+          "org.springframework.context.support.FileSystemXmlApplicationContext",
+          "org.springframework.context.support.ClassPathXmlApplicationContext",
+          "org.apache.xbean.spring.context.ResourceXmlApplicationContext",
+          "com.bea.core.repackaged.springframework.context.support.FileSystemXmlApplicationContext",
+          "com.bea.core.repackaged.springframework.context.support.ClassPathXmlApplicationContext");
+
+  public static boolean explicitlyListed(String name) { return EXPLICIT_TYPES.contains(name); }
 
   private static final Pattern DESERIALIZATION_GADGET_CLASS =
       Pattern.compile(

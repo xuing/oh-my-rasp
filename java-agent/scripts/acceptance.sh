@@ -1312,8 +1312,8 @@ XML
   expect_block "$version" deserialization_jbossmq_httpil -X POST -H "Content-Type: application/x-java-serialized-object" --data-binary "$java_serialized_body" "${protected_url}/jbossmq-httpil/HTTPServerILServlet"
   expect_block "$version" deserialization_jboss_cve_2017_12149_readonly -X POST -H "Content-Type: application/x-java-serialized-object" --data-binary "$java_serialized_body" "${protected_url}/invoker/readonly"
   expect_block "$version" deserialization_jboss_cve_2017_7504_httpil -X POST -H "Content-Type: application/x-java-serialized-object" --data-binary "$java_serialized_body" "${protected_url}/jbossmq-httpil/HTTPServerILServlet"
-  expect_block "$version" deserialization_hessian_type "${protected_url}/rasp/policy/deserialization-hessian-type"
-  expect_block "$version" deserialization_xxl_job_hessian_api -X POST -H "Content-Type: x-application/hessian" --data-binary "$xxl_job_hessian_body" "${protected_url}/xxl-job-admin/api"
+  expect_body_contains "${protected_url}/rasp/policy/deserialization-hessian-type" "Hessian type declared"
+  expect_body_contains "${protected_url}/xxl-job-admin/api" "xxl-job-hessian-api=" -X POST -H "Content-Type: x-application/hessian" --data-binary "$xxl_job_hessian_body"
   expect_block "$version" deserialization_xmlrpc_serialized -H "Content-Type: application/xml" "${protected_url}/rasp/policy/deserialization-xmlrpc-serialized"
   expect_block "$version" deserialization_ofbiz_cve_2020_9496_xmlrpc_serialized -X POST -H "Content-Type: application/xml" --data-binary "$ofbiz_xmlrpc_serialized_body" "${protected_url}/webtools/control/xmlrpc"
   expect_block "$version" deserialization_ofbiz_cve_2023_49070_xmlrpc_serialized -X POST -H "Content-Type: application/xml" --data-binary "$ofbiz_xmlrpc_serialized_body" "${protected_url}/webtools/control/xmlrpc"
@@ -1468,7 +1468,6 @@ required_algorithms=(
   deserialization_session_file
   deserialization_http_invoker
   deserialization_http_object_stream
-  deserialization_hessian_type
   deserialization_xmlrpc_serialized
   deserialization_rmi_registry_bind
   deserialization_polymorphic_type

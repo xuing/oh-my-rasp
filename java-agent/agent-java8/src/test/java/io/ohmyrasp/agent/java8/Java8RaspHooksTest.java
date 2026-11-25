@@ -1287,12 +1287,12 @@ final class Java8RaspHooksTest {
 
     assertThrows(
         Java8RaspBlockException.class,
-        () -> Java8RaspHooks.beforeHessianType("[Lorg/apache/commons/beanutils/BeanComparator;"));
+        () -> Java8RaspHooks.beforeHessianAllocation(ProcessBuilder.class, "hessian_constructor"));
 
     String text = new String(Files.readAllBytes(log), StandardCharsets.UTF_8);
     assertTrue(text.contains("\"algorithm\":\"java8_deserialization_hessian_type\""));
     assertTrue(text.contains("\"action\":\"block\""));
-    assertTrue(text.contains("\"class\":\"org.apache.commons.beanutils.BeanComparator\""));
+    assertTrue(text.contains("\"class\":\"java.lang.ProcessBuilder\""));
   }
 
   @Test
