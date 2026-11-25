@@ -1,5 +1,6 @@
 package io.ohmyrasp.agent.java17;
 
+import io.ohmyrasp.agent.http.ServletContracts;
 import io.ohmyrasp.agent.file.EscapingPath;
 import io.ohmyrasp.agent.file.ArchiveEntryContext;
 import io.ohmyrasp.agent.file.HostReadPath;
@@ -185,7 +186,7 @@ public final class Java17RaspHooks {
     boolean deferMultipart = beforeServlet
         && requestHeader(request, "Content-Type").trim().regionMatches(true, 0, "multipart/", 0, 10);
     Object raw = deferMultipart ? ServletQueryParameters.parse(requestQuery(request))
-        : invoke(request, "getParameterMap");
+        : invokeServlet(request, "getParameterMap");
     Map<?, ?> parameters = raw instanceof Map<?, ?> ? (Map<?, ?>) raw : null;
     CURRENT_REQUEST.set(new RequestSnapshot(parameters));
     captureRequestControlledUrls(parameters);
@@ -2218,7 +2219,7 @@ public final class Java17RaspHooks {
   }
 
   private static boolean isDebugProcessLaunchContext(Object request, String uri) {
-    String method = lower(invokeString(request, "getMethod")).replaceAll("[^a-z]", "");
+    String method = lower(stringValue(invokeServlet(request, "getMethod"))).replaceAll("[^a-z]", "");
     if (!"post".equals(method) && !"put".equals(method) && !"patch".equals(method)) {
       return false;
     }
@@ -2450,7 +2451,7 @@ public final class Java17RaspHooks {
   }
 
   private static Finding classifySessionFileDeserializationRequest(Object request, String uri) {
-    Object cookies = invoke(request, "getCookies");
+    Object cookies = invokeServlet(request, "getCookies");
     if (cookies == null || !cookies.getClass().isArray()) {
       return null;
     }
@@ -2764,7 +2765,7 @@ public final class Java17RaspHooks {
   }
 
   private static Finding classifyDefaultCryptoCookie(Object request) {
-    Object cookies = invoke(request, "getCookies");
+    Object cookies = invokeServlet(request, "getCookies");
     if (cookies == null || !cookies.getClass().isArray()) {
       return null;
     }
@@ -3344,9 +3345,18 @@ public final class Java17RaspHooks {
     if (target == null) {
       return null;
     }
+    return invoke(target, methodName, target.getClass());
+  }
+
+  private static Object invokeServlet(Object request, String methodName) {
+    return request == null ? null : invoke(request, methodName, ServletContracts.of(request));
+  }
+
+  private static Object invoke(Object target, String methodName, Class<?> api) {
     try {
-      return target.getClass().getMethod(methodName).invoke(target);
+      return api.getMethod(methodName).invoke(target);
     } catch (Exception ignored) {
+      if (api != target.getClass()) return null;
       try {
         Method method = target.getClass().getDeclaredMethod(methodName);
         method.setAccessible(true);
@@ -3358,7 +3368,10 @@ public final class Java17RaspHooks {
   }
 
   private static String invokeString(Object target, String methodName) {
-    Object value = invoke(target, methodName);
+    return stringValue(invoke(target, methodName));
+  }
+
+  private static String stringValue(Object value) {
     return value == null ? "" : String.valueOf(value);
   }
 
@@ -3387,7 +3400,7 @@ public final class Java17RaspHooks {
   }
 
   private static String requestUri(Object request) {
-    String uri = invokeString(request, "getRequestURI");
+    String uri = stringValue(invokeServlet(request, "getRequestURI"));
     if (uri.length() > 0) {
       return uri;
     }
@@ -3404,7 +3417,7 @@ public final class Java17RaspHooks {
   }
 
   private static String requestQuery(Object request) {
-    String query = invokeString(request, "getQueryString");
+    String query = stringValue(invokeServlet(request, "getQueryString"));
     if (query.length() > 0) {
       return query;
     }
@@ -3419,10 +3432,12 @@ public final class Java17RaspHooks {
     if (request == null || headerName == null) {
       return "";
     }
+    Class<?> api = ServletContracts.of(request);
     try {
-      Object value = request.getClass().getMethod("getHeader", String.class).invoke(request, headerName);
+      Object value = api.getMethod("getHeader", String.class).invoke(request, headerName);
       return value == null ? "" : String.valueOf(value);
     } catch (Exception ignored) {
+      if (api != request.getClass()) return "";
       try {
         Object value =
             request.getClass().getMethod("getHeaderString", String.class).invoke(request, headerName);
@@ -3444,10 +3459,12 @@ public final class Java17RaspHooks {
     if (request == null || attributeName == null) {
       return "";
     }
+    Class<?> api = ServletContracts.of(request);
     try {
-      Object value = request.getClass().getMethod("getAttribute", String.class).invoke(request, attributeName);
+      Object value = api.getMethod("getAttribute", String.class).invoke(request, attributeName);
       return value == null ? "" : String.valueOf(value);
     } catch (Exception ignored) {
+      if (api != request.getClass()) return "";
       try {
         Method method = request.getClass().getDeclaredMethod("getAttribute", String.class);
         method.setAccessible(true);
