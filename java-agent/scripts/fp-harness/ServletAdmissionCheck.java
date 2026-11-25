@@ -17,6 +17,7 @@ public class ServletAdmissionCheck extends HttpServlet {
   private int redirects;
   private String note;
   private String output;
+  private boolean personalData;
   private String mediaType;
 
   private boolean errorDispatch;
@@ -27,7 +28,8 @@ public class ServletAdmissionCheck extends HttpServlet {
 
   @Override protected void doPost(HttpServletRequest request, HttpServletResponse response)
       throws ServletException, java.io.IOException {
-    if (output != null) OhMyRaspHooks.beforeXssEcho(output);
+    if (personalData) OhMyRaspHooks.beforeResponseDataLeak(mediaType, output);
+    else if (output != null) OhMyRaspHooks.beforeXssEcho(output);
     calls++;
     if (note != null && !java.util.List.of(note).equals(OhMyRaspHooks.currentRequest().parameters().get("note")))
       throw new AssertionError("documentation text changed");
@@ -76,6 +78,9 @@ public class ServletAdmissionCheck extends HttpServlet {
     boolean rejected = false;
     try { service((ServletRequest) req, res); }
     catch (OhMyRaspBlockException blocked) {
+      if (output != null && blocked.detection().request().active()) throw new AssertionError("response exception retained request");
+      if (output != null && (blocked.detection().details().containsKey("value") || blocked.detection().details().containsKey("match")))
+        throw new AssertionError("response exception retained content");
       if (parameterDenial != null && blocked != parameterDenial) throw new AssertionError("nested denial replaced");
       rejected = true;
     }
@@ -87,6 +92,21 @@ public class ServletAdmissionCheck extends HttpServlet {
   public static void main(String[] args) throws Exception {
     ServletAdmissionCheck servlet = new ServletAdmissionCheck();
     boolean block = args[0].equals("block");
+    servlet.personalData = true;
+    servlet.note = "4111 1111 1111 1111";
+    servlet.output = "Example card: " + servlet.note;
+    servlet.mediaType = "application/json";
+    servlet.check("report-client", false, true);
+    OhMyRaspHooks.installPolicy(AgentPolicy.parse("{\"rules\":[{\"hook\":\"response\",\"action\":\"block\"}]}"), "test");
+    servlet.check("report-client", false, true);
+    OhMyRaspHooks.installPolicy(AgentPolicy.parse("{\"rules\":[{\"algorithm\":\"response_dataLeak\",\"action\":\"block\"}]}"), "test");
+    servlet.mediaType = "text/plain; profile=json";
+    servlet.check("report-client", false, true);
+    servlet.mediaType = "application/example+json; charset=UTF-8";
+    servlet.check("report-client", block, true);
+    servlet.personalData = false;
+    servlet.note = null;
+    OhMyRaspHooks.installPolicy(AgentPolicy.absent(), "");
     servlet.mediaType = "text/html";
     servlet.output = "<script src='/assets/report.js'></script>";
     servlet.check("report-client", false, true);

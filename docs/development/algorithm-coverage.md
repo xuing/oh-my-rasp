@@ -1109,7 +1109,7 @@ same patch as any new Java-compatible Vulhub replay.
 - `template_runtime`
 - `eval_regex`
 - `loadLibrary_unc`
-- `response_dataLeak`
+- `response_dataLeak` (explicit [response data policy](../detection.md#response-side-data-leak-detection))
 - `xss_echo` (explicit [HTML response hook](../detection.md#response-side-data-leak-detection))
 - `webshell_eval`
 - `webshell_command`

@@ -1642,7 +1642,7 @@ public final class OhMyRaspHooks {
   }
 
   public static void beforeResponseDataLeak(String contentType, String content) {
-    if (detectionDisabled()) {
+    if (detectionDisabled() || !POLICY.selectsAlgorithm("response_dataLeak")) {
       return;
     }
     try {
@@ -2113,9 +2113,15 @@ public final class OhMyRaspHooks {
       if (DISPATCH.repeatedAdmission(List.of(recorded.algorithm(), recorded.action(), recorded.details(),
           r.method(), r.uri(), r.query(), r.headers(), r.parameters(), r.body()))) return;
     }
+    if ("response_dataLeak".equals(recorded.algorithm()) || "xss_echo".equals(recorded.algorithm())) {
+      Map<String, String> evidence = "response_dataLeak".equals(recorded.algorithm())
+          ? Map.of("kind", recorded.details().get("kind")) : Map.of("decision_basis", "verbatim_request_markup");
+      recorded = new Detection(recorded.timestamp(), recorded.hook(), recorded.algorithm(), recorded.action(),
+          recorded.confidence(), recorded.message(), RequestContext.empty(), evidence);
+    }
     JsonEventLogger.get().record(redactHttpObservation(recorded), elapsedMicros(started), ruleEvaluationUs);
     if (willBlock) {
-      throw new OhMyRaspBlockException(event, mayRedirect && redirectToBlockPage(event));
+      throw new OhMyRaspBlockException(recorded, mayRedirect && redirectToBlockPage(recorded));
     }
   }
 

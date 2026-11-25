@@ -1360,7 +1360,7 @@ XML
   expect_block "$version" template_runtime "${protected_url}/rasp/template/velocity"
   expect_block "$version" eval_regex "${protected_url}/rasp/policy/eval"
   expect_block "$version" loadLibrary_unc "${protected_url}/rasp/policy/loadlib"
-  expect_block "$version" response_dataLeak "${protected_url}/rasp/policy/response"
+  expect_body_contains "${protected_url}/rasp/policy/response" "policy response triggered"
   expect_body_contains "${protected_url}/rasp/policy/xss-echo" "policy xss-echo triggered"
   expect_block "$version" webshell_eval -G --data-urlencode "code=system('id')" "${protected_url}/rasp/policy/webshell-eval"
   expect_block "$version" webshell_command -G --data-urlencode "cmd=sh -c id" "${protected_url}/rasp/policy/webshell-command"
@@ -1479,7 +1479,6 @@ required_algorithms=(
   template_runtime
   eval_regex
   loadLibrary_unc
-  response_dataLeak
   webshell_eval
   webshell_command
   webshell_file_put_contents

@@ -467,13 +467,15 @@ attempt at the indicated phase. The remote application's outcome needs separate 
 
 ### Response-side data-leak detection
 
-`detectResponseDataLeak` inspects outbound response bodies (HTML, JSON, XML) for:
+`response_dataLeak` requires an explicit algorithm policy. The hook checks the declared media type and inspects HTML, JSON and XML, including structured JSON and XML subtypes, for these identifier formats.
 
 - **Chinese national ID cards:** 18-digit format with checksum verification
 - **Mobile phone numbers:** validated against Chinese carrier prefix tables
 - **Payment card numbers:** Luhn-validated (card brand not distinguished)
 
 On the primary agent, `xss_userinput` requires a policy explicitly selecting the algorithm. A log action observes matching request parameters, and a block action denies their submission in block mode. An application can accept markup as documentation or store it as ordinary text.
+
+Policy matching uses the request context. For `response_dataLeak` and `xss_echo`, the primary agent then omits request fields and matched values from logged events and block exceptions. The event retains the identifier category or reflection basis.
 
 The response hook `beforeXssEcho` honors an explicit `xss_echo` policy for HTML and XHTML responses. It looks for a markup-bearing request parameter verbatim in the supplied output. Application-owned scripts alone produce no finding. A match establishes text overlap; determining browser execution requires the rendering context.
 

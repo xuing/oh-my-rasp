@@ -114,6 +114,9 @@ public final class DetectorEngine {
               + "|pageshow|pagehide|hashchange|popstate|message|storage|beforescriptexecute)"
               + "\\s*=");
 
+  private static final Pattern STRUCTURED_RESPONSE = Pattern.compile(
+      "(?i)(?:text/html|(?:application|text)/(?:json|xml)|[a-z0-9!#$%&'*+.^_`|~-]+/[a-z0-9!#$%&'*+.^_`|~-]+\\+(?:json|xml))");
+
   private static final Pattern CHINA_ID =
       Pattern.compile("(?<!\\d)\\d{10}(?:[01]\\d)(?:[0123]\\d)\\d{3}(?:\\d|x|X)(?!\\d)");
 
@@ -1654,11 +1657,10 @@ public final class DetectorEngine {
 
   public Optional<Detection> detectResponseDataLeak(
       String contentType, String content, RequestContext request) {
-    if (contentType == null
-        || content == null
-        || !Pattern.compile("(?i)html|json|xml").matcher(contentType).find()) {
-      return Optional.empty();
-    }
+    if (contentType == null || content == null) return Optional.empty();
+    int separator = contentType.indexOf(';');
+    String mediaType = (separator < 0 ? contentType : contentType.substring(0, separator)).trim();
+    if (!STRUCTURED_RESPONSE.matcher(mediaType).matches()) return Optional.empty();
     Optional<String> identityCard = firstValidIdentityCard(content);
     if (identityCard.isPresent()) {
       return dataLeak("Identity Card", identityCard.orElseThrow(), request);

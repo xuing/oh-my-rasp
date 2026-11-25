@@ -196,7 +196,7 @@ The descriptions live in the [general catalog](../rules/general.json) and [produ
 | `request_upload_filename_override` | — | Upload-binding field conventions determine whether a filename can be overridden. |
 | `request_xml_polymorphic_gadget` | — | Typed binding syntax and known classes or gadget families determine the match. |
 | `request_xxe_payload` | Request text contains naming-lookup or XML entity syntax. Transport opening is unconfirmed. | — |
-| `response_dataLeak` | Response text matches a sensitive-data pattern. | — |
+| `response_dataLeak` | An explicit response policy matches an identifier format in HTML, JSON or XML. The event records the identifier category. | — |
 | `script_runtime` | Runtime execution primitives occur in an expression or execution is observed under an evaluator. A library hook identifies the evaluation context. | — |
 | `spel_runtime` | Runtime execution primitives occur in an expression or execution is observed under an evaluator. A library hook identifies the evaluation context. | — |
 | `spring_remote_config` | — | A Spring configuration-loading mechanism receives a remote location. |

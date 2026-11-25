@@ -46,9 +46,14 @@ def main():
                                          for e in events):
                         raise SystemExit(f"unexpected {namespace} Java {track} {mode} receipts: {events}")
                     continue
-                if not events or (events[0]["algorithm"], events[0]["action"]) != ("xss_echo", mode):
-                    raise SystemExit(f"unexpected {namespace} {mode} response policy receipts: {events}")
-                events = events[1:]
+                response_events = events[:2]
+                expected_rules = ["response_dataLeak", "xss_echo"]
+                evidence = [{"kind": "Bank Card"}, {"decision_basis": "verbatim_request_markup"}]
+                if ([(e["algorithm"], e["action"]) for e in response_events] != [(rule, mode) for rule in expected_rules]
+                        or [e["details"] for e in response_events] != evidence
+                        or any(any(e["request"].values()) for e in response_events)):
+                    raise SystemExit(f"unexpected {namespace} {mode} response policy receipts")
+                events = events[2:]
                 markup = events[:2]
                 if [(e["algorithm"], e["action"]) for e in markup] != [("xss_userinput", "log"), ("xss_userinput", mode)]:
                     raise SystemExit(f"unexpected {namespace} {mode} input policy receipts: {markup}")
