@@ -16,13 +16,6 @@ import java.util.regex.Pattern;
 final class RemoteResourceDetector {
   private RemoteResourceDetector() {}
 
-  private static final Pattern JAAS_JNDI_LOGIN_MODULE =
-      Pattern.compile("(?is)\\bcom\\.sun\\.security\\.auth\\.module\\.JndiLoginModule\\b");
-
-  private static final Pattern JAAS_REMOTE_PROVIDER_URL =
-      Pattern.compile(
-          "(?is)\\b(?:(?:java\\.naming\\.)?provider\\.url|(?:user|group)\\.provider\\.url)\\s*=\\s*[\"']?\\s*((?:ldap|ldaps|rmi|iiop|corbaname|corbaloc)://[^\\s\"';]+)");
-
   // A lookup whose name resolves through a *remote* naming provider is the
   // JNDI-injection vector (Log4Shell-class). Local container lookups in the
   // `java:` namespace (java:comp/env/..., java:global/..., java:module/...) and
@@ -116,7 +109,7 @@ final class RemoteResourceDetector {
     return Optional.of(
         Detection.log(
             "jndi",
-            "jndi_disable_all",
+            LookupRoute.LOGIN_LOOKUP.equals(operation) ? "jndi_jaas_config" : "jndi_disable_all",
             95,
             "JNDI lookup name matches the remote-scheme policy",
             request,
@@ -125,37 +118,6 @@ final class RemoteResourceDetector {
                 "operation", operation,
                 "decision_basis", LookupRoute.basis(operation),
                 "scheme", scheme)));
-  }
-
-  static Optional<Detection> detectJaasConfig(
-      String config, String mechanism, RequestContext request) {
-    if (config == null || config.isBlank() || !request.active()) {
-      return Optional.empty();
-    }
-    String normalized = config.trim();
-    if (!JAAS_JNDI_LOGIN_MODULE.matcher(normalized).find()) {
-      return Optional.empty();
-    }
-    var provider = JAAS_REMOTE_PROVIDER_URL.matcher(normalized);
-    if (!provider.find()) {
-      return Optional.empty();
-    }
-    String providerUrl = provider.group(1);
-    String hook = mechanism == null || mechanism.isBlank() ? "JAAS" : mechanism;
-    boolean requestControlled =
-        request.hasParameterIn(normalized) || request.hasParameterIn(providerUrl);
-    return Optional.of(
-        Detection.log(
-            "jndi",
-            "jndi_jaas_config",
-            requestControlled ? 100 : 90,
-            "JAAS configuration enables JNDI login module with a remote provider URL",
-            request,
-            Map.of(
-                "mechanism", hook,
-                "providerUrl", abbreviate(providerUrl),
-                "config", abbreviate(normalized),
-                "requestControlled", String.valueOf(requestControlled))));
   }
 
   static boolean containsRemoteProtocol(String value) {

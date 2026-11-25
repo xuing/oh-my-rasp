@@ -78,13 +78,12 @@ TRANSFORMER_CATEGORY = {
     "File": "File I/O, Uploads & Archive Traversal",
     "MultipartUpload": "File I/O, Uploads & Archive Traversal",
     "Archive": "File I/O, Uploads & Archive Traversal",
-    "ScriptEngine": "Expression Engines, Scripting, ClassLoading & JMX/JAAS",
-    "Jexl": "Expression Engines, Scripting, ClassLoading & JMX/JAAS",
-    "El": "Expression Engines, Scripting, ClassLoading & JMX/JAAS",
-    "JavaCompilation": "Expression Engines, Scripting, ClassLoading & JMX/JAAS",
-    "ClassLoader": "Expression Engines, Scripting, ClassLoading & JMX/JAAS",
-    "Jaas": "Expression Engines, Scripting, ClassLoading & JMX/JAAS",
-    "Jmx": "Expression Engines, Scripting, ClassLoading & JMX/JAAS",
+    "ScriptEngine": "Expression Engines, Scripting, ClassLoading & JMX",
+    "Jexl": "Expression Engines, Scripting, ClassLoading & JMX",
+    "El": "Expression Engines, Scripting, ClassLoading & JMX",
+    "JavaCompilation": "Expression Engines, Scripting, ClassLoading & JMX",
+    "ClassLoader": "Expression Engines, Scripting, ClassLoading & JMX",
+    "Jmx": "Expression Engines, Scripting, ClassLoading & JMX",
 }
 
 # Category mappings for jdk25 HookModules (stem before HookModule)
@@ -112,12 +111,11 @@ MODULE_CATEGORY = {
     "File": "File I/O, Uploads & Archive Traversal",
     "MultipartUpload": "File I/O, Uploads & Archive Traversal",
     "Archive": "File I/O, Uploads & Archive Traversal",
-    "Expression": "Expression Engines, Scripting, ClassLoading & JMX/JAAS",
-    "JavaCompilation": "Expression Engines, Scripting, ClassLoading & JMX/JAAS",
-    "ClassLoader": "Expression Engines, Scripting, ClassLoading & JMX/JAAS",
-    "Jaas": "Expression Engines, Scripting, ClassLoading & JMX/JAAS",
-    "Jmx": "Expression Engines, Scripting, ClassLoading & JMX/JAAS",
-    "SpringConfig": "Expression Engines, Scripting, ClassLoading & JMX/JAAS",
+    "Expression": "Expression Engines, Scripting, ClassLoading & JMX",
+    "JavaCompilation": "Expression Engines, Scripting, ClassLoading & JMX",
+    "ClassLoader": "Expression Engines, Scripting, ClassLoading & JMX",
+    "Jmx": "Expression Engines, Scripting, ClassLoading & JMX",
+    "SpringConfig": "Expression Engines, Scripting, ClassLoading & JMX",
 }
 
 CATEGORY_DESCRIPTIONS = {
@@ -140,7 +138,7 @@ CATEGORY_DESCRIPTIONS = {
         "code execution, Derby SQLJ loading, and MySQL `autoDeserialize` URLs."
     ),
     "JNDI, Deserialization & XML/XXE": (
-        "Blocks remote `InitialContext.lookup` (`ldap`/`rmi`/`iiop`/`corba`), dangerous "
+        "Checks remote naming routes, including JDK JAAS directory lookups, and blocks dangerous "
         "`ObjectInputStream` / RMI / OpenWire / Hessian / Fastjson `autoType` / `1.2.83` "
         "class-resource gadgets, XMLDecoder graphs, and external XML entities (XXE)."
     ),
@@ -154,10 +152,9 @@ CATEGORY_DESCRIPTIONS = {
         "script writes, ZipSlip archive traversal (`ZipEntry` / 7z), multipart upload path "
         "traversal, and `.gnuplot` command injection."
     ),
-    "Expression Engines, Scripting, ClassLoading & JMX/JAAS": (
+    "Expression Engines, Scripting, ClassLoading & JMX": (
         "Inspects Nashorn/Rhino `ScriptEngine`, JEXL, Jakarta/JSP EL, `JavacTool`/Janino "
-        "compilation, remote `URLClassLoader`/`RMIClassLoader` codebases, JAAS remote "
-        "JNDI providers, and mutating JMX MBean invocations."
+        "compilation, remote `URLClassLoader`/`RMIClassLoader` codebases, and mutating JMX MBean invocations."
     ),
     "Other / Newly Added": "Additional ASM instrumentation hooks detected in agent sources.",
 }

@@ -159,18 +159,7 @@ public final class OhMyRaspHooks {
       String body,
       Object config,
       String mechanism) {
-    if (detectionDisabled()) {
-      return;
-    }
-    try {
-      RequestContext context = new RequestContext(method, uri, query, parameters, headers, body);
-      String hook = mechanism == null || mechanism.isBlank() ? "JAAS" : mechanism;
-      emit(DETECTORS.detectJaasConfig(String.valueOf(config), hook, context));
-    } catch (OhMyRaspBlockException blocked) {
-      throw blocked;
-    } catch (Throwable throwable) {
-      quiet("beforeSyntheticJaasConfig", throwable);
-    }
+    // Raw configuration does not establish a naming operation.
   }
 
   public static void beforeSyntheticJwtVerificationFailure(
@@ -653,7 +642,16 @@ public final class OhMyRaspHooks {
   public static void onJndiRoute(String url, String operation) {
     if (operation == null || detectionDisabled()) return;
     try {
-      emit(DETECTORS.detectJndi(url, currentRequest(), operation));
+      RequestContext request = currentRequest();
+      if (LookupRoute.LOGIN_LOOKUP.equals(operation)) {
+        if (request.active() && AgentRuntime.get().isAlgorithmEnabled("jndi_jaas_config")) {
+          emit(DETECTORS.detectJndi(url, request, operation));
+          if (!POLICY.loaded()) return;
+        }
+        // A managed policy may enforce the general naming rule independently.
+        operation = "InitialContext.lookup";
+      }
+      emit(DETECTORS.detectJndi(url, request, operation));
     } catch (OhMyRaspBlockException blocked) {
       throw blocked;
     } catch (Throwable failure) {
@@ -661,31 +659,10 @@ public final class OhMyRaspHooks {
     }
   }
 
-  public static void beforeJaasConfig(Object config) {
-    if (detectionDisabled()) {
-      return;
-    }
-    try {
-      emit(DETECTORS.detectJaasConfig(String.valueOf(config), "JAAS", currentRequest()));
-    } catch (OhMyRaspBlockException blocked) {
-      throw blocked;
-    } catch (Throwable throwable) {
-      quiet("beforeJaasConfig", throwable);
-    }
-  }
+  public static void beforeJaasConfig(Object config) {}
 
-  public static void beforeJaasConfigEntry(Object loginModuleName, Object options) {
-    if (detectionDisabled()) {
-      return;
-    }
-    try {
-      emit(DETECTORS.detectJaasConfig(jaasConfigFrom(loginModuleName, options), "JAAS", currentRequest()));
-    } catch (OhMyRaspBlockException blocked) {
-      throw blocked;
-    } catch (Throwable throwable) {
-      quiet("beforeJaasConfigEntry", throwable);
-    }
-  }
+  /** Compatibility entry for older agents instrumenting configuration declarations. */
+  public static void beforeJaasConfigEntry(Object loginModuleName, Object options) {}
 
   public static void beforeClassLoaderUrl(Object url) {
     if (detectionDisabled()) {
@@ -1847,16 +1824,6 @@ public final class OhMyRaspHooks {
       }
     }
     return sources;
-  }
-
-  private static String jaasConfigFrom(Object loginModuleName, Object options) {
-    StringBuilder builder = new StringBuilder(String.valueOf(loginModuleName));
-    if (options instanceof Map<?, ?> map) {
-      map.forEach((key, value) -> builder.append(' ').append(key).append('=').append(value));
-    } else if (options != null) {
-      builder.append(' ').append(options);
-    }
-    return builder.toString();
   }
 
   private static Optional<String> invokeString(Object target, String methodName) {

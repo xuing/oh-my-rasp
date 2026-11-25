@@ -18,6 +18,8 @@ public final class ldapURLContextFactory implements ObjectFactory, InitialContex
         (proxy, method, args) -> {
           if ("lookup".equals(method.getName()) || "lookupLink".equals(method.getName())) {
             reads++;
+            if ("ldap://reports.invalid/empty".equals(args[0]) || new CompositeName("empty").equals(args[0]))
+              throw new javax.naming.NameNotFoundException("empty directory");
             return "weekly";
           }
           return null;
@@ -30,9 +32,9 @@ public final class ldapURLContextFactory implements ObjectFactory, InitialContex
   }
   public static final class ReportURLContext extends GenericURLContext {
     public ReportURLContext() { super(null); }
-    @Override protected ResolveResult getRootURLContext(String url, Hashtable<?,?> environment) {
+    @Override protected ResolveResult getRootURLContext(String url, Hashtable<?,?> environment) throws javax.naming.NamingException {
       roots++;
-      return new ResolveResult(directory(), new CompositeName());
+      return new ResolveResult(directory(), new CompositeName(url.endsWith("/empty") ? "empty" : ""));
     }
   }
 }

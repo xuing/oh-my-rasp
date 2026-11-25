@@ -22,7 +22,6 @@ import java.sql.DriverManager;
 import java.util.jar.JarFile;
 import java.util.zip.ZipEntry;
 import javax.script.AbstractScriptEngine;
-import javax.security.auth.login.AppConfigurationEntry;
 
 public final class OhMyRaspJava11Agent {
   private OhMyRaspJava11Agent() {}
@@ -130,7 +129,6 @@ public final class OhMyRaspJava11Agent {
     instrumentation.addTransformer(new Java11JexlTransformer(), canRetransform);
     instrumentation.addTransformer(new Java11ElTransformer(), canRetransform);
     instrumentation.addTransformer(new Java11JavaCompilationTransformer(), canRetransform);
-    instrumentation.addTransformer(new Java11JaasTransformer(), canRetransform);
     instrumentation.addTransformer(new Java11JmxTransformer(), canRetransform);
     instrumentation.addTransformer(new Java11JwtTransformer(), canRetransform);
     instrumentation.addTransformer(new Java11JavaBeansTransformer(), canRetransform);
@@ -180,7 +178,6 @@ public final class OhMyRaspJava11Agent {
     retransformByName(instrumentation, "de.odysseus.el.TreeMethodExpression");
     retransformByName(instrumentation, "org.jboss.el.ValueExpressionImpl");
     retransformByName(instrumentation, "org.jboss.el.MethodExpressionImpl");
-    retransform(instrumentation, AppConfigurationEntry.class);
     retransform(instrumentation, Expression.class);
     retransform(instrumentation, Statement.class);
     retransformByName(instrumentation, "com.sun.tools.javac.api.JavacTool");
@@ -193,6 +190,7 @@ public final class OhMyRaspJava11Agent {
       String internalName = loaded.getName().replace('.', '/');
       if (Lz4TransportVisitor.OWNER.equals(internalName)
           || io.ohmyrasp.agent.naming.JndiLookupVisitor.URL_CONTEXT.equals(internalName)
+          || io.ohmyrasp.agent.naming.JndiLookupVisitor.LOGIN_MODULE.equals(internalName)
           || io.ohmyrasp.agent.rules.product.yarn.YarnSubmitVisitor.OWNER.equals(internalName)
           || io.ohmyrasp.agent.rules.product.spark.SparkSubmitVisitor.OWNER.equals(internalName)
           || io.ohmyrasp.agent.rules.product.dataease.FilterVerificationVisitor.OWNER.equals(internalName)

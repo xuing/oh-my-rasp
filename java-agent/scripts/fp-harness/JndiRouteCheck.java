@@ -46,6 +46,8 @@ public final class JndiRouteCheck {
     env.put(Context.URL_PKG_PREFIXES, "fixture");
     InitialContext ctx = new InitialContext(env);
     try (HttpTransportCheck.Scope scope = new HttpTransportCheck.Scope(args[0], "weekly")) {
+      JaasDirectoryCheck.declarations();
+      JaasDirectoryCheck.login(mode, false);
       ReportName local = new ReportName("weekly", URL);
       check(mode, "local-component", false, false, local, false, () -> ctx.lookup(local));
       check(mode, "leading-space", false, false, null, false, () -> ctx.lookup(" " + URL));
@@ -55,7 +57,9 @@ public final class JndiRouteCheck {
       check(mode, "repeat", true, false, null, false, () -> ctx.lookup(URL));
       check(mode, "link", true, false, null, false, () -> ctx.lookupLink(URL));
       check(mode, "direct", true, true, null, false, () -> new ldapURLContextFactory.ReportURLContext().lookup(URL));
+      if ("main".equals(args[0]) && "block".equals(mode)) JaasDirectoryCheck.generalPolicyOnly();
       NamingManager.setInitialContextFactoryBuilder(environment -> new ldapURLContextFactory());
+      JaasDirectoryCheck.login(mode, true);
       ReportName custom = new ReportName(URL, URL);
       check(mode, "builder", false, false, custom, true, () -> ctx.lookup(custom));
       check(mode, "builder-string", false, false, null, true, () -> ctx.lookup(URL));

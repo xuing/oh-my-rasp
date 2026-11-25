@@ -2,7 +2,7 @@
 
 > **Generated** by `deploy/shirudo/gen-readmes.py` from `java-agent/` sources.
 
-The `ohmyrasp-java11` package installs the `ohmyrasp-java11` Java upatch: a standalone, daemonless OhMyRASP runtime self-protection agent targeting **Java 11** JVMs (classfile version `<= 55`). It covers **25 ASM transformer families** and **44 detection algorithms**, validated against **10** real Vulhub scenarios on `java11`.
+The `ohmyrasp-java11` package installs the `ohmyrasp-java11` Java upatch: a standalone, daemonless OhMyRASP runtime self-protection agent targeting **Java 11** JVMs (classfile version `<= 55`). It covers **24 ASM transformer families** and **44 detection algorithms**, validated against **10** real Vulhub scenarios on `java11`.
 
 ## Security Coverage
 
@@ -12,10 +12,10 @@ The `ohmyrasp-java11` package installs the `ohmyrasp-java11` Java upatch: a stan
 | **Elasticsearch LZ4 Transport (CVE-2026-82303)** | In block mode, isolates the declared compressed transport block and checks the decoder consumed its exact length. | `Java11ElasticLz4Transformer` |
 | **OpenJDK Base64 AVX-512 Guard (CVE-2026-114938)** | Zero-allocation arithmetic boundary check on `java.util.Base64$Decoder.decode0` blocking x86-64 AVX-512 tail-underflow inputs (Java2Shell / Java4Shell) before the native intrinsic runs. | `Java11Base64Transformer` |
 | **SQL Injection & JDBC** | Detects and blocks structural SQL injection across JDBC `Statement` drivers, MyBatis `BoundSql` order-by identifiers, GeoServer OGC CQL filters, H2 `INIT` code execution, Derby SQLJ loading, and MySQL `autoDeserialize` URLs. | `Java11JdbcTransformer` |
-| **JNDI, Deserialization & XML/XXE** | Blocks remote `InitialContext.lookup` (`ldap`/`rmi`/`iiop`/`corba`), dangerous `ObjectInputStream` / RMI / OpenWire / Hessian / Fastjson `autoType` / `1.2.83` class-resource gadgets, XMLDecoder graphs, and external XML entities (XXE). | `Java11JndiTransformer`, `Java11DeserializationTransformer`, `Java11FastjsonTransformer`, `Java11HessianTransformer`, `Java11JavaBeansTransformer`, `Java11XxeTransformer` |
+| **JNDI, Deserialization & XML/XXE** | Checks remote naming routes, including JDK JAAS directory lookups, and blocks dangerous `ObjectInputStream` / RMI / OpenWire / Hessian / Fastjson `autoType` / `1.2.83` class-resource gadgets, XMLDecoder graphs, and external XML entities (XXE). | `Java11JndiTransformer`, `Java11DeserializationTransformer`, `Java11FastjsonTransformer`, `Java11HessianTransformer`, `Java11JavaBeansTransformer`, `Java11XxeTransformer` |
 | **HTTP Request, Path Confusion, Auth & SSRF** | Six-form URI path-confusion decoding (Shiro, GlassFish, Jetty, Spring), weak/default JWT HMAC secret checks, Shiro default `rememberMe` AES detection, forged internal identities, and cloud-metadata / loopback-admin / obfuscated-IP SSRF guards. | `Java11ServletTransformer`, `Java11UrlTransformer`, `Java11JwtTransformer` |
 | **File I/O, Uploads & Archive Traversal** | Guards sensitive reads (`/etc/passwd`, `/proc/self/environ`, SSH keys), webroot script writes, ZipSlip archive traversal (`ZipEntry` / 7z), multipart upload path traversal, and `.gnuplot` command injection. | `Java11FileTransformer`, `Java11MultipartUploadTransformer`, `Java11ArchiveTransformer` |
-| **Expression Engines, Scripting, ClassLoading & JMX/JAAS** | Inspects Nashorn/Rhino `ScriptEngine`, JEXL, Jakarta/JSP EL, `JavacTool`/Janino compilation, remote `URLClassLoader`/`RMIClassLoader` codebases, JAAS remote JNDI providers, and mutating JMX MBean invocations. | `Java11ClassLoaderTransformer`, `Java11ScriptEngineTransformer`, `Java11JexlTransformer`, `Java11ElTransformer`, `Java11JavaCompilationTransformer`, `Java11JaasTransformer`, `Java11JmxTransformer` |
+| **Expression Engines, Scripting, ClassLoading & JMX** | Inspects Nashorn/Rhino `ScriptEngine`, JEXL, Jakarta/JSP EL, `JavacTool`/Janino compilation, remote `URLClassLoader`/`RMIClassLoader` codebases, and mutating JMX MBean invocations. | `Java11ClassLoaderTransformer`, `Java11ScriptEngineTransformer`, `Java11JexlTransformer`, `Java11ElTransformer`, `Java11JavaCompilationTransformer`, `Java11JmxTransformer` |
 
 <details><summary>All detection algorithm IDs (44)</summary>
 

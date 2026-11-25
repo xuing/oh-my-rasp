@@ -309,7 +309,7 @@ for version in "${versions[@]}"; do
   expect_block "$version" jdbc_mysql java11_jdbc_mysql_deserialization /rasp/java11/jdbc-mysql
   expect_block "$version" script java11_script_engine_runtime_execution /rasp/java11/script
   expect_block "$version" compile java11_java_compile_runtime_execution /rasp/java11/compile
-  expect_block "$version" jaas java11_jaas_jndi_remote_provider /rasp/java11/jaas
+  curl -fsS "${protected_url}/rasp/java11/jaas" | grep -Fq "jaas attempted"
   expect_block "$version" jmx_remote_config java11_jmx_remote_config_source /rasp/java11/jmx-remote-config
   curl -fsS "${protected_url}/rasp/java11/jmx-file-write" | grep -Fq "jmx file write attempted"
   expect_block "$version" xml_decoder_runtime java11_xml_decoder_runtime_execution /rasp/java11/xml-decoder-runtime

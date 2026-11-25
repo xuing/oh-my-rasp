@@ -27,7 +27,8 @@ final class HookRegistryTest {
     assertTrue(registry.isDirectTarget("com.sun.jndi.toolkit.url.GenericURLContext"));
     assertTrue(registry.isDirectTarget("java/net/URLClassLoader"));
     assertTrue(registry.isDirectTarget("java/rmi/server/RMIClassLoader"));
-    assertTrue(registry.isDirectTarget("javax/security/auth/login/AppConfigurationEntry"));
+    assertFalse(registry.isDirectTarget("javax/security/auth/login/AppConfigurationEntry"));
+    assertTrue(registry.isDirectTarget("com/sun/security/auth/module/JndiLoginModule"));
     assertTrue(registry.isDirectTarget("org/springframework/context/support/ClassPathXmlApplicationContext"));
     assertTrue(registry.isDirectTarget("org/springframework/beans/factory/xml/XmlBeanDefinitionReader"));
     assertTrue(registry.isDirectTarget("org/apache/xbean/spring/context/ResourceXmlApplicationContext"));

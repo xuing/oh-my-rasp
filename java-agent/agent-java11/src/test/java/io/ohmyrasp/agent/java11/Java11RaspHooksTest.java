@@ -2325,14 +2325,12 @@ final class Java11RaspHooksTest {
     Files.delete(log);
     System.setProperty("ohmyrasp.java11.log", log.toString());
 
-    Map<String, String> options = new HashMap<String, String>();
-    options.put("user.provider.url", "ldap://java-chains:50389/x");
-    Java11RaspHooks.beforeJaasConfigEntry("com.sun.security.auth.module.JndiLoginModule", options);
+    Java11RaspHooks.onJndiRoute("ldap://reports.invalid/weekly", "JndiLoginModule.lookup");
 
     String text = new String(Files.readAllBytes(log), StandardCharsets.UTF_8);
     assertTrue(text.contains("\"algorithm\":\"java11_jaas_jndi_remote_provider\""));
     assertTrue(text.contains("\"action\":\"log\""));
-    assertTrue(text.contains("ldap://java-chains:50389/x"));
+    assertTrue(text.contains("ldap://reports.invalid/weekly"));
   }
 
   @Test
@@ -2345,14 +2343,12 @@ final class Java11RaspHooksTest {
     assertThrows(
         Java11RaspBlockException.class,
         () ->
-            Java11RaspHooks.beforeJaasConfigEntry(
-                "com.sun.security.auth.module.JndiLoginModule",
-                "user.provider.url=\"rmi://127.0.0.1:1099/Exploit\" useFirstPass=true"));
+            Java11RaspHooks.onJndiRoute("ldap://reports.invalid/weekly", "JndiLoginModule.lookup"));
 
     String text = new String(Files.readAllBytes(log), StandardCharsets.UTF_8);
     assertTrue(text.contains("\"algorithm\":\"java11_jaas_jndi_remote_provider\""));
     assertTrue(text.contains("\"action\":\"block\""));
-    assertTrue(text.contains("rmi://127.0.0.1:1099/Exploit"));
+    assertTrue(text.contains("ldap://reports.invalid/weekly"));
   }
 
   @Test

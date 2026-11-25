@@ -63,9 +63,6 @@ public final class Java11RaspHooks {
   private static final List<String> SENSITIVE_PATHS = java.util.Arrays.asList("/etc/passwd", "/etc/shadow", "/proc/self/environ");
   private static final Pattern REMOTE_JNDI_LOOKUP =
       Pattern.compile("(?is)^(ldap|ldaps|rmi|iiop|corbaname|corbaloc)://[^\\s\\u0000]{1,2048}");
-  private static final Pattern JAAS_REMOTE_PROVIDER =
-      Pattern.compile(
-          "(?is)(?:^|[\\s,{])(?:user|group)\\.provider\\.url\\s*[=:]\\s*[\"']?((?:ldap|ldaps|rmi|iiop|corbaname|corbaloc)://[^\"'\\s,;}]{1,2048})");
   private static final Pattern TYPED_PAYLOAD_CLASS_ATTRIBUTE =
       Pattern.compile("(?is)(?:\\btype|\\bclass)\\s*=\\s*[\"']([^\"'<>\\s]{1,256})[\"']");
   private static final Pattern TYPED_PAYLOAD_JSON_TYPE =
@@ -153,7 +150,6 @@ public final class Java11RaspHooks {
   private static final ThreadLocal<String> LAST_LOGGED_JEXL = new ThreadLocal<String>();
   private static final ThreadLocal<String> LAST_LOGGED_EL = new ThreadLocal<String>();
   private static final ThreadLocal<String> LAST_LOGGED_JAVA_COMPILE = new ThreadLocal<String>();
-  private static final ThreadLocal<String> LAST_LOGGED_JAAS = new ThreadLocal<String>();
   private static final ThreadLocal<String> LAST_LOGGED_JMX = new ThreadLocal<String>();
   private static final ThreadLocal<String> LAST_LOGGED_XML_DECODER = new ThreadLocal<String>();
   private static final ThreadLocal<String> LAST_LOGGED_XXE = new ThreadLocal<String>();
@@ -315,7 +311,7 @@ public final class Java11RaspHooks {
 
   public static void onJndiRoute(String url, String operation) {
     if (url == null || operation == null || RaspRuntime.detectionOff()) return;
-    Finding finding = classifyJndiLookup(url, LookupRoute.basis(operation));
+    Finding finding = classifyJndiLookup(url, operation);
     if (finding == null) return;
     boolean block = shouldBlock();
     appendEvent(finding, "declared_lookup".equals(operation) ? "InitialContext.lookup" : operation, block ? "block" : "log");
@@ -904,22 +900,8 @@ public final class Java11RaspHooks {
     }
   }
 
-  public static void beforeJaasConfigEntry(Object loginModuleName, Object options) {
-    Finding finding = classifyJaasConfig(loginModuleName, options);
-    if (finding == null) {
-      return;
-    }
-    String action = shouldBlock() ? "block" : "log";
-    String previous = LAST_LOGGED_JAAS.get();
-    if (!"block".equals(action) && finding.detailValue.equals(previous)) {
-      return;
-    }
-    LAST_LOGGED_JAAS.set(finding.detailValue);
-    appendEvent(finding, "AppConfigurationEntry.<init>", action);
-    if ("block".equals(action)) {
-      throw new Java11RaspBlockException("OhMyRASP Java 11 blocked suspicious JAAS configuration");
-    }
-  }
+  /** Retained for older instrumentation. Creating a configuration entry does not open a directory. */
+  public static void beforeJaasConfigEntry(Object loginModuleName, Object options) {}
 
   public static void beforeJmxStreamWrite(String path, int write) {
     if (write != 0 && JmxWriteScope.current() != null) inspectJmxFileWrite(path, "stream_open");
@@ -1514,7 +1496,7 @@ public final class Java11RaspHooks {
     return SCRIPT_FILE_WRITE.matcher(value.trim().replace('\\', '/')).matches();
   }
 
-  private static Finding classifyJndiLookup(String lookup, String basis) {
+  private static Finding classifyJndiLookup(String lookup, String operation) {
     if (lookup.length() == 0) {
       return null;
     }
@@ -1524,12 +1506,16 @@ public final class Java11RaspHooks {
     }
     String scheme = matcher.group(1).toLowerCase(Locale.ROOT);
     int confidence = "ldap".equals(scheme) || "rmi".equals(scheme) ? 92 : 88;
+    if (LookupRoute.LOGIN_LOOKUP.equals(operation)) {
+      return new Finding("java11_jaas_jndi_remote_provider", confidence,
+          "JDK login module lookup selected a listed naming scheme", "lookup", lookup, LookupRoute.basis(operation));
+    }
     return new Finding(
         "java11_jndi_remote_lookup",
         confidence,
         "Remote JNDI lookup reached a Java 11 naming sink",
         "lookup",
-        lookup, basis);
+        lookup, LookupRoute.basis(operation));
   }
 
   private static Finding classifyHessianType(String type) {
@@ -2032,28 +2018,6 @@ public final class Java11RaspHooks {
     if ("block".equals(action)) {
       throw new Java11RaspBlockException("OhMyRASP Java 11 blocked suspicious Java compilation");
     }
-  }
-
-  private static Finding classifyJaasConfig(Object loginModuleName, Object options) {
-    if (loginModuleName == null) {
-      return null;
-    }
-    String loginModule = String.valueOf(loginModuleName).trim();
-    if (loginModule.length() == 0 || !loginModule.toLowerCase(Locale.ROOT).contains("jndiloginmodule")) {
-      return null;
-    }
-    String config = loginModule + " " + jaasOptionsText(options);
-    Matcher matcher = JAAS_REMOTE_PROVIDER.matcher(config);
-    if (!matcher.find()) {
-      return null;
-    }
-    String providerUrl = matcher.group(1);
-    return new Finding(
-        "java11_jaas_jndi_remote_provider",
-        remoteJaasConfidence(providerUrl),
-        "JAAS JNDI login module reached a Java 11 remote provider configuration sink",
-        "config",
-        loginModule + " " + providerUrl);
   }
 
   private static Finding classifyJmxMBeanInvoke(
@@ -3846,32 +3810,6 @@ public final class Java11RaspHooks {
       builder.append(value.trim());
     }
     return builder.toString();
-  }
-
-  private static int remoteJaasConfidence(String providerUrl) {
-    String lower = providerUrl == null ? "" : providerUrl.toLowerCase(Locale.ROOT);
-    if (lower.startsWith("ldap://") || lower.startsWith("ldaps://") || lower.startsWith("rmi://")) {
-      return 94;
-    }
-    return 88;
-  }
-
-  private static String jaasOptionsText(Object options) {
-    if (options == null) {
-      return "";
-    }
-    if (options instanceof Map<?, ?>) {
-      StringBuilder builder = new StringBuilder();
-      Map<?, ?> map = (Map<?, ?>) options;
-      for (Map.Entry<?, ?> entry : map.entrySet()) {
-        if (builder.length() > 0) {
-          builder.append(' ');
-        }
-        builder.append(String.valueOf(entry.getKey())).append('=').append(String.valueOf(entry.getValue()));
-      }
-      return builder.toString();
-    }
-    return String.valueOf(options);
   }
 
   private static int scriptConfidence(

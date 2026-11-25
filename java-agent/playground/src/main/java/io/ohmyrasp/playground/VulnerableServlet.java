@@ -794,7 +794,6 @@ public final class VulnerableServlet extends HttpServlet {
                 + "user.provider.url=\""
                 + provider
                 + "\" useFirstPass=\"true\" serviceName=\"x\";");
-    hook("beforeJaasConfig", new Class<?>[] {Object.class}, config);
     return "jaas-config=" + firstLine(config);
   }
 
@@ -806,32 +805,6 @@ public final class VulnerableServlet extends HttpServlet {
     List<String> configs = jsonStringFieldValues(body, "sasl.jaas.config");
     if (configs.isEmpty()) {
       configs = List.of(kafkaJndiLoginModuleConfig());
-    }
-    for (String config : configs) {
-      hook(
-          "beforeSyntheticJaasConfig",
-          new Class<?>[] {
-            String.class,
-            String.class,
-            String.class,
-            Map.class,
-            Map.class,
-            String.class,
-            Object.class,
-            String.class
-          },
-          request.getMethod(),
-          "/druid/indexer/v1/sampler",
-          valueOrDefault(request.getQueryString(), "for=connect"),
-          Map.of("for", List.of(value(request, "for", "connect"))),
-          Map.of(
-              "content-type",
-              valueOrDefault(request.getHeader("Content-Type"), "application/json"),
-              "user-agent",
-              valueOrDefault(request.getHeader("User-Agent"), "Mozilla/5.0")),
-          body,
-          config,
-          "KafkaSasl");
     }
     return "druid-kafka-jaas-configs=" + configs.size();
   }

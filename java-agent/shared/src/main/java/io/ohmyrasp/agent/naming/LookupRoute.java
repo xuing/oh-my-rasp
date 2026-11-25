@@ -2,6 +2,7 @@ package io.ohmyrasp.agent.naming;
 
 /** Connect the JDK's routing operand and the provider handoff within one lookup. */
 public final class LookupRoute {
+  public static final String LOGIN_LOOKUP = "JndiLoginModule.lookup";
   private static final ThreadLocal<LookupRoute> CURRENT = new ThreadLocal<LookupRoute>();
   private final LookupRoute parent;
   private final Object initial;
@@ -10,8 +11,8 @@ public final class LookupRoute {
   private String url;
   private Object provider;
 
-  private LookupRoute(Object initial, Object name, String operation) {
-    this.parent = CURRENT.get();
+  private LookupRoute(LookupRoute parent, Object initial, Object name, String operation) {
+    this.parent = parent;
     this.initial = initial;
     this.name = name;
     this.operation = operation;
@@ -23,7 +24,21 @@ public final class LookupRoute {
   }
 
   public static void enter(Object initial, Object name, String operation) {
-    CURRENT.set(new LookupRoute(initial, name, operation));
+    LookupRoute caller = CURRENT.get();
+    // An operation-less parent marks the exact receiver and operand supplied by the login module.
+    if (caller != null && caller.operation == null && caller.initial == initial && caller.name == name)
+      operation = LOGIN_LOOKUP;
+    CURRENT.set(new LookupRoute(caller, initial, name, operation));
+  }
+
+  /** Keep the call site attached only to the matching lookup, including on exceptional return. */
+  public static Object loginLookup(javax.naming.InitialContext context, String url) throws javax.naming.NamingException {
+    CURRENT.set(new LookupRoute(CURRENT.get(), context, url, null));
+    try {
+      return context.lookup(url);
+    } finally {
+      exit();
+    }
   }
 
   public static void exit() {

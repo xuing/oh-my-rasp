@@ -10,14 +10,28 @@ import org.objectweb.asm.commons.Method;
 /** Observe the exact string the JDK uses to choose a URL scheme, without invoking Name methods. */
 public final class JndiLookupVisitor {
   public static final String INITIAL = "javax/naming/InitialContext";
+  public static final String LOGIN_MODULE = "com/sun/security/auth/module/JndiLoginModule";
   public static final String URL_CONTEXT = "com/sun/jndi/toolkit/url/GenericURLContext";
   private static final Type ROUTE = Type.getType(LookupRoute.class);
   private static final String STRING = "Ljava/lang/String;";
   private JndiLookupVisitor() {}
 
-  public static boolean target(String owner) { return INITIAL.equals(owner) || URL_CONTEXT.equals(owner); }
+  public static boolean target(String owner) { return INITIAL.equals(owner) || URL_CONTEXT.equals(owner) || LOGIN_MODULE.equals(owner); }
 
   public static MethodVisitor wrap(String owner, MethodVisitor mv, int access, final String name, String desc, final Type hooks) {
+    if (LOGIN_MODULE.equals(owner) && "attemptAuthentication".equals(name) && "(Z)V".equals(desc)) {
+      return new MethodVisitor(Opcodes.ASM9, mv) {
+        @Override public void visitMethodInsn(int op, String callee, String method, String signature, boolean itf) {
+          if (op == Opcodes.INVOKEVIRTUAL && INITIAL.equals(callee) && "lookup".equals(method)
+              && "(Ljava/lang/String;)Ljava/lang/Object;".equals(signature)) {
+            super.visitMethodInsn(Opcodes.INVOKESTATIC, ROUTE.getInternalName(), "loginLookup",
+                "(Ljavax/naming/InitialContext;Ljava/lang/String;)Ljava/lang/Object;", false);
+          } else {
+            super.visitMethodInsn(op, callee, method, signature, itf);
+          }
+        }
+      };
+    }
     boolean lookup = "lookup".equals(name) || "lookupLink".equals(name);
     boolean string = desc.startsWith("(" + STRING + ")");
     boolean named = desc.startsWith("(Ljavax/naming/Name;)");

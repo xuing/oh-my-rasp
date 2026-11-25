@@ -303,7 +303,7 @@ run_matrix_entry() {
   expect_block "$prefix" "$protected_url" rmi_classloader java8_classloader_remote_codebase /rasp/java8/rmi-classloader
   expect_block "$prefix" "$protected_url" script java8_script_engine_runtime_execution /rasp/java8/script
   expect_block "$prefix" "$protected_url" compile java8_java_compile_runtime_execution /rasp/java8/compile
-  expect_block "$prefix" "$protected_url" jaas java8_jaas_jndi_remote_provider /rasp/java8/jaas
+  curl -fsS "${protected_url}/rasp/java8/jaas" | grep -Fq "jaas attempted"
   expect_block "$prefix" "$protected_url" jmx_remote_config java8_jmx_remote_config_source /rasp/java8/jmx-remote-config
   curl -fsS "${protected_url}/rasp/java8/jmx-file-write" | grep -Fq "jmx file write attempted"
   expect_block "$prefix" "$protected_url" xml_decoder_runtime java8_xml_decoder_runtime_execution /rasp/java8/xml-decoder-runtime

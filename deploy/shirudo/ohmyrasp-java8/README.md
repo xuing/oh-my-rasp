@@ -2,7 +2,7 @@
 
 > **Generated** by `deploy/shirudo/gen-readmes.py` from `java-agent/` sources.
 
-The `ohmyrasp-java8` package installs the `ohmyrasp-java8` Java upatch: a standalone, daemonless OhMyRASP runtime self-protection agent targeting **Java 8** JVMs (classfile version `<= 52`). It covers **25 ASM transformer families** and **44 detection algorithms**, validated against **96** real Vulhub scenarios on `java8`.
+The `ohmyrasp-java8` package installs the `ohmyrasp-java8` Java upatch: a standalone, daemonless OhMyRASP runtime self-protection agent targeting **Java 8** JVMs (classfile version `<= 52`). It covers **24 ASM transformer families** and **44 detection algorithms**, validated against **96** real Vulhub scenarios on `java8`.
 
 ## Security Coverage
 
@@ -12,10 +12,10 @@ The `ohmyrasp-java8` package installs the `ohmyrasp-java8` Java upatch: a standa
 | **Elasticsearch LZ4 Transport (CVE-2026-82303)** | In block mode, isolates the declared compressed transport block and checks the decoder consumed its exact length. | `Java8ElasticLz4Transformer` |
 | **OpenJDK Base64 AVX-512 Guard (CVE-2026-114938)** | Zero-allocation arithmetic boundary check on `java.util.Base64$Decoder.decode0` blocking x86-64 AVX-512 tail-underflow inputs (Java2Shell / Java4Shell) before the native intrinsic runs. | `Java8Base64Transformer` |
 | **SQL Injection & JDBC** | Detects and blocks structural SQL injection across JDBC `Statement` drivers, MyBatis `BoundSql` order-by identifiers, GeoServer OGC CQL filters, H2 `INIT` code execution, Derby SQLJ loading, and MySQL `autoDeserialize` URLs. | `Java8JdbcTransformer` |
-| **JNDI, Deserialization & XML/XXE** | Blocks remote `InitialContext.lookup` (`ldap`/`rmi`/`iiop`/`corba`), dangerous `ObjectInputStream` / RMI / OpenWire / Hessian / Fastjson `autoType` / `1.2.83` class-resource gadgets, XMLDecoder graphs, and external XML entities (XXE). | `Java8JndiTransformer`, `Java8DeserializationTransformer`, `Java8FastjsonTransformer`, `Java8HessianTransformer`, `Java8JavaBeansTransformer`, `Java8XxeTransformer` |
+| **JNDI, Deserialization & XML/XXE** | Checks remote naming routes, including JDK JAAS directory lookups, and blocks dangerous `ObjectInputStream` / RMI / OpenWire / Hessian / Fastjson `autoType` / `1.2.83` class-resource gadgets, XMLDecoder graphs, and external XML entities (XXE). | `Java8JndiTransformer`, `Java8DeserializationTransformer`, `Java8FastjsonTransformer`, `Java8HessianTransformer`, `Java8JavaBeansTransformer`, `Java8XxeTransformer` |
 | **HTTP Request, Path Confusion, Auth & SSRF** | Six-form URI path-confusion decoding (Shiro, GlassFish, Jetty, Spring), weak/default JWT HMAC secret checks, Shiro default `rememberMe` AES detection, forged internal identities, and cloud-metadata / loopback-admin / obfuscated-IP SSRF guards. | `Java8ServletTransformer`, `Java8UrlTransformer`, `Java8JwtTransformer` |
 | **File I/O, Uploads & Archive Traversal** | Guards sensitive reads (`/etc/passwd`, `/proc/self/environ`, SSH keys), webroot script writes, ZipSlip archive traversal (`ZipEntry` / 7z), multipart upload path traversal, and `.gnuplot` command injection. | `Java8FileTransformer`, `Java8MultipartUploadTransformer`, `Java8ArchiveTransformer` |
-| **Expression Engines, Scripting, ClassLoading & JMX/JAAS** | Inspects Nashorn/Rhino `ScriptEngine`, JEXL, Jakarta/JSP EL, `JavacTool`/Janino compilation, remote `URLClassLoader`/`RMIClassLoader` codebases, JAAS remote JNDI providers, and mutating JMX MBean invocations. | `Java8ClassLoaderTransformer`, `Java8ScriptEngineTransformer`, `Java8JexlTransformer`, `Java8ElTransformer`, `Java8JavaCompilationTransformer`, `Java8JaasTransformer`, `Java8JmxTransformer` |
+| **Expression Engines, Scripting, ClassLoading & JMX** | Inspects Nashorn/Rhino `ScriptEngine`, JEXL, Jakarta/JSP EL, `JavacTool`/Janino compilation, remote `URLClassLoader`/`RMIClassLoader` codebases, and mutating JMX MBean invocations. | `Java8ClassLoaderTransformer`, `Java8ScriptEngineTransformer`, `Java8JexlTransformer`, `Java8ElTransformer`, `Java8JavaCompilationTransformer`, `Java8JmxTransformer` |
 
 <details><summary>All detection algorithm IDs (44)</summary>
 

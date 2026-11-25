@@ -8,7 +8,7 @@
 
 | Metric | Count |
 |--------|------:|
-| Hook families (instrumentation points) | 31 |
+| Hook families (instrumentation points) | 30 |
 | Detector capabilities (engine entry points) | 56 |
 | Verified algorithm signatures (asserted by tests) | 43 |
 | End-to-end vulnerability acceptance scenarios | 136 |
@@ -30,7 +30,6 @@ rewrites a family of risky call sites and routes them to the detector engine.
 | File | `FileHookModule` |
 | Hessian | `HessianHookModule` |
 | HttpInvoker | `HttpInvokerHookModule` |
-| Jaas | `JaasHookModule` |
 | JavaBeans | `JavaBeansHookModule` |
 | JavaCompilation | `JavaCompilationHookModule` |
 | Jmx | `JmxHookModule` |
@@ -141,7 +140,7 @@ The descriptions live in the [general catalog](../rules/general.json) and [produ
 | `jmx_file_write` | A synchronous MBean argument names the same script destination that the JDK opens for writing. The event records a write-open attempt. | — |
 | `jmx_remote_config` | A resolved JMX invocation carries a location expression with configuration indicators. | Compound broker configuration sources include XBean or Spring location expressions. |
 | `jndi_disable_all` | A lookup uses a URL scheme listed by the naming policy. Runtime events identify scheme selection or direct URL-provider lookup. | — |
-| `jndi_jaas_config` | A naming operation or a JAAS naming-provider configuration is checked against the JNDI policy. | — |
+| `jndi_jaas_config` | The JDK JNDI login module performs a lookup for which the naming router selects a listed URL scheme. | — |
 | `link_webshell` | A link or rename selects a script-like destination. | — |
 | `loadLibrary_unc` | A native library load selects a network share. | — |
 | `ognl_blacklist` | — | The OGNL policy uses engine-specific syntax or a configured expression-length limit. |
@@ -254,7 +253,7 @@ The descriptions live in the [general catalog](../rules/general.json) and [produ
 | `java8_file_generated_plot_script_command`, `java11_file_generated_plot_script_command`, `java17_file_generated_plot_script_command` | A directive in plot syntax reaches the output stream opened for that plot file. The event records a write attempt. | — |
 | `java8_file_script_write`, `java11_file_script_write`, `java17_file_script_write` | A file write selects a target with a script or executable suffix. This is a file-type indicator. | Maven repository layout and TeamCity plugin startup provide product-specific exclusions to the general file rule. |
 | `java8_file_sensitive_read`, `java11_file_sensitive_read`, `java17_file_sensitive_read` | A host file open selects a protected location. Request and resolved-path evidence depend on the branch. | — |
-| `java8_jaas_jndi_remote_provider`, `java11_jaas_jndi_remote_provider`, `java17_jaas_jndi_remote_provider` | A JAAS JNDI login module receives remote naming-provider options. | — |
+| `java8_jaas_jndi_remote_provider`, `java11_jaas_jndi_remote_provider`, `java17_jaas_jndi_remote_provider` | The JDK JNDI login module performs a lookup for which the naming router selects a listed URL scheme. | — |
 | `java8_java_compile_runtime_execution`, `java11_java_compile_runtime_execution`, `java17_java_compile_runtime_execution` | Source at Java compilation contains runtime execution primitives. | — |
 | `java8_jdbc_derby_code_loading`, `java11_jdbc_derby_code_loading`, `java17_jdbc_derby_code_loading` | — | The Derby connection URL enables driver-specific Java code loading. |
 | `java8_jdbc_h2_code_execution`, `java11_jdbc_h2_code_execution`, `java17_jdbc_h2_code_execution` | — | H2 connection options have driver-specific execution semantics. |

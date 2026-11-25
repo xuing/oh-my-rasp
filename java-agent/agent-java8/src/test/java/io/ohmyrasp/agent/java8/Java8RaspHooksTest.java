@@ -2326,14 +2326,12 @@ final class Java8RaspHooksTest {
     Files.delete(log);
     System.setProperty("ohmyrasp.java8.log", log.toString());
 
-    Map<String, String> options = new HashMap<String, String>();
-    options.put("user.provider.url", "ldap://java-chains:50389/x");
-    Java8RaspHooks.beforeJaasConfigEntry("com.sun.security.auth.module.JndiLoginModule", options);
+    Java8RaspHooks.onJndiRoute("ldap://reports.invalid/weekly", "JndiLoginModule.lookup");
 
     String text = new String(Files.readAllBytes(log), StandardCharsets.UTF_8);
     assertTrue(text.contains("\"algorithm\":\"java8_jaas_jndi_remote_provider\""));
     assertTrue(text.contains("\"action\":\"log\""));
-    assertTrue(text.contains("ldap://java-chains:50389/x"));
+    assertTrue(text.contains("ldap://reports.invalid/weekly"));
   }
 
   @Test
@@ -2346,14 +2344,12 @@ final class Java8RaspHooksTest {
     assertThrows(
         Java8RaspBlockException.class,
         () ->
-            Java8RaspHooks.beforeJaasConfigEntry(
-                "com.sun.security.auth.module.JndiLoginModule",
-                "user.provider.url=\"rmi://127.0.0.1:1099/Exploit\" useFirstPass=true"));
+            Java8RaspHooks.onJndiRoute("ldap://reports.invalid/weekly", "JndiLoginModule.lookup"));
 
     String text = new String(Files.readAllBytes(log), StandardCharsets.UTF_8);
     assertTrue(text.contains("\"algorithm\":\"java8_jaas_jndi_remote_provider\""));
     assertTrue(text.contains("\"action\":\"block\""));
-    assertTrue(text.contains("rmi://127.0.0.1:1099/Exploit"));
+    assertTrue(text.contains("ldap://reports.invalid/weekly"));
   }
 
   @Test

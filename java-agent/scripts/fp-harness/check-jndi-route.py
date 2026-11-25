@@ -22,7 +22,7 @@ def main():
         "--add-exports", "java.naming/com.sun.jndi.toolkit.url=ALL-UNNAMED"]
     with tempfile.TemporaryDirectory(prefix="jndi-route-") as tmp:
         subprocess.run(["javac", *exports, "-d", tmp, src / "HttpTransportCheck.java",
-                        src / "JndiRouteCheck.java", src / "jndi/ldapURLContextFactory.java"], check=True)
+                        src / "JndiRouteCheck.java", src / "JaasDirectoryCheck.java", src / "jndi/ldapURLContextFactory.java"], check=True)
         for mode in ("block", "monitor"):
             log = Path(tmp) / f"{mode}.jsonl"
             run = subprocess.run(["java", *exports, "-Xverify:all", f"-javaagent:{agent}", "-Dohmyrasp.standalone=true",
@@ -33,15 +33,19 @@ def main():
                 raise SystemExit(run.stdout + run.stderr)
             events = [r for l in log.read_text().splitlines() if (r := json.loads(l)).get("kind") == "detection"
                       or r.get("event") == "ohmyrasp-detection"]
-            observed = Counter((e["details"].get("operation", e["hook"]), e["details"].get("decision_basis")) for e in events)
+            rule = "jndi_disable_all" if track == "main" else f"java{track}_jndi_remote_lookup"
+            login_rule = "jndi_jaas_config" if track == "main" else f"java{track}_jaas_jndi_remote_provider"
+            observed = Counter((e["algorithm"], e["details"].get("operation", e["hook"]),
+                                e["details"].get("decision_basis")) for e in events)
             if any(e["details"].get("requestControlled") == "true" for e in events):
                 raise SystemExit("shared report name was treated as control over the directory URL")
-            expected = {("InitialContext.lookup", "url_scheme_selection"): 3,
-                        ("InitialContext.lookupLink", "url_scheme_selection"): 1,
-                        ("URLContext.lookup", "provider_root_lookup"): 1}
-            rule = "jndi_disable_all" if track == "main" else f"java{track}_jndi_remote_lookup"
-            if observed != expected or any(e["algorithm"] != rule or (e["action"] == "block") != (mode == "block")
-                                            for e in events):
+            expected = {(rule, "InitialContext.lookup", "url_scheme_selection"): 3,
+                        (rule, "InitialContext.lookupLink", "url_scheme_selection"): 1,
+                        (rule, "URLContext.lookup", "provider_root_lookup"): 1,
+                        (login_rule, "JndiLoginModule.lookup", "url_scheme_selection"): 1}
+            if track == "main" and mode == "block":
+                expected[(rule, "InitialContext.lookup", "url_scheme_selection")] += 1
+            if observed != expected or any((e["action"] == "block") != (mode == "block") for e in events):
                 raise SystemExit(f"unexpected JNDI decisions in {mode}: {dict(observed)}")
 
 

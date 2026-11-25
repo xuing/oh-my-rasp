@@ -16,7 +16,6 @@ public final class HookRegistry {
               new ArchiveHookModule(),
               new NetworkHookModule(),
               new JndiHookModule(),
-              new JaasHookModule(),
               new ClassLoaderHookModule(),
               new SpringConfigHookModule(),
               new JmxHookModule(),

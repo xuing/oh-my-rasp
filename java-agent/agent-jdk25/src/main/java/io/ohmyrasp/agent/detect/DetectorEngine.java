@@ -1996,7 +1996,8 @@ public final class DetectorEngine {
 
   public Optional<Detection> detectJaasConfig(
       String config, String mechanism, RequestContext request) {
-    return RemoteResourceDetector.detectJaasConfig(config, mechanism, request);
+    // Compatibility for declaration-only callers. Runtime policy uses the login module lookup.
+    return Optional.empty();
   }
 
   public Optional<Detection> detectJwtVerificationFailure(

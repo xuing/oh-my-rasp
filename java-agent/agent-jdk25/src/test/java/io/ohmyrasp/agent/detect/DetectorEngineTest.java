@@ -1675,31 +1675,12 @@ final class DetectorEngineTest {
   }
 
   @Test
-  void detectsKafkaCve202325194DruidSamplerJaasJndiLoginModuleRemoteProvider() {
-    String config =
-        "com.sun.security.auth.module.JndiLoginModule required "
-            + "user.provider.url=\"ldap://java-chains:50389/x\" "
-            + "useFirstPass=\"true\" serviceName=\"x\" debug=\"true\" group.provider.url=\"xxx\";";
-    String body =
-        "{\"type\":\"kafka\",\"spec\":{\"ioConfig\":{\"consumerProperties\":{"
-            + "\"sasl.jaas.config\":\""
-            + jsonString(config)
-            + "\"}}}}";
-    var result =
-        engine.detectJaasConfig(
-            config,
-            "KafkaSasl",
-            new RequestContext(
-                "POST",
-                "/druid/indexer/v1/sampler",
-                "for=connect",
-                Map.of("for", List.of("connect")),
-                Map.of("content-type", "application/json", "user-agent", "JUnit"),
-                body));
-
-    assertAlgorithm(result, "jndi_jaas_config");
-    assertEquals("KafkaSasl", result.orElseThrow().details().get("mechanism"));
-    assertEquals("true", result.orElseThrow().details().get("requestControlled"));
+  void declaredDirectoryDoesNotEstablishLoginModuleRouting() {
+    String config = "com.sun.security.auth.module.JndiLoginModule required user.provider.url=ldap://reports.invalid/weekly;";
+    assertTrue(engine.detectJaasConfig(config, "KafkaSasl", request()).isEmpty());
+    var routed = engine.detectJndi("ldap://reports.invalid/weekly", request(), "JndiLoginModule.lookup");
+    assertAlgorithm(routed, "jndi_jaas_config");
+    assertEquals("url_scheme_selection", routed.orElseThrow().details().get("decision_basis"));
   }
 
   @Test

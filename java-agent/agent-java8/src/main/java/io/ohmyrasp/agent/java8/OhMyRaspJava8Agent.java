@@ -118,7 +118,6 @@ public final class OhMyRaspJava8Agent {
     instrumentation.addTransformer(new Java8JexlTransformer(), canRetransform);
     instrumentation.addTransformer(new Java8ElTransformer(), canRetransform);
     instrumentation.addTransformer(new Java8JavaCompilationTransformer(), canRetransform);
-    instrumentation.addTransformer(new Java8JaasTransformer(), canRetransform);
     instrumentation.addTransformer(new Java8JmxTransformer(), canRetransform);
     instrumentation.addTransformer(new Java8JwtTransformer(), canRetransform);
     instrumentation.addTransformer(new Java8JavaBeansTransformer(), canRetransform);
@@ -167,7 +166,6 @@ public final class OhMyRaspJava8Agent {
     retransformByName(instrumentation, "de.odysseus.el.TreeMethodExpression");
     retransformByName(instrumentation, "org.jboss.el.ValueExpressionImpl");
     retransformByName(instrumentation, "org.jboss.el.MethodExpressionImpl");
-    retransform(instrumentation, javax.security.auth.login.AppConfigurationEntry.class);
     retransform(instrumentation, java.beans.Expression.class);
     retransform(instrumentation, java.beans.Statement.class);
     retransformByName(instrumentation, io.ohmyrasp.agent.jmx.JmxDispatchVisitor.TARGET.replace('/', '.'));
@@ -179,6 +177,7 @@ public final class OhMyRaspJava8Agent {
       String internalName = loaded.getName().replace('.', '/');
       if (Lz4TransportVisitor.OWNER.equals(internalName)
           || io.ohmyrasp.agent.naming.JndiLookupVisitor.URL_CONTEXT.equals(internalName)
+          || io.ohmyrasp.agent.naming.JndiLookupVisitor.LOGIN_MODULE.equals(internalName)
           || io.ohmyrasp.agent.rules.product.yarn.YarnSubmitVisitor.OWNER.equals(internalName)
           || io.ohmyrasp.agent.rules.product.spark.SparkSubmitVisitor.OWNER.equals(internalName)
           || io.ohmyrasp.agent.rules.product.dataease.FilterVerificationVisitor.OWNER.equals(internalName)
