@@ -13,6 +13,7 @@ import io.ohmyrasp.agent.detect.CredentialDetector;
 import io.ohmyrasp.agent.detect.DeserializationDetector;
 import io.ohmyrasp.agent.detect.DetectorEngine;
 import io.ohmyrasp.agent.detect.FileAccessDetector;
+import io.ohmyrasp.agent.detect.FileUploadDetector;
 import io.ohmyrasp.agent.detect.HostFileMutationDetector;
 import io.ohmyrasp.agent.detect.JdbcDetector;
 import io.ohmyrasp.agent.detect.NetworkDestinationDetector;
@@ -1034,8 +1035,8 @@ public final class OhMyRaspHooks {
       ArchiveUploadPolicy.Evaluation evaluation = ArchiveUploadPolicy.isArchive(filename)
           ? ArchiveUploadPolicy.inspect(DISPATCH.servletRequest()) : ArchiveUploadPolicy.UNSPECIFIED;
       ArchiveUploadPolicy.Decision decision = evaluation.decision;
-      var finding = archiveOnly ? DETECTORS.deniedArchiveUpload(filename, currentRequest(), decision)
-          : DETECTORS.detectFileUpload(filename, currentRequest(), decision, POLICY.loaded());
+      var finding = archiveOnly ? FileUploadDetector.deniedArchiveUpload(filename, currentRequest(), decision)
+          : FileUploadDetector.detectFileUpload(filename, currentRequest(), decision, POLICY.loaded());
       if (finding.isPresent()) {
         Detection event = finding.get();
         String basis = event.details().getOrDefault("decision_basis", "");
@@ -1062,7 +1063,7 @@ public final class OhMyRaspHooks {
       return;
     }
     try {
-      emit(DETECTORS.detectWebdavUpload(source, destination, method, currentRequest()));
+      emit(FileUploadDetector.detectWebdavUpload(source, destination, method, currentRequest()));
     } catch (OhMyRaspBlockException blocked) {
       throw blocked;
     } catch (Throwable throwable) {

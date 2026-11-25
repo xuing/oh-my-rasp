@@ -1,6 +1,7 @@
 import io.ohmyrasp.agent.detect.DeserializationDetector;
 import io.ohmyrasp.agent.detect.DetectorEngine;
 import io.ohmyrasp.agent.detect.FileAccessDetector;
+import io.ohmyrasp.agent.detect.FileUploadDetector;
 import io.ohmyrasp.agent.detect.HostFileMutationDetector;
 import io.ohmyrasp.agent.detect.JdbcDetector;
 import io.ohmyrasp.agent.detect.NetworkDestinationDetector;
@@ -118,9 +119,9 @@ public final class FpReport {
         new Category("DNS lookups", dnsCorpus(), (c, r) -> NetworkDestinationDetector.detectDns(c.payload(), r)),
         new Category("Ordinary deployment uploads", List.of(
             Case.of("weekly.jar"), Case.of("component.war"), Case.of("connector.ear")),
-            (c, r) -> ENGINE.detectFileUpload(c.payload(),
+            (c, r) -> FileUploadDetector.detectFileUpload(c.payload(),
                 new RequestContext("POST", "/plugin/add", "", Map.of(), Map.of()))),
-        new Category("Upload filenames", uploadCorpus(), (c, r) -> ENGINE.detectFileUpload(c.payload(), r)),
+        new Category("Upload filenames", uploadCorpus(), (c, r) -> FileUploadDetector.detectFileUpload(c.payload(), r)),
         new Category("JDBC URLs", jdbcCorpus(), (c, r) -> JdbcDetector.detectJdbcUrl(c.payload(), r)),
         new Category("Application response markup", List.of(
             Case.tainted("<script src='/assets/report.js'></script>", "weekly"),

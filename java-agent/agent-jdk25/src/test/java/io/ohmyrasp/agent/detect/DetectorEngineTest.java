@@ -1230,7 +1230,7 @@ final class DetectorEngineTest {
     assertEquals("writeFile_NTFS", selected.algorithm());
     assertEquals("author", selected.details().get("stream"));
     assertTrue(selected.requiresExplicitRule());
-    assertTrue(engine.detectFileUpload("weekly.csv::$DATA", request()).isEmpty());
+    assertTrue(FileUploadDetector.detectFileUpload("weekly.csv::$DATA", request()).isEmpty());
   }
 
   @Test
@@ -1507,7 +1507,7 @@ final class DetectorEngineTest {
 
   @Test
   void detectsMultipartScriptUpload() {
-    var result = engine.detectFileUpload("shell.jsp", request());
+    var result = FileUploadDetector.detectFileUpload("shell.jsp", request());
 
     assertAlgorithm(result, "fileUpload_multipart_script");
   }
@@ -1522,7 +1522,7 @@ final class DetectorEngineTest {
             Map.of(),
             Map.of("content-type", "multipart/form-data; boundary=ohmyrasp"));
 
-    var result = engine.detectFileUpload("shell.jsp", request);
+    var result = FileUploadDetector.detectFileUpload("shell.jsp", request);
 
     assertAlgorithm(result, "fileUpload_multipart_script");
     assertEquals("/ws_utc/resources/setting/keystore", result.orElseThrow().request().uri());
@@ -1531,7 +1531,7 @@ final class DetectorEngineTest {
 
   @Test
   void detectsMultipartUploadPathTraversal() {
-    var result = engine.detectFileUpload("../../../../../../tmp/success", request());
+    var result = FileUploadDetector.detectFileUpload("../../../../../../tmp/success", request());
 
     assertAlgorithm(result, "fileUpload_path_traversal");
   }
@@ -1542,7 +1542,7 @@ final class DetectorEngineTest {
         "%{#context['com.opensymphony.xwork2.dispatcher.HttpServletResponse']"
             + ".addHeader('X-Test',233*233)}\u0000b";
 
-    var result = engine.detectFileUpload(filename, request());
+    var result = FileUploadDetector.detectFileUpload(filename, request());
 
     assertAlgorithm(result, "fileUpload_multipart_expression");
     assertEquals("ognl", result.orElseThrow().details().get("engine"));
@@ -1552,42 +1552,42 @@ final class DetectorEngineTest {
 
   @Test
   void detectsEncodedMultipartUploadPathTraversal() {
-    var result = engine.detectFileUpload("..%2f..%2f..%2fvar%2flog%2fapp.txt", request());
+    var result = FileUploadDetector.detectFileUpload("..%2f..%2f..%2fvar%2flog%2fapp.txt", request());
 
     assertAlgorithm(result, "fileUpload_path_traversal");
   }
 
   @Test
   void ignoresMultipartUploadSubdirectoryFilename() {
-    var result = engine.detectFileUpload("reports/summary.txt", request());
+    var result = FileUploadDetector.detectFileUpload("reports/summary.txt", request());
 
     assertTrue(result.isEmpty());
   }
 
   @Test
   void ignoresBenignExpressionLikeMultipartFilename() {
-    var result = engine.detectFileUpload("report-%{yyyy}.txt", request());
+    var result = FileUploadDetector.detectFileUpload("report-%{yyyy}.txt", request());
 
     assertTrue(result.isEmpty());
   }
 
   @Test
   void detectsMultipartHtmlUpload() {
-    var result = engine.detectFileUpload("phish.html", request());
+    var result = FileUploadDetector.detectFileUpload("phish.html", request());
 
     assertAlgorithm(result, "fileUpload_multipart_html");
   }
 
   @Test
   void detectsMultipartExecutableUpload() {
-    var result = engine.detectFileUpload("dropper.exe", request());
+    var result = FileUploadDetector.detectFileUpload("dropper.exe", request());
 
     assertAlgorithm(result, "fileUpload_multipart_exe");
   }
 
   @Test
   void collectsPluginUploadCandidateForManagedPolicy() {
-    var result = engine.detectFileUpload("Evil.jar", requestUri("/plugin/add"),
+    var result = FileUploadDetector.detectFileUpload("Evil.jar", requestUri("/plugin/add"),
             ArchiveUploadPolicy.Decision.UNSPECIFIED, true);
 
     assertAlgorithm(result, "fileUpload_java_archive");
@@ -1595,7 +1595,7 @@ final class DetectorEngineTest {
 
   @Test
   void collectsJarUploadCandidateForManagedPolicy() {
-    var result = engine.detectFileUpload("Exploit.jar", requestUri("/jars/upload"),
+    var result = FileUploadDetector.detectFileUpload("Exploit.jar", requestUri("/jars/upload"),
             ArchiveUploadPolicy.Decision.UNSPECIFIED, true);
 
     assertAlgorithm(result, "fileUpload_java_archive");
@@ -1606,7 +1606,7 @@ final class DetectorEngineTest {
     var request =
         new RequestContext(
             "POST", "/upload", "", Map.of("jarfile", List.of("selected")), Map.of());
-    var result = engine.detectFileUpload("Exploit.jar", request, ArchiveUploadPolicy.Decision.UNSPECIFIED, true);
+    var result = FileUploadDetector.detectFileUpload("Exploit.jar", request, ArchiveUploadPolicy.Decision.UNSPECIFIED, true);
 
     assertAlgorithm(result, "fileUpload_java_archive");
   }
@@ -1614,30 +1614,30 @@ final class DetectorEngineTest {
   @Test
   void archiveFilenameAloneDoesNotEstablishAuthorization() {
     var request = requestUri("/plugin/add");
-    assertTrue(engine.detectFileUpload("release.jar", request).isEmpty());
-    assertTrue(engine.detectFileUpload("release.jar", request, ArchiveUploadPolicy.Decision.ALLOWED, false).isEmpty());
-    var denied = engine.detectFileUpload("release.jar", request, ArchiveUploadPolicy.Decision.ROLE_DENIED, false);
+    assertTrue(FileUploadDetector.detectFileUpload("release.jar", request).isEmpty());
+    assertTrue(FileUploadDetector.detectFileUpload("release.jar", request, ArchiveUploadPolicy.Decision.ALLOWED, false).isEmpty());
+    var denied = FileUploadDetector.detectFileUpload("release.jar", request, ArchiveUploadPolicy.Decision.ROLE_DENIED, false);
     assertAlgorithm(denied, "fileUpload_java_archive");
     assertEquals("required_role_denied", denied.orElseThrow().details().get("decision_basis"));
   }
 
   @Test
   void ignoresJavaArchiveRepositoryUpload() {
-    var result = engine.detectFileUpload("library.jar", requestUri("/service/rest/v1/components"));
+    var result = FileUploadDetector.detectFileUpload("library.jar", requestUri("/service/rest/v1/components"));
 
     assertTrue(result.isEmpty());
   }
 
   @Test
   void ignoresJavaArchiveUploadOnUnrelatedForm() {
-    var result = engine.detectFileUpload("library.jar", requestUri("/profile/avatar"));
+    var result = FileUploadDetector.detectFileUpload("library.jar", requestUri("/profile/avatar"));
 
     assertTrue(result.isEmpty());
   }
 
   @Test
   void detectsWebdavUpload() {
-    var result = engine.detectWebdavUpload("avatar.jpg", "shell.jsp", "MOVE", request());
+    var result = FileUploadDetector.detectWebdavUpload("avatar.jpg", "shell.jsp", "MOVE", request());
 
     assertAlgorithm(result, "fileUpload_webdav");
     assertEquals("server-side-script", result.orElseThrow().details().get("destinationType"));
@@ -1646,7 +1646,7 @@ final class DetectorEngineTest {
   @Test
   void detectsWebdavUploadToUnsafeFilesystemDestination() {
     var result =
-        engine.detectWebdavUpload(
+        FileUploadDetector.detectWebdavUpload(
             "/fileserver/1.txt", "file:///etc/cron.d/root", "MOVE", request());
 
     assertAlgorithm(result, "fileUpload_webdav");
@@ -1657,7 +1657,7 @@ final class DetectorEngineTest {
   @Test
   void detectsActiveMqFileserverMoveToWebshell() {
     var result =
-        engine.detectWebdavUpload(
+        FileUploadDetector.detectWebdavUpload(
             "/fileserver/2.txt", "file:///opt/activemq/webapps/api/s.jsp", "MOVE", request());
 
     assertAlgorithm(result, "fileUpload_webdav");
@@ -1668,7 +1668,7 @@ final class DetectorEngineTest {
   @Test
   void ignoresBenignWebdavUploadMove() {
     var result =
-        engine.detectWebdavUpload(
+        FileUploadDetector.detectWebdavUpload(
             "/fileserver/avatar.jpg", "/fileserver/avatar-renamed.jpg", "MOVE", request());
 
     assertTrue(result.isEmpty());
@@ -1677,7 +1677,7 @@ final class DetectorEngineTest {
   @Test
   void ignoresWebdavUploadDestinationForReadOnlyMethod() {
     var result =
-        engine.detectWebdavUpload(
+        FileUploadDetector.detectWebdavUpload(
             "/fileserver/1.txt", "file:///etc/cron.d/root", "GET", request());
 
     assertTrue(result.isEmpty());
