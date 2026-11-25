@@ -29,8 +29,8 @@ public final class Java11JavaCompilationTransformer implements ClassFileTransfor
       return null;
     }
     try {
-      ClassReader reader = new ClassReader(classfileBuffer);
-      ClassWriter writer = new ClassWriter(reader, ClassWriter.COMPUTE_MAXS);
+      var reader = new ClassReader(classfileBuffer);
+      var writer = new ClassWriter(reader, ClassWriter.COMPUTE_MAXS);
       reader.accept(new JavaCompilationClassVisitor(className, writer), ClassReader.EXPAND_FRAMES);
       return writer.toByteArray();
     } catch (Throwable throwable) {
