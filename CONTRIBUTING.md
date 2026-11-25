@@ -188,6 +188,12 @@ in block and monitor modes. For a local run, pass the agent JAR to
 [`check-mybatis-mapping.py`](java-agent/scripts/fp-harness/check-mybatis-mapping.py).
 Its `--mybatis-jar` option accepts an existing library for offline checks.
 
+For the MySQL-family lexer, `java-agent/scripts/fp-harness/check-mysql-comments.py`
+accepts the agent JAR, a private MariaDB Unix socket (`--socket`), and the
+MariaDB Connector/J classpath including its Unix socket libraries
+(`--driver-classpath`). The fixture connects as the local test user `reports`
+and issues read-only constant queries. It checks both returned rows and events.
+
 The runtime compatibility job also runs `scripts/fp-harness/check-xml-resolution.py`
 against the packaged agent. To exercise a separate Apache Xerces installation,
 pass its JARs with `--xerces-classpath`. The fixture uses an in-memory URL

@@ -62,6 +62,9 @@ public final class SqlStatement {
     original = sql;
     bracketIdentifiers = dialect == Dialect.SQLITE || dialect == Dialect.SQL_SERVER;
     boolean ambiguous = false;
+    boolean uncertainDialect = dialect == Dialect.WRAPPER || dialect == Dialect.UNSPECIFIED;
+    boolean mysqlLineRules = dialect == Dialect.MYSQL || mysql;
+    boolean ambiguousLineComment = false;
     boolean namedDollarQuotes = dialect == Dialect.POSTGRESQL || dialect == Dialect.WRAPPER;
     StringBuilder commentsRemoved = null;
     int i = 0;
@@ -121,16 +124,17 @@ public final class SqlStatement {
           quoted.set(i, end + delimiter.length());
           i = end + delimiter.length();
         }
-      } else if (sql.startsWith("--", i) || sql.startsWith("/*", i)
+      } else if ((ch == '#' && mysqlLineRules) || sql.startsWith("--", i) || sql.startsWith("/*", i)
           || ((dialect == Dialect.H2_1 || dialect == Dialect.H2_CURRENT || dialect == Dialect.WRAPPER)
               && sql.startsWith("//", i))) {
         boolean line = !sql.startsWith("/*", i);
-        if (ch == '-' && i + 2 < sql.length() && sql.charAt(i + 2) > ' ') {
-          ambiguous = true;
-          if (mysql) {
-            i += 2;
+        if (ch == '-' && i + 2 < sql.length() && sql.charAt(i + 2) > ' ' && sql.charAt(i + 2) != 0x7f) {
+          if (mysqlLineRules) {
+            i++; // Subtraction; the next dash can still begin a comment.
             continue;
           }
+          // Keep the original two interpretations when the source-only caller has no driver.
+          ambiguous = true;
         }
         comments.set(i);
         boolean executableComments = dialect == Dialect.UNSPECIFIED || dialect == Dialect.MYSQL;
@@ -140,11 +144,13 @@ public final class SqlStatement {
           continue;
         }
         int start = i;
-        i += 2;
+        int width = ch == '#' ? 1 : 2;
+        i += width;
         if (line) {
-          while (i < sql.length() && sql.charAt(i) != '\r' && sql.charAt(i) != '\n') {
-            i++;
-          }
+          boolean lfOnly = mysqlLineRules && ch != '/';
+          while (i < sql.length() && sql.charAt(i) != '\n' && (lfOnly || sql.charAt(i) != '\r')) i++;
+          if (uncertainDialect && ch == '-' && i < sql.length() && sql.charAt(i) == '\r')
+            ambiguousLineComment = true;
         } else {
           i = blockCommentEnd(sql, i, dialect == Dialect.POSTGRESQL
               || dialect == Dialect.H2_CURRENT || dialect == Dialect.DERBY || dialect == Dialect.SQL_SERVER || dialect == Dialect.WRAPPER);
@@ -152,12 +158,12 @@ public final class SqlStatement {
         if (commentsRemoved == null) {
           commentsRemoved = new StringBuilder(sql);
         }
-        if (line && !truncatedLiteral) {
+        if (line && ch != '#' && !truncatedLiteral) {
           int before = start - 1;
           while (before >= 0 && Character.isWhitespace(sql.charAt(before))) {
             before--;
           }
-          int after = start + 2;
+          int after = start + width;
           while (after < i && Character.isWhitespace(sql.charAt(after))) {
             after++;
           }
@@ -168,14 +174,15 @@ public final class SqlStatement {
           commentsRemoved.setCharAt(k, ' ');
         }
       } else {
+        if (ch == '#' && uncertainDialect) ambiguousLineComment = true;
         i++;
       }
     }
-    boolean tryMysql = dialect == Dialect.UNSPECIFIED || dialect == Dialect.MYSQL || dialect == Dialect.WRAPPER;
-    SqlStatement alternate = ambiguous && !mysql && tryMysql ? new SqlStatement(sql, true, dialect) : null;
-    if (dialect == Dialect.WRAPPER && alternate != null) {
-      // A proxy can delegate to either dialect. Only use code that is outside
-      // quotes and comments under both interpretations at this boundary.
+    boolean tryMysql = uncertainDialect || dialect == Dialect.MYSQL;
+    SqlStatement alternate = (ambiguous || ambiguousLineComment) && !mysql && tryMysql ? new SqlStatement(sql, true, dialect) : null;
+    if ((dialect == Dialect.WRAPPER || (ambiguousLineComment && !ambiguous)) && alternate != null) {
+      // Pools defer dialect-dependent evidence. For a source-only call, a hash or CR alone
+      // also warrants deferral, while existing escape or arithmetic ambiguities retain both views.
       commentsRemoved = commonCode(commentsRemoved, alternate);
       alternate = null;
     }
@@ -237,7 +244,7 @@ public final class SqlStatement {
 
   private static Dialect dialectOf(String sql, String jdbcClass, String version) {
     if (jdbcClass == null) {
-      if (sql.indexOf('$') < 0 && sql.indexOf('[') < 0 && !sql.contains("/*") && !sql.contains("//")
+      if (sql.indexOf('$') < 0 && sql.indexOf('[') < 0 && sql.indexOf('#') < 0 && !sql.contains("/*") && !sql.contains("//")
           && !sql.contains("--") && sql.indexOf('\\') < 0) return Dialect.UNSPECIFIED;
       jdbcClass = driverAtJdbcEntry();
     }
@@ -396,8 +403,9 @@ public final class SqlStatement {
       if (marker < 0) {
         return false;
       }
-      if (marker + 2 <= offset + input.length()) {
-        return !isSubmittedConsoleSelect(input);
+      for (; marker >= 0 && marker + 2 <= offset + input.length(); marker = comments.nextSetBit(marker + 1)) {
+        // Hash is also ordinary report/tag text. Require a witnessed mapper slot to use it as source evidence.
+        if (original.charAt(marker) != '#') return !isSubmittedConsoleSelect(input);
       }
       offset = original.indexOf(input, offset + 1);
     }
@@ -423,7 +431,8 @@ public final class SqlStatement {
 
   private String scanMapperControl(BitSet supplied, BiPredicate<Integer, String> confirmed) {
     for (int marker = comments.nextSetBit(0); marker >= 0; marker = comments.nextSetBit(marker + 1)) {
-      if (supplied.get(marker) && supplied.get(marker + 1) && escapesMapperQuote(supplied, marker)
+      if (supplied.get(marker) && (original.charAt(marker) == '#' || supplied.get(marker + 1))
+          && escapesMapperQuote(supplied, marker)
           && text.charAt(supplied.nextClearBit(marker)) == ' '
           && confirmedAt(confirmed, marker, "quoted-slot-comment")) {
         return "quoted-slot-comment";

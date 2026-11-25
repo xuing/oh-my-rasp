@@ -137,6 +137,8 @@ Zero false positives on the benign SQL corpus (see [False-positive methodology](
 
 At JDBC handoff, the lexer recognizes square-bracket identifiers for SQLite and SQL Server. SQLite ends the name at the first closing bracket. SQL Server permits a doubled closing bracket inside the name. The concrete PostgreSQL driver retains array-expression semantics. When a pool has no driver identity, bracket-dependent findings can be deferred to the driver. [SQLite identifier tokens](https://www.sqlite.org/draft/tokenreq.html) · [SQL Server delimited identifiers](https://learn.microsoft.com/en-us/sql/t-sql/functions/quotename-transact-sql)
 
+For MySQL-family JDBC statements the lexer treats a hash outside quotes as a line comment and recognizes the whitespace or control character required after a double dash. A lone carriage return remains in the comment until the line feed. A request tag that also occurs in a report annotation supplies no independent evidence of SQL control. At a mapper handoff the agent can use the recorded substitution offsets to check whether a supplied marker consumed a fixed delimiter. [MariaDB comment syntax](https://mariadb.com/docs/server/reference/sql-statements/comment-syntax) · [MySQL lexer](https://github.com/mysql/mysql-server/blob/8.4/sql/sql_lex.cc)
+
 ### MyBatis dynamic SQL
 
 The mapper hook observes raw property substitutions as MyBatis appends them. It

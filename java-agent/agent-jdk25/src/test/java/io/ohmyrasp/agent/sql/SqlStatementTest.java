@@ -67,6 +67,31 @@ class SqlStatementTest {
   }
 
   @Test
+  void mysqlLineCommentsFollowTheDriverGrammar() {
+    for (String mysql : List.of("com.mysql.cj.jdbc.StatementImpl", "org.mariadb.jdbc.MariaDbStatement")) {
+      assertFalse(new SqlStatement("select 7 # statistic: benchmark(0,1)", mysql).matchesSinkPolicy());
+      assertFalse(new SqlStatement("select 7 -- report\r benchmark(0,1)", mysql).matchesSinkPolicy());
+      assertTrue(new SqlStatement("select 7 # reviewer's note\r\n, benchmark(0,1)", mysql).matchesSinkPolicy());
+      assertFalse(new SqlStatement("select 9--2", mysql).hasCommentFrom("--2"));
+      assertFalse(new SqlStatement("select 9--- weekly benchmark(0,1)", mysql).matchesSinkPolicy());
+      assertTrue(new SqlStatement("select '#literal', benchmark(0,1)", mysql).matchesSinkPolicy());
+      assertFalse(new SqlStatement("select '7' # 'note -- text'", mysql).hasTruncatedLiteral());
+      assertFalse(new SqlStatement("select '7' # 'note -- text'", mysql).hasCommentFrom("# 'note -- text'"));
+      String prefix = "select '", supplied = "weekly' #";
+      BitSet marks = new BitSet();
+      marks.set(prefix.length(), prefix.length() + supplied.length());
+      assertEquals("quoted-slot-comment", new SqlStatement(prefix + supplied + "'", mysql).mapperControl(marks));
+    }
+    assertFalse(new SqlStatement("select 7 # benchmark(0,1)", "example.ReportPool").matchesSinkPolicy());
+    assertFalse(new SqlStatement("select 9--2", "example.ReportPool").hasCommentFrom("--2"));
+    assertFalse(new SqlStatement("select 7 -- report\r benchmark(0,1)", "example.ReportPool").matchesSinkPolicy());
+    assertTrue(new SqlStatement("select 7 -- report\n, benchmark(0,1)", "example.ReportPool").matchesSinkPolicy());
+    assertTrue(new SqlStatement("select 7 # benchmark(0,1)", "org.postgresql.jdbc.PgStatement").matchesSinkPolicy());
+    assertTrue(new SqlStatement("select 1 from #reports where benchmark(0,1)=0",
+        "com.microsoft.sqlserver.jdbc.SQLServerStatement").matchesSinkPolicy());
+  }
+
+  @Test
   void bracketIdentifiersFollowTheJdbcDialect() {
     String sqlite = "org.sqlite.jdbc4.JDBC4Statement";
     String sqlServer = "com.microsoft.sqlserver.jdbc.SQLServerStatement";
