@@ -32,10 +32,15 @@ def main():
                 log = Path(work) / f"{mode}.jsonl"
                 subprocess.run(["java", "-Xverify:all", f"-javaagent:{agent}", "-Dohmyrasp.control=none",
                                 "-Dohmyrasp.standalone=true", f"-Dohmyrasp.mode={mode}", f"-Dohmyrasp.log={log}",
-                                "-Dohmyrasp.log.sync=true", "-cp", cp, fixture_name, mode], check=True)
+                                "-Dohmyrasp.log.sync=true", "-cp", cp, fixture_name, mode, *([str(track)] if track else [])], check=True)
                 events = [e for line in log.read_text().splitlines() if (e := json.loads(line)).get("algorithm")]
                 if track:
                     action = "block" if mode == "block" else "log"
+                    reads = [e for e in events if e.get("algorithm") == f"java{track}_file_sensitive_read"]
+                    if (len(reads) != 1 or reads[0]["action"] != action
+                            or reads[0]["details"].get("decision_basis") != "request_selected_hosts"):
+                        raise SystemExit(f"unexpected query-only file receipts: {reads}")
+                    events = [e for e in events if e not in reads]
                     if not events or any(e.get("algorithm") != f"java{track}_request_internal_identity"
                                          or e["action"] != action or "/admin/reports" not in e["details"]["request"]
                                          for e in events):

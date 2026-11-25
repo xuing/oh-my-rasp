@@ -185,9 +185,8 @@ public final class Java17RaspHooks {
     // Parameter-map access can consume a multipart body before lazy servlet initialization.
     boolean deferMultipart = beforeServlet
         && requestHeader(request, "Content-Type").trim().regionMatches(true, 0, "multipart/", 0, 10);
-    Object raw = deferMultipart ? ServletQueryParameters.parse(requestQuery(request))
-        : invokeServlet(request, "getParameterMap");
-    Map<?, ?> parameters = raw instanceof Map<?, ?> ? (Map<?, ?>) raw : null;
+    Object raw = deferMultipart ? null : invokeServlet(request, "getParameterMap");
+    Map<?, ?> parameters = raw instanceof Map<?, ?> ? (Map<?, ?>) raw : ServletQueryParameters.parse(requestQuery(request));
     CURRENT_REQUEST.set(new RequestSnapshot(parameters));
     captureRequestControlledUrls(parameters);
     Finding finding = classifyHttpRequest(request, parameters);
@@ -3345,18 +3344,9 @@ public final class Java17RaspHooks {
     if (target == null) {
       return null;
     }
-    return invoke(target, methodName, target.getClass());
-  }
-
-  private static Object invokeServlet(Object request, String methodName) {
-    return request == null ? null : invoke(request, methodName, ServletContracts.of(request));
-  }
-
-  private static Object invoke(Object target, String methodName, Class<?> api) {
     try {
-      return api.getMethod(methodName).invoke(target);
+      return target.getClass().getMethod(methodName).invoke(target);
     } catch (Exception ignored) {
-      if (api != target.getClass()) return null;
       try {
         Method method = target.getClass().getDeclaredMethod(methodName);
         method.setAccessible(true);
@@ -3364,6 +3354,21 @@ public final class Java17RaspHooks {
       } catch (Exception alsoIgnored) {
         return null;
       }
+    }
+  }
+
+  private static Object invokeServlet(Object request, String methodName) {
+    if (request == null) return null;
+    Class<?> api = ServletContracts.of(request);
+    if (api == request.getClass()) return invoke(request, methodName);
+    try {
+      return api.getMethod(methodName).invoke(request);
+    } catch (java.lang.reflect.InvocationTargetException failure) {
+      Throwable cause = failure.getCause();
+      if (cause instanceof Java17RaspBlockException) throw (Java17RaspBlockException) cause;
+      return null;
+    } catch (ReflectiveOperationException | SecurityException ignored) {
+      return null;
     }
   }
 
