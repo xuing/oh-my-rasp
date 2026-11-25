@@ -2,7 +2,7 @@
 
 > **Generated** by `deploy/shirudo/gen-readmes.py` from `java-agent/` sources.
 
-The `ohmyrasp-java17` package installs the `ohmyrasp-java17` Java upatch: a standalone, daemonless OhMyRASP runtime self-protection agent targeting **Java 17 and Java 21** JVMs (classfile version `<= 61`). It covers **24 ASM transformer families** and **43 detection algorithms**, validated against **12** real Vulhub scenarios on `java17` plus **3** on `java21`.
+The `ohmyrasp-java17` package installs the `ohmyrasp-java17` Java upatch: a standalone, daemonless OhMyRASP runtime self-protection agent targeting **Java 17 and Java 21** JVMs (classfile version `<= 61`). It covers **24 ASM transformer families** and **44 detection algorithms**, validated against **12** real Vulhub scenarios on `java17` plus **3** on `java21`.
 
 ## Security Coverage
 
@@ -16,7 +16,7 @@ The `ohmyrasp-java17` package installs the `ohmyrasp-java17` Java upatch: a stan
 | **File I/O, Uploads & Archive Traversal** | Guards sensitive reads (`/etc/passwd`, `/proc/self/environ`, SSH keys), webroot script writes, ZipSlip archive traversal (`ZipEntry` / 7z), multipart upload path traversal, and `.gnuplot` command injection. | `Java17FileTransformer`, `Java17MultipartUploadTransformer`, `Java17ArchiveTransformer` |
 | **Expression Engines, Scripting, ClassLoading & JMX/JAAS** | Inspects Nashorn/Rhino `ScriptEngine`, JEXL, Jakarta/JSP EL, `JavacTool`/Janino compilation, remote `URLClassLoader`/`RMIClassLoader` codebases, JAAS remote JNDI providers, and mutating JMX MBean invocations. | `Java17ClassLoaderTransformer`, `Java17ScriptEngineTransformer`, `Java17JexlTransformer`, `Java17ElTransformer`, `Java17JavaCompilationTransformer`, `Java17JaasTransformer`, `Java17JmxTransformer` |
 
-<details><summary>All detection algorithm IDs (43)</summary>
+<details><summary>All detection algorithm IDs (44)</summary>
 
 - `java17_archive_entry_traversal_write`
 - `java17_base64_avx512_tail_underflow`
@@ -26,6 +26,7 @@ The `ohmyrasp-java17` package installs the `ohmyrasp-java17` Java upatch: a stan
 - `java17_deserialization_fastjson_resource_url`
 - `java17_deserialization_gadget_class`
 - `java17_deserialization_hessian_type`
+- `java17_directory_userinput`
 - `java17_el_runtime_execution`
 - `java17_file_generated_plot_script_command`
 - `java17_file_script_write`

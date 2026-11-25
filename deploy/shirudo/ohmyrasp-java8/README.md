@@ -2,7 +2,7 @@
 
 > **Generated** by `deploy/shirudo/gen-readmes.py` from `java-agent/` sources.
 
-The `ohmyrasp-java8` package installs the `ohmyrasp-java8` Java upatch: a standalone, daemonless OhMyRASP runtime self-protection agent targeting **Java 8** JVMs (classfile version `<= 52`). It covers **24 ASM transformer families** and **43 detection algorithms**, validated against **96** real Vulhub scenarios on `java8`.
+The `ohmyrasp-java8` package installs the `ohmyrasp-java8` Java upatch: a standalone, daemonless OhMyRASP runtime self-protection agent targeting **Java 8** JVMs (classfile version `<= 52`). It covers **24 ASM transformer families** and **44 detection algorithms**, validated against **96** real Vulhub scenarios on `java8`.
 
 ## Security Coverage
 
@@ -16,7 +16,7 @@ The `ohmyrasp-java8` package installs the `ohmyrasp-java8` Java upatch: a standa
 | **File I/O, Uploads & Archive Traversal** | Guards sensitive reads (`/etc/passwd`, `/proc/self/environ`, SSH keys), webroot script writes, ZipSlip archive traversal (`ZipEntry` / 7z), multipart upload path traversal, and `.gnuplot` command injection. | `Java8FileTransformer`, `Java8MultipartUploadTransformer`, `Java8ArchiveTransformer` |
 | **Expression Engines, Scripting, ClassLoading & JMX/JAAS** | Inspects Nashorn/Rhino `ScriptEngine`, JEXL, Jakarta/JSP EL, `JavacTool`/Janino compilation, remote `URLClassLoader`/`RMIClassLoader` codebases, JAAS remote JNDI providers, and mutating JMX MBean invocations. | `Java8ClassLoaderTransformer`, `Java8ScriptEngineTransformer`, `Java8JexlTransformer`, `Java8ElTransformer`, `Java8JavaCompilationTransformer`, `Java8JaasTransformer`, `Java8JmxTransformer` |
 
-<details><summary>All detection algorithm IDs (43)</summary>
+<details><summary>All detection algorithm IDs (44)</summary>
 
 - `java8_archive_entry_traversal_write`
 - `java8_base64_avx512_tail_underflow`
@@ -26,6 +26,7 @@ The `ohmyrasp-java8` package installs the `ohmyrasp-java8` Java upatch: a standa
 - `java8_deserialization_fastjson_resource_url`
 - `java8_deserialization_gadget_class`
 - `java8_deserialization_hessian_type`
+- `java8_directory_userinput`
 - `java8_el_runtime_execution`
 - `java8_file_generated_plot_script_command`
 - `java8_file_script_write`

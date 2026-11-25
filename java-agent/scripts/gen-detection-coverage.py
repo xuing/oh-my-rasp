@@ -22,6 +22,7 @@ Usage:  python3 scripts/gen-detection-coverage.py [--check]
 """
 from __future__ import annotations
 
+import json
 import re
 import sys
 from pathlib import Path
@@ -127,13 +128,41 @@ def fp_overall() -> tuple[int, int, int]:
     return int(overall.group(1)), int(overall.group(2)), len(rows) - 1
 
 
-def group_algorithms(algos: list[str]) -> dict[str, list[str]]:
-    groups: dict[str, list[str]] = {}
-    for algo in algos:
-        m = re.match(r"(java[0-9]+)_", algo)
-        key = m.group(1) if m else "common"
-        groups.setdefault(key, []).append(algo)
-    return groups
+def rule_scope_tables() -> list[str]:
+    """Index decision branches independently of the algorithms exercised by acceptance scripts."""
+    rules = ROOT / "rules"
+    general = json.loads((rules / "general.json").read_text(encoding="utf-8"))
+    product = json.loads((rules / "product.json").read_text(encoding="utf-8"))
+    source = "\n".join((AGENT / path).read_text(encoding="utf-8") for path in
+                       ("detect/DetectorEngine.java", "hook/OhMyRaspHooks.java"))
+    literal = set(re.findall(r'Detection\.log\(\s*(?:"[^"]+"|\w+)\s*,\s*"(\w+)"', source))
+    primary = general["primary"].keys() | product["primary"].keys()
+    if missing := literal - primary:
+        raise ValueError(f"Primary rules missing a scope description: {sorted(missing)}")
+
+    families: dict[str, list[str]] = {}
+    for module in BACKPORTS:
+        track = module.removeprefix("agent-")
+        hooks = ROOT / module / "src/main/java/io/ohmyrasp/agent" / track / f"{track.capitalize()}RaspHooks.java"
+        for name in sorted(set(re.findall(r'new Finding\(\s*"(\w+)"', hooks.read_text(encoding="utf-8")))):
+            names = families.setdefault(name.removeprefix(track + "_"), [])
+            if name not in names:
+                names.append(name)
+    documented = general["backports"].keys() | product["backports"].keys()
+    if documented != families.keys():
+        raise ValueError(f"Backport rule scope catalog differs from emitted families: {sorted(documented ^ families.keys())}")
+
+    lines = []
+    for track, title, identifiers in (
+        ("primary", "Primary agent", {key: [key] for key in primary}),
+        ("backports", "Backport agents", families),
+    ):
+        lines.extend([f"### {title}", "", "| Algorithm identifier | Cross-product evidence | Product or component dependency |", "|---|---|---|"])
+        for family, names in sorted(identifiers.items()):
+            ids = ", ".join(f"`{name}`" for name in names)
+            lines.append(f"| {ids} | {general[track].get(family, '—')} | {product[track].get(family, '—')} |")
+        lines.append("")
+    return lines
 
 
 def render() -> str:
@@ -190,18 +219,20 @@ def render() -> str:
         w("- " + " · ".join(pretty[i:i + 3]))
     w("")
 
+    w("## Rule scope")
+    w("")
+    w("The index covers literal detection IDs in the primary engine and hooks, reviewed computed IDs, and named findings in the Java backports. A row with both columns populated has distinct branches or a product-specific exclusion. General request indicators still need runtime evidence to establish an effect.")
+    w("")
+    w("The descriptions live in the [general catalog](../rules/general.json) and [product-specific catalog](../rules/product.json). Scope describes applicability. Policy selection continues to use the exact event ID.")
+    w("")
+    lines.extend(rule_scope_tables())
     w("## Verified algorithm signatures")
     w("")
-    w("Algorithm identifiers asserted by the acceptance suite — i.e. detections that")
-    w("are proven end-to-end, not merely implemented.")
+    w("The acceptance scripts contain literal event assertions for these algorithm identifiers. Runtime evidence for individual environments is tracked in the [Vulhub coverage ledger](../../docs/development/vulhub-coverage.md).")
     w("")
-    for key in sorted(group_algorithms(algos)):
-        members = group_algorithms(algos)[key]
-        w(f"**{key}** ({len(members)})")
-        w("")
-        for algo in members:
-            w(f"- `{algo}`")
-        w("")
+    for algorithm in algos:
+        w(f"- `{algorithm}`")
+    w("")
 
     w("## Tested vulnerability matrix")
     w("")

@@ -40,16 +40,64 @@ public final class FpReport {
 
   public static void main(String[] args) {
     List<Category> categories = List.of(
+        new Category("Internationalized report routes", List.of(
+            Case.of("/admin/reports/資料"),
+            Case.of("/admin/reports/%E6%9D%B1%E4%BA%AC"),
+            Case.of("/admin/reports/%C5%81%C3%B3d%C5%BA"),
+            Case.of("/admin/reports/%F0%9F%93%8A"),
+            Case.of("/admin/reports/%25E6%259D%25B1"),
+            Case.of("/admin/reports/%31%32-%F0%9F%93%8A.csv")),
+            (c, r) -> ENGINE.detectRequest(new RequestContext("GET", c.payload(), "", Map.of(), Map.of()))),
+        new Category("Report field metadata", List.of(
+            Case.of("{\"orders\":[{\"type\":\"# report heading\"}]}"),
+            Case.of("{\"table\":\"reports\",\"column\":\"Select title\"}")),
+            (c, r) -> ENGINE.detectRequest(new RequestContext("POST", "/reports/query", "",
+                Map.of(), Map.of("content-type", "application/json"), c.payload()))),
         new Category("SQL queries", sqlCorpus(), (c, r) -> ENGINE.detectSql(c.payload(), r)),
         new Category("OS commands", commandCorpus(), (c, r) -> ENGINE.detectCommand(splitCommand(c.payload()), r)),
+        new Category("Process dispatch", List.of(
+            Case.of("java.lang.reflect.Method"),
+            Case.of("example.spelling.MonthlyReport"),
+            Case.of("example.javascriptnotes.Catalog"),
+            Case.of("example.velocitymetrics.Recorder")),
+            (c, r) -> ENGINE.detectCommand(List.of("printf", "%s", "weekly"), r,
+                List.of("java.lang.ProcessImpl", "java.lang.ProcessBuilder", c.payload()))),
         new Category("Outbound URLs", urlCorpus(), (c, r) -> ENGINE.detectUrl(c.payload(), r)),
         new Category("File reads", fileReadCorpus(), (c, r) -> ENGINE.detectFileRead(c.payload(), r, false)),
+        new Category("Directory listings", List.of(
+            Case.tainted("/srv/orders/exports", "orders"),
+            Case.tainted("/srv/reports/catalog", "/srv/reports/catalog"),
+            Case.of("/etc"),
+            Case.of("/proc")),
+            (c, r) -> ENGINE.detectDirectoryList(c.payload(), r)),
+        new Category("Temporary report output", List.of(
+            Case.tainted("{\"api\":\"Runtime.exec(String)\",\"report\":\"weekly\"}", "weekly"),
+            Case.tainted("{\"label\":\"Runtime.exec(String)\"}", "Runtime.exec(String)"),
+            Case.tainted("# reference: system(\"printf weekly\")", "system(\"printf weekly\")")),
+            (c, r) -> ENGINE.detectGeneratedScriptFileWrite("/tmp/reports/document.tmp", c.payload(), r)),
         new Category("File writes", fileWriteCorpus(), (c, r) -> ENGINE.detectFileWrite(c.payload(), r)),
+        new Category("File deletes", List.of(
+            Case.tainted("/srv/reports/report-10.txt", "10"),
+            Case.tainted("/srv/reports/invoice.csv", "invoice.csv"),
+            Case.tainted("/srv/reports/invoice.csv", "/srv/reports/invoice.csv"),
+            Case.tainted("/srv/app/WEB-INF/work.csv", "/srv/app/WEB-INF/work.csv")),
+            (c, r) -> ENGINE.detectFileDelete(c.payload(), r)),
+        new Category("Archive writes", List.of(
+            Case.tainted("/srv/orders/drafts/../report.csv", "drafts/../report.csv"),
+            Case.tainted("/srv/orders/report.csv", "../report.csv"),
+            Case.tainted("/srv/orders/../orders/report.csv", "../orders/report.csv"),
+            Case.tainted("/srv/orders/notes/report.csv", "/notes/report.csv"),
+            Case.tainted("/srv/orders/drafts/../report.csv.bak", "../report.csv")),
+            (c, r) -> ENGINE.detectArchiveExtraction(c.userParam(), c.payload(), r)),
         new Category("Deserialization classes", deserializationCorpus(), (c, r) -> ENGINE.detectDeserialization(c.payload(), r)),
         new Category("Expressions", expressionCorpus(), (c, r) -> ENGINE.detectExpression("spel", c.payload(), r)),
         new Category("OGNL expressions", ognlCorpus(), (c, r) -> ENGINE.detectOgnl(c.payload(), r)),
         new Category("JNDI names", jndiCorpus(), (c, r) -> ENGINE.detectJndi(c.payload(), r)),
         new Category("DNS lookups", dnsCorpus(), (c, r) -> ENGINE.detectDns(c.payload(), r)),
+        new Category("Ordinary deployment uploads", List.of(
+            Case.of("weekly.jar"), Case.of("component.war"), Case.of("connector.ear")),
+            (c, r) -> ENGINE.detectFileUpload(c.payload(),
+                new RequestContext("POST", "/plugin/add", "", Map.of(), Map.of()))),
         new Category("Upload filenames", uploadCorpus(), (c, r) -> ENGINE.detectFileUpload(c.payload(), r)),
         new Category("JDBC URLs", jdbcCorpus(), (c, r) -> ENGINE.detectJdbcUrl(c.payload(), r)),
         new Category("Request parameters", requestParamCorpus(), (c, r) -> ENGINE.detectRequest(r)),
@@ -164,6 +212,10 @@ public final class FpReport {
         Case.tainted("select * from notes where label = 'build--release'", "build--release"),
         Case.of("insert into audit(message) values ('user''s sleep(5) example')"),
         Case.tainted("/* mapped query */ select id from orders where id = 42", "42"),
+        Case.of("select 'SQLJ.INSTALL_JAR( documentation' as excerpt"),
+        Case.of("/* CREATE ALIAS using ProcessBuilder is documented separately */ select 7"),
+        Case.of("select 'RUNSCRIPT FROM https://docs.invalid/manual' as excerpt"),
+        Case.tainted("select 'catalog'; select 2", "catalog"),
         Case.tainted("select id from orders where state = 'paid' -- billing report", "paid"),
         Case.of("select id from catalog -- describes information_schema in the manual"),
         Case.of("select table_name from information_schema.tables"),
@@ -187,6 +239,10 @@ public final class FpReport {
 
   private static List<Case> commandCorpus() {
     return List.of(
+        Case.tainted("printf %s O'Brien", "O'Brien"),
+        Case.tainted("printf %s R&D", "R&D"),
+        Case.tainted("printf %s Q1;Q2", "Q1;Q2"),
+        Case.tainted("printf %s June|July", "June|July"),
         Case.of("git status"),
         Case.of("/usr/bin/convert input.png output.jpg"),
         Case.of("ffmpeg -i input.mp4 -vcodec copy output.mp4"),
@@ -203,11 +259,19 @@ public final class FpReport {
         Case.tainted("https://search.example.test/?q=invoice", "invoice"),
         Case.of("http://10.2.3.4/actuator/health"),
         Case.of("http://127.0.0.1/ready"),
+        Case.of("http://169.254.169.253/status"),
+        Case.tainted("http://[fe80::a%25FloorA]/report", "http://[fe80::a%25floora]/report"),
+        Case.of("http://127.0.0.1/admin/reports"),
+        Case.tainted("http://10.0.0.5/admin/report-10", "10"),
+        Case.tainted("https://reports.example.test/weekly", "https://reports.example.test/weekly"),
         Case.of("https://169.254.169.254.docs.example.test/reference"),
         Case.of("https://docs.example.test/latest/meta-data/guide"),
         Case.of("https://0xdocs.example.test/reference"),
         Case.of("https://notdnslog.cn/status"),
         Case.tainted("https://images.example.test/preview?src=https://cdn.example.test/image", "https://cdn.example.test/image"),
+        Case.of("file:/srv/orders/lib/compiler.jar"),
+        Case.of("file:/opt/orders/WEB-INF/templates.xml"),
+        Case.tainted("file:/srv/orders/reports/4981.json", "4981"),
         Case.of("https://api.stripe.com/v1/charges"),
         Case.of("https://hooks.slack.com/services/T000/B000/abcdef"),
         Case.of("https://www.googleapis.com/oauth2/v3/certs"),
@@ -218,7 +282,14 @@ public final class FpReport {
 
   private static List<Case> fileReadCorpus() {
     return List.of(
+        Case.of("/etc/ssl/certs/ca-certificates.crt"),
+        Case.of("/proc/self/status"),
+        Case.of("/srv/reports/snapshot/etc/passwd"),
+        Case.tainted("/etc/hosts", "hosts"),
         Case.tainted("/srv/orders/4981.json", "4981"),
+        Case.tainted("/srv/orders/4981.json", "/srv/orders/4981.json"),
+        Case.tainted("/srv/reports/annual.csv", "/srv/reports/annual.csv"),
+        Case.tainted("/srv/catalog/index", "/srv/catalog/index"),
         Case.tainted("/srv/reports/annual.csv", "annual.csv"),
         Case.tainted("/srv/images/drafts/../thumb.png", "drafts/../thumb.png"),
         Case.of("/var/app/uploads/photo.jpg"),
@@ -243,7 +314,10 @@ public final class FpReport {
         Case.of("com.myapp.dto.OrderDto"),
         Case.of("java.time.Instant"),
         Case.of("java.util.LinkedHashMap"),
-        Case.of("com.myapp.model.Customer"));
+        Case.of("com.myapp.model.Customer"),
+        Case.of("org.apache.commons.beanutils.BasicDynaBean"),
+        Case.of("org.apache.commons.beanutils.BasicDynaClass"),
+        Case.of("org.apache.commons.beanutils.DynaProperty"));
   }
 
   private static List<Case> expressionCorpus() {
