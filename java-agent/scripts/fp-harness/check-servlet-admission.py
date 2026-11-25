@@ -41,7 +41,7 @@ def main():
                                          for e in events):
                         raise SystemExit(f"unexpected {namespace} Java {track} {mode} receipts: {events}")
                     continue
-                expected = [(mode, "/reports"), (mode, "/reports"), ("log", "/reports"), ("log", "/error"),
+                expected = [(mode, "/reports")] * 3 + [("log", "/reports"), ("log", "/error"),
                             ("log", "/reports"), ("log", "/reports")]
                 if ([(e["action"], e["request"]["uri"]) for e in events] != expected
                         or any(e["algorithm"] != "request_scanner" for e in events)):

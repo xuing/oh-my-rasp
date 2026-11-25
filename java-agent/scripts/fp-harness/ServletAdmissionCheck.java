@@ -18,11 +18,19 @@ public class ServletAdmissionCheck extends HttpServlet {
 
   private boolean errorDispatch;
   private boolean dispatchNested;
+  private boolean parametersUnavailable;
+  private OhMyRaspBlockException parameterDenial;
   private String nestedUri = "/error";
 
   @Override protected void doPost(HttpServletRequest request, HttpServletResponse response)
       throws ServletException, java.io.IOException {
     calls++;
+    if (parametersUnavailable) {
+      if (!java.util.List.of("a b", "c").equals(OhMyRaspHooks.currentRequest().parameters().get("label")))
+        throw new AssertionError("query parameters lost");
+      try { request.getParameterMap(); throw new AssertionError("container exception lost"); }
+      catch (IllegalStateException expected) { /* The application handles its upload limit. */ }
+    }
     if (dispatchNested && !errorDispatch) {
       errorDispatch = true;
       try { service((ServletRequest) request, (ServletResponse) response); }
@@ -35,6 +43,7 @@ public class ServletAdmissionCheck extends HttpServlet {
         new Class<?>[]{HttpServletRequest.class}, (proxy, method, args) -> switch (method.getName()) {
           case "getMethod" -> "POST";
           case "getRequestURI" -> errorDispatch ? nestedUri : "/reports";
+          case "getQueryString" -> parametersUnavailable ? "label=a%20b&label=c" : null;
           case "getHeaderNames" -> Collections.enumeration(Collections.singletonList("User-Agent"));
           case "getHeader" -> "User-Agent".equalsIgnoreCase((String) args[0]) ? agent : null;
           case "getParameterMap" -> Collections.emptyMap();
@@ -42,7 +51,11 @@ public class ServletAdmissionCheck extends HttpServlet {
         });
     req = new HttpServletRequestWrapper(req) {
       @Override public String getRequestURI() { return super.getRequestURI(); }
-      @Override public java.util.Map<String, String[]> getParameterMap() { return super.getParameterMap(); }
+      @Override public java.util.Map<String, String[]> getParameterMap() {
+        if (parameterDenial != null) throw parameterDenial;
+        if (parametersUnavailable) throw new IllegalStateException("upload exceeds configured limit");
+        return super.getParameterMap();
+      }
     };
     ServletResponse res = (ServletResponse) Proxy.newProxyInstance(getClass().getClassLoader(),
         new Class<?>[]{HttpServletResponse.class}, (proxy, method, args) -> {
@@ -55,9 +68,12 @@ public class ServletAdmissionCheck extends HttpServlet {
     int previous = calls, previousRedirects = redirects;
     boolean rejected = false;
     try { service((ServletRequest) req, res); }
-    catch (OhMyRaspBlockException blocked) { rejected = true; }
-    if (rejected != (deny && !redirectAvailable) || calls != previous + (deny ? 0 : dispatchNested ? 2 : 1)
-        || redirects != previousRedirects + (deny ? 1 : 0) || OhMyRaspHooks.currentRequest().active())
+    catch (OhMyRaspBlockException blocked) {
+      if (parameterDenial != null && blocked != parameterDenial) throw new AssertionError("nested denial replaced");
+      rejected = true;
+    }
+    if (rejected != (parameterDenial != null || (deny && !redirectAvailable)) || calls != previous + (deny ? 0 : dispatchNested ? 2 : 1)
+        || redirects != previousRedirects + (deny && parameterDenial == null ? 1 : 0) || OhMyRaspHooks.currentRequest().active())
       throw new AssertionError("unexpected dispatch: denied=" + rejected + ", calls=" + calls + ", redirects=" + redirects);
   }
 
@@ -69,6 +85,13 @@ public class ServletAdmissionCheck extends HttpServlet {
     servlet.check("Nikto", block, true);
     servlet.check("Nikto", block, false);
     servlet.check("report-client", false, true);
+    servlet.parametersUnavailable = true;
+    servlet.check("report-client", false, true);
+    servlet.check("Nikto", block, true);
+    servlet.parametersUnavailable = false;
+    servlet.parameterDenial = new OhMyRaspBlockException(null);
+    servlet.check("report-client", true, false);
+    servlet.parameterDenial = null;
     OhMyRaspHooks.installPolicy(AgentPolicy.parse("{\"rules\":[{\"algorithm\":\"request_scanner\",\"action\":\"log\"}]}"), "test");
     servlet.dispatchNested = true;
     servlet.check("Nikto", false, true);

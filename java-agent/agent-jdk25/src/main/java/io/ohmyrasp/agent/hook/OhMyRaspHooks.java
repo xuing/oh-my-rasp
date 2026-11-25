@@ -1,6 +1,7 @@
 package io.ohmyrasp.agent.hook;
 
 import io.ohmyrasp.agent.http.ServletContracts;
+import io.ohmyrasp.agent.http.ServletQueryParameters;
 import io.ohmyrasp.agent.file.HostReadPath;
 import io.ohmyrasp.agent.file.HostFileSystem;
 import io.ohmyrasp.agent.file.ArchiveEntryContext;
@@ -1741,17 +1742,23 @@ public final class OhMyRaspHooks {
     String method = invokeString(ServletContracts.of(request), request, "getMethod").orElse("");
     String uri = invokeString(ServletContracts.of(request), request, "getRequestURI").orElse("");
     String query = invokeString(ServletContracts.of(request), request, "getQueryString").orElse("");
-    Map<String, List<String>> parameters = readParameterMap(request);
+    Map<String, List<String>> parameters = readParameterMap(request, query);
     Map<String, String> headers = readHeaders(request);
     return new RequestContext(method, uri, query, parameters, headers);
   }
 
-  private static Map<String, List<String>> readParameterMap(Object request)
+  private static Map<String, List<String>> readParameterMap(Object request, String query)
       throws ReflectiveOperationException {
-    Object raw = ServletContracts.of(request).getMethod("getParameterMap").invoke(request);
-    if (!(raw instanceof Map<?, ?> map)) {
-      return Map.of();
+    Object raw;
+    try {
+      raw = ServletContracts.of(request).getMethod("getParameterMap").invoke(request);
+    } catch (java.lang.reflect.InvocationTargetException failure) {
+      if (failure.getCause() instanceof OhMyRaspBlockException blocked) throw blocked;
+      if (!(failure.getCause() instanceof RuntimeException)) throw failure;
+      // Containers may reject form parsing while request-line and header metadata are still available.
+      return ServletQueryParameters.parse(query);
     }
+    if (!(raw instanceof Map<?, ?> map)) return ServletQueryParameters.parse(query);
     var copy = new LinkedHashMap<String, List<String>>();
     map.forEach((key, value) -> copy.put(String.valueOf(key), toStringList(value)));
     return copy;
