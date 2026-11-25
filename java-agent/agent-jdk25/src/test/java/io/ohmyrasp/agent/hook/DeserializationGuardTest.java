@@ -5,10 +5,20 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import io.ohmyrasp.agent.policy.AgentPolicy;
+import java.io.ByteArrayInputStream;
+import java.io.ByteArrayOutputStream;
 import java.io.ObjectInputFilter;
 import java.io.ObjectInputFilter.FilterInfo;
 import java.io.ObjectInputFilter.Status;
+import java.io.ObjectInputStream;
+import java.io.ObjectOutputStream;
+import java.util.List;
+import java.util.TreeSet;
 import java.util.concurrent.atomic.AtomicInteger;
+import org.codehaus.groovy.runtime.ConvertedClosure;
+import org.codehaus.groovy.runtime.GStringImpl;
+import org.codehaus.groovy.runtime.MethodClosure;
+import org.codehaus.groovy.runtime.NumberAwareComparator;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -43,6 +53,34 @@ final class DeserializationGuardTest {
 
     assertEquals(Status.UNDECIDED, DeserializationGuard.check("java.util.ArrayList"));
     assertEquals(Status.UNDECIDED, DeserializationGuard.check("java.lang.String"));
+  }
+
+  @Test
+  void ordinaryGroovyValuesRoundTripThroughTheClassFilter() throws Exception {
+    System.setProperty("ohmyrasp.block", "true");
+    var label = new GStringImpl(new Object[]{7}, new String[]{"items: ", ""});
+    var numbers = new TreeSet<Integer>(new NumberAwareComparator<>());
+    numbers.addAll(List.of(10, 2));
+    var bytes = new ByteArrayOutputStream();
+    try (var out = new ObjectOutputStream(bytes)) {
+      out.writeObject(label);
+      out.writeObject(numbers);
+    }
+    try (var in = new ObjectInputStream(new ByteArrayInputStream(bytes.toByteArray()))) {
+      in.setObjectInputFilter(DeserializationGuard.filterOrGuard(null));
+      assertEquals("items: 7", ((GStringImpl) in.readObject()).toString());
+      TreeSet<?> restored = (TreeSet<?>) in.readObject();
+      assertEquals(NumberAwareComparator.class, restored.comparator().getClass());
+      assertEquals(List.of(2, 10), List.copyOf(restored));
+    }
+  }
+
+  @Test
+  void listedGroovyInvocationAdaptersRetainTheirTypePolicy() {
+    System.setProperty("ohmyrasp.block", "true");
+    for (Class<?> adapter : List.of(ConvertedClosure.class, MethodClosure.class)) {
+      assertEquals(Status.REJECTED, DeserializationGuard.check(new FakeFilterInfo(adapter)));
+    }
   }
 
   @Test

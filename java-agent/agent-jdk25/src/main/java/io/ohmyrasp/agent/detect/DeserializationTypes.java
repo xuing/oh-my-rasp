@@ -18,7 +18,6 @@ final class DeserializationTypes {
       Set.of(
           "org.apache.commons.collections.functors.",
           "org.apache.commons.collections4.functors.",
-          "org.codehaus.groovy.runtime.",
           "com.sun.org.apache.xpath.internal.",
           "com.sun.org.apache.xml.internal.",
           "com.sun.jndi.",
@@ -46,6 +45,9 @@ final class DeserializationTypes {
   static boolean dangerousDeserializationType(String className) {
     if (className.isBlank()) {
       return false;
+    }
+    if (className.startsWith("org.codehaus.groovy.runtime.")) {
+      return StreamTypeNames.listed(className);
     }
     if (listedClass(className)) {
       return true;

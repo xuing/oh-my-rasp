@@ -337,6 +337,8 @@ public final class FpReport {
         Case.of("java.time.Instant"),
         Case.of("java.util.LinkedHashMap"),
         Case.of("com.myapp.model.Customer"),
+        Case.of("org.codehaus.groovy.runtime.GStringImpl"),
+        Case.of("org.codehaus.groovy.runtime.NumberAwareComparator"),
         Case.of("org.apache.commons.beanutils.BasicDynaBean"),
         Case.of("org.apache.commons.beanutils.BasicDynaClass"),
         Case.of("org.apache.commons.beanutils.DynaProperty"));
