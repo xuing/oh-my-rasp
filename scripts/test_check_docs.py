@@ -5,6 +5,8 @@ Run: python3 -m unittest discover -s scripts -p 'test_check_docs.py'
 from __future__ import annotations
 
 import importlib.util
+import subprocess
+import tempfile
 import unittest
 from pathlib import Path
 
@@ -126,7 +128,7 @@ class AnchorTest(unittest.TestCase):
             "```",
             "# not a heading",
             "```",
-            '<a id="Custom-Anchor"></a>',
+            '<a id="custom-anchor"></a>',
         ])
         self.assertEqual(check_docs.heading_anchors(text), {
             "java-agent", "process-launches", "request_scanner-and-jndi-lookups", "custom-anchor"})
@@ -140,8 +142,18 @@ class AnchorTest(unittest.TestCase):
         self.assertEqual(check_docs.heading_anchors("## Usage\n## Usage\n## Usage-1"), {"usage", "usage-1", "usage-1-1"})
         self.assertEqual(check_docs.heading_anchors("## Usage\n## Usage\n## Usage"), {"usage", "usage-1", "usage-2"})
 
+    def test_emphasis_and_code_markers_are_stripped(self) -> None:
+        # Item 5, review counterexample: "### Process _launches_" keeps GitHub's anchor process-launches.
+        self.assertEqual(check_docs.heading_anchors("### Process _launches_"), {"process-launches"})
+        self.assertEqual(check_docs.heading_anchors("## **Bold** and __strong__ `_raw_`"), {"bold-and-strong-_raw_"})
+        self.assertEqual(check_docs.heading_anchors("## request_scanner"), {"request_scanner"})
+
+    def test_html_anchors_keep_their_case(self) -> None:
+        # Item 5, review counterexample: <a id="Case-Sensitive"> is not reached by #case-sensitive.
+        self.assertEqual(check_docs.heading_anchors('<a id="Case-Sensitive"></a>'), {"Case-Sensitive"})
+
     def test_unmodelled_heading_shapes_fail(self) -> None:
-        for text in ("Title\n=====", "Title\n---", "## _Draft_ notes", "## ![logo](x.png) Intro"):
+        for text in ("Title\n=====", "Title\n---", "## ![logo](x.png) Intro"):
             with self.subTest(text=text), self.assertRaises(check_docs.UnsupportedHeading):
                 check_docs.heading_anchors(text)
         self.assertEqual(check_docs.heading_anchors("- item\n---\n| a |\n|---|"), set())  # a rule, not a heading
@@ -152,14 +164,17 @@ class AnchorTest(unittest.TestCase):
                       check_docs.anchors_of("java-agent/docs/DETECTION-COVERAGE.md"))
 
 
+LEDGER = "docs/development/vulhub-coverage.md"
+
+
 class LedgerTest(unittest.TestCase):
     SCRIPTS = {
-        "acceptance/vulhub/x/a-java8.sh": 'check "java8_file_sensitive_read"\nshell_path=/tmp/x\n',
+        "acceptance/vulhub/x/a-java8.sh": 'check "java8_file_sensitive_read"\nshell_path=/tmp/x\nrun_case\n',
         "acceptance/vulhub/x/b-java8.sh": 'check "java8_file_script_write"\n',
     }
 
-    def problems(self, line: str) -> list[str]:
-        return check_docs.ledger_line_problems("ledger.md:1", line, self.SCRIPTS.get)
+    def problems(self, row: str) -> list[str]:
+        return check_docs.ledger_row_problems(LEDGER, 1, row, self.SCRIPTS.get)
 
     def test_true_claim_passes(self) -> None:
         self.assertEqual(self.problems(
@@ -168,64 +183,106 @@ class LedgerTest(unittest.TestCase):
         self.assertEqual(self.problems(
             "`java-agent/acceptance/vulhub/x/a-java8.sh` blocks the read with `java8_file_sensitive_read`"), [])
 
-    def test_every_catalogue_id_on_the_row_is_a_claim(self) -> None:
-        for line in ("`acceptance/vulhub/x/a-java8.sh` blocks `java8_file_script_write`",
-                     "`acceptance/vulhub/x/a-java8.sh` recorded `java8_file_script_write`",
-                     "`acceptance/vulhub/x/a-java8.sh` blocks `Foo.bar` with `java8_file_script_write`"):
-            with self.subTest(line=line):
-                [problem] = self.problems(line)
+    def test_every_catalogue_id_after_the_script_is_a_claim(self) -> None:
+        for row in ("`acceptance/vulhub/x/a-java8.sh` blocks `java8_file_script_write`",
+                    "`acceptance/vulhub/x/a-java8.sh` recorded `java8_file_script_write`",
+                    "`acceptance/vulhub/x/a-java8.sh` blocks `Foo.bar` with `java8_file_script_write`"):
+            with self.subTest(row=row):
+                [problem] = self.problems(row)
                 self.assertIn("`acceptance/vulhub/x/a-java8.sh` never names `java8_file_script_write`", problem)
+        # A bare backport family is a catalogue id too.
+        [problem] = self.problems("`acceptance/vulhub/x/a-java8.sh` blocks `file_sensitive_read`")
+        self.assertIn("never names `file_sensitive_read`", problem)
 
-    def test_a_claim_holds_for_every_script_on_the_row(self) -> None:
-        # a-java8.sh names the id, b-java8.sh does not: the problem names b, wherever it sits on the row.
-        for line in ("`acceptance/vulhub/x/a-java8.sh` and `acceptance/vulhub/x/b-java8.sh` block `java8_file_sensitive_read`",
-                     "`acceptance/vulhub/x/b-java8.sh` and `acceptance/vulhub/x/a-java8.sh` block `java8_file_sensitive_read`"):
-            with self.subTest(line=line):
-                [problem] = self.problems(line)
-                self.assertIn("`acceptance/vulhub/x/b-java8.sh` never names", problem)
-
-    def test_row_labels_are_not_claims(self) -> None:
-        # request_path_confusion is a catalogue id, here the scenario's label, not what the script asserts.
+    def test_ids_before_the_first_script_name_the_subject(self) -> None:
+        # request_path_confusion and java8_file_script_write describe the row's scenario, not the script.
         self.assertEqual(self.problems(
-            "- [x] F (`request_path_confusion`, `request_scenario_label`; real Java8 acceptance:"
+            "- [x] F (`request_path_confusion`, `java8_file_script_write`; real Java8 acceptance:"
             " `acceptance/vulhub/x/a-java8.sh` blocks `java8_file_sensitive_read`)"), [])
 
-    def test_rule_shaped_words_outside_the_catalogue_fail(self) -> None:
-        # shell_path is a variable in the script: a non-catalogue word is not evidence.
-        for word in ("shell_path", "missing_expected_rule", "file_sensitive_read"):
+    def test_only_catalogue_ids_are_claims(self) -> None:
+        # Item 1, review counterexample: the shell function run_case is prose, not a rule id.
+        for word in ("run_case", "shell_path", "missing_expected_rule", "Foo.bar", "/etc/passwd"):
             with self.subTest(word=word):
-                [problem] = self.problems(f"`acceptance/vulhub/x/a-java8.sh` blocks `{word}`")
-                self.assertIn(f"`{word}` is shaped like a rule id but", problem)
-        self.assertEqual(self.problems("`acceptance/vulhub/x/a-java8.sh` reads `/etc/passwd` via `Foo.bar`"), [])
+                self.assertEqual(self.problems(f"`acceptance/vulhub/x/a-java8.sh` calls `{word}` and blocks"
+                                               " `java8_file_sensitive_read`"), [])
 
-    def test_unattributed_claims_are_not_checked(self) -> None:
-        self.assertEqual(self.problems("the agent blocks `java8_old_rule_name`"), [])
+    def test_unknown_line_prefixed_ids_fail(self) -> None:
+        # Item 1: java8_/java11_/java17_ is used for rule ids only, so an unknown one is a mistake, on any part of the row.
+        for row in ("`acceptance/vulhub/x/a-java8.sh` blocks `java8_no_such_rule`",
+                    "- [x] Z (`java17_no_such_rule`; real Java17 acceptance: `acceptance/vulhub/x/a-java8.sh`)"):
+            with self.subTest(row=row):
+                [problem] = self.problems(row)
+                self.assertIn("unknown rule id `java", problem)
+        self.assertEqual(self.problems("`acceptance/vulhub/x/a-java8.sh` greps `java8_*` and `java17_rc=0`"), [])
+
+    def test_claims_are_collected_over_the_whole_row(self) -> None:
+        # Item 2, review counterexample: the script is on the row's first line and the claim three lines down.
+        rows = check_docs.ledger_rows("\n".join([
+            "- `acceptance/vulhub/x/a-java8.sh` runs the",
+            "  acceptance. Protected mode",
+            "  blocks the write with",
+            "  `java8_file_script_write`.",
+            "- `acceptance/vulhub/x/b-java8.sh` blocks `java8_file_script_write`.",
+            "",
+            "Prose line one",
+            "prose line two",
+        ]))
+        self.assertEqual([no for no, _ in rows], [1, 5, 7, 8])
+        first, row = rows[0]
+        self.assertEqual(check_docs.ledger_row_problems(LEDGER, first, row, self.SCRIPTS.get), [
+            f"ledger: {LEDGER}:4: `acceptance/vulhub/x/a-java8.sh` never names `java8_file_script_write`;"
+            " say what the script asserts"])
+
+    def test_a_claim_needs_one_of_the_rows_scripts(self) -> None:
+        # Item 3, review counterexample: two scripts, each with its own true claim.
+        for row in ("`acceptance/vulhub/x/a-java8.sh` blocks `java8_file_sensitive_read` and"
+                    " `acceptance/vulhub/x/b-java8.sh` blocks `java8_file_script_write`",
+                    "`acceptance/vulhub/x/b-java8.sh` and `acceptance/vulhub/x/a-java8.sh` block"
+                    " `java8_file_sensitive_read`"):
+            with self.subTest(row=row):
+                self.assertEqual(self.problems(row), [])
+        [problem] = self.problems("`acceptance/vulhub/x/a-java8.sh` and `acceptance/vulhub/x/b-java8.sh` block"
+                                  " `java8_command_execution_exploit_primitive`")
+        self.assertIn("none of `acceptance/vulhub/x/a-java8.sh`, `acceptance/vulhub/x/b-java8.sh` names", problem)
 
     def test_missing_script(self) -> None:
         [problem] = self.problems("real acceptance: `acceptance/vulhub/x/renamed-java8.sh`")
         self.assertIn("`acceptance/vulhub/x/renamed-java8.sh` is not a tracked script", problem)
 
-    def test_a_path_ends_at_sh(self) -> None:
-        self.assertEqual(check_docs.script_mentions("`acceptance/vulhub/x/a-java8.sh.bak`"),
-                         [(1, "acceptance/vulhub/x/a-java8.sh.bak")])
-        self.assertEqual(check_docs.script_mentions("run acceptance/vulhub/x/a-java8.sh."),
-                         [(4, "acceptance/vulhub/x/a-java8.sh")])
-
-    def test_patterns_and_links_are_not_script_mentions(self) -> None:
-        line = "see `acceptance/vulhub/<component>/<scenario>-<jdk>.sh` and [a](../../java-agent/acceptance/x.sh)"
-        self.assertEqual(check_docs.script_mentions(line), [])
+    def test_script_references(self) -> None:
+        # Item 4: a code span or a link destination names a script; a path ends at ".sh" followed by
+        # none of [\w./-], so the review's ".sh/typo" is a different, untracked path.
+        mentions = lambda text: [p for _, p in check_docs.script_mentions(LEDGER, text)]  # noqa: E731
+        self.assertEqual(mentions("`acceptance/vulhub/x/a-java8.sh`"), ["acceptance/vulhub/x/a-java8.sh"])
+        self.assertEqual(mentions("[Tomcat](../../java-agent/acceptance/vulhub/x/a-java8.sh#L3)"),
+                         ["acceptance/vulhub/x/a-java8.sh"])
+        for tail in (".bak", "/typo", "-old", ".d"):
+            with self.subTest(tail=tail):
+                self.assertEqual(mentions(f"`acceptance/vulhub/x/a-java8.sh{tail}`"),
+                                 [f"acceptance/vulhub/x/a-java8.sh{tail}"])
+        self.assertEqual(mentions("`acceptance/vulhub/x/a-java8.sh:12`"), ["acceptance/vulhub/x/a-java8.sh"])
+        for text in ("`acceptance/vulhub/<component>/<scenario>-<jdk>.sh`", "run acceptance/vulhub/x/a-java8.sh",
+                     "[doc](../../java-agent/acceptance/README.md)", "[x](https://e.com/acceptance/vulhub/x/a.sh)"):
+            with self.subTest(text=text):
+                self.assertEqual(mentions(text), [])
+        [problem] = self.problems("[Tomcat](../../java-agent/acceptance/vulhub/x/a-java8.sh/typo)")
+        self.assertIn("`acceptance/vulhub/x/a-java8.sh/typo` is not a tracked script", problem)
 
     def test_unreferenced_scripts(self) -> None:
         ledger = "\n".join([
             "## Covered Targets",
             "- [x] A (`a`; `acceptance/vulhub/x/a-java8.sh`)",
             "- [x] B (`b`; <!-- `acceptance/vulhub/z/c-java17.sh` --> `java-agent/acceptance/vulhub/y/b-java11.sh`)",
+            "- [x] F (`f`; real Java17 acceptance:",
+            "  [script](../../java-agent/acceptance/vulhub/z/f-java17.sh))",
+            "",
             "`acceptance/vulhub/z/d-java17.sh` is named in prose, not on a row",
             "## Candidates",
             "- [x] `acceptance/vulhub/z/e-java17.sh`",
         ])
         scripts = ["acceptance/vulhub/x/a-java8.sh", "acceptance/vulhub/y/b-java11.sh", "acceptance/vulhub/z/c-java17.sh",
-                   "acceptance/vulhub/z/d-java17.sh", "acceptance/vulhub/z/e-java17.sh"]
+                   "acceptance/vulhub/z/d-java17.sh", "acceptance/vulhub/z/e-java17.sh", "acceptance/vulhub/z/f-java17.sh"]
         self.assertEqual(check_docs.unreferenced_scripts(ledger, scripts),
                          ["acceptance/vulhub/z/c-java17.sh", "acceptance/vulhub/z/d-java17.sh",
                           "acceptance/vulhub/z/e-java17.sh"])
@@ -236,33 +293,119 @@ class RealLedgerTest(unittest.TestCase):
 
     @staticmethod
     def row(*needles: str) -> str:
-        [line] = [l for l in check_docs.read(check_docs.VULHUB_LEDGER).split("\n")
-                  if l.startswith("- [x]") and all(n in l for n in needles)]
-        return line
+        [found] = [row for row in check_docs.covered_rows(check_docs.read(LEDGER)) if all(n in row for n in needles)]
+        return found
 
-    @staticmethod
-    def script(path: str) -> str | None:
-        file = check_docs.ROOT / "java-agent" / path
-        return file.read_text(encoding="utf-8") if path.endswith(".sh") and file.is_file() else None
-
-    def problems(self, line: str) -> list[str]:
-        return check_docs.ledger_line_problems("vulhub-coverage.md", line, self.script)
+    def problems(self, row: str) -> list[str]:
+        return check_docs.ledger_row_problems(LEDGER, 1, row, check_docs.script_text)
 
     def test_weblogic_upload_row(self) -> None:
-        line = self.row("weblogic/2894-java8.sh")
-        self.assertEqual(self.problems(line), [])
-        [problem] = self.problems(line.replace("fileUpload_multipart_script", "missing_expected_rule"))
-        self.assertIn("`missing_expected_rule` is shaped like a rule id but", problem)
-        [problem] = self.problems(line.replace("fileUpload_multipart_script", "java8_file_script_write"))
+        row = self.row("weblogic/2894-java8.sh")
+        self.assertEqual(self.problems(row), [])
+        [problem] = self.problems(row.replace("fileUpload_multipart_script", "java8_missing_expected_rule"))
+        self.assertIn("unknown rule id `java8_missing_expected_rule`", problem)
+        [problem] = self.problems(row.replace("fileUpload_multipart_script", "java8_file_script_write"))
         self.assertIn("never names `java8_file_script_write`", problem)
 
     def test_struts2_upload_row(self) -> None:
-        line = self.row("struts2/upload-java17.sh", "S2-066")
-        self.assertEqual(self.problems(line), [])
-        [problem] = self.problems(line.replace("`fileUpload_multipart_script`", "`shell_path`"))
-        self.assertIn("`shell_path` is shaped like a rule id but", problem)
-        [problem] = self.problems(line.replace("upload-java17.sh", "upload-java17.sh.bak"))
+        row = self.row("struts2/upload-java17.sh", "S2-066")
+        self.assertEqual(self.problems(row), [])
+        self.assertEqual(self.problems(row.replace(" blocks", " calls `run_case` and blocks")), [])
+        [problem] = self.problems(row.replace("upload-java17.sh", "upload-java17.sh.bak"))
         self.assertIn("`acceptance/vulhub/struts2/upload-java17.sh.bak` is not a tracked script", problem)
+
+
+class FixtureRepo:
+    """A throwaway git repository that check_docs reads as its ROOT, for running a whole check."""
+
+    def __init__(self, files: dict[str, str]) -> None:
+        self.files = files
+
+    @staticmethod
+    def clear_caches() -> None:
+        for cached in (check_docs.anchors_of, check_docs.acceptance_scripts, check_docs.script_text):
+            cached.cache_clear()
+
+    def __enter__(self) -> Path:
+        self.tmp = tempfile.TemporaryDirectory()
+        root = Path(self.tmp.name)
+        for rel, text in self.files.items():
+            (root / rel).parent.mkdir(parents=True, exist_ok=True)
+            (root / rel).write_text(text, encoding="utf-8")
+        for cmd in (["git", "init", "-q"], ["git", "add", "-A"]):
+            subprocess.run(cmd, cwd=root, check=True, capture_output=True)
+        self.saved = check_docs.ROOT
+        check_docs.ROOT = root
+        self.clear_caches()
+        return root
+
+    def __exit__(self, *exc: object) -> None:
+        check_docs.ROOT = self.saved
+        self.clear_caches()
+        self.tmp.cleanup()
+
+
+class CheckLinksEndToEndTest(unittest.TestCase):
+    def test_check_links_over_a_fixture_tree(self) -> None:
+        files = {
+            "docs/a.md": "\n".join([
+                "[ok](b.md#usage-1) [emphasis](b.md#process-launches) [html](b.md#Custom)",
+                "[case](b.md#Usage)",
+                "[query](b.md#usage?typo)",
+                "[gone](missing.md)",
+                "[img](c.md#intro) [img again](c.md#other)",
+            ]),
+            "docs/b.md": '## Usage\n## Usage\n### Process _launches_\n<a id="Custom"></a>\n',
+            "docs/c.md": "## ![logo](logo.png) Intro\n",
+        }
+        problems: list[str] = []
+        with FixtureRepo(files):
+            check_docs.check_links(["docs/a.md"], problems)
+        self.assertEqual(problems, [
+            "links: docs/a.md:2: `b.md#Usage`: docs/b.md has no heading with anchor `#Usage`",
+            "links: docs/a.md:3: `b.md#usage?typo`: docs/b.md has no heading with anchor `#usage?typo`",
+            "links: docs/a.md:4: `missing.md` does not resolve to a tracked file",
+            "links: docs/c.md:1: cannot compute GitHub's anchor for an image in the heading"
+            " `## ![logo](logo.png) Intro`, so no link into docs/c.md (first: docs/a.md:5) has its anchor checked;"
+            " write it as `## Title` or teach heading_anchors in scripts/check-docs.py the GitHub rule",
+        ])
+
+
+class CheckLedgersEndToEndTest(unittest.TestCase):
+    def test_check_ledgers_over_a_fixture_tree(self) -> None:
+        files = {
+            "java-agent/acceptance/vulhub/x/a-java8.sh": 'check "java8_file_sensitive_read"\nrun_case\n',
+            "java-agent/acceptance/vulhub/x/b-java8.sh": 'check "java8_file_script_write"\n',
+            "java-agent/acceptance/vulhub/x/c-java8.sh": 'check "java8_file_script_write"\n',
+            "docs/development/vulhub-coverage.md": "\n".join([
+                "## Covered Targets",
+                "",
+                "- [x] A (`request_path_confusion`; real Java8 acceptance: `acceptance/vulhub/x/a-java8.sh`",
+                "  calls `run_case` and blocks `java8_file_sensitive_read`)",
+                "- [x] B (`b`; real Java8 acceptance: [script](../../java-agent/acceptance/vulhub/x/b-java8.sh)"
+                " blocks `java8_file_script_write`)",
+                "",
+            ]),
+            "docs/development/algorithm-coverage.md": "\n".join([
+                "- `acceptance/vulhub/x/a-java8.sh` runs the",
+                "  check and blocks `java8_file_script_write`.",
+                "- `acceptance/vulhub/x/a-java8.sh/typo` and `java8_no_such_rule`.",
+                "",
+            ]),
+        }
+        problems: list[str] = []
+        with FixtureRepo(files):
+            check_docs.check_ledgers(problems)
+        A = "docs/development/algorithm-coverage.md"
+        self.assertEqual(problems, [
+            f"ledger: {A}:2: `acceptance/vulhub/x/a-java8.sh` never names `java8_file_script_write`;"
+            " say what the script asserts",
+            f"ledger: {A}:3: `acceptance/vulhub/x/a-java8.sh/typo` is not a tracked script under java-agent/",
+            f"ledger: {A}:3: unknown rule id `java8_no_such_rule`: java-agent/rules/*.json has no such backport"
+            " family; correct it or describe the family there",
+            "ledger: java-agent/acceptance/vulhub/x/c-java8.sh is not named on a Covered Targets row of"
+            " docs/development/vulhub-coverage.md",
+        ])
 
 
 class RuntimeSuiteListTest(unittest.TestCase):
@@ -272,8 +415,17 @@ class RuntimeSuiteListTest(unittest.TestCase):
     def test_required_array_is_read_in_script_order(self) -> None:
         self.assertEqual(self.parse("required_algorithms=(\n  zeta_rule\n  alpha_rule\n  mid_rule\n)\n"),
                          ["zeta_rule", "alpha_rule", "mid_rule"])
-        required = gen_coverage.jdk25_required_algorithms()
-        self.assertEqual(required[:2], ["request_internal_identity", "request_default_jwt_secret"])
+
+    def test_reader_returns_the_array_bash_builds(self) -> None:
+        # Bash evaluates the script's own array lines, so a reader that drops or truncates entries fails here.
+        lines = (gen_coverage.ACCEPTANCE / "runtime" / "jdk25.sh").read_text(encoding="utf-8").split("\n")
+        self.assertFalse([l for l in lines if "required_algorithms+=" in l], "extend this test to the appends")
+        start = next(i for i, l in enumerate(lines) if l.startswith("required_algorithms=("))
+        end = next(i for i in range(start, len(lines)) if lines[i].strip() == ")")
+        bash = subprocess.run(["bash", "-c", "\n".join(lines[start:end + 1]) + '\nprintf "%s\\n" "${required_algorithms[@]}"'],
+                              check=True, capture_output=True, text=True).stdout.split()
+        self.assertGreater(len(bash), 2)
+        self.assertEqual(gen_coverage.jdk25_required_algorithms(), list(dict.fromkeys(bash)))
 
     def test_entry_forms(self) -> None:
         # Review counterexamples: quoted entries, trailing comments, an indented ")" and a later "+=".

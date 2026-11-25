@@ -56,6 +56,16 @@ def rule_ids() -> frozenset[str]:
     return frozenset(primary_ids() | prefixed | {n for names in backport_findings().values() for n in names})
 
 
+@functools.cache
+def catalogue_ids() -> frozenset[str]:
+    """Every id the catalogue describes: primary ids, and each backport family bare or with a line prefix.
+
+    scripts/check-docs.py treats a backticked word on a ledger row as a claim exactly when it is one of these.
+    """
+    families = backport_families()
+    return frozenset(primary_ids() | families | {f"{line}_{f}" for line in BACKPORT_LINES for f in families})
+
+
 def tokens(text: str) -> set[str]:
     return set(TOKEN.findall(text))
 
