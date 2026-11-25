@@ -5,7 +5,6 @@ import static io.ohmyrasp.agent.detect.DetectorStrings.lower;
 import static io.ohmyrasp.agent.detect.DetectorStrings.percentDecode;
 import static io.ohmyrasp.agent.detect.FilePaths.WINDOWS_ABSOLUTE_PATH;
 import static io.ohmyrasp.agent.detect.FilePaths.containsParentSegment;
-import static io.ohmyrasp.agent.detect.RemoteResourceDetector.containsRemoteProtocol;
 import static io.ohmyrasp.agent.detect.RequestDecoding.PROTECTED_WEBAPP_RESOURCE;
 import static io.ohmyrasp.agent.detect.RequestDecoding.addLowByteVariants;
 import static io.ohmyrasp.agent.detect.RequestDecoding.collapsePathDotSegments;
@@ -17,7 +16,6 @@ import static io.ohmyrasp.agent.detect.RequestDecoding.pathVariants;
 import static io.ohmyrasp.agent.detect.RequestDecoding.protectedWebappResource;
 import static io.ohmyrasp.agent.detect.RequestDecoding.stripServletPathParameters;
 
-import io.ohmyrasp.agent.jmx.JmxDispatch;
 import io.ohmyrasp.agent.model.Detection;
 import io.ohmyrasp.agent.model.RequestContext;
 import java.util.ArrayList;
@@ -359,44 +357,6 @@ public final class DetectorEngine {
                 "remainder", String.valueOf(remainder),
                 "alphabet", isURL ? "URL-safe" : "standard",
                 "cve", "CVE-2026-114938")));
-  }
-
-  public Optional<Detection> detectJmxMBeanInvoke(
-      String mbeanName, String operationName, List<String> arguments, RequestContext request) {
-    if (operationName == null || operationName.isBlank() || !request.active()) {
-      return Optional.empty();
-    }
-    List<String> safeArguments = arguments == null ? List.of() : arguments;
-    Optional<String> remoteConfig =
-        safeArguments.stream()
-            .filter(argument -> argument != null && looksLikeRemoteJmxConfig(argument))
-            .findFirst();
-    if (!isMutatingJmxOperation(operationName)) {
-      return Optional.empty();
-    }
-    if (remoteConfig.isPresent()) {
-      String matched = remoteConfig.orElseThrow();
-      int confidence = request.hasParameterIn(matched) ? 100 : 90;
-      return Optional.of(
-          Detection.log(
-              "jmx",
-              "jmx_remote_config",
-              confidence,
-              "Request-time MBean invocation passes a remote configuration source",
-              request,
-              Map.of(
-                  "mbean", abbreviate(String.valueOf(mbeanName)),
-                  "operation", operationName,
-                  "argument", abbreviate(matched),
-                  "requestControlled", String.valueOf(request.hasParameterIn(matched)))));
-    }
-    return Optional.empty();
-  }
-
-  public Optional<Detection> detectJaasConfig(
-      String config, String mechanism, RequestContext request) {
-    // Compatibility for declaration-only callers. Runtime policy uses the login module lookup.
-    return Optional.empty();
   }
 
   public Optional<Detection> detectResponseDataLeak(
@@ -954,36 +914,6 @@ public final class DetectorEngine {
 
   private static boolean hasDuplicateSlash(String path) {
     return path != null && path.contains("//");
-  }
-
-  private static boolean isMutatingJmxOperation(String operationName) {
-    String normalized = lower(operationName);
-    return normalized.startsWith("add")
-        || normalized.startsWith("set")
-        || normalized.startsWith("create")
-        || normalized.startsWith("copy")
-        || normalized.startsWith("load")
-        || normalized.startsWith("reload")
-        || normalized.startsWith("update")
-        || normalized.startsWith("write")
-        || normalized.startsWith("save")
-        || normalized.startsWith("store")
-        || normalized.startsWith("dump")
-        || normalized.startsWith("install")
-        || normalized.startsWith("deploy")
-        || normalized.startsWith("import")
-        || normalized.startsWith("start");
-  }
-
-  private static boolean looksLikeRemoteJmxConfig(String argument) {
-    String normalized = lower(argument.trim());
-    if (normalized.isBlank() || !containsRemoteProtocol(normalized) || !JmxDispatch.isLocationArgument(argument)) {
-      return false;
-    }
-    return normalized.contains("brokerconfig=")
-        || normalized.contains("xbean:")
-        || normalized.contains("spring:")
-        || (normalized.contains("config") && normalized.contains(".xml"));
   }
 
   private static boolean hasPathControlCharacter(String path) {

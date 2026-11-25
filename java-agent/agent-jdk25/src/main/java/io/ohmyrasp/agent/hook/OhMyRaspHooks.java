@@ -806,7 +806,7 @@ public final class OhMyRaspHooks {
       if (!request.active()) return;
       String bean = JmxDispatch.name(mbeanName);
       List<String> text = JmxDispatch.strings(arguments);
-      emit(DETECTORS.detectJmxMBeanInvoke(bean, operationName, text, request));
+      emit(RemoteResourceDetector.detectJmxMBeanInvoke(bean, operationName, text, request));
       if (resolved) JmxWriteScope.select(bean, operationName, text);
     } catch (OhMyRaspBlockException blocked) {
       throw blocked;

