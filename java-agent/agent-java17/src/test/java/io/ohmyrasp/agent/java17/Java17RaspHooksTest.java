@@ -54,6 +54,26 @@ final class Java17RaspHooksTest {
   }
 
   @Test
+  void distinguishesPowerShellSourceFromReportArguments() throws Exception {
+    Path log = Files.createTempFile("process-source", ".jsonl");
+    Files.delete(log);
+    System.setProperty("ohmyrasp.java17.log", log.toString());
+    String label = "O'Brien & Sons";
+    try {
+      Java17RaspHooks.beforeHttpRequest(new RequestStub("GET", "/reports", "").withParameter("label", label));
+      Java17RaspHooks.beforeRuntimeExecArray(new String[] {"pwsh", "-File", "reports.ps1", label});
+      Java17RaspHooks.beforeRuntimeExecArray(new String[] {"pwsh", "-cwa", "Write-Output $args[0]", label});
+      assertFalse(Files.exists(log));
+    } finally { Java17RaspHooks.afterHttpRequest(); }
+    String program = "Write-Output weekly; Write-Output ready";
+    try {
+      Java17RaspHooks.beforeHttpRequest(new RequestStub("GET", "/reports", "").withParameter("program", program));
+      Java17RaspHooks.beforeRuntimeExecArray(new String[] {"pwsh", "-NoProfile", "-Command", program});
+      assertTrue(new String(Files.readAllBytes(log), StandardCharsets.UTF_8).contains("request_shell_syntax"));
+    } finally { Java17RaspHooks.afterHttpRequest(); }
+  }
+
+  @Test
   void ignoresNormalProcessBuilderCommand() throws Exception {
     Path log = Files.createTempFile("ohmyrasp-java17-normal", ".jsonl");
     Files.delete(log);

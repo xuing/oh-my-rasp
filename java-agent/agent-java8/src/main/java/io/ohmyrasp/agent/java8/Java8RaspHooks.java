@@ -23,6 +23,7 @@ import io.ohmyrasp.agent.http.ServletQueryParameters;
 import io.ohmyrasp.agent.net.HttpTransportObservation;
 import io.ohmyrasp.agent.net.NetworkHost;
 import io.ohmyrasp.agent.process.PosixShellCommand;
+import io.ohmyrasp.agent.process.WindowsShellCommand;
 import io.ohmyrasp.agent.process.ProcessLaunchIndicators;
 import io.ohmyrasp.agent.process.ShellControlSource;
 import io.ohmyrasp.agent.rules.product.solr.SolrExecutableListener;
@@ -53,8 +54,6 @@ public final class Java8RaspHooks {
   private static final Pattern SHELL =
       Pattern.compile(
           "(?i)(?:^|[/\\\\])(?:sh|bash|dash|ash|zsh|ksh|cmd(?:\\.exe)?|powershell(?:\\.exe)?|pwsh(?:\\.exe)?)$");
-  private static final Pattern SHELL_META =
-      Pattern.compile("[;&|`$<>]|\\$\\{?IFS\\}?");
   private static final Pattern EXPLOIT_COMMAND =
       Pattern.compile(
           "(?is)(?:cat\\s+/etc/(?:passwd|shadow)|/proc/self/environ|bash\\s+-i\\b|/dev/tcp/|nc\\b.{0,60}\\s-e\\s+/bin/(?:ba)?sh|curl\\b.{0,160}\\|\\s*(?:sh|bash)|wget\\b.{0,160}\\|\\s*(?:sh|bash)|\\{echo,.{10,500}\\}\\|\\{base64,-d\\})|(?:^|\\s)(?:cat|more|less|head|tail)\\s+/(?:etc/(?:passwd|shadow)|proc/self/environ)(?:\\s|$)");
@@ -1172,7 +1171,8 @@ public final class Java8RaspHooks {
     }
     List<String> argv = java.util.Arrays.asList(command);
     PosixShellCommand posix = PosixShellCommand.from(argv);
-    if (ProcessLaunchIndicators.matches(argv, posix, EXPLOIT_COMMAND, FILE_READERS, SENSITIVE_PATHS)) {
+    WindowsShellCommand windows = WindowsShellCommand.from(argv);
+    if (ProcessLaunchIndicators.matches(argv, posix, windows, EXPLOIT_COMMAND, FILE_READERS, SENSITIVE_PATHS)) {
       return new Finding(
           "java8_command_execution_exploit_primitive",
           95,
@@ -1188,16 +1188,11 @@ public final class Java8RaspHooks {
         return new Finding("java8_command_execution_shell_meta", 85, source.message,
             "command", joined, source.basis);
       }
-    } else if (shell && !PosixShellCommand.isShell(executable)
-        && command.length >= 3 && isShellCommandFlag(command[1])) {
-      String script = command[2] == null ? "" : command[2];
-      if (SHELL_META.matcher(script).find()) {
-        return new Finding(
-            "java8_command_execution_shell_meta",
-            85,
-            "Suspicious shell metacharacter command reached a Java 8 shell command",
-            "command",
-            joined, "shell_arguments");
+    } else if (windows != null) {
+      RequestSnapshot request = CURRENT_REQUEST.get();
+      if (request != null && windows.controlsFrom(request.parameterValues)) {
+        return new Finding("java8_command_execution_shell_meta", 85,
+            "Request input matches control syntax in the inline command", "command", joined, "request_shell_syntax");
       }
     }
     return null;

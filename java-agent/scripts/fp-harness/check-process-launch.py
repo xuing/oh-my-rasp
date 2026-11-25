@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
-"""Verify actual process launches, argument handling and pipeline receipts on the Linux agent matrix."""
+"""Verify actual process launches, argument handling and pipeline receipts on the runtime matrix."""
 import argparse
 from collections import Counter
 import json
+import os
 import shutil
 from pathlib import Path
 import subprocess
@@ -24,6 +25,26 @@ def main():
         track = next((v for v in ("8", "11", "17") if
                       f"io/ohmyrasp/agent/java{v}/Java{v}RaspHooks.class" in jar.namelist()), "main")
     with tempfile.TemporaryDirectory(prefix="process-launch-") as tmp:
+        if os.name == "nt":
+            pwsh = shutil.which("pwsh")
+            if pwsh is None:
+                parser.error("the Windows process check needs PowerShell 7.5 or later")
+            subprocess.run(["javac", "-d", tmp, src / "WindowsProcessCheck.java", src / "HttpTransportCheck.java"], check=True)
+            for mode in ("block", "monitor"):
+                log = Path(tmp) / f"windows-{mode}.jsonl"
+                run = subprocess.run(["java", "-Xverify:all", f"-javaagent:{agent}", "-Dohmyrasp.standalone=true",
+                                      "-Dohmyrasp.control=none", f"-Dohmyrasp.mode={mode}", "-Dohmyrasp.log.sync=true",
+                                      f"-Dohmyrasp.log={log}", "-cp", tmp, "WindowsProcessCheck", track, mode, pwsh, str(rounds)],
+                                     capture_output=True, text=True, timeout=90)
+                if run.returncode:
+                    raise SystemExit(run.stdout + run.stderr)
+                events = [e for line in log.read_text().splitlines() if (e := json.loads(line)).get("algorithm")]
+                rule = "command_userinput" if track == "main" else f"java{track}_command_execution_shell_meta"
+                if len(events) != 2 * rounds or any(e["algorithm"] != rule or (e["action"] == "block") != (mode == "block")
+                                           or e["details"].get("decision_basis") != "request_shell_syntax"
+                                           or e["details"].get("process_operation") != "ProcessImpl.start" for e in events):
+                    raise SystemExit(f"unexpected Windows launch decisions in {mode}: {events}")
+            return
         version = subprocess.run(["javac", "-version"], text=True, capture_output=True, check=True)
         checks = ["ProcessLaunchCheck"]
         if "javac 1.8." not in version.stdout + version.stderr:

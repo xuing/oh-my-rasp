@@ -11,7 +11,7 @@ public final class ProcessLaunchIndicators {
   private static final Pattern STRING_CONVERSION = Pattern.compile("%(?:%|-?[0-9]*(?:\\.[0-9]+)?s)");
   private ProcessLaunchIndicators() {}
 
-  public static boolean matches(List<String> argv, PosixShellCommand shell, Pattern programIndicator,
+  public static boolean matches(List<String> argv, PosixShellCommand shell, WindowsShellCommand windows, Pattern programIndicator,
       Collection<String> fileReaders, Collection<String> sensitivePaths) {
     int exe = PosixShellCommand.executableIndex(argv);
     if (exe >= argv.size() || argv.get(exe) == null) return false;
@@ -34,16 +34,7 @@ public final class ProcessLaunchIndicators {
       }
       return literal.matchesSource(programIndicator);
     }
-    boolean cmd = "cmd".equalsIgnoreCase(name) || "cmd.exe".equalsIgnoreCase(name);
-    boolean powershell = "powershell".equalsIgnoreCase(name) || "powershell.exe".equalsIgnoreCase(name)
-        || "pwsh".equalsIgnoreCase(name) || "pwsh.exe".equalsIgnoreCase(name);
-    if ((cmd || powershell) && first + 1 < argv.size()) {
-      String flag = argv.get(first);
-      if (cmd ? "/c".equalsIgnoreCase(flag) || "/k".equalsIgnoreCase(flag)
-          : "-command".equalsIgnoreCase(flag) || "-c".equalsIgnoreCase(flag)) {
-        return programIndicator.matcher(String.join(" ", argv.subList(first + 1, argv.size()))).find();
-      }
-    }
+    if (windows != null) return windows.matchesIndicator(programIndicator);
     if (fileReaders.contains(name)) {
       // After -- every following argument is a file operand. Before it, unknown
       // switches may consume an argument or request help instead of opening files.

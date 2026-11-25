@@ -124,6 +124,8 @@ jobs:
           distribution: temurin
           java-version: "25"
           check-latest: true
+      - name: Check native argv and Windows inline shell operands
+        run: python java-agent/scripts/fp-harness/check-process-launch.py java-agent/agent-jdk25/build/libs/ohmyrasp-agent.jar
       - name: Check NTFS stream writes and file contents
         run: python java-agent/scripts/fp-harness/check-file-streams.py java-agent/agent-jdk25/build/libs/ohmyrasp-agent.jar
 

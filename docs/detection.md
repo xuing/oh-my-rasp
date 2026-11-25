@@ -312,6 +312,14 @@ and string-format `printf` operands as output. For supported readers with litera
 absolute file operands it compares complete path arguments. Compound programs,
 expansions and other command modes continue through the source indicator check.
 
+For cmd and PowerShell, the agent first identifies an inline command operand.
+A native program can receive punctuation in an ordinary argument. PowerShell
+script-file arguments and the positional arguments after a `-CommandWithArgs`
+program can carry the same text. For supported inline invocations, request
+matching uses separator positions in the program and excludes literal and
+comment text. An event describes the launch arguments observed by the JDK.
+[cmd command modes](https://learn.microsoft.com/en-us/windows-server/administration/windows-commands/cmd) · [PowerShell command modes](https://learn.microsoft.com/en-us/powershell/module/microsoft.powershell.core/about/about_pwsh)
+
 For a direct network tool launch, the primary agent checks recognized destination
 operands against its callback-domain policy. The event carries the normalized host.
 This evidence describes the requested destination at process start. Network delivery

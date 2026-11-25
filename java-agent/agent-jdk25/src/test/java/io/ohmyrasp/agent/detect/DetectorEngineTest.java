@@ -412,6 +412,28 @@ final class DetectorEngineTest {
   }
 
   @Test
+  void checksOnlyTheSelectedWindowsInlineProgram() {
+    String label = "O'Brien & Sons";
+    var input = request(Map.of("label", List.of(label)));
+    assertTrue(engine.detectCommand(List.of("java.exe", "Report", label), input).isEmpty());
+    assertTrue(engine.detectCommand(List.of("powershell.exe", "-File", "report.ps1", label), input).isEmpty());
+    assertTrue(engine.detectCommand(List.of("pwsh", "-cwa", "Write-Output $args[0]", label), input).isEmpty());
+    String program = "Write-Output weekly; Write-Output ready";
+    assertTrue(engine.detectCommand(List.of("pwsh", "-Command", program), request(Map.of("label", List.of("weekly")))).isEmpty());
+    assertAlgorithm(engine.detectCommand(List.of("pwsh", "-NoProfile", "-NonInteractive", "-Command", program),
+        request(Map.of("program", List.of(program)))), "command_userinput");
+    String afterComment = "<# report | template #> Write-Output weekly; Write-Output ready";
+    assertAlgorithm(engine.detectCommand(List.of("pwsh", "-c", afterComment),
+        request(Map.of("program", List.of("weekly; Write-Output")))), "command_userinput");
+    assertTrue(engine.detectCommand(List.of("pwsh", "-c", afterComment),
+        request(Map.of("description", List.of("report | template")))).isEmpty());
+    String literal = "Write-Output 'Sales & Reports'";
+    assertTrue(engine.detectCommand(List.of("pwsh", "-Command", literal), request(Map.of("label", List.of(literal)))).isEmpty());
+    assertTrue(engine.detectCommand(List.of("cmd", "/d", "/c", "echo", "Sales & Reports"),
+        request(Map.of("label", List.of("Sales & Reports")))).isEmpty());
+  }
+
+  @Test
   void detectsCommandUserInput() {
     var result =
         engine.detectCommand(

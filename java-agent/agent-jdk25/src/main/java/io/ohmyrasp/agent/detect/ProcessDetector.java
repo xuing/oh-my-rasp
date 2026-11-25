@@ -5,6 +5,7 @@ import static io.ohmyrasp.agent.detect.RequestValues.bodyHasSinkValue;
 import io.ohmyrasp.agent.model.Detection;
 import io.ohmyrasp.agent.model.RequestContext;
 import io.ohmyrasp.agent.process.PosixShellCommand;
+import io.ohmyrasp.agent.process.WindowsShellCommand;
 import io.ohmyrasp.agent.process.ProcessLaunchIndicators;
 import io.ohmyrasp.agent.rules.general.RequestShellSyntax;
 import io.ohmyrasp.agent.rules.product.rocketmq.RocketMqFilterServer;
@@ -27,13 +28,7 @@ final class ProcessDetector {
       Pattern.compile(
           "(?is)(?:cat\\s+/etc/passwd|nc\\b.{0,40}\\s-e\\s+/bin/(?:ba)?sh|bash\\s+-i\\b|/dev/tcp/|curl\\b.{0,80}\\|\\s*(?:sh|bash)|wget\\b.{0,80}\\|\\s*(?:sh|bash)|\\{echo,.{10,400}\\}\\|\\{base64,-d\\})");
 
-  private static final Pattern WINDOWS_SHELL =
-      Pattern.compile("(?i)(?:.*[/\\\\])?(?:cmd|pwsh|powershell)(?:\\.exe)?");
-
   private static final Pattern COMMAND_META = Pattern.compile("[;&|`$<>]|\\$\\{?IFS\\}?");
-
-  private static final Pattern COMMAND_SENSITIVE_AFTER_JOIN =
-      Pattern.compile("(?is)(?:;|&&|\\|\\|?|`)\\s*(?:cat|bash|sh|nc|curl|wget|python|perl|php)\\b");
 
   private static final Pattern REMOTE_JOB_SHELL_COMMAND =
       Pattern.compile("(?is)(?:^|\\W)(?:bash|sh|cmd|powershell|pwsh|nc|curl|wget)\\b");
@@ -92,22 +87,23 @@ final class ProcessDetector {
                   "launcher", abbreviate(configLauncher))));
     }
     PosixShellCommand shell = PosixShellCommand.from(command);
-    boolean windowsShell = java.io.File.separatorChar == '\\'
-        || (command.get(0) != null && WINDOWS_SHELL.matcher(command.get(0)).matches());
+    WindowsShellCommand windows = WindowsShellCommand.from(command);
     boolean requestSyntax = shell != null && shell.hasOperator()
         && (request.parameters().values().stream().anyMatch(values -> RequestShellSyntax.matches(shell, values))
             || bodyHasSinkValue(request, shell.source()));
-    if (requestSyntax || (windowsShell && request.hasParameterIn(joined) && COMMAND_META.matcher(joined).find())) {
+    boolean windowsSyntax = windows != null && windows.hasControl()
+        && (request.parameters().values().stream().anyMatch(windows::controlsFrom) || bodyHasSinkValue(request, windows.source()));
+    if (requestSyntax || windowsSyntax) {
       return Optional.of(
           Detection.log(
               "command",
               "command_userinput",
               95,
-              "Command contains request input and shell metacharacters",
+              "Request input matches control syntax in the inline shell program",
               request,
-              Map.of("command", abbreviate(joined))));
+              Map.of("command", abbreviate(joined), "decision_basis", "request_shell_syntax")));
     }
-    if (ProcessLaunchIndicators.matches(command, shell, COMMAND_COMMON, FILE_READERS, SENSITIVE_PATHS)) {
+    if (ProcessLaunchIndicators.matches(command, shell, windows, COMMAND_COMMON, FILE_READERS, SENSITIVE_PATHS)) {
       return Optional.of(
           Detection.log(
               "command",
@@ -128,11 +124,7 @@ final class ProcessDetector {
               request,
               Map.of("command", abbreviate(joined), "host", callbackHost)));
     }
-    boolean syntaxError = windowsShell
-        ? hasUnbalancedQuotes(joined) || COMMAND_SENSITIVE_AFTER_JOIN.matcher(joined).find()
-            || joined.contains("$IFS") || joined.contains("${IFS}")
-        : shell != null && shell.hasUnclosedQuote();
-    if (syntaxError) {
+    if (shell != null && shell.hasUnclosedQuote()) {
       return Optional.of(
           Detection.log(
               "command",
@@ -164,13 +156,6 @@ final class ProcessDetector {
               Map.of("command", abbreviate(joined))));
     }
     return Optional.empty();
-  }
-
-  private static boolean hasUnbalancedQuotes(String value) {
-    long single = value.chars().filter(ch -> ch == '\'').count();
-    long doubleQuote = value.chars().filter(ch -> ch == '"').count();
-    long backtick = value.chars().filter(ch -> ch == '`').count();
-    return single % 2 != 0 || doubleQuote % 2 != 0 || backtick % 2 != 0;
   }
 
   private static boolean processInvokedReflectively(List<String> stack) {

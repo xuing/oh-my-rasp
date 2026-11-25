@@ -95,7 +95,7 @@ The descriptions live in the [general catalog](../rules/general.json) and [produ
 | `command_dnslog` | A directly launched network tool names a listed callback host in a recognized destination argument. | — |
 | `command_error` | Command text matches a configured or built-in suspicious-command, shell-syntax or callback-domain indicator. | — |
 | `command_reflect` | Explicit policy selects reflective dispatch at the process API. | — |
-| `command_userinput` | Request-controlled syntax reaches the launched shell program. The POSIX branch preserves the argument boundaries. | — |
+| `command_userinput` | Request input matches control syntax in the selected inline shell program. File and positional arguments retain their roles. | — |
 | `deleteFile_userinput` | A request-selected host entry escapes the configured deletion root. Exact absolute-path matches can also be selected explicitly by policy. | — |
 | `deserialization_blacklist` | — | Known class families, type-resolution behavior or unmarshaller implementations affect the judgment. |
 | `deserialization_cluster_message` | — | Known cluster, logging or remoting implementation frames supply transport provenance. |
@@ -237,7 +237,7 @@ The descriptions live in the [general catalog](../rules/general.json) and [produ
 | `java8_base64_avx512_tail_underflow`, `java11_base64_avx512_tail_underflow`, `java17_base64_avx512_tail_underflow` | — | The input shape corresponds to a JDK decoder implementation defect. |
 | `java8_classloader_remote_codebase`, `java11_classloader_remote_codebase`, `java17_classloader_remote_codebase` | URLClassLoader hands bytes from a covered remote origin to class definition, or the JDK RMI provider selects its codebase-loader branch. | — |
 | `java8_command_execution_exploit_primitive`, `java11_command_execution_exploit_primitive`, `java17_command_execution_exploit_primitive` | Process arguments or a deserialization context supply the evidence. Other branches use a product-specific caller. | decision_basis=configured_listener identifies the Solr executable listener. Other component-specific callers share this ID with general process branches. |
-| `java8_command_execution_shell_meta`, `java11_command_execution_shell_meta`, `java17_command_execution_shell_meta` | With decision_basis=request_shell_syntax, request input contributes shell control syntax at process launch. The Windows branch uses a command-text heuristic. | decision_basis=configuration_launcher identifies the RocketMQ filter-server branch. The scheduler job branch records decision_basis=scheduled_script. |
+| `java8_command_execution_shell_meta`, `java11_command_execution_shell_meta`, `java17_command_execution_shell_meta` | With decision_basis=request_shell_syntax, request input matches control syntax in the selected POSIX, cmd or PowerShell inline program. | decision_basis=configuration_launcher identifies the RocketMQ filter-server branch. The scheduler job branch records decision_basis=scheduled_script. |
 | `deleteFile_userinput` | A request-selected deletion escapes a configured filesystem root. | — |
 | `java8_deserialization_fastjson_resource_url`, `java11_deserialization_fastjson_resource_url`, `java17_deserialization_fastjson_resource_url` | — | Fastjson autoType reaches a URL-shaped resource lookup. |
 | `java8_deserialization_gadget_class`, `java11_deserialization_gadget_class`, `java17_deserialization_gadget_class` | — | The stream resolver selected a listed class or a proxy implementing a listed interface. The event identifies the resolution operation. |
