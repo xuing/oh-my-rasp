@@ -77,14 +77,16 @@ jobs:
           if-no-files-found: error
           compression-level: 0
           retention-days: 1
-      - name: Stage MyBatis fixture for the runtime matrix
-        run: python3 java-agent/scripts/fp-harness/check-mybatis-mapping.py --download-to java-agent/build/mybatis-probe/mybatis.jar
+      - name: Stage fixture JARs for the runtime matrix
+        run: |
+          python3 java-agent/scripts/fp-harness/check-mybatis-mapping.py --download-to java-agent/build/runtime-probes/mybatis.jar
+          python3 java-agent/scripts/fp-harness/check-stream-resolution.py --download-to java-agent/build/runtime-probes/bsh.jar
       - name: Upload agent compatibility artifacts
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: java-agents
           path: |
-            java-agent/build/mybatis-probe/mybatis.jar
+            java-agent/build/runtime-probes/*.jar
             java-agent/build/servlet-probe/*.jar
             java-agent/agent-java8/build/libs/ohmyrasp-agent-java8.jar
             java-agent/agent-java11/build/libs/ohmyrasp-agent-java11.jar
@@ -211,7 +213,7 @@ jobs:
         if: matrix.java == '25'
         run: python3 java-agent/scripts/fp-harness/check-sqlite-identifiers.py "java-agent/${{ matrix.jar }}"
       - name: Verify MyBatis template and JDBC handoff
-        run: python3 java-agent/scripts/fp-harness/check-mybatis-mapping.py "java-agent/${{ matrix.jar }}" --mybatis-jar java-agent/build/mybatis-probe/mybatis.jar
+        run: python3 java-agent/scripts/fp-harness/check-mybatis-mapping.py "java-agent/${{ matrix.jar }}" --mybatis-jar java-agent/build/runtime-probes/mybatis.jar
       - name: Verify plot output stream ownership
         if: startsWith(matrix.jar, 'agent-java')
         run: python3 java-agent/scripts/fp-harness/check-plot-stream.py "java-agent/${{ matrix.jar }}"
@@ -225,7 +227,7 @@ jobs:
       - name: Verify Spark submit role at servlet dispatch
         run: python3 java-agent/scripts/fp-harness/check-spark-submit.py "java-agent/${{ matrix.jar }}" --api-dir java-agent/build/servlet-probe
       - name: Verify resolved serialization classes and proxy interfaces
-        run: python3 java-agent/scripts/fp-harness/check-stream-resolution.py "java-agent/${{ matrix.jar }}"
+        run: python3 java-agent/scripts/fp-harness/check-stream-resolution.py "java-agent/${{ matrix.jar }}" --beanshell-jar java-agent/build/runtime-probes/bsh.jar
       - name: Verify JVM and per-stream deserialization filters
         if: startsWith(matrix.jar, 'agent-jdk25/')
         run: python3 java-agent/scripts/fp-harness/check-serial-filter.py "java-agent/${{ matrix.jar }}"

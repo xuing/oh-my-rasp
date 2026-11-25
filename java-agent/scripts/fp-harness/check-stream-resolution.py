@@ -14,22 +14,34 @@ import zipfile
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("agent", type=Path)
+    parser.add_argument("agent", type=Path, nargs="?")
+    parser.add_argument("--download-to", type=Path, help="stage the pinned fixture for the runtime matrix")
     parser.add_argument("--beanshell-jar", type=Path, help="use the pinned fixture library from disk")
     args = parser.parse_args()
-    agent = args.agent.resolve(strict=True)
-    src = Path(__file__).parent
-    with zipfile.ZipFile(agent) as jar:
-        track = next((v for v in ("8", "11", "17") if
-                      f"io/ohmyrasp/agent/java{v}/Java{v}RaspHooks.class" in jar.namelist()), "main")
+    if args.download_to and (args.agent or args.beanshell_jar):
+        parser.error("--download-to stages the dependency as a separate operation")
+    if not args.download_to and not args.agent:
+        parser.error("provide an agent JAR or --download-to")
     with tempfile.TemporaryDirectory(prefix="stream-resolution-") as tmp:
-        library = args.beanshell_jar or Path(tmp) / "bsh.jar"
+        library = args.download_to or args.beanshell_jar or Path(tmp) / "bsh.jar"
         if args.beanshell_jar is None:
             with urlopen("https://repo.maven.apache.org/maven2/org/apache-extras/beanshell/bsh/2.0b6/bsh-2.0b6.jar",
                          timeout=45) as response:
-                library.write_bytes(response.read())
-        if hashlib.sha256(library.read_bytes()).hexdigest() != "a17955976070c0573235ee662f2794a78082758b61accffce8d3f8aedcd91047":
+                data = response.read()
+        else:
+            data = library.read_bytes()
+        if hashlib.sha256(data).hexdigest() != "a17955976070c0573235ee662f2794a78082758b61accffce8d3f8aedcd91047":
             raise SystemExit("unexpected BeanShell fixture library")
+        if args.beanshell_jar is None:
+            library.parent.mkdir(parents=True, exist_ok=True)
+            library.write_bytes(data)
+        if args.download_to:
+            return
+        agent = args.agent.resolve(strict=True)
+        src = Path(__file__).parent
+        with zipfile.ZipFile(agent) as jar:
+            track = next((v for v in ("8", "11", "17") if
+                          f"io/ohmyrasp/agent/java{v}/Java{v}RaspHooks.class" in jar.namelist()), "main")
         cp = os.pathsep.join((tmp, str(library)))
         subprocess.run(["javac", "-cp", cp, "-d", tmp, src / "HttpTransportCheck.java", src / "StreamResolutionCheck.java",
                         *sorted((src / "stream-types").rglob("*.java"))], check=True)
