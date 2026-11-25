@@ -11,6 +11,15 @@ import org.junit.jupiter.api.Test;
 
 class SqlStatementTest {
   @Test
+  void sqliteFunctionSignaturesRespectWholeIdentifierTokens() {
+    for (String driver : List.of("org.sqlite.jdbc4.JDBC4Statement", "reports.PooledConnection", "")) {
+      assertFalse(new SqlStatement("select report$benchmark(7), report·sleep(7)", driver).matchesSinkPolicy());
+      assertTrue(new SqlStatement("select report$benchmark(7), benchmark(7)", driver).matchesSinkPolicy());
+      assertTrue(new SqlStatement("select \uFEFFbenchmark(7)", driver).matchesSinkPolicy());
+    }
+  }
+
+  @Test
   void sqliteVariableNamesAreDataAndStopAtTheClosingParenthesis() {
     String sqlite = "org.sqlite.jdbc4.JDBC4PreparedStatement";
     for (String prefix : List.of("$", ":", "@", "#")) {

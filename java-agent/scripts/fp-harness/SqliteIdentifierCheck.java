@@ -43,13 +43,21 @@ public final class SqliteIdentifierCheck {
       Function.create(db, "benchmark", new Function() {
         protected void xFunc() throws SQLException { calls++; result(value_int(0)); }
       });
+      for (String reportFunction : new String[]{"weekly$benchmark", "weekly·benchmark"}) {
+        Function.create(db, reportFunction, new Function() {
+          protected void xFunc() throws SQLException { result(value_int(0)); }
+        });
+      }
       String track = args[0], mode = args[1];
       check(db, track, mode, "alias", "SELECT 7 AS [benchmark(7) samples]", "benchmark(7) samples", false, false);
       check(db, track, mode, "sort", "SELECT 7 AS [weekly -- total] ORDER BY [weekly -- total]", "weekly -- total", false, true);
       check(db, track, mode, "cr-comment", "SELECT 7 AS weekly -- report\r benchmark(7)", "weekly", false, false);
       check(db, track, mode, "lf-expression", "SELECT -- report\r\n benchmark(7) AS weekly", "weekly", true, true);
       check(db, track, mode, "named-parameter", "SELECT $benchmark(weekly) AS weekly", "weekly", false, true);
+      check(db, track, mode, "dollar-name", "SELECT weekly$benchmark(7) AS weekly", "weekly", false, false);
       Connection pool = pooled(db);
+      check(pool, track, mode, "unicode-name", "SELECT weekly·benchmark(7) AS weekly", "weekly", false, true);
+      check(pool, track, mode, "mixed-functions", "SELECT weekly$benchmark(7) AS weekly, benchmark(7)", "weekly", true, true);
       check(pool, track, mode, "parameter-namespace", "SELECT $reports::benchmark(weekly) AS weekly", "weekly", false, true);
       check(pool, track, mode, "function-after-parameter", "SELECT benchmark($report(--weekly)) AS weekly", "weekly", true, true);
       check(db, track, mode, "after-parameter-suffix", "SELECT $report(--weekly) AS weekly, benchmark(7)", "weekly", true, true);

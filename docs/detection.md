@@ -185,6 +185,8 @@ An ordinary Bean can launch a local helper during startup. The process still pas
 
 Zero false positives on the benign SQL corpus (see [False-positive methodology](#false-positive-methodology)).
 
+A dollar sign or a non-ASCII character inside a bare SQLite identifier belongs to that name. Function policies check the whole identifier. [SQLite tokenizer](https://github.com/sqlite/sqlite/blob/version-3.47.1/src/tokenize.c)
+
 SQLite named bind parameters are data tokens, including names with namespace segments and parenthesized suffixes. The concrete driver check resumes after the parameter. [SQLite parameter grammar](https://www.sqlite.org/lang_expr.html#parameters)
 
 SQLite line comments extend through a bare carriage return and end at a line feed or the end of the statement. The agent uses the concrete driver grammar at JDBC handoff. For an unknown driver it defers signatures in text whose interpretation depends on the comment terminator. [SQLite comment syntax](https://www.sqlite.org/lang_comment.html)

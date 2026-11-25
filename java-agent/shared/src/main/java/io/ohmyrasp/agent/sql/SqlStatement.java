@@ -36,7 +36,7 @@ public final class SqlStatement {
   private boolean incompleteBracket;
   private final boolean bracketIdentifiers;
   private final BitSet quoted = new BitSet();
-  private BitSet bindParameters;
+  private BitSet sqliteNameRanges;
 
   public SqlStatement(String sql) {
     this(sql, null);
@@ -66,20 +66,30 @@ public final class SqlStatement {
     boolean uncertainDialect = dialect == Dialect.WRAPPER || dialect == Dialect.UNSPECIFIED;
     boolean mysqlLineRules = dialect == Dialect.MYSQL || mysql;
     boolean ambiguousLineComment = false;
-    boolean possibleSqliteParameter = false;
+    boolean possibleSqliteName = false;
     boolean namedDollarQuotes = dialect == Dialect.POSTGRESQL || dialect == Dialect.WRAPPER;
     StringBuilder commentsRemoved = null;
     int i = 0;
     while (i < sql.length()) {
       char ch = sql.charAt(i);
-      if ((dialect == Dialect.SQLITE || uncertainDialect) && (ch == '$' || ch == '@' || ch == ':' || ch == '#')
-          && (ch != '$' || i == 0 || !sqliteNameChar(sql.charAt(i - 1)))) {
-        if (dialect == Dialect.SQLITE) {
+      boolean parameterPrefix = ch == '$' || ch == '@' || ch == ':' || ch == '#';
+      if (dialect == Dialect.SQLITE) {
+        if (parameterPrefix) {
           i = scanSqliteParameter(sql, i);
           continue;
-        } else {
-          possibleSqliteParameter = true;
         }
+        if (ch != '\uFEFF' && sqliteNameChar(ch) && !(ch >= '0' && ch <= '9')) {
+          int start = i++;
+          boolean extended = ch >= 128;
+          while (i < sql.length() && sqliteNameChar(sql.charAt(i))) {
+            char next = sql.charAt(i++);
+            extended |= next == '$' || next >= 128;
+          }
+          if (extended) markSqliteName(start, i);
+          continue;
+        }
+      } else if (uncertainDialect && (parameterPrefix || ch >= 128)) {
+        possibleSqliteName = true;
       }
       if (ch == '[' && bracketIdentifiers) {
         int start = i;
@@ -201,13 +211,13 @@ public final class SqlStatement {
       boolean brackets = sql.indexOf('[') >= 0 && sql.indexOf(']') >= 0;
       // SQLite keeps CR inside a line comment, including when no space follows the dashes.
       boolean sqliteComment = sql.indexOf('\r') >= 0 && sql.contains("--");
-      if (brackets || sqliteComment || possibleSqliteParameter) {
+      if (brackets || sqliteComment || possibleSqliteName) {
         SqlStatement sqlite = new SqlStatement(sql, false, Dialect.SQLITE);
         if (brackets || sqliteComment) {
           commentsRemoved = commonCode(commentsRemoved, sqlite);
-        } else if (sqlite.bindParameters != null) {
-          quoted.or(sqlite.bindParameters);
-          comments.andNot(sqlite.bindParameters);
+        } else if (sqlite.sqliteNameRanges != null) {
+          quoted.or(sqlite.sqliteNameRanges);
+          comments.andNot(sqlite.sqliteNameRanges);
         }
       }
       if (brackets && (sql.contains("]]") || sql.contains("/*")))
@@ -246,10 +256,14 @@ public final class SqlStatement {
       if (i == sql.length()) return i;
       i++;
     }
-    if (bindParameters == null) bindParameters = new BitSet();
-    bindParameters.set(start, i);
-    quoted.set(start, i);
+    markSqliteName(start, i);
     return i;
+  }
+
+  private void markSqliteName(int start, int end) {
+    if (sqliteNameRanges == null) sqliteNameRanges = new BitSet();
+    sqliteNameRanges.set(start, end);
+    quoted.set(start, end);
   }
 
   private static int bracketEnd(String sql, int i, boolean doubledClosingBracket) {
