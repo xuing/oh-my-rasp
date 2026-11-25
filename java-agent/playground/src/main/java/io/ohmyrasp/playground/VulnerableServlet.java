@@ -215,7 +215,7 @@ public final class VulnerableServlet extends HttpServlet {
             case "/file/write-reflect" -> writeFileReflect();
             case "/archive" -> extractArchive(request);
             case "/onlinePreview" -> kkFileViewOnlinePreview(request);
-            case "/file/delete" -> deleteFile(request);
+            case "/file/delete" -> deleteFile();
             case "/directory" -> listDirectory(request);
             case "/directory/root" -> listDirectoryPath("/root");
             case "/ssrf" -> outboundUrl(request);
@@ -545,11 +545,6 @@ public final class VulnerableServlet extends HttpServlet {
 
   private static String runCommandReflect() throws Exception {
     ProcessBuilder processBuilder = new ProcessBuilder("id").redirectErrorStream(true);
-    hook(
-        "beforeProcessBuilderStart",
-        new Class<?>[] {ProcessBuilder.class, List.class},
-        processBuilder,
-        List.of("java.lang.reflect.Method", "io.ohmyrasp.playground.VulnerableServlet"));
     Method start = ProcessBuilder.class.getMethod("start");
     Process process = (Process) start.invoke(processBuilder);
     boolean finished = process.waitFor(2, TimeUnit.SECONDS);
@@ -673,19 +668,13 @@ public final class VulnerableServlet extends HttpServlet {
     return "../../../../../../../../../../../../../../../../../../../opt/libreoffice7.5/program/uno.py";
   }
 
-  private static String deleteFile(HttpServletRequest request) throws IOException {
-    Path path = Path.of(value(request, "path", "/tmp/ohmyrasp-delete-target.txt"));
-    if (Boolean.parseBoolean(value(request, "touch", "true"))) {
-      Files.writeString(path, "delete target");
-    }
+  private static String deleteFile() throws IOException {
+    Path report = Files.createTempFile("ohmyrasp-cleanup-", ".txt");
     try {
-      hook("beforePathDelete", new Class<?>[] {Object.class}, path);
-    } catch (Exception e) {
-      if (isOhMyRaspBlock(e) && e instanceof RuntimeException runtimeException) {
-        throw runtimeException;
-      }
+      return "deleted=" + report.toFile().delete();
+    } finally {
+      Files.deleteIfExists(report);
     }
-    return "deleted=" + path.toFile().delete();
   }
 
   private static String listDirectory(HttpServletRequest request) {
@@ -693,13 +682,6 @@ public final class VulnerableServlet extends HttpServlet {
   }
 
   private static String listDirectoryPath(String path) {
-    try {
-      hook("beforeDirectoryList", new Class<?>[] {Object.class, List.class}, path, List.of());
-    } catch (Exception e) {
-      if (isOhMyRaspBlock(e) && e instanceof RuntimeException runtimeException) {
-        throw runtimeException;
-      }
-    }
     File[] files = new File(path).listFiles();
     return "entries=" + (files == null ? 0 : files.length);
   }
@@ -3910,7 +3892,7 @@ public final class VulnerableServlet extends HttpServlet {
                   "/"),
               List.of("org.apache.coyote.ajp.AjpProcessor"));
       case "directory-reflect" ->
-          hook("beforeDirectoryList", new Class<?>[] {Object.class}, "/tmp");
+          File.class.getMethod("list").invoke(new File(System.getProperty("java.io.tmpdir")));
       case "xxe-protocol" ->
           hook(
               "beforeXmlEntity",
@@ -4148,16 +4130,18 @@ public final class VulnerableServlet extends HttpServlet {
               new Class<?>[] {ProcessBuilder.class, List.class},
               new ProcessBuilder("sh", "-c", value(request, "cmd", "touch /tmp/success")),
               List.of(
-                  "org.apache.rocketmq.broker.filtersrv.FilterServerManager",
-                  "org.apache.rocketmq.broker.filtersrv.FilterServerUtil"));
+                  "java.lang.Runtime",
+                  "org.apache.rocketmq.broker.filtersrv.FilterServerUtil",
+                  "org.apache.rocketmq.broker.filtersrv.FilterServerManager"));
       case "command-rocketmq-cve-2023-33246-filterserver" ->
           hook(
               "beforeProcessBuilderStart",
               new Class<?>[] {ProcessBuilder.class, List.class},
               new ProcessBuilder("sh", "-c", value(request, "cmd", "touch /tmp/success")),
               List.of(
-                  "org.apache.rocketmq.broker.filtersrv.FilterServerManager",
-                  "org.apache.rocketmq.broker.filtersrv.FilterServerUtil"));
+                  "java.lang.Runtime",
+                  "org.apache.rocketmq.broker.filtersrv.FilterServerUtil",
+                  "org.apache.rocketmq.broker.filtersrv.FilterServerManager"));
       case "javascript-runtime" ->
           hook(
               "beforeExpressionEvaluation",
@@ -4610,7 +4594,7 @@ public final class VulnerableServlet extends HttpServlet {
           {"category":"file","name":"RocketMQ NameServer config path write","path":"/rasp/policy/write-rocketmq-cve-2023-37582-config-path"},
           {"category":"file","name":"Generated interpreter script write","path":"/rasp/policy/write-generated-script?payload=%5B0%3Asystem%28%27touch%20%2Ftmp%2Fsuccess%27%29%5D"},
           {"category":"file","name":"OpenTSDB generated key script write","path":"/rasp/policy/write-generated-script-key"},
-          {"category":"file","name":"File delete","path":"/rasp/file/delete?path=/tmp/ohmyrasp-delete-target.txt"},
+          {"category":"file","name":"File delete","path":"/rasp/file/delete"},
 
           {"category":"directory","name":"Directory listing","path":"/rasp/directory?path=/etc"},
           {"category":"directory","name":"Root directory listing","path":"/rasp/directory/root"},

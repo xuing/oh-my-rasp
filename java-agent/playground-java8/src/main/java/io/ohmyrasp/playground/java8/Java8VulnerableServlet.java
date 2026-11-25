@@ -88,9 +88,15 @@ public final class Java8VulnerableServlet extends HttpServlet {
       return;
     }
     if ("/java8/command-shell".equals(path)) {
-      Process process = new ProcessBuilder("sh", "-c", "echo safe; id").start();
+      String join = request.getParameter("join");
+      if (join != null && !"&&".equals(join) && !"||".equals(join)) {
+        response.sendError(HttpServletResponse.SC_BAD_REQUEST);
+        return;
+      }
+      String program = "true " + (join == null ? ";" : join) + " false";
+      Process process = new ProcessBuilder("sh", "-c", program).start();
       process.waitFor();
-      send(response, "command shell attempted");
+      send(response, "command shell attempted " + process.exitValue());
       return;
     }
     if ("/java8/deserialization".equals(path)) {
@@ -129,20 +135,39 @@ public final class Java8VulnerableServlet extends HttpServlet {
     }
     if ("/java8/ssrf-metadata".equals(path)) {
       new URL("http://169.254.169.254/latest/meta-data/").openConnection();
-      send(response, "ssrf metadata attempted");
+      send(response, "metadata connection configured");
       return;
     }
     if ("/java8/ssrf-loopback".equals(path)) {
-      new URL("http://127.0.0.1:8080/manager/html").openConnection();
+      String targetPath = request.getParameter("path");
+      if (targetPath == null) targetPath = "/admin/weekly-report";
+      if (!"/admin/weekly-report".equals(targetPath)) {
+        response.sendError(400);
+        return;
+      }
+      try (java.net.ServerSocket receiver = new java.net.ServerSocket(0, 1, java.net.InetAddress.getByName("127.0.0.1"))) {
+        URL target = new URL("http", "127.0.0.1", receiver.getLocalPort(), targetPath);
+        java.net.HttpURLConnection connection = (java.net.HttpURLConnection) target.openConnection(java.net.Proxy.NO_PROXY);
+        connection.setConnectTimeout(1000);
+        try {
+          connection.connect();
+        } finally {
+          connection.disconnect();
+        }
+      }
       send(response, "ssrf loopback attempted");
       return;
     }
     if ("/java8/archive-traversal".equals(path)) {
-      ZipEntry entry = new ZipEntry("../../webapps/ROOT/shell.jsp");
-      entry.getName();
-      FileOutputStream output = new FileOutputStream("/tmp/archive-shell.jsp");
-      output.write("blocked".getBytes("UTF-8"));
-      output.close();
+      File target = File.createTempFile("ohmyrasp-archive-member-", ".txt");
+      try {
+        String name = new ZipEntry(target.getAbsolutePath()).getName();
+        try (FileOutputStream output = new FileOutputStream(name)) {
+          output.write(1);
+        }
+      } finally {
+        java.nio.file.Files.deleteIfExists(target.toPath());
+      }
       send(response, "archive traversal attempted");
       return;
     }

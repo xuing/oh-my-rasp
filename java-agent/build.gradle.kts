@@ -20,6 +20,12 @@ subprojects {
         sourceSets.main { java.srcDir(rootProject.file("shared/src/main/java")) }
     }
 
+    if (name.startsWith("playground")) {
+        tasks.withType<War>().configureEach {
+            webXml = rootProject.file("playground/archive-upload-web.xml")
+        }
+    }
+
     tasks.withType<JavaCompile>().configureEach {
         options.encoding = "UTF-8"
         options.release.set(25)

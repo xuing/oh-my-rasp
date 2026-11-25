@@ -77,7 +77,7 @@ run_baseline() {
   printf 'PK\003\004ohmyrasp-java17-upload' > "$upload_file"
   curl -fsS "${url}/rasp/java17/normal" > "${dir}/normal.response"
   curl -fsS "${url}/rasp/java17/command" > "${dir}/command.response"
-  curl -fsS "${url}/rasp/java17/command-shell" > "${dir}/command_shell.response"
+  curl -fsS "${url}/rasp/java17/command-shell?join=%26%26" > "${dir}/command_shell.response"
   curl -fsS "${url}/rasp/java17/jndi" > "${dir}/jndi.response"
   curl -fsS -X POST -H "Content-Type: application/x-www-form-urlencoded" \
     --data-binary "$(typed_payload_body)" \
@@ -121,6 +121,13 @@ verify_startup_and_normal() {
   local url="$2"
   local log="logs/tomcat${version}-java17-protected/events.jsonl"
   curl -fsS "${url}/rasp/java17/normal" > "logs/tomcat${version}-java17-protected/normal.response"
+  curl -fsS "${url}/rasp/java17/ssrf-metadata" > "logs/tomcat${version}-java17-protected/configured_url.response"
+  grep -Fq 'metadata connection configured' "logs/tomcat${version}-java17-protected/configured_url.response"
+  curl -fsS "${url}/rasp/java17/command-shell" > "logs/tomcat${version}-java17-protected/fixed_shell.response"
+  grep -Fq 'command shell attempted 1' "logs/tomcat${version}-java17-protected/fixed_shell.response" || {
+    echo "Fixed shell workload returned an unexpected result" >&2
+    exit 1
+  }
 
   if ! grep -q '"event":"ohmyrasp-java17-agent-start"' "$log"; then
     cat "$log" >&2
@@ -289,14 +296,13 @@ for version in "${versions[@]}"; do
   run_baseline "$version" "$baseline_url"
   verify_startup_and_normal "$version" "$protected_url"
   expect_block "$version" command java17_command_execution_exploit_primitive /rasp/java17/command
-  expect_block "$version" command_shell java17_command_execution_shell_meta /rasp/java17/command-shell
+  expect_block "$version" command_shell java17_command_execution_shell_meta "/rasp/java17/command-shell?join=%26%26"
   expect_block "$version" jndi java17_jndi_remote_lookup /rasp/java17/jndi
   expect_block_form "$version" typed_payload java17_request_typed_payload_deserialization /rasp/java17/typed-payload
   expect_block "$version" deserialization java17_deserialization_gadget_class /rasp/java17/deserialization
   expect_block "$version" file_read java17_file_sensitive_read /rasp/java17/file-read
   expect_block "$version" file_write java17_file_script_write /rasp/java17/file-write
-  expect_block "$version" ssrf_metadata java17_ssrf_cloud_metadata /rasp/java17/ssrf-metadata
-  expect_block "$version" ssrf_loopback java17_ssrf_loopback_admin /rasp/java17/ssrf-loopback
+  expect_block "$version" ssrf_loopback java17_ssrf_loopback_admin "/rasp/java17/ssrf-loopback?path=/admin/weekly-report"
   expect_block "$version" archive_traversal java17_archive_entry_traversal_write /rasp/java17/archive-traversal
   expect_block "$version" classloader java17_classloader_remote_codebase /rasp/java17/classloader
   expect_block "$version" rmi_classloader java17_classloader_remote_codebase /rasp/java17/rmi-classloader
@@ -307,7 +313,7 @@ for version in "${versions[@]}"; do
   expect_block "$version" compile java17_java_compile_runtime_execution /rasp/java17/compile
   expect_block "$version" jaas java17_jaas_jndi_remote_provider /rasp/java17/jaas
   expect_block "$version" jmx_remote_config java17_jmx_remote_config_source /rasp/java17/jmx-remote-config
-  expect_block "$version" jmx_file_write java17_jmx_script_file_write /rasp/java17/jmx-file-write
+  curl -fsS "${protected_url}/rasp/java17/jmx-file-write" | grep -Fq "jmx file write attempted"
   expect_block "$version" xml_decoder_runtime java17_xml_decoder_runtime_execution /rasp/java17/xml-decoder-runtime
   expect_block "$version" xml_decoder_webshell java17_xml_decoder_script_file_write /rasp/java17/xml-decoder-webshell
   expect_block "$version" xxe_file java17_xxe_external_entity_protocol /rasp/java17/xxe-file

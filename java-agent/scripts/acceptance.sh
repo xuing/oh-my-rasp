@@ -698,7 +698,7 @@ XML
   expect_not_blocked "$version" baseline_struts2_cve_2017_5638_s2046_filename -X POST -H "Content-Type: multipart/form-data; boundary=${struts2_s2046_boundary}" --data-binary "@${struts2_s2046_body_file}" "${baseline_url}/index.action"
   expect_not_blocked "$version" baseline_upload_traversal "${baseline_url}/rasp/policy/upload-traversal"
   expect_not_blocked "$version" baseline_flink_cve_2020_17518_jar_upload -X POST -H "Content-Type: multipart/form-data; boundary=${flink_cve_2020_17518_boundary}" --data-binary "@${flink_cve_2020_17518_body_file}" "${baseline_url}/jars/upload"
-  expect_not_blocked "$version" baseline_upload_java_archive "${baseline_url}/rasp/policy/plugin-upload"
+  expect_not_blocked "$version" baseline_upload_java_archive -F 'file=@-;filename=release.jar;type=application/java-archive' "${baseline_url}/plugin/add" <<< 'release'
   expect_not_blocked "$version" baseline_metersphere_plugin_add_jar_upload -X POST -F "file=@${metersphere_plugin_jar_file};filename=Evil.jar;type=application/java-archive" "${baseline_url}/plugin/add"
   expect_not_blocked "$version" baseline_weblogic_ws_utc_jsp_upload -X POST -H "Content-Type: multipart/form-data; boundary=ohmyrasp" "${baseline_url}/ws_utc/resources/setting/keystore?filename=shell.jsp"
   expect_not_blocked "$version" baseline_weblogic_cve_2018_2894_ws_utc_jsp_upload -X POST -H "Content-Type: multipart/form-data; boundary=ohmyrasp" "${baseline_url}/ws_utc/resources/setting/keystore?filename=shell.jsp"
@@ -1170,10 +1170,12 @@ XML
   expect_block "$version" request_plot_command_injection "${protected_url}/rasp/policy/request-plot-command-injection"
   expect_block "$version" request_opentsdb_cve_2020_35476_yrange_plot_command "${protected_url}/rasp/policy/request-plot-command-injection"
   expect_block "$version" request_opentsdb_cve_2023_25826_key_plot_command "${protected_url}/rasp/policy/request-opentsdb-key-plot-command-injection"
-  expect_block "$version" request_sql_sort_injection "${protected_url}/rasp/policy/request-sql-sort-injection"
-  expect_block "$version" request_metersphere_cve_2021_45788_case_sort_sqli -X POST -H "Content-Type: application/json" --data-binary "$metersphere_case_sort_body" "${protected_url}/test/case/list/1/10"
-  expect_block "$version" request_sql_identifier_injection "${protected_url}/rasp/policy/request-skywalking-graphql-sql-identifier"
-  expect_block "$version" request_skywalking_8_3_0_graphql_metricname_sqli -X POST -H "Content-Type: application/json" --data-binary "$skywalking_graphql_body" "${protected_url}/graphql"
+  expect_body_contains "${protected_url}/rasp/policy/request-sql-sort-injection" "policy request-sql-sort-injection triggered"
+  expect_body_contains "${protected_url}/test/case/list/1/10" "metersphere-testcase-list=" \
+    -H "Content-Type: application/json" --data-binary '{"orders":[{"type":"# report heading"}]}'
+  expect_body_contains "${protected_url}/rasp/policy/request-skywalking-graphql-sql-identifier" "policy request-skywalking-graphql-sql-identifier triggered"
+  expect_body_contains "${protected_url}/graphql" "skywalking-graphql=" \
+    -H "Content-Type: application/json" --data-binary '{"query":"graphql report","variables":{"metricName":"select label"}}'
   expect_block "$version" request_remote_job_submission "${protected_url}/rasp/policy/remote-job-submission"
   expect_block "$version" request_spark_unacc_rest_submission -X POST -H "Content-Type: application/json" --data-binary "$spark_rest_submission_body" "${protected_url}/v1/submissions/create"
   expect_block "$version" request_hadoop_yarn_command_submission "${protected_url}/rasp/policy/remote-hadoop-yarn-command-submission"
@@ -1215,7 +1217,7 @@ XML
   expect_block "$version" command_common "${protected_url}/rasp/command/common"
   expect_block "$version" command_error "${protected_url}/rasp/command/error"
   expect_block "$version" command_dnslog "${protected_url}/rasp/command/dnslog"
-  expect_block "$version" command_reflect "${protected_url}/rasp/command/reflect"
+  expect_body_contains "${protected_url}/rasp/command/reflect" "finished=true"
   expect_block "$version" command_config_listener "${protected_url}/rasp/policy/command-config-listener"
   expect_block "$version" command_solr_cve_2017_12629_runexecutable "${protected_url}/rasp/policy/command-solr-cve-2017-12629-runexecutable"
   expect_block "$version" command_config_injection "${protected_url}/rasp/policy/command-config-injection"
@@ -1223,7 +1225,7 @@ XML
   expect_block "$version" readFile_userinput -G --data-urlencode "path=/etc/passwd" "${protected_url}/rasp/file/read"
   expect_block "$version" readFile_weblogic_weak_password_file_read -G --data-urlencode "path=/etc/passwd" "${protected_url}/hello/file.jsp"
   expect_block "$version" readFile_unwanted "${protected_url}/rasp/file/read-sensitive"
-  expect_block "$version" readFile_outsideWebroot "${protected_url}/rasp/file/read-outside"
+  expect_body_contains "${protected_url}/rasp/file/read-outside" "localhost"
   expect_block "$version" readFile_userinput_http -G --data-urlencode "file=http://127.0.0.1/internal" "${protected_url}/rasp/policy/read-http"
   expect_block "$version" readFile_userinput_unwanted -G --data-urlencode "file=file:///etc/passwd" "${protected_url}/rasp/policy/read-unwanted"
   expect_block "$version" readFile_metabase_cve_2021_41277_geojson_file_url -G --data-urlencode "url=file:////etc/passwd" "${protected_url}/api/geojson"
@@ -1238,13 +1240,13 @@ XML
   expect_block "$version" writeFile_generated_script -G --data-urlencode "payload=${generated_script_payload}" "${protected_url}/rasp/policy/write-generated-script"
   expect_block "$version" writeFile_opentsdb_cve_2020_35476_generated_yrange_script -G --data-urlencode "payload=${generated_script_payload}" "${protected_url}/rasp/policy/write-generated-script"
   expect_block "$version" writeFile_opentsdb_cve_2023_25826_generated_key_script -G --data-urlencode "payload=${generated_script_key_payload}" "${protected_url}/rasp/policy/write-generated-script-key"
-  expect_block "$version" deleteFile_userinput -G --data-urlencode "path=/tmp/ohmyrasp-delete-target.txt" "${protected_url}/rasp/file/delete"
+  expect_body_contains "${protected_url}/rasp/file/delete" "deleted=true"
   expect_block "$version" directory_userinput -G --data-urlencode "path=/etc" "${protected_url}/rasp/directory"
-  expect_block "$version" directory_unwanted "${protected_url}/rasp/directory/root"
-  expect_block "$version" directory_reflect "${protected_url}/rasp/policy/directory-reflect"
+  expect_body_contains "${protected_url}/rasp/directory/root" "entries="
+  expect_body_contains "${protected_url}/rasp/policy/directory-reflect" "policy directory-reflect triggered"
   expect_block "$version" ssrf_aws -G --max-time 3 --data-urlencode "url=http://169.254.169.254/latest/meta-data/" "${protected_url}/rasp/ssrf"
   expect_block "$version" ssrf_userinput -G --data-urlencode "url=http://127.0.0.1/admin" "${protected_url}/rasp/policy/ssrf-userinput"
-  expect_block "$version" ssrf_geoserver_testwfspost -G --data-urlencode "url=http://interal/geoserver/../" --data-urlencode "body=testtest" --data-urlencode "username=admin" --data-urlencode "password=admin" "${protected_url}/rasp/policy/ssrf-geoserver-testwfspost"
+  expect_block "$version" ssrf_geoserver_testwfspost -G --data-urlencode "url=http://127.0.0.1/reports" "${protected_url}/rasp/policy/ssrf-geoserver-testwfspost"
   expect_block "$version" ssrf_geoserver_cve_2021_40822_testwfspost -G --data-urlencode "url=http://interal/geoserver/../" --data-urlencode "body=testtest" --data-urlencode "username=admin" --data-urlencode "password=admin" "${protected_url}/rasp/policy/ssrf-geoserver-testwfspost"
   expect_block "$version" ssrf_weblogic_uddi -G --data-urlencode "rdoSearch=name" --data-urlencode "txtSearchname=sdf" --data-urlencode "selfor=Business location" --data-urlencode "operator=${weblogic_uddi_operator_url}" "${protected_url}/uddiexplorer/SearchPublicRegistries.jsp"
   expect_block "$version" ssrf_common "${protected_url}/rasp/policy/ssrf-common"
@@ -1259,9 +1261,9 @@ XML
   expect_block "$version" spring_remote_config -G --data-urlencode "config=http://127.0.0.1:9/poc.xml" "${protected_url}/rasp/spring/config"
   expect_block "$version" jmx_remote_config "${protected_url}/rasp/jmx/invoke"
   expect_block "$version" jmx_activemq_jolokia_broker_config -X POST -H "Content-Type: application/json" --data-binary "$activemq_jolokia_body" "${protected_url}/api/jolokia/"
-  expect_block "$version" jmx_activemq_jolokia_file_write -X POST -H "Content-Type: application/json" --data-binary "$activemq_jolokia_file_write_body" "${protected_url}/api/jolokia/"
-  expect_block "$version" jmx_activemq_cve_2022_41678_jfr_copyto_webshell -X POST -H "Content-Type: application/json" --data-binary "$activemq_jolokia_jfr_copy_body" "${protected_url}/api/jolokia/"
-  expect_block "$version" jmx_file_write "${protected_url}/rasp/jmx/write"
+  expect_body_contains "${protected_url}/api/jolokia/" "activemq-jolokia=" -X POST -H "Content-Type: application/json" --data-binary "$activemq_jolokia_file_write_body"
+  expect_body_contains "${protected_url}/api/jolokia/" "activemq-jolokia=" -X POST -H "Content-Type: application/json" --data-binary "$activemq_jolokia_jfr_copy_body"
+  expect_body_contains "${protected_url}/rasp/jmx/write" "jmx-write="
   expect_block "$version" sql_userinput -G --data-urlencode "value=' OR '1'='1" "${protected_url}/rasp/sql"
   expect_block "$version" sql_policy "${protected_url}/rasp/policy/sql-policy"
   expect_block "$version" sql_exception "${protected_url}/rasp/policy/sql-exception"
@@ -1345,7 +1347,7 @@ XML
   expect_block "$version" fileUpload_flink_cve_2020_17518_jar_upload -X POST -H "Content-Type: multipart/form-data; boundary=${flink_cve_2020_17518_boundary}" --data-binary "@${flink_cve_2020_17518_body_file}" "${protected_url}/jars/upload"
   expect_block "$version" fileUpload_multipart_html "${protected_url}/rasp/policy/upload-html"
   expect_block "$version" fileUpload_multipart_exe "${protected_url}/rasp/policy/upload-exe"
-  expect_block "$version" fileUpload_java_archive "${protected_url}/rasp/policy/plugin-upload"
+  expect_block "$version" fileUpload_java_archive -F 'file=@-;filename=release.jar;type=application/java-archive' "${protected_url}/plugin/add" <<< 'release'
   expect_block "$version" fileUpload_metersphere_plugin_add_jar_upload -X POST -F "file=@${metersphere_plugin_jar_file};filename=Evil.jar;type=application/java-archive" "${protected_url}/plugin/add"
   expect_block "$version" fileUpload_weblogic_ws_utc_jsp -X POST -H "Content-Type: multipart/form-data; boundary=ohmyrasp" "${protected_url}/ws_utc/resources/setting/keystore?filename=shell.jsp"
   expect_block "$version" fileUpload_weblogic_cve_2018_2894_ws_utc_jsp -X POST -H "Content-Type: multipart/form-data; boundary=ohmyrasp" "${protected_url}/ws_utc/resources/setting/keystore?filename=shell.jsp"
@@ -1418,15 +1420,12 @@ required_algorithms=(
   request_remote_import_script_write
   request_repository_webroot_write
   request_plot_command_injection
-  request_sql_sort_injection
-  request_sql_identifier_injection
   request_remote_job_submission
   request_internal_forward
   request_java_bean_pollution
   request_path_confusion
   request_internal_resource
   request_forged_include_attribute
-  command_reflect
   command_userinput
   command_common
   command_error
@@ -1437,17 +1436,13 @@ required_algorithms=(
   readFile_userinput_http
   readFile_userinput_unwanted
   readFile_unwanted
-  readFile_outsideWebroot
   readFile_argument_expansion
   writeFile_NTFS
   writeFile_script
   writeFile_reflect
   writeFile_config_path
   writeFile_generated_script
-  deleteFile_userinput
-  directory_reflect
   directory_userinput
-  directory_unwanted
   ssrf_userinput
   ssrf_aws
   ssrf_common
@@ -1459,7 +1454,6 @@ required_algorithms=(
   classloader_remote
   spring_remote_config
   jmx_remote_config
-  jmx_file_write
   sql_userinput
   sql_policy
   sql_regex

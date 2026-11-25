@@ -83,9 +83,15 @@ public final class Java17ProbeServlet extends HttpServlet {
       return;
     }
     if ("/java17/command-shell".equals(path)) {
-      Process process = new ProcessBuilder("sh", "-c", "echo safe; id").start();
+      String join = request.getParameter("join");
+      if (join != null && !"&&".equals(join) && !"||".equals(join)) {
+        response.sendError(HttpServletResponse.SC_BAD_REQUEST);
+        return;
+      }
+      String program = "true " + (join == null ? ";" : join) + " false";
+      Process process = new ProcessBuilder("sh", "-c", program).start();
       waitFor(process);
-      send(response, "java17 command shell attempted");
+      send(response, "java17 command shell attempted " + process.exitValue());
       return;
     }
     if ("/java17/jndi".equals(path)) {
@@ -146,11 +152,26 @@ public final class Java17ProbeServlet extends HttpServlet {
     }
     if ("/java17/ssrf-metadata".equals(path)) {
       new URL("http://169.254.169.254/latest/meta-data/").openConnection();
-      send(response, "java17 ssrf metadata attempted");
+      send(response, "java17 metadata connection configured");
       return;
     }
     if ("/java17/ssrf-loopback".equals(path)) {
-      new URL("http://127.0.0.1:8080/actuator/env").openConnection();
+      String targetPath = request.getParameter("path");
+      if (targetPath == null) targetPath = "/admin/weekly-report";
+      if (!"/admin/weekly-report".equals(targetPath)) {
+        response.sendError(400);
+        return;
+      }
+      try (java.net.ServerSocket receiver = new java.net.ServerSocket(0, 1, java.net.InetAddress.getByName("127.0.0.1"))) {
+        URL target = new URL("http", "127.0.0.1", receiver.getLocalPort(), targetPath);
+        java.net.HttpURLConnection connection = (java.net.HttpURLConnection) target.openConnection(java.net.Proxy.NO_PROXY);
+        connection.setConnectTimeout(1000);
+        try {
+          connection.connect();
+        } finally {
+          connection.disconnect();
+        }
+      }
       send(response, "java17 ssrf loopback attempted");
       return;
     }
@@ -445,18 +466,14 @@ public final class Java17ProbeServlet extends HttpServlet {
   }
 
   private static void writeArchiveTraversalEntry() throws IOException {
-    String name = new ZipEntry("../webapps/ROOT/shell.jsp").getName();
-    File directory = new File(System.getProperty("java.io.tmpdir"), "ohmyrasp-java17-archive");
-    if (!directory.exists() && !directory.mkdirs()) {
-      throw new IOException("unable to create playground archive directory");
-    }
-    File target = new File(directory, "extracted.txt");
-    FileOutputStream output = new FileOutputStream(target);
+    File target = File.createTempFile("ohmyrasp-archive-member-", ".txt");
     try {
-      output.write(name.getBytes("UTF-8"));
+      String name = new ZipEntry(target.getAbsolutePath()).getName();
+      try (FileOutputStream output = new FileOutputStream(name)) {
+        output.write(1);
+      }
     } finally {
-      output.close();
-      target.delete();
+      java.nio.file.Files.deleteIfExists(target.toPath());
     }
   }
 

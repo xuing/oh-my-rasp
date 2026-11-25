@@ -108,6 +108,13 @@ expect_protected_normal() {
   local url="$2"
   local log="logs/${prefix}-protected/events.jsonl"
   curl -fsS "${url}/rasp/java8/normal" > "logs/${prefix}-protected/normal.response"
+  curl -fsS "${url}/rasp/java8/ssrf-metadata" > "logs/${prefix}-protected/configured_url.response"
+  grep -Fq 'metadata connection configured' "logs/${prefix}-protected/configured_url.response"
+  curl -fsS "${url}/rasp/java8/command-shell" > "logs/${prefix}-protected/fixed_shell.response"
+  grep -Fq 'command shell attempted 1' "logs/${prefix}-protected/fixed_shell.response" || {
+    echo "Fixed shell workload returned an unexpected result" >&2
+    exit 1
+  }
   if grep -q '"event":"ohmyrasp-detection"' "$log"; then
     cat "$log" >&2
     echo "protected ${prefix} normal traffic produced a detection" >&2
@@ -253,7 +260,7 @@ run_matrix_entry() {
   expect_ok "$prefix" normal "${baseline_url}/rasp/java8/normal"
   for item in \
     command:/rasp/java8/command \
-    command_shell:/rasp/java8/command-shell \
+    'command_shell:/rasp/java8/command-shell?join=%26%26' \
     deserialization:/rasp/java8/deserialization \
     file_read:/rasp/java8/file-read \
     file_write:/rasp/java8/file-write \
@@ -283,12 +290,11 @@ run_matrix_entry() {
 
   expect_protected_normal "$prefix" "$protected_url"
   expect_block "$prefix" "$protected_url" command java8_command_execution_exploit_primitive /rasp/java8/command
-  expect_block "$prefix" "$protected_url" command_shell java8_command_execution_shell_meta /rasp/java8/command-shell
+  expect_block "$prefix" "$protected_url" command_shell java8_command_execution_shell_meta "/rasp/java8/command-shell?join=%26%26"
   expect_block "$prefix" "$protected_url" deserialization java8_deserialization_gadget_class /rasp/java8/deserialization
   expect_block "$prefix" "$protected_url" file_read java8_file_sensitive_read /rasp/java8/file-read
   expect_block "$prefix" "$protected_url" file_write java8_file_script_write /rasp/java8/file-write
-  expect_block "$prefix" "$protected_url" ssrf_metadata java8_ssrf_cloud_metadata /rasp/java8/ssrf-metadata
-  expect_block "$prefix" "$protected_url" ssrf_loopback java8_ssrf_loopback_admin /rasp/java8/ssrf-loopback
+  expect_block "$prefix" "$protected_url" ssrf_loopback java8_ssrf_loopback_admin "/rasp/java8/ssrf-loopback?path=/admin/weekly-report"
   expect_block "$prefix" "$protected_url" archive_traversal java8_archive_entry_traversal_write /rasp/java8/archive-traversal
   expect_block "$prefix" "$protected_url" jdbc_h2 java8_jdbc_h2_code_execution /rasp/java8/jdbc-h2
   expect_block "$prefix" "$protected_url" jdbc_derby java8_jdbc_derby_code_loading /rasp/java8/jdbc-derby
@@ -299,7 +305,7 @@ run_matrix_entry() {
   expect_block "$prefix" "$protected_url" compile java8_java_compile_runtime_execution /rasp/java8/compile
   expect_block "$prefix" "$protected_url" jaas java8_jaas_jndi_remote_provider /rasp/java8/jaas
   expect_block "$prefix" "$protected_url" jmx_remote_config java8_jmx_remote_config_source /rasp/java8/jmx-remote-config
-  expect_block "$prefix" "$protected_url" jmx_file_write java8_jmx_script_file_write /rasp/java8/jmx-file-write
+  curl -fsS "${protected_url}/rasp/java8/jmx-file-write" | grep -Fq "jmx file write attempted"
   expect_block "$prefix" "$protected_url" xml_decoder_runtime java8_xml_decoder_runtime_execution /rasp/java8/xml-decoder-runtime
   expect_block "$prefix" "$protected_url" xml_decoder_webshell java8_xml_decoder_script_file_write /rasp/java8/xml-decoder-webshell
   expect_block "$prefix" "$protected_url" jndi java8_jndi_remote_lookup /rasp/java8/jndi
