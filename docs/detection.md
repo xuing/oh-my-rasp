@@ -243,6 +243,12 @@ Comparing all six representations catches path-semantic mismatches (such as trav
 - **JWT default HMAC secrets:** The primary agent tests incoming Bearer JWTs against known default HMAC secrets (such as HugeGraph's published default). A valid HMAC under a default secret fires at severity 95.
 - **Apache Shiro default rememberMe key:** encrypted `rememberMe` cookies are decrypted under Shiro's default AES key; if decryption yields a Java object-stream magic header, the detector fires (verified in the CVE-2016-4437 Java 8 acceptance run).
 
+### RMI codebase selection
+
+RMI may resolve a class or proxy locally even when its annotation contains a remote URL. On runtimes with a codebase-loader branch, the agent checks the parsed URL array when the JDK enters `sun.rmi.server.LoaderHandler.lookupLoader`. Local resolutions retain their original result or exception. Custom RMI providers have their own resolution logic.
+
+The separate `URLClassLoader` policy checks classpath configuration. Each URL is inspected as one element using its fields. The event records configuration or loader selection. Neither observation establishes that class bytes were downloaded or defined. [Packaged codebase check](../java-agent/scripts/fp-harness/RmiCodebaseCheck.java)
+
 ### JAAS directory lookups
 
 During JAAS login the agent attributes URL selection to the JDK's `JndiLoginModule` when its own directory lookup reaches the naming router. Applications can construct or inspect JAAS entries, including entries for remote directories, without activating the policy. If a context factory builder handles the lookup locally, the JAAS rule stays silent. Block mode applies the configured naming policy before the URL provider receives the lookup. [Packaged login and directory check](../java-agent/scripts/fp-harness/JaasDirectoryCheck.java)

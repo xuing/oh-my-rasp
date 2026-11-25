@@ -2113,14 +2113,16 @@ final class Java8RaspHooksTest {
     System.setProperty("ohmyrasp.java8.log", log.toString());
     System.setProperty("ohmyrasp.java8.block", "true");
 
+    Java8RaspHooks.beforeRmiClassLoaderCodebase("https://reports.invalid/catalog/");
+    assertFalse(Files.exists(log));
     assertThrows(
         Java8RaspBlockException.class,
-        () -> Java8RaspHooks.beforeRmiClassLoaderCodebase("ldap://attacker.example/Exploit"));
+        () -> Java8RaspHooks.beforeRmiCodebaseLoader(new URL[] {new URL("https://reports.invalid/catalog/")}));
 
     String text = new String(Files.readAllBytes(log), StandardCharsets.UTF_8);
     assertTrue(text.contains("\"algorithm\":\"java8_classloader_remote_codebase\""));
     assertTrue(text.contains("\"action\":\"block\""));
-    assertTrue(text.contains("RMIClassLoader ldap ldap://attacker.example/Exploit"));
+    assertTrue(text.contains("RMIClassLoader https https://reports.invalid/catalog/"));
   }
 
   @Test

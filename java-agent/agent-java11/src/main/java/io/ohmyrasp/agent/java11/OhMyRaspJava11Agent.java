@@ -17,7 +17,6 @@ import java.lang.instrument.Instrumentation;
 import java.net.URISyntaxException;
 import java.net.URL;
 import java.net.URLClassLoader;
-import java.rmi.server.RMIClassLoader;
 import java.sql.DriverManager;
 import java.util.jar.JarFile;
 import java.util.zip.ZipEntry;
@@ -160,7 +159,6 @@ public final class OhMyRaspJava11Agent {
     retransform(instrumentation, ZipEntry.class);
     retransform(instrumentation, URL.class);
     retransform(instrumentation, URLClassLoader.class);
-    retransform(instrumentation, RMIClassLoader.class);
     retransform(instrumentation, DriverManager.class);
     retransformByName(
         instrumentation, "org.apache.skywalking.oap.server.storage.plugin.jdbc.h2.dao.H2LogQueryDAO");
@@ -188,7 +186,8 @@ public final class OhMyRaspJava11Agent {
     java.util.Set<Class<?>> multipartOwners = io.ohmyrasp.agent.http.MultipartFilename.loadedOwners(loadedClasses);
     for (Class<?> loaded : loadedClasses) {
       String internalName = loaded.getName().replace('.', '/');
-      if (Lz4TransportVisitor.OWNER.equals(internalName)
+      if (io.ohmyrasp.agent.loading.CodebaseVisitor.RMI_ROUTER.equals(internalName)
+          || Lz4TransportVisitor.OWNER.equals(internalName)
           || io.ohmyrasp.agent.naming.JndiLookupVisitor.URL_CONTEXT.equals(internalName)
           || io.ohmyrasp.agent.naming.JndiLookupVisitor.LOGIN_MODULE.equals(internalName)
           || io.ohmyrasp.agent.rules.product.yarn.YarnSubmitVisitor.OWNER.equals(internalName)

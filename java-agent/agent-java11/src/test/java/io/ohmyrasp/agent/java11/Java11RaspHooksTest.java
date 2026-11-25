@@ -2112,14 +2112,16 @@ final class Java11RaspHooksTest {
     System.setProperty("ohmyrasp.java11.log", log.toString());
     System.setProperty("ohmyrasp.java11.block", "true");
 
+    Java11RaspHooks.beforeRmiClassLoaderCodebase("https://reports.invalid/catalog/");
+    assertFalse(Files.exists(log));
     assertThrows(
         Java11RaspBlockException.class,
-        () -> Java11RaspHooks.beforeRmiClassLoaderCodebase("ldap://attacker.example/Exploit"));
+        () -> Java11RaspHooks.beforeRmiCodebaseLoader(new URL[] {new URL("https://reports.invalid/catalog/")}));
 
     String text = new String(Files.readAllBytes(log), StandardCharsets.UTF_8);
     assertTrue(text.contains("\"algorithm\":\"java11_classloader_remote_codebase\""));
     assertTrue(text.contains("\"action\":\"block\""));
-    assertTrue(text.contains("RMIClassLoader ldap ldap://attacker.example/Exploit"));
+    assertTrue(text.contains("RMIClassLoader https https://reports.invalid/catalog/"));
   }
 
   @Test

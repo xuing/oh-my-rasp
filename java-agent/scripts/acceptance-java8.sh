@@ -300,7 +300,7 @@ run_matrix_entry() {
   expect_block "$prefix" "$protected_url" jdbc_derby java8_jdbc_derby_code_loading /rasp/java8/jdbc-derby
   expect_block "$prefix" "$protected_url" jdbc_mysql java8_jdbc_mysql_deserialization /rasp/java8/jdbc-mysql
   expect_block "$prefix" "$protected_url" classloader java8_classloader_remote_codebase /rasp/java8/classloader
-  expect_block "$prefix" "$protected_url" rmi_classloader java8_classloader_remote_codebase /rasp/java8/rmi-classloader
+  curl -fsS "${protected_url}/rasp/java8/rmi-classloader" | grep -Fq "local-rmi-class=java.lang.String"
   expect_block "$prefix" "$protected_url" script java8_script_engine_runtime_execution /rasp/java8/script
   expect_block "$prefix" "$protected_url" compile java8_java_compile_runtime_execution /rasp/java8/compile
   curl -fsS "${protected_url}/rasp/java8/jaas" | grep -Fq "jaas attempted"

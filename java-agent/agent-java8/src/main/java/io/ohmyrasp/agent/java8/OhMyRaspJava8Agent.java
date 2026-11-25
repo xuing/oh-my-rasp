@@ -151,7 +151,6 @@ public final class OhMyRaspJava8Agent {
     retransformByName(
         instrumentation, "org.apache.skywalking.oap.server.storage.plugin.jdbc.h2.dao.H2LogQueryDAO");
     retransform(instrumentation, java.net.URLClassLoader.class);
-    retransform(instrumentation, java.rmi.server.RMIClassLoader.class);
     retransform(instrumentation, javax.script.AbstractScriptEngine.class);
     retransformByName(instrumentation, "org.apache.commons.jexl3.internal.Script");
     retransformByName(instrumentation, "org.apache.commons.jexl2.ExpressionImpl");
@@ -175,7 +174,8 @@ public final class OhMyRaspJava8Agent {
     java.util.Set<Class<?>> multipartOwners = io.ohmyrasp.agent.http.MultipartFilename.loadedOwners(loadedClasses);
     for (Class<?> loaded : loadedClasses) {
       String internalName = loaded.getName().replace('.', '/');
-      if (Lz4TransportVisitor.OWNER.equals(internalName)
+      if (io.ohmyrasp.agent.loading.CodebaseVisitor.RMI_ROUTER.equals(internalName)
+          || Lz4TransportVisitor.OWNER.equals(internalName)
           || io.ohmyrasp.agent.naming.JndiLookupVisitor.URL_CONTEXT.equals(internalName)
           || io.ohmyrasp.agent.naming.JndiLookupVisitor.LOGIN_MODULE.equals(internalName)
           || io.ohmyrasp.agent.rules.product.yarn.YarnSubmitVisitor.OWNER.equals(internalName)

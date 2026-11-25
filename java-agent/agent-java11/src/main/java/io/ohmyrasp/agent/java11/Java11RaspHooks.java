@@ -6,6 +6,7 @@ import io.ohmyrasp.agent.file.HostReadPath;
 import io.ohmyrasp.agent.file.HostDirectory;
 import io.ohmyrasp.agent.jmx.JmxDispatch;
 import io.ohmyrasp.agent.naming.LookupRoute;
+import io.ohmyrasp.agent.loading.CodebaseUrls;
 import io.ohmyrasp.agent.rules.product.spark.SparkSubmitRole;
 import io.ohmyrasp.agent.http.ServletSubmitRole;
 import io.ohmyrasp.agent.serialization.StreamTypeNames;
@@ -145,7 +146,6 @@ public final class Java11RaspHooks {
   private static final ThreadLocal<String> LAST_LOGGED_SQL_IDENTIFIER = new ThreadLocal<String>();
   private static final ThreadLocal<String> LAST_LOGGED_SQL_STATEMENT = new ThreadLocal<String>();
   private static final ThreadLocal<String> LAST_LOGGED_BASE64 = new ThreadLocal<String>();
-  private static final ThreadLocal<String> LAST_LOGGED_CLASSLOADER = new ThreadLocal<String>();
   private static final ThreadLocal<String> LAST_LOGGED_SCRIPT = new ThreadLocal<String>();
   private static final ThreadLocal<String> LAST_LOGGED_JEXL = new ThreadLocal<String>();
   private static final ThreadLocal<String> LAST_LOGGED_EL = new ThreadLocal<String>();
@@ -835,7 +835,11 @@ public final class Java11RaspHooks {
   }
 
   public static void beforeRmiClassLoaderCodebase(String codebase) {
-    emitClassLoaderFindings(codebase, "RMIClassLoader");
+    // An annotation alone does not select a codebase loader.
+  }
+
+  public static void beforeRmiCodebaseLoader(URL[] urls) {
+    emitClassLoaderFindings(urls, "RMIClassLoader");
   }
 
   public static void beforeScriptEval(String script) {
@@ -1813,18 +1817,14 @@ public final class Java11RaspHooks {
   }
 
   private static void emitClassLoaderFindings(Object sources, String mechanism) {
-    List<String> values = classLoaderSources(sources);
+    if (RaspRuntime.detectionOff()) return;
+    List<String> values = CodebaseUrls.elements(sources);
     for (String value : values) {
       Finding finding = classifyClassLoaderSource(value, mechanism);
       if (finding == null) {
         continue;
       }
       String action = shouldBlock() ? "block" : "log";
-      String previous = LAST_LOGGED_CLASSLOADER.get();
-      if (!"block".equals(action) && finding.detailValue.equals(previous)) {
-        continue;
-      }
-      LAST_LOGGED_CLASSLOADER.set(finding.detailValue);
       appendEvent(finding, mechanism, action);
       if ("block".equals(action)) {
         throw new Java11RaspBlockException("OhMyRASP Java 11 blocked suspicious remote classloader codebase");
@@ -1840,11 +1840,11 @@ public final class Java11RaspHooks {
     if (normalized.length() == 0) {
       return null;
     }
-    String scheme = remoteClassLoaderScheme(normalized);
+    String scheme = CodebaseUrls.remoteScheme(normalized);
     if (scheme.length() == 0) {
       return null;
     }
-    if (isFelixExtensionClassLoaderSource(normalized, scheme)) {
+    if ("URLClassLoader".equals(mechanism) && isFelixExtensionClassLoaderSource(normalized, scheme)) {
       return null;
     }
     int confidence = "RMIClassLoader".equals(mechanism) ? 94 : 90;
@@ -1853,7 +1853,8 @@ public final class Java11RaspHooks {
         confidence,
         "Remote classloader codebase reached a Java 11 class loading sink",
         "codebase",
-        mechanism + " " + scheme + " " + normalized);
+        mechanism + " " + scheme + " " + normalized,
+        "RMIClassLoader".equals(mechanism) ? "rmi_codebase_loader_selection" : "classloader_url_configuration");
   }
 
   private static Finding classifyScriptEval(String script) {
@@ -3884,30 +3885,6 @@ public final class Java11RaspHooks {
     return value.substring(0, maxLength) + "...";
   }
 
-  private static String remoteClassLoaderScheme(String source) {
-    String inspected = source.trim().toLowerCase(Locale.ROOT);
-    if (inspected.startsWith("jar:")) {
-      inspected = inspected.substring("jar:".length());
-      int bang = inspected.indexOf("!/");
-      if (bang >= 0) {
-        inspected = inspected.substring(0, bang);
-      }
-    }
-    int colon = inspected.indexOf(':');
-    if (colon <= 0 || colon > 16) {
-      return "";
-    }
-    String scheme = inspected.substring(0, colon);
-    if ("http".equals(scheme)
-        || "https".equals(scheme)
-        || "ftp".equals(scheme)
-        || "ldap".equals(scheme)
-        || "rmi".equals(scheme)) {
-      return scheme;
-    }
-    return "";
-  }
-
   private static boolean isFelixExtensionClassLoaderSource(String source, String scheme) {
     if (!"http".equals(scheme) && !"https".equals(scheme)) {
       return false;
@@ -3957,49 +3934,6 @@ public final class Java11RaspHooks {
       }
     }
     return true;
-  }
-
-  private static List<String> classLoaderSources(Object value) {
-    List<String> sources = new ArrayList<String>();
-    if (value == null) {
-      return sources;
-    }
-    if (value instanceof URL[]) {
-      URL[] urls = (URL[]) value;
-      for (int i = 0; i < urls.length; i++) {
-        if (urls[i] != null) {
-          sources.add(String.valueOf(urls[i]));
-        }
-      }
-      return sources;
-    }
-    if (value instanceof Object[]) {
-      Object[] values = (Object[]) value;
-      for (int i = 0; i < values.length; i++) {
-        if (values[i] != null) {
-          addClassLoaderSourceText(sources, String.valueOf(values[i]));
-        }
-      }
-      return sources;
-    }
-    addClassLoaderSourceText(sources, String.valueOf(value));
-    return sources;
-  }
-
-  private static void addClassLoaderSourceText(List<String> sources, String value) {
-    if (value == null) {
-      return;
-    }
-    String trimmed = value.trim();
-    if (trimmed.length() == 0) {
-      return;
-    }
-    String[] parts = trimmed.split("\\s+");
-    for (int i = 0; i < parts.length; i++) {
-      if (parts[i].length() > 0) {
-        sources.add(parts[i]);
-      }
-    }
   }
 
   private static boolean containsJdbcOption(String lower, String option) {

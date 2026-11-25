@@ -2121,14 +2121,16 @@ final class Java17RaspHooksTest {
     System.setProperty("ohmyrasp.java17.log", log.toString());
     System.setProperty("ohmyrasp.java17.block", "true");
 
+    Java17RaspHooks.beforeRmiClassLoaderCodebase("https://reports.invalid/catalog/");
+    assertFalse(Files.exists(log));
     assertThrows(
         Java17RaspBlockException.class,
-        () -> Java17RaspHooks.beforeRmiClassLoaderCodebase("ldap://attacker.example/Exploit"));
+        () -> Java17RaspHooks.beforeRmiCodebaseLoader(new URL[] {new URL("https://reports.invalid/catalog/")}));
 
     String text = new String(Files.readAllBytes(log), StandardCharsets.UTF_8);
     assertTrue(text.contains("\"algorithm\":\"java17_classloader_remote_codebase\""));
     assertTrue(text.contains("\"action\":\"block\""));
-    assertTrue(text.contains("RMIClassLoader ldap ldap://attacker.example/Exploit"));
+    assertTrue(text.contains("RMIClassLoader https https://reports.invalid/catalog/"));
   }
 
   @Test

@@ -305,7 +305,7 @@ for version in "${versions[@]}"; do
   expect_block "$version" ssrf_loopback java17_ssrf_loopback_admin "/rasp/java17/ssrf-loopback?path=/admin/weekly-report"
   expect_block "$version" archive_traversal java17_archive_entry_traversal_write /rasp/java17/archive-traversal
   expect_block "$version" classloader java17_classloader_remote_codebase /rasp/java17/classloader
-  expect_block "$version" rmi_classloader java17_classloader_remote_codebase /rasp/java17/rmi-classloader
+  curl -fsS "${protected_url}/rasp/java17/rmi-classloader" | grep -Fq "local-rmi-class=java.lang.String"
   expect_block "$version" jdbc_h2 java17_jdbc_h2_code_execution /rasp/java17/jdbc-h2
   expect_block "$version" jdbc_derby java17_jdbc_derby_code_loading /rasp/java17/jdbc-derby
   expect_block "$version" jdbc_mysql java17_jdbc_mysql_deserialization /rasp/java17/jdbc-mysql

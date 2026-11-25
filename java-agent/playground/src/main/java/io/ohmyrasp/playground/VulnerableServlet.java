@@ -223,7 +223,7 @@ public final class VulnerableServlet extends HttpServlet {
             case "/jndi" -> jndiLookup(request);
             case "/jaas/config" -> jaasConfig(request);
             case "/classloader/url" -> remoteUrlClassLoader(request);
-            case "/classloader/rmi-codebase" -> rmiClassLoaderCodebase(request);
+            case "/classloader/rmi-codebase" -> rmiClassLoaderCodebase();
             case "/spring/config" -> loadSpringConfig(request);
             case "/spring-cloud-gateway-route" -> springCloudGatewayRouteConfig(request);
             case "/spring-messaging-stomp-selector" -> springMessagingSockJs(request);
@@ -1082,10 +1082,10 @@ public final class VulnerableServlet extends HttpServlet {
     }
   }
 
-  private static String rmiClassLoaderCodebase(HttpServletRequest request) throws Exception {
-    String codebase = value(request, "codebase", "http://attacker.example/Exploit");
-    hook("beforeRmiClassLoaderCodebase", new Class<?>[] {String.class}, codebase);
-    return "rmi-codebase=" + codebase.length();
+  private static String rmiClassLoaderCodebase() throws Exception {
+    Class<?> type = java.rmi.server.RMIClassLoader.loadClass(
+        "https://reports.invalid/catalog/", "java.lang.String", VulnerableServlet.class.getClassLoader());
+    return "local-rmi-class=" + type.getName();
   }
 
   private static String loadSpringConfig(HttpServletRequest request) {

@@ -1,6 +1,7 @@
 package io.ohmyrasp.agent.detect;
 
 import io.ohmyrasp.agent.naming.LookupRoute;
+import io.ohmyrasp.agent.loading.CodebaseUrls;
 import static io.ohmyrasp.agent.detect.DetectorStrings.abbreviate;
 import static io.ohmyrasp.agent.detect.DetectorStrings.lower;
 import io.ohmyrasp.agent.model.Detection;
@@ -25,9 +26,6 @@ final class RemoteResourceDetector {
       Pattern.compile(
           "(?is)^(ldap|ldaps|rmi|iiop|corbaname|corbaloc)://[^\\s\\u0000]{1,2048}");
 
-  private static final Set<String> REMOTE_CLASSLOADER_PROTOCOLS =
-      Set.of("http", "https", "ftp", "ldap", "rmi");
-
   private static final Set<String> REMOTE_CONFIG_PROTOCOLS =
       Set.of("http", "https", "ftp", "ldap", "rmi");
 
@@ -37,37 +35,24 @@ final class RemoteResourceDetector {
       return Optional.empty();
     }
     String normalized = rawUrl.trim();
-    String inspected = lower(normalized);
-    if (inspected.startsWith("jar:")) {
-      inspected = inspected.substring("jar:".length());
-      int bang = inspected.indexOf("!/");
-      if (bang >= 0) {
-        inspected = inspected.substring(0, bang);
-      }
-    }
-    String scheme;
-    try {
-      scheme = lower(URI.create(inspected).getScheme());
-    } catch (IllegalArgumentException e) {
-      return Optional.empty();
-    }
-    if (!REMOTE_CLASSLOADER_PROTOCOLS.contains(scheme)) {
+    String scheme = CodebaseUrls.remoteScheme(normalized);
+    if (scheme.isEmpty()) {
       return Optional.empty();
     }
     String hook = mechanism == null || mechanism.isBlank() ? "classloader" : mechanism;
-    int confidence = request.hasParameterIn(normalized) ? 100 : 90;
+    boolean rmi = "RMIClassLoader".equals(hook);
     return Optional.of(
         Detection.log(
             "classloader",
             "classloader_remote",
-            confidence,
-            "Class loader is configured with a remote codebase URL",
+            90,
+            rmi ? "RMI selected a codebase loader for a remote URL" : "Class loader is configured with a remote codebase URL",
             request,
             Map.of(
                 "mechanism", hook,
                 "scheme", scheme,
                 "url", abbreviate(normalized),
-                "requestControlled", String.valueOf(request.hasParameterIn(normalized)))));
+                "decision_basis", rmi ? "rmi_codebase_loader_selection" : "classloader_url_configuration")));
   }
 
   static Optional<Detection> detectSpringConfigLocation(

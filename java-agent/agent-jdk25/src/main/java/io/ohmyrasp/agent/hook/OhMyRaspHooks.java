@@ -20,6 +20,7 @@ import io.ohmyrasp.agent.policy.AgentPolicy;
 import io.ohmyrasp.agent.policy.PolicyEvaluation;
 import io.ohmyrasp.agent.process.PosixShellCommand;
 import io.ohmyrasp.agent.naming.LookupRoute;
+import io.ohmyrasp.agent.loading.CodebaseUrls;
 import io.ohmyrasp.agent.rules.product.spark.SparkSubmitRole;
 import io.ohmyrasp.agent.http.ServletSubmitRole;
 import io.ohmyrasp.agent.runtime.AgentRuntime;
@@ -679,10 +680,11 @@ public final class OhMyRaspHooks {
   }
 
   public static void beforeRmiClassLoaderCodebase(String codebase) {
-    if (detectionDisabled()) {
-      return;
-    }
-    beforeClassLoaderSources("RMIClassLoader", codebase);
+    // An annotation alone does not select a codebase loader.
+  }
+
+  public static void beforeRmiCodebaseLoader(java.net.URL[] urls) {
+    if (!detectionDisabled()) beforeClassLoaderSources("RMIClassLoader", urls);
   }
 
   public static void beforeSpringConfigLocation(Object location) {
@@ -701,7 +703,7 @@ public final class OhMyRaspHooks {
 
   private static void beforeSpringConfigLocations(String mechanism, Object locations) {
     try {
-      for (String location : classLoaderSources(locations)) {
+      for (String location : springConfigLocations(locations)) {
         emit(DETECTORS.detectSpringConfigLocation(location, mechanism, currentRequest()));
       }
     } catch (OhMyRaspBlockException blocked) {
@@ -713,7 +715,7 @@ public final class OhMyRaspHooks {
 
   private static void beforeClassLoaderSources(String mechanism, Object sources) {
     try {
-      for (String source : classLoaderSources(sources)) {
+      for (String source : CodebaseUrls.elements(sources)) {
         emit(DETECTORS.detectClassLoaderUrl(source, mechanism, currentRequest()));
       }
     } catch (OhMyRaspBlockException blocked) {
@@ -1810,7 +1812,7 @@ public final class OhMyRaspHooks {
     return List.of(String.valueOf(value));
   }
 
-  private static List<String> classLoaderSources(Object value) {
+  private static List<String> springConfigLocations(Object value) {
     var sources = new ArrayList<String>();
     for (String item : toStringList(value)) {
       if (item == null || item.isBlank()) {

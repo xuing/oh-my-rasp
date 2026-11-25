@@ -88,7 +88,7 @@ The descriptions live in the [general catalog](../rules/general.json) and [produ
 |---|---|---|
 | `archive_traversal` | An archive entry and its destination cross the extraction boundary. | — |
 | `base64_avx512_tail_underflow` | — | The candidate input shape targets a particular JDK Base64 decoder implementation. |
-| `classloader_remote` | A class loader is given a remote code source. | — |
+| `classloader_remote` | A URL classpath receives a listed scheme or the JDK RMI provider selects its codebase-loader branch. | — |
 | `command_common` | Recognized direct or literal shell file-reader operands select a listed path. Other shell programs are checked for command indicators. | — |
 | `command_config_injection` | — | RocketMQ filter-server ownership of a process launch supplies the configuration context. |
 | `command_config_listener` | — | The Apache Solr executable-listener implementation appears on the process stack. |
@@ -235,7 +235,7 @@ The descriptions live in the [general catalog](../rules/general.json) and [produ
 |---|---|---|
 | `java8_archive_entry_traversal_write`, `java11_archive_entry_traversal_write`, `java17_archive_entry_traversal_write` | An observed archive member selects an absolute or escaping relative host-write operand at a file API or Unix channel open. | — |
 | `java8_base64_avx512_tail_underflow`, `java11_base64_avx512_tail_underflow`, `java17_base64_avx512_tail_underflow` | — | The input shape corresponds to a JDK decoder implementation defect. |
-| `java8_classloader_remote_codebase`, `java11_classloader_remote_codebase`, `java17_classloader_remote_codebase` | A remote codebase is supplied to a Java class-loading API. | — |
+| `java8_classloader_remote_codebase`, `java11_classloader_remote_codebase`, `java17_classloader_remote_codebase` | A URL classpath receives a listed scheme or the JDK RMI provider selects its codebase-loader branch. | — |
 | `java8_command_execution_exploit_primitive`, `java11_command_execution_exploit_primitive`, `java17_command_execution_exploit_primitive` | Process arguments or a deserialization context supply the evidence. Other branches use a product-specific caller. | decision_basis=configured_listener identifies the Solr executable listener. Other component-specific callers share this ID with general process branches. |
 | `java8_command_execution_shell_meta`, `java11_command_execution_shell_meta`, `java17_command_execution_shell_meta` | With decision_basis=request_shell_syntax, request input contributes shell control syntax at process launch. The Windows branch uses a command-text heuristic. | decision_basis=configuration_launcher identifies the RocketMQ filter-server branch. The scheduler job branch records decision_basis=scheduled_script. |
 | `deleteFile_userinput` | A request-selected deletion escapes a configured filesystem root. | — |
