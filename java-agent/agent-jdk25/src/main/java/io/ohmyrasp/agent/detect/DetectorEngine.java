@@ -29,14 +29,10 @@ import static io.ohmyrasp.agent.detect.RequestJson.jsonConfigBody;
 import static io.ohmyrasp.agent.detect.RequestJson.jsonStringFields;
 import static io.ohmyrasp.agent.detect.RequestValues.bodyHasSinkValue;
 
-import io.ohmyrasp.agent.file.ArchiveEntryContext;
-import io.ohmyrasp.agent.file.HostDelete;
 import io.ohmyrasp.agent.file.HostDirectory;
 import io.ohmyrasp.agent.file.HostReadPath;
-import io.ohmyrasp.agent.file.WindowsDataStream;
 import io.ohmyrasp.agent.http.ArchiveUploadPolicy;
 import io.ohmyrasp.agent.jmx.JmxDispatch;
-import io.ohmyrasp.agent.jmx.JmxWriteScope;
 import io.ohmyrasp.agent.model.Detection;
 import io.ohmyrasp.agent.model.RequestContext;
 import io.ohmyrasp.agent.net.HttpTransportObservation;
@@ -776,11 +772,6 @@ public final class DetectorEngine {
     return Optional.empty();
   }
 
-  public Optional<Detection> detectJmxFileWrite(String path, JmxWriteScope scope,
-      String api, RequestContext request) {
-    return HostFileMutationDetector.detectJmxFileWrite(path, scope, api, request);
-  }
-
   public Optional<Detection> detectArgumentFileExpansion(
       String parser, List<String> arguments, RequestContext request) {
     if (request == null || !request.active()) {
@@ -985,38 +976,6 @@ public final class DetectorEngine {
       }
     }
     return false;
-  }
-
-  public Optional<Detection> detectWindowsStreamWrite(WindowsDataStream stream, RequestContext request,
-      List<String> stackClassNames, boolean namedStreamPolicy) {
-    return HostFileMutationDetector.detectWindowsStreamWrite(stream, request, stackClassNames, namedStreamPolicy);
-  }
-
-  public Optional<Detection> detectFileWrite(String path, RequestContext request) {
-    return HostFileMutationDetector.detectFileWrite(path, request);
-  }
-
-  public Optional<Detection> detectFileWrite(
-      String path, RequestContext request, List<String> stackClassNames) {
-    return HostFileMutationDetector.detectFileWrite(path, request, stackClassNames);
-  }
-
-  public Optional<Detection> detectArchiveExtraction(
-      String entryName, String targetPath, RequestContext request) {
-    return HostFileMutationDetector.detectArchiveExtraction(entryName, targetPath, request);
-  }
-
-  public Optional<Detection> detectArchiveExtraction(
-      ArchiveEntryContext.ChannelWrite open, RequestContext request) {
-    return HostFileMutationDetector.detectArchiveExtraction(open, request);
-  }
-
-  public Optional<Detection> detectFileDelete(String path, RequestContext request) {
-    return HostFileMutationDetector.detectFileDelete(path, request);
-  }
-
-  public Optional<Detection> detectFileDelete(HostDelete entry, RequestContext request, boolean explicitPathPolicy) {
-    return HostFileMutationDetector.detectFileDelete(entry, request, explicitPathPolicy);
   }
 
   public Optional<Detection> detectDirectoryList(String path, RequestContext request) {
@@ -1652,11 +1611,6 @@ public final class DetectorEngine {
     return Optional.empty();
   }
 
-  public Optional<Detection> detectGeneratedScriptFileWrite(
-      String path, String content, RequestContext request) {
-    return HostFileMutationDetector.detectGeneratedScriptFileWrite(path, content, request);
-  }
-
   public Optional<Detection> detectWebshellCallable(String function, RequestContext request) {
     String normalized = lower(function);
     if (WEBSHELL_CALLABLES.contains(normalized)) {
@@ -1746,12 +1700,6 @@ public final class DetectorEngine {
       // Fall through to plain filesystem-path normalization.
     }
     return normalizePath(decoded);
-  }
-
-  /** An untyped temporary file can also be data. Require a copied operation in code position,
-   * or a complete request-supplied operand to that operation. Never search unrelated fields for authority. */
-  public boolean generatedScriptCandidate(String path) {
-    return HostFileMutationDetector.generatedScriptCandidate(path);
   }
 
   public boolean requestSuppliesHttpUrl(URI uri, String address, String host, RequestContext request) {

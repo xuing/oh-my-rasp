@@ -1,4 +1,5 @@
 import io.ohmyrasp.agent.detect.DetectorEngine;
+import io.ohmyrasp.agent.detect.HostFileMutationDetector;
 import io.ohmyrasp.agent.detect.JdbcDetector;
 import io.ohmyrasp.agent.detect.ProcessDetector;
 import io.ohmyrasp.agent.detect.RemoteJobDetector;
@@ -92,21 +93,21 @@ public final class FpReport {
             Case.tainted("{\"api\":\"Runtime.exec(String)\",\"report\":\"weekly\"}", "weekly"),
             Case.tainted("{\"label\":\"Runtime.exec(String)\"}", "Runtime.exec(String)"),
             Case.tainted("# reference: system(\"printf weekly\")", "system(\"printf weekly\")")),
-            (c, r) -> ENGINE.detectGeneratedScriptFileWrite("/tmp/reports/document.tmp", c.payload(), r)),
-        new Category("File writes", fileWriteCorpus(), (c, r) -> ENGINE.detectFileWrite(c.payload(), r)),
+            (c, r) -> HostFileMutationDetector.detectGeneratedScriptFileWrite("/tmp/reports/document.tmp", c.payload(), r)),
+        new Category("File writes", fileWriteCorpus(), (c, r) -> HostFileMutationDetector.detectFileWrite(c.payload(), r)),
         new Category("File deletes", List.of(
             Case.tainted("/srv/reports/report-10.txt", "10"),
             Case.tainted("/srv/reports/invoice.csv", "invoice.csv"),
             Case.tainted("/srv/reports/invoice.csv", "/srv/reports/invoice.csv"),
             Case.tainted("/srv/app/WEB-INF/work.csv", "/srv/app/WEB-INF/work.csv")),
-            (c, r) -> ENGINE.detectFileDelete(c.payload(), r)),
+            (c, r) -> HostFileMutationDetector.detectFileDelete(c.payload(), r)),
         new Category("Archive writes", List.of(
             Case.tainted("/srv/orders/drafts/../report.csv", "drafts/../report.csv"),
             Case.tainted("/srv/orders/report.csv", "../report.csv"),
             Case.tainted("/srv/orders/../orders/report.csv", "../orders/report.csv"),
             Case.tainted("/srv/orders/notes/report.csv", "/notes/report.csv"),
             Case.tainted("/srv/orders/drafts/../report.csv.bak", "../report.csv")),
-            (c, r) -> ENGINE.detectArchiveExtraction(c.userParam(), c.payload(), r)),
+            (c, r) -> HostFileMutationDetector.detectArchiveExtraction(c.userParam(), c.payload(), r)),
         new Category("Deserialization classes", deserializationCorpus(), (c, r) -> ENGINE.detectDeserialization(c.payload(), r)),
         new Category("Expressions", expressionCorpus(), (c, r) -> ENGINE.detectExpression("spel", c.payload(), r)),
         new Category("OGNL expressions", ognlCorpus(), (c, r) -> ENGINE.detectOgnl(c.payload(), r)),

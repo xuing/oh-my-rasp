@@ -1003,8 +1003,8 @@ final class DetectorEngineTest {
         io.ohmyrasp.agent.jmx.JmxWriteScope.select("reports:type=Writer", "publish", values);
         assertTrue(engine.detectJmxMBeanInvoke("reports:type=Writer", "publish", values, request()).isEmpty());
         var scope = io.ohmyrasp.agent.jmx.JmxWriteScope.current();
-        assertTrue(engine.detectJmxFileWrite("/reports/other.jsp", scope, "channel_open", request()).isEmpty());
-        var detection = engine.detectJmxFileWrite(selected, scope, "channel_open", request());
+        assertTrue(HostFileMutationDetector.detectJmxFileWrite("/reports/other.jsp", scope, "channel_open", request()).isEmpty());
+        var detection = HostFileMutationDetector.detectJmxFileWrite(selected, scope, "channel_open", request());
         assertAlgorithm(detection, "jmx_file_write");
         assertEquals("selected_write_open", detection.get().details().get("decision_basis"));
       } finally {
@@ -1203,7 +1203,7 @@ final class DetectorEngineTest {
 
   @Test
   void detectsScriptFileWrite() {
-    var result = engine.detectFileWrite("/usr/local/tomcat/webapps/ROOT/shell.jsp", request());
+    var result = HostFileMutationDetector.detectFileWrite("/usr/local/tomcat/webapps/ROOT/shell.jsp", request());
 
     assertTrue(result.isPresent());
     assertEquals("writeFile_script", result.orElseThrow().algorithm());
@@ -1213,9 +1213,9 @@ final class DetectorEngineTest {
   void distinguishesDirectReflectiveWriteFromOrdinaryBackgroundWrite() {
     String path = "/srv/app/views/order.jsp";
     var ordinary = List.of("java.io.FileOutputStream", "app.Renderer", "java.lang.reflect.Method");
-    assertTrue(engine.detectFileWrite(path, RequestContext.empty(), ordinary).isEmpty());
+    assertTrue(HostFileMutationDetector.detectFileWrite(path, RequestContext.empty(), ordinary).isEmpty());
     var direct = List.of("java.io.FileOutputStream", "java.io.FileOutputStream", "java.lang.reflect.Constructor");
-    assertAlgorithm(engine.detectFileWrite(path, RequestContext.empty(), direct), "writeFile_reflect");
+    assertAlgorithm(HostFileMutationDetector.detectFileWrite(path, RequestContext.empty(), direct), "writeFile_reflect");
   }
 
   @Test
@@ -1223,10 +1223,10 @@ final class DetectorEngineTest {
     var ordinary = new io.ohmyrasp.agent.file.WindowsDataStream("weekly.csv", "");
     var script = new io.ohmyrasp.agent.file.WindowsDataStream("report.jsp", "");
     var metadata = new io.ohmyrasp.agent.file.WindowsDataStream("weekly.csv", "author");
-    assertTrue(engine.detectWindowsStreamWrite(ordinary, request(), List.of(), true).isEmpty());
-    assertAlgorithm(engine.detectWindowsStreamWrite(script, request(), List.of(), false), "writeFile_script");
-    assertTrue(engine.detectWindowsStreamWrite(metadata, request(), List.of(), false).isEmpty());
-    var selected = engine.detectWindowsStreamWrite(metadata, request(), List.of(), true).orElseThrow();
+    assertTrue(HostFileMutationDetector.detectWindowsStreamWrite(ordinary, request(), List.of(), true).isEmpty());
+    assertAlgorithm(HostFileMutationDetector.detectWindowsStreamWrite(script, request(), List.of(), false), "writeFile_script");
+    assertTrue(HostFileMutationDetector.detectWindowsStreamWrite(metadata, request(), List.of(), false).isEmpty());
+    var selected = HostFileMutationDetector.detectWindowsStreamWrite(metadata, request(), List.of(), true).orElseThrow();
     assertEquals("writeFile_NTFS", selected.algorithm());
     assertEquals("author", selected.details().get("stream"));
     assertTrue(selected.requiresExplicitRule());
@@ -1236,7 +1236,7 @@ final class DetectorEngineTest {
   @Test
   void detectsReflectiveJspFileWrite() {
     var result =
-        engine.detectFileWrite(
+        HostFileMutationDetector.detectFileWrite(
             "/usr/local/tomcat/webapps/ROOT/shell.jsp",
             request(),
             List.of("java.lang.reflect.Method", "shell.Backdoor"));
@@ -1250,7 +1250,7 @@ final class DetectorEngineTest {
     String content = "set yrange " + payload + "\nplot '-' using 1:2";
 
     var result =
-        engine.detectGeneratedScriptFileWrite(
+        HostFileMutationDetector.detectGeneratedScriptFileWrite(
             "/tmp/opentsdb-plot.gnuplot",
             content,
             request(Map.of("yrange", List.of(payload))));
@@ -1264,7 +1264,7 @@ final class DetectorEngineTest {
     String content = "set key " + payload + "\nplot '-' using 1:2";
 
     var result =
-        engine.detectGeneratedScriptFileWrite(
+        HostFileMutationDetector.detectGeneratedScriptFileWrite(
             "/tmp/tsd-graph.gp",
             content,
             request(Map.of("key", List.of(payload))));
@@ -1276,19 +1276,19 @@ final class DetectorEngineTest {
   void distinguishesProgramOperationsFromTemporaryReportData() {
     String op = "system(\"printf weekly\")";
     var ctx = request(Map.of("label", List.of(op)));
-    assertTrue(engine.detectGeneratedScriptFileWrite("/tmp/report", "# " + op, ctx).isEmpty());
-    assertTrue(engine.detectGeneratedScriptFileWrite("/tmp/report", "title = '" + op + "'", ctx).isEmpty());
-    assertAlgorithm(engine.detectGeneratedScriptFileWrite("/tmp/report", "value = " + op, ctx), "writeFile_generated_script");
-    assertTrue(engine.detectGeneratedScriptFileWrite("/tmp/report", "label = 'North'\nvalue = " + op,
+    assertTrue(HostFileMutationDetector.detectGeneratedScriptFileWrite("/tmp/report", "# " + op, ctx).isEmpty());
+    assertTrue(HostFileMutationDetector.detectGeneratedScriptFileWrite("/tmp/report", "title = '" + op + "'", ctx).isEmpty());
+    assertAlgorithm(HostFileMutationDetector.detectGeneratedScriptFileWrite("/tmp/report", "value = " + op, ctx), "writeFile_generated_script");
+    assertTrue(HostFileMutationDetector.detectGeneratedScriptFileWrite("/tmp/report", "label = 'North'\nvalue = " + op,
         request(Map.of("label", List.of("North")))).isEmpty());
-    assertAlgorithm(engine.detectGeneratedScriptFileWrite("/tmp/report", "value = " + op,
+    assertAlgorithm(HostFileMutationDetector.detectGeneratedScriptFileWrite("/tmp/report", "value = " + op,
         request(Map.of("value", List.of("printf weekly")))), "writeFile_generated_script");
   }
 
   @Test
   void ignoresBenignGeneratedGnuplotScriptWrite() {
     var result =
-        engine.detectGeneratedScriptFileWrite(
+        HostFileMutationDetector.detectGeneratedScriptFileWrite(
             "/tmp/opentsdb-plot.gnuplot",
             "set yrange [0:42]\nplot '-' using 1:2",
             request(Map.of("yrange", List.of("[0:42]"))));
@@ -1299,7 +1299,7 @@ final class DetectorEngineTest {
   @Test
   void detectsRocketMqCve202337582UnsafeConfigPersistenceFileWrite() {
     var result =
-        engine.detectFileWrite(
+        HostFileMutationDetector.detectFileWrite(
             "/tmp/success",
             RequestContext.empty(),
             List.of(
@@ -1315,7 +1315,7 @@ final class DetectorEngineTest {
   @Test
   void ignoresNormalConfigPersistenceFileWrite() {
     var result =
-        engine.detectFileWrite(
+        HostFileMutationDetector.detectFileWrite(
             "/root/namesrv/namesrv.properties",
             RequestContext.empty(),
             List.of(
@@ -1328,19 +1328,19 @@ final class DetectorEngineTest {
   @Test
   void distinguishesDeletePathControlFromAReportIdentifier() {
     String absolute = "/srv/docs/report-10.txt";
-    assertTrue(engine.detectFileDelete(absolute, request(Map.of("week", List.of("10")))).isEmpty());
-    assertTrue(engine.detectFileDelete(absolute, request(Map.of("file", List.of("report-10.txt")))).isEmpty());
-    assertTrue(engine.detectFileDelete(absolute, request(Map.of("file", List.of(absolute)))).isEmpty());
+    assertTrue(HostFileMutationDetector.detectFileDelete(absolute, request(Map.of("week", List.of("10")))).isEmpty());
+    assertTrue(HostFileMutationDetector.detectFileDelete(absolute, request(Map.of("file", List.of("report-10.txt")))).isEmpty());
+    assertTrue(HostFileMutationDetector.detectFileDelete(absolute, request(Map.of("file", List.of(absolute)))).isEmpty());
     String protectedEntry = "/srv/docs/WEB-INF/report.xml";
-    assertTrue(engine.detectFileDelete(protectedEntry, request(Map.of("file", List.of(protectedEntry)))).isEmpty());
-    assertTrue(engine.detectFileDelete("/srv/docs/../note.txt",
+    assertTrue(HostFileMutationDetector.detectFileDelete(protectedEntry, request(Map.of("file", List.of(protectedEntry)))).isEmpty());
+    assertTrue(HostFileMutationDetector.detectFileDelete("/srv/docs/../note.txt",
         request(Map.of("file", List.of("../note.txt")))).isEmpty());
   }
 
   @Test
   void detectsArchiveTraversalExtraction() {
     var result =
-        engine.detectArchiveExtraction(
+        HostFileMutationDetector.detectArchiveExtraction(
             "../escaped/archive.txt", "/tmp/ohmyrasp/root/../escaped/archive.txt", request());
 
     assertAlgorithm(result, "archive_traversal");
@@ -1348,7 +1348,7 @@ final class DetectorEngineTest {
 
   @Test
   void detectsAbsoluteArchiveEntryExtraction() {
-    var result = engine.detectArchiveExtraction("/tmp/evil.txt", "/tmp/evil.txt", request());
+    var result = HostFileMutationDetector.detectArchiveExtraction("/tmp/evil.txt", "/tmp/evil.txt", request());
 
     assertAlgorithm(result, "archive_traversal");
   }
@@ -1356,7 +1356,7 @@ final class DetectorEngineTest {
   @Test
   void ignoresNormalArchiveEntryExtraction() {
     var result =
-        engine.detectArchiveExtraction(
+        HostFileMutationDetector.detectArchiveExtraction(
             "docs/readme.txt", "/tmp/ohmyrasp/root/docs/readme.txt", request());
 
     assertTrue(result.isEmpty());
@@ -1372,18 +1372,18 @@ final class DetectorEngineTest {
         {"/notes/report.txt", "/out/notes/report.txt"},
         {" ../report.txt", "/out/ ../report.txt"}
     }) {
-      assertTrue(engine.detectArchiveExtraction(paths[0], paths[1], request()).isEmpty());
+      assertTrue(HostFileMutationDetector.detectArchiveExtraction(paths[0], paths[1], request()).isEmpty());
     }
-    assertAlgorithm(engine.detectArchiveExtraction("..\\report.txt",
+    assertAlgorithm(HostFileMutationDetector.detectArchiveExtraction("..\\report.txt",
         "/out/../report.txt", request()), "archive_traversal");
-    assertAlgorithm(engine.detectArchiveExtraction("drafts/../../report.txt",
+    assertAlgorithm(HostFileMutationDetector.detectArchiveExtraction("drafts/../../report.txt",
         "/out/drafts/../../report.txt", request()), "archive_traversal");
   }
 
   @Test
   void ignoresSanitizedArchiveTraversalEntry() {
     var result =
-        engine.detectArchiveExtraction(
+        HostFileMutationDetector.detectArchiveExtraction(
             "../escaped/archive.txt", "/tmp/ohmyrasp/root/safe/archive.txt", request());
 
     assertTrue(result.isEmpty());

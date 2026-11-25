@@ -11,6 +11,7 @@ import io.ohmyrasp.agent.jmx.JmxDispatch;
 import io.ohmyrasp.agent.jmx.JmxWriteScope;
 import io.ohmyrasp.agent.detect.CredentialDetector;
 import io.ohmyrasp.agent.detect.DetectorEngine;
+import io.ohmyrasp.agent.detect.HostFileMutationDetector;
 import io.ohmyrasp.agent.detect.JdbcDetector;
 import io.ohmyrasp.agent.detect.ProcessDetector;
 import io.ohmyrasp.agent.detect.RemoteJobDetector;
@@ -767,20 +768,20 @@ public final class OhMyRaspHooks {
   public static void beforeJmxStreamWrite(String path, int write) {
     JmxWriteScope scope = write != 0 ? JmxWriteScope.current() : null;
     if (scope != null && !detectionDisabled())
-      emit(DETECTORS.detectJmxFileWrite(path, scope, "stream_open", currentRequest()));
+      emit(HostFileMutationDetector.detectJmxFileWrite(path, scope, "stream_open", currentRequest()));
   }
 
   public static void beforeUnixChannelWrite(java.nio.file.Path path, int directoryFd, boolean write) {
     if (!write) return;
     var open = ARCHIVE_ENTRY.atChannelOpen(path, directoryFd);
-    if (open != null && !detectionDisabled()) emit(DETECTORS.detectArchiveExtraction(open, currentRequest()));
+    if (open != null && !detectionDisabled()) emit(HostFileMutationDetector.detectArchiveExtraction(open, currentRequest()));
     beforeJmxChannelWrite(path, directoryFd, true);
   }
 
   public static void beforeJmxChannelWrite(java.nio.file.Path path, int directoryFd, boolean write) {
     JmxWriteScope scope = write ? JmxWriteScope.current() : null;
     if (scope != null && !detectionDisabled() && (directoryFd < 0 || path.isAbsolute()))
-      emit(DETECTORS.detectJmxFileWrite(path.toString(), scope, "channel_open", currentRequest()));
+      emit(HostFileMutationDetector.detectJmxFileWrite(path.toString(), scope, "channel_open", currentRequest()));
   }
 
   public static void beforeJmxMBeanInvoke(Object mbeanName, String operationName, Object arguments) {
@@ -885,9 +886,9 @@ public final class OhMyRaspHooks {
     }
     String archiveEntry = ARCHIVE_ENTRY.take();
     try {
-      emit(DETECTORS.detectArchiveExtraction(archiveEntry, path, currentRequest()));
+      emit(HostFileMutationDetector.detectArchiveExtraction(archiveEntry, path, currentRequest()));
       if (java.io.File.separatorChar != '\\' || WindowsDataStream.parse(path) == null)
-        emit(DETECTORS.detectFileWrite(path, currentRequest(), stackClassNames));
+        emit(HostFileMutationDetector.detectFileWrite(path, currentRequest(), stackClassNames));
     } catch (OhMyRaspBlockException blocked) {
       throw blocked;
     } catch (Throwable throwable) {
@@ -900,7 +901,7 @@ public final class OhMyRaspHooks {
     WindowsDataStream stream = WindowsDataStream.parse(path);
     if (stream == null || detectionDisabled()) return;
     try {
-      emit(DETECTORS.detectWindowsStreamWrite(stream, currentRequest(),
+      emit(HostFileMutationDetector.detectWindowsStreamWrite(stream, currentRequest(),
           stream.name().isEmpty() ? stackTraceClassNames() : List.of(), POLICY.selectsAlgorithm("writeFile_NTFS")));
     } catch (OhMyRaspBlockException blocked) {
       throw blocked;
@@ -1139,7 +1140,7 @@ public final class OhMyRaspHooks {
     if (detectionDisabled() || !currentRequest().active() || !(target instanceof java.nio.file.Path) || !HostFileSystem.contains(target)) return null;
     try {
       String path = pathFrom(target);
-      return DETECTORS.generatedScriptCandidate(path) ? new GeneratedLineWrite(path) : null;
+      return HostFileMutationDetector.generatedScriptCandidate(path) ? new GeneratedLineWrite(path) : null;
     } catch (Throwable failure) {
       quiet("beginGeneratedLines", failure);
       return null;
@@ -1150,7 +1151,7 @@ public final class OhMyRaspHooks {
     if (output == null || detectionDisabled()) return;
     try {
       String content = output.append(line);
-      if (content != null) emit(DETECTORS.detectGeneratedScriptFileWrite(output.path, content, currentRequest()), false, ignored -> output.repeated());
+      if (content != null) emit(HostFileMutationDetector.detectGeneratedScriptFileWrite(output.path, content, currentRequest()), false, ignored -> output.repeated());
     } catch (OhMyRaspBlockException denied) {
       throw denied;
     } catch (Throwable failure) {
@@ -1165,9 +1166,9 @@ public final class OhMyRaspHooks {
     try {
       String path = pathFrom(target);
       RequestContext request = currentRequest();
-      var typed = DETECTORS.detectGeneratedScriptFileWrite(path, text, request);
+      var typed = HostFileMutationDetector.detectGeneratedScriptFileWrite(path, text, request);
       if (typed.isEmpty()) return;
-      var raw = DETECTORS.detectGeneratedScriptFileWrite(path, contentFrom(bytes), request);
+      var raw = HostFileMutationDetector.detectGeneratedScriptFileWrite(path, contentFrom(bytes), request);
       if (raw.isEmpty() || !raw.get().details().equals(typed.get().details())) emit(typed);
     } catch (OhMyRaspBlockException denied) {
       throw denied;
@@ -1182,7 +1183,7 @@ public final class OhMyRaspHooks {
     }
     try {
       emit(
-          DETECTORS.detectGeneratedScriptFileWrite(
+          HostFileMutationDetector.detectGeneratedScriptFileWrite(
               pathFrom(path), contentFrom(content), currentRequest()));
     } catch (OhMyRaspBlockException blocked) {
       throw blocked;
@@ -1213,7 +1214,7 @@ public final class OhMyRaspHooks {
       if (!request.active()) return;
       boolean relative = directory != null && !path.isAbsolute();
       var entry = new io.ohmyrasp.agent.file.HostDelete(path, directoryFd, relative, true);
-      var finding = DETECTORS.detectFileDelete(entry, request, POLICY.selectsAlgorithm("deleteFile_userinput"));
+      var finding = HostFileMutationDetector.detectFileDelete(entry, request, POLICY.selectsAlgorithm("deleteFile_userinput"));
       if (finding.isEmpty()) return;
       if (directory != null && !io.ohmyrasp.agent.file.HostDelete.hasEntry(directory, path, removeDirectory)) return;
       if ("file_api_delete".equals(operation) && !java.nio.file.Files.exists(path, java.nio.file.LinkOption.NOFOLLOW_LINKS)) return;
