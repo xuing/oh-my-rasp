@@ -38,8 +38,9 @@ final class ServletHookModule implements HookModule {
         protected void enterDispatch() {
           loadArg(0);
           loadArg(1);
+          push(descriptor.equals(JAKARTA_GENERIC_SERVICE) || descriptor.equals(JAVAX_GENERIC_SERVICE));
           invokeStatic(Type.getType(OhMyRaspHooks.class),
-              new Method("admitServletRequest", "(Ljava/lang/Object;Ljava/lang/Object;)Z"));
+              new Method("admitServletRequest", "(Ljava/lang/Object;Ljava/lang/Object;Z)Z"));
           var admitted = newLabel();
           ifZCmp(NE, admitted);
           // Denied entry already restored the parent dispatch. Skip normal method-exit cleanup.

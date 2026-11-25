@@ -68,7 +68,11 @@ public final class OhMyRaspHooks {
   }
 
   public static void enterHttpRequest(Object request, Object response) {
-    DISPATCH.enter(request);
+    enterHttpRequest(request, response, false);
+  }
+
+  private static void enterHttpRequest(Object request, Object response, boolean genericService) {
+    DISPATCH.enter(request, genericService);
     try {
       inspectHttpRequest(request, response);
       DISPATCH.enteredApplication();
@@ -79,8 +83,12 @@ public final class OhMyRaspHooks {
   }
 
   public static boolean admitServletRequest(Object request, Object response) {
+    return admitServletRequest(request, response, false);
+  }
+
+  public static boolean admitServletRequest(Object request, Object response, boolean genericService) {
     try {
-      enterHttpRequest(request, response);
+      enterHttpRequest(request, response, genericService);
       return true;
     } catch (OhMyRaspBlockException blocked) {
       if (blocked.redirected()) return false;
@@ -1729,9 +1737,9 @@ public final class OhMyRaspHooks {
     if (request == null) {
       return RequestContext.empty();
     }
-    String method = invokeString(request, "getMethod").orElse("");
-    String uri = invokeString(request, "getRequestURI").orElse("");
-    String query = invokeString(request, "getQueryString").orElse("");
+    String method = invokeString(ServletContracts.of(request), request, "getMethod").orElse("");
+    String uri = invokeString(ServletContracts.of(request), request, "getRequestURI").orElse("");
+    String query = invokeString(ServletContracts.of(request), request, "getQueryString").orElse("");
     Map<String, List<String>> parameters = readParameterMap(request);
     Map<String, String> headers = readHeaders(request);
     return new RequestContext(method, uri, query, parameters, headers);
@@ -1739,7 +1747,7 @@ public final class OhMyRaspHooks {
 
   private static Map<String, List<String>> readParameterMap(Object request)
       throws ReflectiveOperationException {
-    Object raw = request.getClass().getMethod("getParameterMap").invoke(request);
+    Object raw = ServletContracts.of(request).getMethod("getParameterMap").invoke(request);
     if (!(raw instanceof Map<?, ?> map)) {
       return Map.of();
     }
@@ -1750,12 +1758,12 @@ public final class OhMyRaspHooks {
 
   private static Map<String, String> readHeaders(Object request) {
     try {
-      Method namesMethod = request.getClass().getMethod("getHeaderNames");
+      Method namesMethod = ServletContracts.of(request).getMethod("getHeaderNames");
       Object names = namesMethod.invoke(request);
       if (!(names instanceof Enumeration<?> enumeration)) {
         return Map.of();
       }
-      Method headerMethod = request.getClass().getMethod("getHeader", String.class);
+      Method headerMethod = ServletContracts.of(request).getMethod("getHeader", String.class);
       var headers = new LinkedHashMap<String, String>();
       while (enumeration.hasMoreElements()) {
         String name = String.valueOf(enumeration.nextElement());
@@ -1773,12 +1781,12 @@ public final class OhMyRaspHooks {
       return Map.of();
     }
     try {
-      Method namesMethod = request.getClass().getMethod("getAttributeNames");
+      Method namesMethod = ServletContracts.of(request).getMethod("getAttributeNames");
       Object names = namesMethod.invoke(request);
       if (!(names instanceof Enumeration<?> enumeration)) {
         return Map.of();
       }
-      Method attributeMethod = request.getClass().getMethod("getAttribute", String.class);
+      Method attributeMethod = ServletContracts.of(request).getMethod("getAttribute", String.class);
       var attributes = new LinkedHashMap<String, String>();
       while (enumeration.hasMoreElements()) {
         String name = String.valueOf(enumeration.nextElement());
@@ -1840,8 +1848,12 @@ public final class OhMyRaspHooks {
   }
 
   private static Optional<String> invokeString(Object target, String methodName) {
+    return target == null ? Optional.empty() : invokeString(target.getClass(), target, methodName);
+  }
+
+  private static Optional<String> invokeString(Class<?> api, Object target, String methodName) {
     try {
-      Object value = target.getClass().getMethod(methodName).invoke(target);
+      Object value = api.getMethod(methodName).invoke(target);
       return value == null ? Optional.empty() : Optional.of(String.valueOf(value));
     } catch (ReflectiveOperationException | RuntimeException e) {
       return Optional.empty();
@@ -2084,6 +2096,11 @@ public final class OhMyRaspHooks {
     if (!willBlock && "block".equalsIgnoreCase(event.action())) {
       recorded = event.withAction(runtime.mode() == DetectionMode.MONITOR ? "monitor" : "log");
     }
+    if (!willBlock && "request".equals(recorded.hook()) && DISPATCH.inspectingRequest()) {
+      RequestContext r = recorded.request();
+      if (DISPATCH.repeatedAdmission(List.of(recorded.algorithm(), recorded.action(), recorded.details(),
+          r.method(), r.uri(), r.query(), r.headers(), r.parameters(), r.body()))) return;
+    }
     JsonEventLogger.get().record(redactHttpObservation(recorded), elapsedMicros(started), ruleEvaluationUs);
     if (willBlock) {
       throw new OhMyRaspBlockException(event, mayRedirect && redirectToBlockPage(event));
@@ -2144,7 +2161,7 @@ public final class OhMyRaspHooks {
             + "&message="
             + encode(detection.message());
     try {
-      Method sendRedirect = response.getClass().getMethod("sendRedirect", String.class);
+      Method sendRedirect = ServletContracts.of(response).getMethod("sendRedirect", String.class);
       sendRedirect.invoke(response, location);
       return true;
     } catch (ReflectiveOperationException | RuntimeException e) {

@@ -29,8 +29,10 @@ def main():
                                 "-Dohmyrasp.standalone=true", f"-Dohmyrasp.mode={mode}", f"-Dohmyrasp.log={log}",
                                 "-Dohmyrasp.log.sync=true", "-cp", cp, "ServletAdmissionCheck", mode], check=True)
                 events = [e for line in log.read_text().splitlines() if (e := json.loads(line)).get("algorithm")]
-                expected = 2 if mode == "block" else 4  # Both service overloads run for admitted requests.
-                if [(e["algorithm"], e["action"]) for e in events] != [("request_scanner", mode)] * expected:
+                expected = [(mode, "/reports"), (mode, "/reports"), ("log", "/reports"), ("log", "/error"),
+                            ("log", "/reports"), ("log", "/reports")]
+                if ([(e["action"], e["request"]["uri"]) for e in events] != expected
+                        or any(e["algorithm"] != "request_scanner" for e in events)):
                     raise SystemExit(f"unexpected {namespace} {mode} receipts: {events}")
 
 

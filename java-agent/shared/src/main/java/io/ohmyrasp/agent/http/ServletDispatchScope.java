@@ -51,10 +51,30 @@ public final class ServletDispatchScope<R, C> {
     return contract != 0 && frame != null && frame.parts != null && (frame.flags(part) & contract) != 0;
   }
 
+  /** A repeated entry on the same request can observe the same policy decision in both service overloads. */
+  public boolean repeatedAdmission(Object observation) {
+    Saved<R, C> frame = active.get();
+    if (frame == null || !frame.inspecting || frame.servletRequest == null) return false;
+    if (frame.genericService) {
+      if (frame.observations == null) frame.observations = new java.util.ArrayList<Object>();
+      frame.observations.add(observation);
+    } else {
+      Saved<R, C> parent = frame.parent;
+      return parent != null && parent.servletRequest == frame.servletRequest && parent.observations != null
+          && parent.observations.remove(observation);
+    }
+    return false;
+  }
+
   public void enter(Object servletRequest) {
+    enter(servletRequest, false);
+  }
+
+  public void enter(Object servletRequest, boolean genericService) {
     Saved<R, C> parent = active.get();
     active.set(parent == null ? new Saved<R, C>(servletRequest, null, null, null, null)
         : new Saved<R, C>(servletRequest, parent, request.get(), companion.get(), restoreLater(archiveEntry)));
+    active.get().genericService = genericService;
     request.remove();
     companion.remove();
     archiveEntry.remove();
@@ -93,6 +113,8 @@ public final class ServletDispatchScope<R, C> {
       if (parts == null) parts = new io.ohmyrasp.agent.util.WeakOwners<Integer>();
       parts.put(value, flags(value) | bits);
     }
+    java.util.List<Object> observations;
+    boolean genericService;
     boolean inspecting = true;
     final Object servletRequest;
     final Saved<R, C> parent;
