@@ -177,7 +177,9 @@ directory walks in block and monitor modes. [File-read check](java-agent/scripts
 
 The Linux matrix also runs `java-agent/scripts/fp-harness/check-process-launch.py`.
 It verifies argument boundaries, application list accesses, per-stage redirection
-and explicit dispatch policy with locally executed report commands.
+and explicit dispatch policy with locally executed report commands. The primary
+agent check uses curl and an in-process loopback responder to verify callback
+destination decisions and receipt of allowed transfers.
 
 The multipart check covers both the Javax and Jakarta Servlet APIs.
 Pass `--api-dir` to `java-agent/scripts/fp-harness/check-multipart-archive.py` to

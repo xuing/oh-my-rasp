@@ -3,7 +3,7 @@
     "archive_traversal": "An archive entry and its destination cross the extraction boundary.",
     "classloader_remote": "A class loader is given a remote code source.",
     "command_common": "Command text matches a configured or built-in suspicious-command, shell-syntax or callback-domain indicator.",
-    "command_dnslog": "Command text matches a configured or built-in suspicious-command, shell-syntax or callback-domain indicator.",
+    "command_dnslog": "A directly launched network tool names a listed callback host in a recognized destination argument.",
     "command_error": "Command text matches a configured or built-in suspicious-command, shell-syntax or callback-domain indicator.",
     "command_reflect": "Explicit policy selects reflective dispatch at the process API.",
     "command_userinput": "Request-controlled syntax reaches the launched shell program. The POSIX branch preserves the argument boundaries.",

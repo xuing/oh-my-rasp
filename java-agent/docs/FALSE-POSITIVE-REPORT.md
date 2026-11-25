@@ -5,7 +5,7 @@
 
 ## Method
 
-A curated corpus of **169** benign-but-plausible inputs across **22** detector categories is run through the engine. Each input is presented with a realistic request context; where a value would be user-supplied it is placed in a request parameter so taint-aware detectors evaluate it as in production. A *false positive* is any detector returning a detection for legitimate input. This is a detector-precision probe on benign traffic, **not** a production-traffic false-positive rate.
+A curated corpus of **173** benign-but-plausible inputs across **22** detector categories is run through the engine. Each input is presented with a realistic request context; where a value would be user-supplied it is placed in a request parameter so taint-aware detectors evaluate it as in production. A *false positive* is any detector returning a detection for legitimate input. This is a detector-precision probe on benign traffic, **not** a production-traffic false-positive rate.
 
 ## Result
 
@@ -14,7 +14,7 @@ A curated corpus of **169** benign-but-plausible inputs across **22** detector c
 | Internationalized report routes | 6 | 0 | 0.0% |
 | Report field metadata | 2 | 0 | 0.0% |
 | SQL queries | 27 | 0 | 0.0% |
-| OS commands | 12 | 0 | 0.0% |
+| OS commands | 16 | 0 | 0.0% |
 | Process dispatch | 4 | 0 | 0.0% |
 | Outbound URLs | 23 | 0 | 0.0% |
 | File reads | 15 | 0 | 0.0% |
@@ -33,7 +33,7 @@ A curated corpus of **169** benign-but-plausible inputs across **22** detector c
 | JDBC URLs | 5 | 0 | 0.0% |
 | Request parameters | 6 | 0 | 0.0% |
 | Base64 decoding | 8 | 0 | 0.0% |
-| **Overall** | **169** | **0** | **0.0%** |
+| **Overall** | **173** | **0** | **0.0%** |
 
 No false positives observed across the corpus.
 
@@ -91,6 +91,10 @@ No false positives observed across the corpus.
 - `printf %s R&D` (user input: `R&D`)
 - `printf %s Q1;Q2` (user input: `Q1;Q2`)
 - `printf %s June|July` (user input: `June|July`)
+- `echo curl http://probe.dnslog.cn/a`
+- `curl http://notdnslog.cn/report`
+- `curl https://reports.example.test/guide/dnslog.cn/a`
+- `curl -o probe.dnslog.cn https://reports.example.test/weekly`
 - `git status`
 - `/usr/bin/convert input.png output.jpg`
 - `ffmpeg -i input.mp4 -vcodec copy output.mp4`

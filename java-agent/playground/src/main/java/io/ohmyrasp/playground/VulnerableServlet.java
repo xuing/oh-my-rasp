@@ -4578,7 +4578,7 @@ public final class VulnerableServlet extends HttpServlet {
           {"category":"command","name":"Command user input","path":"/rasp/command?cmd=sh&arg=-c&arg=cat%20/etc/passwd%3B%20id"},
           {"category":"command","name":"Command common payload","path":"/rasp/command/common"},
           {"category":"command","name":"Command syntax error","path":"/rasp/command/error"},
-          {"category":"command","name":"Command DNS callback payload","path":"/rasp/command/dnslog"},
+          {"category":"command","name":"Print a network command example","path":"/rasp/command/dnslog"},
           {"category":"command","name":"Reflective command execution","path":"/rasp/command/reflect"},
           {"category":"command","name":"Configured executable listener","path":"/rasp/policy/command-config-listener"},
           {"category":"command","name":"Solr RunExecutableListener command","path":"/rasp/policy/command-solr-cve-2017-12629-runexecutable"},

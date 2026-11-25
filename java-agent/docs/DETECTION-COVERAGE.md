@@ -90,7 +90,7 @@ The descriptions live in the [general catalog](../rules/general.json) and [produ
 | `command_common` | Command text matches a configured or built-in suspicious-command, shell-syntax or callback-domain indicator. | — |
 | `command_config_injection` | — | RocketMQ filter-server ownership of a process launch supplies the configuration context. |
 | `command_config_listener` | — | The Apache Solr executable-listener implementation appears on the process stack. |
-| `command_dnslog` | Command text matches a configured or built-in suspicious-command, shell-syntax or callback-domain indicator. | — |
+| `command_dnslog` | A directly launched network tool names a listed callback host in a recognized destination argument. | — |
 | `command_error` | Command text matches a configured or built-in suspicious-command, shell-syntax or callback-domain indicator. | — |
 | `command_reflect` | Explicit policy selects reflective dispatch at the process API. | — |
 | `command_userinput` | Request-controlled syntax reaches the launched shell program. The POSIX branch preserves the argument boundaries. | — |

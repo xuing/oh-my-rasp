@@ -1216,7 +1216,7 @@ XML
   expect_block "$version" command_userinput -G --data-urlencode "cmd=sh" --data-urlencode "arg=-c" --data-urlencode "arg=cat /etc/passwd; id" "${protected_url}/rasp/command"
   expect_block "$version" command_common "${protected_url}/rasp/command/common"
   expect_block "$version" command_error "${protected_url}/rasp/command/error"
-  expect_block "$version" command_dnslog "${protected_url}/rasp/command/dnslog"
+  expect_body_contains "${protected_url}/rasp/command/dnslog" "output=curl http://probe.dnslog.cn/a"
   expect_body_contains "${protected_url}/rasp/command/reflect" "finished=true"
   expect_block "$version" command_config_listener "${protected_url}/rasp/policy/command-config-listener"
   expect_block "$version" command_solr_cve_2017_12629_runexecutable "${protected_url}/rasp/policy/command-solr-cve-2017-12629-runexecutable"
@@ -1429,7 +1429,6 @@ required_algorithms=(
   command_userinput
   command_common
   command_error
-  command_dnslog
   command_config_listener
   command_config_injection
   readFile_userinput

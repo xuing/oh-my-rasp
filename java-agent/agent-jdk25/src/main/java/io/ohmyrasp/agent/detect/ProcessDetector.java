@@ -30,13 +30,6 @@ final class ProcessDetector {
   private static final Pattern COMMAND_SENSITIVE_AFTER_JOIN =
       Pattern.compile("(?is)(?:;|&&|\\|\\|?|`)\\s*(?:cat|bash|sh|nc|curl|wget|python|perl|php)\\b");
 
-  private static final Pattern COMMAND_DNSLOG =
-      Pattern.compile("(?is)(^|\\W)(curl|ping|wget|nslookup|dig)\\W.*");
-
-  private static final Pattern DNSLOG_TEXT =
-      Pattern.compile(
-          "(?i).*((?:ceye|exeye|sslip|nip)\\.io|dnslog\\.cn|(?:vcap|bxss)\\.me|xip\\.(?:name|io)|burpcollaborator\\.net|tu4\\.org|2xss\\.cc|request\\.bin|requestbin\\.net|pipedream\\.net|canarytokens\\.com)(?:[/:?].*)?");
-
   private static final Pattern REMOTE_JOB_SHELL_COMMAND =
       Pattern.compile("(?is)(?:^|\\W)(?:bash|sh|cmd|powershell|pwsh|nc|curl|wget)\\b");
 
@@ -119,15 +112,16 @@ final class ProcessDetector {
               request,
               Map.of("command", abbreviate(joined))));
     }
-    if (COMMAND_DNSLOG.matcher(joined).find() && DNSLOG_TEXT.matcher(joined).matches()) {
+    String callbackHost = CommandDestination.callbackHost(command);
+    if (callbackHost != null) {
       return Optional.of(
           Detection.log(
               "command",
               "command_dnslog",
               95,
-              "Command targets a callback collection domain",
+              "Network tool has a callback domain as a destination argument",
               request,
-              Map.of("command", abbreviate(joined))));
+              Map.of("command", abbreviate(joined), "host", callbackHost)));
     }
     boolean syntaxError = windowsShell
         ? hasUnbalancedQuotes(joined) || COMMAND_SENSITIVE_AFTER_JOIN.matcher(joined).find()

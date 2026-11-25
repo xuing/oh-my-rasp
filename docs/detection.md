@@ -229,6 +229,11 @@ alone as an explicitly selected `command_reflect` policy. An ordinary report job
 invoked by a reflective framework has its own caller at the process API.
 [JDK process builder](https://docs.oracle.com/en/java/javase/21/docs/api/java.base/java/lang/ProcessBuilder.html)
 
+For a direct network tool launch, the primary agent checks recognized destination
+operands against its callback-domain policy. The event carries the normalized host.
+This evidence describes the requested destination at process start. Network delivery
+and the purpose of the transfer require separate evidence.
+
 For untyped temporary output the generated-script rule checks whether request input
 supplies an operation in code position or its complete operand. Quoted report fields
 and comments are ordinary data. The JDK write hooks use the encoded handoff and the
@@ -343,7 +348,7 @@ attempt at the indicated phase. The remote application's outcome needs separate 
 - **Cloud metadata endpoints** use the shared address classification in [NetworkHost](../java-agent/shared/src/main/java/io/ohmyrasp/agent/net/NetworkHost.java). A fixed DNS resolver address is handled as an ordinary destination.
 - **Dangerous protocols:** `ldap`, `rmi`, `file`, `jar`, `dict`, `gopher`, `sftp`, `tftp`
 - **Internal RFC-1918 address space:** `10.x`, `172.16-31.x`, `192.168.x`
-- **Known DNS callback domains:** `ceye.io`, `dnslog.cn`, `burpcollaborator.net`, and other well-known out-of-band callback domains (see the DNS patterns in `DetectorEngine`)
+- **Known DNS callback domains:** `ceye.io`, `dnslog.cn`, `burpcollaborator.net`, and other well-known out-of-band callback domains (see the shared primary-agent domain policy in [CallbackDomain.java](../java-agent/agent-jdk25/src/main/java/io/ohmyrasp/agent/detect/CallbackDomain.java))
 - **IP obfuscation forms:** decimal (`2130706433`), hex (`0x7f000001`), and octal (`0177.0.0.1`) encodings of loopback and RFC-1918 addresses
 
 ### Response-side data-leak detection

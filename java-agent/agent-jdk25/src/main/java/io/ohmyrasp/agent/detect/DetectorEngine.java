@@ -83,9 +83,6 @@ public final class DetectorEngine {
           "(?is).+\\.(?:docx?|dotx?|docm|dotm|xlsx?|xltx?|xlsm|xlsb|pptx?|ppsx?|ppsm|potx?|potm|7z|tar|gz|bz2|xz|rar|zip|jpe?g|png|gif|bmp|txt)$");
   private static final Pattern INTERNAL_ADMIN_PATH = Pattern.compile(
       "(?i)(?:^|/)(?:jolokia|manager|host-manager|admin|console|webtools|solr/admin|debug|server-status|actuator/(?:env|heapdump|shutdown))(?:[/;]|$)");
-  private static final Pattern DNSLOG_DOMAIN =
-      Pattern.compile(
-          "(?i)(?:[a-z0-9_-]+\\.)*((?:ceye|exeye|sslip|nip)\\.io|dnslog\\.cn|(?:vcap|bxss)\\.me|xip\\.(?:name|io)|burpcollaborator\\.net|tu4\\.org|2xss\\.cc|request\\.bin|requestbin\\.net|pipedream\\.net|canarytokens\\.com)$");
   private static final Pattern REQUEST_JNDI_LOOKUP =
       Pattern.compile("(?is)\\$\\{[^\\r\\n]{0,512}?jndi\\s*:\\s*([a-z][a-z0-9.+-]{0,20})://");
   private static final Pattern REQUEST_XXE_EXTERNAL_ENTITY =
@@ -1400,7 +1397,7 @@ public final class DetectorEngine {
           "Request input selects an internal HTTP destination", request,
           Map.of("url", abbreviate(rawUrl), "host", host)));
     }
-    if (isCallbackHost(host)) {
+    if (CallbackDomain.matches(host)) {
       return Optional.of(
           Detection.log(
               "ssrf",
@@ -1486,7 +1483,7 @@ public final class DetectorEngine {
               request,
               Map.of("mechanism", hook, "host", host, "href", abbreviate(href))));
     }
-    if (isCallbackHost(host)) {
+    if (CallbackDomain.matches(host)) {
       return Optional.of(
           Detection.log(
               "ssrf",
@@ -1602,7 +1599,7 @@ public final class DetectorEngine {
       return Optional.empty();
     }
     String normalized = NetworkHost.normalize(host);
-    if (isCallbackHost(normalized)) {
+    if (CallbackDomain.matches(normalized)) {
       return Optional.of(
           Detection.log(
               "dns",
@@ -2647,10 +2644,6 @@ public final class DetectorEngine {
 
   private static int effectivePort(URI uri) {
     return uri.getPort() >= 0 ? uri.getPort() : ("https".equalsIgnoreCase(uri.getScheme()) ? 443 : 80);
-  }
-
-  private static boolean isCallbackHost(String host) {
-    return host.length() <= 253 && DNSLOG_DOMAIN.matcher(host).matches();
   }
 
   private static boolean looksObfuscatedHost(String host) {

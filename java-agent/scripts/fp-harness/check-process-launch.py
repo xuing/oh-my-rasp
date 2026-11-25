@@ -3,6 +3,7 @@
 import argparse
 from collections import Counter
 import json
+import shutil
 from pathlib import Path
 import subprocess
 import tempfile
@@ -28,7 +29,10 @@ def main():
         if "javac 1.8." not in version.stdout + version.stderr:
             checks.append("ProcessPipelineCheck")
         if track == "main":
-            checks.extend(["GeneratedOutputCheck", "RenderedWriteCheck"])
+            curl = shutil.which("curl")
+            if curl is None:
+                parser.error("the primary process-launch check needs curl for the loopback transfer")
+            checks.extend(["GeneratedOutputCheck", "RenderedWriteCheck", "CallbackCommandCheck"])
         sources = [src / (n + ".java") for n in [*checks, "HttpTransportCheck", "ProcessPolicyCheck"]]
         subprocess.run(["javac", "-d", tmp, *sources], check=True)
         baseline = subprocess.run(["java", "-cp", tmp, "ProcessLaunchCheck", "list-baseline"],
@@ -42,6 +46,8 @@ def main():
                 log = Path(tmp) / f"{name}-{mode}.jsonl"
                 rendered = name in ("GeneratedOutputCheck", "RenderedWriteCheck")
                 probe_args = [mode, str(rounds)] if rendered else [track, mode, str(rounds)]
+                if name == "CallbackCommandCheck":
+                    probe_args = [mode, curl, str(rounds)]
                 run = subprocess.run(["java", "-Xverify:all", f"-javaagent:{agent}", "-Dohmyrasp.standalone=true",
                                       f"-Dohmyrasp.force_block={str(managed).lower()}", f"-Dohmyrasp.mode={mode}",
                                       "-Dohmyrasp.log.sync=true", f"-Dohmyrasp.log={log}", "-cp", tmp,
@@ -54,6 +60,13 @@ def main():
                         raise SystemExit("agent changed access to the application's command list")
                 rows = [json.loads(line) for line in log.read_text().splitlines()]
                 events = [e for e in rows if e.get("kind") == "detection" or e.get("event") == "ohmyrasp-detection"]
+                if name == "CallbackCommandCheck":
+                    if len(events) != 2 * rounds or any(
+                            e["algorithm"] != "command_dnslog" or e["details"].get("host") != "probe.dnslog.cn"
+                            or e["details"].get("process_operation") != "ProcessImpl.start"
+                            or (e["action"] == "block") != (mode == "block") for e in events):
+                        raise SystemExit(f"unexpected callback destination decisions in {mode}")
+                    continue
                 if name in ("GeneratedOutputCheck", "RenderedWriteCheck"):
                     if len(events) != 2 * rounds or any(e["algorithm"] != "writeFile_generated_script"
                                                 or (e["action"] == "block") != (mode == "block") for e in events):

