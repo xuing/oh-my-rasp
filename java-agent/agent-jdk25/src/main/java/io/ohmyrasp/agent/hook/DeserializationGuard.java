@@ -23,10 +23,11 @@ public final class DeserializationGuard {
 
   static ObjectInputFilter.Status check(ObjectInputFilter.FilterInfo info) {
     Class<?> serialClass = info == null ? null : info.serialClass();
-    // FilterInfo is consulted for stream metadata too (array length, depth, …);
-    // only a concrete class is relevant to us — defer everything else.
+    // An array descriptor or allocation does not establish the presence of any
+    // component instance. Leave array policy (including length limits) to the
+    // application filter; ordinary object elements have their own class checks.
     try {
-      return serialClass == null || !BeanShellTypes.permitsTypeCheck(serialClass)
+      return serialClass == null || serialClass.isArray() || !BeanShellTypes.permitsTypeCheck(serialClass)
           ? ObjectInputFilter.Status.UNDECIDED : check(serialClass.getName());
     } catch (LinkageError | SecurityException unavailable) {
       return ObjectInputFilter.Status.UNDECIDED;

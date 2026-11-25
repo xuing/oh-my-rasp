@@ -16,12 +16,68 @@ public final class SerialFilterCheck {
         if (in.getObjectInputFilter() != filter) throw new AssertionError("stream filter identity");
       }
       Object result = in.readObject();
-      if (value instanceof Report && value.equals(result)) return true;
-      if (result instanceof EvilSerialized marker && marker.marker().equals("weekly")) return true;
-      throw new AssertionError("changed value");
+      if (!sameContents(value, result)) throw new AssertionError("changed value");
+      return true;
     } catch (InvalidClassException rejected) {
       return false;
     }
+  }
+
+  private static boolean sameContents(Object expected, Object actual) {
+    if (expected == null || actual == null) return expected == actual;
+    if (expected.getClass() != actual.getClass()) return false;
+    if (expected instanceof Object[] original) {
+      Object[] received = (Object[]) actual;
+      if (original.length != received.length) return false;
+      for (int i = 0; i < original.length; i++) {
+        if (!sameContents(original[i], received[i])) return false;
+      }
+      return true;
+    }
+    if (expected instanceof EvilSerialized marker) return marker.marker().equals(((EvilSerialized) actual).marker());
+    return expected.equals(actual);
+  }
+
+  private static void checkRead(String label, Object value, ObjectInputFilter filter,
+      String mode, boolean expected) throws Exception {
+    try (HttpTransportCheck.Scope scope = mode.equals("bare") ? null
+        : new HttpTransportCheck.Scope("main", "weekly", "/reports/" + label)) {
+      if (read(value, filter) != expected) throw new AssertionError(label);
+    }
+  }
+
+  private static void checkArrays(String mode) throws Exception {
+    EvilSerialized[] empty = new EvilSerialized[0];
+    EvilSerialized[] vacant = new EvilSerialized[2];
+    EvilSerialized[][] nested = {null, empty, vacant};
+    checkRead("empty", empty, null, mode, true);
+    checkRead("all-null", vacant, null, mode, true);
+    checkRead("nested-empty", nested, null, mode, true);
+    ObjectInputFilter rejectComponent = ObjectInputFilter.Config.createFilter("!" + EvilSerialized.class.getName() + ";*");
+    checkRead("component-policy", empty, rejectComponent, mode, false);
+
+    EvilSerialized[] filled = {null, new EvilSerialized("weekly")};
+    EvilSerialized[][] nestedFilled = {empty, filled};
+    boolean allow = !mode.equals("block");
+    AtomicInteger allocations = new AtomicInteger();
+    ObjectInputFilter observe = info -> {
+      if (info.serialClass() == EvilSerialized[].class && info.arrayLength() == filled.length) allocations.incrementAndGet();
+      return ObjectInputFilter.Status.UNDECIDED;
+    };
+    checkRead("element", filled, observe, mode, allow);
+    checkRead("nested-element", nestedFilled, observe, mode, allow);
+    if (allocations.get() != 2) throw new AssertionError("array allocation did not reach the application filter");
+
+    AtomicInteger denials = new AtomicInteger();
+    ObjectInputFilter limit = info -> {
+      if (info.serialClass() == EvilSerialized[].class && info.arrayLength() > 2) {
+        denials.incrementAndGet();
+        return ObjectInputFilter.Status.REJECTED;
+      }
+      return ObjectInputFilter.Status.UNDECIDED;
+    };
+    checkRead("length-limit", new EvilSerialized[]{null, null, new EvilSerialized("weekly")}, limit, mode, false);
+    if (denials.get() != 1) throw new AssertionError("application array limit");
   }
 
   public static void main(String[] args) throws Exception {
@@ -49,13 +105,9 @@ public final class SerialFilterCheck {
     }
     boolean custom = !setup.equals("plain");
     ObjectInputFilter stream = setup.equals("stream") ? application : null;
-    try (HttpTransportCheck.Scope scope = mode.equals("bare") ? null : new HttpTransportCheck.Scope("main", "weekly")) {
-      if (read(new Report("weekly"), stream) == custom || calls.get() != (custom && !setup.equals("startup") ? 1 : 0)) {
-        throw new AssertionError("application decision");
-      }
-      boolean delivered = read(new EvilSerialized("weekly"), stream);
-      System.out.println("marker=" + delivered);
-      if (delivered == mode.equals("block")) throw new AssertionError("marker receipt");
-    }
+    checkRead("ordinary", new Report("weekly"), stream, mode, !custom);
+    if (calls.get() != (custom && !setup.equals("startup") ? 1 : 0)) throw new AssertionError("application decision");
+    if (setup.equals("stream")) checkArrays(mode);
+    checkRead("marker", new EvilSerialized("weekly"), stream, mode, !mode.equals("block"));
   }
 }

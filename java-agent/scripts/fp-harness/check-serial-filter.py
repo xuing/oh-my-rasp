@@ -27,8 +27,13 @@ def main():
                     raise SystemExit(f"{setup} / {mode}\n" + run.stdout + run.stderr)
                 rows = [json.loads(line) for line in log.read_text().splitlines()]
                 events = [e for e in rows if e.get("kind") == "detection"]
-                if len(events) != 1 or events[0]["algorithm"] != "deserialization_blacklist" or (
-                        events[0]["action"] == "block") != (mode == "block"):
+                expected = ["/reports/marker"]
+                if setup == "stream":
+                    expected.extend(["/reports/element", "/reports/nested-element"])
+                observed = [e["request"]["uri"] for e in events]
+                if sorted(observed) != sorted(expected) or any(e["algorithm"] != "deserialization_blacklist"
+                        or e["details"].get("class") != "io.ohmyrasp.playground.EvilSerialized"
+                        or (e["action"] == "block") != (mode == "block") for e in events):
                     raise SystemExit(f"unexpected serial filter evidence for {setup} / {mode}")
 
 
