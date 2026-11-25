@@ -12,6 +12,7 @@
     "deserialization_http_invoker": "An explicitly selected policy governs a Spring HTTP Invoker exporter calling ObjectInputStream.readObject for a remote invocation.",
     "deserialization_logging_message": "Known cluster, logging or remoting implementation frames supply transport provenance.",
     "deserialization_polymorphic_type": "Known class families, type-resolution behavior or unmarshaller implementations affect the judgment.",
+    "deserialization_xmlrpc_serialized": "An explicitly selected policy governs Apache XML-RPC reading a serialized extension value through ObjectInputStream.",
     "deserialization_protocol_class": "The constructor selected for an OpenWire exception belongs to a class outside the Throwable hierarchy.",
     "deserialization_remoting_transport": "Known cluster, logging or remoting implementation frames supply transport provenance.",
     "deserialization_session_file": "The judgment assumes file-backed session persistence and suspicious session-ID semantics.",

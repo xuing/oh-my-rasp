@@ -46,7 +46,7 @@ Each package injects ASM bytecode hooks at JVM class-load / retransform time acr
 ### Blocking Semantics Across Tracks
 
 - **`ohmyrasp-java8`, `ohmyrasp-java11`, `ohmyrasp-java17`**: With baked-in `mode=block`, exploit-grade sink detections (command execution, sensitive file reads/script writes, remote JNDI, deserialization gadgets, SQLi/JDBC, XXE, SSRF, Base64 CVE-2026-114938, and servlet path/JWT/cookie checks) throw `Java*RaspBlockException` both inside HTTP requests and in standalone JVMs.
-- **`ohmyrasp-jdk21`, `ohmyrasp-jdk25`**: Enforces blocking (`OhMyRaspBlockException`) on all HTTP-request-correlated detections (`ThreadLocal<RequestContext>`) and explicitly marks `detectBase64Decode`, `detectHessianType`, `detectProtocolClassInstantiation` for request-less blocking; non-request sink calls without HTTP context emit structured JSON detection alerts to `stderr`.
+- **`ohmyrasp-jdk21`, `ohmyrasp-jdk25`** use the evidence available at the hook and the active policy to decide whether to block. Some rules can enforce outside an HTTP request, including class checks on an XML-RPC object stream. [Detection policies](../../docs/detection.md#deserialization-defenses)
 
 ## Standalone Profile (`META-INF/ohmyrasp-shirudo.properties`)
 

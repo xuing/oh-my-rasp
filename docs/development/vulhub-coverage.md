@@ -674,6 +674,7 @@ coverage, separate from the Java 25 behavioral replay suite:
   startup/readiness quiet and blocks `ObjectInputStream.resolveClass` with
   `java8_deserialization_gadget_class` on `TemplatesImpl` before marker
   creation.
+  The [packaged parser check](../../java-agent/scripts/fp-harness/XmlRpcReadCheck.java) exercises the XML-RPC library selected by both OFBiz releases using local values. See the [17.12.01 build manifest](https://github.com/apache/ofbiz-framework/blob/release17.12.01/build.gradle) and the build manifest in the [18.12.09 source archive](https://archive.apache.org/dist/ofbiz/apache-ofbiz-18.12.09.zip).
 - [x] Run the real Java 11 Adobe ColdFusion CVE-2023-26360 Vulhub application
   acceptance: `scripts/acceptance-vulhub-coldfusion-26360-java11.sh` starts
   `vulhub/coldfusion:2018.0.15`, verifies the image JRE is Java 11.0.12,

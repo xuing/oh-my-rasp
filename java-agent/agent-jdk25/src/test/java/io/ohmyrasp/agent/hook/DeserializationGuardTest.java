@@ -70,6 +70,29 @@ final class DeserializationGuardTest {
   }
 
   @Test
+  void nestedXmlRpcReadsKeepOnlyTheirOwnStreamIdentities() throws Exception {
+    var header = new java.io.ByteArrayOutputStream();
+    new java.io.ObjectOutputStream(header).close();
+    try (var outer = new java.io.ObjectInputStream(new java.io.ByteArrayInputStream(header.toByteArray()));
+         var inner = new java.io.ObjectInputStream(new java.io.ByteArrayInputStream(header.toByteArray()))) {
+      XmlRpcReadScope.enter();
+      try {
+        XmlRpcReadScope.reading(outer);
+        assertFalse(XmlRpcReadScope.reads(inner));
+        XmlRpcReadScope.enter();
+        try {
+          XmlRpcReadScope.reading(inner);
+          assertTrue(XmlRpcReadScope.reads(outer));
+          assertTrue(XmlRpcReadScope.reads(inner));
+        } finally { XmlRpcReadScope.exit(); }
+        assertTrue(XmlRpcReadScope.reads(outer));
+        assertFalse(XmlRpcReadScope.reads(inner));
+      } finally { XmlRpcReadScope.exit(); }
+      assertFalse(XmlRpcReadScope.reads(outer));
+    }
+  }
+
+  @Test
   void preExistingUndecidedFilterIsStillConsulted() {
     // A pre-existing filter that returns ALLOWED for its own reasons must still
     // be reached when OhMyRasp's check is UNDECIDED (benign class).

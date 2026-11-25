@@ -115,7 +115,7 @@ The descriptions live in the [general catalog](../rules/general.json) and [produ
 | `deserialization_session_file` | — | The judgment assumes file-backed session persistence and suspicious session-ID semantics. |
 | `deserialization_signed_object` | — | Known cluster, logging or remoting implementation frames supply transport provenance. |
 | `deserialization_webflow_state` | — | Spring Web Flow state restoration supplies the deserialization context. |
-| `deserialization_xmlrpc_serialized` | Object deserialization is correlated with a particular messaging or RPC transport. | — |
+| `deserialization_xmlrpc_serialized` | — | An explicitly selected policy governs Apache XML-RPC reading a serialized extension value through ObjectInputStream. |
 | `directory_reflect` | Explicit directory policy selects a dispatch mechanism or a filesystem location. | — |
 | `directory_unwanted` | Explicit directory policy selects a dispatch mechanism or a filesystem location. | — |
 | `directory_userinput` | A request-selected directory is listed. The evidence distinguishes the protected target, a selected walk and a path-only policy. | — |

@@ -2078,22 +2078,10 @@ same patch as any new Java-compatible Vulhub replay.
 - `deserialization_hessian_type` applies at built-in Hessian object allocation.
   The local verification round-trips inert records through Caucho Hessian and Dubbo’s public Hessian2 serialization interface.
   The [XXL-JOB entry](vulhub-coverage.md) records the dependency boundary for the Vulhub image.
-- `deserialization_xmlrpc_serialized` covers Apache XML-RPC extension values
-  where a `<serializable>` XML element is decoded and passed to
-  `ObjectInputStream` during request handling. This targets Apache OFBiz XMLRPC
-  deserialization chains, including CVE-2020-9496 and CVE-2023-49070, without
-  blocking ordinary XML-RPC primitives, arrays, structs, or base64 byte values.
-  The playground and acceptance suite include the Vulhub-shaped
-  `/webtools/control/xmlrpc` XML-RPC serialized-value POST flow. Real Java 8
-  Vulhub evidence is provided by
-  `scripts/acceptance-vulhub-ofbiz-9496-java8.sh`: baseline OFBiz 17.12.01
-  creates `/tmp/ohmyrasp-ofbiz-9496-success`, while protected mode blocks
-  `java8_deserialization_gadget_class` on `TemplatesImpl` before the marker is
-  created. `scripts/acceptance-vulhub-ofbiz-49070-java8.sh` covers the
-  unauthenticated OFBiz 18.12.09
-  `/webtools/control/xmlrpc;/?USERNAME=&PASSWORD=&requirePasswordChange=Y`
-  variant: baseline creates `/tmp/ohmyrasp-ofbiz-49070-success`, while
-  protected mode blocks the same gadget class before marker creation.
+- `deserialization_xmlrpc_serialized` is an explicit policy for the Apache XML-RPC
+  extension read. The resolved Java type policy applies independently. [Deserialization defenses](../detection.md#deserialization-defenses)
+  The [Vulhub ledger](vulhub-coverage.md) records the earlier OFBiz application outcomes for
+  CVE-2020-9496 and CVE-2023-49070.
 - `deserialization_rmi_registry_bind` covers RMI Registry `bind`/`rebind`
   calls that arrive through RMI transport dispatch and carry a proxy or
   UnicastRef-style remote reference. This targets Java RMI Registry

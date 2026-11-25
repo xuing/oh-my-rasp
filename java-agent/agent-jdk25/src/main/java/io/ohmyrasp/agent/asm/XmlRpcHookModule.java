@@ -1,28 +1,35 @@
 package io.ohmyrasp.agent.asm;
 
+import io.ohmyrasp.agent.hook.XmlRpcReadScope;
 import org.objectweb.asm.MethodVisitor;
+import org.objectweb.asm.Type;
+import org.objectweb.asm.commons.Method;
+import org.objectweb.asm.Opcodes;
 
 final class XmlRpcHookModule implements HookModule {
-  @Override
-  public boolean matchesClass(String className) {
-    return className.equals("org/apache/xmlrpc/parser/SerializableParser");
+  @Override public boolean matchesClass(String owner) {
+    return "org/apache/xmlrpc/parser/SerializableParser".equals(owner);
   }
 
-  @Override
-  public MethodVisitor visitMethod(
-      String className,
-      MethodVisitor methodVisitor,
-      int access,
-      String methodName,
-      String descriptor) {
-    if (!methodName.equals("getResult") || !descriptor.equals("()Ljava/lang/Object;")) {
-      return methodVisitor;
-    }
-    return new EntryAdvice(methodVisitor, access, methodName, descriptor) {
-      @Override
-      protected void onMethodEnter() {
-        push("ApacheXmlRpc");
-        invokeHook("beforeXmlRpcSerializableValue", "(Ljava/lang/String;)V");
+  @Override public MethodVisitor visitMethod(String owner, MethodVisitor delegate, int access, String name, String desc) {
+    if (!"getResult".equals(name) || !"()Ljava/lang/Object;".equals(desc)) return delegate;
+    return new ScopedMethodAdvice(Opcodes.ASM9, delegate, access, name, desc) {
+      @Override protected void enterDispatch() {
+        invokeStatic(Type.getType(XmlRpcReadScope.class), Method.getMethod("void enter()"));
+      }
+
+      @Override protected void exitDispatch() {
+        invokeStatic(Type.getType(XmlRpcReadScope.class), Method.getMethod("void exit()"));
+      }
+
+      @Override public void visitMethodInsn(int op, String target, String method, String signature, boolean itf) {
+        if (op == Opcodes.INVOKEVIRTUAL && "java/io/ObjectInputStream".equals(target)
+            && "readObject".equals(method) && "()Ljava/lang/Object;".equals(signature)) {
+          dup();
+          mv.visitMethodInsn(Opcodes.INVOKESTATIC, "io/ohmyrasp/agent/hook/OhMyRaspHooks",
+              "beforeXmlRpcObjectRead", "(Ljava/io/ObjectInputStream;)V", false);
+        }
+        super.visitMethodInsn(op, target, method, signature, itf);
       }
     };
   }

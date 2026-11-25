@@ -32,7 +32,9 @@ final class ObjectInputStreamHookModule implements HookModule {
         @Override public void visitMethodInsn(int opcode, String owner, String name, String desc, boolean itf) {
           if (opcode == Opcodes.INVOKEINTERFACE && "java/io/ObjectInputFilter".equals(owner)
               && "checkInput".equals(name) && CHECK.equals(desc)) {
-            super.visitMethodInsn(Opcodes.INVOKESTATIC, GUARD, name, "(" + FILTER + CHECK.substring(1), false);
+            mv.visitVarInsn(Opcodes.ALOAD, 0);
+            super.visitMethodInsn(Opcodes.INVOKESTATIC, GUARD, name,
+                "(" + FILTER + "Ljava/io/ObjectInputFilter$FilterInfo;Ljava/io/ObjectInputStream;)Ljava/io/ObjectInputFilter$Status;", false);
           } else {
             super.visitMethodInsn(opcode, owner, name, desc, itf);
           }

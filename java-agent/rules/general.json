@@ -12,7 +12,6 @@
     "deserialization_jms_object_message": "Object deserialization is correlated with a particular messaging or RPC transport.",
     "deserialization_rmi_registry_bind": "The registry bind is observed in an RMI transport context with a proxy or reference type.",
     "deserialization_rmi_transport": "Object deserialization is correlated with a particular messaging or RPC transport.",
-    "deserialization_xmlrpc_serialized": "Object deserialization is correlated with a particular messaging or RPC transport.",
     "directory_reflect": "Explicit directory policy selects a dispatch mechanism or a filesystem location.",
     "directory_unwanted": "Explicit directory policy selects a dispatch mechanism or a filesystem location.",
     "directory_userinput": "A request-selected directory is listed. The evidence distinguishes the protected target, a selected walk and a path-only policy.",

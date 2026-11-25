@@ -219,20 +219,10 @@ def extract_jdk25() -> dict[str, object]:
     src_dir = JAVA_AGENT / "agent-jdk25" / "src" / "main" / "java" / "io" / "ohmyrasp" / "agent"
     reg_text = (src_dir / "asm" / "HookRegistry.java").read_text(encoding="utf-8")
     det_text = (src_dir / "detect" / "DetectorEngine.java").read_text(encoding="utf-8")
-    hooks_text = (src_dir / "hook" / "OhMyRaspHooks.java").read_text(encoding="utf-8")
     gradle_text = (JAVA_AGENT / "agent-jdk25" / "build.gradle.kts").read_text(encoding="utf-8")
 
     modules = sorted(set(re.findall(r"new ([A-Za-z0-9]+HookModule)\(", reg_text)))
     capabilities = sorted(set(re.findall(r"\bpublic\s+Optional<Detection>\s+detect([A-Z][A-Za-z0-9]+)\(", det_text)))
-    non_req_blocks = sorted(
-        set(
-            re.findall(
-                r"emit\(\s*DETECTORS\.detect([A-Z][A-Za-z0-9]+)\([^;]+?\)\s*,\s*true\s*,\s*true\s*\)",
-                hooks_text,
-                re.S,
-            )
-        )
-    )
     baked_keys = sorted(set(re.findall(r"^(standalone|lock_config|mode|control|log|latency_sample)=", gradle_text, re.M)))
 
     grouped: dict[str, list[str]] = {cat: [] for cat in CATEGORY_ORDER}
@@ -249,7 +239,6 @@ def extract_jdk25() -> dict[str, object]:
         "block_exception": "OhMyRaspBlockException",
         "modules": modules,
         "capabilities": capabilities,
-        "non_req_blocks": non_req_blocks,
         "grouped": {k: v for k, v in grouped.items() if v},
         "baked_keys": baked_keys,
     }
@@ -355,11 +344,10 @@ def render_top_readme(
         j25_str = ", ".join(f"`{m}`" for m in j25_items) if j25_items else "-"
         w(f"| **{cat}** | {CATEGORY_DESCRIPTIONS[cat]} | {bp_str} | {j25_str} |")
     w("")
-    non_req = ", ".join(f"`detect{c}`" for c in jdk25["non_req_blocks"])
     w("### Blocking Semantics Across Tracks")
     w("")
     w("- **`ohmyrasp-java8`, `ohmyrasp-java11`, `ohmyrasp-java17`**: With baked-in `mode=block`, exploit-grade sink detections (command execution, sensitive file reads/script writes, remote JNDI, deserialization gadgets, SQLi/JDBC, XXE, SSRF, Base64 CVE-2026-114938, and servlet path/JWT/cookie checks) throw `Java*RaspBlockException` both inside HTTP requests and in standalone JVMs.")
-    w(f"- **`ohmyrasp-jdk21`, `ohmyrasp-jdk25`**: Enforces blocking (`OhMyRaspBlockException`) on all HTTP-request-correlated detections (`ThreadLocal<RequestContext>`) and explicitly marks {non_req} for request-less blocking; non-request sink calls without HTTP context emit structured JSON detection alerts to `stderr`.")
+    w("- **`ohmyrasp-jdk21`, `ohmyrasp-jdk25`** use the evidence available at the hook and the active policy to decide whether to block. Some rules can enforce outside an HTTP request, including class checks on an XML-RPC object stream. [Detection policies](../../docs/detection.md#deserialization-defenses)")
     w("")
     w("## Standalone Profile (`META-INF/ohmyrasp-shirudo.properties`)")
     w("")
@@ -591,12 +579,10 @@ def render_primary_readme(jdk25: dict[str, object], bf: dict[str, str], vulhub: 
         "started, `cloud_direct` is forced off, and `/tmp/ohmyrasp-control.json` or "
         "`OHMYRASP_MODE=off` is ignored."
     )
-    non_req = ", ".join(f"`detect{c}`" for c in jdk25["non_req_blocks"])
     w(
-        "- **Blocking enforcement**: Built with `mode=block`; throws "
-        f"`{jdk25['block_exception']}` on HTTP-request-correlated exploit detections and on "
-        f"request-less blocking sinks ({non_req}); request-less sink probes without an active "
-        "HTTP request log structured JSON detections to `stderr`."
+        "- **Blocking enforcement** uses `mode=block`. Enforcement outside an HTTP request depends on "
+        "the hook evidence and the active rule. Monitor decisions emit structured events to `stderr`. "
+        "[Detection policies](../../../docs/detection.md#deserialization-defenses)"
     )
     w(
         "- **Logging**: Emits structured JSON detection events directly to `stderr` "

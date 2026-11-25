@@ -44,6 +44,7 @@ public record Detection(
         || ("directory_reflect".equals(algorithm) && "directory_dispatch".equals(basis))
         || ("readFile_outsideWebroot".equals(algorithm) && "system_directory".equals(basis))
         || ("readFile_userinput".equals(algorithm) && "requested_path_only".equals(basis))
+        || ("deserialization_xmlrpc_serialized".equals(algorithm) && "xmlrpc_extension_read".equals(basis))
         || ("deserialization_http_invoker".equals(algorithm) && "invocation_stream_read".equals(basis))
         || ("deserialization_http_object_stream".equals(algorithm) && "servlet_stream_read".equals(basis))
         || ("ssrf_protocol".equals(algorithm) && "archive_scheme_only".equals(basis))

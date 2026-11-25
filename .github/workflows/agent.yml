@@ -41,7 +41,7 @@ jobs:
             -v "$PWD/java-agent:/workspace" \
             -w /workspace \
             "$gradle_image" \
-            gradle --no-daemon --no-problems-report clean check :stageYarnProbe :stageServletProbe :stageElasticLz4Probe :stageSpringProcessProbe :stageOpenWireProbe :stageHessianProbe \
+            gradle --no-daemon --no-problems-report clean check :stageYarnProbe :stageServletProbe :stageElasticLz4Probe :stageSpringProcessProbe :stageOpenWireProbe :stageHessianProbe :stageXmlRpcProbe \
             :agent-jdk25:jdk21Jars \
             :agent-java8:shirudoUpatchJar \
             :agent-java11:shirudoUpatchJar \
@@ -98,6 +98,7 @@ jobs:
             java-agent/build/openwire-probe/fixed/*.jar
             java-agent/build/spring-process-probe/**/*.jar
             java-agent/build/runtime-probes/*.jar
+            java-agent/build/xmlrpc-probe/*.jar
             java-agent/build/servlet-probe/*.jar
             java-agent/agent-java8/build/libs/ohmyrasp-agent-java8.jar
             java-agent/agent-java11/build/libs/ohmyrasp-agent-java11.jar
@@ -203,8 +204,8 @@ jobs:
           if any(e.get("kind") == "detection" or e.get("event") == "ohmyrasp-detection" for e in events):
               sys.exit("Ordinary background job produced a detection")
           PY
-      - name: Verify ordinary Spring RPC and serialization policy
-        run: python3 java-agent/scripts/fp-harness/check-http-invoker.py "java-agent/${{ matrix.jar }}" --jar-dir java-agent/build/spring-process-probe/legacy --api-dir java-agent/build/servlet-probe
+      - name: Verify Spring and Apache XML-RPC object-read policies
+        run: python3 java-agent/scripts/fp-harness/check-http-invoker.py "java-agent/${{ matrix.jar }}" --jar-dir java-agent/build/spring-process-probe/legacy --api-dir java-agent/build/servlet-probe --xmlrpc-dir java-agent/build/xmlrpc-probe
       - name: Verify Hessian allocation and safe decoder substitutions
         run: python3 java-agent/scripts/fp-harness/check-hessian-allocation.py "java-agent/${{ matrix.jar }}" --jar-dir java-agent/build/hessian-probe
       - name: Verify OpenWire exception types against the packaged agent

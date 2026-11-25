@@ -1346,15 +1346,21 @@ public final class OhMyRaspHooks {
     }
   }
 
-  static void beforeSerialFilterClass(String className) {
+  static void beforeSerialFilterClass(String className, java.io.ObjectInputStream stream) {
     if (detectionDisabled()) {
       return;
     }
-    // Preserve the serial guard's explicit non-HTTP enforcement scope, but let
-    // the same policy and algorithm switches decide both the action and the log.
-    boolean outsideRequest = blockingEnabled() && isDangerousDeserialization(className);
-    emit(DETECTORS.detectDeserialization(className, currentRequest(), stackTraceClassNames()),
-        true, outsideRequest);
+    var finding = DETECTORS.detectDeserialization(className, currentRequest(), stackTraceClassNames());
+    if (finding.isEmpty()) return;
+    boolean xmlRpc = XmlRpcReadScope.reads(stream);
+    Detection event = finding.get();
+    if (xmlRpc) {
+      var details = new java.util.LinkedHashMap<>(event.details());
+      details.put("stream_operation", "xmlrpc_extension_read");
+      event = new Detection(event.timestamp(), event.hook(), event.algorithm(), event.action(),
+          event.confidence(), event.message(), event.request(), details);
+    }
+    emit(Optional.of(event), true, (xmlRpc || blockingEnabled()) && isDangerousDeserialization(className));
   }
 
   /**
@@ -1480,17 +1486,14 @@ public final class OhMyRaspHooks {
     if (!detectionDisabled()) emit(DETECTORS.detectHessianType(selected, basis, currentRequest()), true, true);
   }
 
-  public static void beforeXmlRpcSerializableValue(String mechanism) {
-    if (detectionDisabled()) {
-      return;
-    }
-    try {
-      emit(DETECTORS.detectXmlRpcSerializableValue(mechanism, currentRequest()));
-    } catch (OhMyRaspBlockException blocked) {
-      throw blocked;
-    } catch (Throwable throwable) {
-      quiet("beforeXmlRpcSerializableValue", throwable);
-    }
+  /** Compatibility entry for callers that only saw a declaration. */
+  public static void beforeXmlRpcSerializableValue(String mechanism) {}
+
+  public static void beforeXmlRpcObjectRead(java.io.ObjectInputStream stream) {
+    if (detectionDisabled()) return;
+    XmlRpcReadScope.reading(stream);
+    if (!POLICY.selectsAlgorithm("deserialization_xmlrpc_serialized")) return;
+    emit(DETECTORS.detectXmlRpcSerializableValue("ApacheXmlRpc", currentRequest()), true, true);
   }
 
   public static void beforeJavaBeansStatement(Object statement) {

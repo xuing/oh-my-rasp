@@ -1341,15 +1341,6 @@ public final class VulnerableServlet extends HttpServlet {
 
   private static String ofbizXmlRpc(HttpServletRequest request) throws Exception {
     String body = requestBody(request);
-    if (body.isBlank()) {
-      body =
-          "<?xml version=\"1.0\"?><methodCall><methodName>ping</methodName><params><param>"
-              + "<value><serializable>rO0ABXNyAA==</serializable></value></param></params>"
-              + "</methodCall>";
-    }
-    if (body.toLowerCase(Locale.ROOT).contains("<serializable>")) {
-      hook("beforeXmlRpcSerializableValue", new Class<?>[] {String.class}, "ApacheXmlRpc");
-    }
     return "ofbiz-xmlrpc=" + body.length();
   }
 
@@ -4012,11 +4003,9 @@ public final class VulnerableServlet extends HttpServlet {
       case "deserialization-hessian-type" -> {
         return "Hessian type declared";
       }
-      case "deserialization-xmlrpc-serialized" ->
-          hook(
-              "beforeXmlRpcSerializableValue",
-              new Class<?>[] {String.class},
-              "ApacheXmlRpc");
+      case "deserialization-xmlrpc-serialized" -> {
+        return "XML-RPC extension declared";
+      }
       case "deserialization-rmi-registry-bind" ->
           hook(
               "beforeRmiRegistryBind",

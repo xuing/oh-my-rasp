@@ -278,29 +278,11 @@ final class DeserializationDetector {
 
   static Optional<Detection> detectXmlRpcSerializableValue(
       String mechanism, RequestContext request) {
-    RequestContext safeRequest = request == null ? RequestContext.empty() : request;
-    if (!safeRequest.active()) {
-      return Optional.empty();
-    }
-    String source = mechanism == null || mechanism.isBlank() ? "ApacheXmlRpc" : mechanism;
-    String contentType = safeRequest.header("content-type").orElse("");
-    int confidence =
-        lower(contentType).contains("xml")
-            || safeRequest.uri().toLowerCase(Locale.ROOT).contains("xmlrpc")
-            ? 98
-            : 92;
-    return Optional.of(
-        Detection.log(
-            "deserialization",
-            "deserialization_xmlrpc_serialized",
-            confidence,
-            "XML-RPC request is deserializing a Java serialized extension value",
-            safeRequest,
-            Map.of(
-                "mechanism", source,
-                "method", safeRequest.method(),
-                "uri", abbreviate(safeRequest.uri()),
-                "contentType", abbreviate(contentType))));
+    if (!"ApacheXmlRpc".equals(mechanism)) return Optional.empty();
+    return Optional.of(Detection.log("deserialization", "deserialization_xmlrpc_serialized", 95,
+        "Apache XML-RPC requested an object read for a serialized extension value",
+        request == null ? RequestContext.empty() : request,
+        Map.of("mechanism", mechanism, "decision_basis", "xmlrpc_extension_read")));
   }
 
   private static Optional<String> fastjsonClassResourceMechanism(String resource) {

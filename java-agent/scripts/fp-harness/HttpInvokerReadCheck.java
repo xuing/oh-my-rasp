@@ -45,7 +45,7 @@ public final class HttpInvokerReadCheck {
     return bytes.toByteArray();
   }
 
-  private static void install(String rule) throws Exception {
+  static void install(String rule) throws Exception {
     Class<?> policy = Class.forName("io.ohmyrasp.agent.policy.AgentPolicy");
     Object parsed = policy.getMethod("parse", String.class).invoke(null, "{\"rules\":[" + rule + "]}");
     Class.forName("io.ohmyrasp.agent.hook.OhMyRaspHooks").getMethod("installPolicy", policy, String.class)

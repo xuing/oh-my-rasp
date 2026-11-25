@@ -520,21 +520,7 @@ JSON
 {"name":"p1","type":"h2","configuration":"${dataease_h2_datasource_configuration_b64}"}
 JSON
 )"
-  local ofbiz_xmlrpc_serialized_body
-  ofbiz_xmlrpc_serialized_body="$(cat <<'XML'
-<?xml version="1.0"?>
-<methodCall>
-  <methodName>performCommand</methodName>
-  <params>
-    <param>
-      <value>
-        <serializable>rO0ABXNyAA==</serializable>
-      </value>
-    </param>
-  </params>
-</methodCall>
-XML
-)"
+  local ofbiz_xmlrpc_report='<methodCall><methodName>report</methodName></methodCall>'
   local nexus_cve_2024_4956_path="/%2F%2F%2F%2F%2F%2F%2F..%2F..%2F..%2F..%2F..%2F..%2F..%2Fetc%2Fpasswd"
   local glassfish_cve_2017_1000028_path="/theme/META-INF/%c0%ae%c0%ae/%c0%ae%c0%ae/%c0%ae%c0%ae/%c0%ae%c0%ae/%c0%ae%c0%ae/%c0%ae%c0%ae/%c0%ae%c0%ae/%c0%ae%c0%ae/%c0%ae%c0%ae/%c0%ae%c0%ae/etc/passwd"
   local weblogic_uddi_operator_url="http://172.19.0.2:6379/test%0D%0A%0D%0Aconfig%20set%20dir%20/etc/%0D%0Asave"
@@ -792,8 +778,7 @@ XML
   expect_not_blocked "$version" baseline_deserialization_hessian_type "${baseline_url}/rasp/policy/deserialization-hessian-type"
   expect_not_blocked "$version" baseline_xxl_job_hessian_api_deserialization -X POST -H "Content-Type: x-application/hessian" --data-binary "$xxl_job_hessian_body" "${baseline_url}/xxl-job-admin/api"
   expect_not_blocked "$version" baseline_deserialization_xmlrpc_serialized -H "Content-Type: application/xml" "${baseline_url}/rasp/policy/deserialization-xmlrpc-serialized"
-  expect_not_blocked "$version" baseline_ofbiz_cve_2020_9496_xmlrpc_serialized -X POST -H "Content-Type: application/xml" --data-binary "$ofbiz_xmlrpc_serialized_body" "${baseline_url}/webtools/control/xmlrpc"
-  expect_not_blocked "$version" baseline_ofbiz_cve_2023_49070_xmlrpc_serialized -X POST -H "Content-Type: application/xml" --data-binary "$ofbiz_xmlrpc_serialized_body" "${baseline_url}/webtools/control/xmlrpc"
+  expect_not_blocked "$version" baseline_ofbiz_report -X POST -H "Content-Type: application/xml" --data-binary "$ofbiz_xmlrpc_report" "${baseline_url}/webtools/control/xmlrpc"
   expect_not_blocked "$version" baseline_deserialization_rmi_registry_bind "${baseline_url}/rasp/policy/deserialization-rmi-registry-bind"
   expect_not_blocked "$version" baseline_java_rmi_registry_bind_deserialization "${baseline_url}/rasp/policy/deserialization-rmi-registry-bind"
   expect_not_blocked "$version" baseline_java_rmi_registry_bind_deserialization_bypass "${baseline_url}/rasp/policy/deserialization-rmi-registry-bind-bypass"
@@ -1314,9 +1299,8 @@ XML
   expect_body_contains "${protected_url}/jbossmq-httpil/HTTPServerILServlet" "jboss-http-object-stream=" -X POST -H "Content-Type: application/x-java-serialized-object" --data-binary "$java_serialized_body"
   expect_body_contains "${protected_url}/rasp/policy/deserialization-hessian-type" "Hessian type declared"
   expect_body_contains "${protected_url}/xxl-job-admin/api" "xxl-job-hessian-api=" -X POST -H "Content-Type: x-application/hessian" --data-binary "$xxl_job_hessian_body"
-  expect_block "$version" deserialization_xmlrpc_serialized -H "Content-Type: application/xml" "${protected_url}/rasp/policy/deserialization-xmlrpc-serialized"
-  expect_block "$version" deserialization_ofbiz_cve_2020_9496_xmlrpc_serialized -X POST -H "Content-Type: application/xml" --data-binary "$ofbiz_xmlrpc_serialized_body" "${protected_url}/webtools/control/xmlrpc"
-  expect_block "$version" deserialization_ofbiz_cve_2023_49070_xmlrpc_serialized -X POST -H "Content-Type: application/xml" --data-binary "$ofbiz_xmlrpc_serialized_body" "${protected_url}/webtools/control/xmlrpc"
+  expect_body_contains "${protected_url}/rasp/policy/deserialization-xmlrpc-serialized" "XML-RPC extension declared"
+  expect_body_contains "${protected_url}/webtools/control/xmlrpc" "ofbiz-xmlrpc=" -X POST -H "Content-Type: application/xml" --data-binary "$ofbiz_xmlrpc_report"
   expect_block "$version" deserialization_rmi_registry_bind "${protected_url}/rasp/policy/deserialization-rmi-registry-bind"
   expect_block "$version" deserialization_java_rmi_registry_bind "${protected_url}/rasp/policy/deserialization-rmi-registry-bind"
   expect_block "$version" deserialization_java_rmi_registry_bind_bypass "${protected_url}/rasp/policy/deserialization-rmi-registry-bind-bypass"
@@ -1466,7 +1450,6 @@ required_algorithms=(
   deserialization_jms_object_message
   deserialization_signed_object
   deserialization_session_file
-  deserialization_xmlrpc_serialized
   deserialization_rmi_registry_bind
   deserialization_polymorphic_type
   xml_decoder_runtime

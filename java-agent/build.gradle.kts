@@ -104,3 +104,12 @@ tasks.register<Sync>("stageHessianProbe") {
     from(rootProject.configurations.detachedConfiguration(*libraries.toTypedArray()).apply { isTransitive = false })
     into(layout.buildDirectory.dir("hessian-probe"))
 }
+
+// The Apache XML-RPC parser and its codec utility are used only by the in-memory RPC fixture.
+tasks.register<Sync>("stageXmlRpcProbe") {
+    val parser = rootProject.dependencies.create("org.apache.xmlrpc:xmlrpc-common:3.1.3")
+    from(rootProject.configurations.detachedConfiguration(parser)) {
+        include("xmlrpc-common-*.jar", "ws-commons-util-*.jar")
+    }
+    into(layout.buildDirectory.dir("xmlrpc-probe"))
+}

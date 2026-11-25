@@ -2319,15 +2319,17 @@ final class DetectorEngineTest {
 
     assertAlgorithm(result, "deserialization_xmlrpc_serialized");
     assertEquals("ApacheXmlRpc", result.orElseThrow().details().get("mechanism"));
-    assertEquals("application/xml", result.orElseThrow().details().get("contentType"));
+    assertEquals("xmlrpc_extension_read", result.orElseThrow().details().get("decision_basis"));
+    assertTrue(result.orElseThrow().requiresExplicitRule());
+    assertTrue(engine.detectXmlRpcSerializableValue("declaration", context).isEmpty());
   }
 
   @Test
-  void ignoresXmlRpcSerializableValueOutsideRequest() {
+  void xmlRpcWorkerReadRequiresExplicitTransportPolicy() {
     var result =
         engine.detectXmlRpcSerializableValue("ApacheXmlRpc", RequestContext.empty());
 
-    assertTrue(result.isEmpty());
+    assertTrue(result.orElseThrow().requiresExplicitRule());
   }
 
   @Test
