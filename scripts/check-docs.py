@@ -32,10 +32,14 @@ are skipped):
 
 and over the evidence ledgers (LEDGERS), which need no Vulhub snapshot here:
 
-  ledger     every acceptance script path they name is a tracked file; every
-             "`<script>.sh` blocks `<id>`" claim names an id written in that
-             script; every script under java-agent/acceptance/vulhub/ has a
-             row in the Vulhub ledger
+  ledger     on each line that names an acceptance script: the script is a
+             tracked file, and every backticked rule id (java-agent/rules/*.json,
+             see java-agent/scripts/rule_catalogue.py) is a whole token in every
+             script the line names, except the scenario labels that open a
+             Covered Targets row; a backticked word shaped like a rule id that
+             the catalogue lacks fails. Every script under
+             java-agent/acceptance/vulhub/ is named on a "- [x]" row of the
+             Vulhub ledger's Covered Targets. Text in HTML comments is ignored.
 
 Usage: python3 scripts/check-docs.py
 """
@@ -51,6 +55,8 @@ import urllib.parse
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(ROOT / "java-agent" / "scripts"))
+import rule_catalogue  # noqa: E402
 RELEASE_WORKFLOW = ROOT / ".github" / "workflows" / "ohmyrasp-release.yml"
 RELEASE_RUNBOOK = "docs/runbooks/release.md"
 
@@ -117,10 +123,14 @@ SETEXT_UNDERLINE = re.compile(r"^ {0,3}(?:=+|-+)\s*$")
 HTML_ANCHOR = re.compile(r"<a\s+(?:id|name)=\"([^\"]+)\"")
 HTML_COMMENT = re.compile(r"<!--.*?-->", re.S)
 
-# An acceptance script as the ledgers name it: relative to java-agent/ or to the repo root.
-SCRIPT_PATH = re.compile(r"(?<![\w/.<-])(?:java-agent/)?(acceptance/[\w./-]+\.sh)\b")
-# "`acceptance/x.sh` blocks `rule_id`": the first code span after "block(s)", within one clause.
-BLOCKS_CLAIM = re.compile(r"\bblocks?\b[^`;]{0,100}?`([A-Za-z]\w*)`")
+# An acceptance script as the ledgers name it: relative to java-agent/ or to the repo root. The path
+# ends at ".sh" (".sh.bak" is a different, untracked file). Links and <placeholder> patterns are not mentions.
+SCRIPT_PATH = re.compile(r"(?<![\w/.<-])(?:java-agent/)?(acceptance/[\w./-]*?\.sh(?:\.\w[\w.]*)?)(?![\w-])")
+# The labels that open a Covered Targets row, "(`label`, `label`; real Java8 acceptance: ...". They name
+# the scenario (often by the primary agent's rule), not what the row's backport script asserts.
+ROW_LABELS = re.compile(r"\(\s*`[^`\n]+`(?:\s*,\s*`[^`\n]+`)*\s*;")
+# A backticked word shaped like a rule id: fileUpload_multipart_script, java8_file_script_write.
+RULE_SHAPED = re.compile(r"[a-z][A-Za-z0-9]*(?:_[A-Za-z0-9]+)+")
 
 
 def git(*args: str) -> str:
@@ -395,50 +405,90 @@ def check_links(files: list[str], problems: list[str]) -> None:
 # --- evidence ledgers ---------------------------------------------------------
 
 def script_mentions(line: str) -> list[tuple[int, str]]:
-    """(end offset, path relative to java-agent/) of each acceptance script the line names."""
-    return [(m.end(), m.group(1)) for m in SCRIPT_PATH.finditer(line)]
+    """(start offset, path relative to java-agent/) of each acceptance script the line names."""
+    return [(m.start(), m.group(1)) for m in SCRIPT_PATH.finditer(line)]
+
+
+def ledger_lines(text: str) -> list[str]:
+    """The ledger's lines with HTML comments blanked out; line numbers are kept."""
+    return HTML_COMMENT.sub(lambda m: "\n" * m.group(0).count("\n"), text).split("\n")
+
+
+@functools.cache
+def acceptance_scripts() -> frozenset[str]:
+    """Tracked .sh files under java-agent/acceptance/, relative to java-agent/."""
+    return frozenset(p.removeprefix("java-agent/") for p in tracked("java-agent/acceptance") if p.endswith(".sh"))
+
+
+@functools.cache
+def script_text(path: str) -> str | None:
+    """A script's text by its path relative to java-agent/, or None if it is not a tracked acceptance script."""
+    return read(f"java-agent/{path}") if path in acceptance_scripts() else None
+
+
+script_tokens = functools.cache(rule_catalogue.tokens)
 
 
 def ledger_line_problems(where: str, line: str, script_text) -> list[str]:
     """Problems on one ledger line. script_text(path) is the script's text, or None if it is not tracked.
 
-    A "blocks `X`" claim belongs to the nearest script named before it on the line, and X must be
-    written in that script: as the expected algorithm, or as the argument a helper checks.
+    On a line that names acceptance scripts, every backticked catalogue rule id is a claim that each of
+    those scripts writes the id as a whole token. The labels that open a Covered Targets row are not
+    claims. A backticked word shaped like a rule id that the catalogue lacks fails: it is a typo, a rule
+    without a description, or a word that is not a rule and should not look like one.
     """
-    problems = []
     mentions = script_mentions(line)
+    if not mentions:
+        return []
+    problems = []
+    texts: dict[str, str] = {}
     for _, path in mentions:
-        if script_text(path) is None:
+        text = script_text(path)
+        if text is None:
             problems.append(f"ledger: {where}: `{path}` is not a tracked script under java-agent/")
-    for claim in BLOCKS_CLAIM.finditer(line):
-        before = [path for end, path in mentions if end <= claim.start()]
-        if not before or (text := script_text(before[-1])) is None:
-            continue
-        rule = claim.group(1)
-        if not re.search(rf"(?<!\w){re.escape(rule)}(?!\w)", text):
+        else:
+            texts[path] = text
+    labels = ROW_LABELS.search(line)
+    if labels and labels.end() <= mentions[0][0]:
+        line = line[:labels.start()] + line[labels.end():]
+    rules = rule_catalogue.rule_ids()
+    for span in INLINE_CODE.finditer(line):
+        word = span.group(0)[1:-1]
+        if word in rules:
+            for path, text in texts.items():
+                if word not in script_tokens(text):
+                    problems.append(f"ledger: {where}: `{path}` never names `{word}`; say what the script asserts")
+        elif RULE_SHAPED.fullmatch(word):
             problems.append(
-                f"ledger: {where}: `{before[-1]}` never names `{rule}`; say what the script asserts")
+                f"ledger: {where}: `{word}` is shaped like a rule id but java-agent/rules/*.json has no such rule;"
+                " correct it, describe the rule in the catalog, or drop the backticks if it is not a rule")
     return problems
 
 
+def covered_rows(ledger: str) -> list[str]:
+    """The "- [x]" rows of the ledger's Covered Targets section."""
+    rows, inside = [], False
+    for line in ledger_lines(ledger):
+        if line.startswith("## "):
+            inside = line == "## Covered Targets"
+        elif inside and line.startswith("- [x]"):
+            rows.append(line)
+    return rows
+
+
 def unreferenced_scripts(ledger: str, scripts: list[str]) -> list[str]:
-    """Scripts (relative to java-agent/) that the ledger text never names."""
-    named = {path for line in ledger.split("\n") for _, path in script_mentions(line)}
+    """Scripts (relative to java-agent/) that no Covered Targets row of the ledger names."""
+    named = {path for row in covered_rows(ledger) for _, path in script_mentions(row)}
     return sorted(set(scripts) - named)
 
 
 def check_ledgers(problems: list[str]) -> None:
-    scripts = {p.removeprefix("java-agent/") for p in tracked("java-agent/acceptance") if p.endswith(".sh")}
-
-    @functools.cache
-    def script_text(path: str) -> str | None:
-        return read(f"java-agent/{path}") if path in scripts else None
-
     for rel in LEDGERS:
-        for no, line in enumerate(read(rel).split("\n"), start=1):
+        for no, line in enumerate(ledger_lines(read(rel)), start=1):
             problems.extend(ledger_line_problems(f"{rel}:{no}", line, script_text))
-    for path in unreferenced_scripts(read(VULHUB_LEDGER), [p for p in scripts if p.startswith("acceptance/vulhub/")]):
-        problems.append(f"ledger: java-agent/{path} has no row in {VULHUB_LEDGER}")
+    vulhub = [p for p in acceptance_scripts() if p.startswith("acceptance/vulhub/")]
+    for path in unreferenced_scripts(read(VULHUB_LEDGER), vulhub):
+        problems.append(f"ledger: java-agent/{path} is not named on a Covered Targets row of {VULHUB_LEDGER}")
 
 
 def check_release_runbook(problems: list[str]) -> None:
