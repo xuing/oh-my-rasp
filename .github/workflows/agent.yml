@@ -41,7 +41,7 @@ jobs:
             -v "$PWD/java-agent:/workspace" \
             -w /workspace \
             "$gradle_image" \
-            gradle --no-daemon --no-problems-report clean check :stageYarnProbe :stageServletProbe :stageElasticLz4Probe :stageSpringProcessProbe :stageOpenWireProbe :stageHessianProbe :stageXmlRpcProbe \
+            gradle --no-daemon --no-problems-report clean check :stageYarnProbe :stageServletProbe :stageElasticLz4Probe :stageSpringProcessProbe :stageOpenWireProbe :stageHessianProbe :stageXmlRpcProbe :stageCollectionsProbe \
             :agent-jdk25:jdk21Jars \
             :agent-java8:shirudoUpatchJar \
             :agent-java11:shirudoUpatchJar \
@@ -94,6 +94,7 @@ jobs:
         with:
           name: java-agents
           path: |
+            java-agent/build/collections-probe/*.jar
             java-agent/build/hessian-probe/*.jar
             java-agent/build/openwire-probe/fixed/*.jar
             java-agent/build/spring-process-probe/**/*.jar
@@ -247,7 +248,7 @@ jobs:
       - name: Verify Spark submit role at servlet dispatch
         run: python3 java-agent/scripts/fp-harness/check-spark-submit.py "java-agent/${{ matrix.jar }}" --api-dir java-agent/build/servlet-probe
       - name: Verify resolved serialization classes and proxy interfaces
-        run: python3 java-agent/scripts/fp-harness/check-stream-resolution.py "java-agent/${{ matrix.jar }}" --beanshell-jar java-agent/build/runtime-probes/bsh.jar
+        run: python3 java-agent/scripts/fp-harness/check-stream-resolution.py "java-agent/${{ matrix.jar }}" --beanshell-jar java-agent/build/runtime-probes/bsh.jar --collections-dir java-agent/build/collections-probe
       - name: Verify JVM and per-stream deserialization filters
         if: startsWith(matrix.jar, 'agent-jdk25/')
         run: python3 java-agent/scripts/fp-harness/check-serial-filter.py "java-agent/${{ matrix.jar }}"

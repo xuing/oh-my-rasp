@@ -14,7 +14,7 @@ public final class HessianAllocationTypes {
       for (Class<?> type = selected; type != null; type = type.getSuperclass()) {
         String name = type.getName();
         if (StreamTypeNames.CONFIG_CONTEXT_TYPES.contains(name) || "org.h2.jdbc.JdbcConnection".equals(name)
-            || (StreamTypeNames.listed(name) && BeanShellTypes.permitsTypeCheck(type))) return true;
+            || (StreamTypeNames.listedForConstruction(name) && BeanShellTypes.permitsTypeCheck(type))) return true;
       }
       return false;
     }

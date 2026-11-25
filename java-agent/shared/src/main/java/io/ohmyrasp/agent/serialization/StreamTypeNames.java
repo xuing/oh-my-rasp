@@ -60,10 +60,22 @@ public final class StreamTypeNames {
               + "javax\\.script\\.ScriptEngineManager|"
               + "bsh\\.(?:XThis(?:\\$Handler)?|This|NameSpace|Interpreter|BSH[A-Za-z0-9_$]+)|"
               + "org\\.apache\\.commons\\.beanutils\\.BeanComparator|"
-              + "org\\.apache\\.commons\\.collections(?:4)?\\.functors\\.(?:Invoker|Instantiate|Chained|Constant)Transformer|"
+              + "org\\.apache\\.commons\\.collections(?:4)?\\.functors\\.(?:Invoker|Instantiate|Chained)Transformer|"
               + "org\\.codehaus\\.groovy\\.runtime\\.(?:ConvertedClosure|MethodClosure)|"
               + "org\\.springframework\\.beans\\.factory\\.config\\.(?:PropertyPathFactoryBean|MethodInvokingFactoryBean)"
               + ")$");
 
-  public static boolean listed(String name) { return name != null && DESERIALIZATION_GADGET_CLASS.matcher(name).matches(); }
+  // Additional types whose native serialization Apache restricted in COLLECTIONS-580.
+  private static final Pattern NATIVE_COLLECTIONS_FUNCTORS = Pattern.compile(
+      "org\\.apache\\.commons\\.collections(?:4)?\\.functors\\.(?:CloneTransformer|ForClosure|WhileClosure|"
+          + "InstantiateFactory|PrototypeFactory\\$Prototype(?:Clone|Serialization)Factory)");
+
+  public static boolean listedForConstruction(String name) {
+    return name != null && DESERIALIZATION_GADGET_CLASS.matcher(name).matches();
+  }
+
+  public static boolean listed(String name) {
+    return listedForConstruction(name) || (name != null && name.startsWith("org.apache.commons.collections")
+        && NATIVE_COLLECTIONS_FUNCTORS.matcher(name).matches());
+  }
 }

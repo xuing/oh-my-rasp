@@ -69,6 +69,7 @@ if [[ -n "$TEST_FILTER" ]]; then test_options=(--tests "$TEST_FILTER"); fi
 extra_tasks=()
 if [[ "${1:-}" == elastic-lz4 ]]; then extra_tasks+=(:stageElasticLz4Probe); fi
 if [[ "${1:-}" == yarn-submit ]]; then extra_tasks+=(:stageYarnProbe); fi
+if [[ "${1:-}" == stream-resolution ]]; then extra_tasks+=(:stageCollectionsProbe); fi
 if [[ "${1:-}" == http-invoker ]]; then extra_tasks+=(:stageSpringProcessProbe :stageServletProbe :stageXmlRpcProbe); fi
 if [[ "${1:-}" == hessian-allocation ]]; then extra_tasks+=(:stageHessianProbe); fi
 if [[ "${1:-}" == openwire-throwable ]]; then extra_tasks+=(:stageOpenWireProbe); fi
@@ -86,6 +87,8 @@ if (( $# )); then
   shift
   if [[ "$probe" == elastic-lz4 ]]; then
     python3 scripts/fp-harness/check-elastic-lz4.py "$jar" --jar-dir /state/build/ohmyrasp/elastic-lz4-probe "$@"
+  elif [[ "$probe" == stream-resolution ]]; then
+    python3 scripts/fp-harness/check-stream-resolution.py "$jar" --collections-dir /state/build/ohmyrasp/collections-probe "$@"
   elif [[ "$probe" == http-invoker ]]; then
     python3 scripts/fp-harness/check-http-invoker.py "$jar" --jar-dir /state/build/ohmyrasp/spring-process-probe/legacy --api-dir /state/build/ohmyrasp/servlet-probe --xmlrpc-dir /state/build/ohmyrasp/xmlrpc-probe "$@"
   elif [[ "$probe" == hessian-allocation ]]; then

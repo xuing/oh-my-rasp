@@ -1,7 +1,7 @@
 import bsh.Primitive;
 import java.io.*;
 import java.lang.reflect.*;
-import org.apache.commons.collections.functors.ConstantTransformer;
+import org.apache.xalan.xsltc.trax.TemplatesImpl;
 
 /** Normal JDK resolution, virtual resolver outcomes and repeated streams on the same thread. */
 public final class StreamResolutionCheck {
@@ -29,11 +29,12 @@ public final class StreamResolutionCheck {
     }) { return in.readObject(); }
   }
 
-  private static void check(String label, Object input, String resolver, Class<?> expectedType, boolean listed,
+  private static Object check(String label, Object input, String resolver, Class<?> expectedType, boolean listed,
       String mode) throws Exception {
     String outcome;
+    Object result = null;
     try {
-      Object result = read(input, resolver);
+      result = read(input, resolver);
       if (result.getClass() != expectedType) throw new AssertionError("resolver result: " + label);
       if (result instanceof Primitive && !Integer.valueOf(42).equals(((Primitive) result).getValue()))
         throw new AssertionError("integer value");
@@ -51,6 +52,30 @@ public final class StreamResolutionCheck {
     System.out.println(label + "=" + outcome);
     String expected = resolver.equals("reject") ? "missing" : listed && mode.equals("block") ? "blocked" : "read";
     if (!mode.equals("observe") && !expected.equals(outcome)) throw new AssertionError(label);
+    return result;
+  }
+
+  // Both API lines have the same public functor methods under different package names.
+  private static void checkCommonsCollections(String pkg, Object marker, String mode) throws Exception {
+    Class<?> equal = Class.forName(pkg + ".EqualPredicate");
+    Object predicate = read(equal.getConstructor(Object.class).newInstance("weekly"), "default");
+    Method evaluate = equal.getMethod("evaluate", Object.class);
+    if (!Boolean.TRUE.equals(evaluate.invoke(predicate, "weekly")) || !Boolean.FALSE.equals(evaluate.invoke(predicate, "daily"))) {
+      throw new AssertionError("equality predicate changed");
+    }
+    Class<?> constant = Class.forName(pkg + ".ConstantTransformer");
+    Constructor<?> constructor = constant.getConstructor(Object.class);
+    Object result = read(constructor.newInstance("weekly"), "default");
+    if (!"weekly".equals(constant.getMethod("transform", Object.class).invoke(result, "daily"))) {
+      throw new AssertionError("constant changed");
+    }
+    Object wrapper = check("nested constant value", constructor.newInstance(marker), "default", constant, true, mode);
+    if (wrapper != null) {
+      Object nested = constant.getMethod("getConstant").invoke(wrapper);
+      if (nested.getClass() != LISTED) {
+        throw new AssertionError("nested value changed");
+      }
+    }
   }
 
   public static void main(String[] args) throws Exception {
@@ -58,8 +83,12 @@ public final class StreamResolutionCheck {
     Object marker = LISTED.getConstructor().newInstance();
     Object report = REPORT.getConstructor().newInstance();
     Object proxy = Proxy.newProxyInstance(StreamResolutionCheck.class.getClassLoader(),
-        new Class<?>[]{ConstantTransformer.class}, new ReportHandler());
+        new Class<?>[]{TemplatesImpl.class}, new ReportHandler());
     try (HttpTransportCheck.Scope scope = new HttpTransportCheck.Scope(track, "weekly")) {
+      if (args.length > 2) {
+        checkCommonsCollections("org.apache.commons.collections.functors", marker, mode);
+        checkCommonsCollections("org.apache.commons.collections4.functors", marker, mode);
+      }
       check("integer", new Primitive(42), "default", Primitive.class, false, mode);
       check("case-sensitive", new bsh.BshMonthly(), "default", bsh.BshMonthly.class, false, mode);
       check("rejected-resolver", marker, "reject", null, false, mode);

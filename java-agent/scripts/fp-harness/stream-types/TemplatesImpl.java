@@ -1,4 +1,4 @@
-package org.apache.commons.collections.functors;
+package org.apache.xalan.xsltc.trax;
 
 /** Interface marker for observing proxy resolution. No library implementation is present. */
-public interface ConstantTransformer {}
+public interface TemplatesImpl {}

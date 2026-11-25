@@ -5,7 +5,7 @@
 
 ## Method
 
-A curated corpus of **183** benign-but-plausible inputs across **25** detector categories is run through the engine. Each input is presented with a realistic request context; where a value would be user-supplied it is placed in a request parameter so taint-aware detectors evaluate it as in production. A *false positive* is any detector returning a detection for legitimate input. This is a detector-precision probe on benign traffic, **not** a production-traffic false-positive rate.
+A curated corpus of **187** benign-but-plausible inputs across **25** detector categories is run through the engine. Each input is presented with a realistic request context; where a value would be user-supplied it is placed in a request parameter so taint-aware detectors evaluate it as in production. A *false positive* is any detector returning a detection for legitimate input. This is a detector-precision probe on benign traffic, **not** a production-traffic false-positive rate.
 
 ## Result
 
@@ -26,7 +26,7 @@ A curated corpus of **183** benign-but-plausible inputs across **25** detector c
 | File writes | 6 | 0 | 0.0% |
 | File deletes | 4 | 0 | 0.0% |
 | Archive writes | 5 | 0 | 0.0% |
-| Deserialization classes | 11 | 0 | 0.0% |
+| Deserialization classes | 15 | 0 | 0.0% |
 | Expressions | 5 | 0 | 0.0% |
 | OGNL expressions | 7 | 0 | 0.0% |
 | JNDI names | 3 | 0 | 0.0% |
@@ -36,7 +36,7 @@ A curated corpus of **183** benign-but-plausible inputs across **25** detector c
 | JDBC URLs | 5 | 0 | 0.0% |
 | Request parameters | 6 | 0 | 0.0% |
 | Base64 decoding | 8 | 0 | 0.0% |
-| **Overall** | **183** | **0** | **0.0%** |
+| **Overall** | **187** | **0** | **0.0%** |
 
 No false positives observed across the corpus.
 
@@ -220,6 +220,10 @@ No false positives observed across the corpus.
 - `java.time.Instant`
 - `java.util.LinkedHashMap`
 - `com.myapp.model.Customer`
+- `org.apache.commons.collections.functors.ConstantTransformer`
+- `org.apache.commons.collections.functors.EqualPredicate`
+- `org.apache.commons.collections4.functors.ConstantTransformer`
+- `org.apache.commons.collections4.functors.EqualPredicate`
 - `org.codehaus.groovy.runtime.GStringImpl`
 - `org.codehaus.groovy.runtime.NumberAwareComparator`
 - `org.apache.commons.beanutils.BasicDynaBean`

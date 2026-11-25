@@ -192,7 +192,9 @@ destination decisions and receipt of allowed transfers.
 The [stream resolution check](java-agent/scripts/fp-harness/check-stream-resolution.py)
 uses inert records, an application resolver and a BeanShell scalar. It checks
 the type actually read, resolver exceptions, and decisions on independent streams.
-Use `--beanshell-jar` to run the probe using a local copy of the fixture library.
+Use `--beanshell-jar` for a local copy of the fixture library. The runtime matrix
+also passes `--collections-dir` with the JARs from `:stageCollectionsProbe` to
+verify Commons Collections predicates, constants and their nested values.
 
 The [Elasticsearch LZ4 check](java-agent/scripts/fp-harness/check-elastic-lz4.py)
 runs a release compressor and transport decoder without a cluster. A recording

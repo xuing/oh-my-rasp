@@ -2067,6 +2067,18 @@ final class DetectorEngineTest {
   }
 
   @Test
+  void apacheNativeFunctorRestrictionsRequireAnObjectStream() {
+    for (String pkg : List.of("org.apache.commons.collections.functors.", "org.apache.commons.collections4.functors.")) {
+      for (String type : List.of("CloneTransformer", "ForClosure", "InstantiateFactory", "WhileClosure",
+          "PrototypeFactory$PrototypeCloneFactory", "PrototypeFactory$PrototypeSerializationFactory")) {
+        String name = pkg + type;
+        assertAlgorithm(engine.detectDeserialization(name, request()), "deserialization_blacklist");
+        assertTrue(engine.detectPolymorphicType("jackson", name, request()).isEmpty(), name);
+      }
+    }
+  }
+
+  @Test
   void detectsFastjsonPolymorphicJndiGadget() {
     var result =
         engine.detectPolymorphicType(

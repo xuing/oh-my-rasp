@@ -113,3 +113,11 @@ tasks.register<Sync>("stageXmlRpcProbe") {
     }
     into(layout.buildDirectory.dir("xmlrpc-probe"))
 }
+
+// Fixed library versions exercise ordinary functor values on both API lines.
+tasks.register<Sync>("stageCollectionsProbe") {
+    val modules = listOf("commons-collections:commons-collections:3.2.2@jar",
+        "org.apache.commons:commons-collections4:4.4@jar").map { rootProject.dependencies.create(it) }
+    from(rootProject.configurations.detachedConfiguration(*modules.toTypedArray()).apply { isTransitive = false })
+    into(layout.buildDirectory.dir("collections-probe"))
+}

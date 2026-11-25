@@ -16,8 +16,6 @@ final class DeserializationTypes {
 
   private static final Set<String> DESERIALIZATION_TYPE_PREFIXES =
       Set.of(
-          "org.apache.commons.collections.functors.",
-          "org.apache.commons.collections4.functors.",
           "com.sun.org.apache.xpath.internal.",
           "com.sun.org.apache.xml.internal.",
           "com.sun.jndi.",
@@ -43,11 +41,17 @@ final class DeserializationTypes {
   }
 
   static boolean dangerousDeserializationType(String className) {
+    return dangerousType(className, true);
+  }
+
+  private static boolean dangerousType(String className, boolean nativeStream) {
     if (className.isBlank()) {
       return false;
     }
-    if (className.startsWith("org.codehaus.groovy.runtime.")) {
-      return StreamTypeNames.listed(className);
+    if (className.startsWith("org.codehaus.groovy.runtime.")
+        || className.startsWith("org.apache.commons.collections.functors.")
+        || className.startsWith("org.apache.commons.collections4.functors.")) {
+      return nativeStream ? StreamTypeNames.listed(className) : StreamTypeNames.listedForConstruction(className);
     }
     if (listedClass(className)) {
       return true;
@@ -65,7 +69,7 @@ final class DeserializationTypes {
 
   static boolean dangerousPolymorphicType(String className) {
     return POLYMORPHIC_CONSTRUCTION_BLACKLIST.contains(className)
-        || dangerousDeserializationType(className);
+        || dangerousType(className, false);
   }
 
   static boolean deserializationGadgetType(String className) {

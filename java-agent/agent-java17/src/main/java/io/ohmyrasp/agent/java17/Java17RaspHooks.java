@@ -2132,7 +2132,7 @@ public final class Java17RaspHooks {
     }
     for (String candidate : candidates) {
       String className = normalizeJavaTypeName(candidate);
-      if (StreamTypeNames.listed(className)
+      if (StreamTypeNames.listedForConstruction(className)
           || "org.h2.jdbc.JdbcConnection".equals(className)) {
         return className;
       }
