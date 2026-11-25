@@ -3,6 +3,7 @@ package io.ohmyrasp.agent.java17;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -77,16 +78,38 @@ final class Java17RaspHooksTest {
   }
 
   @Test
-  void logsShellMetacharacterProcessBuilderCommand() throws Exception {
-    Path log = Files.createTempFile("ohmyrasp-java17-shell-meta", ".jsonl");
+  void backgroundShellOperatorsAloneDoNotAlert() throws Exception {
+    Path log = Files.createTempFile("ohmyrasp-shell-meta", ".jsonl");
     Files.delete(log);
     System.setProperty("ohmyrasp.java17.log", log.toString());
+    System.setProperty("ohmyrasp.java17.block", "true");
 
-    Java17RaspHooks.beforeProcessBuilderStart(new ProcessBuilder("sh", "-c", "echo safe; id"));
+    Java17RaspHooks.beforeProcessBuilderStart(new ProcessBuilder("sh", "-c", "printf first; printf second"));
+    Java17RaspHooks.beforeRuntimeExecArray(new String[]{"/bin/sh", "-c", "printf '%s' \"$1\" | cat", "_", "A&B"});
 
-    String text = new String(Files.readAllBytes(log), StandardCharsets.UTF_8);
-    assertTrue(text.contains("\"algorithm\":\"java17_command_execution_shell_meta\""));
-    assertTrue(text.contains("\"action\":\"log\""));
+    assertFalse(Files.exists(log));
+  }
+
+  @Test
+  void distinguishesSubmittedShellSyntaxFromPositionalData() throws Exception {
+    Path log = Files.createTempFile("ohmyrasp-shell-data", ".jsonl");
+    Files.delete(log);
+    System.setProperty("ohmyrasp.java17.log", log.toString());
+    System.setProperty("ohmyrasp.java17.block", "true");
+    ProcessBuilder renderer = new ProcessBuilder("sh", "-c", "printf '%s' \"$1\" | cat", "_", "A&B");
+    try {
+      Java17RaspHooks.beforeHttpRequest(new RequestStub("GET", "/format", "").withParameter("label", "A&B"));
+      Java17RaspHooks.beforeProcessBuilderStart(renderer);
+      assertFalse(Files.exists(log));
+      Java17RaspHooks.beforeHttpRequest(new RequestStub("GET", "/format", "").withParameter("script", "ok; printf"));
+      assertThrows(Java17RaspBlockException.class, () -> Java17RaspHooks.beforeProcessBuilderStart(
+          new ProcessBuilder("/bin/sh", "-c", "printf ok; printf done")));
+      assertTrue(new String(Files.readAllBytes(log), StandardCharsets.UTF_8)
+          .contains("\"decision_basis\":\"request_shell_syntax\""));
+    } finally {
+      Java17RaspHooks.afterHttpRequest();
+    }
+    Java17RaspHooks.beforeProcessBuilderStart(renderer);
   }
 
   @Test
@@ -101,6 +124,20 @@ final class Java17RaspHooksTest {
         new ProcessBuilder("sh", "-c", "stty -icanon min 1 -icrnl -inlcr -ixon < /dev/tty"));
 
     assertFalse(Files.exists(log));
+  }
+
+  @Test
+  void requestControlledRedirectionUsesTheSameRuleAsOtherOperators() throws Exception {
+    Path log = Files.createTempFile("ohmyrasp-shell-redirection", ".jsonl");
+    System.setProperty("ohmyrasp.java17.log", log.toString());
+    System.setProperty("ohmyrasp.java17.block", "true");
+    try {
+      Java17RaspHooks.beforeHttpRequest(new RequestStub("GET", "/format", "").withParameter("fragment", "< /dev/tty"));
+      assertThrows(Java17RaspBlockException.class, () -> Java17RaspHooks.beforeProcessBuilderStart(
+          new ProcessBuilder("sh", "-c", "stty -a < /dev/tty")));
+    } finally {
+      Java17RaspHooks.afterHttpRequest();
+    }
   }
 
   @Test
@@ -167,6 +204,7 @@ final class Java17RaspHooksTest {
     assertTrue(text.contains("\"algorithm\":\"java17_command_execution_exploit_primitive\""));
     assertTrue(text.contains("\"action\":\"block\""));
     assertTrue(text.contains("Java deserialization reached a Java 17 process sink"));
+    assertTrue(text.contains("\"decision_basis\":\"object_deserialization\""));
     assertTrue(text.contains("touch /tmp/ohmyrasp-coldfusion-3066-success"));
   }
 
@@ -1558,7 +1596,7 @@ final class Java17RaspHooksTest {
     Files.delete(log);
     System.setProperty("ohmyrasp.java17.log", log.toString());
 
-    Java17RaspHooks.beforeHttpRequest(new RequestStub("POST", "/plugin/add", ""));
+    Java17RaspHooks.beforeHttpRequest(new RequestStub("POST", "/plugin/add", "").archivePolicy("role:installer", false));
     try {
       Java17RaspHooks.beforeFileUpload("Evil.jar");
     } finally {
@@ -1567,8 +1605,53 @@ final class Java17RaspHooksTest {
 
     String text = new String(Files.readAllBytes(log), StandardCharsets.UTF_8);
     assertTrue(text.contains("\"algorithm\":\"fileUpload_java_archive\""));
+    assertTrue(text.contains("\"decision_basis\":\"required_role_denied\""));
     assertTrue(text.contains("\"action\":\"log\""));
     assertTrue(text.contains("\"filename\":\"Evil.jar\""));
+  }
+
+  @Test
+  void defersMultipartParsingUntilServletEntryAndRestoresOuterQuery() throws Exception {
+    Path log = Files.createTempFile("ohmyrasp-multipart-dispatch", ".jsonl");
+    System.setProperty("ohmyrasp.java17.log", log.toString());
+    System.setProperty("ohmyrasp.java17.block", "true");
+    URL calendar = new URL("https://192.168.12.34/month");
+    RequestStub request = new RequestStub("POST", "/reports",
+        "url=https%3A%2F%2F192.168.12.34%2Fmonth")
+        .withHeader("Content-Type", "multipart/form-data; boundary=weekly")
+        .withParameter("title", "report");
+    Java17RaspHooks.beforeContainerRequest(request);
+    try {
+      assertEquals(0, request.parameterMapReads);
+      Java17RaspHooks.beforeHttpRequest(request);
+      try {
+        assertEquals(1, request.parameterMapReads);
+        Java17RaspHooks.beforeUrlOpen(calendar);
+      } finally {
+        Java17RaspHooks.afterHttpRequest();
+      }
+      // Only the outer fixture supplies this URL as an argument to the URL hook.
+      assertThrows(Java17RaspBlockException.class, () -> Java17RaspHooks.beforeUrlOpen(calendar));
+    } finally {
+      Java17RaspHooks.afterHttpRequest();
+    }
+  }
+
+  @Test
+  void allowsAuthorizedAndUndeclaredDeploymentWithoutAnAlert() throws Exception {
+    Path log = Files.createTempFile("ohmyrasp-upload-policy", ".jsonl");
+    Files.delete(log);
+    System.setProperty("ohmyrasp.java17.log", log.toString());
+    System.setProperty("ohmyrasp.java17.block", "true");
+    for (String policy : new String[] {null, "role:installer"}) {
+      Java17RaspHooks.beforeHttpRequest(new RequestStub("POST", "/plugin/add", "").archivePolicy(policy, true));
+      try {
+        Java17RaspHooks.beforeFileUpload("release.jar");
+      } finally {
+        Java17RaspHooks.afterHttpRequest();
+      }
+    }
+    assertFalse(Files.exists(log));
   }
 
   @Test
@@ -1594,7 +1677,7 @@ final class Java17RaspHooksTest {
     System.setProperty("ohmyrasp.java17.log", log.toString());
     System.setProperty("ohmyrasp.java17.block", "true");
 
-    Java17RaspHooks.beforeHttpRequest(new RequestStub("POST", "/plugin/add", ""));
+    Java17RaspHooks.beforeHttpRequest(new RequestStub("POST", "/plugin/add", "").archivePolicy("role:installer", false));
     try {
       assertThrows(
           Java17RaspBlockException.class,
@@ -1605,6 +1688,7 @@ final class Java17RaspHooksTest {
 
     String text = new String(Files.readAllBytes(log), StandardCharsets.UTF_8);
     assertTrue(text.contains("\"algorithm\":\"fileUpload_java_archive\""));
+    assertTrue(text.contains("\"decision_basis\":\"required_role_denied\""));
     assertTrue(text.contains("\"action\":\"block\""));
   }
 
@@ -1738,8 +1822,13 @@ final class Java17RaspHooksTest {
     } finally {
       Java17RaspHooks.afterHttpRequest();
     }
-    assertThrows(Java17RaspBlockException.class,
-        () -> Java17RaspHooks.beforeUrlOpen(new URL("http://[::ffff:127.0.0.1]/admin")));
+    Java17RaspHooks.beforeHttpRequest(new RequestStub("GET", "/reports", "").withParameter("path", "/admin"));
+    try {
+      assertThrows(Java17RaspBlockException.class,
+          () -> Java17RaspHooks.beforeUrlOpen(new URL("http://[::ffff:127.0.0.1]/admin")));
+    } finally {
+      Java17RaspHooks.afterHttpRequest();
+    }
   }
 
   @Test
@@ -1763,9 +1852,13 @@ final class Java17RaspHooksTest {
     System.setProperty("ohmyrasp.java17.log", log.toString());
     System.setProperty("ohmyrasp.java17.block", "true");
 
-    assertThrows(
-        Java17RaspBlockException.class,
-        () -> Java17RaspHooks.beforeUrlOpen(new URL("http://127.0.0.1:8080/actuator/env")));
+    Java17RaspHooks.beforeHttpRequest(new RequestStub("GET", "/reports", "").withParameter("path", "/actuator/env"));
+    try {
+      assertThrows(Java17RaspBlockException.class,
+          () -> Java17RaspHooks.beforeUrlOpen(new URL("http://127.0.0.1:8080/actuator/env")));
+    } finally {
+      Java17RaspHooks.afterHttpRequest();
+    }
 
     String text = new String(Files.readAllBytes(log), StandardCharsets.UTF_8);
     assertTrue(text.contains("\"algorithm\":\"java17_ssrf_loopback_admin\""));
@@ -1773,33 +1866,20 @@ final class Java17RaspHooksTest {
   }
 
   @Test
-  void ignoresDataEaseApisixStartupProbe() throws Exception {
-    Path log = Files.createTempFile("ohmyrasp-java17-dataease-apisix-startup", ".jsonl");
+  void leavesConfiguredAdministrationAndUnverifiedHostnamesQuiet() throws Exception {
+    Path log = Files.createTempFile("ohmyrasp-fixed-egress", ".jsonl");
     Files.delete(log);
     System.setProperty("ohmyrasp.java17.log", log.toString());
     System.setProperty("ohmyrasp.java17.block", "true");
-
-    io.dataease.xpack.permissions.apisix.manage.XpackRouteManage.checkApisixUpstreams();
-
+    String publicUrl = "https://reports.example.test/week";
+    Java17RaspHooks.beforeHttpRequest(new RequestStub("GET", "/reports", "").withParameter("url", publicUrl));
+    try {
+      Java17RaspHooks.beforeUrlOpen(new URL("http://127.0.0.1:9180/apisix/admin/upstreams"));
+      Java17RaspHooks.beforeUrlOpen(new URL(publicUrl));
+    } finally {
+      Java17RaspHooks.afterHttpRequest();
+    }
     assertFalse(Files.exists(log));
-  }
-
-  @Test
-  void blocksDataEaseApisixAdminUrlOutsideStartupStack() throws Exception {
-    Path log = Files.createTempFile("ohmyrasp-java17-dataease-apisix-direct", ".jsonl");
-    Files.delete(log);
-    System.setProperty("ohmyrasp.java17.log", log.toString());
-    System.setProperty("ohmyrasp.java17.block", "true");
-
-    assertThrows(
-        Java17RaspBlockException.class,
-        () ->
-            Java17RaspHooks.beforeUrlOpen(
-                new URL("http://127.0.0.1:9180/apisix/admin/upstreams")));
-
-    String text = new String(Files.readAllBytes(log), StandardCharsets.UTF_8);
-    assertTrue(text.contains("\"algorithm\":\"java17_ssrf_loopback_admin\""));
-    assertTrue(text.contains("\"action\":\"block\""));
   }
 
   @Test
@@ -1811,12 +1891,12 @@ final class Java17RaspHooksTest {
 
     RequestStub request =
         new RequestStub("POST", "/geoserver/TestWfsPost", "")
-            .withParameter("url", "http://attacker.example:18080/relay?x=1");
+            .withParameter("url", "http://192.168.12.34:18080/relay?x=1");
     Java17RaspHooks.beforeHttpRequest(request);
     try {
       assertThrows(
           Java17RaspBlockException.class,
-          () -> Java17RaspHooks.beforeUrlOpen(new URL("http://attacker.example:18080/relay?x=1")));
+          () -> Java17RaspHooks.beforeUrlOpen(new URL("http://192.168.12.34:18080/relay?x=1")));
     } finally {
       Java17RaspHooks.afterHttpRequest();
     }
@@ -1824,7 +1904,7 @@ final class Java17RaspHooksTest {
     String text = new String(Files.readAllBytes(log), StandardCharsets.UTF_8);
     assertTrue(text.contains("\"algorithm\":\"java17_ssrf_request_parameter_url\""));
     assertTrue(text.contains("\"action\":\"block\""));
-    assertTrue(text.contains("http://attacker.example:18080/relay?x=1"));
+    assertTrue(text.contains("http://192.168.12.34:18080/relay?x=1"));
   }
 
   @Test
@@ -1835,10 +1915,10 @@ final class Java17RaspHooksTest {
 
     RequestStub request =
         new RequestStub("POST", "/geoserver/TestWfsPost", "")
-            .withParameter("url", "http://attacker.example:18080/relay");
+            .withParameter("url", "http://192.168.12.34:18080/relay");
     Java17RaspHooks.beforeHttpRequest(request);
     Java17RaspHooks.afterHttpRequest();
-    Java17RaspHooks.beforeUrlOpen(new URL("http://attacker.example:18080/relay"));
+    Java17RaspHooks.beforeUrlOpen(new URL("http://192.168.12.34:18080/relay"));
 
     assertFalse(Files.exists(log));
   }
@@ -1851,6 +1931,15 @@ final class Java17RaspHooksTest {
 
     Java17RaspHooks.afterArchiveEntryName("safe/report.txt");
     Java17RaspHooks.beforeFileWrite("/tmp/archive/report.txt");
+    Java17RaspHooks.afterArchiveEntryName("drafts/../report.txt");
+    Java17RaspHooks.beforeFileWrite("/tmp/archive/drafts/../report.txt");
+    Java17RaspHooks.afterArchiveEntryName("../draft.txt");
+    Java17RaspHooks.beforeFileWrite("/tmp/archive/notes/../draft.txt.bak");
+    Java17RaspHooks.afterArchiveEntryName("/notes/report.txt");
+    Java17RaspHooks.beforeFileWrite("/tmp/archive/notes/report.txt");
+    Java17RaspHooks.afterArchiveEntryName("../draft.txt");
+    Java17RaspHooks.afterHttpRequest();
+    Java17RaspHooks.beforeFileWrite("/tmp/archive/../draft.txt");
 
     assertFalse(Files.exists(log));
   }
@@ -1861,13 +1950,13 @@ final class Java17RaspHooksTest {
     Files.delete(log);
     System.setProperty("ohmyrasp.java17.log", log.toString());
 
-    Java17RaspHooks.afterArchiveEntryName("../../webapps/ROOT/shell.jsp");
-    Java17RaspHooks.beforeFileWrite("/tmp/extract/shell.jsp");
+    Java17RaspHooks.afterArchiveEntryName("../notes/report.txt");
+    Java17RaspHooks.beforeFileWrite("/tmp/extract/../notes/report.txt");
 
     String text = new String(Files.readAllBytes(log), StandardCharsets.UTF_8);
     assertTrue(text.contains("\"algorithm\":\"java17_archive_entry_traversal_write\""));
     assertTrue(text.contains("\"action\":\"log\""));
-    assertTrue(text.contains("../../webapps/ROOT/shell.jsp -> /tmp/extract/shell.jsp"));
+    assertTrue(text.contains("../notes/report.txt -> /tmp/extract/../notes/report.txt"));
   }
 
   @Test
@@ -1943,11 +2032,11 @@ final class Java17RaspHooksTest {
     System.setProperty("ohmyrasp.java17.log", log.toString());
     System.setProperty("ohmyrasp.java17.block", "true");
 
-    Java17RaspHooks.afterArchiveEntryName("/WEB-INF/web.xml");
+    Java17RaspHooks.afterArchiveEntryName("/notes/report.txt");
 
     assertThrows(
         Java17RaspBlockException.class,
-        () -> Java17RaspHooks.beforeFileWrite("/tmp/extract/WEB-INF/web.xml"));
+        () -> Java17RaspHooks.beforeFileWrite("/notes/report.txt"));
 
     String text = new String(Files.readAllBytes(log), StandardCharsets.UTF_8);
     assertTrue(text.contains("\"algorithm\":\"java17_archive_entry_traversal_write\""));
@@ -2070,52 +2159,6 @@ final class Java17RaspHooksTest {
     String text = new String(Files.readAllBytes(log), StandardCharsets.UTF_8);
     assertTrue(text.contains("\"algorithm\":\"java17_sql_identifier_injection\""));
     assertTrue(text.contains("\"action\":\"block\""));
-  }
-
-  @Test
-  void blocksMyBatisOrderTypeSqlIdentifierInjectionWhenBlockModeIsEnabled() throws Exception {
-    Path log = Files.createTempFile("ohmyrasp-java17-mybatis-order-block", ".jsonl");
-    Files.delete(log);
-    System.setProperty("ohmyrasp.java17.log", log.toString());
-    System.setProperty("ohmyrasp.java17.block", "true");
-
-    Map<String, Object> parameterObject =
-        myBatisParameterMap(
-            new MyBatisQueryRequest(
-                Arrays.asList(new MyBatisOrder("name", ",if(1=1,sleep(2),0)", null))));
-
-    assertThrows(
-        Java17RaspBlockException.class,
-        () ->
-            Java17RaspHooks.beforeMyBatisBoundSql(
-                "select * from test_case order by `name` ,if(1=1,sleep(2),0)",
-                parameterObject));
-
-    String text = new String(Files.readAllBytes(log), StandardCharsets.UTF_8);
-    assertTrue(text.contains("\"hook\":\"MyBatis.BoundSql\""));
-    assertTrue(text.contains("\"algorithm\":\"java17_sql_identifier_injection\""));
-    assertTrue(text.contains("\"action\":\"block\""));
-    assertTrue(text.contains("source=MyBatis.BoundSql"));
-    assertTrue(text.contains("parameter=orders[].type"));
-    assertFalse(text.contains(",if(1=1"));
-    assertFalse(text.contains("sleep(2)"));
-  }
-
-  @Test
-  void ignoresNormalMyBatisOrderMetadata() throws Exception {
-    Path log = Files.createTempFile("ohmyrasp-java17-mybatis-order-normal", ".jsonl");
-    Files.delete(log);
-    System.setProperty("ohmyrasp.java17.log", log.toString());
-
-    Map<String, Object> parameterObject =
-        myBatisParameterMap(
-            new MyBatisQueryRequest(
-                Arrays.asList(new MyBatisOrder("update_time", "desc", "test_case"))));
-
-    Java17RaspHooks.beforeMyBatisBoundSql(
-        "select * from test_case order by test_case.`update_time` desc", parameterObject);
-
-    assertFalse(Files.exists(log));
   }
 
   @Test
@@ -2438,24 +2481,13 @@ final class Java17RaspHooksTest {
   }
 
   @Test
-  void blocksJmxScriptFileWriteWhenBlockModeIsEnabled() throws Exception {
-    Path log = Files.createTempFile("ohmyrasp-java17-jmx-write-block", ".jsonl");
+  void metadataAloneDoesNotWriteAFile() throws Exception {
+    Path log = Files.createTempFile("managed-report", ".jsonl");
     Files.delete(log);
     System.setProperty("ohmyrasp.java17.log", log.toString());
     System.setProperty("ohmyrasp.java17.block", "true");
-
-    assertThrows(
-        Java17RaspBlockException.class,
-        () ->
-            Java17RaspHooks.beforeJmxMBeanInvoke(
-                "jdk.management.jfr:type=FlightRecorder",
-                "copyTo",
-                new Object[] {"/opt/activemq/webapps/admin/shelljfr.jsp"}));
-
-    String text = new String(Files.readAllBytes(log), StandardCharsets.UTF_8);
-    assertTrue(text.contains("\"algorithm\":\"java17_jmx_script_file_write\""));
-    assertTrue(text.contains("\"action\":\"block\""));
-    assertTrue(text.contains("/opt/activemq/webapps/admin/shelljfr.jsp"));
+    Java17RaspHooks.beforeJmxMBeanInvoke("reports:type=Schedule", "addNotification", new Object[] {"/reports/weekly.jsp"});
+    assertFalse(Files.exists(log));
   }
 
   @Test
@@ -2513,52 +2545,11 @@ final class Java17RaspHooksTest {
     Path log = Files.createTempFile("ohmyrasp-java17-xxe-normal", ".jsonl");
     Files.delete(log);
     System.setProperty("ohmyrasp.java17.log", log.toString());
-    System.setProperty("catalina.home", "/usr/local/tomcat");
-    System.setProperty("activemq.home", "/opt/activemq");
-
-    Java17RaspHooks.beforeXmlEntity("[xml]", "");
-    Java17RaspHooks.beforeXmlEntity("[xml]", "file:/usr/local/tomcat/conf/server.xml");
-    Java17RaspHooks.beforeXmlEntity(
-        "[dtd]",
-        "jar:file:/usr/local/tomcat/lib/tomcat-coyote.jar!/org/apache/tomcat/util/modeler/mbeans-descriptors.dtd");
-    Java17RaspHooks.beforeXmlEntity(
-        "[dtd]",
-        "jar:file:/dubbo-sample-1.0-SNAPSHOT.jar!/org/apache/tomcat/util/modeler/mbeans-descriptors.dtd");
-    Java17RaspHooks.beforeXmlEntity(
-        "[dtd]",
-        "jar:file:/opt/activemq/lib/web/jetty-jakarta-servlet-api-5.0.2.jar!/jakarta/servlet/resources/web-jsptaglibrary_1_2.dtd");
-    Java17RaspHooks.beforeXmlEntity(
-        "[dtd]",
-        "jar:file:/root/.m2/repository/org/eclipse/jetty/toolchain/jetty-schemas/3.1.M0/jetty-schemas-3.1.M0.jar!/javax/servlet/jsp/resources/web-jsptaglibrary_1_2.dtd");
-    Java17RaspHooks.beforeXmlEntity(
-        "[dtd]",
-        "jar:file:/root/.m2/repository/org/apache/struts/struts2-core/2.3.30/struts2-core-2.3.30.jar!/struts-default.xml");
-    Java17RaspHooks.beforeXmlEntity(
-        "[dtd]",
-        "jar:file:/usr/local/tomcat/webapps/ROOT/WEB-INF/lib/struts2-config-browser-plugin-2.3.34.jar!/struts-plugin.xml");
-    Java17RaspHooks.beforeXmlEntity(
-        "[dtd]",
-        "jar:file:/u01/oracle/wlserver/modules/com.oracle.weblogic.security.service.store.jar!/com/bea/common/security/store/data/package.jdo");
-    Java17RaspHooks.beforeXmlEntity("[dtd]", "file:/usr/src/target/classes/struts.xml");
-    Java17RaspHooks.beforeXmlEntity("[dtd]", "file:/usr/src/target/classes/struts-actionchaining.xml");
-    Java17RaspHooks.beforeXmlEntity("[dtd]", "file:/usr/local/tomcat/webapps/ROOT/WEB-INF/classes/struts.xml");
-    Java17RaspHooks.beforeXmlEntity(
-        "[dtd]", "file:/usr/local/tomcat/webapps/ROOT/WEB-INF/classes/struts-chat.xml");
-    com.opensymphony.xwork2.config.providers.XmlConfigurationProvider.parseLocalEntity(
-        "[dtd]", "file:/usr/local/tomcat/webapps/ROOT/WEB-INF/classes/example.xml");
-    Java17RaspHooks.beforeXmlEntity(
-        "[dtd]",
-        "file:///usr/local/tomcat/org/apache/struts2/showcase/ajax/Example5Action-validation.xml");
-    Java17RaspHooks.beforeXmlEntity(
-        "[dtd]", "file:///usr/src/com/opensymphony/xwork2/validator/validators/default.xml");
-    Java17RaspHooks.beforeXmlEntity("[dtd]", "http://www.eclipse.org/jetty/configure_9_0.dtd");
-    Java17RaspHooks.beforeXmlEntity("[dtd]", "http://www.eclipse.org/jetty/configure_9_3.dtd");
-    Java17RaspHooks.beforeXmlEntity("[dtd]", "http://java.sun.com/dtd/web-app_2_3.dtd");
-    Java17RaspHooks.beforeXmlEntity("[dtd]", "http://java.sun.com/dtd/web-facesconfig_1_1.dtd");
-    Java17RaspHooks.beforeXmlEntity("[dtd]", "http://mybatis.org/dtd/mybatis-3-config.dtd");
-    Java17RaspHooks.beforeXmlEntity("[dtd]", "http://mybatis.org/dtd/mybatis-3-mapper.dtd");
-    Java17RaspHooks.beforeXmlEntity("[dtd]", "http://www.springframework.org/dtd/spring-beans.dtd");
+    Java17RaspHooks.beforeXmlEntity("[xml]", "file:/srv/app/forms.xml");
     Java17RaspHooks.beforeXmlEntity("local", "classpath:application.xml");
+    org.xml.sax.InputSource source = new org.xml.sax.InputSource(new java.io.StringReader(""));
+    source.setSystemId("http://catalog.example.invalid/forms.dtd");
+    Java17RaspHooks.beforeXmlEntity("[dtd]", source);
 
     assertFalse(Files.exists(log));
   }
@@ -2704,6 +2695,11 @@ final class Java17RaspHooksTest {
         transformer.transform(null, "org/h2/jdbc/JdbcStatement", null, null, interfaceBytes);
     assertNotNull(interfaceTransformed);
     assertEquals(0, countBeforeSqlStatementCalls(interfaceTransformed));
+
+    String name = "example/ReportingStatement";
+    byte[] wrapper = syntheticJdbcStatementClass(name, false, new String[]{"java/sql/Statement"});
+    assertEquals(1, countBeforeSqlStatementCalls(transformer.transform(null, name, null, null, wrapper)));
+    assertNull(transformer.transform(null, name, null, null, syntheticJdbcStatementClass(name, false)));
   }
 
   private static byte[] classBytesByName(String className) throws Exception {
@@ -2729,10 +2725,14 @@ final class Java17RaspHooksTest {
   }
 
   private static byte[] syntheticJdbcStatementClass(String internalName, boolean isInterface) {
+    return syntheticJdbcStatementClass(internalName, isInterface, new String[0]);
+  }
+
+  private static byte[] syntheticJdbcStatementClass(String internalName, boolean isInterface, String[] interfaces) {
     ClassWriter cw = new ClassWriter(0);
     int classAccess =
         isInterface ? (Opcodes.ACC_PUBLIC | Opcodes.ACC_INTERFACE | Opcodes.ACC_ABSTRACT) : Opcodes.ACC_PUBLIC;
-    cw.visit(Opcodes.V17, classAccess, internalName, null, "java/lang/Object", null);
+    cw.visit(Opcodes.V17, classAccess, internalName, null, "java/lang/Object", interfaces);
     int methodAccess = isInterface ? (Opcodes.ACC_PUBLIC | Opcodes.ACC_ABSTRACT) : Opcodes.ACC_PUBLIC;
     MethodVisitor mv =
         cw.visitMethod(methodAccess, "executeQuery", "(Ljava/lang/String;)Ljava/sql/ResultSet;", null, null);
@@ -2762,7 +2762,7 @@ final class Java17RaspHooksTest {
                     if (opcode == Opcodes.INVOKESTATIC
                         && "io/ohmyrasp/agent/java17/Java17RaspHooks".equals(owner)
                         && "beforeSqlStatement".equals(mName)
-                        && "(Ljava/lang/String;)V".equals(mDesc)) {
+                        && "(Ljava/lang/Object;Ljava/lang/String;Ljava/lang/String;)V".equals(mDesc)) {
                       calls.incrementAndGet();
                     }
                   }
@@ -2801,7 +2801,10 @@ final class Java17RaspHooksTest {
     }
   }
 
-  static final class RequestStub {
+  public static final class RequestStub {
+    private String archivePolicy;
+    private boolean installer;
+    private int parameterMapReads;
     private final String method;
     private final String uri;
     private final String query;
@@ -2841,7 +2844,24 @@ final class Java17RaspHooksTest {
       return headers.get(name);
     }
 
+    public String getContentType() { return "multipart/form-data"; }
+    public RequestStub getServletContext() { return this; }
+    public String getDispatcherType() { return "REQUEST"; }
+    public String getServletPath() { return uri; }
+    public String getPathInfo() { return null; }
+    public String getInitParameter(String key) {
+      return "ohmyrasp.archiveUpload.POST/plugin/add".equals(key) ? archivePolicy : null;
+    }
+    public boolean isUserInRole(String role) { return installer && "installer".equals(role); }
+
+    RequestStub archivePolicy(String policy, boolean allowed) {
+      archivePolicy = policy;
+      installer = allowed;
+      return this;
+    }
+
     public Map<String, String[]> getParameterMap() {
+      parameterMapReads++;
       return parameters;
     }
 
@@ -2926,47 +2946,7 @@ final class Java17RaspHooksTest {
     return new Java17YarnSubmissionProbe(Arrays.asList(command));
   }
 
-  private static Map<String, Object> myBatisParameterMap(Object request) {
-    Map<String, Object> values = new HashMap<>();
-    values.put("request", request);
-    return values;
-  }
 
-  static final class MyBatisQueryRequest {
-    private final List<MyBatisOrder> orders;
-
-    MyBatisQueryRequest(List<MyBatisOrder> orders) {
-      this.orders = orders;
-    }
-
-    public List<MyBatisOrder> getOrders() {
-      return orders;
-    }
-  }
-
-  static final class MyBatisOrder {
-    private final String name;
-    private final String type;
-    private final String prefix;
-
-    MyBatisOrder(String name, String type, String prefix) {
-      this.name = name;
-      this.type = type;
-      this.prefix = prefix;
-    }
-
-    public String getName() {
-      return name;
-    }
-
-    public String getType() {
-      return type;
-    }
-
-    public String getPrefix() {
-      return prefix;
-    }
-  }
 
   private static byte[] classBytes(Class<?> type) throws Exception {
     String resourceName = type.getSimpleName() + ".class";

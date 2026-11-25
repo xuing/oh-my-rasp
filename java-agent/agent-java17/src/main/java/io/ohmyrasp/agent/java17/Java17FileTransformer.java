@@ -1,5 +1,9 @@
 package io.ohmyrasp.agent.java17;
 
+import io.ohmyrasp.agent.file.UnixDeleteVisitor;
+import io.ohmyrasp.agent.file.UnixReadVisitor;
+import io.ohmyrasp.agent.file.DirectoryListVisitor;
+import io.ohmyrasp.agent.file.StreamReadVisitor;
 import java.lang.instrument.ClassFileTransformer;
 import java.security.ProtectionDomain;
 import org.objectweb.asm.ClassReader;
@@ -13,20 +17,12 @@ import org.objectweb.asm.commons.Method;
 
 public final class Java17FileTransformer implements ClassFileTransformer {
   private static final Type HOOKS = Type.getType(Java17RaspHooks.class);
-  private static final Method BEFORE_FILE_READ =
-      Method.getMethod("void beforeFileRead(java.lang.Object)");
   private static final Method BEFORE_FILE_WRITE =
       Method.getMethod("void beforeFileWrite(java.lang.Object)");
   private static final Method BEFORE_FILE_CONTENT_WRITE =
       Method.getMethod("void beforeFileContentWrite(byte[], int, int)");
-  private static final Method BEFORE_RANDOM_ACCESS_FILE_OPEN =
-      Method.getMethod("void beforeRandomAccessFileOpen(java.lang.Object, java.lang.String)");
-  private static final Method BEFORE_NIO_FILE_READ =
-      Method.getMethod("void beforeNioFileRead(java.lang.Object)");
   private static final Method BEFORE_NIO_FILE_WRITE =
       Method.getMethod("void beforeNioFileWrite(java.lang.Object)");
-  private static final Method BEFORE_NIO_BYTE_CHANNEL_OPEN =
-      Method.getMethod("void beforeNioByteChannelOpen(java.lang.Object, java.lang.Object)");
 
   @Override
   public byte[] transform(
@@ -52,7 +48,7 @@ public final class Java17FileTransformer implements ClassFileTransformer {
   }
 
   private static boolean isTarget(String className) {
-    return "java/io/File".equals(className)
+    return UnixReadVisitor.FACTORY.equals(className) || DirectoryListVisitor.matches(className)
         || "java/io/FileInputStream".equals(className)
         || "java/io/FileOutputStream".equals(className)
         || "java/io/RandomAccessFile".equals(className)
@@ -74,6 +70,19 @@ public final class Java17FileTransformer implements ClassFileTransformer {
       if (methodVisitor == null) {
         return methodVisitor;
       }
+      if ("java/io/FileOutputStream".equals(className) && "open".equals(name)) {
+        return StreamReadVisitor.outputOpen(methodVisitor, name, descriptor, HOOKS.getInternalName());
+      }
+      if (DirectoryListVisitor.matches(className)) {
+        methodVisitor = UnixDeleteVisitor.wrap(className, methodVisitor, name, descriptor, HOOKS.getInternalName());
+        methodVisitor = DirectoryListVisitor.wrap(className, methodVisitor, access, name, descriptor, HOOKS.getInternalName());
+      }
+      if (StreamReadVisitor.matches(className)) {
+        return StreamReadVisitor.wrap(className, methodVisitor, name, descriptor, HOOKS.getInternalName(), true);
+      }
+      if (UnixReadVisitor.FACTORY.equals(className)) {
+        return UnixReadVisitor.method(methodVisitor, name, descriptor, HOOKS.getInternalName());
+      }
       if ("java/io/File".equals(className) && isFileRenameTo(name, descriptor)) {
         return new AdviceAdapter(Opcodes.ASM9, methodVisitor, access, name, descriptor) {
           @Override
@@ -92,31 +101,12 @@ public final class Java17FileTransformer implements ClassFileTransformer {
       if (!"<init>".equals(name)) {
         return methodVisitor;
       }
-      if ("java/io/FileInputStream".equals(className) && hasPathFirstArg(descriptor)) {
-        return new AdviceAdapter(Opcodes.ASM9, methodVisitor, access, name, descriptor) {
-          @Override
-          protected void onMethodEnter() {
-            loadArg(0);
-            invokeStatic(HOOKS, BEFORE_FILE_READ);
-          }
-        };
-      }
       if ("java/io/FileOutputStream".equals(className) && hasPathFirstArg(descriptor)) {
         return new AdviceAdapter(Opcodes.ASM9, methodVisitor, access, name, descriptor) {
           @Override
           protected void onMethodEnter() {
             loadArg(0);
             invokeStatic(HOOKS, BEFORE_FILE_WRITE);
-          }
-        };
-      }
-      if ("java/io/RandomAccessFile".equals(className) && hasPathAndModeArgs(descriptor)) {
-        return new AdviceAdapter(Opcodes.ASM9, methodVisitor, access, name, descriptor) {
-          @Override
-          protected void onMethodEnter() {
-            loadArg(0);
-            loadArg(1);
-            invokeStatic(HOOKS, BEFORE_RANDOM_ACCESS_FILE_OPEN);
           }
         };
       }
@@ -153,24 +143,9 @@ public final class Java17FileTransformer implements ClassFileTransformer {
 
     private MethodVisitor visitNioFilesMethod(
         MethodVisitor methodVisitor, int access, String name, String descriptor) {
-      if (isNioByteChannelOpen(name, descriptor)) {
-        return new AdviceAdapter(Opcodes.ASM9, methodVisitor, access, name, descriptor) {
-          @Override
-          protected void onMethodEnter() {
-            loadArg(0);
-            loadArg(1);
-            invokeStatic(HOOKS, BEFORE_NIO_BYTE_CHANNEL_OPEN);
-          }
-        };
-      }
-      if (isNioPathFirstRead(name, descriptor)) {
-        return new AdviceAdapter(Opcodes.ASM9, methodVisitor, access, name, descriptor) {
-          @Override
-          protected void onMethodEnter() {
-            loadArg(0);
-            invokeStatic(HOOKS, BEFORE_NIO_FILE_READ);
-          }
-        };
+      boolean channel = isNioByteChannelOpen(name, descriptor);
+      if (channel || isNioPathFirstRead(name, descriptor)) {
+        return io.ohmyrasp.agent.file.FacadeReadVisitor.wrap(methodVisitor, access, name, descriptor, HOOKS, channel);
       }
       if (isNioPathFirstWrite(name, descriptor)) {
         return new AdviceAdapter(Opcodes.ASM9, methodVisitor, access, name, descriptor) {
@@ -209,11 +184,6 @@ public final class Java17FileTransformer implements ClassFileTransformer {
     private static boolean hasPathFirstArg(String descriptor) {
       return descriptor.startsWith("(Ljava/lang/String;")
           || descriptor.startsWith("(Ljava/io/File;");
-    }
-
-    private static boolean hasPathAndModeArgs(String descriptor) {
-      return descriptor.startsWith("(Ljava/lang/String;Ljava/lang/String;")
-          || descriptor.startsWith("(Ljava/io/File;Ljava/lang/String;");
     }
 
     private static boolean isNioByteChannelOpen(String name, String descriptor) {
