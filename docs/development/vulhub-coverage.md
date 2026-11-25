@@ -2683,5 +2683,10 @@ above.
 
 ## Candidates
 
-- [ ] `fastjson/1.2.83-rce` was added after the audited snapshot. The primary and backport agents have a [Fastjson resource lookup rule](../detection.md#deserialization-defenses). The [primary agent test](../../java-agent/agent-jdk25/src/test/java/io/ohmyrasp/agent/asm/FastjsonResourceHookTest.java) checks the hook in the Fastjson library. A compatibility check ran the packaged application JAR from the Linux amd64 image (manifest `sha256:165820bfe57651483530bf9601598a738c9f18bb5ab40ec360da141d03bb274d`) on Temurin 8, with loopback HTTP. Baseline, block and monitor returned Bob aged 25 for the default GET and weekly aged 20 for a normal JSON POST. Neither agent mode emitted a detection. These runs establish normal application behavior; end-to-end interception in this environment remains unverified. [Upstream catalogue](https://github.com/vulhub/vulhub/blob/9b90d4276f84feed6333286afeb7e1250379a1da/environments.toml)
+- [ ] `fastjson/1.2.83-rce` was added after the audited snapshot. The primary and backport agents have a
+  [Fastjson resource lookup rule](../detection.md#deserialization-defenses). End-to-end interception in this environment is pending.
+  - The compatibility check used the packaged application JAR from the Linux amd64 image (manifest `sha256:165820bfe57651483530bf9601598a738c9f18bb5ab40ec360da141d03bb274d`) on Temurin 8, with loopback HTTP.
+    Baseline, block and monitor returned Bob aged 25 for the default GET and weekly aged 20 for a normal JSON POST. Neither agent mode emitted a detection.
+  - A passive transformer captured the parser class as the application loaded it. Both class-resource calls in `checkAutoType` had the Java 8 agent hook immediately before them in block mode. The baseline class contained neither hook.
+    The [primary agent regression](../../java-agent/agent-jdk25/src/test/java/io/ohmyrasp/agent/asm/FastjsonResourceHookTest.java) checks the same instruction placement in the library. [Upstream catalogue](https://github.com/vulhub/vulhub/blob/9b90d4276f84feed6333286afeb7e1250379a1da/environments.toml)
 - [ ] _Add the next Java Vulhub candidate here before probing it._
