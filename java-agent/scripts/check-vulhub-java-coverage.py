@@ -3,8 +3,7 @@
 
 This is a lightweight guard for the manual Vulhub walkthrough process. It does
 not run containers; it verifies that every scoped Java/JVM README path in the
-local Vulhub snapshot is mentioned by the durable coverage ledger, algorithm
-docs, or acceptance scripts, and that every checked Covered Targets row carries
+local Vulhub snapshot appears once in the Source Path Coverage Matrix, and that every checked Covered Targets row carries
 either real acceptance evidence or an explicit boundary reason. It also checks
 that the Source Audit summary counts match the snapshot.
 
@@ -16,10 +15,12 @@ The default Vulhub snapshot path is read from VULHUB_ROOT, falling back to
 """
 from __future__ import annotations
 
+from collections import Counter
 import argparse
 import os
 import re
 import sys
+import tomllib
 from pathlib import Path
 
 JAVA_ROOTS = {
@@ -139,13 +140,18 @@ def search_corpus(checklist: Path, algorithm_doc: Path, scripts_dir: Path) -> st
     return "\n".join(parts)
 
 
-def missing_readme_mentions(vulhub_root: Path, corpus: str) -> list[str]:
-    missing: list[str] = []
-    for rel in java_readmes(vulhub_root):
-        token = rel.removesuffix("/README.md")
-        if token not in corpus:
-            missing.append(rel)
-    return missing
+def matrix_errors(readmes: list[str], checklist: Path) -> list[str]:
+    text = read_text(checklist)
+    section = text.partition("## Source Path Coverage Matrix\n")[2].split("\n## ", 1)[0]
+    rows = re.findall(r"^- \[([x ])\] `([^`]+/README\.md)`", section, re.M)
+    paths = Counter(path for _, path in rows)
+    expected = set(readmes)
+    candidates = text.partition("## Candidates\n")[2].split("\n## ", 1)[0]
+    pending = {env + "/README.md" for env in re.findall(r"^- \[ \] `([^`]+)`", candidates, re.M)}
+    return ([f"Missing matrix row: {p}" for p in sorted(expected - paths.keys())]
+            + [f"Stale matrix row: {p}" for p in sorted(paths.keys() - expected)]
+            + [f"Duplicate matrix row: {p}" for p in sorted(paths) if paths[p] > 1]
+            + [f"Matrix and candidate status disagree: {p}" for mark, p in rows if (mark == " ") != (p in pending)])
 
 
 def missing_cve_mentions(vulhub_root: Path, corpus: str) -> list[str]:
@@ -266,10 +272,20 @@ def main(argv: list[str]) -> int:
     readmes = java_readmes(vulhub_root)
     roots = java_roots(vulhub_root)
     cves = java_cve_tokens(vulhub_root)
-    missing = missing_readme_mentions(vulhub_root, corpus)
+    matrix = matrix_errors(readmes, args.checklist)
     missing_cves = missing_cve_mentions(vulhub_root, corpus)
     weak = rows_without_evidence(args.checklist)
     audit_mismatches = source_audit_mismatches(vulhub_root, args.checklist)
+    try:
+        with (vulhub_root / "environments.toml").open("rb") as stream:
+            entries = tomllib.load(stream)["environment"]
+        catalog_paths = {entry["path"] for entry in entries if entry["path"].partition("/")[0] in JAVA_ROOTS}
+    except (OSError, ValueError, KeyError) as exc:
+        print(f"Cannot read the Vulhub catalogue: {exc}", file=sys.stderr)
+        return 2
+    declared = re.search(r"The upstream catalogue lists (\d+) environments within these roots", read_text(args.checklist))
+    if not declared or int(declared[1]) != len(catalog_paths):
+        audit_mismatches.append(f"Source Audit catalogue count differs from {len(catalog_paths)} environments.")
     placeholder_errors = candidate_placeholder_errors(args.checklist)
 
     print(f"Vulhub root: {vulhub_root}")
@@ -279,17 +295,16 @@ def main(argv: list[str]) -> int:
     print(f"Java/JVM roots: {len(roots)}")
     print(f"Java/JVM README paths: {len(readmes)}")
     print(f"Java/JVM CVE tokens: {len(cves)}")
-    print(f"Unmentioned Java/JVM README paths: {len(missing)}")
+    print(f"Java/JVM catalogued environments: {len(catalog_paths)}")
+    print(f"Source matrix path errors: {len(matrix)}")
     print(f"Unmentioned Java/JVM CVE tokens: {len(missing_cves)}")
     print(f"Covered target rows: {len(covered_target_rows(args.checklist))}")
     print(f"Covered rows without acceptance/boundary evidence: {len(weak)}")
     print(f"Source Audit count mismatches: {len(audit_mismatches)}")
     print(f"Candidate placeholder errors: {len(placeholder_errors)}")
 
-    if missing:
-        print("\nUnmentioned Java/JVM README paths:")
-        for rel in missing:
-            print(f"- {rel}")
+    for issue in matrix:
+        print(issue)
     if missing_cves:
         print("\nUnmentioned Java/JVM CVE tokens:")
         for token in missing_cves:
@@ -307,7 +322,7 @@ def main(argv: list[str]) -> int:
         for error in placeholder_errors:
             print(f"- {error}")
 
-    return 1 if missing or missing_cves or weak or audit_mismatches or placeholder_errors else 0
+    return 1 if matrix or missing_cves or weak or audit_mismatches or placeholder_errors else 0
 
 
 if __name__ == "__main__":

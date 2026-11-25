@@ -130,14 +130,13 @@ Run parity, Vulhub ledger, and Docker acceptance checks from `java-agent/`:
 ```bash
 cd java-agent
 bash scripts/check-detector-parity.sh
-python3 scripts/check-vulhub-java-coverage.py
+python3 scripts/check-vulhub-java-coverage.py --vulhub-root "$VULHUB_ROOT"
 bash scripts/acceptance.sh
 ```
 
 Per-runtime Vulhub scripts are named `scripts/acceptance-vulhub-<component>-<jdk>.sh`. The Java 21 runtime compatibility matrix lives in `scripts/acceptance-java21.sh`.
 
-For an offline coverage review, use the same local Vulhub checkout and the
-retained event logs. From `java-agent/`, run:
+Set `VULHUB_ROOT` to a checkout of the revision in the [Source Audit](docs/development/vulhub-coverage.md#source-audit). An offline coverage review uses this checkout and the retained event logs. From `java-agent/`, run:
 
 ```bash
 python3 scripts/check-vulhub-java-coverage.py --vulhub-root "$VULHUB_ROOT" \

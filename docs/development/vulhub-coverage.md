@@ -35,7 +35,7 @@ covered section after the baseline/protected acceptance rows pass.
 
 ## Source Audit
 
-At snapshot `d277a86`, the [catalog audit](../../java-agent/scripts/check-vulhub-java-coverage.py)
+At snapshot [`9b90d42`](https://github.com/vulhub/vulhub/tree/9b90d4276f84feed6333286afeb7e1250379a1da), the [catalog audit](../../java-agent/scripts/check-vulhub-java-coverage.py)
 enumerates the upstream manifest and also reports Compose environments and
 README aliases missing from that manifest. Its `--evidence-report` output
 identifies which catalog entries fall within the Java roots used by this
@@ -53,8 +53,8 @@ record where the earlier agent stopped. They do not identify any component the
 current agent would have read. The [stream regression](../../java-agent/scripts/fp-harness/StreamResolutionCheck.java)
 checks ordinary chains and nested restricted types independently of those historical runs.
 
-Java/JVM source scope currently covers 53 Vulhub roots and 148 README
-environment or alias paths:
+Java/JVM source scope currently covers 53 Vulhub roots and 149 README
+environment or alias paths. The upstream catalogue lists 148 environments within these roots.
 
 `activemq`, `aj-report`, `apache-cxf`, `apache-druid`, `apereo-cas`,
 `coldfusion`, `confluence`, `dataease`, `dubbo`, `elasticsearch`, `fastjson`,
@@ -2320,9 +2320,7 @@ coverage, separate from the Java 25 behavioral replay suite:
 
 ## Source Path Coverage Matrix
 
-Every scoped Java/JVM README path below is either covered by a checked target in
-this file or explicitly handled as an alias/reference path in the source audit
-above.
+The matrix indexes upstream README paths. Checked entries have a ledger or alias record. Open entries link to pending candidates.
 
 - [x] `activemq/CVE-2015-5254/README.md`
 - [x] `activemq/CVE-2016-3088/README.md`
@@ -2354,6 +2352,7 @@ above.
 - [x] `elasticsearch/WooYun-2015-110216/README.md`
 - [x] `fastjson/1.2.24-rce/README.md`
 - [x] `fastjson/1.2.47-rce/README.md`
+- [ ] `fastjson/1.2.83-rce/README.md` ([candidate](#candidates))
 - [x] `fastjson/vuln/README.md`
 - [x] `flink/CVE-2020-17518/README.md`
 - [x] `flink/CVE-2020-17519/README.md`
@@ -2683,7 +2682,7 @@ above.
 
 ## Candidates
 
-- [ ] `fastjson/1.2.83-rce` was added after the audited snapshot. The primary and backport agents have a
+- [ ] `fastjson/1.2.83-rce` has a
   [Fastjson resource lookup rule](../detection.md#deserialization-defenses). End-to-end interception in this environment is pending.
   - The compatibility check used the packaged application JAR from the Linux amd64 image (manifest `sha256:165820bfe57651483530bf9601598a738c9f18bb5ab40ec360da141d03bb274d`) on Temurin 8, with loopback HTTP.
     Baseline, block and monitor returned Bob aged 25 for the default GET and weekly aged 20 for a normal JSON POST. Neither agent mode emitted a detection.
