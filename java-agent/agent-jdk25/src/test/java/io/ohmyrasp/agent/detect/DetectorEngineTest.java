@@ -2778,7 +2778,7 @@ final class DetectorEngineTest {
 
   @Test
   void detectsWebshellLdPreload() {
-    var result = engine.detectWebshellLdPreload("LD_PRELOAD", "/tmp/evil.so", request());
+    var result = ProcessDetector.detectWebshellLdPreload("LD_PRELOAD", "/tmp/evil.so", request());
 
     assertAlgorithm(result, "webshell_ld_preload");
   }

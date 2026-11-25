@@ -1739,7 +1739,7 @@ public final class OhMyRaspHooks {
       return;
     }
     try {
-      emit(DETECTORS.detectWebshellLdPreload(name, value, currentRequest()));
+      emit(ProcessDetector.detectWebshellLdPreload(name, value, currentRequest()));
     } catch (OhMyRaspBlockException blocked) {
       throw blocked;
     } catch (Throwable throwable) {

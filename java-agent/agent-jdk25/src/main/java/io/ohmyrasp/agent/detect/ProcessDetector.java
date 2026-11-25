@@ -12,6 +12,7 @@ import io.ohmyrasp.agent.rules.product.rocketmq.RocketMqFilterServer;
 import io.ohmyrasp.agent.rules.product.solr.SolrExecutableListener;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
@@ -32,6 +33,9 @@ public final class ProcessDetector {
 
   private static final Pattern REMOTE_JOB_SHELL_COMMAND =
       Pattern.compile("(?is)(?:^|\\W)(?:bash|sh|cmd|powershell|pwsh|nc|curl|wget)\\b");
+
+  private static final Set<String> WEBSHELL_ENV =
+      Set.of("LD_PRELOAD", "LD_AUDIT", "GCONV_PATH");
 
   public static Optional<Detection> detectCommand(List<String> command, RequestContext request) {
     return detectCommand(command, request, List.of());
@@ -236,5 +240,21 @@ public final class ProcessDetector {
       return values;
     }
     return List.of(String.valueOf(command));
+  }
+
+  public static Optional<Detection> detectWebshellLdPreload(
+      String name, String value, RequestContext request) {
+    String normalized = name == null ? "" : name.toUpperCase(Locale.ROOT);
+    if (WEBSHELL_ENV.contains(normalized)) {
+      return Optional.of(
+          Detection.log(
+              "webshell",
+              "webshell_ld_preload",
+              90,
+              "Dangerous dynamic loader environment variable selected",
+              request,
+              Map.of("name", normalized, "value", abbreviate(value))));
+    }
+    return Optional.empty();
   }
 }

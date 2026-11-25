@@ -104,9 +104,6 @@ public final class DetectorEngine {
           "urlclassloader",
           "systemclassloader");
 
-  private static final Set<String> WEBSHELL_ENV =
-      Set.of("LD_PRELOAD", "LD_AUDIT", "GCONV_PATH");
-
   private static final Set<String> CHINA_MOBILE_PREFIXES =
       Set.of(
           "130", "131", "132", "133", "134", "135", "136", "137", "138", "139", "145",
@@ -438,22 +435,6 @@ public final class DetectorEngine {
                 request,
                 Map.of("value", abbreviate(value))));
       }
-    }
-    return Optional.empty();
-  }
-
-  public Optional<Detection> detectWebshellLdPreload(
-      String name, String value, RequestContext request) {
-    String normalized = name == null ? "" : name.toUpperCase(Locale.ROOT);
-    if (WEBSHELL_ENV.contains(normalized)) {
-      return Optional.of(
-          Detection.log(
-              "webshell",
-              "webshell_ld_preload",
-              90,
-              "Dangerous dynamic loader environment variable selected",
-              request,
-              Map.of("name", normalized, "value", abbreviate(value))));
     }
     return Optional.empty();
   }
