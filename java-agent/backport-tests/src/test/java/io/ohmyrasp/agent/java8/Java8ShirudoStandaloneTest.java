@@ -7,6 +7,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.io.ByteArrayOutputStream;
 import java.io.PrintStream;
+import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 import java.net.URL;
 import java.net.URLClassLoader;
@@ -18,6 +19,7 @@ import java.util.Collections;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Properties;
+import java.util.concurrent.atomic.AtomicLong;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 
@@ -27,6 +29,7 @@ import org.junit.jupiter.api.Test;
  */
 final class Java8ShirudoStandaloneTest {
   private static final String WRITER_THREAD = "ohmyrasp-java8-writer";
+  private static final String CONTROL_THREAD = "ohmyrasp-java8-control";
 
   @AfterEach
   void clearProperties() {
@@ -288,13 +291,22 @@ final class Java8ShirudoStandaloneTest {
   }
 
   @Test
-  void invalidHigherPriorityValueWinsOverValidLowerPriorityValue() {
-    // The first non-blank source is chosen before it is parsed: an unparseable value does not
-    // fall through to the next source, it resolves the way an absent value would.
-    Properties legacyBaked = new Properties();
-    legacyBaked.setProperty("standalone", "false");
-    legacyBaked.setProperty("mode", "off");
-    legacyBaked.setProperty("latency_sample", "5");
+  void invalidHigherPriorityValueIsIgnoredAndTheNextSourceApplies() {
+    // Security case: a malformed -Dohmyrasp.mode must not mask OHMYRASP_MODE=block, or a
+    // non-standalone agent would fall back to legacy mode and allow the operation.
+    Properties badSysMode = new Properties();
+    badSysMode.setProperty("ohmyrasp.mode", "bogus");
+    Map<String, String> envBlock = new HashMap<String, String>();
+    envBlock.put("OHMYRASP_MODE", "block");
+    RaspRuntime.Config legacy = RaspRuntime.Config.resolve(null, badSysMode, envBlock);
+    assertFalse(legacy.standalone);
+    assertEquals(RaspRuntime.Mode.BLOCK, legacy.mode);
+    assertTrue(RaspRuntime.blockingAllowed(legacy.standalone, legacy.mode, false));
+
+    Properties baked = new Properties();
+    baked.setProperty("standalone", "false");
+    baked.setProperty("mode", "off");
+    baked.setProperty("latency_sample", "5");
 
     Properties sysProps = new Properties();
     sysProps.setProperty("ohmyrasp.mode", "bogus");
@@ -306,35 +318,40 @@ final class Java8ShirudoStandaloneTest {
     env.put("OHMYRASP_STANDALONE", "true");
     env.put("OHMYRASP_LATENCY_SAMPLE", "7");
 
-    RaspRuntime.Config legacy = RaspRuntime.Config.resolve(legacyBaked, sysProps, env);
-    assertFalse(legacy.standalone);
-    assertNull(legacy.mode);
-    assertEquals(10, legacy.latencySample);
+    RaspRuntime.Config fromEnv = RaspRuntime.Config.resolve(baked, sysProps, env);
+    assertTrue(fromEnv.standalone);
+    assertEquals(RaspRuntime.Mode.MONITOR, fromEnv.mode);
+    assertEquals(7, fromEnv.latencySample);
 
-    Properties standaloneBaked = new Properties();
-    standaloneBaked.setProperty("standalone", "true");
-    standaloneBaked.setProperty("mode", "off");
-    standaloneBaked.setProperty("latency_sample", "5");
-    Map<String, String> noEnv = Collections.<String, String>emptyMap();
+    Map<String, String> badEnv = new HashMap<String, String>();
+    badEnv.put("OHMYRASP_MODE", "nope");
+    badEnv.put("OHMYRASP_STANDALONE", "perhaps");
+    badEnv.put("OHMYRASP_LATENCY_SAMPLE", "x");
 
-    Properties badMode = new Properties();
-    badMode.setProperty("ohmyrasp.mode", "bogus");
-    RaspRuntime.Config standaloneBadMode = RaspRuntime.Config.resolve(standaloneBaked, badMode, noEnv);
-    assertTrue(standaloneBadMode.standalone);
-    assertEquals(RaspRuntime.Mode.BLOCK, standaloneBadMode.mode);
+    RaspRuntime.Config fromBaked = RaspRuntime.Config.resolve(baked, sysProps, badEnv);
+    assertFalse(fromBaked.standalone);
+    assertEquals(RaspRuntime.Mode.OFF, fromBaked.mode);
+    assertEquals(5, fromBaked.latencySample);
 
-    Properties badSample = new Properties();
-    badSample.setProperty("ohmyrasp.latency_sample", "abc");
-    RaspRuntime.Config standaloneBadSample =
-        RaspRuntime.Config.resolve(standaloneBaked, badSample, noEnv);
-    assertEquals(0, standaloneBadSample.latencySample);
+    Properties badBaked = new Properties();
+    badBaked.setProperty("standalone", "?");
+    badBaked.setProperty("mode", "??");
+    badBaked.setProperty("latency_sample", "-");
+    RaspRuntime.Config defaults = RaspRuntime.Config.resolve(badBaked, sysProps, badEnv);
+    assertFalse(defaults.standalone);
+    assertNull(defaults.mode);
+    assertEquals(10, defaults.latencySample);
+    assertEquals(Paths.get("/tmp/ohmyrasp-control.json"), defaults.controlPath);
 
-    Properties badStandalone = new Properties();
-    badStandalone.setProperty("ohmyrasp.standalone", "maybe");
-    RaspRuntime.Config notStandalone =
-        RaspRuntime.Config.resolve(standaloneBaked, badStandalone, noEnv);
-    assertFalse(notStandalone.standalone);
-    assertEquals(Paths.get("/tmp/ohmyrasp-control.json"), notStandalone.controlPath);
+    // Under lock_config an invalid baked value takes the default; sysprop and env stay ignored.
+    Properties lockedBadMode = new Properties();
+    lockedBadMode.setProperty("lock_config", "true");
+    lockedBadMode.setProperty("standalone", "true");
+    lockedBadMode.setProperty("mode", "bogus");
+    Properties sysOff = new Properties();
+    sysOff.setProperty("ohmyrasp.mode", "off");
+    RaspRuntime.Config locked = RaspRuntime.Config.resolve(lockedBadMode, sysOff, env);
+    assertEquals(RaspRuntime.Mode.BLOCK, locked.mode);
   }
 
   @Test
@@ -386,6 +403,9 @@ final class Java8ShirudoStandaloneTest {
       RaspRuntime.writeEvent("stdout", "{\"msg\":\"out-line\"}");
       RaspRuntime.writeStartupLine("STDOUT", "{\"msg\":\"out-start\"}");
       RaspRuntime.writeEvent("none", "{\"msg\":\"drop-line\"}");
+      RaspRuntime.writeEvent("STDERR", "{\"msg\":\"err-upper-line\"}");
+      RaspRuntime.writeEvent(" STDOUT ", "{\"msg\":\"out-upper-line\"}");
+      RaspRuntime.writeEvent("NONE", "{\"msg\":\"drop-upper-line\"}");
       RaspRuntime.writeStartupLine("NONE", "{\"msg\":\"drop-start\"}");
       RaspRuntime.writeEvent(null, "{\"msg\":\"null-line\"}");
       RaspRuntime.writeStartupLine(null, "{\"msg\":\"null-start\"}");
@@ -398,11 +418,13 @@ final class Java8ShirudoStandaloneTest {
     String outText = new String(outBuf.toByteArray(), StandardCharsets.UTF_8);
     assertTrue(errText.contains("err-line"));
     assertTrue(errText.contains("err-start"));
+    assertTrue(errText.contains("err-upper-line"));
     assertTrue(errText.contains("null-line"));
     assertTrue(errText.contains("null-start"));
     assertFalse(errText.contains("drop-"));
     assertTrue(outText.contains("out-line"));
     assertTrue(outText.contains("out-start"));
+    assertTrue(outText.contains("out-upper-line"));
     assertFalse(outText.contains("drop-"));
     assertFalse(Files.exists(Paths.get("stderr")));
     assertFalse(Files.exists(Paths.get("stdout")));
@@ -410,44 +432,100 @@ final class Java8ShirudoStandaloneTest {
   }
 
   @Test
-  void nonFileInitialLogTargetStartsTheWriterOnTheFirstFileEvent() throws Exception {
-    // The build sets ohmyrasp.log.sync=true for every test JVM, so this loads a fresh copy of
-    // RaspRuntime with sync off, a stderr log target and no control file.
-    Path logFile = Files.createTempDirectory("ohmyrasp-java8-writer-test").resolve("events.jsonl");
-    URL classes = RaspRuntime.class.getProtectionDomain().getCodeSource().getLocation();
-    URLClassLoader isolated = new URLClassLoader(new URL[] {classes}, null);
-    String previousSync = System.getProperty("ohmyrasp.log.sync");
-    int writersBefore = writerThreads();
-    Class<?> runtime;
-    try {
-      System.setProperty("ohmyrasp.log.sync", "false");
-      System.setProperty("ohmyrasp.java8.log", "stderr");
-      System.setProperty("ohmyrasp.control", "none");
-      runtime = Class.forName(RaspRuntime.class.getName(), true, isolated);
-    } finally {
-      restore("ohmyrasp.log.sync", previousSync);
-      System.clearProperty("ohmyrasp.java8.log");
-      System.clearProperty("ohmyrasp.control");
-    }
+  void nonFileInitialLogTargetWritesLaterFileEventsInlineWithoutAWriterThread() throws Exception {
+    Path logFile = Files.createTempDirectory("ohmyrasp-java8-inline-test").resolve("events.jsonl");
+    int writersBefore = threadsNamed(WRITER_THREAD);
+    Map<String, String> init = asyncInit();
+    init.put("ohmyrasp.java8.log", "stderr");
+    init.put("ohmyrasp.latency_sample", "1");
+    Class<?> runtime = loadIsolatedRuntime(init, null);
     Method writeEvent = runtime.getMethod("writeEvent", String.class, String.class);
 
-    assertEquals(writersBefore, writerThreads(), "a stderr target starts no writer thread");
+    assertEquals(writersBefore, threadsNamed(WRITER_THREAD), "a stderr target starts no writer");
     writeEvent.invoke(null, "none", "{\"event\":\"dropped\"}");
-    assertEquals(writersBefore, writerThreads(), "a none target starts no writer thread");
+    writeEvent.invoke(null, logFile.toString(), "{\"event\":\"inline\"}");
+    // Inline: the line is on disk when writeEvent returns, and no thread was created for it.
+    String content = new String(Files.readAllBytes(logFile), StandardCharsets.UTF_8);
+    assertTrue(content.contains("{\"event\":\"inline\"}"), content);
+    assertFalse(content.contains("dropped"), content);
+    assertEquals(writersBefore, threadsNamed(WRITER_THREAD), "a later file target starts no writer");
 
+    // Latency sampling with sync off and rate 1 reaches the same inline path.
+    Method sampleLatency = runtime.getDeclaredMethod("sampleLatency", long.class);
+    sampleLatency.setAccessible(true);
+    System.setProperty("ohmyrasp.java8.log", logFile.toString());
+    try {
+      sampleLatency.invoke(null, 4242L);
+    } finally {
+      System.clearProperty("ohmyrasp.java8.log");
+    }
+    content = new String(Files.readAllBytes(logFile), StandardCharsets.UTF_8);
+    assertTrue(content.contains("\"latency_us\":4242"), content);
+    assertEquals(writersBefore, threadsNamed(WRITER_THREAD));
+  }
+
+  @Test
+  void fileInitialLogTargetStartsTheWriterDuringInitialisation() throws Exception {
+    Path logFile = Files.createTempDirectory("ohmyrasp-java8-writer-test").resolve("events.jsonl");
+    int writersBefore = threadsNamed(WRITER_THREAD);
+    Map<String, String> init = asyncInit();
+    init.put("ohmyrasp.java8.log", logFile.toString());
+    Class<?> runtime = loadIsolatedRuntime(init, null);
+
+    assertEquals(writersBefore + 1, threadsNamed(WRITER_THREAD), "the writer exists before any hook");
+    Method writeEvent = runtime.getMethod("writeEvent", String.class, String.class);
     writeEvent.invoke(null, logFile.toString(), "{\"event\":\"spooled\"}");
-    assertEquals(writersBefore + 1, writerThreads(), "the first file event starts one writer");
-    writeEvent.invoke(null, logFile.toString(), "{\"event\":\"spooled-again\"}");
-    assertEquals(writersBefore + 1, writerThreads(), "later file events reuse that writer");
+    assertEquals(writersBefore + 1, threadsNamed(WRITER_THREAD), "events reuse that writer");
 
     String content = "";
-    for (int i = 0; i < 100 && !content.contains("spooled-again"); i++) {
+    for (int i = 0; i < 100 && !content.contains("spooled"); i++) {
       Thread.sleep(50L);
       content = Files.exists(logFile) ? new String(Files.readAllBytes(logFile), StandardCharsets.UTF_8) : "";
     }
     assertTrue(content.contains("{\"event\":\"spooled\"}"), content);
-    assertTrue(content.contains("{\"event\":\"spooled-again\"}"), content);
-    assertFalse(content.contains("dropped"), content);
+  }
+
+  @Test
+  void malformedBakedPropertiesFallBackToDefaultsWithoutAbortingInitialisation() throws Exception {
+    // Properties.load throws IllegalArgumentException on a malformed unicode escape. The line
+    // before it must not survive as a partial read either.
+    Path malformed = bakedResource("log=/tmp/partial.jsonl\nstandalone=true\nbad=\\u00zz\n");
+    Class<?> broken = loadIsolatedRuntime(asyncInit(), malformed);
+    assertTrue(bakedProperties(broken).isEmpty(), bakedProperties(broken).toString());
+    Method resolveLogPath = broken.getMethod("resolveLogPath");
+    resolveLogPath.invoke(null);
+
+    // Control: the same lookup reads a well-formed resource.
+    Path valid = bakedResource("log=none\nlatency_sample=3\n");
+    Class<?> readable = loadIsolatedRuntime(asyncInit(), valid);
+    assertEquals("none", bakedProperties(readable).getProperty("log"));
+    assertEquals("3", bakedProperties(readable).getProperty("latency_sample"));
+  }
+
+  @Test
+  void invalidControlPathDoesNotBreakConfigurationOrEventEmission() throws Exception {
+    String invalid = "bad\0control.json";
+    Properties sysProps = new Properties();
+    sysProps.setProperty("ohmyrasp.control", invalid);
+    RaspRuntime.Config config = RaspRuntime.Config.resolve(null, sysProps, null);
+    assertFalse(config.controlDisabled);
+    assertNull(config.controlPath);
+
+    // Set after initialisation: the next event still resolves its log target.
+    System.setProperty("ohmyrasp.control", invalid);
+    System.setProperty("ohmyrasp.java8.log", "none");
+    assertEquals("none", RaspRuntime.resolveLogPath());
+    RaspRuntime.writeEvent(RaspRuntime.resolveLogPath(), "{\"event\":\"after-bad-control\"}");
+    System.clearProperty("ohmyrasp.control");
+    System.clearProperty("ohmyrasp.java8.log");
+
+    // Set before initialisation: the runtime starts and polls nothing.
+    int pollersBefore = threadsNamed(CONTROL_THREAD);
+    Map<String, String> init = asyncInit();
+    init.put("ohmyrasp.control", invalid);
+    Class<?> runtime = loadIsolatedRuntime(init, null);
+    assertEquals(pollersBefore, threadsNamed(CONTROL_THREAD));
+    runtime.getMethod("resolveLogPath").invoke(null);
   }
 
   @Test
@@ -494,20 +572,80 @@ final class Java8ShirudoStandaloneTest {
   }
 
   @Test
-  void latencySamplingIgnoresNegativeAndZeroSampleRateWithoutThrowing() {
-    Properties baked = new Properties();
-    baked.setProperty("standalone", "true");
-    RaspRuntime.Config config =
-        RaspRuntime.Config.resolve(baked, null, Collections.<String, String>emptyMap());
-    assertEquals(0, config.latencySample);
+  void latencySamplingRecordsOneRequestPerSampleRateAndNoneWhenSuppressed() {
+    AtomicLong counter = new AtomicLong();
+    assertFalse(RaspRuntime.latencySampled(true, false, 100L, 1, counter), "sync mode");
+    assertFalse(RaspRuntime.latencySampled(false, true, 100L, 1, counter), "detection off");
+    assertFalse(RaspRuntime.latencySampled(false, false, -1L, 1, counter), "negative latency");
+    assertFalse(RaspRuntime.latencySampled(false, false, 100L, 0, counter), "rate 0");
+    assertEquals(0L, counter.get(), "suppressed requests do not advance the counter");
+
+    assertTrue(RaspRuntime.latencySampled(false, false, 0L, 1, counter));
+    assertTrue(RaspRuntime.latencySampled(false, false, 100L, 1, counter));
+
+    StringBuilder pattern = new StringBuilder();
+    for (int i = 0; i < 6; i++) {
+      pattern.append(RaspRuntime.latencySampled(false, false, 100L, 3, counter) ? 'x' : '.');
+    }
+    assertEquals("..x..x", pattern.toString());
+
+    // This JVM runs with ohmyrasp.log.sync=true: the live entry point records nothing and never throws.
     RaspRuntime.sampleLatency(-1L);
     RaspRuntime.sampleLatency(100L);
   }
 
-  private static int writerThreads() {
+  /** System properties for an isolated runtime: async writes, no control file. */
+  private static Map<String, String> asyncInit() {
+    Map<String, String> init = new HashMap<String, String>();
+    init.put("ohmyrasp.log.sync", "false");
+    init.put("ohmyrasp.control", "none");
+    return init;
+  }
+
+  /**
+   * Loads and initialises a fresh RaspRuntime in its own class loader, with the given system
+   * properties set only while its static initialiser runs. The build sets ohmyrasp.log.sync=true for
+   * every test JVM, which the shared RaspRuntime has already read. {@code bakedRoot}, when not null,
+   * is searched first, so a META-INF/ohmyrasp-shirudo.properties there becomes the baked resource.
+   */
+  private static Class<?> loadIsolatedRuntime(Map<String, String> init, Path bakedRoot)
+      throws Exception {
+    URL classes = RaspRuntime.class.getProtectionDomain().getCodeSource().getLocation();
+    URL[] urls =
+        bakedRoot == null ? new URL[] {classes} : new URL[] {bakedRoot.toUri().toURL(), classes};
+    URLClassLoader isolated = new URLClassLoader(urls, null);
+    Map<String, String> previous = new HashMap<String, String>();
+    for (Map.Entry<String, String> entry : init.entrySet()) {
+      previous.put(entry.getKey(), System.getProperty(entry.getKey()));
+      System.setProperty(entry.getKey(), entry.getValue());
+    }
+    try {
+      return Class.forName(RaspRuntime.class.getName(), true, isolated);
+    } finally {
+      for (Map.Entry<String, String> entry : previous.entrySet()) {
+        restore(entry.getKey(), entry.getValue());
+      }
+    }
+  }
+
+  private static Path bakedResource(String content) throws Exception {
+    Path root = Files.createTempDirectory("ohmyrasp-java8-baked-test");
+    Path file = root.resolve("META-INF/ohmyrasp-shirudo.properties");
+    Files.createDirectories(file.getParent());
+    Files.write(file, content.getBytes(StandardCharsets.UTF_8));
+    return root;
+  }
+
+  private static Properties bakedProperties(Class<?> runtime) throws Exception {
+    Field field = runtime.getDeclaredField("BAKED_PROPERTIES");
+    field.setAccessible(true);
+    return (Properties) field.get(null);
+  }
+
+  private static int threadsNamed(String name) {
     int count = 0;
     for (Thread thread : Thread.getAllStackTraces().keySet()) {
-      if (WRITER_THREAD.equals(thread.getName()) && thread.isAlive()) {
+      if (name.equals(thread.getName()) && thread.isAlive()) {
         count++;
       }
     }
