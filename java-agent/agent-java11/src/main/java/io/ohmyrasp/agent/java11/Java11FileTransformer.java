@@ -34,8 +34,8 @@ public final class Java11FileTransformer implements ClassFileTransformer {
       return null;
     }
     try {
-      ClassReader reader = new ClassReader(classfileBuffer);
-      ClassWriter writer = new ClassWriter(reader, PlotWriteVisitor.OWNER.equals(className) ? ClassWriter.COMPUTE_FRAMES : ClassWriter.COMPUTE_MAXS);
+      var reader = new ClassReader(classfileBuffer);
+      var writer = new ClassWriter(reader, PlotWriteVisitor.OWNER.equals(className) ? ClassWriter.COMPUTE_FRAMES : ClassWriter.COMPUTE_MAXS);
       reader.accept(new FileClassVisitor(className, writer), ClassReader.EXPAND_FRAMES);
       return writer.toByteArray();
     } catch (Throwable throwable) {
