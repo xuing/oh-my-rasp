@@ -145,13 +145,21 @@ def rule_scope_tables() -> list[str]:
         raise ValueError(f"Primary rules missing a scope description: {sorted(missing)}")
 
     families: dict[str, list[str]] = {}
+    emitted: dict[str, set[str]] = {}
     for module in BACKPORTS:
         track = module.removeprefix("agent-")
         hooks = ROOT / module / "src/main/java/io/ohmyrasp/agent" / track / f"{track.capitalize()}RaspHooks.java"
         for name in sorted(set(re.findall(r'new Finding\(\s*"(\w+)"', hooks.read_text(encoding="utf-8")))):
-            names = families.setdefault(name.removeprefix(track + "_"), [])
+            family = name.removeprefix(track + "_")
+            emitted.setdefault(track, set()).add(family)
+            names = families.setdefault(family, [])
             if name not in names:
                 names.append(name)
+    # The backport lines are separate source trees that must decide alike: a rule one line emits, all emit.
+    if gaps := {family: sorted(track for track, ids in emitted.items() if family not in ids)
+                for family in families if any(family not in ids for ids in emitted.values())}:
+        raise ValueError("Backport lines emit different rule ids. Missing: "
+                         + "; ".join(f"{family} in {', '.join(tracks)}" for family, tracks in sorted(gaps.items())))
     documented = general["backports"].keys() | product["backports"].keys()
     if documented != families.keys():
         raise ValueError(f"Backport rule scope catalog differs from emitted families: {sorted(documented ^ families.keys())}")
