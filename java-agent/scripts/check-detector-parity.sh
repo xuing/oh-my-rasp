@@ -27,12 +27,12 @@ fail=0
 require_symbol() {
   local file="$1"
   local symbol="$2"
-  if [[ ! -f "$file" ]]; then
+  if [[ ! -e "$file" ]]; then
     echo "PARITY FAIL: file not found: $file" >&2
     fail=1
     return
   fi
-  if ! grep -q "$symbol" "$file"; then
+  if ! grep -rFq --include='*.java' "$symbol" "$file"; then
     echo "PARITY FAIL: missing '$symbol' in $file" >&2
     fail=1
   fi
@@ -67,10 +67,10 @@ done
 #                 The FP is eliminated by construction, so no carve-out symbol
 #                 exists (or is needed) in jdk25. Do not add one here.
 # ---------------------------------------------------------------------------
-jdk25_engine="$ROOT/agent-jdk25/src/main/java/io/ohmyrasp/agent/detect/DetectorEngine.java"
-require_symbol "$jdk25_engine" "isBenignInternalServicePath"
-require_symbol "$jdk25_engine" "isKnownLiferayPortalInclude"
-require_symbol "$jdk25_engine" "isKnownLiferayInternalIncludePath"
+jdk25_detectors="$ROOT/agent-jdk25/src/main/java/io/ohmyrasp/agent/detect"
+require_symbol "$jdk25_detectors" "isBenignInternalServicePath"
+require_symbol "$jdk25_detectors" "isKnownLiferayPortalInclude"
+require_symbol "$jdk25_detectors" "isKnownLiferayInternalIncludePath"
 
 if [[ "$fail" -ne 0 ]]; then
   echo "" >&2

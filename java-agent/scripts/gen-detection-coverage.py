@@ -6,7 +6,7 @@ derived, not written by hand, so it stays correct as hooks, detectors, and
 acceptance scenarios are added. Re-run it after changing any of:
 
   * agent/src/main/java/io/ohmyrasp/agent/asm/HookRegistry.java   (hook families)
-  * agent/src/main/java/io/ohmyrasp/agent/detect/DetectorEngine.java (capabilities)
+  * agent-jdk25/src/main/java/io/ohmyrasp/agent/detect/ (public facade and rule owners)
   * scripts/acceptance-vulhub-*.sh                                (verified scenarios)
 
 It also owns the "By the numbers" region of the root README.md and
@@ -56,7 +56,7 @@ def hook_families() -> list[str]:
 def detector_capabilities() -> list[str]:
     """Distinct detect* methods exposed by DetectorEngine."""
     text = (AGENT / "detect" / "DetectorEngine.java").read_text(encoding="utf-8")
-    names = re.findall(r"\bdetect([A-Z][A-Za-z0-9]+)\(", text)
+    names = re.findall(r"^  public (?:static )?[^\n(]+\bdetect([A-Z][A-Za-z0-9]+)\(", text, re.M)
     return sorted(set(names))
 
 

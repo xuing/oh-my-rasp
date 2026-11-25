@@ -8,6 +8,21 @@ Classify the decision by the evidence it needs. Request input contributing contr
 
 For new shared decision code, place cross-product predicates in [general rules](../java-agent/shared/src/main/java/io/ohmyrasp/agent/rules/general/) and implementation-specific predicates under [product rules](../java-agent/shared/src/main/java/io/ohmyrasp/agent/rules/product/). Keep hook wiring with the runtime subsystem. When two branches share a policy ID, record each basis in the appropriate catalog. Scope and blocking confidence are independent. See the [rule scope tables](../java-agent/docs/DETECTION-COVERAGE.md#rule-scope).
 
+## Primary-agent detector layout
+
+Hooks call the public [DetectorEngine facade](../java-agent/agent-jdk25/src/main/java/io/ohmyrasp/agent/detect/DetectorEngine.java). Put the decision beside the evidence it consumes. The facade keeps the HTTP first-match order visible, including credential and serialized client-state checks. The [policy evaluator](../java-agent/agent-jdk25/src/main/java/io/ohmyrasp/agent/policy/AgentPolicy.java) applies operator selection and actions after classification.
+
+| Evidence at the decision point | Implementation |
+|---|---|
+| JDBC statement, connection options, or database error | [JdbcDetector](../java-agent/agent-jdk25/src/main/java/io/ohmyrasp/agent/detect/JdbcDetector.java) |
+| SQL-like fields in a request, selected by policy | [SqlRequestIndicators](../java-agent/agent-jdk25/src/main/java/io/ohmyrasp/agent/detect/SqlRequestIndicators.java) |
+| Process arguments and caller stack | [ProcessDetector](../java-agent/agent-jdk25/src/main/java/io/ohmyrasp/agent/detect/ProcessDetector.java) |
+| Deserialization transport and resolved type | [DeserializationDetector](../java-agent/agent-jdk25/src/main/java/io/ohmyrasp/agent/detect/DeserializationDetector.java) and [DeserializationTypes](../java-agent/agent-jdk25/src/main/java/io/ohmyrasp/agent/detect/DeserializationTypes.java) |
+| Resource selected through class loading, JNDI, JAAS, or Spring configuration | [RemoteResourceDetector](../java-agent/agent-jdk25/src/main/java/io/ohmyrasp/agent/detect/RemoteResourceDetector.java) |
+| Credentials or serialized state observed in a request | [CredentialDetector](../java-agent/agent-jdk25/src/main/java/io/ohmyrasp/agent/detect/CredentialDetector.java) and [SerializedRequestState](../java-agent/agent-jdk25/src/main/java/io/ohmyrasp/agent/detect/SerializedRequestState.java) |
+
+Each domain owns its matching constants, event construction and redaction. Shared request parsing stays in the primary agent. The Java 8-compatible shared source tree provides runtime observations and portable predicates to all agent tracks. The general and product catalogs describe rule applicability independently of these Java boundaries.
+
 ## Detection pipeline
 
 Every detection decision passes through the same pipeline:

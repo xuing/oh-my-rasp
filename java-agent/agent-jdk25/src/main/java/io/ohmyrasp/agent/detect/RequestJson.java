@@ -6,7 +6,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 
-/** Read bounded request metadata without invoking application parsers. */
+/** Extract string fields and tokens from request JSON without invoking application parsers. */
 final class RequestJson {
   private RequestJson() {}
 
