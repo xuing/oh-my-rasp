@@ -135,6 +135,8 @@ A novel Struts2 bypass that passes through OGNL evaluation is caught at the proc
 
 Zero false positives on the benign SQL corpus (see [False-positive methodology](#false-positive-methodology)).
 
+At JDBC handoff, the lexer recognizes square-bracket identifiers for SQLite and SQL Server. SQLite ends the name at the first closing bracket. SQL Server permits a doubled closing bracket inside the name. The concrete PostgreSQL driver retains array-expression semantics. When a pool has no driver identity, bracket-dependent findings can be deferred to the driver. [SQLite identifier tokens](https://www.sqlite.org/draft/tokenreq.html) · [SQL Server delimited identifiers](https://learn.microsoft.com/en-us/sql/t-sql/functions/quotename-transact-sql)
+
 ### MyBatis dynamic SQL
 
 The mapper hook observes raw property substitutions as MyBatis appends them. It

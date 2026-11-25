@@ -25,7 +25,7 @@ public final class SqlStatement {
   private static final Pattern SINK_POLICY = Pattern.compile(
       "(?i)(?:\\binto\\s+(?:out|dump)file\\b|/\\*!|\\b(?:load_file|sleep|benchmark)\\s*\\()");
 
-  private enum Dialect { UNSPECIFIED, WRAPPER, H2_1, H2_CURRENT, POSTGRESQL, DERBY, MYSQL, OTHER }
+  private enum Dialect { UNSPECIFIED, WRAPPER, H2_1, H2_CURRENT, POSTGRESQL, DERBY, MYSQL, SQLITE, SQL_SERVER, OTHER }
 
   private static final Pattern SOURCE_CLAUSE = Pattern.compile("(?i)\\b(?:as|for|call)\\b");
   private final String original;
@@ -33,6 +33,8 @@ public final class SqlStatement {
   private final BitSet comments = new BitSet();
   private final SqlStatement mysqlView;
   private boolean truncatedLiteral;
+  private boolean incompleteBracket;
+  private final boolean bracketIdentifiers;
   private final BitSet quoted = new BitSet();
 
   public SqlStatement(String sql) {
@@ -58,13 +60,20 @@ public final class SqlStatement {
 
   private SqlStatement(String sql, boolean mysql, Dialect dialect) {
     original = sql;
+    bracketIdentifiers = dialect == Dialect.SQLITE || dialect == Dialect.SQL_SERVER;
     boolean ambiguous = false;
     boolean namedDollarQuotes = dialect == Dialect.POSTGRESQL || dialect == Dialect.WRAPPER;
     StringBuilder commentsRemoved = null;
     int i = 0;
     while (i < sql.length()) {
       char ch = sql.charAt(i);
-      if (ch == '\'' || ch == '"' || ch == '`') {
+      if (ch == '[' && bracketIdentifiers) {
+        int start = i;
+        int end = bracketEnd(sql, i + 1, dialect == Dialect.SQL_SERVER);
+        incompleteBracket = end < 0;
+        i = incompleteBracket ? sql.length() : end;
+        quoted.set(start, i);
+      } else if (ch == '\'' || ch == '"' || ch == '`') {
         boolean escapeString = ch == '\'' && (dialect == Dialect.POSTGRESQL || dialect == Dialect.WRAPPER) && i >= 1
             && (sql.charAt(i - 1) == 'E' || sql.charAt(i - 1) == 'e')
             && (i == 1 || !Character.isJavaIdentifierPart(sql.charAt(i - 2)));
@@ -138,7 +147,7 @@ public final class SqlStatement {
           }
         } else {
           i = blockCommentEnd(sql, i, dialect == Dialect.POSTGRESQL
-              || dialect == Dialect.H2_CURRENT || dialect == Dialect.DERBY || dialect == Dialect.WRAPPER);
+              || dialect == Dialect.H2_CURRENT || dialect == Dialect.DERBY || dialect == Dialect.SQL_SERVER || dialect == Dialect.WRAPPER);
         }
         if (commentsRemoved == null) {
           commentsRemoved = new StringBuilder(sql);
@@ -167,19 +176,43 @@ public final class SqlStatement {
     if (dialect == Dialect.WRAPPER && alternate != null) {
       // A proxy can delegate to either dialect. Only use code that is outside
       // quotes and comments under both interpretations at this boundary.
-      quoted.or(alternate.quoted);
-      comments.and(alternate.comments);
-      truncatedLiteral &= alternate.truncatedLiteral;
-      for (int k = 0; k < sql.length(); k++) {
-        if (alternate.text.charAt(k) == ' ' && sql.charAt(k) != ' ') {
-          if (commentsRemoved == null) commentsRemoved = new StringBuilder(sql);
-          commentsRemoved.setCharAt(k, ' ');
-        }
-      }
+      commentsRemoved = commonCode(commentsRemoved, alternate);
       alternate = null;
+    }
+    if ((dialect == Dialect.WRAPPER || dialect == Dialect.UNSPECIFIED) && sql.indexOf('[') >= 0 && sql.indexOf(']') >= 0) {
+      // A pool or a source-only callback exposes no backend grammar. Use code that is also
+      // visible when brackets delimit identifiers. The concrete driver gets its own pass.
+      commentsRemoved = commonCode(commentsRemoved, new SqlStatement(sql, false, Dialect.SQLITE));
+      if (sql.contains("]]") || sql.contains("/*"))
+        commentsRemoved = commonCode(commentsRemoved, new SqlStatement(sql, false, Dialect.SQL_SERVER));
     }
     text = commentsRemoved == null ? sql : commentsRemoved;
     mysqlView = alternate;
+  }
+
+  private static int bracketEnd(String sql, int i, boolean doubledClosingBracket) {
+    while ((i = sql.indexOf(']', i)) >= 0) {
+      i++;
+      if (!doubledClosingBracket || i == sql.length() || sql.charAt(i) != ']') return i;
+      i++;
+    }
+    return -1;
+  }
+
+  private StringBuilder commonCode(StringBuilder masked, SqlStatement other) {
+    // An unclosed delimiter cannot establish this alternative dialect for a valid statement.
+    if (other.incompleteBracket) return masked;
+    quoted.or(other.quoted);
+    comments.and(other.comments);
+    truncatedLiteral &= other.truncatedLiteral;
+    if (other.text == original) return masked;
+    for (int k = 0; k < original.length(); k++) {
+      if (other.text.charAt(k) == ' ' && original.charAt(k) != ' ') {
+        if (masked == null) masked = new StringBuilder(original);
+        masked.setCharAt(k, ' ');
+      }
+    }
+    return masked;
   }
 
   private static int blockCommentEnd(String sql, int i, boolean nested) {
@@ -204,10 +237,12 @@ public final class SqlStatement {
 
   private static Dialect dialectOf(String sql, String jdbcClass, String version) {
     if (jdbcClass == null) {
-      if (sql.indexOf('$') < 0 && !sql.contains("/*") && !sql.contains("//")
+      if (sql.indexOf('$') < 0 && sql.indexOf('[') < 0 && !sql.contains("/*") && !sql.contains("//")
           && !sql.contains("--") && sql.indexOf('\\') < 0) return Dialect.UNSPECIFIED;
       jdbcClass = driverAtJdbcEntry();
     }
+    if (jdbcClass.startsWith("org.sqlite.")) return Dialect.SQLITE;
+    if (jdbcClass.startsWith("com.microsoft.sqlserver.jdbc.")) return Dialect.SQL_SERVER;
     if (jdbcClass.startsWith("org.postgresql.jdbc.")) return Dialect.POSTGRESQL;
     if (jdbcClass.startsWith("org.h2.jdbc.")) {
       return version != null && version.startsWith("1.") ? Dialect.H2_1 : Dialect.H2_CURRENT;
@@ -447,6 +482,7 @@ public final class SqlStatement {
     if (opening < 0 || closing >= original.length() || !quoted.get(opening)
         || (opening > 0 && quoted.get(opening - 1))) return false;
     char quote = original.charAt(opening);
+    if (quote == '[') return bracketIdentifiers && original.charAt(closing) == ']';
     return (quote == '\'' || quote == '"' || quote == '`') && original.charAt(closing) == quote;
   }
 

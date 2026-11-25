@@ -6,6 +6,7 @@ import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.util.BitSet;
+import java.util.List;
 import org.junit.jupiter.api.Test;
 
 class SqlStatementTest {
@@ -63,6 +64,38 @@ class SqlStatementTest {
     assertFalse(new SqlStatement("/*! sleep(1) */ select 1", driver).matchesSinkPolicy());
     assertTrue(new SqlStatement("/*! sleep(1) */ select 1", "com.mysql.cj.jdbc.StatementImpl").matchesSinkPolicy());
     assertFalse(new SqlStatement("select E'example\\' sleep(1)'", driver).matchesSinkPolicy());
+  }
+
+  @Test
+  void bracketIdentifiersFollowTheJdbcDialect() {
+    String sqlite = "org.sqlite.jdbc4.JDBC4Statement";
+    String sqlServer = "com.microsoft.sqlserver.jdbc.SQLServerStatement";
+    String wrapper = "example.ReportConnection";
+    for (String driver : List.of(sqlite, sqlServer, wrapper)) {
+      assertFalse(new SqlStatement("select 7 as [weekly benchmark(7)]", driver).matchesSinkPolicy());
+      assertFalse(new SqlStatement("select 7 as [weekly -- total]", driver).hasCommentFrom("-- total"));
+      assertTrue(new SqlStatement("select 7 as [weekly], benchmark(7)", driver).matchesSinkPolicy());
+    }
+    assertFalse(new SqlStatement("select 7 as [benchmark(7)]").matchesSinkPolicy());
+    assertTrue(new SqlStatement("select 7 as [weekly], benchmark(7)").matchesSinkPolicy());
+    String escaped = "select 7 as [weekly]] benchmark(7)]";
+    assertFalse(new SqlStatement(escaped, sqlServer).matchesSinkPolicy());
+    assertFalse(new SqlStatement(escaped, wrapper).matchesSinkPolicy());
+    // SQLite's first closing bracket terminates the token.
+    assertTrue(new SqlStatement(escaped, sqlite).matchesSinkPolicy());
+    assertTrue(new SqlStatement("select 7 as [reviewer's note], benchmark(7)", sqlite).matchesSinkPolicy());
+    assertTrue(new SqlStatement("select metrics[benchmark(7)]", "org.postgresql.jdbc.PgStatement").matchesSinkPolicy());
+    BitSet input = new BitSet();
+    String query = "select 7 order by [benchmark(7)]";
+    input.set(query.indexOf("benchmark"), query.indexOf(']'));
+    assertNull(new SqlStatement(query, sqlite).mapperControl(input));
+    String prefix = "select 7 as [";
+    String label = "weekly] -- label";
+    BitSet substituted = new BitSet();
+    substituted.set(prefix.length(), prefix.length() + label.length());
+    assertEquals("quoted-slot-comment", new SqlStatement(prefix + label + "]", sqlite).mapperControl(substituted));
+    assertNull(new SqlStatement(prefix + label + "]", wrapper).mapperControl(substituted));
+
   }
 
   @Test
