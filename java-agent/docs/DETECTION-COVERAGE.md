@@ -9,7 +9,7 @@
 | Metric | Count |
 |--------|------:|
 | Hook families (instrumentation points) | 30 |
-| Detector capabilities (engine entry points) | 58 |
+| Detector capabilities (public `detect*` entry points) | 59 |
 | Algorithm signatures asserted in acceptance scripts | 44 |
 | End-to-end vulnerability acceptance scenarios | 136 |
 | JDK lines exercised | 6 |
@@ -17,7 +17,7 @@
 ## Hook families
 
 Instrumentation points registered by `HookRegistry.defaults()`. Each module
-rewrites a family of risky call sites and routes them to the detector engine.
+rewrites a family of risky call sites and routes them to a detector class.
 
 | Family | Hook module |
 |--------|-------------|
@@ -54,28 +54,25 @@ rewrites a family of risky call sites and routes them to the detector engine.
 
 ## Detector capabilities
 
-The engine exposes **58** detection entry points:
+The detector classes in `agent-jdk25/src/main/java/io/ohmyrasp/agent/detect/` expose **59**
+distinct public `detect*` entry points. Hooks call the class that owns each one;
+`DetectorEngine.detectRequest` runs the request-level detectors in a fixed first-match order.
 
-- `detectArchiveExtraction` · `detectArgumentFileExpansion` · `detectBase64Decode`
-- `detectClassLoaderUrl` · `detectCommand` · `detectDeserialization`
-- `detectDirectoryList` · `detectDns` · `detectEval`
-- `detectExpression` · `detectFastjsonClassResource` · `detectFileDelete`
-- `detectFileRead` · `detectFileUpload` · `detectFileWrite`
-- `detectGeneratedScriptFileWrite` · `detectHessianType` · `detectHttpInvokerDeserialization`
-- `detectHttpObjectStreamDeserialization` · `detectInclude` · `detectJaasConfig`
-- `detectJavaCompilation` · `detectJdbcUrl` · `detectJmxFileWrite`
-- `detectJmxMBeanInvoke` · `detectJndi` · `detectJwtVerificationFailure`
-- `detectLink` · `detectLoadLibrary` · `detectMarkupParameter`
-- `detectOgnl` · `detectPolymorphicType` · `detectProtocolClassInstantiation`
-- `detectRemoteJobSubmission` · `detectRename` · `detectRequest`
-- `detectResponseDataLeak` · `detectRmiRegistryBind` · `detectScannerUserAgent`
-- `detectServletIncludeAttributes` · `detectSessionDeserialization` · `detectSpringConfigLocation`
-- `detectSql` · `detectSqlException` · `detectSqlRegex`
-- `detectUrl` · `detectWebdavUpload` · `detectWebshellCallable`
-- `detectWebshellCommand` · `detectWebshellEval` · `detectWebshellFileWrite`
-- `detectWebshellLdPreload` · `detectWindowsStreamWrite` · `detectXmlAttachmentReference`
-- `detectXmlDecoderExpression` · `detectXmlRpcSerializableValue` · `detectXssEcho`
-- `detectXxeEntity`
+| Class | Entry points |
+|-------|--------------|
+| `Base64DecodeDetector` | `detectBase64Decode` |
+| `CodeExecutionDetector` | `detectEval` · `detectExpression` · `detectJavaCompilation` · `detectLoadLibrary` · `detectOgnl` · `detectWebshellCallable` · `detectWebshellEval` |
+| `CredentialDetector` | `detectJwtVerificationFailure` |
+| `DeserializationDetector` | `detectDeserialization` · `detectFastjsonClassResource` · `detectHessianAllocation` · `detectHessianType` · `detectHttpInvokerDeserialization` · `detectHttpObjectStreamDeserialization` · `detectOpenWireThrowable` · `detectPolymorphicType` · `detectProtocolClassInstantiation` · `detectRmiRegistryBind` · `detectSessionDeserialization` · `detectXmlDecoderExpression` · `detectXmlRpcSerializableValue` |
+| `DetectorEngine` | `detectRequest` · `detectScannerUserAgent` |
+| `FileAccessDetector` | `detectArgumentFileExpansion` · `detectDirectoryList` · `detectFileRead` · `detectInclude` · `detectServletIncludeAttributes` |
+| `FileUploadDetector` | `detectFileUpload` · `detectWebdavUpload` |
+| `HostFileMutationDetector` | `detectArchiveExtraction` · `detectFileDelete` · `detectFileWrite` · `detectGeneratedScriptFileWrite` · `detectJmxFileWrite` · `detectLink` · `detectRename` · `detectWebshellFileWrite` · `detectWindowsStreamWrite` |
+| `JdbcDetector` | `detectJdbcUrl` · `detectSql` · `detectSqlException` · `detectSqlRegex` |
+| `NetworkDestinationDetector` | `detectDns` · `detectUrl` · `detectXmlAttachmentReference` · `detectXxeEntity` |
+| `ProcessDetector` | `detectCommand` · `detectWebshellCommand` · `detectWebshellLdPreload` |
+| `RemoteResourceDetector` | `detectClassLoaderUrl` · `detectJaasConfig` · `detectJmxMBeanInvoke` · `detectJndi` · `detectSpringConfigLocation` |
+| `ResponseContentDetector` | `detectMarkupParameter` · `detectResponseDataLeak` · `detectXssEcho` |
 
 ## Rule scope
 

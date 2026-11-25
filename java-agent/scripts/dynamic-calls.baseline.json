@@ -342,6 +342,9 @@
    "io/ohmyrasp/agent/control/ControlPlaneConfig": {
     "record": 3
    },
+   "io/ohmyrasp/agent/detect/CodeExecutionDetector": {
+    "string-concat": 1
+   },
    "io/ohmyrasp/agent/detect/CommandDestination": {
     "string-concat": 1
    },
@@ -369,11 +372,8 @@
     "string-concat": 1
    },
    "io/ohmyrasp/agent/detect/DetectorEngine": {
-    "lambda": 11,
-    "string-concat": 18
-   },
-   "io/ohmyrasp/agent/detect/DetectorEngine$IncludeAttributeTarget": {
-    "record": 3
+    "lambda": 4,
+    "string-concat": 5
    },
    "io/ohmyrasp/agent/detect/DetectorEngine$InternalResourceMatch": {
     "record": 3
@@ -390,6 +390,19 @@
    "io/ohmyrasp/agent/detect/DetectorStrings": {
     "string-concat": 1
    },
+   "io/ohmyrasp/agent/detect/FileAccessDetector": {
+    "lambda": 5,
+    "string-concat": 1
+   },
+   "io/ohmyrasp/agent/detect/FileAccessDetector$IncludeAttributeTarget": {
+    "record": 3
+   },
+   "io/ohmyrasp/agent/detect/FilePaths": {
+    "string-concat": 1
+   },
+   "io/ohmyrasp/agent/detect/FileUploadDetector": {
+    "string-concat": 3
+   },
    "io/ohmyrasp/agent/detect/HostFileMutationDetector": {
     "lambda": 1
    },
@@ -397,11 +410,16 @@
     "lambda": 4,
     "string-concat": 1
    },
+   "io/ohmyrasp/agent/detect/NetworkDestinationDetector": {
+    "lambda": 1,
+    "string-concat": 5
+   },
    "io/ohmyrasp/agent/detect/ProcessDetector": {
     "lambda": 2,
     "string-concat": 1
    },
    "io/ohmyrasp/agent/detect/RemoteResourceDetector": {
+    "lambda": 1,
     "string-concat": 1
    },
    "io/ohmyrasp/agent/detect/RequestConfigurationDetector": {
@@ -427,7 +445,8 @@
     "record": 3
    },
    "io/ohmyrasp/agent/detect/RequestDecoding": {
-    "lambda": 3
+    "lambda": 3,
+    "string-concat": 1
    },
    "io/ohmyrasp/agent/detect/RequestExpressionDetector": {
     "lambda": 4,
@@ -515,6 +534,9 @@
     "record": 3
    },
    "io/ohmyrasp/agent/detect/RequestValues": {
+    "string-concat": 1
+   },
+   "io/ohmyrasp/agent/detect/ResponseContentDetector": {
     "string-concat": 1
    },
    "io/ohmyrasp/agent/detect/SerializedRequestState": {

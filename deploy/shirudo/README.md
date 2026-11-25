@@ -19,8 +19,8 @@ with `shirudo bpm build`.
 | `ohmyrasp-java8` | Java 8 (classfile `<= 52`) | `ohmyrasp-java8.jar` | 24 ASM transformers | 45 algorithms | 96 (java8) |
 | `ohmyrasp-java11` | Java 11 (classfile `<= 55`) | `ohmyrasp-java11.jar` | 24 ASM transformers | 45 algorithms | 10 (java11) |
 | `ohmyrasp-java17` | Java 17 and Java 21 (classfile `<= 61`) | `ohmyrasp-java17.jar` | 24 ASM transformers | 45 algorithms | 12 (java17) + 3 (java21) |
-| `ohmyrasp-jdk21` | Java 21 and Java 25 (classfile `<= 65`) | `ohmyrasp-jdk21.jar` | 30 ASM hook modules | 58 `detect*` capabilities | 136 total scenarios across 6 JDK lines |
-| `ohmyrasp-jdk25` | Java 21 and Java 25 (classfile `<= 65`) | `ohmyrasp-jdk25.jar` | 30 ASM hook modules | 58 `detect*` capabilities | 136 total scenarios across 6 JDK lines |
+| `ohmyrasp-jdk21` | Java 21 and Java 25 (classfile `<= 65`) | `ohmyrasp-jdk21.jar` | 30 ASM hook modules | 59 `detect*` capabilities | 136 total scenarios across 6 JDK lines |
+| `ohmyrasp-jdk25` | Java 21 and Java 25 (classfile `<= 65`) | `ohmyrasp-jdk25.jar` | 30 ASM hook modules | 59 `detect*` capabilities | 136 total scenarios across 6 JDK lines |
 
 Choose one primary package per JVM. The JDK 21 and 25 names contain the same agent bytecode.
 For JDK 21, extract `ohmyrasp-jdk21-shirudo.tar.gz` to sign the staged package with your operator keys.

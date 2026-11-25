@@ -16,7 +16,7 @@ See [`../docs/agent.md`](../docs/agent.md) for full architecture, runtime modes,
 Coverage is generated from source into [`docs/DETECTION-COVERAGE.md`](docs/DETECTION-COVERAGE.md), which holds the current counts and tables:
 
 - hook families (`HookRegistry` modules in `agent-jdk25`; ASM transformers per backport track)
-- `DetectorEngine` capabilities (`detect*` entry points), including the Fastjson 1.2.83 class-resource boundary, standalone JDBC `Statement` SQLi, and the CVE-2026-114938 `Base64$Decoder.decode0` AVX-512 tail-underflow guard
+- detector capabilities (public `detect*` entry points, listed by the detector class that owns them), including the Fastjson 1.2.83 class-resource boundary, standalone JDBC `Statement` SQLi, and the CVE-2026-114938 `Base64$Decoder.decode0` AVX-512 tail-underflow guard
 - algorithm signatures verified end-to-end by acceptance tests
 - vulnerability acceptance scenarios, grouped by JDK line
 - false-positive results over the curated benign corpus, in [`docs/FALSE-POSITIVE-REPORT.md`](docs/FALSE-POSITIVE-REPORT.md)
@@ -68,10 +68,10 @@ For Shirudo locked daemonless JARs (`ohmyrasp-{java8,java11,java17,jdk25}.jar`),
 
 ## Acceptance and false-positive suites
 
-- **Unit tests:** `agent-jdk25/src/test` covers the hook registry, SQL callsite rewriting, Fastjson/Base64 hooks, policy evaluation, `DetectorEngine`, `AgentRuntime`, and Shirudo standalone defaults.
+- **Unit tests:** `agent-jdk25/src/test` covers the hook registry, SQL callsite rewriting, Fastjson/Base64 hooks, policy evaluation, each detector family (`detect/<Detector>Test`), the request chain, `AgentRuntime`, and Shirudo standalone defaults.
 - **Backport unit tests:** the behaviour contract for `agent-java8`, `agent-java11` and `agent-java17` is written once, against the java8 line, in `backport-tests/src/test/java`. `agent-java8` compiles it directly; `agent-java11` and `agent-java17` compile a copy that `generateBackportTests` writes to their `build/generated/backport-tests`, using the replacement table in `gradle/backport-tests.gradle.kts`. Edit the canonical file, never the generated copy. A test that only one line can run stays in that line's own `src/test` with a first-line comment saying why.
 - **Acceptance suite:** `acceptance/runtime/jdk25.sh` (Tomcat 11/10/9 on JDK 25), `acceptance/runtime/java{8,11,17,21}.sh`, and the `acceptance/vulhub/*/*.sh` scenarios boot real applications and assert detection and blocking.
-- **False-positive report:** `scripts/run-fp-report.sh` runs `scripts/FpReport.java` against `DetectorEngine` and writes `docs/FALSE-POSITIVE-REPORT.md`.
+- **False-positive report:** `scripts/run-fp-report.sh` runs `scripts/FpReport.java` against the detector classes and writes `docs/FALSE-POSITIVE-REPORT.md`.
 
 ## Module layout
 
@@ -82,7 +82,7 @@ java-agent/
 │   │   ├── OhMyRaspAgent.java        premain/agentmain -> bootstrap loader
 │   │   ├── BootstrapAgent.java       runtime/transformer/guard wiring
 │   │   ├── asm/                      HookRegistry + HookModule classes
-│   │   ├── detect/DetectorEngine.java
+│   │   ├── detect/                   one detector class per rule family; DetectorEngine runs the request chain
 │   │   ├── hook/                     OhMyRaspHooks, DeserializationGuard, OhMyRaspBlockException
 │   │   ├── runtime/                  AgentRuntime, DetectionMode, ShirudoDefaults
 │   │   ├── log/JsonEventLogger.java  async NDJSON spool + redaction + telemetry

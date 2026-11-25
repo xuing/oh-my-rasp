@@ -102,7 +102,7 @@ rule you changed. These commands exercise file reads and file deletion respectiv
 
 ```bash
 java-agent/scripts/check-agent.sh file-read
-java-agent/scripts/check-agent.sh --tests '*DetectorEngineTest' file-read --delete-only
+java-agent/scripts/check-agent.sh --tests '*HostFileMutationDetectorTest' file-read --delete-only
 ```
 
 The same command checks the other agent lines, each on its own JDK:
@@ -336,14 +336,14 @@ Hand-written docs must not restate release versions, pinned toolchain or image v
 
 Run them in this order: the coverage generator and the Shirudo README generator both read the false-positive report.
 
-**1. False-positive report** (runs `scripts/FpReport.java` against `DetectorEngine`):
+**1. False-positive report** (runs `scripts/FpReport.java` against the detector classes):
 
 ```bash
 cd java-agent
 bash scripts/run-fp-report.sh                      # writes java-agent/docs/FALSE-POSITIVE-REPORT.md
 ```
 
-**2. Detection coverage doc** (derived from `HookRegistry.java`, `DetectorEngine.java`, and `acceptance/vulhub/*/*.sh`):
+**2. Detection coverage doc** (derived from `HookRegistry.java`, the detector classes in `agent-jdk25/src/main/java/io/ohmyrasp/agent/detect/`, and `acceptance/vulhub/*/*.sh`):
 
 ```bash
 cd java-agent
@@ -363,8 +363,8 @@ Commit regenerated docs in the same PR as the code change that triggered them.
 ## Adding a new hook family or detector
 
 1. Implement the hook module under `java-agent/agent-jdk25/src/main/java/io/ohmyrasp/agent/asm/` and register it in `HookRegistry.defaults()`.
-2. Add the corresponding detector method(s) to `DetectorEngine`.
-3. Write unit tests covering the new detection path in `agent-jdk25/src/test/`.
+2. Add the detector method to the class in `agent-jdk25/src/main/java/io/ohmyrasp/agent/detect/` that owns its family ([docs/detection.md](docs/detection.md#primary-agent-detector-layout) maps each kind of evidence to its class), or to a new `<Family>Detector` when none fits, and call that class from the hook. Only an HTTP request rule joins `DetectorEngine.detectRequest`, where its position in the first-match order is part of its behaviour.
+3. Write unit tests covering the new detection path in that class's `<Detector>Test` under `agent-jdk25/src/test/java/io/ohmyrasp/agent/detect/`.
 4. Add or extend an acceptance scenario under `java-agent/acceptance/` (`vulhub/<component>/` for a Vulhub target, `runtime/` for the JDK-level suites).
 5. Update `docs/development/algorithm-coverage.md` and, if mapped to a Vulhub scenario, `docs/development/vulhub-coverage.md` in the same patch.
 6. Regenerate `java-agent/docs/DETECTION-COVERAGE.md`, `java-agent/docs/FALSE-POSITIVE-REPORT.md`, and `deploy/shirudo/` READMEs, and verify `bash java-agent/scripts/check-detector-parity.sh`.

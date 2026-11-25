@@ -22,7 +22,7 @@ import java.util.Optional;
 import java.util.regex.Pattern;
 
 /** Decisions on host write targets, generated output, archive extraction and removal. */
-final class HostFileMutationDetector {
+public final class HostFileMutationDetector {
   private HostFileMutationDetector() {}
 
   private static final Pattern GENERATED_SCRIPT_EXTENSION =
@@ -34,7 +34,10 @@ final class HostFileMutationDetector {
   private static final Pattern SCRIPT_FILE =
       Pattern.compile("(?is).+\\.(?:aspx?|jspx?|php[345]?|phar|phtml|sh|py|pl|rb|so|dll|dylib|ashx|cer|asa)\\.?$");
 
-  static Optional<Detection> detectJmxFileWrite(String path, JmxWriteScope scope,
+  private static final Pattern CLEAN_FILE =
+      Pattern.compile("(?is).+\\.(?:jpg|jpeg|png|gif|bmp|txt|rar|zip)$");
+
+  public static Optional<Detection> detectJmxFileWrite(String path, JmxWriteScope scope,
       String api, RequestContext request) {
     if (!request.active() || scope == null) return Optional.empty();
     WindowsDataStream stream = java.io.File.separatorChar == '\\' ? WindowsDataStream.parse(path) : null;
@@ -49,7 +52,7 @@ final class HostFileMutationDetector {
             "file_operation", api, "decision_basis", "selected_write_open", "requestControlled", String.valueOf(controlled))));
   }
 
-  static Optional<Detection> detectWindowsStreamWrite(WindowsDataStream stream, RequestContext request,
+  public static Optional<Detection> detectWindowsStreamWrite(WindowsDataStream stream, RequestContext request,
       List<String> stackClassNames, boolean namedStreamPolicy) {
     if (stream.name().isEmpty()) return detectFileWrite(stream.file(), request, stackClassNames);
     if (!namedStreamPolicy) return Optional.empty();
@@ -58,11 +61,11 @@ final class HostFileMutationDetector {
             "decision_basis", "named_data_stream")));
   }
 
-  static Optional<Detection> detectFileWrite(String path, RequestContext request) {
+  public static Optional<Detection> detectFileWrite(String path, RequestContext request) {
     return detectFileWrite(path, request, List.of());
   }
 
-  static Optional<Detection> detectFileWrite(
+  public static Optional<Detection> detectFileWrite(
       String path, RequestContext request, List<String> stackClassNames) {
     String normalized = normalizePath(path);
     if (normalized.isBlank()) {
@@ -105,12 +108,12 @@ final class HostFileMutationDetector {
     return Optional.empty();
   }
 
-  static Optional<Detection> detectArchiveExtraction(
+  public static Optional<Detection> detectArchiveExtraction(
       String entryName, String targetPath, RequestContext request) {
     return classifyArchiveExtraction(entryName, targetPath, request, null);
   }
 
-  static Optional<Detection> detectArchiveExtraction(
+  public static Optional<Detection> detectArchiveExtraction(
       ArchiveEntryContext.ChannelWrite open, RequestContext request) {
     return classifyArchiveExtraction(open.member, open.target, request, open.basis);
   }
@@ -124,7 +127,7 @@ final class HostFileMutationDetector {
         "Archive extraction target escapes the intended directory", request, details));
   }
 
-  static Optional<Detection> detectFileDelete(String path, RequestContext request) {
+  public static Optional<Detection> detectFileDelete(String path, RequestContext request) {
     if (path == null || path.isEmpty()) return Optional.empty();
     try {
       return detectFileDelete(new HostDelete(Path.of(path), -1, false, false), request, false);
@@ -133,7 +136,7 @@ final class HostFileMutationDetector {
     }
   }
 
-  static Optional<Detection> detectFileDelete(HostDelete entry, RequestContext request, boolean explicitPathPolicy) {
+  public static Optional<Detection> detectFileDelete(HostDelete entry, RequestContext request, boolean explicitPathPolicy) {
     if (!request.active()) return Optional.empty();
     HostDelete.Basis basis = HostDelete.Basis.NONE;
     for (List<String> values : request.parameters().values()) {
@@ -160,7 +163,7 @@ final class HostFileMutationDetector {
             "decision_basis", basis.name().toLowerCase(java.util.Locale.ROOT))));
   }
 
-  static Optional<Detection> detectGeneratedScriptFileWrite(
+  public static Optional<Detection> detectGeneratedScriptFileWrite(
       String path, String content, RequestContext request) {
     String normalized = normalizePath(path);
     if (normalized.isBlank() || content == null || content.isBlank() || !request.active()) {
@@ -322,7 +325,9 @@ final class HostFileMutationDetector {
     return "";
   }
 
-  static boolean generatedScriptCandidate(String path) {
+  /** An untyped temporary file can also be data. Require a copied operation in code position,
+   * or a complete request-supplied operand to that operation. Never search unrelated fields for authority. */
+  public static boolean generatedScriptCandidate(String path) {
     return generatedScriptPath(normalizePath(path));
   }
 
@@ -341,4 +346,55 @@ final class HostFileMutationDetector {
   static boolean isScriptTarget(String normalized) { return SCRIPT_FILE.matcher(normalized).matches(); }
 
   static boolean containsGeneratedOperation(String value) { return GENERATED_SCRIPT_EXEC_PRIMITIVE.matcher(value).find(); }
+
+  public static Optional<Detection> detectRename(String source, String destination, RequestContext request) {
+    if (CLEAN_FILE.matcher(normalizePath(source)).matches()
+        && HostFileMutationDetector.isScriptTarget(normalizePath(destination))) {
+      return Optional.of(
+          Detection.log(
+              "rename",
+              "rename_webshell",
+              90,
+              "Rename converted a non-script file into a server-side script",
+              request,
+              Map.of("source", normalizePath(source), "destination", normalizePath(destination))));
+    }
+    return Optional.empty();
+  }
+
+  public static Optional<Detection> detectLink(
+      String source, String destination, String type, RequestContext request) {
+    if (CLEAN_FILE.matcher(normalizePath(source)).matches()
+        && HostFileMutationDetector.isScriptTarget(normalizePath(destination))) {
+      return Optional.of(
+          Detection.log(
+              "link",
+              "link_webshell",
+              90,
+              "Link converted a non-script file into a server-side script",
+              request,
+              Map.of(
+                  "source", normalizePath(source),
+                  "destination", normalizePath(destination),
+                  "type", String.valueOf(type))));
+    }
+    return Optional.empty();
+  }
+
+  public static Optional<Detection> detectWebshellFileWrite(
+      String path, String content, RequestContext request) {
+    String normalized = normalizePath(path);
+    if (HostFileMutationDetector.isScriptTarget(normalized)
+        && (request.hasParameterIn(path) || request.hasParameterIn(content))) {
+      return Optional.of(
+          Detection.log(
+              "webshell",
+              "webshell_file_put_contents",
+              95,
+              "Request-controlled content is written to a server-side script",
+              request,
+              Map.of("path", normalized, "content", abbreviate(content))));
+    }
+    return Optional.empty();
+  }
 }

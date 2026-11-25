@@ -1,4 +1,16 @@
+import io.ohmyrasp.agent.detect.Base64DecodeDetector;
+import io.ohmyrasp.agent.detect.CodeExecutionDetector;
+import io.ohmyrasp.agent.detect.DeserializationDetector;
 import io.ohmyrasp.agent.detect.DetectorEngine;
+import io.ohmyrasp.agent.detect.FileAccessDetector;
+import io.ohmyrasp.agent.detect.FileUploadDetector;
+import io.ohmyrasp.agent.detect.HostFileMutationDetector;
+import io.ohmyrasp.agent.detect.JdbcDetector;
+import io.ohmyrasp.agent.detect.NetworkDestinationDetector;
+import io.ohmyrasp.agent.detect.ProcessDetector;
+import io.ohmyrasp.agent.detect.RemoteJobDetector;
+import io.ohmyrasp.agent.detect.RemoteResourceDetector;
+import io.ohmyrasp.agent.detect.ResponseContentDetector;
 import io.ohmyrasp.agent.model.Detection;
 import io.ohmyrasp.agent.model.RequestContext;
 
@@ -12,7 +24,7 @@ import java.util.Optional;
  * False-positive measurement harness.
  *
  * <p>Runs a curated corpus of <em>benign but plausible</em> inputs through the
- * real {@link DetectorEngine} and counts how many produce a detection. Each
+ * real detector classes and counts how many produce a detection. Each
  * input is presented with a realistic request context: where a value would
  * normally be user-supplied, it is placed in a request parameter so taint-aware
  * detectors see it exactly as they would in production.
@@ -53,77 +65,77 @@ public final class FpReport {
             Case.of("{\"table\":\"reports\",\"column\":\"Select title\"}")),
             (c, r) -> ENGINE.detectRequest(new RequestContext("POST", "/reports/query", "",
                 Map.of(), Map.of("content-type", "application/json"), c.payload()))),
-        new Category("SQL queries", sqlCorpus(), (c, r) -> ENGINE.detectSql(c.payload(), r)),
-        new Category("OS commands", commandCorpus(), (c, r) -> ENGINE.detectCommand(splitCommand(c.payload()), r)),
+        new Category("SQL queries", sqlCorpus(), (c, r) -> JdbcDetector.detectSql(c.payload(), r)),
+        new Category("OS commands", commandCorpus(), (c, r) -> ProcessDetector.detectCommand(splitCommand(c.payload()), r)),
         new Category("Inline shell reports", List.of(
             Case.of("printf '%s' 'example: cat /etc/passwd'"),
             Case.of("printf '%s' weekly # example: cat /etc/passwd"),
             Case.of("cat /etc/passwd.example")),
-            (c, r) -> ENGINE.detectCommand(List.of("/bin/sh", "-c", c.payload()), r)),
+            (c, r) -> ProcessDetector.detectCommand(List.of("/bin/sh", "-c", c.payload()), r)),
         new Category("Process dispatch", List.of(
             Case.of("java.lang.reflect.Method"),
             Case.of("example.spelling.MonthlyReport"),
             Case.of("example.javascriptnotes.Catalog"),
             Case.of("example.velocitymetrics.Recorder")),
-            (c, r) -> ENGINE.detectCommand(List.of("printf", "%s", "weekly"), r,
+            (c, r) -> ProcessDetector.detectCommand(List.of("printf", "%s", "weekly"), r,
                 List.of("java.lang.ProcessImpl", "java.lang.ProcessBuilder", c.payload()))),
         new Category("Spark job descriptors", List.of(
             Case.of("{\"action\":\"CreateSubmissionRequest\",\"appResource\":\"https://artifacts.example.test/reports.jar\",\"mainClass\":\"reports.Weekly\"}")),
-            (c, r) -> ENGINE.detectRemoteJobSubmission("Spark REST", c.payload(),
-                new RequestContext("POST", "/v1/submissions/create", "", Map.of(), Map.of()))),
+            (c, r) -> RemoteJobDetector.detect("Spark REST", c.payload(),
+                new RequestContext("POST", "/v1/submissions/create", "", Map.of(), Map.of()), false)),
         new Category("YARN job descriptors", List.of(
             Case.of("{\"am-container-spec\":{\"commands\":{\"command\":\"java reports.Weekly\"}}}"),
             Case.of("{\"am-container-spec\":{\"commands\":{\"command\":\"echo cat /etc/passwd\"}}}")),
-            (c, r) -> ENGINE.detectRemoteJobSubmission("YARN", c.payload(),
-                new RequestContext("POST", "/ws/v1/cluster/apps", "", Map.of(), Map.of()))),
-        new Category("Outbound URLs", urlCorpus(), (c, r) -> ENGINE.detectUrl(c.payload(), r)),
-        new Category("File reads", fileReadCorpus(), (c, r) -> ENGINE.detectFileRead(c.payload(), r, false)),
+            (c, r) -> RemoteJobDetector.detect("YARN", c.payload(),
+                new RequestContext("POST", "/ws/v1/cluster/apps", "", Map.of(), Map.of()), false)),
+        new Category("Outbound URLs", urlCorpus(), (c, r) -> NetworkDestinationDetector.detectUrl(c.payload(), r)),
+        new Category("File reads", fileReadCorpus(), (c, r) -> FileAccessDetector.detectFileRead(c.payload(), r, false)),
         new Category("Directory listings", List.of(
             Case.tainted("/srv/orders/exports", "orders"),
             Case.tainted("/srv/reports/catalog", "/srv/reports/catalog"),
             Case.of("/etc"),
             Case.of("/proc")),
-            (c, r) -> ENGINE.detectDirectoryList(c.payload(), r)),
+            (c, r) -> FileAccessDetector.detectDirectoryList(c.payload(), r)),
         new Category("Temporary report output", List.of(
             Case.tainted("{\"api\":\"Runtime.exec(String)\",\"report\":\"weekly\"}", "weekly"),
             Case.tainted("{\"label\":\"Runtime.exec(String)\"}", "Runtime.exec(String)"),
             Case.tainted("# reference: system(\"printf weekly\")", "system(\"printf weekly\")")),
-            (c, r) -> ENGINE.detectGeneratedScriptFileWrite("/tmp/reports/document.tmp", c.payload(), r)),
-        new Category("File writes", fileWriteCorpus(), (c, r) -> ENGINE.detectFileWrite(c.payload(), r)),
+            (c, r) -> HostFileMutationDetector.detectGeneratedScriptFileWrite("/tmp/reports/document.tmp", c.payload(), r)),
+        new Category("File writes", fileWriteCorpus(), (c, r) -> HostFileMutationDetector.detectFileWrite(c.payload(), r)),
         new Category("File deletes", List.of(
             Case.tainted("/srv/reports/report-10.txt", "10"),
             Case.tainted("/srv/reports/invoice.csv", "invoice.csv"),
             Case.tainted("/srv/reports/invoice.csv", "/srv/reports/invoice.csv"),
             Case.tainted("/srv/app/WEB-INF/work.csv", "/srv/app/WEB-INF/work.csv")),
-            (c, r) -> ENGINE.detectFileDelete(c.payload(), r)),
+            (c, r) -> HostFileMutationDetector.detectFileDelete(c.payload(), r)),
         new Category("Archive writes", List.of(
             Case.tainted("/srv/orders/drafts/../report.csv", "drafts/../report.csv"),
             Case.tainted("/srv/orders/report.csv", "../report.csv"),
             Case.tainted("/srv/orders/../orders/report.csv", "../orders/report.csv"),
             Case.tainted("/srv/orders/notes/report.csv", "/notes/report.csv"),
             Case.tainted("/srv/orders/drafts/../report.csv.bak", "../report.csv")),
-            (c, r) -> ENGINE.detectArchiveExtraction(c.userParam(), c.payload(), r)),
-        new Category("Deserialization classes", deserializationCorpus(), (c, r) -> ENGINE.detectDeserialization(c.payload(), r)),
-        new Category("Expressions", expressionCorpus(), (c, r) -> ENGINE.detectExpression("spel", c.payload(), r)),
-        new Category("OGNL expressions", ognlCorpus(), (c, r) -> ENGINE.detectOgnl(c.payload(), r)),
-        new Category("JNDI names", jndiCorpus(), (c, r) -> ENGINE.detectJndi(c.payload(), r)),
-        new Category("DNS lookups", dnsCorpus(), (c, r) -> ENGINE.detectDns(c.payload(), r)),
+            (c, r) -> HostFileMutationDetector.detectArchiveExtraction(c.userParam(), c.payload(), r)),
+        new Category("Deserialization classes", deserializationCorpus(), (c, r) -> DeserializationDetector.detectDeserialization(c.payload(), r)),
+        new Category("Expressions", expressionCorpus(), (c, r) -> CodeExecutionDetector.detectExpression("spel", c.payload(), r)),
+        new Category("OGNL expressions", ognlCorpus(), (c, r) -> CodeExecutionDetector.detectOgnl(c.payload(), r)),
+        new Category("JNDI names", jndiCorpus(), (c, r) -> RemoteResourceDetector.detectJndi(c.payload(), r)),
+        new Category("DNS lookups", dnsCorpus(), (c, r) -> NetworkDestinationDetector.detectDns(c.payload(), r)),
         new Category("Ordinary deployment uploads", List.of(
             Case.of("weekly.jar"), Case.of("component.war"), Case.of("connector.ear")),
-            (c, r) -> ENGINE.detectFileUpload(c.payload(),
+            (c, r) -> FileUploadDetector.detectFileUpload(c.payload(),
                 new RequestContext("POST", "/plugin/add", "", Map.of(), Map.of()))),
-        new Category("Upload filenames", uploadCorpus(), (c, r) -> ENGINE.detectFileUpload(c.payload(), r)),
-        new Category("JDBC URLs", jdbcCorpus(), (c, r) -> ENGINE.detectJdbcUrl(c.payload(), r)),
+        new Category("Upload filenames", uploadCorpus(), (c, r) -> FileUploadDetector.detectFileUpload(c.payload(), r)),
+        new Category("JDBC URLs", jdbcCorpus(), (c, r) -> JdbcDetector.detectJdbcUrl(c.payload(), r)),
         new Category("Application response markup", List.of(
             Case.tainted("<script src='/assets/report.js'></script>", "weekly"),
             Case.tainted("<p>&lt;script&gt;</p>", "<script>")),
-            (c, r) -> ENGINE.detectXssEcho(c.payload(), r)),
+            (c, r) -> ResponseContentDetector.detectXssEcho(c.payload(), r)),
         new Category("Request parameters", requestParamCorpus(), (c, r) -> ENGINE.detectRequest(r)),
         new Category(
             "Base64 decoding",
             base64Corpus(),
             (c, r) ->
-                ENGINE.detectBase64Decode(
+                Base64DecodeDetector.detectBase64Decode(
                     c.payload().getBytes(StandardCharsets.ISO_8859_1),
                     0,
                     c.payload().length(),

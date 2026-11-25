@@ -6,7 +6,7 @@ derived, not written by hand, so it stays correct as hooks, detectors, and
 acceptance scenarios are added. Re-run it after changing any of:
 
   * agent/src/main/java/io/ohmyrasp/agent/asm/HookRegistry.java   (hook families)
-  * agent-jdk25/src/main/java/io/ohmyrasp/agent/detect/ (public facade and rule owners)
+  * agent-jdk25/src/main/java/io/ohmyrasp/agent/detect/       (detector classes)
   * acceptance/vulhub/*/*.sh                                      (verified scenarios)
 
 It also owns the "By the numbers" region of the root README.md and
@@ -30,6 +30,7 @@ from pathlib import Path
 # The docs checker's tests load this file by path, so the sibling module is not importable by default.
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import acceptance_scripts  # noqa: E402
+import detector_entry_points  # noqa: E402
 
 ROOT = Path(__file__).resolve().parent.parent
 AGENT = ROOT / "agent-jdk25" / "src" / "main" / "java" / "io" / "ohmyrasp" / "agent"
@@ -58,10 +59,8 @@ def hook_families() -> list[str]:
 
 
 def detector_capabilities() -> list[str]:
-    """Distinct detect* methods exposed by DetectorEngine."""
-    text = (AGENT / "detect" / "DetectorEngine.java").read_text(encoding="utf-8")
-    names = re.findall(r"^  public (?:static )?[^\n(]+\bdetect([A-Z][A-Za-z0-9]+)\(", text, re.M)
-    return sorted(set(names))
+    """Distinct public detect* entry points across the detector classes."""
+    return detector_entry_points.capabilities()
 
 
 def asserted_algorithms() -> list[str]:
@@ -203,7 +202,7 @@ def render() -> str:
     w(f"| Metric | Count |")
     w(f"|--------|------:|")
     w(f"| Hook families (instrumentation points) | {len(families)} |")
-    w(f"| Detector capabilities (engine entry points) | {len(capabilities)} |")
+    w(f"| Detector capabilities (public `detect*` entry points) | {len(capabilities)} |")
     w(f"| Algorithm signatures asserted in acceptance scripts | {len(algos)} |")
     w(f"| End-to-end vulnerability acceptance scenarios | {len(matrix)} |")
     w(f"| JDK lines exercised | {len([j for j in by_jdk if j != 'unknown'])} |")
@@ -212,7 +211,7 @@ def render() -> str:
     w("## Hook families")
     w("")
     w("Instrumentation points registered by `HookRegistry.defaults()`. Each module")
-    w("rewrites a family of risky call sites and routes them to the detector engine.")
+    w("rewrites a family of risky call sites and routes them to a detector class.")
     w("")
     w("| Family | Hook module |")
     w("|--------|-------------|")
@@ -223,12 +222,14 @@ def render() -> str:
 
     w("## Detector capabilities")
     w("")
-    w(f"The engine exposes **{len(capabilities)}** detection entry points:")
+    w(f"The detector classes in `agent-jdk25/src/main/java/io/ohmyrasp/agent/detect/` expose **{len(capabilities)}**")
+    w("distinct public `detect*` entry points. Hooks call the class that owns each one;")
+    w("`DetectorEngine.detectRequest` runs the request-level detectors in a fixed first-match order.")
     w("")
-    # Three-column flow for compactness.
-    pretty = [f"`detect{c}`" for c in capabilities]
-    for i in range(0, len(pretty), 3):
-        w("- " + " · ".join(pretty[i:i + 3]))
+    w("| Class | Entry points |")
+    w("|-------|--------------|")
+    for owner, names in detector_entry_points.by_class().items():
+        w(f"| `{owner}` | " + " · ".join(f"`detect{n}`" for n in names) + " |")
     w("")
 
     w("## Rule scope")
@@ -302,7 +303,7 @@ def render_metrics(lang: str) -> str:
             "| 维度 | 当前状态 | 依据 |",
             "|---|---|---|",
             f"| 插桩调用点家族 | {hooks} 个 ASM hook 模块（`agent-jdk25`）；回溯版（{tracks.replace(', ', ' / ')}）各 {per_backport} 个 ASM transformer | {coverage} |",
-            f"| 检测引擎 | {capabilities} 项 `DetectorEngine` 检测能力，验收脚本中有 {algos} 个算法签名断言 | {coverage} |",
+            f"| 检测引擎 | {capabilities} 项检测能力，验收脚本中有 {algos} 个算法签名断言 | {coverage} |",
             f"| 漏洞回放矩阵 | {scenarios} 个场景，覆盖 {roots} 个 [Vulhub](https://github.com/vulhub/vulhub) 组件根（追踪 {cves} 个 CVE） | {vulhub} |",
             f"| 正常语料误报率 | {categories} 类共 {inputs} 条真实构造正常输入，`{fps} / {inputs}` 误报 | {fp} |",
             f"| 运行时支持 | JDK 8、11、17 各有独立构建，21 和 25 共用主 Agent；兼容 `javax.servlet` 与 `jakarta.servlet` | {agent} |",
@@ -312,7 +313,7 @@ def render_metrics(lang: str) -> str:
             "| Metric | Value | Source |",
             "|---|---|---|",
             f"| Instrumented sink families | {hooks} ASM hook modules (`agent-jdk25`); {per_backport} ASM transformers per backport ({tracks}) | {coverage} |",
-            f"| Detection engine | {capabilities} `DetectorEngine` capabilities, {algos} algorithm signatures asserted in acceptance scripts | {coverage} |",
+            f"| Detection engine | {capabilities} detector capabilities, {algos} algorithm signatures asserted in acceptance scripts | {coverage} |",
             f"| Exploit replay suite | {scenarios} scenarios across {roots} [Vulhub](https://github.com/vulhub/vulhub) roots ({cves} CVEs tracked) | {vulhub} |",
             f"| Benign corpus precision | `{fps} / {inputs}` false positives across {categories} categories | {fp} |",
             f"| Supported JVMs | Builds for JDK 8, 11, 17, and a shared JDK 21/25 build (`javax.servlet` & `jakarta.servlet`) | {agent} |",

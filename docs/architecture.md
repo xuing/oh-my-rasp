@@ -17,7 +17,7 @@ OhMyRASP protects Java applications inside the JVM while keeping telemetry, cont
 
 The agent ships several tracks targeting distinct JVM bytecode levels, each shading OW2 ASM under `io.ohmyrasp.agent.shaded.asm` so bootstrap classloader injection never collides with an application's own ASM version:
 
-- `agent-jdk25` (`ohmyrasp-agent.jar`; also published as `ohmyrasp-agent-jdk21.jar`): primary track for Java 21 and 25, with the full set of ASM hook modules, `DetectorEngine` capabilities, and algorithm signatures asserted in the acceptance scripts listed in [DETECTION-COVERAGE.md](../java-agent/docs/DETECTION-COVERAGE.md) (generated).
+- `agent-jdk25` (`ohmyrasp-agent.jar`; also published as `ohmyrasp-agent-jdk21.jar`): primary track for Java 21 and 25, with the full set of ASM hook modules, detector capabilities, and algorithm signatures asserted in the acceptance scripts listed in [DETECTION-COVERAGE.md](../java-agent/docs/DETECTION-COVERAGE.md) (generated).
 - `agent-java17` (`ohmyrasp-agent-java17.jar`): backport for Java 17 and Java 21.
 - `agent-java11` (`ohmyrasp-agent-java11.jar`): backport for Java 11.
 - `agent-java8` (`ohmyrasp-agent-java8.jar`): backport for Java 8.

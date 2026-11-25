@@ -7,6 +7,7 @@ import static io.ohmyrasp.agent.detect.DeserializationTypes.deserializationGadge
 import static io.ohmyrasp.agent.detect.DeserializationTypes.normalizeJavaTypeName;
 import static io.ohmyrasp.agent.detect.DetectorStrings.abbreviate;
 import static io.ohmyrasp.agent.detect.DetectorStrings.lower;
+import static io.ohmyrasp.agent.detect.DetectorStrings.normalizePath;
 import io.ohmyrasp.agent.model.Detection;
 import io.ohmyrasp.agent.model.RequestContext;
 import java.util.LinkedHashMap;
@@ -16,21 +17,27 @@ import java.util.Map;
 import java.util.Optional;
 
 /** Correlate deserialized types with the transport, session or unmarshaller that supplied them. */
-final class DeserializationDetector {
+public final class DeserializationDetector {
   private DeserializationDetector() {}
 
-  static Optional<Detection> detectDeserialization(String className, RequestContext request) {
+  public static Optional<Detection> detectDeserialization(String className, RequestContext request) {
     return detectDeserialization(className, request, List.of());
   }
 
-  static boolean isDangerousDeserializationType(String className) {
+  /**
+   * Non-emitting predicate mirroring {@link #detectDeserialization}'s notion of a
+   * dangerous gadget class. Exposed for the JVM serial-filter guard, which must
+   * decide whether to reject a class without re-running (or double-recording)
+   * the full detection pipeline.
+   */
+  public static boolean isDangerousDeserializationType(String className) {
     if (className == null || className.isBlank()) {
       return false;
     }
     return dangerousDeserializationType(normalizeJavaTypeName(className));
   }
 
-  static Optional<Detection> detectDeserialization(
+  public static Optional<Detection> detectDeserialization(
       String className, RequestContext request, List<String> stackClassNames) {
     if (className == null || className.isBlank()) {
       return Optional.empty();
@@ -147,7 +154,7 @@ final class DeserializationDetector {
     return Optional.empty();
   }
 
-  static Optional<Detection> detectRmiRegistryBind(
+  public static Optional<Detection> detectRmiRegistryBind(
       String operation,
       String bindingName,
       String remoteClassName,
@@ -177,7 +184,7 @@ final class DeserializationDetector {
                 "source", "rmi-transport")));
   }
 
-  static Optional<Detection> detectSessionDeserialization(
+  public static Optional<Detection> detectSessionDeserialization(
       String sessionId, String mechanism, RequestContext request) {
     if (sessionId == null || sessionId.isBlank()) {
       return Optional.empty();
@@ -199,7 +206,7 @@ final class DeserializationDetector {
                 "mechanism", source)));
   }
 
-  static Optional<Detection> detectPolymorphicType(
+  public static Optional<Detection> detectPolymorphicType(
       String parser, String className, RequestContext request) {
     if (className == null || className.isBlank()) {
       return Optional.empty();
@@ -222,7 +229,7 @@ final class DeserializationDetector {
                 "originalClass", abbreviate(className))));
   }
 
-  static Optional<Detection> detectFastjsonClassResource(
+  public static Optional<Detection> detectFastjsonClassResource(
       String resource, RequestContext request) {
     String mechanism = io.ohmyrasp.agent.rules.product.fastjson.FastjsonClassResource.mechanism(resource);
     if (mechanism == null) {
@@ -243,7 +250,8 @@ final class DeserializationDetector {
             .withAction(safeRequest.active() ? "block" : "log"));
   }
 
-  static Optional<Detection> detectOpenWireThrowable(Class<?> selected, RequestContext request) {
+  /** OpenWire's exception slot is checked using the declaring class of its chosen constructor. */
+  public static Optional<Detection> detectOpenWireThrowable(Class<?> selected, RequestContext request) {
     if (selected == null || Throwable.class.isAssignableFrom(selected)) return Optional.empty();
     return Optional.of(Detection.log("deserialization", "deserialization_protocol_class", 100,
         "OpenWire selected a non-Throwable constructor for an exception",
@@ -251,7 +259,7 @@ final class DeserializationDetector {
         Map.of("protocol", "OpenWire", "class", selected.getName(), "decision_basis", "non_throwable_constructor")));
   }
 
-  static Optional<Detection> detectHttpInvokerDeserialization(
+  public static Optional<Detection> detectHttpInvokerDeserialization(
       String mechanism, RequestContext request) {
     RequestContext safeRequest = request == null ? RequestContext.empty() : request;
     if (!safeRequest.active() || !"SpringHttpInvoker".equals(mechanism)) {
@@ -262,21 +270,21 @@ final class DeserializationDetector {
         Map.of("mechanism", mechanism, "decision_basis", "invocation_stream_read")));
   }
 
-  static Optional<Detection> detectHttpObjectStreamDeserialization(String source, RequestContext request) {
+  public static Optional<Detection> detectHttpObjectStreamDeserialization(String source, RequestContext request) {
     if (source == null || request == null || !request.active()) return Optional.empty();
     return Optional.of(Detection.log("deserialization", "deserialization_http_object_stream", 95,
         "ObjectInputStream requested an object read from a servlet input stream", request,
         Map.of("streamClass", source, "decision_basis", "servlet_stream_read")));
   }
 
-  static Optional<Detection> detectHessianAllocation(Class<?> selected, String basis, RequestContext request) {
+  public static Optional<Detection> detectHessianAllocation(Class<?> selected, String basis, RequestContext request) {
     if (!HessianAllocationTypes.listed(selected)) return Optional.empty();
     return Optional.of(Detection.log("deserialization", "deserialization_hessian_type", 95,
         "Hessian selected a listed type for allocation", request == null ? RequestContext.empty() : request,
         Map.of("protocol", "hessian", "class", selected.getName(), "decision_basis", basis)));
   }
 
-  static Optional<Detection> detectXmlRpcSerializableValue(
+  public static Optional<Detection> detectXmlRpcSerializableValue(
       String mechanism, RequestContext request) {
     if (!"ApacheXmlRpc".equals(mechanism)) return Optional.empty();
     return Optional.of(Detection.log("deserialization", "deserialization_xmlrpc_serialized", 95,
@@ -527,5 +535,101 @@ final class DeserializationDetector {
         || lower.contains("%2e")
         || lower.contains("%2f")
         || lower.contains("%5c");
+  }
+
+  public static Optional<Detection> detectProtocolClassInstantiation(
+      String protocol, String className, List<String> arguments, RequestContext request) {
+    // Compatibility for declaration-only callers. No constructor has been selected.
+    return Optional.empty();
+  }
+
+  public static Optional<Detection> detectHttpObjectStreamDeserialization(
+      String streamClassName, RequestContext request, List<String> stackClassNames) {
+    // Compatibility for metadata-only callers.
+    return Optional.empty();
+  }
+
+  public static Optional<Detection> detectHessianType(String type, RequestContext request) {
+    // Compatibility for declarations with no class allocation.
+    return Optional.empty();
+  }
+
+  public static Optional<Detection> detectXmlDecoderExpression(
+      String targetType,
+      String methodName,
+      List<String> arguments,
+      RequestContext request,
+      List<String> stackClassNames) {
+    if (request == null || !request.active()) {
+      return Optional.empty();
+    }
+    if (!isXmlDecoderStack(stackClassNames)) {
+      return Optional.empty();
+    }
+    String normalizedTarget = normalizeJavaTypeName(targetType);
+    String normalizedMethod = lower(methodName);
+    List<String> safeArguments = arguments == null ? List.of() : arguments;
+    String joinedArguments = String.join(" ", safeArguments);
+
+    boolean processBuilderStart =
+        normalizedTarget.equals("java.lang.ProcessBuilder") && normalizedMethod.equals("start");
+    boolean runtimeExec =
+        normalizedTarget.equals("java.lang.Runtime") && normalizedMethod.startsWith("exec");
+    boolean reflectiveInvoke =
+        normalizedTarget.equals("java.lang.reflect.Method") && normalizedMethod.equals("invoke");
+    if (processBuilderStart || runtimeExec || reflectiveInvoke) {
+      return Optional.of(
+          Detection.log(
+              "deserialization",
+              "xml_decoder_runtime",
+              95,
+              "XMLDecoder object graph invoked a runtime execution primitive",
+              request,
+              Map.of(
+                  "target", normalizedTarget,
+                  "method", String.valueOf(methodName),
+                  "arguments", abbreviate(joinedArguments))));
+    }
+
+    boolean writerConstruction =
+        (normalizedTarget.equals("java.io.PrintWriter")
+                || normalizedTarget.equals("java.io.FileWriter")
+                || normalizedTarget.equals("java.io.FileOutputStream"))
+            && (normalizedMethod.equals("new") || normalizedMethod.equals("newinstance"));
+    if (writerConstruction) {
+      for (String argument : safeArguments) {
+        String path = normalizePath(argument);
+        if (HostFileMutationDetector.isScriptTarget(path)) {
+          return Optional.of(
+              Detection.log(
+                  "deserialization",
+                  "xml_decoder_webshell",
+                  95,
+                  "XMLDecoder object graph created a writer for a server-side script path",
+                  request,
+                  Map.of(
+                      "target", normalizedTarget,
+                      "method", String.valueOf(methodName),
+                      "path", abbreviate(path))));
+        }
+      }
+    }
+    return Optional.empty();
+  }
+
+  private static boolean isXmlDecoderStack(List<String> stackClassNames) {
+    if (stackClassNames == null || stackClassNames.isEmpty()) {
+      return false;
+    }
+    for (String className : stackClassNames) {
+      if (className == null) {
+        continue;
+      }
+      if (className.equals("java.beans.XMLDecoder")
+          || className.startsWith("com.sun.beans.decoder.")) {
+        return true;
+      }
+    }
+    return false;
   }
 }
