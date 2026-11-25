@@ -1,6 +1,6 @@
 [applies]
 family = "primary"
-why = "the fixture asserts the primary agent's stream-filter receipts"
+why = "the fixture asserts the primary agent's stream-filter receipts and fails on the backport agents"
 
 [[fixture]]
 flag = "--c3p0-dir"

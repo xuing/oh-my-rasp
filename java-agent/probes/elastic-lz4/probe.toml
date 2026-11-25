@@ -2,7 +2,7 @@ isolated = true
 
 [applies]
 lines = ["jdk25"]
-why = "CI has run it against the JDK 25 JAR only; whether it holds on the other lines is not established"
+why = "the fixture compiles against Elasticsearch 8 libraries and does not compile on JDK 8 or 11; CI runs the isolated step against the JDK 25 JAR"
 
 [[fixture]]
 flag = "--jar-dir"

@@ -1,3 +1,0 @@
-[applies]
-lines = ["jdk25"]
-why = "CI has run it on the JDK 25 row only; whether it holds on the other lines is not established"
