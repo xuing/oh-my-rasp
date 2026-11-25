@@ -7,6 +7,7 @@ import io.ohmyrasp.agent.file.HostDirectory;
 import io.ohmyrasp.agent.jmx.JmxDispatch;
 import io.ohmyrasp.agent.naming.LookupRoute;
 import io.ohmyrasp.agent.loading.CodebaseUrls;
+import io.ohmyrasp.agent.loading.ClassDefinitionOrigin;
 import io.ohmyrasp.agent.rules.product.spark.SparkSubmitRole;
 import io.ohmyrasp.agent.http.ServletSubmitRole;
 import io.ohmyrasp.agent.serialization.StreamTypeNames;
@@ -826,12 +827,22 @@ public final class Java17RaspHooks {
     }
   }
 
-  public static void beforeClassLoaderUrl(Object url) {
-    emitClassLoaderFindings(url, "URLClassLoader");
+  /** Retained for older instrumentation. A configured classpath can serve ordinary resources. */
+  public static void beforeClassLoaderUrl(Object url) {}
+  public static void beforeClassLoaderUrls(Object urls) {}
+
+  public static void onClassResourceRead(java.net.URLConnection connection, Object resource) {
+    if (!RaspRuntime.detectionOff()) ClassDefinitionOrigin.read(connection, resource);
   }
 
-  public static void beforeClassLoaderUrls(Object urls) {
-    emitClassLoaderFindings(urls, "URLClassLoader");
+  public static void beforeClassDefinition(java.net.URL origin, Object handler, Object resource) {
+    if (RaspRuntime.detectionOff()) return;
+    String selected = ClassDefinitionOrigin.selected(resource, origin, handler);
+    if (selected != null) onClassDefinitionSource(selected);
+  }
+
+  public static void onClassDefinitionSource(String source) {
+    if (!RaspRuntime.detectionOff()) emitClassLoaderFinding(source, "URLClassLoader");
   }
 
   public static void beforeRmiClassLoaderCodebase(String codebase) {
@@ -1818,18 +1829,15 @@ public final class Java17RaspHooks {
 
   private static void emitClassLoaderFindings(Object sources, String mechanism) {
     if (RaspRuntime.detectionOff()) return;
-    List<String> values = CodebaseUrls.elements(sources);
-    for (String value : values) {
-      Finding finding = classifyClassLoaderSource(value, mechanism);
-      if (finding == null) {
-        continue;
-      }
-      String action = shouldBlock() ? "block" : "log";
-      appendEvent(finding, mechanism, action);
-      if ("block".equals(action)) {
-        throw new Java17RaspBlockException("OhMyRASP Java 17 blocked suspicious remote classloader codebase");
-      }
-    }
+    for (String value : CodebaseUrls.elements(sources)) emitClassLoaderFinding(value, mechanism);
+  }
+
+  private static void emitClassLoaderFinding(String value, String mechanism) {
+    Finding finding = classifyClassLoaderSource(value, mechanism);
+    if (finding == null) return;
+    boolean block = shouldBlock();
+    appendEvent(finding, mechanism, block ? "block" : "log");
+    if (block) throw new Java17RaspBlockException("OhMyRASP blocked a remote classloader codebase");
   }
 
   private static Finding classifyClassLoaderSource(String source, String mechanism) {
@@ -1844,9 +1852,6 @@ public final class Java17RaspHooks {
     if (scheme.length() == 0) {
       return null;
     }
-    if ("URLClassLoader".equals(mechanism) && isFelixExtensionClassLoaderSource(normalized, scheme)) {
-      return null;
-    }
     int confidence = "RMIClassLoader".equals(mechanism) ? 94 : 90;
     return new Finding(
         "java17_classloader_remote_codebase",
@@ -1854,7 +1859,7 @@ public final class Java17RaspHooks {
         "Remote classloader codebase reached a Java 17 class loading sink",
         "codebase",
         mechanism + " " + scheme + " " + normalized,
-        "RMIClassLoader".equals(mechanism) ? "rmi_codebase_loader_selection" : "classloader_url_configuration");
+        "RMIClassLoader".equals(mechanism) ? "rmi_codebase_loader_selection" : "url_class_definition");
   }
 
   private static Finding classifyScriptEval(String script) {
@@ -3885,57 +3890,6 @@ public final class Java17RaspHooks {
     return value.substring(0, maxLength) + "...";
   }
 
-  private static boolean isFelixExtensionClassLoaderSource(String source, String scheme) {
-    if (!"http".equals(scheme) && !"https".equals(scheme)) {
-      return false;
-    }
-    String inspected = source.trim();
-    if (inspected.regionMatches(true, 0, "jar:", 0, "jar:".length())) {
-      inspected = inspected.substring("jar:".length());
-      int bang = inspected.indexOf("!/");
-      if (bang >= 0) {
-        inspected = inspected.substring(0, bang);
-      }
-    }
-    int schemeSeparator = inspected.indexOf(':');
-    if (schemeSeparator <= 0 || inspected.length() <= schemeSeparator + 3) {
-      return false;
-    }
-    if (inspected.charAt(schemeSeparator + 1) != '/'
-        || inspected.charAt(schemeSeparator + 2) != '/') {
-      return false;
-    }
-    int authorityStart = schemeSeparator + 3;
-    int authorityEnd = inspected.length();
-    for (int i = authorityStart; i < inspected.length(); i++) {
-      char value = inspected.charAt(i);
-      if (value == '/' || value == '?' || value == '#') {
-        authorityEnd = i;
-        break;
-      }
-    }
-    String authority = inspected.substring(authorityStart, authorityEnd);
-    int at = authority.lastIndexOf('@');
-    if (at >= 0) {
-      authority = authority.substring(at + 1);
-    }
-    int portSeparator = authority.lastIndexOf(':');
-    if (portSeparator <= 0 || portSeparator == authority.length() - 1) {
-      return false;
-    }
-    String host = authority.substring(0, portSeparator);
-    String port = authority.substring(portSeparator + 1);
-    if (!"felix.extensions".equalsIgnoreCase(host)) {
-      return false;
-    }
-    for (int i = 0; i < port.length(); i++) {
-      if (!Character.isDigit(port.charAt(i))) {
-        return false;
-      }
-    }
-    return true;
-  }
-
   private static boolean containsJdbcOption(String lower, String option) {
     return lower.indexOf(";" + option + "=") >= 0
         || lower.indexOf("&" + option + "=") >= 0
@@ -4143,7 +4097,8 @@ public final class Java17RaspHooks {
         return;
       }
     }
-    String key = urlComparisonKey(value);
+    String archive = value instanceof String ? HttpTransportObservation.archiveAddress((String) value) : null;
+    String key = urlComparisonKey(archive == null ? value : archive);
     if (key.length() > 0 && !urls.contains(key)) {
       urls.add(key);
     }

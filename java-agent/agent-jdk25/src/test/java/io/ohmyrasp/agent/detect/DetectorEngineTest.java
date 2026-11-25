@@ -796,6 +796,29 @@ final class DetectorEngineTest {
   }
 
   @Test
+  void distinguishesArchiveConfigurationFromRequestSelection() {
+    String archive = "https://reports.invalid/releases/weekly.jar";
+    String entry = "jar:" + archive + "!/summary.txt";
+    assertTrue(engine.detectUrl(entry, request()).isEmpty());
+    var configured = engine.detectUrl(entry, request(), true).orElseThrow();
+    assertTrue(configured.requiresExplicitRule());
+    for (String selected : List.of(archive, entry)) {
+      var input = request(Map.of("archive", List.of(selected)));
+      assertTrue(engine.detectUrl(entry, input).isEmpty());
+      assertTrue(engine.requestSuppliesHttpUrl(java.net.URI.create(archive), archive, "reports.invalid", input));
+      String other = "https://reports.invalid/releases/other.jar";
+      assertFalse(engine.requestSuppliesHttpUrl(java.net.URI.create(other), other, "reports.invalid", input));
+    }
+    var json = new RequestContext("POST", "/reports", "", Map.of(), Map.of("content-type", "application/json"),
+        "{\"archive\":\"" + entry + "\"}");
+    assertTrue(engine.requestSuppliesHttpUrl(java.net.URI.create(archive), archive, "reports.invalid", json));
+    var broad = io.ohmyrasp.agent.policy.AgentPolicy.parse("{\"rules\":[{\"hook\":\"ssrf\",\"action\":\"block\"}]}");
+    var explicit = io.ohmyrasp.agent.policy.AgentPolicy.parse("{\"rules\":[{\"algorithm\":\"ssrf_protocol\",\"action\":\"block\"}]}");
+    assertTrue(broad.evaluate(configured, "").ignored());
+    assertEquals("block", explicit.evaluate(configured, "").detection().action());
+  }
+
+  @Test
   void ignoresTomcatLibraryFileResource() {
     var result = engine.detectUrl("file:/usr/local/tomcat/lib/servlet-api.jar", request());
 

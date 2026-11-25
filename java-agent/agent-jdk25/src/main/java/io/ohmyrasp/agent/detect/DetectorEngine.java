@@ -1283,8 +1283,13 @@ public final class DetectorEngine {
     if (isLocalArchiveUrl(rawUrl, scheme)) {
       return Optional.empty();
     }
-    if (!request.active() && "jar".equals(scheme)) {
-      return Optional.empty();
+    if ("jar".equals(scheme)) {
+      if (!request.active()) return Optional.empty();
+      if (HttpTransportObservation.archiveAddress(rawUrl) != null) {
+        if (!includeDestinationPolicy) return Optional.empty();
+        return Optional.of(Detection.log("ssrf", "ssrf_protocol", 90, "HTTP archive URL opened",
+            request, Map.of("url", abbreviate(rawUrl), "decision_basis", "archive_scheme_only")));
+      }
     }
     if (SSRF_PROTOCOLS.contains(scheme)) {
       return Optional.of(
@@ -2543,7 +2548,7 @@ public final class DetectorEngine {
         if (value == null || value.isBlank()) {
           continue;
         }
-        if (value.equals(rawUrl)) {
+        if (value.equals(rawUrl) || matchesHttpArchive(value, destination)) {
           return true;
         }
         if (!host.isEmpty()
@@ -2556,7 +2561,29 @@ public final class DetectorEngine {
         }
       }
     }
-    return bodyHasSinkValue(request, rawUrl);
+    if (bodyHasSinkValue(request, rawUrl) || matchesHttpArchive(request.body().trim(), destination)) return true;
+    if ((request.body().contains("!/") || request.body().indexOf('\\') >= 0) && jsonConfigBody(request)) {
+      for (var field : jsonStringFields(request.body())) {
+        if (matchesHttpArchive(field.value(), destination)) return true;
+      }
+    }
+    return false;
+  }
+
+  private static boolean matchesHttpArchive(String value, URI destination) {
+    String archive = HttpTransportObservation.archiveAddress(value);
+    if (archive == null || destination == null) return false;
+    try {
+      URI supplied = URI.create(archive);
+      String path = supplied.getRawPath();
+      return supplied.getHost() != null && supplied.getScheme().equalsIgnoreCase(destination.getScheme())
+          && NetworkHost.destinationKey(supplied.getHost()).equals(NetworkHost.destinationKey(destination.getHost()))
+          && effectivePort(supplied) == effectivePort(destination)
+          && (path.isEmpty() ? "/" : path).equals(destination.getRawPath())
+          && java.util.Objects.equals(supplied.getRawQuery(), destination.getRawQuery());
+    } catch (IllegalArgumentException invalid) {
+      return false;
+    }
   }
 
   private static boolean matchesUrlBase(String value, URI destination) {

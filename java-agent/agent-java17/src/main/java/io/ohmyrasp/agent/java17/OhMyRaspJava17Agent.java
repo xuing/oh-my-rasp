@@ -187,6 +187,7 @@ public final class OhMyRaspJava17Agent {
     for (Class<?> loaded : loadedClasses) {
       String internalName = loaded.getName().replace('.', '/');
       if (io.ohmyrasp.agent.loading.CodebaseVisitor.RMI_ROUTER.equals(internalName)
+          || io.ohmyrasp.agent.loading.CodebaseVisitor.directoryResource(internalName)
           || Lz4TransportVisitor.OWNER.equals(internalName)
           || io.ohmyrasp.agent.naming.JndiLookupVisitor.URL_CONTEXT.equals(internalName)
           || io.ohmyrasp.agent.naming.JndiLookupVisitor.LOGIN_MODULE.equals(internalName)

@@ -2081,29 +2081,14 @@ final class Java8RaspHooksTest {
   }
 
   @Test
-  void ignoresFelixExtensionClassLoaderCodebase() throws Exception {
-    Path log = Files.createTempFile("ohmyrasp-java8-classloader-felix", ".jsonl");
+  void ignoresUnusedRemoteClassPath() throws Exception {
+    Path log = Files.createTempFile("ohmyrasp-java8-classpath", ".jsonl");
     Files.delete(log);
     System.setProperty("ohmyrasp.java8.log", log.toString());
-
-    Java8RaspHooks.beforeClassLoaderUrl(new URL("http://felix.extensions:9/"));
-
+    URL entry = new URL("https://reports.invalid/catalog/");
+    Java8RaspHooks.beforeClassLoaderUrl(entry);
+    Java8RaspHooks.beforeClassLoaderUrls(new URL[] {entry});
     assertFalse(Files.exists(log));
-  }
-
-  @Test
-  void logsRemoteUrlClassLoaderCodebase() throws Exception {
-    Path log = Files.createTempFile("ohmyrasp-java8-classloader-remote", ".jsonl");
-    Files.delete(log);
-    System.setProperty("ohmyrasp.java8.log", log.toString());
-
-    Java8RaspHooks.beforeClassLoaderUrls(
-        new URL[] {new URL("jar:http://attacker.example/evil.jar!/payload/")});
-
-    String text = new String(Files.readAllBytes(log), StandardCharsets.UTF_8);
-    assertTrue(text.contains("\"algorithm\":\"java8_classloader_remote_codebase\""));
-    assertTrue(text.contains("\"action\":\"log\""));
-    assertTrue(text.contains("URLClassLoader http jar:http://attacker.example/evil.jar!/payload/"));
   }
 
   @Test

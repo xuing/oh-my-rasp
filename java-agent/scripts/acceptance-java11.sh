@@ -302,7 +302,7 @@ for version in "${versions[@]}"; do
   expect_block "$version" file_write java11_file_script_write /rasp/java11/file-write
   expect_block "$version" archive_traversal java11_archive_entry_traversal_write /rasp/java11/archive-traversal
   expect_block "$version" ssrf_loopback java11_ssrf_loopback_admin "/rasp/java11/ssrf-loopback?path=/admin/weekly-report"
-  expect_block "$version" classloader java11_classloader_remote_codebase /rasp/java11/classloader
+  curl -fsS "${protected_url}/rasp/java11/classloader" | grep -Fq "classloader attempted"
   curl -fsS "${protected_url}/rasp/java11/rmi-classloader" | grep -Fq "local-rmi-class=java.lang.String"
   expect_block "$version" jdbc_h2 java11_jdbc_h2_code_execution /rasp/java11/jdbc-h2
   expect_block "$version" jdbc_derby java11_jdbc_derby_code_loading /rasp/java11/jdbc-derby

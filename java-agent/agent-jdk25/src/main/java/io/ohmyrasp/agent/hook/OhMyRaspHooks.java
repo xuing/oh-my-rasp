@@ -21,6 +21,7 @@ import io.ohmyrasp.agent.policy.PolicyEvaluation;
 import io.ohmyrasp.agent.process.PosixShellCommand;
 import io.ohmyrasp.agent.naming.LookupRoute;
 import io.ohmyrasp.agent.loading.CodebaseUrls;
+import io.ohmyrasp.agent.loading.ClassDefinitionOrigin;
 import io.ohmyrasp.agent.rules.product.spark.SparkSubmitRole;
 import io.ohmyrasp.agent.http.ServletSubmitRole;
 import io.ohmyrasp.agent.runtime.AgentRuntime;
@@ -665,18 +666,22 @@ public final class OhMyRaspHooks {
   /** Compatibility entry for older agents instrumenting configuration declarations. */
   public static void beforeJaasConfigEntry(Object loginModuleName, Object options) {}
 
-  public static void beforeClassLoaderUrl(Object url) {
-    if (detectionDisabled()) {
-      return;
-    }
-    beforeClassLoaderSources("URLClassLoader", url);
+  /** Retained for older instrumentation. A configured classpath can serve ordinary resources. */
+  public static void beforeClassLoaderUrl(Object url) {}
+  public static void beforeClassLoaderUrls(Object urls) {}
+
+  public static void onClassResourceRead(java.net.URLConnection connection, Object resource) {
+    if (!detectionDisabled()) ClassDefinitionOrigin.read(connection, resource);
   }
 
-  public static void beforeClassLoaderUrls(Object urls) {
-    if (detectionDisabled()) {
-      return;
-    }
-    beforeClassLoaderSources("URLClassLoader", urls);
+  public static void beforeClassDefinition(java.net.URL origin, Object handler, Object resource) {
+    if (detectionDisabled()) return;
+    String selected = ClassDefinitionOrigin.selected(resource, origin, handler);
+    if (selected != null) onClassDefinitionSource(selected);
+  }
+
+  public static void onClassDefinitionSource(String source) {
+    if (!detectionDisabled()) emit(DETECTORS.detectClassLoaderUrl(source, "URLClassLoader", currentRequest()));
   }
 
   public static void beforeRmiClassLoaderCodebase(String codebase) {

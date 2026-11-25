@@ -24,8 +24,12 @@ public final class CodebaseUrls {
     int colon = source.indexOf(':', start);
     if (colon <= start) return "";
     String scheme = source.substring(start, colon).toLowerCase(java.util.Locale.ROOT);
-    return "http".equals(scheme) || "https".equals(scheme) || "ftp".equals(scheme)
-        || "rmi".equals(scheme) || "ldap".equals(scheme) ? scheme : "";
+    return remoteProtocol(scheme) ? scheme : "";
+  }
+
+  static boolean remoteProtocol(String scheme) {
+    return "http".equalsIgnoreCase(scheme) || "https".equalsIgnoreCase(scheme) || "ftp".equalsIgnoreCase(scheme)
+        || "rmi".equalsIgnoreCase(scheme) || "ldap".equalsIgnoreCase(scheme);
   }
 
   private static void add(List<String> sources, Object value) {

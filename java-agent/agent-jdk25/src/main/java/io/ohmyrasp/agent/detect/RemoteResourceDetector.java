@@ -46,13 +46,13 @@ final class RemoteResourceDetector {
             "classloader",
             "classloader_remote",
             90,
-            rmi ? "RMI selected a codebase loader for a remote URL" : "Class loader is configured with a remote codebase URL",
+            rmi ? "RMI selected a codebase loader for a remote URL" : "Class definition reached the VM handoff with a remote resource origin",
             request,
             Map.of(
                 "mechanism", hook,
                 "scheme", scheme,
                 "url", abbreviate(normalized),
-                "decision_basis", rmi ? "rmi_codebase_loader_selection" : "classloader_url_configuration")));
+                "decision_basis", rmi ? "rmi_codebase_loader_selection" : "url_class_definition")));
   }
 
   static Optional<Detection> detectSpringConfigLocation(

@@ -156,6 +156,14 @@ public final class HttpTransportObservation {
 
   private HttpTransportObservation() {}
 
+  /** HTTP archive operand used by a jar URL, excluding the member and its fragment. */
+  public static String archiveAddress(String value) {
+    if (value == null || !(value.regionMatches(true, 0, "jar:http://", 0, 11)
+        || value.regionMatches(true, 0, "jar:https://", 0, 12))) return null;
+    int member = value.indexOf("!/", 4);
+    return member < 0 ? null : value.substring(4, member);
+  }
+
   public static boolean isHttp(URL url) {
     return url != null && ("http".equalsIgnoreCase(url.getProtocol()) || "https".equalsIgnoreCase(url.getProtocol()));
   }

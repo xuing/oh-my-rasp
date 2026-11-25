@@ -247,7 +247,9 @@ Comparing all six representations catches path-semantic mismatches (such as trav
 
 RMI may resolve a class or proxy locally even when its annotation contains a remote URL. On runtimes with a codebase-loader branch, the agent checks the parsed URL array when the JDK enters `sun.rmi.server.LoaderHandler.lookupLoader`. Local resolutions retain their original result or exception. Custom RMI providers have their own resolution logic.
 
-The separate `URLClassLoader` policy checks classpath configuration. Each URL is inspected as one element using its fields. The event records configuration or loader selection. Neither observation establishes that class bytes were downloaded or defined. [Packaged codebase check](../java-agent/scripts/fp-harness/RmiCodebaseCheck.java)
+For `URLClassLoader`, the class-origin rule runs immediately before the JVM receives class bytes for definition. For a directory resource it uses the JDK connection that supplied the stream. For an archive it checks the selected archive origin, including when the JAR is already cached. Ordinary resource reads, classpath registration and parent-loader hits can complete without a class-origin event. Bytes may already have been fetched when a definition is blocked. Applications that intentionally define classes from a covered remote source are subject to this policy. [Packaged class-definition check](../java-agent/scripts/fp-harness/ClassDefinitionCheck.java)
+
+Opening an HTTP-backed JAR wrapper is a protocol policy decision on the primary agent only when a managed policy explicitly selects `ssrf_protocol`. The HTTP transport separately checks the backing destination, including when a request supplied the URL of a member inside that archive.
 
 ### JAAS directory lookups
 

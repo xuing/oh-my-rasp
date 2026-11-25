@@ -31,15 +31,7 @@ public class RmiCodebaseCheck {
         if (localLoader.loadClass("java.lang.String") != String.class) throw new AssertionError("wrong parent class");
       }
       if (displayCalls[0] != 0) throw new AssertionError("agent formatted a local classpath element");
-      // This separate operation actually gives a URL to a codebase loader. Never use it to load code.
-      boolean blocked = false;
-      try (URLClassLoader loader = new URLClassLoader(new URL[]{new URL(annotation)}, local)) {
-        if (loader.getURLs().length != 1) throw new AssertionError("lost classpath");
-      } catch (RuntimeException e) {
-        if (!HttpTransportCheck.blocked(e)) throw e;
-        blocked = true;
-      }
-      if (blocked != "block".equals(args[1])) throw new AssertionError("wrong classpath policy decision");
+      ClassDefinitionCheck.check(args[0], args[1]);
     }
   }
 }
