@@ -51,6 +51,11 @@ jobs:
             :agent-jdk25:shirudoUpatchJar \
             :playground:war \
             :playground-javax:war
+      - name: Gate invokedynamic call sites in the backport agent JARs
+        run: |
+          set -euo pipefail
+          python3 -m unittest discover -s java-agent/scripts -p 'test_check_dynamic_calls.py'
+          python3 java-agent/scripts/check-dynamic-calls.py --check
       - name: Verify benign corpus and generated false-positive report
         working-directory: java-agent
         run: |
