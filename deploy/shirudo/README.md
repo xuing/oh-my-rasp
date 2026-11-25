@@ -52,11 +52,11 @@ Each package injects ASM bytecode hooks at JVM class-load / retransform time acr
 
 Each shirudo upatch JAR embeds `META-INF/ohmyrasp-shirudo.properties` so it runs without a host daemon, control file, or spool rotation:
 
-- `standalone=true`: disables daemon polling and cloud upload (`cloud_direct` forced off).
-- `lock_config=true`: read strictly from the signed JAR; ignores `/tmp/ohmyrasp-control.json`, `OHMYRASP_MODE=off`, and `OHMYRASP_CONTROL`.
+- `standalone=true`: turns cloud upload off (`cloud_direct` forced off) and makes `none` the default control path.
+- `lock_config=true`: `standalone`, `mode` and `control` come only from this baked file; `/tmp/ohmyrasp-control.json`, `OHMYRASP_MODE=off` and `OHMYRASP_CONTROL` are ignored. `log` and `latency_sample` stay overridable. The `ohmyrasp-java8`, `ohmyrasp-java11` and `ohmyrasp-java17` JARs read the file only from their own JAR; the primary-agent packages (`ohmyrasp-jdk21`, `ohmyrasp-jdk25`) can read a same-named file from the application class path instead.
 - `mode=block`: enables blocking immediately at JVM startup (use `--mode monitor` when building for observe-only rollout).
 - `control=none`: starts zero background control-poller threads.
-- `log=stderr`: writes structured JSON detection events directly to `stderr` with zero file-writer threads and no `/tmp/ohmyrasp-events.jsonl`.
+- `log=stderr`: writes structured JSON detection events directly to `stderr` with zero file-writer threads and no `/tmp/ohmyrasp-events.jsonl`, unless a log override names a file at start-up.
 - `latency_sample=0`: suppresses benign `hook_latency` telemetry lines.
 
 ## Build

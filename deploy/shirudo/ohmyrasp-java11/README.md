@@ -69,7 +69,7 @@ The `ohmyrasp-java11` package installs the `ohmyrasp-java11` Java upatch: a stan
 
 ## Runtime Behavior
 
-- **Standalone and daemonless**: Built with `standalone=true`, `lock_config=true`, `control=none` and `log=stderr`. No control-file poller is started, and `/tmp/ohmyrasp-control.json` or `OHMYRASP_MODE=off` is ignored. No background event-writer thread is started unless a log override names a file at start-up.
+- **Standalone and daemonless**: Built with `standalone=true`, `lock_config=true`, `control=none` and `log=stderr`. No control-file poller is started, and `/tmp/ohmyrasp-control.json` or `OHMYRASP_MODE=off` is ignored. The baked settings are read only from this JAR: a same-named `META-INF/ohmyrasp-shirudo.properties` elsewhere on the class path is ignored. The runtime starts while the agent loads, before any hook is installed, and no background event-writer thread is started unless a log override names a file at start-up.
 - **Blocking enforcement**: Built with `mode=block`; exploit detections throw `Java11RaspBlockException` immediately at the sink (including standalone non-HTTP calls such as malicious `InitialContext.lookup`, `/etc/passwd` reads, `Statement` SQLi, deserialization gadgets, and CVE-2026-114938 Base64 tail-underflow).
 - **Logging**: Emits structured JSON detection events directly to `stderr` (`log=stderr`, `latency_sample=0`) with no `/tmp/ohmyrasp-events.jsonl` file output and no `hook_latency` telemetry.
 

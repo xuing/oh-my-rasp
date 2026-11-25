@@ -356,11 +356,11 @@ def render_top_readme(
     w("")
     w("Each shirudo upatch JAR embeds `META-INF/ohmyrasp-shirudo.properties` so it runs without a host daemon, control file, or spool rotation:")
     w("")
-    w("- `standalone=true`: disables daemon polling and cloud upload (`cloud_direct` forced off).")
-    w("- `lock_config=true`: read strictly from the signed JAR; ignores `/tmp/ohmyrasp-control.json`, `OHMYRASP_MODE=off`, and `OHMYRASP_CONTROL`.")
+    w("- `standalone=true`: turns cloud upload off (`cloud_direct` forced off) and makes `none` the default control path.")
+    w("- `lock_config=true`: `standalone`, `mode` and `control` come only from this baked file; `/tmp/ohmyrasp-control.json`, `OHMYRASP_MODE=off` and `OHMYRASP_CONTROL` are ignored. `log` and `latency_sample` stay overridable. The `ohmyrasp-java8`, `ohmyrasp-java11` and `ohmyrasp-java17` JARs read the file only from their own JAR; the primary-agent packages (`ohmyrasp-jdk21`, `ohmyrasp-jdk25`) can read a same-named file from the application class path instead.")
     w("- `mode=block`: enables blocking immediately at JVM startup (use `--mode monitor` when building for observe-only rollout).")
     w("- `control=none`: starts zero background control-poller threads.")
-    w("- `log=stderr`: writes structured JSON detection events directly to `stderr` with zero file-writer threads and no `/tmp/ohmyrasp-events.jsonl`.")
+    w("- `log=stderr`: writes structured JSON detection events directly to `stderr` with zero file-writer threads and no `/tmp/ohmyrasp-events.jsonl`, unless a log override names a file at start-up.")
     w("- `latency_sample=0`: suppresses benign `hook_latency` telemetry lines.")
     w("")
     w("## Build")
@@ -497,8 +497,11 @@ def render_backport_readme(b: dict[str, object], vulhub: dict[str, int]) -> str:
     w(
         "- **Standalone and daemonless**: Built with `standalone=true`, `lock_config=true`, "
         "`control=none` and `log=stderr`. No control-file poller is started, and "
-        "`/tmp/ohmyrasp-control.json` or `OHMYRASP_MODE=off` is ignored. No background "
-        "event-writer thread is started unless a log override names a file at start-up."
+        "`/tmp/ohmyrasp-control.json` or `OHMYRASP_MODE=off` is ignored. The baked settings "
+        "are read only from this JAR: a same-named `META-INF/ohmyrasp-shirudo.properties` "
+        "elsewhere on the class path is ignored. The runtime starts while the agent loads, "
+        "before any hook is installed, and no background event-writer thread is started "
+        "unless a log override names a file at start-up."
     )
     w(
         f"- **Blocking enforcement**: Built with `mode=block`; exploit detections throw "

@@ -71,7 +71,7 @@ Detector false-positive-suppression parity between the backport `Java{8,11,17}Ra
    { "mode": "monitor", "algorithms": { "sql_userinput": false }, "revision": 3 }
    ```
    A `"policy"` string field in `control.json` is also forwarded to `AgentPolicy.parse` whenever its contents change.
-2. **Standalone mode (`standalone=true`):** Disables control-file polling and legacy direct-cloud reporting. When `mode` is unset, standalone defaults to `block`; `log` defaults to `stderr`; and `latency_sample` defaults to `0`.
+2. **Standalone mode (`standalone=true`):** Disables legacy direct-cloud reporting and makes `none` the default control path. The primary agent then polls no control file at all; the backport lines poll only a control path that is set explicitly (see below). When `mode` is unset, standalone defaults to `block`; `log` defaults to `stderr`; and `latency_sample` defaults to `0`.
 3. **Shirudo daemonless locked mode (`META-INF/ohmyrasp-shirudo.properties`):** Used by `shirudoUpatchJar` packages (`ohmyrasp-{java8,java11,java17,jdk25}.jar`) for target-side attachment via `/run/shirudo-java/<name>.jar`. Baked properties are:
    ```properties
    standalone=true
@@ -81,7 +81,7 @@ Detector false-positive-suppression parity between the backport `Java{8,11,17}Ra
    log=stderr
    latency_sample=0
    ```
-   When `lock_config=true`, `standalone`, `mode`, and `control` come only from the signed JAR resource, and a key missing there takes its default. `ohmyrasp.mode`/`OHMYRASP_MODE`, `ohmyrasp.control`/`OHMYRASP_CONTROL`, `ohmyrasp.standalone`/`OHMYRASP_STANDALONE`, and `/tmp/ohmyrasp-control.json` are ignored, and `lock_config` itself cannot be set from outside the JAR. `log` and `latency_sample` stay overridable through the usual sources below. No control-poller thread is started. A file-writer thread is started only when the log target resolved at agent start is a file, so the baked `log=stderr` starts none. `cloud_direct` is unconditionally suppressed. See [`../deploy/shirudo/README.md`](../deploy/shirudo/README.md).
+   When `lock_config=true`, `standalone`, `mode`, and `control` come only from the baked `META-INF/ohmyrasp-shirudo.properties`, and a key missing there takes its default. `ohmyrasp.mode`/`OHMYRASP_MODE`, `ohmyrasp.control`/`OHMYRASP_CONTROL`, `ohmyrasp.standalone`/`OHMYRASP_STANDALONE`, and `/tmp/ohmyrasp-control.json` are ignored, and `lock_config` itself cannot be set from outside the JAR. `log` and `latency_sample` stay overridable through the usual sources below. The baked `control=none` starts no control-poller thread. A file-writer thread is started only when the log target resolved at agent start is a file, so the baked `log=stderr` starts none. `cloud_direct` is unconditionally suppressed. The backport lines read the baked resource only from the agent's own JAR. `agent-jdk25` looks it up relative to its own class, which for a class on the bootstrap search goes through the system class path, so a same-named file in a JAR on the application class path is read in its place. See [`../deploy/shirudo/README.md`](../deploy/shirudo/README.md).
 4. **Legacy direct-cloud mode (`cloud_direct=true`):** Enables `ControlPlaneClient` inside the JVM to register, heartbeat, pull policies, and upload events directly to the Go control plane. Ignored when `standalone=true` or `lock_config=true`.
 
 ### Detection modes
@@ -122,9 +122,10 @@ In `agent-jdk25`, `AgentRuntime` and `ControlPlaneConfig` resolve settings in or
 Backport modules (`agent-java8`, `agent-java11`, `agent-java17`) read system properties, environment variables, and `META-INF/ohmyrasp-shirudo.properties` via `RaspRuntime` (not `-javaagent` arguments). They also accept track-specific overrides `ohmyrasp.java{8,11,17}.log` and `ohmyrasp.java{8,11,17}.block` / `OHMYRASP_JAVA{8,11,17}_BLOCK`. On these lines:
 
 - An unrecognised mode, standalone or latency-sample value in one source is ignored and the next source applies, so a malformed `-Dohmyrasp.mode` does not mask `OHMYRASP_MODE=block`. A control path that is not a valid path disables control polling.
-- A malformed `META-INF/ohmyrasp-shirudo.properties` is treated as absent.
+- Control polling runs whenever the resolved control path is set and is not `none`, `off` or `disabled`. `standalone` only changes the default path to `none`, so `-Dohmyrasp.control=<path>` still polls in standalone mode unless `lock_config` is on.
+- `META-INF/ohmyrasp-shirudo.properties` is read only from the agent's own JAR; a same-named resource elsewhere on the class path is ignored. A malformed one does not stop the agent: the keys before the malformed line apply and the rest are ignored.
 - With no log setting and `standalone` off, events go to `stderr`, not to `/tmp/ohmyrasp-events.jsonl`.
-- The event-writer thread (`ohmyrasp-java{8,11,17}-writer`) is started when the agent loads, and only if the log target at that moment is a file. A target that becomes a file later is written inline on the request thread.
+- The agent entry point initialises `RaspRuntime` before it installs any hook, on the thread that runs `premain` or `agentmain`. That is when the first control-file read happens and when the poller thread (`ohmyrasp-java{8,11,17}-control`, only if a control path is set) and the event-writer thread (`ohmyrasp-java{8,11,17}-writer`, only if the log target at that moment is a file) start. A target that becomes a file later is written inline on the request thread.
 
 [`Java8ShirudoStandaloneTest`](../java-agent/backport-tests/src/test/java/io/ohmyrasp/agent/java8/Java8ShirudoStandaloneTest.java) pins these rules on all three lines.
 
