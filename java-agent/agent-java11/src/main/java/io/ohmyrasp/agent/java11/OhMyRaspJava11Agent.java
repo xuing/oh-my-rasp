@@ -152,7 +152,6 @@ public final class OhMyRaspJava11Agent {
     retransform(instrumentation, Runtime.class);
     retransform(instrumentation, javax.naming.InitialContext.class);
     retransform(instrumentation, ObjectInputStream.class);
-    retransformByName(instrumentation, "sun.rmi.server.MarshalInputStream");
     retransformByName(instrumentation, "com.alibaba.fastjson.parser.ParserConfig");
     retransformByName(instrumentation, "com.caucho.hessian.io.SerializerFactory");
     retransform(instrumentation, File.class);

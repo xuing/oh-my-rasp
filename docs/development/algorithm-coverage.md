@@ -289,10 +289,8 @@ same patch as any new Java-compatible Vulhub replay.
   `JdbcRowSetImpl` XML gadget and reaches an outbound LDAP listener, while
   protected mode blocks `InitialContext.lookup` before any outbound LDAP
   connection is made.
-- The Java 8 era track hooks `ObjectInputStream.resolveClass` and
-  `resolveProxyClass`, including RMI `MarshalInputStream`, Spring HTTP Invoker
-  `ConfigurableObjectInputStream` and `CodebaseAwareObjectInputStream`
-  subclasses. High-risk gadget or execution primitive classes such as
+- The Java 8 era track checks the result of the JDK stream’s virtual class and
+  proxy resolution calls, including application-defined overrides. High-risk gadget or execution primitive classes such as
   `TemplatesImpl`, `JdbcRowSetImpl`, commons-collections transformer gadgets,
   BeanShell interpreter/proxy gadgets, Groovy closure gadgets, Spring factory
   gadgets, and `ProcessBuilder` log `java8_deserialization_gadget_class`;
@@ -682,10 +680,8 @@ same patch as any new Java-compatible Vulhub replay.
   `java11_jndi_remote_lookup`; local `java:comp/env` lookups are ignored. The
   Java 11 Tomcat matrix baseline-tests the remote lookup endpoint and
   protected-block-tests it under the dedicated Java 11 agent.
-- The Java 11 era track now hooks `ObjectInputStream.resolveClass` and
-  `resolveProxyClass`, including RMI `MarshalInputStream`, Spring HTTP Invoker
-  `ConfigurableObjectInputStream` and `CodebaseAwareObjectInputStream`
-  subclasses. High-risk gadget or execution primitive classes such as
+- The Java 11 era track checks the result of the JDK stream’s virtual class and
+  proxy resolution calls, including application-defined overrides. High-risk gadget or execution primitive classes such as
   `JdbcRowSetImpl`, `TemplatesImpl`, commons-collections transformer gadgets,
   BeanShell interpreter/proxy gadgets, Groovy closure gadgets, Spring factory
   gadgets, and `ProcessBuilder` log or block

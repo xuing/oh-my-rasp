@@ -1,6 +1,7 @@
 package io.ohmyrasp.agent.hook;
 
 import java.io.ObjectInputFilter;
+import io.ohmyrasp.agent.rules.product.beanshell.BeanShellTypes;
 
 /** Adds the agent decision at the JDK's class check, after the application factory has selected a filter. */
 public final class DeserializationGuard {
@@ -24,9 +25,12 @@ public final class DeserializationGuard {
     Class<?> serialClass = info == null ? null : info.serialClass();
     // FilterInfo is consulted for stream metadata too (array length, depth, …);
     // only a concrete class is relevant to us — defer everything else.
-    return serialClass == null
-        ? ObjectInputFilter.Status.UNDECIDED
-        : check(serialClass.getName());
+    try {
+      return serialClass == null || !BeanShellTypes.permitsTypeCheck(serialClass)
+          ? ObjectInputFilter.Status.UNDECIDED : check(serialClass.getName());
+    } catch (LinkageError | SecurityException unavailable) {
+      return ObjectInputFilter.Status.UNDECIDED;
+    }
   }
 
   static ObjectInputFilter.Status check(String className) {

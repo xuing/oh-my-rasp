@@ -5,6 +5,8 @@ import io.ohmyrasp.agent.file.ArchiveEntryContext;
 import io.ohmyrasp.agent.file.HostReadPath;
 import io.ohmyrasp.agent.file.HostDirectory;
 import io.ohmyrasp.agent.jmx.JmxDispatch;
+import io.ohmyrasp.agent.serialization.StreamTypeNames;
+import io.ohmyrasp.agent.rules.product.beanshell.BeanShellTypes;
 import io.ohmyrasp.agent.rules.general.PlotWrite;
 import io.ohmyrasp.agent.jmx.JmxWriteScope;
 import io.ohmyrasp.agent.file.HostDelete;
@@ -25,7 +27,6 @@ import io.ohmyrasp.agent.xml.XmlCatalogResolution;
 import java.io.File;
 import java.io.FileWriter;
 import java.io.IOException;
-import java.io.ObjectStreamClass;
 import java.lang.reflect.Array;
 import java.lang.reflect.Method;
 import java.net.URL;
@@ -62,20 +63,6 @@ public final class Java11RaspHooks {
   private static final Pattern JAAS_REMOTE_PROVIDER =
       Pattern.compile(
           "(?is)(?:^|[\\s,{])(?:user|group)\\.provider\\.url\\s*[=:]\\s*[\"']?((?:ldap|ldaps|rmi|iiop|corbaname|corbaloc)://[^\"'\\s,;}]{1,2048})");
-  private static final Pattern DESERIALIZATION_GADGET_CLASS =
-      Pattern.compile(
-          "(?i)^(?:"
-              + "com\\.sun\\.org\\.apache\\.xalan\\.internal\\.xsltc\\.trax\\.TemplatesImpl|"
-              + "org\\.apache\\.xalan\\.xsltc\\.trax\\.TemplatesImpl|"
-              + "com\\.sun\\.rowset\\.JdbcRowSetImpl|"
-              + "java\\.lang\\.ProcessBuilder|"
-              + "javax\\.script\\.ScriptEngineManager|"
-              + "bsh\\.(?:XThis(?:\\$Handler)?|This|NameSpace|Interpreter|BSH[A-Za-z0-9_$]+)|"
-              + "org\\.apache\\.commons\\.beanutils\\.BeanComparator|"
-              + "org\\.apache\\.commons\\.collections(?:4)?\\.functors\\.(?:Invoker|Instantiate|Chained|Constant)Transformer|"
-              + "org\\.codehaus\\.groovy\\.runtime\\.(?:ConvertedClosure|MethodClosure)|"
-              + "org\\.springframework\\.beans\\.factory\\.config\\.(?:PropertyPathFactoryBean|MethodInvokingFactoryBean)"
-              + ")$");
   private static final Pattern TYPED_PAYLOAD_CLASS_ATTRIBUTE =
       Pattern.compile("(?is)(?:\\btype|\\bclass)\\s*=\\s*[\"']([^\"'<>\\s]{1,256})[\"']");
   private static final Pattern TYPED_PAYLOAD_JSON_TYPE =
@@ -148,7 +135,6 @@ public final class Java11RaspHooks {
   private static final ThreadLocal<String> LAST_LOGGED_REMOTE_JOB = new ThreadLocal<String>();
   private static final ThreadLocal<String> LAST_LOGGED_COMMAND = new ThreadLocal<String>();
   private static final ThreadLocal<String> LAST_LOGGED_JNDI = new ThreadLocal<String>();
-  private static final ThreadLocal<String> LAST_LOGGED_DESERIALIZATION = new ThreadLocal<String>();
   private static final ThreadLocal<String> LAST_LOGGED_HESSIAN_TYPE = new ThreadLocal<String>();
   private static final ThreadLocal<String> LAST_LOGGED_FILE_READ = new ThreadLocal<String>();
   private static final ThreadLocal<String> LAST_LOGGED_FILE_WRITE = new ThreadLocal<String>();
@@ -326,25 +312,31 @@ public final class Java11RaspHooks {
     }
   }
 
-  public static void beforeObjectStreamClassResolve(Object descriptor) {
-    if (!(descriptor instanceof ObjectStreamClass)) {
-      return;
-    }
-    Finding finding = classifyDeserializationClass(((ObjectStreamClass) descriptor).getName());
-    emitDeserializationFinding(finding);
+  /** Legacy entry hooks precede class resolution and have no selected type. */
+  public static void beforeObjectStreamClassResolve(Object descriptor) {}
+  public static void beforeObjectStreamProxyResolve(String[] interfaceNames) {}
+
+  public static void afterObjectStreamClassResolve(Class<?> selected) {
+    inspectResolvedType(selected, "ObjectInputStream.resolveClass", "resolved_class");
   }
 
-  public static void beforeObjectStreamProxyResolve(String[] interfaceNames) {
-    if (interfaceNames == null) {
-      return;
+  public static void afterObjectStreamProxyResolve(Class<?> selected) {
+    if (selected == null || RaspRuntime.detectionOff() || !java.lang.reflect.Proxy.isProxyClass(selected)) return;
+    for (Class<?> iface : selected.getInterfaces()) {
+      if (inspectResolvedType(iface, "ObjectInputStream.resolveProxyClass", "resolved_proxy_interface")) return;
     }
-    for (String interfaceName : interfaceNames) {
-      Finding finding = classifyDeserializationClass(interfaceName);
-      if (finding != null) {
-        emitDeserializationFinding(finding);
-        return;
-      }
-    }
+  }
+
+  private static boolean inspectResolvedType(Class<?> selected, String hook, String basis) {
+    if (selected == null || RaspRuntime.detectionOff()) return false;
+    String name = selected.getName();
+    if (!StreamTypeNames.listed(name) || !BeanShellTypes.permitsTypeCheck(selected)) return false;
+    Finding finding = new Finding("java11_deserialization_gadget_class", deserializationConfidence(name),
+        "Stream resolver selected a listed serialization type", "class", name, basis);
+    boolean block = shouldBlock();
+    appendEvent(finding, hook, block ? "block" : "log");
+    if (block) throw new Java11RaspBlockException("OhMyRASP blocked a listed serialization type");
+    return true;
   }
 
   public static void beforeHessianType(String type) {
@@ -1530,28 +1522,9 @@ public final class Java11RaspHooks {
         lookup);
   }
 
-  private static Finding classifyDeserializationClass(String className) {
-    if (className == null) {
-      return null;
-    }
-    String normalized = className.trim();
-    if (normalized.length() == 0) {
-      return null;
-    }
-    if (!DESERIALIZATION_GADGET_CLASS.matcher(normalized).matches()) {
-      return null;
-    }
-    return new Finding(
-        "java11_deserialization_gadget_class",
-        deserializationConfidence(normalized),
-        "High-risk gadget class reached a Java 11 deserialization sink",
-        "class",
-        normalized);
-  }
-
   private static Finding classifyHessianType(String type) {
     String normalized = normalizeJavaTypeName(type);
-    if (normalized.length() == 0 || !DESERIALIZATION_GADGET_CLASS.matcher(normalized).matches()) {
+    if (normalized.length() == 0 || !StreamTypeNames.listed(normalized)) {
       return null;
     }
     return new Finding(
@@ -1577,22 +1550,6 @@ public final class Java11RaspHooks {
       return 92;
     }
     return 88;
-  }
-
-  private static void emitDeserializationFinding(Finding finding) {
-    if (finding == null) {
-      return;
-    }
-    String action = shouldBlock() ? "block" : "log";
-    String previous = LAST_LOGGED_DESERIALIZATION.get();
-    if (!"block".equals(action) && finding.detailValue.equals(previous)) {
-      return;
-    }
-    LAST_LOGGED_DESERIALIZATION.set(finding.detailValue);
-    appendEvent(finding, "ObjectInputStream.resolveClass", action);
-    if ("block".equals(action)) {
-      throw new Java11RaspBlockException("OhMyRASP Java 11 blocked suspicious deserialization class");
-    }
   }
 
   private static Finding classifyFileRead(String path, HostReadPath.OpenPolicy links) {
@@ -2544,7 +2501,7 @@ public final class Java11RaspHooks {
     }
     for (String candidate : candidates) {
       String className = normalizeJavaTypeName(candidate);
-      if (DESERIALIZATION_GADGET_CLASS.matcher(className).matches()
+      if (StreamTypeNames.listed(className)
           || "org.h2.jdbc.JdbcConnection".equals(className)) {
         return className;
       }

@@ -53,7 +53,7 @@
     "command_execution_exploit_primitive": "decision_basis=configured_listener identifies the Solr executable listener. Other component-specific callers share this ID with general process branches.",
     "command_execution_shell_meta": "decision_basis=configuration_launcher identifies the RocketMQ filter-server branch. The scheduler job branch records decision_basis=scheduled_script.",
     "deserialization_fastjson_resource_url": "Fastjson autoType reaches a URL-shaped resource lookup.",
-    "deserialization_gadget_class": "The deserialization classifier recognizes particular gadget classes or class families.",
+    "deserialization_gadget_class": "The stream resolver selected a listed class or a proxy implementing a listed interface. The event identifies the resolution operation.",
     "deserialization_hessian_type": "Hessian type resolution is checked against known dangerous types.",
     "file_script_write": "Maven repository layout and TeamCity plugin startup provide product-specific exclusions to the general file rule.",
     "jdbc_derby_code_loading": "The Derby connection URL enables driver-specific Java code loading.",

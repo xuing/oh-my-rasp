@@ -12,7 +12,6 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import java.beans.Statement;
 import java.io.ByteArrayOutputStream;
 import java.io.InputStream;
-import java.io.ObjectStreamClass;
 import java.net.URI;
 import java.net.URL;
 import java.nio.charset.StandardCharsets;
@@ -1283,61 +1282,26 @@ final class Java17RaspHooksTest {
   }
 
   @Test
-  void ignoresNormalDeserializationClass() throws Exception {
-    Path log = Files.createTempFile("ohmyrasp-java17-deser-normal", ".jsonl");
-    Files.delete(log);
+  void ignoresNamesUntilTheyResolveAndPreservesCase() throws Exception {
+    Path log = Files.createTempFile("ohmyrasp-resolution", ".jsonl");
     System.setProperty("ohmyrasp.java17.log", log.toString());
-
-    Java17RaspHooks.beforeObjectStreamClassResolve(ObjectStreamClass.lookup(String.class));
-
-    assertFalse(Files.exists(log));
+    Java17RaspHooks.beforeObjectStreamProxyResolve(new String[] {"java.lang.ProcessBuilder"});
+    Java17RaspHooks.afterObjectStreamClassResolve(String.class);
+    Java17RaspHooks.afterObjectStreamProxyResolve(ProcessBuilder.class);
+    assertEquals(0L, Files.size(log));
+    assertFalse(io.ohmyrasp.agent.serialization.StreamTypeNames.listed("java.lang.ProcessBUILDER"));
   }
 
   @Test
-  void logsDangerousDeserializationProxyInterface() throws Exception {
-    Path log = Files.createTempFile("ohmyrasp-java17-deser-danger", ".jsonl");
-    Files.delete(log);
-    System.setProperty("ohmyrasp.java17.log", log.toString());
-
-    Java17RaspHooks.beforeObjectStreamProxyResolve(
-        new String[] {"org.apache.commons.collections.functors.InvokerTransformer"});
-
-    String text = new String(Files.readAllBytes(log), StandardCharsets.UTF_8);
-    assertTrue(text.contains("\"algorithm\":\"java17_deserialization_gadget_class\""));
-    assertTrue(text.contains("\"action\":\"log\""));
-    assertTrue(text.contains("\"class\":\"org.apache.commons.collections.functors.InvokerTransformer\""));
-  }
-
-  @Test
-  void logsBeanShellDeserializationGadgetClass() throws Exception {
-    Path log = Files.createTempFile("ohmyrasp-java17-deser-beanshell", ".jsonl");
-    Files.delete(log);
-    System.setProperty("ohmyrasp.java17.log", log.toString());
-
-    Java17RaspHooks.beforeObjectStreamProxyResolve(new String[] {"bsh.XThis$Handler"});
-
-    String text = new String(Files.readAllBytes(log), StandardCharsets.UTF_8);
-    assertTrue(text.contains("\"algorithm\":\"java17_deserialization_gadget_class\""));
-    assertTrue(text.contains("\"action\":\"log\""));
-    assertTrue(text.contains("\"class\":\"bsh.XThis$Handler\""));
-  }
-
-  @Test
-  void blocksDangerousDeserializationClassWhenBlockModeIsEnabled() throws Exception {
-    Path log = Files.createTempFile("ohmyrasp-java17-deser-block", ".jsonl");
-    Files.delete(log);
+  void blocksListedSelectedClass() throws Exception {
+    Path log = Files.createTempFile("ohmyrasp-resolution", ".jsonl");
     System.setProperty("ohmyrasp.java17.log", log.toString());
     System.setProperty("ohmyrasp.java17.block", "true");
-
-    assertThrows(
-        Java17RaspBlockException.class,
-        () ->
-            Java17RaspHooks.beforeObjectStreamProxyResolve(
-                new String[] {"com.sun.rowset.JdbcRowSetImpl"}));
-
+    assertThrows(Java17RaspBlockException.class,
+        () -> Java17RaspHooks.afterObjectStreamClassResolve(ProcessBuilder.class));
     String text = new String(Files.readAllBytes(log), StandardCharsets.UTF_8);
+    assertTrue(text.contains("\"decision_basis\":\"resolved_class\""));
     assertTrue(text.contains("\"algorithm\":\"java17_deserialization_gadget_class\""));
-    assertTrue(text.contains("\"action\":\"block\""));
   }
 
   @Test
