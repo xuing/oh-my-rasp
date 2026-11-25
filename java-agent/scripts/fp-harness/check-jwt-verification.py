@@ -22,12 +22,40 @@ ARTIFACTS = (
 )
 
 
+def fixture_jars(directory, download):
+    paths = []
+    for group, name, version, digest in ARTIFACTS:
+        filename = f"{name}-{version}.jar"
+        path = directory / filename
+        if download:
+            url = f"https://repo.maven.apache.org/maven2/{group}/{name}/{version}/{filename}"
+            with urlopen(url, timeout=45) as response:
+                data = response.read()
+        else:
+            data = path.read_bytes()
+        if hashlib.sha256(data).hexdigest() != digest:
+            raise SystemExit(f"dependency digest mismatch for {filename}")
+        if download:
+            path.write_bytes(data)
+        paths.append(str(path))
+    return paths
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("agent", type=Path)
+    parser.add_argument("agent", type=Path, nargs="?")
+    parser.add_argument("--stage-dir", type=Path, help="download the fixture libraries for the runtime matrix")
     parser.add_argument("--jar-dir", type=Path, help="use local fixture dependencies")
     parser.add_argument("--api-dir", type=Path, help="use a separately staged Jakarta servlet API jar")
     args = parser.parse_args()
+    if args.stage_dir:
+        if args.agent or args.jar_dir or args.api_dir:
+            parser.error("--stage-dir is a separate operation")
+        args.stage_dir.mkdir(parents=True, exist_ok=True)
+        fixture_jars(args.stage_dir, download=True)
+        return
+    if not args.agent:
+        parser.error("provide an agent JAR or --stage-dir")
     agent = args.agent.resolve(strict=True)
     with zipfile.ZipFile(agent) as jar:
         track = next((v for v in ("8", "11", "17") if
@@ -35,16 +63,7 @@ def main():
     with tempfile.TemporaryDirectory(prefix="jwt-filter-") as tmp:
         work = Path(tmp)
         paths = [tmp, str(api_jar("jakarta", work, args.api_dir or args.jar_dir))]
-        for group, name, version, digest in ARTIFACTS:
-            filename = f"{name}-{version}.jar"
-            path = (args.jar_dir or work) / filename
-            if args.jar_dir is None:
-                url = f"https://repo.maven.apache.org/maven2/{group}/{name}/{version}/{filename}"
-                with urlopen(url, timeout=45) as response:
-                    path.write_bytes(response.read())
-            if hashlib.sha256(path.read_bytes()).hexdigest() != digest:
-                raise SystemExit(f"dependency digest mismatch for {filename}")
-            paths.append(str(path))
+        paths.extend(fixture_jars(args.jar_dir or work, download=args.jar_dir is None))
         cp = os.pathsep.join(paths)
         src = Path(__file__).parent
         subprocess.run(["javac", "-cp", cp, "-d", tmp, src / "JwtVerificationCheck.java",
