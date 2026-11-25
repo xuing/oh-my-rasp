@@ -185,7 +185,7 @@ public final class Java17RaspHooks {
     boolean deferMultipart = beforeServlet
         && requestHeader(request, "Content-Type").trim().regionMatches(true, 0, "multipart/", 0, 10);
     Object raw = deferMultipart ? null : invokeServlet(request, "getParameterMap");
-    Map<?, ?> parameters = raw instanceof Map<?, ?> ? (Map<?, ?>) raw : ServletQueryParameters.parse(requestQuery(request));
+    Map<?, ?> parameters = raw instanceof Map<?, ?> map ? map : ServletQueryParameters.parse(requestQuery(request));
     CURRENT_REQUEST.set(new RequestSnapshot(parameters));
     captureRequestControlledUrls(parameters);
     Finding finding = classifyHttpRequest(request, parameters);
@@ -310,7 +310,7 @@ public final class Java17RaspHooks {
 
   /** Compatibility entry for callers that explicitly supply a lookup string. */
   public static void beforeJndiLookup(Object name) {
-    if (name instanceof String) onJndiRoute((String) name, "declared_lookup");
+    if (name instanceof String lookup) onJndiRoute(lookup, "declared_lookup");
   }
 
   public static void beforeJndiProviderLookup(String url, Object provider, String operation) {
@@ -1026,11 +1026,11 @@ public final class Java17RaspHooks {
   }
 
   public static void rethrowIfJava17RaspBlock(Object throwable) {
-    Throwable current = throwable instanceof Throwable ? (Throwable) throwable : null;
+    Throwable current = throwable instanceof Throwable thrown ? thrown : null;
     int depth = 0;
     while (current != null && depth < 16) {
-      if (current instanceof Java17RaspBlockException) {
-        throw (Java17RaspBlockException) current;
+      if (current instanceof Java17RaspBlockException exception) {
+        throw exception;
       }
       current = current.getCause();
       depth++;
@@ -2673,8 +2673,8 @@ public final class Java17RaspHooks {
     if (value == null || values.size() >= 32) {
       return;
     }
-    if (value instanceof Iterable<?>) {
-      for (Object item : (Iterable<?>) value) {
+    if (value instanceof Iterable<?> iterable) {
+      for (Object item : iterable) {
         if (values.size() >= 32) {
           break;
         }
@@ -3362,7 +3362,7 @@ public final class Java17RaspHooks {
       return api.getMethod(methodName).invoke(request);
     } catch (java.lang.reflect.InvocationTargetException failure) {
       Throwable cause = failure.getCause();
-      if (cause instanceof Java17RaspBlockException) throw (Java17RaspBlockException) cause;
+      if (cause instanceof Java17RaspBlockException exception) throw exception;
       return null;
     } catch (ReflectiveOperationException | SecurityException ignored) {
       return null;
@@ -3495,8 +3495,8 @@ public final class Java17RaspHooks {
   }
 
   private static String javaBeansTargetType(Object target) {
-    if (target instanceof Class<?>) {
-      return ((Class<?>) target).getName();
+    if (target instanceof Class<?> type) {
+      return type.getName();
     }
     return target == null ? "" : target.getClass().getName();
   }
@@ -3504,8 +3504,8 @@ public final class Java17RaspHooks {
   private static List<String> javaBeansArguments(Object target, Object arguments) {
     List<String> values = new ArrayList<String>();
     collectJavaBeansArguments(values, arguments, 0);
-    if (target instanceof ProcessBuilder) {
-      List<String> command = ((ProcessBuilder) target).command();
+    if (target instanceof ProcessBuilder builder) {
+      List<String> command = builder.command();
       for (String item : command) {
         if (values.size() >= 64) {
           break;
@@ -3522,8 +3522,8 @@ public final class Java17RaspHooks {
     if (value == null || depth > 3 || values.size() >= 64) {
       return;
     }
-    if (value instanceof Iterable<?>) {
-      for (Object item : (Iterable<?>) value) {
+    if (value instanceof Iterable<?> iterable) {
+      for (Object item : iterable) {
         if (values.size() >= 64) {
           break;
         }
@@ -3601,8 +3601,8 @@ public final class Java17RaspHooks {
     if (value == null) {
       return sources;
     }
-    if (value instanceof Iterable<?>) {
-      for (Object item : (Iterable<?>) value) {
+    if (value instanceof Iterable<?> iterable) {
+      for (Object item : iterable) {
         String source = javaSourceText(item);
         if (source.length() > 0) {
           sources.add(source);
@@ -3610,8 +3610,7 @@ public final class Java17RaspHooks {
       }
       return sources;
     }
-    if (value instanceof Object[]) {
-      Object[] values = (Object[]) value;
+    if (value instanceof Object[] values) {
       for (int i = 0; i < values.length; i++) {
         String source = javaSourceText(values[i]);
         if (source.length() > 0) {
@@ -3742,8 +3741,7 @@ public final class Java17RaspHooks {
     if (value == null) {
       return null;
     }
-    if (value instanceof java.net.URI) {
-      java.net.URI uri = (java.net.URI) value;
+    if (value instanceof java.net.URI uri) {
       String protocol = lower(uri.getScheme());
       String host = normalizeHost(uri.getHost());
       String rawPath = uri.getRawPath() == null || uri.getRawPath().isEmpty() ? "/" : uri.getRawPath();
@@ -3752,8 +3750,7 @@ public final class Java17RaspHooks {
       return new UrlParts(protocol, host, rawPath, HttpTransportObservation.address(uri),
           protocol + "://" + NetworkHost.destinationKey(host) + ":" + port + rawPath + (query == null ? "" : "?" + query));
     }
-    if (value instanceof URL) {
-      URL url = (URL) value;
+    if (value instanceof URL url) {
       return new UrlParts(
           lower(url.getProtocol()),
           normalizeHost(url.getHost()),
@@ -3809,8 +3806,8 @@ public final class Java17RaspHooks {
       }
       return;
     }
-    if (value instanceof Iterable<?>) {
-      for (Object element : (Iterable<?>) value) {
+    if (value instanceof Iterable<?> iterable) {
+      for (Object element : iterable) {
         addRequestControlledUrl(urls, element);
         if (urls.size() >= 16) {
           return;
@@ -3833,14 +3830,13 @@ public final class Java17RaspHooks {
   }
 
   private static void addRequestControlledUrl(List<String> urls, Object value) {
-    if (value instanceof String) {
-      String path = (String) value;
+    if (value instanceof String path) {
       if (path.startsWith("/") && !path.startsWith("//") && LOOPBACK_ADMIN_PATH.matcher(path).find()) {
         if (!urls.contains(path)) urls.add(path);
         return;
       }
     }
-    String archive = value instanceof String ? HttpTransportObservation.archiveAddress((String) value) : null;
+    String archive = value instanceof String text ? HttpTransportObservation.archiveAddress(text) : null;
     String key = urlComparisonKey(archive == null ? value : archive);
     if (key.length() > 0 && !urls.contains(key)) {
       urls.add(key);
@@ -3862,7 +3858,7 @@ public final class Java17RaspHooks {
       return "";
     }
     try {
-      URL url = value instanceof URL ? (URL) value : new URL(String.valueOf(value).trim());
+      URL url = value instanceof URL given ? given : new URL(String.valueOf(value).trim());
       String protocol = lower(url.getProtocol());
       if (!"http".equals(protocol) && !"https".equals(protocol)) {
         return "";
@@ -3932,8 +3928,8 @@ public final class Java17RaspHooks {
     if (options == null) {
       return false;
     }
-    if (options instanceof Iterable<?>) {
-      for (Object option : (Iterable<?>) options) {
+    if (options instanceof Iterable<?> iterable) {
+      for (Object option : iterable) {
         if (isNioWriteOption(option)) {
           return true;
         }
@@ -3955,8 +3951,8 @@ public final class Java17RaspHooks {
 
   private static boolean isNioWriteOption(Object option) {
     return option == java.nio.file.StandardOpenOption.WRITE || option == java.nio.file.StandardOpenOption.APPEND
-        || (option instanceof String && ("WRITE".equalsIgnoreCase((String) option)
-            || "APPEND".equalsIgnoreCase((String) option)));
+        || (option instanceof String name && ("WRITE".equalsIgnoreCase(name)
+            || "APPEND".equalsIgnoreCase(name)));
   }
 
   private static void emitFileFinding(
@@ -3984,8 +3980,8 @@ public final class Java17RaspHooks {
     if (path == null) {
       return "";
     }
-    if (path instanceof File) {
-      return ((File) path).getPath();
+    if (path instanceof File file) {
+      return file.getPath();
     }
     return String.valueOf(path);
   }
@@ -4017,8 +4013,8 @@ public final class Java17RaspHooks {
         // Snapshot values at request entry. Framework-owned parameter arrays can change later.
         parameterValues = new ArrayList<String>();
         for (Object value : parameters.values()) {
-          if (value instanceof String[]) {
-            java.util.Collections.addAll(parameterValues, (String[]) value);
+          if (value instanceof String[] strings) {
+            java.util.Collections.addAll(parameterValues, strings);
           } else {
             List<String> items = new ArrayList<String>();
             collectParameterValues(items, value);
