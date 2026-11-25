@@ -290,6 +290,8 @@ The descriptions live in the [general catalog](../rules/general.json) and [produ
 
 The acceptance scripts contain literal event assertions for these algorithm identifiers. Runtime evidence for individual environments is tracked in the [Vulhub coverage ledger](../../docs/development/vulhub-coverage.md).
 
+A script that loops over a list of identifiers, as the JDK 25 runtime suite does, is listed in the next section instead.
+
 - `java11_command_execution_exploit_primitive`
 - `java11_deserialization_protocol_class`
 - `java11_file_script_write`
@@ -334,6 +336,156 @@ The acceptance scripts contain literal event assertions for these algorithm iden
 - `java8_script_engine_runtime_execution`
 - `java8_sql_identifier_injection`
 - `java8_xxe_external_entity_protocol`
+
+## Rules the JDK 25 runtime suite requires
+
+[`acceptance/runtime/jdk25.sh`](../acceptance/runtime/jdk25.sh) fails unless the protected log of every Tomcat
+line it runs holds a block event for each identifier in its `required_algorithms` array:
+
+- `request_internal_identity`
+- `request_default_jwt_secret`
+- `request_jwt_verification_failure`
+- `request_default_crypto_cookie`
+- `request_serialized_client_state`
+- `request_default_credential`
+- `request_empty_credential_bypass`
+- `request_setup_state_reset`
+- `request_server_side_script_put`
+- `request_upload_filename_override`
+- `request_scheduler_shell_job`
+- `request_debug_process_launch`
+- `request_dynamic_script_config`
+- `request_message_selector_expression`
+- `request_expression_header`
+- `request_jndi_lookup`
+- `request_expression_parameter`
+- `request_ogc_filter_sql_injection`
+- `request_json_patch_expression`
+- `request_expression_parameter_name`
+- `request_expression_path`
+- `request_xxe_payload`
+- `request_typed_parameter_deserialization`
+- `request_typed_payload_deserialization`
+- `request_xml_polymorphic_gadget`
+- `request_template_parameter`
+- `request_template_loader_enable`
+- `request_template_source`
+- `request_remote_content_stream`
+- `request_remote_import_script_write`
+- `request_repository_webroot_write`
+- `request_plot_command_injection`
+- `request_internal_forward`
+- `request_java_bean_pollution`
+- `request_path_confusion`
+- `request_internal_resource`
+- `request_forged_include_attribute`
+- `command_userinput`
+- `command_error`
+- `command_config_listener`
+- `command_config_injection`
+- `readFile_userinput`
+- `readFile_userinput_http`
+- `readFile_userinput_unwanted`
+- `readFile_unwanted`
+- `readFile_argument_expansion`
+- `writeFile_script`
+- `writeFile_reflect`
+- `writeFile_config_path`
+- `writeFile_generated_script`
+- `directory_userinput`
+- `ssrf_userinput`
+- `ssrf_aws`
+- `ssrf_common`
+- `ssrf_obfuscate`
+- `ssrf_protocol`
+- `dns_blacklist`
+- `jndi_disable_all`
+- `spring_remote_config`
+- `jmx_remote_config`
+- `sql_userinput`
+- `sql_policy`
+- `sql_regex`
+- `sql_exception`
+- `sql_h2_code_execution`
+- `jdbc_h2_init`
+- `sql_derby_code_execution`
+- `jdbc_mysql_deserialization`
+- `deserialization_blacklist`
+- `deserialization_gadget`
+- `deserialization_cluster_message`
+- `deserialization_logging_message`
+- `deserialization_webflow_state`
+- `deserialization_rmi_transport`
+- `deserialization_remoting_transport`
+- `deserialization_jms_object_message`
+- `deserialization_signed_object`
+- `deserialization_session_file`
+- `deserialization_rmi_registry_bind`
+- `deserialization_polymorphic_type`
+- `xml_decoder_runtime`
+- `xml_decoder_webshell`
+- `xxe_protocol`
+- `xxe_file`
+- `include_userinput`
+- `include_protocol`
+- `fileUpload_multipart_script`
+- `fileUpload_multipart_expression`
+- `fileUpload_path_traversal`
+- `fileUpload_multipart_html`
+- `fileUpload_multipart_exe`
+- `fileUpload_java_archive`
+- `fileUpload_webdav`
+- `rename_webshell`
+- `link_webshell`
+- `archive_traversal`
+- `ognl_blacklist`
+- `ognl_length_limit`
+- `spel_runtime`
+- `jexl_runtime`
+- `el_runtime`
+- `javascript_runtime`
+- `jiffle_runtime`
+- `script_runtime`
+- `xpath_runtime`
+- `java_compile_runtime`
+- `template_runtime`
+- `eval_regex`
+- `loadLibrary_unc`
+- `webshell_eval`
+- `webshell_command`
+- `webshell_file_put_contents`
+- `webshell_callable`
+- `webshell_ld_preload`
+
+### Other primary rules a probe checks
+
+These primary-agent rules are not in that array. A [packaged-agent probe](../probes/run.py) names each one
+in its check; the probe runs against the built agent JAR.
+
+| Rule | Probes |
+|------|--------|
+| `classloader_remote` | [rmi-codebase](../probes/rmi-codebase/) |
+| `command_common` | [process-launch](../probes/process-launch/) |
+| `command_dnslog` | [process-launch](../probes/process-launch/) |
+| `command_reflect` | [process-launch](../probes/process-launch/) |
+| `command_spring_remote_init` | [spring-process](../probes/spring-process/) |
+| `deleteFile_userinput` | [file-read](../probes/file-read/) |
+| `deserialization_hessian_type` | [hessian-allocation](../probes/hessian-allocation/) |
+| `deserialization_http_invoker` | [http-invoker](../probes/http-invoker/) |
+| `deserialization_http_object_stream` | [http-invoker](../probes/http-invoker/) |
+| `deserialization_protocol_class` | [openwire-throwable](../probes/openwire-throwable/) |
+| `deserialization_xmlrpc_serialized` | [http-invoker](../probes/http-invoker/) |
+| `directory_reflect` | [file-read](../probes/file-read/) |
+| `directory_unwanted` | [file-read](../probes/file-read/) |
+| `jmx_file_write` | [jmx-dispatch](../probes/jmx-dispatch/) |
+| `jndi_jaas_config` | [jndi-route](../probes/jndi-route/) |
+| `request_remote_job_submission` | [spark-submit](../probes/spark-submit/), [yarn-submit](../probes/yarn-submit/) |
+| `request_scanner` | [servlet-admission](../probes/servlet-admission/) |
+| `response_dataLeak` | [servlet-admission](../probes/servlet-admission/) |
+| `sql_identifier_injection` | [mybatis-mapping](../probes/mybatis-mapping/) |
+| `writeFile_NTFS` | [file-streams](../probes/file-streams/) |
+| `xss_echo` | [servlet-admission](../probes/servlet-admission/) |
+| `xss_userinput` | [servlet-admission](../probes/servlet-admission/) |
 
 ## Tested vulnerability matrix
 

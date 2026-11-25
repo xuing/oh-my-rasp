@@ -8,6 +8,9 @@ acceptance scenarios are added. Re-run it after changing any of:
   * agent/src/main/java/io/ohmyrasp/agent/asm/HookRegistry.java   (hook families)
   * agent-jdk25/src/main/java/io/ohmyrasp/agent/detect/       (detector classes)
   * acceptance/vulhub/*/*.sh                                      (verified scenarios)
+  * acceptance/runtime/jdk25.sh  (its required_algorithms array)
+  * probes/*/                    (primary rules a packaged-agent probe names)
+  * rules/*.json                 (rule scope descriptions)
 
 It also owns the "By the numbers" region of the root README.md and
 README.zh-CN.md, between these markers (one region per file):
@@ -35,6 +38,7 @@ import detector_entry_points  # noqa: E402
 ROOT = Path(__file__).resolve().parent.parent
 AGENT = ROOT / "agent-jdk25" / "src" / "main" / "java" / "io" / "ohmyrasp" / "agent"
 ACCEPTANCE = acceptance_scripts.ACCEPTANCE
+PROBES = ROOT / "probes"
 OUT = ROOT / "docs" / "DETECTION-COVERAGE.md"
 REPO = ROOT.parent
 FP_REPORT = ROOT / "docs" / "FALSE-POSITIVE-REPORT.md"
@@ -70,6 +74,35 @@ def asserted_algorithms() -> list[str]:
         text = script.read_text(encoding="utf-8", errors="ignore")
         algos.update(re.findall(r'"algorithm":"([a-z0-9_]+)"', text))
     return sorted(algos)
+
+
+def primary_rule_ids() -> set[str]:
+    rules = ROOT / "rules"
+    return {key for name in ("general.json", "product.json")
+            for key in json.loads((rules / name).read_text(encoding="utf-8"))["primary"]}
+
+
+def jdk25_required_algorithms() -> list[str]:
+    """The required_algorithms array of the JDK 25 runtime suite, in script order."""
+    script = ACCEPTANCE / "runtime" / "jdk25.sh"
+    array = re.search(r"^required_algorithms=\(\n(.*?)^\)", script.read_text(encoding="utf-8"), re.M | re.S)
+    if not array:
+        raise SystemExit(f"{script}: the required_algorithms=( ... ) array was not found")
+    required = array.group(1).split()
+    if unknown := sorted(set(required) - primary_rule_ids()):
+        raise ValueError(f"{script.name} requires rules missing a scope description: {unknown}")
+    return required
+
+
+def probe_checked_rules() -> dict[str, list[str]]:
+    """Primary rule id -> the packaged-agent probes whose sources name it as a string literal."""
+    primary = primary_rule_ids()
+    found: dict[str, set[str]] = {}
+    for probe in sorted(p for p in PROBES.iterdir() if (p / "check.py").is_file()):
+        for src in (*probe.rglob("*.py"), *probe.rglob("*.java")):
+            for name in set(re.findall(r'"(\w+)"', src.read_text(encoding="utf-8"))) & primary:
+                found.setdefault(name, set()).add(probe.name)
+    return {name: sorted(probes) for name, probes in sorted(found.items())}
 
 
 def vulnerability_matrix() -> list[tuple[str, str]]:
@@ -243,8 +276,31 @@ def render() -> str:
     w("")
     w("The acceptance scripts contain literal event assertions for these algorithm identifiers. Runtime evidence for individual environments is tracked in the [Vulhub coverage ledger](../../docs/development/vulhub-coverage.md).")
     w("")
+    w("A script that loops over a list of identifiers, as the JDK 25 runtime suite does, is listed in the next section instead.")
+    w("")
     for algorithm in algos:
         w(f"- `{algorithm}`")
+    w("")
+
+    required = jdk25_required_algorithms()
+    w("## Rules the JDK 25 runtime suite requires")
+    w("")
+    w("[`acceptance/runtime/jdk25.sh`](../acceptance/runtime/jdk25.sh) fails unless the protected log of every Tomcat")
+    w("line it runs holds a block event for each identifier in its `required_algorithms` array:")
+    w("")
+    for algorithm in required:
+        w(f"- `{algorithm}`")
+    w("")
+    w("### Other primary rules a probe checks")
+    w("")
+    w("These primary-agent rules are not in that array. A [packaged-agent probe](../probes/run.py) names each one")
+    w("in its check; the probe runs against the built agent JAR.")
+    w("")
+    w("| Rule | Probes |")
+    w("|------|--------|")
+    for name, probes in probe_checked_rules().items():
+        if name not in required:
+            w(f"| `{name}` | " + ", ".join(f"[{p}](../probes/{p}/)" for p in probes) + " |")
     w("")
 
     w("## Tested vulnerability matrix")
