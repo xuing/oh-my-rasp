@@ -204,6 +204,9 @@ def collect(logs):
                 if not isinstance(value, str) or not value or "[redacted]" in value or value.endswith(("...", "…")):
                     row["status"] = "argument unavailable"
                     continue
+                if method == "beforeObjectStreamProxyResolve":
+                    row["evidence_limit"] = ("class-name classifier only; historical descriptor and proxy-interface "
+                                             "callbacks share an event label")
                 if method == "requestIdentity":
                     arguments = identity_arguments(value)
                     if arguments is None:
@@ -235,6 +238,10 @@ def collect(logs):
                     limit = file_read_limit(value, row.get("historical_decision_basis"))
                     if limit is not None:
                         row["status"], row["evidence_limit"] = limit
+                        continue
+                    if hook != "FileInputStream.open":
+                        row.update(status="argument evidence required",
+                                   evidence_limit="file API open mode or native flags and directory descriptor unavailable")
                         continue
                 if method == "archiveWrite":
                     if row.get("historical_decision_basis") == "archive_descriptor_open":
@@ -282,22 +289,37 @@ def check_batch(java, tmp, root, track, cases, controls):
         raise ValueError(f"Java {track} probe did not return one result per input (exit {result.returncode})")
     for (row, _, _), response in zip(cases, result.stdout.splitlines(), strict=True):
         blocked, encoded = response.split("\t")
+        if blocked not in ("true", "false"):
+            raise ValueError("Java probe returned an invalid block receipt")
         events = [json.loads(line) for line in base64.b64decode(encoded, validate=True).splitlines()]
-        decisions = [(e.get("algorithm"), e.get("action")) for e in events if e.get("kind") != "telemetry"]
-        if "algorithm" in row:
-            ok = blocked == "true" and decisions == [(row["algorithm"], "block")]
-        else:
-            ok = blocked == "false" and not decisions
-        expected_detail = row.pop("_expected_detail", None)
-        if expected_detail is not None:
-            key, value, result_key = expected_detail
-            findings = [e for e in events if e.get("hook") == row["hook"]]
-            row[result_key] = len(findings) == 1 and findings[0].get("details", {}).get(key) == value
-            ok = ok and row[result_key]
-        row["status"] = "matched" if ok else "mismatch"
-        if not ok:
-            row.update(blocked=blocked == "true", observed=decisions)
+        record_probe_result(row, blocked == "true", events)
     return hashlib.sha256(jar.read_bytes()).hexdigest()
+
+
+def record_probe_result(row, blocked, events):
+    findings = [e for e in events if e.get("kind") != "telemetry"]
+    decisions = [(e.get("algorithm"), e.get("action")) for e in findings]
+    hooks = [e.get("hook") for e in findings]
+    if "algorithm" in row:
+        ok = blocked and hooks == [row["hook"]] and decisions == [(row["algorithm"], "block")]
+    else:
+        ok = not blocked and not findings
+    details = findings[0].get("details") if len(findings) == 1 else None
+    if not isinstance(details, dict):
+        details = {}
+    for source, key in (("historical_decision_basis", "decision_basis"), ("historical_operation", "process_operation")):
+        if source in row:
+            match = hooks == [row["hook"]] and row[source] == details.get(key)
+            row[key + "_matched"] = match
+            ok = ok and match
+    expected = row.pop("_expected_detail", None)
+    if expected is not None:
+        key, value, result_key = expected
+        row[result_key] = hooks == [row["hook"]] and details.get(key) == value
+        ok = ok and row[result_key]
+    row["status"] = "matched" if ok else "mismatch"
+    if not ok:
+        row.update(blocked=blocked, observed=decisions, observed_hooks=hooks)
 
 
 def changed_decisions(previous, current):
@@ -313,7 +335,9 @@ def changed_decisions(previous, current):
     changes = []
     for key, row in after.items():
         prior = before[key]
-        if outcome(prior) == outcome(row):
+        same_receipts = all(prior[k] == row[k] for k in ("observed_hooks", "decision_basis_matched", "process_operation_matched")
+                            if k in prior and k in row)
+        if same_receipts and outcome(prior) == outcome(row):
             continue
         tested = {"matched", "mismatch"}
         changes.append({"file": key[0], "line": key[1], "before": prior["status"], "after": row["status"],

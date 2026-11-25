@@ -183,6 +183,25 @@ class EvidenceTest(unittest.TestCase):
             self.assertEqual([r["status"] for r in records], ["authorization evidence required"] * 3)
             self.assertEqual(records[-1]["historical_decision_basis"], "archive_upload_denied")
 
+    def test_replay_requires_the_recorded_hook_and_any_recorded_basis(self):
+        source = {"hook": "FileInputStream.open", "algorithm": "file", "historical_decision_basis": "path"}
+        finding = {"hook": source["hook"], "algorithm": "file", "action": "block",
+                   "details": {"decision_basis": "path"}}
+        for observed, expected in ((finding, "matched"), (dict(finding, hook="other"), "mismatch"),
+                                   (dict(finding, details={}), "mismatch"),
+                                   (dict(finding, details={"decision_basis": "other"}), "mismatch")):
+            row = dict(source)
+            decisions.record_probe_result(row, True, [{"kind": "telemetry"}, observed])
+            self.assertEqual(row["status"], expected)
+            self.assertEqual(row["decision_basis_matched"], expected == "matched")
+        row = dict(source, historical_operation="ProcessImpl.start")
+        decisions.record_probe_result(row, True, [finding])
+        self.assertFalse(row["process_operation_matched"])
+        self.assertEqual(row["status"], "mismatch")
+        row = dict(source)
+        decisions.record_probe_result(row, True, [finding, finding])
+        self.assertEqual(row["status"], "mismatch")
+
     def test_compare_preserves_visible_mismatches_and_checks_input_identity(self):
         record = {"file": "a", "line": 2, "status": "mismatch", "observed": []}
         before = {"corpus_sha256": "a", "historical_blocks": [record], "issues": []}

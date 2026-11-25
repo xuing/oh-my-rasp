@@ -150,8 +150,7 @@ It records literal script references and ledger rows sharing a vulnerability
 identifier separately. Either relationship can be ambiguous. Event files with
 probe names may include exploratory or startup detections. The decision check
 needs a JDK 17+ with `javac` and the built Java 8/11/17 agent jars. It passes
-retained arguments to detector callbacks, compares the recorded rule and block
-decision, and checks a benign input for each tested hook and track. Exit 1
+retained arguments to detector callbacks, compares the hook label, rule, block decision and any recorded decision basis, and checks a benign input for each tested hook and track. Exit 1
 indicates a difference from history, which can include a corrected false
 positive. To check for changes between agent builds, pass a prior report
 with `--compare-report` and write the candidate to a new file. Comparison
@@ -161,6 +160,8 @@ source have an explicit unavailable status. Their paths are excluded from the pr
 For processes, a message naming an interpreter or initialization context cannot
 supply the original caller. A display string from an array API does not preserve
 argument boundaries. These records also receive an unavailable status.
+Backport class-descriptor and proxy-interface callbacks historically logged the same
+hook label. Replay of those records checks the shared class-name classifier.
 The comparison distinguishes changes in evidence availability from changes in tested
 detector outcomes and reports both.
 An archive filename cannot establish deployment authorization. To require every retained
@@ -180,6 +181,10 @@ It verifies argument boundaries, application list accesses, per-stage redirectio
 and explicit dispatch policy with locally executed report commands. The primary
 agent check uses curl and an in-process loopback responder to verify callback
 destination decisions and receipt of allowed transfers.
+
+The primary [serial filter check](java-agent/scripts/fp-harness/check-serial-filter.py)
+verifies application filter registration, JDK rejection and ordinary data reads
+in separate JVMs. Run it locally with `java-agent/scripts/check-jdk25.sh serial-filter`.
 
 The [JWT filter check](java-agent/scripts/fp-harness/check-jwt-verification.py)
 runs a local filter fixture with java-jwt and a deny-only downstream receiver.
