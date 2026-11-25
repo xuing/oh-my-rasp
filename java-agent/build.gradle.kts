@@ -97,7 +97,7 @@ tasks.register<Sync>("stageOpenWireProbe") {
 
 // Local DTO round trips only; these codecs are not agent runtime dependencies.
 tasks.register<Sync>("stageHessianProbe") {
-    val dubbo = "2.7.3"
+    val dubbo = "3.3.7"
     val libraries = listOf("com.caucho:hessian:4.0.66@jar", "com.alibaba:hessian-lite:3.2.5@jar",
         "org.apache.dubbo:dubbo-common:$dubbo@jar", "org.apache.dubbo:dubbo-serialization-api:$dubbo@jar",
         "org.apache.dubbo:dubbo-serialization-hessian2:$dubbo@jar").map { rootProject.dependencies.create(it) }
