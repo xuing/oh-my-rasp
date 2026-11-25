@@ -920,8 +920,7 @@ same patch as any new Java-compatible Vulhub replay.
   and dot-segment request path confusion, `java17_request_internal_identity`
   for internal-service `Nacos-Server` user agents on sensitive control paths,
   `java17_request_default_jwt_secret` for validated weak-HMAC bearer JWTs, and
-  `java17_request_jwt_verification_failure` for auth0 `java-jwt`
-  verification failures correlated with active API/control requests.
+  `java17_request_jwt_verification_failure` at [DataEase filter dispatch](../detection.md#jwt-rejection-and-filter-dispatch).
   The Java 17 request hook also recognizes Tomcat
   `AuthenticatorBase.invoke`/`StandardWrapperValve.invoke` and Jersey/Grizzly
   `ServerRuntime.process(ContainerRequest)` request objects in addition to
@@ -1308,20 +1307,9 @@ same patch as any new Java-compatible Vulhub replay.
   `GET /graphs` request with a default-secret bearer token, and the real Java
   11 Vulhub acceptance blocks HugeGraph 1.3.0 through the Jersey/Grizzly
   request entry before graph metadata is returned.
-- `request_jwt_verification_failure` covers request-time JWT library
-  verification failures on API/control paths when the request carries a compact
-  JWT in an authentication token header. This targets DataEase
-  CVE-2025-49001-style flows where an invalid `X-DE-TOKEN` signature is caught
-  but request processing continues. The Java 8/11/17 era agents transform auth0
-  `java-jwt` `JWTVerifier.verify(...)` and
-  `algorithms.*Algorithm.verify(DecodedJWT)`, then correlate verification
-  exceptions only with the active request's compact JWT token header on
-  API/control paths. Events log only the token source, mechanism, exception
-  class, method, and URI rather than the token value. The playground and
-  acceptance suite include the Vulhub-shaped `GET /de2api/user/info` request
-  with a forged `uid`/`oid` token, and the real OpenJDK 21 DataEase
-  CVE-2025-49001 acceptance blocks the same continuation path with
-  `java17_request_jwt_verification_failure`.
+- `request_jwt_verification_failure` covers [DataEase filter dispatch after credential rejection](../detection.md#jwt-rejection-and-filter-dispatch).
+  The packaged probe uses a receiver that always denies access and records whether
+  it received the request. Historical verifier logs lack that dispatch receipt.
 - `request_default_crypto_cookie` decrypts only plausible encrypted
   `rememberMe` cookies with known default AES keys and reports a match when the
   plaintext starts with Java serialization stream magic. This covers Shiro-style

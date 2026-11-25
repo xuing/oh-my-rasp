@@ -175,8 +175,6 @@ public final class Java8RaspHooks {
   private static final ThreadLocal<String> LAST_LOGGED_JMX = new ThreadLocal<String>();
   private static final ThreadLocal<String> LAST_LOGGED_XML_DECODER = new ThreadLocal<String>();
   private static final ThreadLocal<String> LAST_LOGGED_XXE = new ThreadLocal<String>();
-  private static final ThreadLocal<String> LAST_LOGGED_JWT_VERIFICATION =
-      new ThreadLocal<String>();
   private static final String HUGEGRAPH_DEFAULT_JWT_SECRET = "FXQXbJtbCLxODc6tGci732pkH1cyf8Qg";
 
   private Java8RaspHooks() {}
@@ -212,7 +210,7 @@ public final class Java8RaspHooks {
     Object raw = deferMultipart ? ServletQueryParameters.parse(requestQuery(request))
         : invoke(request, "getParameterMap");
     Map<?, ?> parameters = raw instanceof Map<?, ?> ? (Map<?, ?>) raw : null;
-    CURRENT_REQUEST.set(captureRequestSnapshot(request, parameters));
+    CURRENT_REQUEST.set(new RequestSnapshot(parameters));
     captureRequestControlledUrls(parameters);
     Finding finding = classifyHttpRequest(request, parameters);
     if (finding == null) {
@@ -980,21 +978,17 @@ public final class Java8RaspHooks {
     }
   }
 
-  public static void beforeJwtVerificationFailure(Object token, Throwable failure) {
-    Finding finding = classifyJwtVerificationFailure(token, failure);
-    if (finding == null) {
-      return;
-    }
-    String action = shouldBlock() ? "block" : "log";
-    String previous = LAST_LOGGED_JWT_VERIFICATION.get();
-    if (!"block".equals(action) && finding.detailValue.equals(previous)) {
-      return;
-    }
-    LAST_LOGGED_JWT_VERIFICATION.set(finding.detailValue);
-    appendEvent(finding, "com.auth0.jwt.JWTVerifier.verify", action);
-    if ("block".equals(action)) {
-      throw new Java8RaspBlockException("OhMyRASP Java 8 blocked JWT verification failure continuation");
-    }
+  /** Previously transformed verifier frames have no downstream dispatch evidence. */
+  public static void beforeJwtVerificationFailure(Object token, Throwable failure) {}
+
+  public static void beforeDataEaseFilterContinuation(String rejection, Object request) {
+    if (rejection == null || RaspRuntime.detectionOff()) return;
+    Finding finding = new Finding("java8_request_jwt_verification_failure", 95,
+        "Authentication filter continued the request after rejecting its credential",
+        "exception", rejection, "rejected_token_dispatch");
+    boolean block = shouldBlock();
+    appendEvent(finding, "FilterChain.doFilter", block ? "block" : "log");
+    if (block) throw new Java8RaspBlockException("OhMyRASP blocked continuation after credential rejection");
   }
 
   public static void beforeJavaBeansStatement(Object statement) {
@@ -3150,85 +3144,6 @@ public final class Java8RaspHooks {
         abbreviate("key=hugegraph-default-token-secret alg=" + algorithm + " uri=" + uri, 1200));
   }
 
-  private static Finding classifyJwtVerificationFailure(Object token, Throwable failure) {
-    RequestSnapshot request = CURRENT_REQUEST.get();
-    if (request == null || !request.hasToken() || !SENSITIVE_CONTROL_PATH.matcher(request.uri).find()) {
-      return null;
-    }
-    String compactToken = token == null ? "" : String.valueOf(token).trim();
-    if (compactToken.length() == 0) {
-      compactToken = request.token;
-    }
-    if (!request.matchesToken(compactToken) || !isCompactHmacJwt(compactToken)) {
-      return null;
-    }
-    String exceptionClass = jwtVerificationFailureClass(failure);
-    if (exceptionClass.length() == 0) {
-      return null;
-    }
-    return new Finding(
-        "java8_request_jwt_verification_failure",
-        95,
-        "JWT verification failed during Java 8 API request processing",
-        "jwt",
-        abbreviate(
-            "source="
-                + request.tokenSource
-                + " mechanism=auth0-java-jwt"
-                + " exception="
-                + simpleClassName(exceptionClass)
-                + " method=JWTVerifier.verify"
-                + " uri="
-                + request.uri,
-            1200));
-  }
-
-  private static RequestSnapshot captureRequestSnapshot(Object request, Map<?, ?> parameters) {
-    String uri = requestUri(request);
-    String xDeToken = requestHeader(request, "X-DE-TOKEN").trim();
-    if (isCompactHmacJwt(xDeToken)) {
-      return new RequestSnapshot(parameters, uri, "X-DE-TOKEN", xDeToken);
-    }
-    String authorization = requestHeader(request, "Authorization").trim();
-    if (authorization.regionMatches(true, 0, "Bearer ", 0, "Bearer ".length())) {
-      String bearer = authorization.substring("Bearer ".length()).trim();
-      if (isCompactHmacJwt(bearer)) {
-        return new RequestSnapshot(parameters, uri, "Authorization: Bearer", bearer);
-      }
-    }
-    return new RequestSnapshot(parameters, uri, "", "");
-  }
-
-  private static boolean isCompactHmacJwt(String token) {
-    if (token == null || token.length() == 0 || token.length() > 8192) {
-      return false;
-    }
-    String[] parts = token.split("\\.", -1);
-    return parts.length == 3
-        && parts[0].length() > 0
-        && parts[1].length() > 0
-        && parts[2].length() > 0
-        && jwtHmacAlgorithm(parts[0]).length() > 0
-        && decodeBase64UrlOrEmpty(parts[1]).length > 0;
-  }
-
-  private static String jwtVerificationFailureClass(Throwable failure) {
-    Throwable current = failure;
-    for (int i = 0; current != null && i < 8; i++) {
-      String name = current.getClass().getName();
-      if (name.startsWith("com.auth0.jwt.exceptions.") && name.endsWith("VerificationException")) {
-        return name;
-      }
-      current = current.getCause();
-    }
-    return "";
-  }
-
-  private static String simpleClassName(String className) {
-    int dot = className.lastIndexOf('.');
-    return dot >= 0 && dot + 1 < className.length() ? className.substring(dot + 1) : className;
-  }
-
   private static String jwtHmacAlgorithm(String headerPart) {
     byte[] headerBytes = decodeBase64UrlOrEmpty(headerPart);
     if (headerBytes.length == 0) {
@@ -4681,14 +4596,10 @@ public final class Java8RaspHooks {
 
   private static final class RequestSnapshot {
     String lastUpload;
-    final String uri;
-    final String tokenSource;
-    final String token;
-
     final List<String> sqlInputs;
     final List<String> parameterValues;
 
-    RequestSnapshot(Map<?, ?> parameters, String uri, String tokenSource, String token) {
+    RequestSnapshot(Map<?, ?> parameters) {
       sqlInputs = new ArrayList<String>();
       if (parameters != null) {
         // Snapshot values at request entry. Framework-owned parameter arrays can change later.
@@ -4710,17 +4621,6 @@ public final class Java8RaspHooks {
       } else {
         parameterValues = null;
       }
-      this.uri = uri == null ? "" : uri;
-      this.tokenSource = tokenSource == null ? "" : tokenSource;
-      this.token = token == null ? "" : token;
-    }
-
-    boolean hasToken() {
-      return token.length() > 0;
-    }
-
-    boolean matchesToken(String candidate) {
-      return token.equals(candidate == null ? "" : candidate.trim());
     }
   }
 

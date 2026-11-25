@@ -2017,11 +2017,15 @@ coverage, separate from the Java 25 behavioral replay suite:
   returns the datasource type list; the protected Java 17-compatible agent
   keeps startup and the direct unauthenticated API request quiet, then blocks
   the traversal-shaped request with `java17_request_path_confusion`.
-- [x] Extend Java 8/11/17 JWT verification-failure hooks after the DataEase
+- [x] Historical Java 8/11/17 JWT verification-failure hooks after the DataEase
   CVE-2025-49001 gap: auth0 `java-jwt` `JWTVerifier.verify(...)` and
   `algorithms.*Algorithm.verify(DecodedJWT)` are transformed, request-time
   verification exceptions are correlated only with the active request's compact
   JWT token header on API/control paths, and events omit token values.
+- The current [filter dispatch rule](../detection.md#jwt-rejection-and-filter-dispatch)
+  has a [packaged-agent check](../../java-agent/scripts/fp-harness/check-jwt-verification.py)
+  for the downstream decision. The historical application run below exercised the
+  earlier verifier hook.
 - [x] Run real DataEase CVE-2025-49001 Vulhub application acceptance on an
   OpenJDK 21 runtime: `scripts/acceptance-vulhub-dataease-49001-java21.sh`
   starts `vulhub/dataease:2.10.7` plus `mysql:8.4` baseline/protected pairs.

@@ -181,6 +181,11 @@ and explicit dispatch policy with locally executed report commands. The primary
 agent check uses curl and an in-process loopback responder to verify callback
 destination decisions and receipt of allowed transfers.
 
+The [JWT filter check](java-agent/scripts/fp-harness/check-jwt-verification.py)
+runs a local filter fixture with java-jwt and a deny-only downstream receiver.
+Use `java-agent/scripts/check-jdk25.sh jwt-verification` for the primary agent.
+Pass `--jar-dir` to the probe to use local copies of the pinned fixture jars.
+
 The multipart check covers both the Javax and Jakarta Servlet APIs.
 Pass `--api-dir` to `java-agent/scripts/fp-harness/check-multipart-archive.py` to
 use local copies of its pinned API jars.

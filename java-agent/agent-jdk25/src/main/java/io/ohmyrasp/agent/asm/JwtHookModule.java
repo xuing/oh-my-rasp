@@ -1,12 +1,13 @@
 package io.ohmyrasp.agent.asm;
 
 import org.objectweb.asm.MethodVisitor;
-import org.objectweb.asm.Opcodes;
+import org.objectweb.asm.Type;
+import io.ohmyrasp.agent.rules.product.dataease.FilterVerificationVisitor;
 
 final class JwtHookModule implements HookModule {
   @Override
   public boolean matchesClass(String className) {
-    return className.equals("com/auth0/jwt/JWTVerifier");
+    return FilterVerificationVisitor.OWNER.equals(className);
   }
 
   @Override
@@ -16,22 +17,7 @@ final class JwtHookModule implements HookModule {
       int access,
       String methodName,
       String descriptor) {
-    if ((access & Opcodes.ACC_ABSTRACT) != 0
-        || !methodName.equals("verify")
-        || !descriptor.endsWith("Lcom/auth0/jwt/interfaces/DecodedJWT;")) {
-      return methodVisitor;
-    }
-    return new EntryAdvice(methodVisitor, access, methodName, descriptor) {
-      @Override
-      protected void onMethodExit(int opcode) {
-        if (opcode != Opcodes.ATHROW) {
-          return;
-        }
-        dup();
-        push("auth0-java-jwt");
-        swap();
-        invokeHook("beforeJwtVerificationFailure", "(Ljava/lang/String;Ljava/lang/Object;)V");
-      }
-    };
+    return FilterVerificationVisitor.wrap(methodVisitor, access, methodName, descriptor,
+        Type.getObjectType("io/ohmyrasp/agent/hook/OhMyRaspHooks"));
   }
 }

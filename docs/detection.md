@@ -206,12 +206,22 @@ Comparing all six representations catches path-semantic mismatches (such as trav
 
 ### Cryptographic default-secret verification
 
-- **JWT default HMAC secrets:** `detectJwtVerificationFailure` tests incoming Bearer JWTs against known default HMAC secrets (such as HugeGraph's published default). A valid HMAC under a default secret fires at severity 95.
+- **JWT default HMAC secrets:** The primary agent tests incoming Bearer JWTs against known default HMAC secrets (such as HugeGraph's published default). A valid HMAC under a default secret fires at severity 95.
 - **Apache Shiro default rememberMe key:** encrypted `rememberMe` cookies are decrypted under Shiro's default AES key; if decryption yields a Java object-stream magic header, the detector fires (verified in the CVE-2016-4437 Java 8 acceptance run).
 
 ### Base64 AVX-512 tail-underflow guard (CVE-2026-114938)
 
 [`Base64HookModule`](../java-agent/agent-jdk25/src/main/java/io/ohmyrasp/agent/asm/Base64HookModule.java) (and `Java{8,11,17}Base64Transformer` across the backport agents) instruments `java.util.Base64$Decoder.decode0([BII[B)I` across JDK 8, 11, 17, 21, and 25. Before the native x86-64 AVX-512 stub can underflow the tail buffer and write past the destination array, `DetectorEngine.isBase64TailUnderflowCandidate` performs a zero-allocation check for non-MIME inputs of length `>= 65` with `1 <= (length & 63) <= 3`, `1 <= padding <= 2` (`padding <= remainder`), and valid Base64 alphabet bytes (`+`/`/` for standard, `-`/`_` for URL-safe). Matching inputs are blocked (even outside an HTTP request context) and logged using length, padding, remainder, and alphabet metadata only; raw input bytes are never recorded.
+
+### JWT rejection and filter dispatch
+
+The DataEase community authentication filter can catch a signature or algorithm
+rejection and still pass its request to the downstream servlet chain. The product
+rule records the credential selected by the filter and the result of verifying
+that string or its decoded object. It checks the original request and chain at
+the dispatch call. A successful retry with that credential clears the pending
+rejection. Each invocation owns its state and the event omits credential values.
+[DataEase filter source](https://github.com/dataease/dataease/blob/v2.10.7/sdk/common/src/main/java/io/dataease/auth/filter/CommunityTokenFilter.java)
 
 ### Process launches
 

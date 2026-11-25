@@ -1044,32 +1044,19 @@ final class Java17RaspHooksTest {
   }
 
   @Test
-  void blocksJwtVerificationFailureContinuationWhenBlockModeIsEnabled() throws Exception {
-    Path log = Files.createTempFile("ohmyrasp-java17-jwt-verification-failure", ".jsonl");
-    Files.delete(log);
+  void verifierFailureAlonePreservesApplicationRejection() throws Exception {
+    Path log = Files.createTempFile("ohmyrasp-java17-jwt", ".jsonl");
     System.setProperty("ohmyrasp.java17.log", log.toString());
     System.setProperty("ohmyrasp.java17.block", "true");
-
-    Java17RaspHooks.beforeHttpRequest(
-        new RequestStub("GET", "/de2api/user/info", "")
-            .withHeader("X-DE-TOKEN", DATAEASE_WRONG_SIGNATURE_JWT));
+    Java17RaspHooks.beforeHttpRequest(new RequestStub("GET", "/de2api/user/info", "")
+        .withHeader("X-DE-TOKEN", DATAEASE_WRONG_SIGNATURE_JWT));
     try {
-      assertThrows(
-          Java17RaspBlockException.class,
-          () ->
-              Java17RaspHooks.beforeJwtVerificationFailure(
-                  DATAEASE_WRONG_SIGNATURE_JWT,
-                  new com.auth0.jwt.exceptions.SignatureVerificationException("bad signature")));
+      Java17RaspHooks.beforeJwtVerificationFailure(DATAEASE_WRONG_SIGNATURE_JWT,
+          new com.auth0.jwt.exceptions.SignatureVerificationException("bad signature"));
     } finally {
       Java17RaspHooks.afterHttpRequest();
     }
-
-    String text = new String(Files.readAllBytes(log), StandardCharsets.UTF_8);
-    assertTrue(text.contains("\"algorithm\":\"java17_request_jwt_verification_failure\""));
-    assertTrue(text.contains("\"action\":\"block\""));
-    assertTrue(text.contains("source=X-DE-TOKEN"));
-    assertTrue(text.contains("SignatureVerificationException"));
-    assertFalse(text.contains(DATAEASE_WRONG_SIGNATURE_JWT));
+    assertEquals(0L, Files.size(log));
   }
 
   @Test

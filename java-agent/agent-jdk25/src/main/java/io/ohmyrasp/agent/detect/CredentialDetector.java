@@ -170,7 +170,7 @@ final class CredentialDetector {
   static Optional<Detection> detectJwtVerificationFailure(
       String mechanism, String exceptionClass, String message, RequestContext request) {
     RequestContext safeRequest = request == null ? RequestContext.empty() : request;
-    if (!safeRequest.active() || !jwtVerificationFailureType(exceptionClass, message)) {
+    if (!safeRequest.active() || !jwtVerificationFailureType(exceptionClass)) {
       return Optional.empty();
     }
     Optional<JwtTokenSource> tokenSource = jwtTokenSource(safeRequest);
@@ -189,6 +189,7 @@ final class CredentialDetector {
             redactedRequest,
             Map.of(
                 "mechanism", abbreviate(hook),
+                "decision_basis", "synthetic_verifier_failure",
                 "exception", abbreviate(exceptionClass),
                 "tokenSource", tokenSource.orElseThrow().source(),
                 "method", redactedRequest.method(),
@@ -207,14 +208,9 @@ final class CredentialDetector {
 
   private record JwtTokenSource(String source, String token) {}
 
-  private static boolean jwtVerificationFailureType(String exceptionClass, String message) {
-    String normalizedClass = lower(exceptionClass);
-    String normalizedMessage = lower(message);
-    return normalizedClass.contains("signatureverificationexception")
-        || normalizedClass.contains("algorithmmismatchexception")
-        || normalizedMessage.contains("signature")
-        || normalizedMessage.contains("invalid when verified")
-        || normalizedMessage.contains("algorithm");
+  private static boolean jwtVerificationFailureType(String exceptionClass) {
+    return "com.auth0.jwt.exceptions.SignatureVerificationException".equals(exceptionClass)
+        || "com.auth0.jwt.exceptions.AlgorithmMismatchException".equals(exceptionClass);
   }
 
   private static Optional<JwtTokenSource> jwtTokenSource(RequestContext request) {

@@ -168,7 +168,7 @@ The descriptions live in the [general catalog](../rules/general.json) and [produ
 | `request_java_bean_pollution` | A request binding name refers to Java class-loader metadata. | — |
 | `request_jndi_lookup` | Request text contains naming-lookup or XML entity syntax. Transport opening is unconfirmed. | — |
 | `request_json_patch_expression` | A JSON Patch path contains an expression indicator. | — |
-| `request_jwt_verification_failure` | — | Verifier failure types and request authentication context determine the decision. |
+| `request_jwt_verification_failure` | — | The DataEase authentication filter hands the same request to its chain after its selected credential fails verification. |
 | `request_message_selector_expression` | A message-selector field contains runtime expression syntax. | — |
 | `request_ogc_filter_sql_injection` | An OGC filter argument contains SQL-control indicators. JDBC execution is unconfirmed. | — |
 | `request_path_confusion` | Alternative interpretations of the request target expose protected web resources or ambiguous path structure. | — |
@@ -266,7 +266,7 @@ The descriptions live in the [general catalog](../rules/general.json) and [produ
 | `java8_request_forged_include_attribute`, `java11_request_forged_include_attribute`, `java17_request_forged_include_attribute` | Servlet include attributes and the request path indicate an internal include. | Liferay portal dispatch supplies a product-specific normal-include exclusion. |
 | `java8_request_internal_forward`, `java11_request_internal_forward`, `java17_request_internal_forward` | A forwarding parameter names a sensitive route. Dispatch is inferred from request conventions. | — |
 | `java8_request_internal_identity`, `java11_request_internal_identity`, `java17_request_internal_identity` | — | Nacos's internal user-agent convention and maintenance routes determine the judgment. |
-| `java8_request_jwt_verification_failure`, `java11_request_jwt_verification_failure`, `java17_request_jwt_verification_failure` | — | The java-jwt verifier and its failure types identify the verification event for the request token. |
+| `java8_request_jwt_verification_failure`, `java11_request_jwt_verification_failure`, `java17_request_jwt_verification_failure` | — | The DataEase filter continues after catching a signature or algorithm rejection for its selected credential. |
 | `java8_request_ogc_filter_sql_injection`, `java11_request_ogc_filter_sql_injection`, `java17_request_ogc_filter_sql_injection` | An OGC service or route and a filter parameter contain SQL-control indicators. JDBC execution is unconfirmed. | — |
 | `java8_request_path_confusion`, `java11_request_path_confusion`, `java17_request_path_confusion` | Normalization changes path structure or reveals control characters in a sensitive route. | The backports have a TeamCity-specific normal-path exclusion. |
 | `java8_request_remote_job_submission`, `java11_request_remote_job_submission`, `java17_request_remote_job_submission` | — | Spark REST and YARN ResourceManager submission contracts identify executable job artifacts or commands. |

@@ -188,6 +188,8 @@ jobs:
       - name: Verify plot output stream ownership
         if: startsWith(matrix.jar, 'agent-java')
         run: python3 java-agent/scripts/fp-harness/check-plot-stream.py "java-agent/${{ matrix.jar }}"
+      - name: Verify authentication rejection and downstream filter dispatch
+        run: python3 java-agent/scripts/fp-harness/check-jwt-verification.py "java-agent/${{ matrix.jar }}"
       - name: Verify resolved JMX dispatch
         run: python3 java-agent/scripts/fp-harness/check-jmx-dispatch.py "java-agent/${{ matrix.jar }}"
       - name: Verify XML catalogue and transport decisions

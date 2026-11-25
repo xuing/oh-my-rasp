@@ -1287,18 +1287,22 @@ public final class OhMyRaspHooks {
     }
   }
 
-  public static void beforeJwtVerificationFailure(String mechanism, Object failure) {
-    if (detectionDisabled()) {
-      return;
-    }
+  /** Previously transformed verifier frames have no downstream dispatch evidence. */
+  public static void beforeJwtVerificationFailure(String mechanism, Object failure) {}
+
+  public static void beforeDataEaseFilterContinuation(String rejection, Object request) {
+    if (rejection == null || detectionDisabled()) return;
     try {
-      String exceptionClass = failure == null ? "" : failure.getClass().getName();
-      String message = failure instanceof Throwable throwable ? throwable.getMessage() : "";
-      emit(DETECTORS.detectJwtVerificationFailure(mechanism, exceptionClass, message, currentRequest()));
+      RequestContext context = new RequestContext(invokeString(request, "getMethod").orElse(""),
+          invokeString(request, "getRequestURI").orElse(""), "", Map.of(), Map.of());
+      emit(Optional.of(Detection.log("request", "request_jwt_verification_failure", 95,
+          "Authentication filter continued the request after rejecting its credential", context,
+          Map.of("exception", rejection, "decision_basis", "rejected_token_dispatch",
+              "operation", "FilterChain.doFilter"))), true, true);
     } catch (OhMyRaspBlockException blocked) {
       throw blocked;
-    } catch (Throwable throwable) {
-      quiet("beforeJwtVerificationFailure", throwable);
+    } catch (Throwable failure) {
+      quiet("beforeDataEaseFilterContinuation", failure);
     }
   }
 

@@ -187,16 +187,14 @@ public final class OhMyRaspJava17Agent {
     retransform(instrumentation, Statement.class);
     retransformByName(instrumentation, "com.sun.tools.javac.api.JavacTool");
     retransformByName(instrumentation, io.ohmyrasp.agent.jmx.JmxDispatchVisitor.TARGET.replace('/', '.'));
-    retransformByName(instrumentation, "com.auth0.jwt.JWTVerifier");
-    retransformByName(instrumentation, "com.auth0.jwt.algorithms.HMACAlgorithm");
-    retransformByName(instrumentation, "com.auth0.jwt.algorithms.RSAAlgorithm");
-    retransformByName(instrumentation, "com.auth0.jwt.algorithms.ECDSAAlgorithm");
+
     retransformByName(instrumentation, "com.sun.beans.decoder.DocumentHandler");
     Class<?>[] loadedClasses = instrumentation.getAllLoadedClasses();
     java.util.Set<Class<?>> multipartOwners = io.ohmyrasp.agent.http.MultipartFilename.loadedOwners(loadedClasses);
     for (Class<?> loaded : loadedClasses) {
       String internalName = loaded.getName().replace('.', '/');
-      if (multipartOwners.contains(loaded) || io.ohmyrasp.agent.http.MultipartFilenameVisitor.known(internalName, true)
+      if (io.ohmyrasp.agent.rules.product.dataease.FilterVerificationVisitor.OWNER.equals(internalName)
+          || multipartOwners.contains(loaded) || io.ohmyrasp.agent.http.MultipartFilenameVisitor.known(internalName, true)
           || io.ohmyrasp.agent.file.DirectoryListVisitor.matches(internalName) || io.ohmyrasp.agent.xml.AttachmentFileVisitor.matches(internalName) || XmlEntityOpenVisitor.matches(internalName) || MyBatisSqlVisitor.matches(internalName)
           || (HttpTransportVisitor.matches(internalName) && !"java/net/URL".equals(internalName))
           || JdbcSqlMethod.isJdbcImplementation(loaded)) {

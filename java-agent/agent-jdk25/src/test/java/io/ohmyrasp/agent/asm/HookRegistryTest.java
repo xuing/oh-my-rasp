@@ -80,7 +80,7 @@ final class HookRegistryTest {
     assertTrue(registry.isDirectTarget("org/postgresql/jdbc/PgStatement"));
     assertTrue(registry.isDirectTarget("javax/activation/URLDataSource"));
     assertTrue(registry.isDirectTarget("jakarta/activation/URLDataSource"));
-    assertTrue(registry.isDirectTarget("com/auth0/jwt/JWTVerifier"));
+    assertTrue(registry.isDirectTarget("io/dataease/auth/filter/CommunityTokenFilter"));
   }
 
   @Test

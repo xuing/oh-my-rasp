@@ -175,19 +175,14 @@ if grep -q '"event":"ohmyrasp-detection"' "$protected_log"; then
 fi
 
 protected_wrong_status="$(get_user_info "$protected_port" "$wrong_jwt" "${protected_dir}/wrong-signature")"
-if [[ "$protected_wrong_status" != "400" ]]; then
+if [[ ! "$protected_wrong_status" =~ ^[45][0-9]{2}$ ]]; then
   cat "${protected_dir}/wrong-signature.body" >&2 || true
-  echo "protected DataEase wrong-signature JWT returned ${protected_wrong_status}, expected 400" >&2
+  echo "protected DataEase wrong-signature JWT returned ${protected_wrong_status}, expected an HTTP rejection" >&2
   exit 1
 fi
-if ! grep -q '"hook":"com.auth0.jwt.JWTVerifier.verify".*"algorithm":"java17_request_jwt_verification_failure".*"action":"block"' "$protected_log"; then
+if ! grep -q '"hook":"FilterChain.doFilter".*"algorithm":"java17_request_jwt_verification_failure".*"action":"block".*"decision_basis":"rejected_token_dispatch"' "$protected_log"; then
   cat "$protected_log" >&2
   echo "missing java17_request_jwt_verification_failure block event for DataEase CVE-2025-49001" >&2
-  exit 1
-fi
-if ! grep -Fq 'OhMyRASP%20Java%2017%20blocked%20JWT%20verification%20failure%20continuation' "${protected_dir}/wrong-signature.headers"; then
-  tr -d '\r' < "${protected_dir}/wrong-signature.headers" >&2 || true
-  echo "protected DataEase response did not carry the Java 17 JWT block marker" >&2
   exit 1
 fi
 if grep -Fq "$wrong_jwt" "$protected_log"; then
