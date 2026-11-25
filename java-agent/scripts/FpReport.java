@@ -1,5 +1,6 @@
 import io.ohmyrasp.agent.detect.DeserializationDetector;
 import io.ohmyrasp.agent.detect.DetectorEngine;
+import io.ohmyrasp.agent.detect.FileAccessDetector;
 import io.ohmyrasp.agent.detect.HostFileMutationDetector;
 import io.ohmyrasp.agent.detect.JdbcDetector;
 import io.ohmyrasp.agent.detect.NetworkDestinationDetector;
@@ -84,13 +85,13 @@ public final class FpReport {
             (c, r) -> RemoteJobDetector.detect("YARN", c.payload(),
                 new RequestContext("POST", "/ws/v1/cluster/apps", "", Map.of(), Map.of()), false)),
         new Category("Outbound URLs", urlCorpus(), (c, r) -> NetworkDestinationDetector.detectUrl(c.payload(), r)),
-        new Category("File reads", fileReadCorpus(), (c, r) -> ENGINE.detectFileRead(c.payload(), r, false)),
+        new Category("File reads", fileReadCorpus(), (c, r) -> FileAccessDetector.detectFileRead(c.payload(), r, false)),
         new Category("Directory listings", List.of(
             Case.tainted("/srv/orders/exports", "orders"),
             Case.tainted("/srv/reports/catalog", "/srv/reports/catalog"),
             Case.of("/etc"),
             Case.of("/proc")),
-            (c, r) -> ENGINE.detectDirectoryList(c.payload(), r)),
+            (c, r) -> FileAccessDetector.detectDirectoryList(c.payload(), r)),
         new Category("Temporary report output", List.of(
             Case.tainted("{\"api\":\"Runtime.exec(String)\",\"report\":\"weekly\"}", "weekly"),
             Case.tainted("{\"label\":\"Runtime.exec(String)\"}", "Runtime.exec(String)"),

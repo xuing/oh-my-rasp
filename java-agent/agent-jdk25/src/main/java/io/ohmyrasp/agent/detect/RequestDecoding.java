@@ -288,4 +288,57 @@ final class RequestDecoding {
     }
     return changed ? decoded.toString() : value;
   }
+
+  static String stripServletPathParameters(String path) {
+    String[] segments = path.split("/", -1);
+    StringBuilder builder = new StringBuilder(path.length());
+    for (int i = 0; i < segments.length; i++) {
+      if (i > 0) {
+        builder.append('/');
+      }
+      String segment = segments[i];
+      int semicolon = segment.indexOf(';');
+      builder.append(semicolon >= 0 ? segment.substring(0, semicolon) : segment);
+    }
+    return builder.toString();
+  }
+
+  static String collapsePathDotSegments(String path) {
+    boolean absolute = path.startsWith("/");
+    var segments = new ArrayList<String>();
+    for (String segment : path.split("/+", -1)) {
+      if (segment.isBlank() || segment.equals(".")) {
+        continue;
+      }
+      if (segment.equals("..")) {
+        if (!segments.isEmpty()) {
+          segments.remove(segments.size() - 1);
+        }
+        continue;
+      }
+      segments.add(segment);
+    }
+    String collapsed = String.join("/", segments);
+    if (absolute) {
+      collapsed = "/" + collapsed;
+    }
+    return collapsed.isBlank() ? "/" : collapsed;
+  }
+
+  static boolean hasConfusingDotSegment(String path) {
+    for (String rawSegment : path.split("/+")) {
+      if (rawSegment.isBlank()) {
+        continue;
+      }
+      String segment = rawSegment;
+      int semicolon = segment.indexOf(';');
+      if (semicolon >= 0) {
+        segment = segment.substring(0, semicolon);
+      }
+      if (segment.equals("..")) {
+        return true;
+      }
+    }
+    return false;
+  }
 }

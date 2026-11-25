@@ -12,6 +12,7 @@ import io.ohmyrasp.agent.jmx.JmxWriteScope;
 import io.ohmyrasp.agent.detect.CredentialDetector;
 import io.ohmyrasp.agent.detect.DeserializationDetector;
 import io.ohmyrasp.agent.detect.DetectorEngine;
+import io.ohmyrasp.agent.detect.FileAccessDetector;
 import io.ohmyrasp.agent.detect.HostFileMutationDetector;
 import io.ohmyrasp.agent.detect.JdbcDetector;
 import io.ohmyrasp.agent.detect.NetworkDestinationDetector;
@@ -121,7 +122,7 @@ public final class OhMyRaspHooks {
       RESPONSE.set(response);
       inspectRequest(context);
       emit(
-          DETECTORS.detectServletIncludeAttributes(
+          FileAccessDetector.detectServletIncludeAttributes(
               readServletIncludeAttributes(request), context, stackTraceClassNames()));
     } catch (OhMyRaspBlockException blocked) {
       throw blocked;
@@ -222,7 +223,7 @@ public final class OhMyRaspHooks {
       return;
     }
     try {
-      emit(DETECTORS.detectServletIncludeAttributes(attributes, currentRequest(), stackClassNames));
+      emit(FileAccessDetector.detectServletIncludeAttributes(attributes, currentRequest(), stackClassNames));
     } catch (OhMyRaspBlockException blocked) {
       throw blocked;
     } catch (Throwable throwable) {
@@ -243,7 +244,7 @@ public final class OhMyRaspHooks {
     }
     try {
       RequestContext context = new RequestContext(method, uri, query, parameters, headers);
-      emit(DETECTORS.detectServletIncludeAttributes(attributes, context, stackClassNames));
+      emit(FileAccessDetector.detectServletIncludeAttributes(attributes, context, stackClassNames));
     } catch (OhMyRaspBlockException blocked) {
       throw blocked;
     } catch (Throwable throwable) {
@@ -818,7 +819,7 @@ public final class OhMyRaspHooks {
     }
     try {
       emit(
-          DETECTORS.detectArgumentFileExpansion(
+          FileAccessDetector.detectArgumentFileExpansion(
               "args4j", toStringList(arguments), currentRequest()));
     } catch (OhMyRaspBlockException blocked) {
       throw blocked;
@@ -848,7 +849,7 @@ public final class OhMyRaspHooks {
                 "decision_basis", "attachment_file_open"))), true, ignored -> io.ohmyrasp.agent.xml.AttachmentFileRead.repeated(),
             request.active() && request == currentRequest());
       } else {
-        var finding = DETECTORS.detectFileRead(path, currentRequest(), OhMyRaspHooks::isXmlParserStack, POLICY.loaded(), links);
+        var finding = FileAccessDetector.detectFileRead(path, currentRequest(), OhMyRaspHooks::isXmlParserStack, POLICY.loaded(), links);
         if (finding.isPresent()) {
           Detection observed = finding.get();
           String basis = observed.details().getOrDefault("decision_basis", "");
@@ -942,7 +943,7 @@ public final class OhMyRaspHooks {
   public static void captureDirectoryWalk(Object walker, java.nio.file.Path path) {
     RequestContext request = currentRequest();
     if (!detectionDisabled() && request.active() && path != null && HostReadPath.isHostPath(path)) {
-      HostDirectory.submitted(walker, request, DETECTORS.requestSelectsDirectory(path.toString(), request, false));
+      HostDirectory.submitted(walker, request, FileAccessDetector.requestSelectsDirectory(path.toString(), request, false));
     }
   }
 
@@ -979,7 +980,7 @@ public final class OhMyRaspHooks {
     try {
       RequestContext current = currentRequest();
       RequestContext origin = walk == null ? current : walk.origin instanceof RequestContext source ? source : RequestContext.empty();
-      for (Detection finding : DETECTORS.directoryListings(path, origin, opened, relative, observed,
+      for (Detection finding : FileAccessDetector.directoryListings(path, origin, opened, relative, observed,
           walk != null && walk.selected, POLICY::selectsAlgorithm, stack)) {
         if (observed) {
           var details = new java.util.LinkedHashMap<>(finding.details());
@@ -1001,7 +1002,7 @@ public final class OhMyRaspHooks {
       return;
     }
     try {
-      emit(DETECTORS.detectInclude(url, realPath, function, currentRequest()));
+      emit(FileAccessDetector.detectInclude(url, realPath, function, currentRequest()));
     } catch (OhMyRaspBlockException blocked) {
       throw blocked;
     } catch (Throwable throwable) {
@@ -1335,7 +1336,7 @@ public final class OhMyRaspHooks {
       return;
     }
     try {
-      emit(DETECTORS.detectFileRead(path, currentRequest(), true, POLICY.loaded()));
+      emit(FileAccessDetector.detectFileRead(path, currentRequest(), true, POLICY.loaded()));
     } catch (OhMyRaspBlockException blocked) {
       throw blocked;
     } catch (Throwable throwable) {

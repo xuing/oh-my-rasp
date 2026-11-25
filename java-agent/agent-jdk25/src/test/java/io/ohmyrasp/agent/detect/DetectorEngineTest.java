@@ -61,14 +61,14 @@ final class DetectorEngineTest {
   @ParameterizedTest
   @ValueSource(strings = {"../reports/private.txt", "../../backup/users.zip"})
   void recognizesTraversalToOrdinaryFileTypes(String relative) {
-    assertAlgorithm(engine.detectFileRead("/srv/public/" + relative,
+    assertAlgorithm(FileAccessDetector.detectFileRead("/srv/public/" + relative,
         request(Map.of("path", List.of(relative))), false), "readFile_userinput");
   }
 
   @Test
   void recognizesRequestRelativeToProtectedWebappDirectory() {
     var ctx = request(Map.of("file", List.of("WEB-INF/web.xml")));
-    assertAlgorithm(engine.detectFileRead("/app/WEB-INF/web.xml", ctx, false), "readFile_userinput");
+    assertAlgorithm(FileAccessDetector.detectFileRead("/app/WEB-INF/web.xml", ctx, false), "readFile_userinput");
   }
 
   @Test
@@ -1052,7 +1052,7 @@ final class DetectorEngineTest {
   @Test
   void detectsArgs4jArgumentFileExpansionForJenkinsMasterKey() {
     var result =
-        engine.detectArgumentFileExpansion(
+        FileAccessDetector.detectArgumentFileExpansion(
             "args4j",
             List.of("help", "@/var/jenkins_home/secrets/master.key"),
             request());
@@ -1064,7 +1064,7 @@ final class DetectorEngineTest {
   @Test
   void detectsArgs4jArgumentFileExpansionForProcEnviron() {
     var result =
-        engine.detectArgumentFileExpansion(
+        FileAccessDetector.detectArgumentFileExpansion(
             "args4j",
             List.of("@/proc/self/environ"),
             request(Map.of("arg", List.of("@/proc/self/environ"))));
@@ -1076,7 +1076,7 @@ final class DetectorEngineTest {
   @Test
   void detectsArgs4jArgumentFileExpansionForJenkinsConnectNodePasswd() {
     var result =
-        engine.detectArgumentFileExpansion(
+        FileAccessDetector.detectArgumentFileExpansion(
             "args4j",
             List.of("connect-node", "@/etc/passwd"),
             request(Map.of("arg", List.of("connect-node", "@/etc/passwd"))));
@@ -1089,7 +1089,7 @@ final class DetectorEngineTest {
   @Test
   void ignoresRelativeArgs4jArgumentFileExpansion() {
     var result =
-        engine.detectArgumentFileExpansion(
+        FileAccessDetector.detectArgumentFileExpansion(
             "args4j", List.of("@relative/options.txt"), request());
 
     assertTrue(result.isEmpty());
@@ -1098,7 +1098,7 @@ final class DetectorEngineTest {
   @Test
   void ignoresUnknownArgumentFileExpansionParser() {
     var result =
-        engine.detectArgumentFileExpansion(
+        FileAccessDetector.detectArgumentFileExpansion(
             "picocli", List.of("@/var/jenkins_home/secrets/master.key"), request());
 
     assertTrue(result.isEmpty());
@@ -1107,7 +1107,7 @@ final class DetectorEngineTest {
   @Test
   void ignoresBackgroundArgumentFileExpansion() {
     var result =
-        engine.detectArgumentFileExpansion(
+        FileAccessDetector.detectArgumentFileExpansion(
             "args4j",
             List.of("@/var/jenkins_home/secrets/master.key"),
             RequestContext.empty());
@@ -1139,7 +1139,7 @@ final class DetectorEngineTest {
 
   @Test
   void detectsSensitiveFileRead() {
-    var result = engine.detectFileRead("/etc/passwd", request(), false);
+    var result = FileAccessDetector.detectFileRead("/etc/passwd", request(), false);
 
     assertTrue(result.isPresent());
     assertEquals("readFile_unwanted", result.orElseThrow().algorithm());
@@ -1148,7 +1148,7 @@ final class DetectorEngineTest {
   @Test
   void detectsHttpFileReadFromUserInput() {
     var result =
-        engine.detectFileRead(
+        FileAccessDetector.detectFileRead(
             "http://127.0.0.1/internal",
             request(Map.of("file", List.of("http://127.0.0.1/internal"))),
             false);
@@ -1159,7 +1159,7 @@ final class DetectorEngineTest {
   @Test
   void detectsUnwantedFileReadProtocolFromUserInput() {
     var result =
-        engine.detectFileRead(
+        FileAccessDetector.detectFileRead(
             "file:///etc/passwd", request(Map.of("file", List.of("file:///etc/passwd"))), false);
 
     assertAlgorithm(result, "readFile_userinput_unwanted");
@@ -1168,7 +1168,7 @@ final class DetectorEngineTest {
   @Test
   void detectsMetabaseGeojsonFileReadProtocolFromUserInput() {
     var result =
-        engine.detectFileRead(
+        FileAccessDetector.detectFileRead(
             "file:////etc/passwd", request(Map.of("url", List.of("file:////etc/passwd"))), false);
 
     assertAlgorithm(result, "readFile_userinput_unwanted");
@@ -1176,15 +1176,15 @@ final class DetectorEngineTest {
 
   @Test
   void detectsFileReadOutsideWebroot() {
-    assertTrue(engine.detectFileRead("/etc/hosts", request(), false).isEmpty());
-    var result = engine.detectFileRead("/etc/hosts", request(), false, true);
+    assertTrue(FileAccessDetector.detectFileRead("/etc/hosts", request(), false).isEmpty());
+    var result = FileAccessDetector.detectFileRead("/etc/hosts", request(), false, true);
 
     assertAlgorithm(result, "readFile_outsideWebroot");
   }
 
   @Test
   void detectsXxeFileReadFromParserStackHint() {
-    var result = engine.detectFileRead("/etc/passwd", request(), true);
+    var result = FileAccessDetector.detectFileRead("/etc/passwd", request(), true);
 
     assertTrue(result.isPresent());
     assertEquals("xxe_file", result.orElseThrow().algorithm());
@@ -1193,7 +1193,7 @@ final class DetectorEngineTest {
   @Test
   void ignoresSimpleParameterNameSubstringInLibraryFileRead() {
     var result =
-        engine.detectFileRead(
+        FileAccessDetector.detectFileRead(
             "/usr/local/tomcat/webapps/ROOT/WEB-INF/lib/spring-expression-7.0.7.jar",
             request(Map.of("expr", List.of("T(java.lang.Runtime).getRuntime().exec('id')"))),
             false);
@@ -1391,7 +1391,7 @@ final class DetectorEngineTest {
 
   @Test
   void detectsDirectoryUserInput() {
-    var result = engine.detectDirectoryList("/etc", request(Map.of("path", List.of("/etc"))));
+    var result = FileAccessDetector.detectDirectoryList("/etc", request(Map.of("path", List.of("/etc"))));
 
     assertTrue(result.isPresent());
     assertEquals("directory_userinput", result.orElseThrow().algorithm());
@@ -1401,20 +1401,20 @@ final class DetectorEngineTest {
   void separatesTomcatDeploymentScanFromApplicationDirectoryListing() {
     var scan = List.of("java.io.File", "org.apache.catalina.webresources.DirResourceSet",
         "org.apache.catalina.startup.ContextConfig", "java.lang.reflect.Method");
-    assertTrue(engine.detectDirectoryList("/app/WEB-INF/classes", RequestContext.empty(), scan).isEmpty());
-    assertTrue(engine.detectDirectoryList("/root", RequestContext.empty(), scan).isEmpty());
+    assertTrue(FileAccessDetector.detectDirectoryList("/app/WEB-INF/classes", RequestContext.empty(), scan).isEmpty());
+    assertTrue(FileAccessDetector.detectDirectoryList("/root", RequestContext.empty(), scan).isEmpty());
     var app = List.of("java.io.File", "example.Initializer",
         "org.apache.catalina.startup.ContextConfig", "java.lang.reflect.Method");
-    assertTrue(engine.detectDirectoryList("/data", RequestContext.empty(), app).isEmpty());
+    assertTrue(FileAccessDetector.detectDirectoryList("/data", RequestContext.empty(), app).isEmpty());
     var reflective = List.of("java.io.File", "java.lang.reflect.Method", "example.Initializer");
-    assertTrue(engine.detectDirectoryList("/data", RequestContext.empty(), reflective).isEmpty());
+    assertTrue(FileAccessDetector.detectDirectoryList("/data", RequestContext.empty(), reflective).isEmpty());
   }
 
   @Test
   void fixedDirectoryLocationAndReflectionRequireExplicitRules() {
     var stack = List.of("java.lang.reflect.Method");
-    assertTrue(engine.detectDirectoryList("/root", request(), stack).isEmpty());
-    var candidates = engine.directoryListings("/root", request(), null, false, false, false,
+    assertTrue(FileAccessDetector.detectDirectoryList("/root", request(), stack).isEmpty());
+    var candidates = FileAccessDetector.directoryListings("/root", request(), null, false, false, false,
         algorithm -> true, () -> stack);
     assertEquals(List.of("directory_unwanted", "directory_reflect"), candidates.stream().map(Detection::algorithm).toList());
     assertTrue(candidates.stream().allMatch(Detection::requiresExplicitRule));
@@ -1423,7 +1423,7 @@ final class DetectorEngineTest {
   @Test
   void detectsIncludeUserInput() {
     var result =
-        engine.detectInclude(
+        FileAccessDetector.detectInclude(
             "/etc/passwd", "/etc/passwd", "include", request(Map.of("file", List.of("/etc/passwd"))));
 
     assertAlgorithm(result, "include_userinput");
@@ -1431,7 +1431,7 @@ final class DetectorEngineTest {
 
   @Test
   void detectsIncludeProtocol() {
-    var result = engine.detectInclude("jar://file:/tmp/a.jar!/x", "", "include", request());
+    var result = FileAccessDetector.detectInclude("jar://file:/tmp/a.jar!/x", "", "include", request());
 
     assertAlgorithm(result, "include_protocol");
   }
@@ -1439,7 +1439,7 @@ final class DetectorEngineTest {
   @Test
   void detectsForgedServletIncludeAttributeForProtectedResource() {
     var result =
-        engine.detectServletIncludeAttributes(
+        FileAccessDetector.detectServletIncludeAttributes(
             Map.of("javax.servlet.include.servlet_path", "/WEB-INF/web.xml"),
             requestUri("/"),
             List.of("org.apache.coyote.ajp.AjpProcessor"));
@@ -1454,7 +1454,7 @@ final class DetectorEngineTest {
   @Test
   void detectsTomcatGhostcatAjpIncludeAttributes() {
     var result =
-        engine.detectServletIncludeAttributes(
+        FileAccessDetector.detectServletIncludeAttributes(
             Map.of(
                 "javax.servlet.include.request_uri",
                 "/",
@@ -1474,7 +1474,7 @@ final class DetectorEngineTest {
   @Test
   void detectsForgedServletIncludeAttributeForServerSideScript() {
     var result =
-        engine.detectServletIncludeAttributes(
+        FileAccessDetector.detectServletIncludeAttributes(
             Map.of("jakarta.servlet.include.path_info", "/uploads/shell.jsp"),
             requestUri("/"),
             List.of("org.apache.coyote.ajp.AjpProcessor"));
@@ -1486,7 +1486,7 @@ final class DetectorEngineTest {
   @Test
   void ignoresLegitimateRequestDispatcherIncludeStack() {
     var result =
-        engine.detectServletIncludeAttributes(
+        FileAccessDetector.detectServletIncludeAttributes(
             Map.of("javax.servlet.include.servlet_path", "/WEB-INF/jsp/view.jsp"),
             requestUri("/page"),
             List.of("org.apache.catalina.core.ApplicationDispatcher", "com.example.View"));
@@ -1497,7 +1497,7 @@ final class DetectorEngineTest {
   @Test
   void ignoresSafeServletIncludeAttributeTarget() {
     var result =
-        engine.detectServletIncludeAttributes(
+        FileAccessDetector.detectServletIncludeAttributes(
             Map.of("javax.servlet.include.servlet_path", "/assets/logo.png"),
             requestUri("/"),
             List.of("org.apache.coyote.ajp.AjpProcessor"));
