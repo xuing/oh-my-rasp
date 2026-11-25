@@ -1,3 +1,4 @@
+import io.ohmyrasp.agent.detect.CodeExecutionDetector;
 import io.ohmyrasp.agent.detect.DeserializationDetector;
 import io.ohmyrasp.agent.detect.DetectorEngine;
 import io.ohmyrasp.agent.detect.FileAccessDetector;
@@ -113,8 +114,8 @@ public final class FpReport {
             Case.tainted("/srv/orders/drafts/../report.csv.bak", "../report.csv")),
             (c, r) -> HostFileMutationDetector.detectArchiveExtraction(c.userParam(), c.payload(), r)),
         new Category("Deserialization classes", deserializationCorpus(), (c, r) -> DeserializationDetector.detectDeserialization(c.payload(), r)),
-        new Category("Expressions", expressionCorpus(), (c, r) -> ENGINE.detectExpression("spel", c.payload(), r)),
-        new Category("OGNL expressions", ognlCorpus(), (c, r) -> ENGINE.detectOgnl(c.payload(), r)),
+        new Category("Expressions", expressionCorpus(), (c, r) -> CodeExecutionDetector.detectExpression("spel", c.payload(), r)),
+        new Category("OGNL expressions", ognlCorpus(), (c, r) -> CodeExecutionDetector.detectOgnl(c.payload(), r)),
         new Category("JNDI names", jndiCorpus(), (c, r) -> RemoteResourceDetector.detectJndi(c.payload(), r)),
         new Category("DNS lookups", dnsCorpus(), (c, r) -> NetworkDestinationDetector.detectDns(c.payload(), r)),
         new Category("Ordinary deployment uploads", List.of(

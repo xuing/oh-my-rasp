@@ -9,6 +9,7 @@ import io.ohmyrasp.agent.file.WindowsDataStream;
 import io.ohmyrasp.agent.file.HostDirectory;
 import io.ohmyrasp.agent.jmx.JmxDispatch;
 import io.ohmyrasp.agent.jmx.JmxWriteScope;
+import io.ohmyrasp.agent.detect.CodeExecutionDetector;
 import io.ohmyrasp.agent.detect.CredentialDetector;
 import io.ohmyrasp.agent.detect.DeserializationDetector;
 import io.ohmyrasp.agent.detect.DetectorEngine;
@@ -1570,7 +1571,7 @@ public final class OhMyRaspHooks {
       return;
     }
     try {
-      emit(DETECTORS.detectOgnl(expression, currentRequest()));
+      emit(CodeExecutionDetector.detectOgnl(expression, currentRequest()));
     } catch (OhMyRaspBlockException blocked) {
       throw blocked;
     } catch (Throwable throwable) {
@@ -1583,7 +1584,7 @@ public final class OhMyRaspHooks {
       return;
     }
     try {
-      emit(DETECTORS.detectExpression(engine, expressionText(expression), currentRequest()));
+      emit(CodeExecutionDetector.detectExpression(engine, expressionText(expression), currentRequest()));
     } catch (OhMyRaspBlockException blocked) {
       throw blocked;
     } catch (Throwable throwable) {
@@ -1596,7 +1597,7 @@ public final class OhMyRaspHooks {
       return;
     }
     try {
-      emit(DETECTORS.detectJavaCompilation(compiler, javaSourceText(source), currentRequest()));
+      emit(CodeExecutionDetector.detectJavaCompilation(compiler, javaSourceText(source), currentRequest()));
     } catch (OhMyRaspBlockException blocked) {
       throw blocked;
     } catch (Throwable throwable) {
@@ -1617,7 +1618,7 @@ public final class OhMyRaspHooks {
     }
     try {
       for (String source : javaSourceTexts(units)) {
-        emit(DETECTORS.detectJavaCompilation(compiler, source, currentRequest()));
+        emit(CodeExecutionDetector.detectJavaCompilation(compiler, source, currentRequest()));
       }
     } catch (OhMyRaspBlockException blocked) {
       throw blocked;
@@ -1631,7 +1632,7 @@ public final class OhMyRaspHooks {
       return;
     }
     try {
-      emit(DETECTORS.detectEval(function, code, currentRequest()));
+      emit(CodeExecutionDetector.detectEval(function, code, currentRequest()));
     } catch (OhMyRaspBlockException blocked) {
       throw blocked;
     } catch (Throwable throwable) {
@@ -1644,7 +1645,7 @@ public final class OhMyRaspHooks {
       return;
     }
     try {
-      emit(DETECTORS.detectLoadLibrary(function, path, windows, currentRequest()));
+      emit(CodeExecutionDetector.detectLoadLibrary(function, path, windows, currentRequest()));
     } catch (OhMyRaspBlockException blocked) {
       throw blocked;
     } catch (Throwable throwable) {
@@ -1686,7 +1687,7 @@ public final class OhMyRaspHooks {
       return;
     }
     try {
-      emit(DETECTORS.detectWebshellEval(function, code, currentRequest()));
+      emit(CodeExecutionDetector.detectWebshellEval(function, code, currentRequest()));
     } catch (OhMyRaspBlockException blocked) {
       throw blocked;
     } catch (Throwable throwable) {
@@ -1725,7 +1726,7 @@ public final class OhMyRaspHooks {
       return;
     }
     try {
-      emit(DETECTORS.detectWebshellCallable(function, currentRequest()));
+      emit(CodeExecutionDetector.detectWebshellCallable(function, currentRequest()));
     } catch (OhMyRaspBlockException blocked) {
       throw blocked;
     } catch (Throwable throwable) {

@@ -2443,14 +2443,14 @@ final class DetectorEngineTest {
 
   @Test
   void detectsOgnlBlacklist() {
-    var result = engine.detectOgnl("@java.lang.Runtime@getRuntime().exec('id')", request());
+    var result = CodeExecutionDetector.detectOgnl("@java.lang.Runtime@getRuntime().exec('id')", request());
 
     assertAlgorithm(result, "ognl_blacklist");
   }
 
   @Test
   void detectsOgnlLengthLimit() {
-    var result = engine.detectOgnl("a".repeat(401), request());
+    var result = CodeExecutionDetector.detectOgnl("a".repeat(401), request());
 
     assertAlgorithm(result, "ognl_length_limit");
   }
@@ -2459,7 +2459,7 @@ final class DetectorEngineTest {
   void detectsSpringExpressionRuntimeExecution() {
     var expression = "T(java.lang.Runtime).getRuntime().exec('id')";
     var result =
-        engine.detectExpression(
+        CodeExecutionDetector.detectExpression(
             "spel",
             expression,
             request(Map.of("spring.cloud.function.routing-expression", List.of(expression))));
@@ -2470,7 +2470,7 @@ final class DetectorEngineTest {
   @Test
   void detectsTemplateRuntimeExecution() {
     var result =
-        engine.detectExpression(
+        CodeExecutionDetector.detectExpression(
             "template",
             "#set($rt=$x.class.forName('java.lang.Runtime'))#set($ex=$rt.getRuntime().exec('id'))",
             request());
@@ -2481,7 +2481,7 @@ final class DetectorEngineTest {
   @Test
   void detectsJexlRuntimeExecution() {
     var result =
-        engine.detectExpression(
+        CodeExecutionDetector.detectExpression(
             "jexl",
             "233.class.forName('java.lang.Runtime').getRuntime().exec('touch /tmp/success')",
             request());
@@ -2492,7 +2492,7 @@ final class DetectorEngineTest {
   @Test
   void detectsElReflectiveRuntimeExecution() {
     var result =
-        engine.detectExpression(
+        CodeExecutionDetector.detectExpression(
             "el",
             "${''.getClass().forName('java.lang.Runtime').getMethods()[6].invoke(null).exec('id')}",
             request());
@@ -2503,7 +2503,7 @@ final class DetectorEngineTest {
   @Test
   void detectsJavascriptRuntimeExecution() {
     var result =
-        engine.detectExpression(
+        CodeExecutionDetector.detectExpression(
             "javascript",
             "function(){ java.lang.Runtime.getRuntime().exec('id'); }",
             request());
@@ -2517,7 +2517,7 @@ final class DetectorEngineTest {
         "dest = y() - 500; // */ public class Double { static { "
             + "java.lang.Runtime.getRuntime().exec(\"id\"); } } /**";
     var result =
-        engine.detectExpression("jiffle", expression, request(Map.of("script", List.of(expression))));
+        CodeExecutionDetector.detectExpression("jiffle", expression, request(Map.of("script", List.of(expression))));
 
     assertAlgorithm(result, "jiffle_runtime");
     assertEquals("jiffle", result.orElseThrow().details().get("engine"));
@@ -2553,7 +2553,7 @@ final class DetectorEngineTest {
             Map.of("content-type", "application/xml"),
             body);
 
-    var result = engine.detectExpression("jiffle", expression, context);
+    var result = CodeExecutionDetector.detectExpression("jiffle", expression, context);
 
     assertAlgorithm(result, "jiffle_runtime");
     assertEquals("/geoserver/wms", result.orElseThrow().request().uri());
@@ -2565,7 +2565,7 @@ final class DetectorEngineTest {
   @Test
   void detectsMvelRuntimeExecution() {
     var result =
-        engine.detectExpression(
+        CodeExecutionDetector.detectExpression(
             "mvel",
             "import java.io.*;new java.util.Scanner(Runtime.getRuntime().exec(\"id\").getInputStream())",
             request());
@@ -2576,7 +2576,7 @@ final class DetectorEngineTest {
   @Test
   void detectsGroovyStringCommandExecution() {
     var result =
-        engine.detectExpression(
+        CodeExecutionDetector.detectExpression(
             "groovy",
             "def command='id';def res=command.execute().text;res",
             request());
@@ -2587,7 +2587,7 @@ final class DetectorEngineTest {
   @Test
   void detectsXpathRuntimeExecution() {
     var result =
-        engine.detectExpression(
+        CodeExecutionDetector.detectExpression(
             "xpath", "exec(java.lang.Runtime.getRuntime(),'touch /tmp/success')", request());
 
     assertAlgorithm(result, "xpath_runtime");
@@ -2596,7 +2596,7 @@ final class DetectorEngineTest {
   @Test
   void detectsXpathProcessBuilderExecution() {
     var result =
-        engine.detectExpression(
+        CodeExecutionDetector.detectExpression(
             "xpath", "new java.lang.ProcessBuilder('id').start()", request());
 
     assertAlgorithm(result, "xpath_runtime");
@@ -2604,28 +2604,28 @@ final class DetectorEngineTest {
 
   @Test
   void ignoresHarmlessXpathExpression() {
-    var result = engine.detectExpression("xpath", "/root/name/text()", request());
+    var result = CodeExecutionDetector.detectExpression("xpath", "/root/name/text()", request());
 
     assertTrue(result.isEmpty());
   }
 
   @Test
   void ignoresHarmlessJexlExpression() {
-    var result = engine.detectExpression("jexl", "user.name ?: 'guest'", request());
+    var result = CodeExecutionDetector.detectExpression("jexl", "user.name ?: 'guest'", request());
 
     assertTrue(result.isEmpty());
   }
 
   @Test
   void ignoresHarmlessElExpression() {
-    var result = engine.detectExpression("el", "${user.name}", request());
+    var result = CodeExecutionDetector.detectExpression("el", "${user.name}", request());
 
     assertTrue(result.isEmpty());
   }
 
   @Test
   void ignoresHarmlessJiffleExpression() {
-    var result = engine.detectExpression("jiffle", "dest = x() + y();", request());
+    var result = CodeExecutionDetector.detectExpression("jiffle", "dest = x() + y();", request());
 
     assertTrue(result.isEmpty());
   }
@@ -2633,7 +2633,7 @@ final class DetectorEngineTest {
   @Test
   void detectsRequestTimeJavaCompilationRuntimeExecution() {
     var result =
-        engine.detectJavaCompilation(
+        CodeExecutionDetector.detectJavaCompilation(
             "javac",
             """
             public class Demo {
@@ -2650,7 +2650,7 @@ final class DetectorEngineTest {
   @Test
   void detectsJavaCompilationProcessBuilderExecution() {
     var result =
-        engine.detectJavaCompilation(
+        CodeExecutionDetector.detectJavaCompilation(
             "janino",
             "class Demo { void run() throws Exception { new ProcessBuilder(\"id\").start(); } }",
             request());
@@ -2661,7 +2661,7 @@ final class DetectorEngineTest {
   @Test
   void ignoresHarmlessJavaCompilation() {
     var result =
-        engine.detectJavaCompilation(
+        CodeExecutionDetector.detectJavaCompilation(
             "javac", "public class Demo { int add(int a, int b) { return a + b; } }", request());
 
     assertTrue(result.isEmpty());
@@ -2670,7 +2670,7 @@ final class DetectorEngineTest {
   @Test
   void ignoresBackgroundJavaCompilationRuntimeExecution() {
     var result =
-        engine.detectJavaCompilation(
+        CodeExecutionDetector.detectJavaCompilation(
             "javac",
             "public class Demo { void run() throws Exception { Runtime.getRuntime().exec(\"id\"); } }",
             RequestContext.empty());
@@ -2680,28 +2680,28 @@ final class DetectorEngineTest {
 
   @Test
   void ignoresHarmlessSpringExpression() {
-    var result = engine.detectExpression("spel", "T(java.lang.Math).abs(-1)", request());
+    var result = CodeExecutionDetector.detectExpression("spel", "T(java.lang.Math).abs(-1)", request());
 
     assertTrue(result.isEmpty());
   }
 
   @Test
   void ignoresHarmlessGroovyScript() {
-    var result = engine.detectExpression("groovy", "def total = 1 + 2; total", request());
+    var result = CodeExecutionDetector.detectExpression("groovy", "def total = 1 + 2; total", request());
 
     assertTrue(result.isEmpty());
   }
 
   @Test
   void detectsEvalRegex() {
-    var result = engine.detectEval("eval", "return base64_decode($x);", request());
+    var result = CodeExecutionDetector.detectEval("eval", "return base64_decode($x);", request());
 
     assertAlgorithm(result, "eval_regex");
   }
 
   @Test
   void detectsLoadLibraryUnc() {
-    var result = engine.detectLoadLibrary("System.load", "\\\\server\\share\\evil.dll", true, request());
+    var result = CodeExecutionDetector.detectLoadLibrary("System.load", "\\\\server\\share\\evil.dll", true, request());
 
     assertAlgorithm(result, "loadLibrary_unc");
   }
@@ -2746,7 +2746,7 @@ final class DetectorEngineTest {
   @Test
   void detectsWebshellEval() {
     var result =
-        engine.detectWebshellEval("assert", "system('id')", request(Map.of("code", List.of("system('id')"))));
+        CodeExecutionDetector.detectWebshellEval("assert", "system('id')", request(Map.of("code", List.of("system('id')"))));
 
     assertAlgorithm(result, "webshell_eval");
   }
@@ -2771,7 +2771,7 @@ final class DetectorEngineTest {
 
   @Test
   void detectsWebshellCallable() {
-    var result = engine.detectWebshellCallable("system", request());
+    var result = CodeExecutionDetector.detectWebshellCallable("system", request());
 
     assertAlgorithm(result, "webshell_callable");
   }
