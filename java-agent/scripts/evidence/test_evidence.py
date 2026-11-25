@@ -51,15 +51,17 @@ class EvidenceTest(unittest.TestCase):
         self.assertIsNone(decisions.source_for("HttpServlet.service", "request_internal_identity", "8"))
         self.assertIsNone(decisions.source_for("HttpServlet.service", "java11_request_internal_identity", "8"))
 
-    def test_spark_descriptor_does_not_establish_submit_authority(self):
+    def test_job_descriptors_do_not_establish_submit_authority(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             case = root / "vulhub-fixture-protected"
             case.mkdir()
             records = [{"event": "ohmyrasp-java8-agent-start"}]
-            for details in ({"submission": "Spark REST http jar descriptorHash=f00"},
-                            {"operation": "handleSubmit", "decision_basis": "required_submit_role_denied"}):
-                records.append({"hook": "SparkRest.handleSubmit", "action": "block",
+            for hook, details in (("SparkRest.handleSubmit", {"submission": "Spark REST http jar descriptorHash=f00"}),
+                                  ("SparkRest.handleSubmit", {"decision_basis": "required_submit_role_denied"}),
+                                  ("RMWebServices.submitApplication", {"submission": "YARN commands=1 commandHash=f00"}),
+                                  ("RMWebServices.submitApplication", {"decision_basis": "required_submit_role_denied"})):
+                records.append({"hook": hook, "action": "block",
                                 "algorithm": "java8_request_remote_job_submission", "details": details})
             (case / "events.jsonl").write_text("\n".join(map(json.dumps, records)))
             _, rows, batches, issues, _ = decisions.collect(root)

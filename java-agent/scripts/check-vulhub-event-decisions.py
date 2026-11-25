@@ -149,7 +149,7 @@ def collect(logs):
                 if not track or (algorithm_track and algorithm_track[1] != track):
                     row["status"] = "unknown or inconsistent agent track"
                     continue
-                if hook == "SparkRest.handleSubmit" and algorithm == f"java{track}_request_remote_job_submission":
+                if hook in ("SparkRest.handleSubmit", "RMWebServices.submitApplication") and algorithm == f"java{track}_request_remote_job_submission":
                     row.update(status="authorization evidence required",
                                evidence_limit="submission details alone cannot reproduce the deployment role and servlet decision")
                     continue
