@@ -100,7 +100,7 @@ def main():
                 else:
                     api = Counter(e["details"].get("process_api", e["hook"]) for e in events)
                     expected = ({"ProcessBuilder.startPipeline": 2 * rounds} if name == "ProcessPipelineCheck" else
-                                {"Runtime.exec(String)": rounds, "Runtime.exec(String[])": rounds, "ProcessBuilder.start": 3 * rounds})
+                                {"Runtime.exec(String)": rounds, "Runtime.exec(String[])": rounds, "ProcessBuilder.start": 4 * rounds})
                     if name == "ProcessLaunchCheck":
                         rule = "command_common" if track == "main" else f"java{track}_command_execution_exploit_primitive"
                         commands = [e["details"].get("command") for e in events if e["algorithm"] == rule]
@@ -110,7 +110,8 @@ def main():
                         observed = Counter((e["algorithm"], e["details"].get("process_api", e["hook"]), e["action"]) for e in events)
                         raise SystemExit(f"unexpected {name} decisions in {mode}: {dict(observed)}")
                 if any(e["details"].get("process_operation") != "ProcessImpl.start"
-                       or int(e["details"]["argument_count"]) != 3 for e in events):
+                       or int(e["details"]["argument_count"]) != (5 if e["details"].get("command") ==
+                           "/bin/sh -n +n -c printf weekly; printf ready" else 3) for e in events):
                     raise SystemExit("missing launch evidence")
 
 

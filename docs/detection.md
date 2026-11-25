@@ -305,7 +305,9 @@ invoked by a reflective framework has its own caller at the process API.
 For common process indicators the agent distinguishes direct tool operands from
 inline shell source. A fixed POSIX shell program can take report text in a
 positional parameter. The command indicator check reads the program argument and
-keeps those later arguments out of its source scan. For a single literal command
+keeps those later arguments out of its source scan. For noninteractive `sh`, `dash`
+and `bash` invocations with a confirmed `noexec` option, syntax checking does
+not activate the inline-execution rules. For a single literal command
 in a plain `sh -c`, `dash -c` or `bash -c` invocation, the common indicator rule
 recognizes quoted words, escapes and comments. It treats literal `echo` operands
 and string-format `printf` operands as output. For supported readers with literal

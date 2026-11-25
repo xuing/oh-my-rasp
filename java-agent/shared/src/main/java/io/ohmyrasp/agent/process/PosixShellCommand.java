@@ -71,6 +71,9 @@ public final class PosixShellCommand {
     }
     int firstOption = i;
     boolean inline = false;
+    boolean noexec = false;
+    boolean interactive = false;
+    boolean knownMode = "sh".equals(name) || "dash".equals(name) || "bash".equals(name);
     while (i < argv.size()) {
       String option = argv.get(i);
       if ("--".equals(option)) {
@@ -81,14 +84,24 @@ public final class PosixShellCommand {
         break;
       }
       i++;
-      if ("-o".equals(option) || "+o".equals(option) || "-O".equals(option) || "+O".equals(option)
-          || "--rcfile".equals(option) || "--init-file".equals(option)) {
+      if ("-o".equals(option) || "+o".equals(option)) {
+        if (i < argv.size() && "noexec".equals(argv.get(i))) noexec = option.charAt(0) == '-';
         i++;
-      } else if (!option.startsWith("--") && option.charAt(0) == '-' && option.indexOf('c') > 0) {
-        inline = true;
+      } else if ("-O".equals(option) || "+O".equals(option) || "--rcfile".equals(option) || "--init-file".equals(option)) {
+        i++;
+      } else if (option.startsWith("--")) {
+        // Long options have shell-specific argument grammars.
+        knownMode = false;
+      } else {
+        boolean enable = option.charAt(0) == '-';
+        if (enable && option.indexOf('c') > 0) inline = true;
+        if (enable && option.indexOf('i') > 0) interactive = true;
+        if (option.indexOf('n') > 0) noexec = enable;
+        // A grouped option that takes a value can change where the program begins.
+        if (option.indexOf('o') > 0 || option.indexOf('O') > 0) knownMode = false;
       }
     }
-    if (!inline || i >= argv.size() || argv.get(i) == null) return null;
+    if (!inline || i >= argv.size() || argv.get(i) == null || (knownMode && noexec && !interactive)) return null;
     boolean plain = i == firstOption + 1 && "-c".equals(argv.get(firstOption))
         && ("sh".equals(name) || "dash".equals(name) || "bash".equals(name));
     return new PosixShellCommand(argv.get(i), plain);

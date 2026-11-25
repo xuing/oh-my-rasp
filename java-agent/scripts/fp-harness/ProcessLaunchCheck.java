@@ -106,6 +106,11 @@ public class ProcessLaunchCheck {
           exited(new ProcessBuilder("/usr/bin/printf", "[%s]", "alpha", "beta gamma").start(), "[alpha][beta gamma]");
         });
         check(track, mode, "fixed-program", "weekly", false, () -> exited(new ProcessBuilder(CONTROL).start(), ""));
+        String reportProgram = "printf weekly; printf ready";
+        check(track, mode, "syntax-check", reportProgram, false, () -> exited(
+            new ProcessBuilder("/bin/sh", "-n", "-c", reportProgram).start(), ""));
+        check(track, mode, "execution-restored", reportProgram, true, () -> exited(
+            new ProcessBuilder("/bin/sh", "-n", "+n", "-c", reportProgram).start(), "weeklyready"));
         check(track, mode, "runtime-string", PROGRAM, true,
             () -> exited(Runtime.getRuntime().exec("/bin/sh -c " + PROGRAM), ""));
         check(track, mode, "runtime-array", PROGRAM, true, () -> exited(Runtime.getRuntime().exec(CONTROL), ""));

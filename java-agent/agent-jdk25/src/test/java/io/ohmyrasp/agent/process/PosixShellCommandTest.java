@@ -16,6 +16,15 @@ class PosixShellCommandTest {
   }
 
   @Test
+  void extractsExecutionOnlyWhenNonInteractiveNoexecIsOff() {
+    String source = "printf weekly; printf ready";
+    assertNull(PosixShellCommand.from(List.of("dash", "-nc", source)));
+    assertNull(PosixShellCommand.from(List.of("bash", "-o", "noexec", "-c", source)));
+    assertEquals(source, PosixShellCommand.from(List.of("bash", "-n", "+o", "noexec", "-c", source)).source());
+    assertEquals(source, PosixShellCommand.from(List.of("bash", "-in", "-c", source)).source());
+  }
+
+  @Test
   void runtimeStringHasJdkTokenBoundaries() {
     assertArrayEquals(new String[]{"printf", "%s", "'first", "last'"},
         PosixShellCommand.runtimeArguments("printf\t%s  'first last'"));
