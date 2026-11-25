@@ -1,0 +1,1 @@
+manual = "needs a local MariaDB socket (--socket) and Connector/J (--driver-classpath); see CONTRIBUTING.md"

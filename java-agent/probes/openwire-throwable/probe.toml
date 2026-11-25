@@ -1,0 +1,4 @@
+[[fixture]]
+flag = "--jar-dir"
+path = "build/openwire-probe/fixed"
+gradle = ":stageOpenWireProbe"

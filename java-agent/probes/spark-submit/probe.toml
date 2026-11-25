@@ -1,0 +1,4 @@
+[[fixture]]
+flag = "--api-dir"
+path = "build/servlet-probe"
+gradle = ":stageServletProbe"

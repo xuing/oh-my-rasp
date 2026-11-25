@@ -1,0 +1,5 @@
+windows = true
+
+[applies]
+family = "primary"
+why = "the fixture asserts the primary agent's stream-name decisions"

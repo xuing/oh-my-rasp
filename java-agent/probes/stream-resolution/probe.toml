@@ -1,0 +1,9 @@
+[[fixture]]
+flag = "--beanshell-jar"
+path = "build/runtime-probes/bsh.jar"
+stage = ["--download-to", "{path}"]
+
+[[fixture]]
+flag = "--collections-dir"
+path = "build/collections-probe"
+gradle = ":stageCollectionsProbe"

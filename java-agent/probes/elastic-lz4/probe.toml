@@ -1,0 +1,10 @@
+isolated = true
+
+[applies]
+lines = ["jdk25"]
+why = "CI has run it against the JDK 25 JAR only; whether it holds on the other lines is not established"
+
+[[fixture]]
+flag = "--jar-dir"
+path = "build/elastic-lz4-probe"
+gradle = ":stageElasticLz4Probe"

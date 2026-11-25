@@ -1,0 +1,14 @@
+[[fixture]]
+flag = "--jar-dir"
+path = "build/spring-process-probe/legacy"
+gradle = ":stageSpringProcessProbe"
+
+[[fixture]]
+flag = "--api-dir"
+path = "build/servlet-probe"
+gradle = ":stageServletProbe"
+
+[[fixture]]
+flag = "--xmlrpc-dir"
+path = "build/xmlrpc-probe"
+gradle = ":stageXmlRpcProbe"

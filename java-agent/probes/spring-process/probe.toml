@@ -1,0 +1,4 @@
+[[fixture]]
+flag = "--jar-dir"
+path = "build/spring-process-probe"
+gradle = ":stageSpringProcessProbe"

@@ -1,0 +1,4 @@
+[[fixture]]
+flag = "--mybatis-jar"
+path = "build/runtime-probes/mybatis.jar"
+stage = ["--download-to", "{path}"]
