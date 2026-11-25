@@ -51,6 +51,22 @@ class EvidenceTest(unittest.TestCase):
         self.assertIsNone(decisions.source_for("HttpServlet.service", "request_internal_identity", "8"))
         self.assertIsNone(decisions.source_for("HttpServlet.service", "java11_request_internal_identity", "8"))
 
+    def test_spark_descriptor_does_not_establish_submit_authority(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            case = root / "vulhub-fixture-protected"
+            case.mkdir()
+            records = [{"event": "ohmyrasp-java8-agent-start"}]
+            for details in ({"submission": "Spark REST http jar descriptorHash=f00"},
+                            {"operation": "handleSubmit", "decision_basis": "required_submit_role_denied"}):
+                records.append({"hook": "SparkRest.handleSubmit", "action": "block",
+                                "algorithm": "java8_request_remote_job_submission", "details": details})
+            (case / "events.jsonl").write_text("\n".join(map(json.dumps, records)))
+            _, rows, batches, issues, _ = decisions.collect(root)
+            self.assertFalse(batches)
+            self.assertFalse(issues)
+            self.assertTrue(all(r["status"] == "authorization evidence required" for r in rows))
+
     def test_verifier_diagnostic_cannot_establish_filter_continuation(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
