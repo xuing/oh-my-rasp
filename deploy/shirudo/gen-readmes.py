@@ -496,8 +496,9 @@ def render_backport_readme(b: dict[str, object], vulhub: dict[str, int]) -> str:
     w("")
     w(
         "- **Standalone and daemonless**: Built with `standalone=true`, `lock_config=true`, "
-        "and `control=none`. No control-file poller or background event-writer threads are "
-        "started, and `/tmp/ohmyrasp-control.json` or `OHMYRASP_MODE=off` is ignored."
+        "`control=none` and `log=stderr`. No control-file poller is started, and "
+        "`/tmp/ohmyrasp-control.json` or `OHMYRASP_MODE=off` is ignored. No background "
+        "event-writer thread is started unless a log override names a file at start-up."
     )
     w(
         f"- **Blocking enforcement**: Built with `mode=block`; exploit detections throw "
@@ -578,9 +579,10 @@ def render_primary_readme(jdk25: dict[str, object], bf: dict[str, str], vulhub: 
     w("")
     w(
         "- **Standalone and daemonless**: Built with `standalone=true`, `lock_config=true`, "
-        "and `control=none`. No control-file poller or background event-writer threads are "
-        "started, `cloud_direct` is forced off, and `/tmp/ohmyrasp-control.json` or "
-        "`OHMYRASP_MODE=off` is ignored."
+        "`control=none` and `log=stderr`. No control-file poller is started, `cloud_direct` "
+        "is forced off, and `/tmp/ohmyrasp-control.json` or `OHMYRASP_MODE=off` is ignored. "
+        "No background event-writer thread is started unless a log override names a file "
+        "at start-up."
     )
     w(
         "- **Blocking enforcement** uses `mode=block`. Enforcement outside an HTTP request depends on "

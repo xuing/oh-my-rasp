@@ -85,7 +85,7 @@ The `ohmyrasp-jdk25` package installs the `ohmyrasp-jdk25` Java upatch: a standa
 
 ## Runtime Behavior
 
-- **Standalone and daemonless**: Built with `standalone=true`, `lock_config=true`, and `control=none`. No control-file poller or background event-writer threads are started, `cloud_direct` is forced off, and `/tmp/ohmyrasp-control.json` or `OHMYRASP_MODE=off` is ignored.
+- **Standalone and daemonless**: Built with `standalone=true`, `lock_config=true`, `control=none` and `log=stderr`. No control-file poller is started, `cloud_direct` is forced off, and `/tmp/ohmyrasp-control.json` or `OHMYRASP_MODE=off` is ignored. No background event-writer thread is started unless a log override names a file at start-up.
 - **Blocking enforcement** uses `mode=block`. Enforcement outside an HTTP request depends on the hook evidence and the active rule. Monitor decisions emit structured events to `stderr`. [Detection policies](../../../docs/detection.md#deserialization-defenses)
 - **Logging**: Emits structured JSON detection events directly to `stderr` (`log=stderr`, `latency_sample=0`) with no `/tmp/ohmyrasp-events.jsonl` file output and no `hook_latency` telemetry.
 
