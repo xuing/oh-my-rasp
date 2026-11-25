@@ -52,6 +52,16 @@ All components can be built and tested in containers matching CI without install
 
 ## Running the tests
 
+To find and run the checks a change needs, ask the gate table from the repository root:
+
+```bash
+python3 scripts/gates.py changed          # the gates this change triggers, and the path that triggered each
+python3 scripts/gates.py run --changed    # run them; add --slow for every probe on every agent line
+python3 scripts/gates.py list             # every gate with its paths and commands
+```
+
+[`scripts/gates.py`](scripts/gates.py) lists, per gate, the same commands the CI workflows run. The sections below explain each component's commands.
+
 ### Go control-plane API
 
 ```bash
