@@ -143,6 +143,46 @@ final class ShirudoStandaloneTest {
   }
 
   @Test
+  void invalidHigherPriorityModeDoesNotHideAValidLowerPriorityMode() {
+    Properties props = new Properties();
+    props.setProperty("standalone", "true");
+    props.setProperty("lock_config", "false");
+    props.setProperty("control", "none");
+    props.setProperty("mode", "monitor");
+    System.setProperty("ohmyrasp.mode", "block");
+
+    // A mistyped agent argument must not switch protection off: the next source applies.
+    AgentRuntime runtime = AgentRuntime.newForTesting(ShirudoDefaults.fromProperties(props));
+    runtime.start("mode=blokc");
+    assertEquals(DetectionMode.BLOCK, runtime.mode());
+    assertTrue(runtime.blockingAllowed());
+
+    // With no valid explicit source at all, the baked mode applies.
+    System.setProperty("ohmyrasp.mode", "also-wrong");
+    AgentRuntime baked = AgentRuntime.newForTesting(ShirudoDefaults.fromProperties(props));
+    baked.start("mode=blokc");
+    assertEquals(DetectionMode.MONITOR, baked.mode());
+  }
+
+  @Test
+  void invalidHigherPriorityStandaloneDoesNotHideAValidLowerPriorityValue() {
+    Properties props = new Properties();
+    props.setProperty("lock_config", "false");
+    props.setProperty("control", "none");
+    System.setProperty("ohmyrasp.standalone", "true");
+
+    AgentRuntime runtime = AgentRuntime.newForTesting(ShirudoDefaults.fromProperties(props));
+    runtime.start("standalone=maybe");
+    assertTrue(runtime.isStandalone());
+    assertEquals(DetectionMode.BLOCK, runtime.mode());
+
+    // An explicit false is a valid value and still wins over a lower-priority true.
+    AgentRuntime explicit = AgentRuntime.newForTesting(ShirudoDefaults.fromProperties(props));
+    explicit.start("standalone=false");
+    assertFalse(explicit.isStandalone());
+  }
+
+  @Test
   void controlDisabledTokensPreventPollerThreadCreation() {
     for (String token : List.of("none", "OFF", "DiSaBlEd")) {
       long before = countThreadsNamed("ohmyrasp-control-poller");

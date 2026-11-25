@@ -99,10 +99,9 @@ public final class AgentRuntime {
     if (lockConfig) {
       resolvedStandalone = activeDefaults.standalone();
     } else {
-      String rawStandalone =
-          resolve(agentArgs, "standalone", "ohmyrasp.standalone", "OHMYRASP_STANDALONE", null);
-      resolvedStandalone =
-          rawStandalone != null ? ShirudoDefaults.parseBoolean(rawStandalone) : activeDefaults.standalone();
+      Boolean explicitStandalone =
+          resolveValid(agentArgs, "standalone", "ohmyrasp.standalone", "OHMYRASP_STANDALONE", AgentRuntime::parseBooleanOrNull);
+      resolvedStandalone = explicitStandalone != null ? explicitStandalone : activeDefaults.standalone();
     }
     this.standalone = resolvedStandalone;
     this.directCloudDisabled = resolvedStandalone || lockConfig;
@@ -142,8 +141,7 @@ public final class AgentRuntime {
       resolvedMode = activeDefaults.mode();
     } else {
       DetectionMode explicit =
-          DetectionMode.parse(
-              resolve(agentArgs, "mode", "ohmyrasp.mode", "OHMYRASP_MODE", null));
+          resolveValid(agentArgs, "mode", "ohmyrasp.mode", "OHMYRASP_MODE", DetectionMode::parse);
       resolvedMode = explicit != null ? explicit : activeDefaults.mode();
     }
     if (resolvedMode == null && resolvedStandalone) {
@@ -325,6 +323,32 @@ public final class AgentRuntime {
     } catch (NumberFormatException e) {
       return 2000;
     }
+  }
+
+  /**
+   * The first of agent argument, system property and environment whose value the parser accepts. A value
+   * the parser rejects (a typo such as mode=blokc) is skipped, so it cannot hide a valid lower-priority
+   * setting and switch protection off.
+   */
+  private static <T> T resolveValid(
+      String agentArgs, String key, String property, String env, java.util.function.Function<String, T> parser) {
+    for (String raw : new String[] {argValue(agentArgs, key), System.getProperty(property), System.getenv(env)}) {
+      if (notBlank(raw)) {
+        T parsed = parser.apply(raw.trim());
+        if (parsed != null) {
+          return parsed;
+        }
+      }
+    }
+    return null;
+  }
+
+  private static Boolean parseBooleanOrNull(String value) {
+    return switch (value.trim().toLowerCase(Locale.ROOT)) {
+      case "true", "1", "yes", "on" -> Boolean.TRUE;
+      case "false", "0", "no", "off" -> Boolean.FALSE;
+      default -> null;
+    };
   }
 
   private static String resolve(String agentArgs, String key, String property, String env, String fallback) {
