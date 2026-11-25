@@ -1,4 +1,4 @@
-// Line-specific, not in backport-tests/: tests RaspRuntime.resolve(...) and the 11/17 config defaults; the java8 RaspRuntime API differs.
+// Line-specific, not in backport-tests/ yet: RaspRuntime now has the java8 API and semantics, so this test moves there next.
 package io.ohmyrasp.agent.java11;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -35,13 +35,13 @@ final class Java11ShirudoStandaloneTest {
   @Test
   void resolvesLegacyDefaultsWhenUnset() {
     RaspRuntime.Config config =
-        RaspRuntime.resolve(new Properties(), new Properties(), Collections.<String, String>emptyMap());
+        RaspRuntime.Config.resolve(new Properties(), new Properties(), Collections.<String, String>emptyMap());
 
     assertFalse(config.standalone);
     assertFalse(config.lockConfig);
     assertNull(config.mode);
     assertFalse(config.controlDisabled);
-    assertEquals("/tmp/ohmyrasp-control.json", config.controlPath);
+    assertEquals(Paths.get("/tmp/ohmyrasp-control.json"), config.controlPath);
     assertNull(config.logPath);
     assertEquals(10, config.latencySample);
   }
@@ -52,11 +52,11 @@ final class Java11ShirudoStandaloneTest {
     baked.setProperty("standalone", "true");
 
     RaspRuntime.Config config =
-        RaspRuntime.resolve(baked, new Properties(), Collections.<String, String>emptyMap());
+        RaspRuntime.Config.resolve(baked, new Properties(), Collections.<String, String>emptyMap());
 
     assertTrue(config.standalone);
     assertFalse(config.lockConfig);
-    assertNull(config.mode);
+    assertEquals(RaspRuntime.Mode.BLOCK, config.mode);
     assertTrue(config.controlDisabled);
     assertNull(config.controlPath);
     assertEquals("stderr", config.logPath);
@@ -82,7 +82,7 @@ final class Java11ShirudoStandaloneTest {
       Properties sys = new Properties();
       sys.setProperty("ohmyrasp.control", disabledTokens[i]);
       RaspRuntime.Config config =
-          RaspRuntime.resolve(new Properties(), sys, Collections.<String, String>emptyMap());
+          RaspRuntime.Config.resolve(new Properties(), sys, Collections.<String, String>emptyMap());
       assertTrue(config.controlDisabled);
       assertNull(config.controlPath);
     }
@@ -112,26 +112,26 @@ final class Java11ShirudoStandaloneTest {
     sys.setProperty("ohmyrasp.java11.log", "/sys/java11.jsonl");
     sys.setProperty("ohmyrasp.latency_sample", "0");
 
-    RaspRuntime.Config fromSys = RaspRuntime.resolve(baked, sys, env);
+    RaspRuntime.Config fromSys = RaspRuntime.Config.resolve(baked, sys, env);
     assertFalse(fromSys.standalone);
     assertEquals(RaspRuntime.Mode.BLOCK, fromSys.mode);
     assertFalse(fromSys.controlDisabled);
-    assertEquals("/sys/control.json", fromSys.controlPath);
+    assertEquals(Paths.get("/sys/control.json"), fromSys.controlPath);
     assertEquals("/sys/java11.jsonl", fromSys.logPath);
     assertEquals(0, fromSys.latencySample);
 
-    RaspRuntime.Config fromEnv = RaspRuntime.resolve(baked, new Properties(), env);
+    RaspRuntime.Config fromEnv = RaspRuntime.Config.resolve(baked, new Properties(), env);
     assertTrue(fromEnv.standalone);
     assertEquals(RaspRuntime.Mode.MONITOR, fromEnv.mode);
-    assertEquals("/env/control.json", fromEnv.controlPath);
+    assertEquals(Paths.get("/env/control.json"), fromEnv.controlPath);
     assertEquals("/env/log.jsonl", fromEnv.logPath);
     assertEquals(25, fromEnv.latencySample);
 
     RaspRuntime.Config fromBaked =
-        RaspRuntime.resolve(baked, new Properties(), Collections.<String, String>emptyMap());
+        RaspRuntime.Config.resolve(baked, new Properties(), Collections.<String, String>emptyMap());
     assertFalse(fromBaked.standalone);
     assertEquals(RaspRuntime.Mode.OFF, fromBaked.mode);
-    assertEquals("/baked/control.json", fromBaked.controlPath);
+    assertEquals(Paths.get("/baked/control.json"), fromBaked.controlPath);
     assertEquals("/baked/log.jsonl", fromBaked.logPath);
     assertEquals(5, fromBaked.latencySample);
   }
@@ -162,7 +162,7 @@ final class Java11ShirudoStandaloneTest {
     sys.setProperty("ohmyrasp.java11.log", "/tmp/override.jsonl");
     sys.setProperty("ohmyrasp.latency_sample", "12");
 
-    RaspRuntime.Config locked = RaspRuntime.resolve(baked, sys, env);
+    RaspRuntime.Config locked = RaspRuntime.Config.resolve(baked, sys, env);
     assertTrue(locked.lockConfig);
     assertTrue(locked.standalone);
     assertEquals(RaspRuntime.Mode.BLOCK, locked.mode);
@@ -176,7 +176,7 @@ final class Java11ShirudoStandaloneTest {
     unlockedBaked.setProperty("mode", "off");
     sys.setProperty("ohmyrasp.lock_config", "true");
     env.put("OHMYRASP_LOCK_CONFIG", "true");
-    RaspRuntime.Config stillUnlocked = RaspRuntime.resolve(unlockedBaked, sys, env);
+    RaspRuntime.Config stillUnlocked = RaspRuntime.Config.resolve(unlockedBaked, sys, env);
     assertFalse(stillUnlocked.lockConfig);
     assertEquals(RaspRuntime.Mode.MONITOR, stillUnlocked.mode);
   }
@@ -184,18 +184,18 @@ final class Java11ShirudoStandaloneTest {
   @Test
   void blockingAllowedHonorsModeStandaloneAndLegacyFlag() {
     RaspRuntime.Config legacy =
-        RaspRuntime.resolve(new Properties(), new Properties(), Collections.<String, String>emptyMap());
+        RaspRuntime.Config.resolve(new Properties(), new Properties(), Collections.<String, String>emptyMap());
     Properties standaloneProps = new Properties();
     standaloneProps.setProperty("standalone", "true");
     RaspRuntime.Config standalone =
-        RaspRuntime.resolve(standaloneProps, new Properties(), Collections.<String, String>emptyMap());
+        RaspRuntime.Config.resolve(standaloneProps, new Properties(), Collections.<String, String>emptyMap());
 
-    assertTrue(RaspRuntime.blockingAllowed(legacy, RaspRuntime.Mode.BLOCK, false));
-    assertFalse(RaspRuntime.blockingAllowed(standalone, RaspRuntime.Mode.MONITOR, true));
-    assertFalse(RaspRuntime.blockingAllowed(standalone, RaspRuntime.Mode.OFF, true));
-    assertTrue(RaspRuntime.blockingAllowed(standalone, null, false));
-    assertFalse(RaspRuntime.blockingAllowed(legacy, null, false));
-    assertTrue(RaspRuntime.blockingAllowed(legacy, null, true));
+    assertTrue(RaspRuntime.blockingAllowed(legacy.standalone, RaspRuntime.Mode.BLOCK, false));
+    assertFalse(RaspRuntime.blockingAllowed(standalone.standalone, RaspRuntime.Mode.MONITOR, true));
+    assertFalse(RaspRuntime.blockingAllowed(standalone.standalone, RaspRuntime.Mode.OFF, true));
+    assertTrue(RaspRuntime.blockingAllowed(standalone.standalone, null, false));
+    assertFalse(RaspRuntime.blockingAllowed(legacy.standalone, null, false));
+    assertTrue(RaspRuntime.blockingAllowed(legacy.standalone, null, true));
   }
 
   @Test

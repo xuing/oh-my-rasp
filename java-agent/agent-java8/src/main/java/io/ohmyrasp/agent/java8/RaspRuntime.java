@@ -237,10 +237,6 @@ public final class RaspRuntime {
     return mode;
   }
 
-  static Config initialConfig() {
-    return INITIAL_CONFIG;
-  }
-
   /** True only when detection is explicitly OFF. */
   static boolean detectionOff() {
     return mode == Mode.OFF;
@@ -373,10 +369,6 @@ public final class RaspRuntime {
     if (!QUEUE.offer(line)) {
       DROPPED.incrementAndGet();
     }
-  }
-
-  static void emitMessage(String line) {
-    writeEvent(resolveLogPath(), line);
   }
 
   private static boolean emitSpecialTarget(String logPath, String line) {
