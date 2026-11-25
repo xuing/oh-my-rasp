@@ -5,7 +5,6 @@ import io.ohmyrasp.agent.asm.HookRegistry;
 import io.ohmyrasp.agent.asm.OhMyRaspTransformer;
 import io.ohmyrasp.agent.control.ControlPlaneClient;
 import io.ohmyrasp.agent.control.ControlPlaneConfig;
-import io.ohmyrasp.agent.hook.DeserializationGuard;
 import io.ohmyrasp.agent.hook.OhMyRaspHooks;
 import io.ohmyrasp.agent.log.JsonEventLogger;
 import io.ohmyrasp.agent.policy.AgentPolicy;
@@ -53,7 +52,6 @@ public final class BootstrapAgent {
       }
     }
 
-    DeserializationGuard.install();
     instrumentation.addTransformer(new OhMyRaspTransformer(hookRegistry), true);
     retransformAlreadyLoadedTargets(instrumentation, hookRegistry);
     String startupMessage =

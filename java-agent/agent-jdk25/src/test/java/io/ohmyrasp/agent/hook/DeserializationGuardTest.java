@@ -14,11 +14,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
 /**
- * Unit coverage for the selective, composable serial-filter guard. These drive
- * {@link DeserializationGuard#check(String)} and {@link
- * DeserializationGuard#mergedFilter} directly so the process-global {@code
- * ObjectInputFilter.Config} (which may only be set once per JVM) is never
- * touched.
+ * Unit coverage for serial-filter decisions. The packaged probe exercises filter selection in fresh JVMs.
  */
 final class DeserializationGuardTest {
 
@@ -84,8 +80,7 @@ final class DeserializationGuardTest {
           return Status.ALLOWED;
         };
 
-    ObjectInputFilter merged = DeserializationGuard.mergedFilter(previous);
-    Status status = merged.checkInput(new FakeFilterInfo(java.util.ArrayList.class));
+    Status status = DeserializationGuard.checkInput(previous, new FakeFilterInfo(java.util.ArrayList.class));
 
     assertEquals(1, delegated.get(), "pre-existing filter must be consulted on UNDECIDED");
     assertEquals(Status.ALLOWED, status, "delegated filter's decision must be honored");
@@ -101,8 +96,7 @@ final class DeserializationGuardTest {
           return Status.ALLOWED;
         };
 
-    ObjectInputFilter merged = DeserializationGuard.mergedFilter(previous);
-    Status status = merged.checkInput(new FakeFilterInfo(java.lang.Runtime.class));
+    Status status = DeserializationGuard.checkInput(previous, new FakeFilterInfo(java.lang.Runtime.class));
 
     assertEquals(Status.REJECTED, status);
     assertEquals(0, delegated.get(), "a dangerous gadget must be rejected without delegating");
@@ -110,36 +104,8 @@ final class DeserializationGuardTest {
 
   @Test
   void nullPreviousFilterCollapsesToUndecided() {
-    ObjectInputFilter merged = DeserializationGuard.mergedFilter(null);
-
-    assertEquals(
-        Status.UNDECIDED, merged.checkInput(new FakeFilterInfo(java.util.ArrayList.class)));
-  }
-
-  @Test
-  void preservesRejectionFromEitherApplicationFilter() {
-    var info = new FakeFilterInfo(java.util.ArrayList.class);
-    for (Status global : Status.values()) {
-      for (Status stream : Status.values()) {
-        for (boolean block : new boolean[] {false, true}) {
-          System.setProperty("ohmyrasp.block", Boolean.toString(block));
-          var calls = new AtomicInteger();
-          ObjectInputFilter previous = ignored -> {
-            calls.incrementAndGet();
-            return global;
-          };
-          ObjectInputFilter initial = DeserializationGuard.composeStreamFilter(previous, null, previous);
-          ObjectInputFilter updated = DeserializationGuard.composeStreamFilter(previous, initial, ignored -> stream);
-          Status expected = global == Status.REJECTED || stream == Status.REJECTED ? Status.REJECTED
-              : global == Status.ALLOWED || stream == Status.ALLOWED ? Status.ALLOWED : Status.UNDECIDED;
-          assertEquals(expected, updated.checkInput(info), global + " / " + stream);
-          assertEquals(1, calls.get());
-          Status forListedType = updated.checkInput(new FakeFilterInfo(java.lang.Runtime.class));
-          assertEquals(block ? Status.REJECTED : expected, forListedType);
-          assertEquals(block ? 1 : 2, calls.get());
-        }
-      }
-    }
+    assertEquals(Status.UNDECIDED, DeserializationGuard.checkInput(
+        DeserializationGuard.filterOrGuard(null), new FakeFilterInfo(java.util.ArrayList.class)));
   }
 
   @Test

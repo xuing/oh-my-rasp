@@ -166,7 +166,7 @@ mapper decision waits for JDBC.
 
 Multiple hook modules and detectors cover Java deserialization surfaces:
 
-- **`detectDeserialization`:** hooks `ObjectInputStream.resolveClass` and checks class names against a known-dangerous gadget blocklist (Commons Collections, BeanShell, Groovy, and related gadgets) via `DeserializationGuard`.
+- **`detectDeserialization`:** checks the resolved class at the primary JDK stream’s `ObjectInputStream.filterCheck` callback. The agent evaluates its class policy alongside the filter selected by the application’s factory. The JDK handles rejection, application callbacks and stream metadata at the same check. Applications retain their global and per-stream registration APIs. [JDK serial filter configuration](https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/io/ObjectInputFilter.Config.html)
 - **`detectFastjsonClassResource`:** blocks URL-shaped class-resource lookups in Fastjson 1.2.83 immediately before `ParserConfig.checkAutoType` invokes the `ClassLoader`.
 - **`detectPolymorphicType`:** inspects `@type`, `javaClass`, and `class` JSON keys (Fastjson, Jackson) and YAML `!!` tags.
 - **`detectHessianType`:** covers Hessian type-loading gadget chains (active with or without an HTTP `RequestContext`).
