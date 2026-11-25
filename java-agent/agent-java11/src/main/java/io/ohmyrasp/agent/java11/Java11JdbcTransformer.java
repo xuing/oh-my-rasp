@@ -5,6 +5,8 @@ import java.security.ProtectionDomain;
 import org.objectweb.asm.ClassReader;
 import org.objectweb.asm.ClassVisitor;
 import org.objectweb.asm.ClassWriter;
+import io.ohmyrasp.agent.sql.JdbcSqlMethod;
+import io.ohmyrasp.agent.sql.MyBatisSqlVisitor;
 import org.objectweb.asm.MethodVisitor;
 import org.objectweb.asm.Opcodes;
 import org.objectweb.asm.Type;
@@ -19,10 +21,8 @@ public final class Java11JdbcTransformer implements ClassFileTransformer {
       Method.getMethod("void beforeH2JdbcConnection(java.lang.String)");
   private static final Method BEFORE_SQL_IDENTIFIER =
       Method.getMethod("void beforeSqlIdentifier(java.lang.String)");
-  private static final Method BEFORE_MYBATIS_BOUND_SQL =
-      Method.getMethod("void beforeMyBatisBoundSql(java.lang.String, java.lang.Object)");
   private static final Method BEFORE_SQL_STATEMENT =
-      Method.getMethod("void beforeSqlStatement(java.lang.String)");
+      Method.getMethod("void beforeSqlStatement(java.lang.Object, java.lang.String, java.lang.String)");
 
   @Override
   public byte[] transform(
@@ -31,13 +31,16 @@ public final class Java11JdbcTransformer implements ClassFileTransformer {
       Class<?> classBeingRedefined,
       ProtectionDomain protectionDomain,
       byte[] classfileBuffer) {
-    if (className == null || classfileBuffer == null || !isJdbcClass(className)) {
+    if (className == null || classfileBuffer == null || className.startsWith("io/ohmyrasp/agent/")) {
       return null;
     }
     try {
       ClassReader reader = new ClassReader(classfileBuffer);
+      boolean jdbcImplementation = JdbcSqlMethod.directJdbcInterface(reader.getInterfaces())
+          || JdbcSqlMethod.isJdbcImplementation(classBeingRedefined);
+      if (!jdbcImplementation && !isJdbcClass(className)) return null;
       ClassWriter writer = new ClassWriter(reader, ClassWriter.COMPUTE_MAXS);
-      reader.accept(new JdbcClassVisitor(writer, className), ClassReader.EXPAND_FRAMES);
+      reader.accept(new JdbcClassVisitor(writer, className, jdbcImplementation), ClassReader.EXPAND_FRAMES);
       return writer.toByteArray();
     } catch (Throwable throwable) {
       if (Boolean.getBoolean("ohmyrasp.debug")) {
@@ -50,35 +53,25 @@ public final class Java11JdbcTransformer implements ClassFileTransformer {
   private static boolean isJdbcClass(String className) {
     return "java/sql/DriverManager".equals(className)
         || "org/h2/jdbc/JdbcConnection".equals(className)
-        || "org/apache/ibatis/mapping/BoundSql".equals(className)
+        || MyBatisSqlVisitor.matches(className)
         || "org/apache/skywalking/oap/server/storage/plugin/jdbc/h2/dao/H2LogQueryDAO"
             .equals(className)
         || isJdbcStatementClass(className);
   }
 
   private static boolean isJdbcStatementClass(String className) {
-    return className.startsWith("org/h2/jdbc/")
-        || className.startsWith("com/mysql/cj/jdbc/")
-        || className.startsWith("com/mysql/jdbc/")
-        || className.startsWith("org/postgresql/jdbc/")
-        || className.startsWith("org/mariadb/jdbc/")
-        || className.startsWith("org/sqlite/")
-        || className.startsWith("org/hsqldb/jdbc/")
-        || className.startsWith("org/apache/derby/impl/jdbc/")
-        || className.startsWith("oracle/jdbc/driver/")
-        || className.startsWith("com/microsoft/sqlserver/jdbc/")
-        || className.startsWith("com/zaxxer/hikari/pool/")
-        || className.startsWith("org/apache/commons/dbcp")
-        || className.startsWith("org/apache/tomcat/jdbc/pool/");
+    return JdbcSqlMethod.driverOrPoolPackage(className);
   }
 
   private static final class JdbcClassVisitor extends ClassVisitor {
     private final String className;
     private boolean isInterface;
+    private final boolean jdbcImplementation;
 
-    JdbcClassVisitor(ClassVisitor delegate, String className) {
+    JdbcClassVisitor(ClassVisitor delegate, String className, boolean jdbcImplementation) {
       super(Opcodes.ASM9, delegate);
       this.className = className;
+      this.jdbcImplementation = jdbcImplementation;
     }
 
     @Override
@@ -102,11 +95,16 @@ public final class Java11JdbcTransformer implements ClassFileTransformer {
       }
       if (!isInterface
           && (access & (Opcodes.ACC_ABSTRACT | Opcodes.ACC_NATIVE)) == 0
-          && isSqlStatementMethod(className, name, descriptor)) {
+          && (isSqlStatementMethod(className, name, descriptor)
+              || (jdbcImplementation && (JdbcSqlMethod.preparesSql(name, descriptor)
+                  || JdbcSqlMethod.executesSql(name, descriptor))))) {
         return new AdviceAdapter(Opcodes.ASM9, methodVisitor, access, name, descriptor) {
           @Override
           protected void onMethodEnter() {
+            if ((access & Opcodes.ACC_STATIC) == 0) loadThis();
+            else visitInsn(Opcodes.ACONST_NULL);
             loadArg(0);
+            push(JdbcSqlMethod.preparesSql(name, descriptor) ? "Connection." + name : "Statement.execute");
             invokeStatic(HOOKS, BEFORE_SQL_STATEMENT);
           }
         };
@@ -120,15 +118,8 @@ public final class Java11JdbcTransformer implements ClassFileTransformer {
           }
         };
       }
-      if (isMyBatisBoundSqlConstructor(className, name, descriptor)) {
-        return new AdviceAdapter(Opcodes.ASM9, methodVisitor, access, name, descriptor) {
-          @Override
-          protected void onMethodEnter() {
-            loadArg(1);
-            loadArg(3);
-            invokeStatic(HOOKS, BEFORE_MYBATIS_BOUND_SQL);
-          }
-        };
+      if (MyBatisSqlVisitor.matches(className)) {
+        return MyBatisSqlVisitor.wrap(className, methodVisitor, access, name, descriptor, HOOKS.getInternalName());
       }
       if (!isConnectionMethod(className, name, descriptor)) {
         return methodVisitor;
@@ -171,20 +162,13 @@ public final class Java11JdbcTransformer implements ClassFileTransformer {
           && descriptor.startsWith("(Ljava/lang/String;");
     }
 
-    private static boolean isMyBatisBoundSqlConstructor(
-        String className, String name, String descriptor) {
-      return "org/apache/ibatis/mapping/BoundSql".equals(className)
-          && "<init>".equals(name)
-          && "(Lorg/apache/ibatis/session/Configuration;Ljava/lang/String;Ljava/util/List;Ljava/lang/Object;)V"
-              .equals(descriptor);
-    }
-
     private static boolean isSqlStatementMethod(
         String className, String name, String descriptor) {
       return isJdbcStatementClass(className)
           && descriptor != null
           && descriptor.startsWith("(Ljava/lang/String;")
-          && ("execute".equals(name)
+          && (JdbcSqlMethod.preparesSql(name, descriptor)
+              || "execute".equals(name)
               || "executeQuery".equals(name)
               || "executeUpdate".equals(name)
               || "executeLargeUpdate".equals(name)

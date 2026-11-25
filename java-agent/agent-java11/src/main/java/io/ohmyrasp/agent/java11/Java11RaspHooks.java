@@ -1,7 +1,24 @@
 package io.ohmyrasp.agent.java11;
 
+import io.ohmyrasp.agent.file.EscapingPath;
+import io.ohmyrasp.agent.file.HostReadPath;
+import io.ohmyrasp.agent.file.HostDirectory;
+import io.ohmyrasp.agent.jmx.JmxDispatch;
+import io.ohmyrasp.agent.jmx.JmxWriteScope;
+import io.ohmyrasp.agent.file.HostDelete;
+import io.ohmyrasp.agent.http.ArchiveUploadPolicy;
+import io.ohmyrasp.agent.http.PercentEncodedText;
+import io.ohmyrasp.agent.http.MultipartFilename;
+import io.ohmyrasp.agent.http.ServletDispatchScope;
+import io.ohmyrasp.agent.http.ServletQueryParameters;
+import io.ohmyrasp.agent.net.HttpTransportObservation;
 import io.ohmyrasp.agent.net.NetworkHost;
+import io.ohmyrasp.agent.process.PosixShellCommand;
+import io.ohmyrasp.agent.process.ShellControlSource;
+import io.ohmyrasp.agent.rules.product.solr.SolrExecutableListener;
 import io.ohmyrasp.agent.sql.SqlStatement;
+import io.ohmyrasp.agent.sql.MyBatisSqlTrace;
+import io.ohmyrasp.agent.xml.XmlCatalogResolution;
 import java.io.File;
 import java.io.FileWriter;
 import java.io.IOException;
@@ -69,15 +86,10 @@ public final class Java11RaspHooks {
       Pattern.compile("(?is)jdbc:h2:[^\\s\"'<>]{0,4096}\\bINIT\\s*=");
   private static final Pattern SENSITIVE_FILE_READ =
       Pattern.compile(
-          "(?i)(?:^|/)(?:etc/(?:passwd|shadow|issue|hosts)|proc/self/(?:environ|cmdline)|root/\\.ssh/(?:id_rsa|authorized_keys)|home/[^/]+/\\.ssh/id_rsa|windows/system32/drivers/etc/hosts)$");
+          "^/(?:etc/(?:passwd|shadow|issue)|proc/self/(?:environ|cmdline)|root/\\.ssh/(?:id_rsa|authorized_keys)|home/[^/]+/\\.ssh/id_rsa)$");
   private static final Pattern SCRIPT_FILE_WRITE =
       Pattern.compile(
           "(?i).+\\.(?:jsp|jspx|jspf|war|class|jar|php|asp|aspx|ashx|cer|asa|sh|bash|cmd|bat|ps1)$");
-  private static final Pattern JAVA_ARCHIVE_UPLOAD_FILE =
-      Pattern.compile("(?i).+\\.(?:jar|war|ear|class)$");
-  private static final Pattern JAVA_ARCHIVE_UPLOAD_CONTEXT =
-      Pattern.compile(
-          "(?i)(?:^|/)(?:plugin|plugins|extension|extensions|driver|drivers|connector|connectors|jars?|job|jobs|deploy|deployment)(?:[/?#;]|/|$)");
   private static final Pattern MULTIPART_SCRIPT_UPLOAD_FILE =
       Pattern.compile(
           "(?i)(?:.+\\.(?:jsp|jspx|jspf|php|asp|aspx|ashx|cer|asa)|(?:^|.*/)(?:\\.htaccess|\\.user\\.ini))$");
@@ -95,9 +107,6 @@ public final class Java11RaspHooks {
   private static final Pattern GENERATED_PLOT_COMMAND =
       Pattern.compile(
           "(?is)(?:\\b(?:yrange|y2range|xrange|x2range|key)\\b[^\\r\\n]{0,300}\\b(?:system|shell)\\s*\\(|\\bkey\\b[^\\r\\n]{0,300};\\s*system\\b|;\\s*system\\s*[\"'])");
-  private static final Pattern SCRIPT_FILE_TOKEN =
-      Pattern.compile(
-          "(?is)(?:[a-z]:)?(?:[./][^\\s\"'<>;,)]*)?[^\\s\"'<>;,)]*\\.(?:jspx?|jspf|war|class|jar|php|asp|aspx|ashx|cer|asa|sh|bash|cmd|bat|ps1)\\.?");
   private static final Pattern WEBROOT_PATH =
       Pattern.compile(
           "(?i)(?:^|/)(?:webapps?|webroot|ROOT|www|wwwroot|htdocs|html|public|static|uploads?)(?:/|$)");
@@ -133,7 +142,6 @@ public final class Java11RaspHooks {
           "(?is)(?:^|\\s)(?:where|join|union|select|insert|update|delete|drop|alter|create|merge|call|case|when|then|else|sleep|benchmark|order|group|having|limit|and|or)\\b");
   private static final Pattern SCRIPT_LITERAL_EXECUTE =
       Pattern.compile("(?is)[\"'][^\"'\\r\\n]{1,200}[\"']\\s*\\.\\s*execute\\s*\\(");
-  private static final Pattern WINDOWS_ABSOLUTE_PATH = Pattern.compile("(?i)^[a-z]:/.*");
   private static final Pattern REMOTE_JOB_ARTIFACT =
       Pattern.compile(
           "(?is)\"(?:appResource|spark\\.jars)\"\\s*:\\s*\"((?:https?|ftp)://[^\"\\s]{1,2048}\\.(?:jar|zip|py))\"");
@@ -157,6 +165,8 @@ public final class Java11RaspHooks {
   private static final ThreadLocal<RequestSnapshot> CURRENT_REQUEST =
       new ThreadLocal<RequestSnapshot>();
   private static final ThreadLocal<String> ARCHIVE_ENTRY = new ThreadLocal<String>();
+  private static final ServletDispatchScope<RequestSnapshot, List<String>> DISPATCH =
+      new ServletDispatchScope<RequestSnapshot, List<String>>(CURRENT_REQUEST, CURRENT_REQUEST_URLS, ARCHIVE_ENTRY);
   private static final ThreadLocal<String> LAST_LOGGED_ARCHIVE = new ThreadLocal<String>();
   private static final ThreadLocal<String> LAST_LOGGED_JDBC = new ThreadLocal<String>();
   private static final ThreadLocal<String> LAST_LOGGED_SQL_IDENTIFIER = new ThreadLocal<String>();
@@ -178,18 +188,39 @@ public final class Java11RaspHooks {
   private Java11RaspHooks() {}
 
   public static void beforeHttpRequest(Object request) {
+    beforeHttpRequest(request, false);
+  }
+
+  public static void beforeContainerRequest(Object request) {
+    beforeHttpRequest(request, true);
+  }
+
+  private static void beforeHttpRequest(Object request, boolean beforeServlet) {
     long started = System.nanoTime();
+    DISPATCH.enter(beforeServlet ? null : request);
     try {
-      beforeHttpRequestImpl(request);
-    } finally {
-      RaspRuntime.sampleLatency((System.nanoTime() - started) / 1000L);
+      try {
+        beforeHttpRequestImpl(request, beforeServlet);
+        DISPATCH.enteredApplication();
+      } finally {
+        RaspRuntime.sampleLatency((System.nanoTime() - started) / 1000L);
+      }
+    } catch (RuntimeException | Error failure) {
+      DISPATCH.exit();
+      throw failure;
     }
   }
 
-  private static void beforeHttpRequestImpl(Object request) {
-    CURRENT_REQUEST.set(captureRequestSnapshot(request));
-    captureRequestControlledUrls(request);
-    Finding finding = classifyHttpRequest(request);
+  private static void beforeHttpRequestImpl(Object request, boolean beforeServlet) {
+    // Parameter-map access can consume a multipart body before lazy servlet initialization.
+    boolean deferMultipart = beforeServlet
+        && requestHeader(request, "Content-Type").trim().regionMatches(true, 0, "multipart/", 0, 10);
+    Object raw = deferMultipart ? ServletQueryParameters.parse(requestQuery(request))
+        : invoke(request, "getParameterMap");
+    Map<?, ?> parameters = raw instanceof Map<?, ?> ? (Map<?, ?>) raw : null;
+    CURRENT_REQUEST.set(captureRequestSnapshot(request, parameters));
+    captureRequestControlledUrls(parameters);
+    Finding finding = classifyHttpRequest(request, parameters);
     if (finding == null) {
       return;
     }
@@ -201,32 +232,47 @@ public final class Java11RaspHooks {
     LAST_LOGGED_REQUEST.set(finding.detailValue);
     appendEvent(finding, "HttpServlet.service", action);
     if ("block".equals(action)) {
-      CURRENT_REQUEST.remove();
-      CURRENT_REQUEST_URLS.remove();
       throw new Java11RaspBlockException("OhMyRASP Java 11 blocked suspicious request path");
     }
   }
 
   public static void afterHttpRequest() {
-    CURRENT_REQUEST.remove();
-    CURRENT_REQUEST_URLS.remove();
+    DISPATCH.exit();
   }
 
-  public static void beforeFileUpload(String filename) {
-    Finding finding = classifyFileUpload(filename);
-    if (finding == null) {
-      return;
+  public static void afterMultipartAccess(Object source, Object result, boolean iterator) {
+    DISPATCH.multipartAccess(source, result, iterator);
+  }
+
+  public static void afterMultipartLookup(Object result, Object request, int kind, boolean bulk) {
+    DISPATCH.multipartResult(request, result, kind, bulk);
+  }
+
+  public static void inspectMultipartFilename(String filename, boolean archiveOnly) {
+    if (MultipartFilename.eligible() && (!archiveOnly || DISPATCH.deliveredPart(MultipartFilename.receiver()))) {
+      inspectFileUpload(filename, archiveOnly);
     }
+  }
+
+  public static void beforeFileUpload(String filename) { inspectFileUpload(filename, false); }
+
+  private static void inspectFileUpload(String filename, boolean archiveOnly) {
+    if (RaspRuntime.detectionOff() || DISPATCH.inspectingRequest()) return;
+    Finding finding = archiveOnly ? classifyArchiveUpload(filename) : classifyFileUpload(filename);
+    if (finding == null) return;
     String action = shouldBlock() ? "block" : "log";
-    String previous = LAST_LOGGED_FILE_UPLOAD.get();
-    if (!"block".equals(action) && finding.detailValue.equals(previous)) {
-      return;
+    if (MultipartFilename.eligible()) {
+      if (!"block".equals(action) && MultipartFilename.repeated(DISPATCH.servletRequest(), filename,
+          finding.algorithm, finding.decisionBasis == null ? "" : finding.decisionBasis, finding.policyDigest)) return;
+    } else {
+      RequestSnapshot request = CURRENT_REQUEST.get();
+      String previous = request == null ? LAST_LOGGED_FILE_UPLOAD.get() : request.lastUpload;
+      if (!"block".equals(action) && finding.detailValue.equals(previous)) return;
+      if (request == null) LAST_LOGGED_FILE_UPLOAD.set(finding.detailValue);
+      else request.lastUpload = finding.detailValue;
     }
-    LAST_LOGGED_FILE_UPLOAD.set(finding.detailValue);
     appendEvent(finding, "MultipartUpload.filename", action);
-    if ("block".equals(action)) {
-      throw new Java11RaspBlockException("OhMyRASP Java 11 blocked suspicious file upload");
-    }
+    if ("block".equals(action)) throw new Java11RaspBlockException("OhMyRASP Java 11 blocked suspicious file upload");
   }
 
   public static void beforeSparkRestSubmit(String descriptor) {
@@ -237,6 +283,17 @@ public final class Java11RaspHooks {
   public static void beforeYarnApplicationSubmit(Object submission) {
     Finding finding = classifyYarnApplicationSubmission(submission);
     emitRemoteJobFinding(finding, "RMWebServices.submitApplication");
+  }
+
+  public static void beforeProcessLaunch(String[] argv) {
+    if (RaspRuntime.detectionOff()) return;
+    Finding finding = classifyCommand(argv);
+    if (finding == null) return;
+    String api = io.ohmyrasp.agent.process.ProcessLaunch.api();
+    if (api == null) return;
+    boolean block = shouldBlock();
+    appendEvent(finding, api, block ? "block" : "log", null, argv.length);
+    if (block) throw new Java11RaspBlockException("OhMyRASP blocked a process launch");
   }
 
   public static void beforeProcessBuilderStart(ProcessBuilder processBuilder) {
@@ -250,7 +307,7 @@ public final class Java11RaspHooks {
     if (command == null) {
       return;
     }
-    inspectCommand(new String[] {command}, "Runtime.exec(String)");
+    inspectCommand(PosixShellCommand.runtimeArguments(command), "Runtime.exec(String)");
   }
 
   public static void beforeRuntimeExecArray(String[] command) {
@@ -316,23 +373,92 @@ public final class Java11RaspHooks {
   }
 
   public static void beforeFileRead(Object path) {
-    Finding finding = classifyFileRead(pathValue(path));
+    if (!HostReadPath.isHostPath(path)) return;
+    Finding finding = classifyFileRead(pathValue(path), HostReadPath.OpenPolicy.PATH_ONLY);
     emitFileFinding(finding, LAST_LOGGED_FILE_READ, "FileInputStream.open");
   }
 
-  public static void beforeFileWrite(Object path) {
-    String normalizedPath = normalizePath(pathValue(path));
-    trackGeneratedPlotScriptWrite(normalizedPath);
-    Finding archiveFinding = classifyArchiveWrite(normalizedPath);
-    if (archiveFinding != null) {
-      ARCHIVE_ENTRY.remove();
+  public static void captureDirectoryWalk(Object walker, java.nio.file.Path path) {
+    RequestSnapshot request = CURRENT_REQUEST.get();
+    if (RaspRuntime.detectionOff() || request == null || path == null || !HostReadPath.isHostPath(path)) return;
+    List<String> inputs = request.parameterValues == null ? java.util.Collections.<String>emptyList() : request.parameterValues;
+    HostDirectory.submitted(walker, inputs, HostDirectory.selected(path.toString(), inputs, false));
+  }
+
+  public static void beginDirectoryVisit(Object walker, java.nio.file.Path path) {
+    HostDirectory.visiting(walker, path, CURRENT_REQUEST.get() != null);
+  }
+
+  public static void afterFileList(String[] entries, String path) {
+    if (entries != null) inspectListedDirectory(path, null, false, null);
+  }
+
+  public static void afterDirectoryOpen(java.nio.file.DirectoryStream<?> opened, java.nio.file.Path path, boolean relativeApi) {
+    if (opened == null) return;
+    try { inspectListedDirectory(path.toString(), opened, relativeApi && !path.isAbsolute(), HostDirectory.origin(path)); }
+    catch (Java11RaspBlockException denied) { HostDirectory.closeDenied(opened, denied); throw denied; }
+  }
+
+  @SuppressWarnings("unchecked")
+  private static void inspectListedDirectory(String path, java.nio.file.DirectoryStream<?> opened, boolean relative, HostDirectory.Walk walk) {
+    if (RaspRuntime.detectionOff()) return;
+    RequestSnapshot request = CURRENT_REQUEST.get();
+    List<String> inputs = walk != null ? (List<String>) walk.origin : request != null ? request.parameterValues : null;
+    boolean direct = HostDirectory.selected(path, inputs, relative);
+    if (!direct && (walk == null || !walk.selected)) return;
+    String root = HostDirectory.protectedRoot(path, opened, relative);
+    if (root.isEmpty()) return;
+    Finding finding = new Finding("java11_directory_userinput", 90, "Request selected a protected directory listing",
+        "path", root, direct ? "selected_directory" : "selected_directory_walk");
+    boolean block = shouldBlock();
+    String operation = opened == null ? "FileSystem.list" : relative ? "SecureDirectoryStream.open" : "DirectoryStream.open";
+    appendEvent(finding, operation, block ? "block" : "log");
+    if (block) throw new Java11RaspBlockException("OhMyRASP blocked a directory listing");
+  }
+
+  public static void beforeHostDelete(java.nio.file.Path path) {
+    inspectDelete(path, null, -1, false);
+  }
+
+  public static void beforeSecureDelete(int directoryFd, java.nio.file.SecureDirectoryStream<java.nio.file.Path> directory,
+      java.nio.file.Path path, int flags) {
+    inspectDelete(path, directory, directoryFd, flags != 0);
+  }
+
+  private static void inspectDelete(java.nio.file.Path path, java.nio.file.SecureDirectoryStream<java.nio.file.Path> directory,
+      int directoryFd, boolean removeDirectory) {
+    if (RaspRuntime.detectionOff()) return;
+    RequestSnapshot request = CURRENT_REQUEST.get();
+    if (request == null || request.parameterValues == null) return;
+    HostDelete entry = new HostDelete(path, directoryFd, directory != null, true);
+    for (String input : request.parameterValues) {
+      if (entry.match(input) != HostDelete.Basis.ESCAPING_ENTRY) continue;
+      if (directory != null && !HostDelete.hasEntry(directory, path, removeDirectory)) return;
+      Finding finding = new Finding("deleteFile_userinput", 85, "Request selected an entry outside the base directory",
+          "path", entry.path(), "escaping_entry");
+      boolean block = shouldBlock();
+      appendEvent(finding, directory == null ? "host_entry_removal" : "descriptor_relative_unlink", block ? "block" : "log");
+      if (block) throw new Java11RaspBlockException("OhMyRASP blocked a file removal");
+      return;
     }
-    try {
-      emitFileFinding(archiveFinding, LAST_LOGGED_ARCHIVE, "ArchiveEntry.write");
-    } finally {
-      if (ARCHIVE_ENTRY.get() != null) {
-        ARCHIVE_ENTRY.remove();
-      }
+  }
+
+  public static void beforeStreamFileRead(String path, String hook) {
+    if (!RaspRuntime.detectionOff()) emitFileFinding(classifyFileRead(path, HostReadPath.OpenPolicy.FOLLOW), null, hook);
+  }
+
+  public static void beforeRandomFileWrite(String path, int writable) {
+    if (writable != 0) beforeFileWrite(path);
+  }
+
+  public static void beforeFileWrite(Object path) {
+    String rawPath = pathValue(path);
+    String normalizedPath = normalizePath(rawPath);
+    trackGeneratedPlotScriptWrite(normalizedPath);
+    String entry = ARCHIVE_ENTRY.get();
+    if (entry != null) {
+      ARCHIVE_ENTRY.remove();
+      emitFileFinding(classifyArchiveWrite(entry, rawPath), LAST_LOGGED_ARCHIVE, "ArchiveEntry.write");
     }
     if (isTomcatWarExpansionStack() || isTomcatJspCompilationStack()) {
       return;
@@ -359,8 +485,34 @@ public final class Java11RaspHooks {
     }
   }
 
+  public static void beforeUnixFileOpen(java.nio.file.Path path, boolean read, int directoryFd) {
+    beforeUnixFileOpen(path, read, directoryFd, false, false);
+  }
+
+  public static void beforeUnixFileOpen(java.nio.file.Path path, boolean read, int directoryFd,
+      boolean noFollowFinal, boolean creatingNew) {
+    if (HostReadPath.nativeRead(path, read && !creatingNew, directoryFd) && !RaspRuntime.detectionOff()) {
+      HostReadPath.OpenPolicy links = noFollowFinal ? HostReadPath.OpenPolicy.NOFOLLOW_FINAL : HostReadPath.OpenPolicy.FOLLOW;
+      emitFileFinding(classifyFileRead(path.toString(), links), null, "UnixChannelFactory.open");
+    }
+  }
+
+  public static void beginNioRead(Object path) {
+    HostReadPath.beginFacade(path);
+    try { beforeNioFileRead(path); }
+    catch (RuntimeException | Error failure) { HostReadPath.endFacade(); throw failure; }
+  }
+
+  public static void beginNioChannel(Object path, Object options) {
+    HostReadPath.beginFacade(path);
+    try { beforeNioByteChannelOpen(path, options); }
+    catch (RuntimeException | Error failure) { HostReadPath.endFacade(); throw failure; }
+  }
+
   public static void beforeNioFileRead(Object path) {
-    beforeFileRead(path);
+    if (HostReadPath.needsFacadeRead(path)) {
+      emitFileFinding(classifyFileRead(pathValue(path), HostReadPath.OpenPolicy.PATH_ONLY), LAST_LOGGED_FILE_READ, "FileInputStream.open");
+    }
   }
 
   public static void beforeNioFileWrite(Object path) {
@@ -371,8 +523,95 @@ public final class Java11RaspHooks {
     if (nioOptionsContainWrite(options)) {
       beforeFileWrite(path);
     } else {
-      beforeFileRead(path);
+      beforeNioFileRead(path);
     }
+  }
+
+  private static final HttpTransportObservation.Submissions<List<String>> HTTP_SUBMISSIONS =
+      new HttpTransportObservation.Submissions<List<String>>();
+
+  public static void captureHttpSubmission(Object exchange, java.net.URI uri) {
+    if (RaspRuntime.detectionOff()) return;
+    List<String> urls = CURRENT_REQUEST_URLS.get();
+    HTTP_SUBMISSIONS.capture(exchange, urls);
+    if (urls != null && uri != null && urls.contains(urlParts(uri).comparisonKey)) {
+      HttpTransportObservation.selectedSubmission(exchange, uri);
+    }
+  }
+
+  public static void finishHttpSubmission(java.util.concurrent.CompletableFuture<?> future, Object exchange) {
+    HTTP_SUBMISSIONS.finishedWhen(future, exchange);
+  }
+
+  public static void beforeHttpExchange(Object exchange, Object requestObject, java.net.URI uri) {
+    if (RaspRuntime.detectionOff() || uri == null || !("http".equalsIgnoreCase(uri.getScheme())
+        || "https".equalsIgnoreCase(uri.getScheme()))) return;
+    HttpTransportObservation.bindExchange(requestObject, exchange, uri);
+    inspectHttpExchange(exchange, uri, null);
+  }
+
+  public static void beforeResolvedHttpExchange(Object requestObject, java.net.URI uri, java.net.InetSocketAddress address,
+      java.net.InetSocketAddress proxy) {
+    if (RaspRuntime.detectionOff()) return;
+    String peer = HttpTransportObservation.directAddress(uri, address, proxy);
+    if (peer != null) {
+      Object exchange = HttpTransportObservation.submittedExchange(requestObject);
+      if (exchange != null) inspectHttpExchange(exchange, uri, peer);
+    }
+  }
+
+  private static void inspectHttpExchange(Object exchange, java.net.URI uri, String peer) {
+    Finding finding = classifyUrlOpen(uri, HTTP_SUBMISSIONS.origin(exchange), peer, HttpTransportObservation.changedOrigin(exchange, uri));
+    if (finding != null) emitHttpDestination(finding, "HTTP.acquireExchange",
+        peer == null ? "http_exchange_acquire" : "http_resolved_route", shouldBlock(), peer);
+  }
+
+  public static void beforeUrlConnectionFactory(URL url) {
+    if (!HttpTransportObservation.isHttp(url)) beforeUrlOpen(url);
+  }
+
+  public static void captureHttpRedirect(Object connection, URL to, URL from) {
+    if (RaspRuntime.detectionOff() || !HttpTransportObservation.isHttp(from) || !HttpTransportObservation.isHttp(to)) return;
+    List<String> inputs = CURRENT_REQUEST_URLS.get();
+    HttpTransportObservation.selectedRedirect(connection, from, to, inputs != null && inputs.contains(urlComparisonKey(from)));
+  }
+
+  public static void beginHttpRoute(Object client, URL url, java.net.Proxy proxy) {
+    HttpTransportObservation.beginRoute(client, RaspRuntime.detectionOff() ? null : url, proxy);
+  }
+
+  public static void beforeHttpDial(Object client, java.net.SocketAddress destination) {
+    if (RaspRuntime.detectionOff()) return;
+    URL url = HttpTransportObservation.dialTarget(client, destination);
+    if (url != null) inspectHttpTransport(client, url, false, HttpTransportObservation.peer(client, url), "http_direct_connect", HttpTransportObservation.dialingRedirect(url));
+  }
+
+  public static void beforeHttpWrite(Object client, Object connection, URL url) {
+    if (RaspRuntime.detectionOff()) return;
+    String peer = HttpTransportObservation.peer(client, url);
+    inspectHttpTransport(peer == null ? connection : client, url, true, peer, "http_request_write",
+        HttpTransportObservation.redirected(connection, url));
+  }
+
+  public static void beforeHttpTransport(Object connection, URL url, boolean write) {
+    inspectHttpTransport(connection, url, write, null, write ? "http_request_write" : "http_transport_acquire",
+        HttpTransportObservation.redirected(connection, url));
+  }
+
+  private static void inspectHttpTransport(Object connection, URL url, boolean write, String peer, String basis, boolean redirected) {
+    if (RaspRuntime.detectionOff()) return;
+    Finding finding = classifyUrlOpen(url, CURRENT_REQUEST_URLS.get(), peer, redirected);
+    if (finding == null) return;
+    boolean block = shouldBlock();
+    if (!block && HttpTransportObservation.repeated(connection, url, CURRENT_REQUEST.get(), finding.algorithm, write)) return;
+    emitHttpDestination(finding, write ? "HTTP.writeRequest" : (peer == null ? "HTTP.acquireTransport" : "HTTP.connect"), basis, block, peer);
+  }
+
+  private static void emitHttpDestination(Finding finding, String hook, String basis, boolean block, String peer) {
+    Finding observed = new Finding(finding.algorithm, finding.confidence, finding.message,
+        finding.detailKey, HttpTransportObservation.recordedAddress(finding.detailValue), basis);
+    appendEvent(observed, hook, block ? "block" : "log", peer);
+    if (block) throw new Java11RaspBlockException("OhMyRASP blocked an outbound HTTP destination");
   }
 
   public static void beforeUrlOpen(Object url) {
@@ -406,9 +645,8 @@ public final class Java11RaspHooks {
   }
 
   public static void afterArchiveEntryName(String name) {
-    String normalized = normalizePath(name);
-    if (isDangerousArchiveEntry(normalized)) {
-      ARCHIVE_ENTRY.set(normalized);
+    if (EscapingPath.mayEscape(name)) {
+      ARCHIVE_ENTRY.set(name);
     } else {
       ARCHIVE_ENTRY.remove();
     }
@@ -429,23 +667,34 @@ public final class Java11RaspHooks {
     inspectSqlIdentifierFinding(finding, "SQL.identifier");
   }
 
-  public static void beforeMyBatisBoundSql(String sql, Object parameterObject) {
-    Finding finding = classifyMyBatisOrderMetadata(sql, parameterObject);
-    inspectSqlIdentifierFinding(finding, "MyBatis.BoundSql");
+  /** Binary compatibility with previously transformed BoundSql constructors. */
+  public static void beforeMyBatisBoundSql(String sql, Object ignored) {
+    MyBatisSqlTrace.compiled(null, sql);
+  }
+
+  public static void observeMyBatisSubstitution(StringBuilder builder, String value, Object handler, String expression) {
+    if (!RaspRuntime.detectionOff()) MyBatisSqlTrace.substitution(builder, value, handler, expression);
   }
 
   public static void beforeSqlStatement(String sql) {
-    Finding finding = classifySqlStatement(sql);
+    beforeSqlStatement(null, sql, "Statement.execute");
+  }
+
+  public static void beforeSqlStatement(Object receiver, String sql, String hook) {
+    if (RaspRuntime.detectionOff()) return;
+    Finding finding = classifySqlStatement(receiver, sql);
     if (finding == null) {
       return;
     }
     String action = shouldBlock() ? "block" : "log";
-    String previous = LAST_LOGGED_SQL_STATEMENT.get();
-    if (!"block".equals(action) && finding.detailValue.equals(previous)) {
-      return;
+    if ("mapper_substitution_at_jdbc".equals(finding.decisionBasis)) {
+      if (!"block".equals(action) && MyBatisSqlTrace.repeatedObservation(sql, finding.algorithm)) return;
+    } else {
+      String previous = LAST_LOGGED_SQL_STATEMENT.get();
+      if (!"block".equals(action) && finding.detailValue.equals(previous)) return;
+      LAST_LOGGED_SQL_STATEMENT.set(finding.detailValue);
     }
-    LAST_LOGGED_SQL_STATEMENT.set(finding.detailValue);
-    appendEvent(finding, "Statement.execute", action);
+    appendEvent(finding, hook, action);
     if ("block".equals(action)) {
       throw new Java11RaspBlockException("OhMyRASP Java 11 blocked suspicious SQL statement");
     }
@@ -524,11 +773,17 @@ public final class Java11RaspHooks {
     return true;
   }
 
-  private static Finding classifySqlStatement(String sql) {
+  private static Finding classifySqlStatement(Object receiver, String sql) {
     if (sql == null || sql.trim().length() == 0) {
       return null;
     }
-    SqlStatement statement = new SqlStatement(sql);
+    SqlStatement statement = SqlStatement.fromJdbc(sql, receiver);
+    String mapperControl = MyBatisSqlTrace.controlAtJdbc(statement);
+    if (mapperControl != null) {
+      return new Finding("java11_sql_identifier_injection", 95,
+          "A raw mapper substitution introduced SQL control at JDBC",
+          "identifier", "source=MyBatis reason=" + mapperControl, "mapper_substitution_at_jdbc");
+    }
     RequestSnapshot snapshot = CURRENT_REQUEST.get();
     boolean structural = statement.hasTruncatedLiteral()
         || (statement.hasConstantDisjunction()
@@ -669,8 +924,42 @@ public final class Java11RaspHooks {
     }
   }
 
-  public static void beforeJmxMBeanInvoke(Object mbeanName, String operationName, Object arguments) {
-    Finding finding = classifyJmxMBeanInvoke(mbeanName, operationName, arguments);
+  public static void beforeJmxStreamWrite(String path, int write) {
+    if (write != 0 && JmxWriteScope.current() != null) inspectJmxFileWrite(path, "stream_open");
+  }
+
+  public static void beforeJmxChannelWrite(java.nio.file.Path path, int directoryFd, boolean write) {
+    if (write && JmxWriteScope.current() != null && (directoryFd < 0 || path.isAbsolute()))
+      inspectJmxFileWrite(path.toString(), "channel_open");
+  }
+
+  private static void inspectJmxFileWrite(String path, String operation) {
+    JmxWriteScope scope = JmxWriteScope.current();
+    if (RaspRuntime.detectionOff() || !SCRIPT_FILE_WRITE.matcher(normalizePath(path)).matches() || !scope.selects(path)) return;
+    Finding finding = new Finding("java11_jmx_script_file_write", 90,
+        "A managed operation opens its selected script destination for writing", "path", path, "selected_write_open");
+    boolean block = shouldBlock();
+    appendEvent(finding, operation, block ? "block" : "log");
+    if (block) throw new Java11RaspBlockException("OhMyRASP blocked a managed file write");
+  }
+
+  public static void beforeResolvedJmxInvoke(Object bean, String operation, Object arguments) {
+    inspectJmxInvoke(bean, operation, arguments, true);
+  }
+
+  public static void beforeJmxMBeanInvoke(Object bean, String operation, Object arguments) {
+    inspectJmxInvoke(bean, operation, arguments, false);
+  }
+
+  private static void inspectJmxInvoke(Object mbeanName, String operationName, Object arguments, boolean resolved) {
+    if (RaspRuntime.detectionOff()) return;
+    List<String> values = JmxDispatch.strings(arguments);
+    String bean = JmxDispatch.name(mbeanName);
+    emitJmxInvoke(classifyJmxMBeanInvoke(bean, operationName, values));
+    if (resolved) JmxWriteScope.select(bean, operationName, values);
+  }
+
+  private static void emitJmxInvoke(Finding finding) {
     if (finding == null) {
       return;
     }
@@ -740,9 +1029,23 @@ public final class Java11RaspHooks {
     }
   }
 
+  public static void beginAttachmentReference(String id) {
+    io.ohmyrasp.agent.xml.AttachmentFileRead.beginReference(RaspRuntime.detectionOff() ? null : id, null);
+  }
+
   public static void beforeXmlEntity(String name, Object source) {
-    String systemId = xmlEntitySystemId(source);
-    Finding finding = classifyXxeEntity(name, systemId);
+    inspectXmlEntity(name, xmlEntitySystemId(source), null);
+  }
+
+  public static void beforeXmlEntityOpen(URL target, String name, Object parserInput, Object document, String literal) {
+    if (target != null && !"[xml]".equals(name) && !RaspRuntime.detectionOff()
+        && !XmlCatalogResolution.consumesPackagedDtd(name, target, parserInput, document, literal)) {
+      inspectXmlEntity(name, XmlCatalogResolution.transportId(target), "parser_url_open");
+    }
+  }
+
+  private static void inspectXmlEntity(String name, String systemId, String basis) {
+    Finding finding = classifyXxeEntity(name, systemId, basis);
     if (finding == null) {
       return;
     }
@@ -783,9 +1086,6 @@ public final class Java11RaspHooks {
     if (joined.length() == 0) {
       return null;
     }
-    if (isBenignTtyProbeCommand(command, joined)) {
-      return null;
-    }
     if (isBenignLocalBrowserLaunchCommand(command)) {
       return null;
     }
@@ -795,45 +1095,46 @@ public final class Java11RaspHooks {
     if (isTeamCityMetadataVerifierCommand(command)) {
       return null;
     }
-    if (isTikaExternalParserVersionCheckStack() && isTikaExternalParserAvailabilityProbe(command)) {
+    StackTraceElement[] stack = Thread.currentThread().getStackTrace();
+    if (isTikaExternalParserVersionCheckStack(stack) && isTikaExternalParserAvailabilityProbe(command)) {
       return null;
     }
-    if (isOfficeProcessCleanupStack() && isOfficeProcessCleanupCommand(command, joined)) {
+    if (isOfficeProcessCleanupStack(stack) && isOfficeProcessCleanupCommand(command, joined)) {
       return null;
     }
-    if (isSolrRunExecutableListenerStack()) {
+    if (SolrExecutableListener.onStack(stack)) {
       return new Finding(
           "java11_command_execution_exploit_primitive",
           93,
           "Solr RunExecutableListener reached a Java 11 process sink",
           "command",
-          joined);
+          joined, "configured_listener");
     }
-    if (isExpressionLanguageRuntimeStack()) {
+    if (isExpressionLanguageRuntimeStack(stack)) {
       return new Finding(
           "java11_command_execution_exploit_primitive",
           93,
           "Dynamic expression evaluation reached a Java 11 process sink",
           "command",
-          joined);
+          joined, "expression_evaluation");
     }
-    if (isJiffleRuntimeCommandStack()) {
+    if (isJiffleRuntimeCommandStack(stack)) {
       return new Finding(
           "java11_command_execution_exploit_primitive",
           94,
           "Jiffle runtime reached a Java 11 process sink",
           "command",
-          joined);
+          joined, "expression_evaluation");
     }
-    if (isDatabaseJavaRoutineCommandStack()) {
+    if (isDatabaseJavaRoutineCommandStack(stack)) {
       return new Finding(
           "java11_command_execution_exploit_primitive",
           93,
           "Database Java routine reached a Java 11 process sink",
           "command",
-          joined);
+          joined, "database_stack");
     }
-    if (isSpringBeanInitializationRuntimeStack()) {
+    if (isSpringBeanInitializationRuntimeStack(stack)) {
       if (isBenignSpringIdentityProbeCommand(command)) {
         return null;
       }
@@ -842,36 +1143,36 @@ public final class Java11RaspHooks {
           92,
           "Spring bean initialization reached a Java 11 process sink",
           "command",
-          joined);
+          joined, "bean_initialization");
     }
-    if (isJavaDeserializationCommandStack()) {
+    if (isJavaDeserializationCommandStack(stack)) {
       return new Finding(
           "java11_command_execution_exploit_primitive",
           95,
           "Java deserialization reached a Java 11 process sink",
           "command",
-          joined);
+          joined, "object_deserialization");
     }
-    if (isXStreamDeserializationCommandStack()) {
+    if (isXStreamDeserializationCommandStack(stack)) {
       return new Finding(
           "java11_command_execution_exploit_primitive",
           94,
           "XML polymorphic deserialization reached a Java 11 process sink",
           "command",
-          joined);
+          joined, "xml_deserialization");
     }
     String executable = command[0] == null ? "" : command[0].trim();
     boolean shell = SHELL.matcher(executable).matches();
     boolean exploit = EXPLOIT_COMMAND.matcher(joined).find();
     boolean sensitiveDirectRead = SENSITIVE_DIRECT_READ.matcher(joined).find();
     String firstArgument = command.length > 1 ? command[1] : "";
-    if (shell && isSchedulerScriptExecutionStack() && isScriptFilePath(firstArgument)) {
+    if (shell && isSchedulerScriptExecutionStack(stack) && isScriptFilePath(firstArgument)) {
       return new Finding(
           "java11_command_execution_shell_meta",
           90,
           "Scheduler script job reached a Java 11 shell script process sink",
           "command",
-          joined);
+          joined, "scheduled_script");
     }
     if (exploit || sensitiveDirectRead) {
       return new Finding(
@@ -879,34 +1180,33 @@ public final class Java11RaspHooks {
           95,
           "Suspicious command execution reached a Java 11 process sink",
           "command",
-          joined);
+          joined, "command_arguments");
     }
-    if (shell && command.length >= 3 && isShellCommandFlag(command[1])) {
+    PosixShellCommand posix = PosixShellCommand.from(java.util.Arrays.asList(command));
+    if (posix != null) {
+      RequestSnapshot request = CURRENT_REQUEST.get();
+      ShellControlSource source = ShellControlSource.classify(
+          posix, request == null ? null : request.parameterValues, stack);
+      if (source != null) {
+        return new Finding("java11_command_execution_shell_meta", 85, source.message,
+            "command", joined, source.basis);
+      }
+    } else if (shell && !PosixShellCommand.isShell(executable)
+        && command.length >= 3 && isShellCommandFlag(command[1])) {
       String script = command[2] == null ? "" : command[2];
       if (SHELL_META.matcher(script).find()) {
         return new Finding(
             "java11_command_execution_shell_meta",
             85,
-            "Suspicious shell metacharacter command reached a Java 11 process sink",
+            "Suspicious shell metacharacter command reached a Java 11 shell command",
             "command",
-            joined);
+            joined, "shell_arguments");
       }
     }
     return null;
   }
 
-  private static boolean isSolrRunExecutableListenerStack() {
-    StackTraceElement[] stack = Thread.currentThread().getStackTrace();
-    for (StackTraceElement element : stack) {
-      if ("org.apache.solr.core.RunExecutableListener".equals(element.getClassName())) {
-        return true;
-      }
-    }
-    return false;
-  }
-
-  private static boolean isExpressionLanguageRuntimeStack() {
-    StackTraceElement[] stack = Thread.currentThread().getStackTrace();
+  private static boolean isExpressionLanguageRuntimeStack(StackTraceElement[] stack) {
     for (StackTraceElement element : stack) {
       String className = element.getClassName();
       if (className.startsWith("org.mvel2.")
@@ -915,7 +1215,8 @@ public final class Java11RaspHooks {
           || className.startsWith("ognl.")
           || className.startsWith("groovy.")
           || className.startsWith("org.codehaus.groovy.")
-          || className.startsWith("org.apache.commons.jexl")
+          || (className.startsWith("org.apache.commons.jexl.") || className.startsWith("org.apache.commons.jexl2.")
+              || className.startsWith("org.apache.commons.jexl3."))
           || className.startsWith("org.springframework.expression.")
           || className.startsWith("org.springframework.webflow.expression.")) {
         return true;
@@ -924,8 +1225,7 @@ public final class Java11RaspHooks {
     return false;
   }
 
-  private static boolean isJiffleRuntimeCommandStack() {
-    StackTraceElement[] stack = Thread.currentThread().getStackTrace();
+  private static boolean isJiffleRuntimeCommandStack(StackTraceElement[] stack) {
     for (StackTraceElement element : stack) {
       String className = element.getClassName();
       if (className.startsWith("it.geosolutions.jaiext.jiffle.")
@@ -938,8 +1238,7 @@ public final class Java11RaspHooks {
     return false;
   }
 
-  private static boolean isDatabaseJavaRoutineCommandStack() {
-    StackTraceElement[] stack = Thread.currentThread().getStackTrace();
+  private static boolean isDatabaseJavaRoutineCommandStack(StackTraceElement[] stack) {
     for (StackTraceElement element : stack) {
       String className = element.getClassName();
       if (className.startsWith("org.apache.derby.")
@@ -951,10 +1250,9 @@ public final class Java11RaspHooks {
     return false;
   }
 
-  private static boolean isSpringBeanInitializationRuntimeStack() {
+  private static boolean isSpringBeanInitializationRuntimeStack(StackTraceElement[] stack) {
     boolean beanInitialization = false;
     boolean applicationContextRefresh = false;
-    StackTraceElement[] stack = Thread.currentThread().getStackTrace();
     for (StackTraceElement element : stack) {
       String className = element.getClassName();
       if ("org.springframework.beans.factory.support.AbstractAutowireCapableBeanFactory"
@@ -968,8 +1266,7 @@ public final class Java11RaspHooks {
     return beanInitialization && applicationContextRefresh;
   }
 
-  private static boolean isJavaDeserializationCommandStack() {
-    StackTraceElement[] stack = Thread.currentThread().getStackTrace();
+  private static boolean isJavaDeserializationCommandStack(StackTraceElement[] stack) {
     for (StackTraceElement element : stack) {
       String className = element.getClassName();
       if ("java.io.ObjectInputStream".equals(className)
@@ -996,8 +1293,7 @@ public final class Java11RaspHooks {
     return subject.matches("[A-Za-z0-9_.@-]{1,128}");
   }
 
-  private static boolean isXStreamDeserializationCommandStack() {
-    StackTraceElement[] stack = Thread.currentThread().getStackTrace();
+  private static boolean isXStreamDeserializationCommandStack(StackTraceElement[] stack) {
     for (StackTraceElement element : stack) {
       String className = element.getClassName();
       if (className.startsWith("com.thoughtworks.xstream.")
@@ -1009,8 +1305,7 @@ public final class Java11RaspHooks {
     return false;
   }
 
-  private static boolean isSchedulerScriptExecutionStack() {
-    StackTraceElement[] stack = Thread.currentThread().getStackTrace();
+  private static boolean isSchedulerScriptExecutionStack(StackTraceElement[] stack) {
     for (StackTraceElement element : stack) {
       String className = element.getClassName();
       if ("com.xxl.job.core.handler.impl.ScriptJobHandler".equals(className)
@@ -1021,8 +1316,7 @@ public final class Java11RaspHooks {
     return false;
   }
 
-  private static boolean isOfficeProcessCleanupStack() {
-    StackTraceElement[] stack = Thread.currentThread().getStackTrace();
+  private static boolean isOfficeProcessCleanupStack(StackTraceElement[] stack) {
     for (StackTraceElement element : stack) {
       if ("cn.keking.service.OfficePluginManager".equals(element.getClassName())) {
         return true;
@@ -1031,8 +1325,7 @@ public final class Java11RaspHooks {
     return false;
   }
 
-  private static boolean isTikaExternalParserVersionCheckStack() {
-    StackTraceElement[] stack = Thread.currentThread().getStackTrace();
+  private static boolean isTikaExternalParserVersionCheckStack(StackTraceElement[] stack) {
     for (StackTraceElement element : stack) {
       if ("org.apache.tika.parser.external.ExternalParser".equals(element.getClassName())
           && "check".equals(element.getMethodName())) {
@@ -1077,25 +1370,6 @@ public final class Java11RaspHooks {
         || "ps-ef|grepsoffice.bin|grep-vgrep|wc-l".equals(compact)
         || "ps-ef|grepsoffice.bin|grep-vgrep|awk'{print\"kill-9\"$2}'|sh".equals(compact)
         || "kill-15`ps-ef|grepsoffice.bin|awk'nr==1{print$2}'`".equals(compact);
-  }
-
-  private static boolean isBenignTtyProbeCommand(String[] command, String joined) {
-    String script = joined;
-    if (command != null && command.length >= 3 && isShellCommandFlag(command[1])) {
-      script = command[2] == null ? "" : command[2];
-    }
-    String compact = script.toLowerCase(Locale.ROOT).replaceAll("\\s+", " ").trim();
-    if (!compact.startsWith("stty ") || !compact.endsWith(" < /dev/tty")) {
-      return false;
-    }
-    String sttyArguments = compact.substring(0, compact.length() - " < /dev/tty".length());
-    return sttyArguments.indexOf(';') < 0
-        && sttyArguments.indexOf('|') < 0
-        && sttyArguments.indexOf('&') < 0
-        && sttyArguments.indexOf('`') < 0
-        && sttyArguments.indexOf('$') < 0
-        && sttyArguments.indexOf('>') < 0
-        && sttyArguments.indexOf('<') < 0;
   }
 
   private static boolean isBenignSystemInventoryCommand(String[] command) {
@@ -1323,20 +1597,31 @@ public final class Java11RaspHooks {
     }
   }
 
-  private static Finding classifyFileRead(String path) {
-    String normalized = normalizePath(path);
-    if (normalized.length() == 0 || !SENSITIVE_FILE_READ.matcher(normalized).find()) {
+  private static Finding classifyFileRead(String path, HostReadPath.OpenPolicy links) {
+    if (io.ohmyrasp.agent.xml.AttachmentFileRead.selected(path)) {
+      return new Finding("java11_file_sensitive_read", 95, "External attachment reference opened a host file",
+          "path", path, "attachment_file_open");
+    }
+    String normalized = HostReadPath.location(path);
+    if (normalized.isEmpty()) return null;
+    boolean hosts = HostReadPath.isHostsFile(normalized);
+    if (!hosts && SENSITIVE_FILE_READ.matcher(normalized).matches() && HostReadPath.confirmsLocation(path)) {
+      return new Finding("java11_file_sensitive_read", fileReadConfidence(normalized),
+          "Sensitive file read reached a Java 11 file sink", "path", normalized,
+          path.equals(normalized) ? null : "normalized_read_location");
+    }
+    RequestSnapshot request = CURRENT_REQUEST.get();
+    if (request == null || !HostReadPath.selected(path, request.parameterValues)) return null;
+    if (hosts && HostReadPath.confirmsLocation(path)) {
+      return new Finding("java11_file_sensitive_read", fileReadConfidence(normalized),
+          "Request selected the system hosts file", "path", normalized, "request_selected_hosts");
+    }
+    String resolved = links.resolvedLocation(path);
+    if (resolved.equals(normalized) || !(SENSITIVE_FILE_READ.matcher(resolved).matches() || HostReadPath.isHostsFile(resolved))) {
       return null;
     }
-    if (isNettyHostsFileRead(normalized)) {
-      return null;
-    }
-    return new Finding(
-        "java11_file_sensitive_read",
-        fileReadConfidence(normalized),
-        "Sensitive file read reached a Java 11 file sink",
-        "path",
-        normalized);
+    return new Finding("java11_file_sensitive_read", fileReadConfidence(resolved),
+        "Request-selected path resolves to a protected host file", "path", resolved, "resolved_request_file");
   }
 
   private static Finding classifyFileWrite(String path) {
@@ -1409,28 +1694,20 @@ public final class Java11RaspHooks {
           "filename",
           normalized);
     }
-    if (!JAVA_ARCHIVE_UPLOAD_FILE.matcher(normalized).matches()) {
-      return null;
-    }
-    RequestSnapshot request = CURRENT_REQUEST.get();
-    String uri = request == null ? "" : request.uri;
-    if (!isJavaArchiveUploadContext(uri)) {
-      return null;
-    }
+    return classifyArchiveUpload(filename);
+  }
+
+  private static Finding classifyArchiveUpload(String filename) {
+    if (!ArchiveUploadPolicy.isArchive(filename)) return null;
+    ArchiveUploadPolicy.Evaluation evaluation = ArchiveUploadPolicy.inspect(DISPATCH.servletRequest());
+    String basis = evaluation.decision.denialBasis();
+    if (basis == null) return null;
     return new Finding(
         "fileUpload_java_archive",
         90,
-        "Multipart upload contains a Java executable archive for a deployment endpoint",
+        "Java archive upload conflicts with the application's deployment policy",
         "filename",
-        normalized);
-  }
-
-  private static boolean isJavaArchiveUploadContext(String uri) {
-    if (uri == null || uri.length() == 0) {
-      return false;
-    }
-    String normalized = normalizePath(uri);
-    return JAVA_ARCHIVE_UPLOAD_CONTEXT.matcher(normalized).find();
+        normalizePath(filename), basis, evaluation.policyDigest);
   }
 
   private static Finding classifyGeneratedPlotScriptWrite(String path, String content) {
@@ -1482,12 +1759,8 @@ public final class Java11RaspHooks {
     return combined;
   }
 
-  private static Finding classifyArchiveWrite(String path) {
-    String entry = ARCHIVE_ENTRY.get();
-    if (entry == null || entry.length() == 0 || !isDangerousArchiveEntry(entry)) {
-      return null;
-    }
-    if (path == null || path.length() == 0) {
+  private static Finding classifyArchiveWrite(String entry, String path) {
+    if (!EscapingPath.matches(entry, path)) {
       return null;
     }
     return new Finding(
@@ -1496,18 +1769,6 @@ public final class Java11RaspHooks {
         "Archive entry traversal reached a Java 11 file write sink",
         "entry",
         entry + " -> " + path);
-  }
-
-  private static boolean isDangerousArchiveEntry(String entry) {
-    if (entry == null) {
-      return false;
-    }
-    String normalized = normalizePath(entry);
-    return normalized.startsWith("/")
-        || normalized.startsWith("../")
-        || normalized.indexOf("/../") >= 0
-        || normalized.endsWith("/..")
-        || WINDOWS_ABSOLUTE_PATH.matcher(normalized).matches();
   }
 
   private static Finding classifyJdbcUrl(String url) {
@@ -1574,72 +1835,6 @@ public final class Java11RaspHooks {
                 + " valueLength="
                 + String.valueOf(trimmed.length()),
             1200));
-  }
-
-  private static Finding classifyMyBatisOrderMetadata(String sql, Object parameterObject) {
-    if (!sqlHasOrderBy(sql)) {
-      return null;
-    }
-    Object request = myBatisRequestObject(parameterObject);
-    Object orders = objectValue(request, "orders");
-    if (orders == null) {
-      return null;
-    }
-    if (orders instanceof Iterable) {
-      for (Object order : (Iterable<?>) orders) {
-        Finding finding = classifyMyBatisOrderObject(order);
-        if (finding != null) {
-          return finding;
-        }
-      }
-      return null;
-    }
-    if (orders.getClass().isArray()) {
-      int length = Array.getLength(orders);
-      for (int i = 0; i < length; i++) {
-        Finding finding = classifyMyBatisOrderObject(Array.get(orders, i));
-        if (finding != null) {
-          return finding;
-        }
-      }
-    }
-    return null;
-  }
-
-  private static boolean sqlHasOrderBy(String sql) {
-    return sql != null && lower(sql).indexOf("order by") >= 0;
-  }
-
-  private static Object myBatisRequestObject(Object parameterObject) {
-    if (parameterObject instanceof Map) {
-      Map<?, ?> map = (Map<?, ?>) parameterObject;
-      Object request = firstMapValue(map, "request", "param1", "arg0");
-      if (request != null) {
-        return request;
-      }
-    }
-    Object request = objectValue(parameterObject, "request");
-    return request == null ? parameterObject : request;
-  }
-
-  private static Finding classifyMyBatisOrderObject(Object order) {
-    Finding finding = classifyMyBatisOrderField(order, "type");
-    if (finding != null) {
-      return finding;
-    }
-    finding = classifyMyBatisOrderField(order, "name");
-    if (finding != null) {
-      return finding;
-    }
-    return classifyMyBatisOrderField(order, "prefix");
-  }
-
-  private static Finding classifyMyBatisOrderField(Object order, String field) {
-    Object value = objectValue(order, field);
-    if (value == null) {
-      return null;
-    }
-    return classifySqlIdentifier(String.valueOf(value), "MyBatis.BoundSql", "orders[]." + field);
   }
 
   private static String sqlIdentifierControlReason(String value) {
@@ -2043,31 +2238,19 @@ public final class Java11RaspHooks {
   }
 
   private static Finding classifyJmxMBeanInvoke(
-      Object mbeanName, String operationName, Object arguments) {
+      String bean, String operationName, List<String> values) {
     String operation = operationName == null ? "" : operationName.trim();
     if (operation.length() == 0 || !isMutatingJmxOperation(operation)) {
       return null;
     }
-    List<String> values = jmxArgumentTexts(arguments);
     for (String value : values) {
       if (looksLikeRemoteJmxConfig(value)) {
         return new Finding(
             "java11_jmx_remote_config_source",
             jmxRemoteConfigConfidence(value),
-            "JMX MBean invocation reached a Java 11 remote configuration source sink",
+            "MBean invocation argument names a remote configuration source",
             "invoke",
-            abbreviate(String.valueOf(mbeanName) + " " + operation + " " + value, 1200));
-      }
-    }
-    for (String value : values) {
-      String target = jmxScriptWriteTarget(value);
-      if (target.length() > 0) {
-        return new Finding(
-            "java11_jmx_script_file_write",
-            90,
-            "JMX MBean invocation reached a Java 11 server-side script write sink",
-            "invoke",
-            abbreviate(String.valueOf(mbeanName) + " " + operation + " " + target, 1200));
+            abbreviate(bean + " " + operation + " " + value, 1200));
       }
     }
     return null;
@@ -2151,15 +2334,12 @@ public final class Java11RaspHooks {
     return false;
   }
 
-  private static Finding classifyXxeEntity(String name, String systemId) {
+  private static Finding classifyXxeEntity(String name, String systemId, String basis) {
     if ("[xml]".equals(name)) {
       return null;
     }
     String value = systemId == null ? "" : systemId.trim();
     if (value.length() == 0) {
-      return null;
-    }
-    if ("[dtd]".equals(name) && isLocalRuntimeDtd(value)) {
       return null;
     }
     if (value.startsWith("\\\\") || value.startsWith("//")) {
@@ -2168,7 +2348,7 @@ public final class Java11RaspHooks {
           96,
           "XML external entity reached a Java 11 parser with SMB/UNC source",
           "entity",
-          String.valueOf(name) + " " + value);
+          String.valueOf(name) + " " + value, basis);
     }
     String scheme = uriScheme(value);
     if (scheme.length() == 0 || !isXxeExternalScheme(scheme)) {
@@ -2179,11 +2359,17 @@ public final class Java11RaspHooks {
         xxeConfidence(scheme),
         "XML external entity reached a Java 11 parser with protocol " + scheme,
         "entity",
-        String.valueOf(name) + " " + abbreviate(value, 1200));
+        String.valueOf(name) + " " + abbreviate(value, 1200), basis);
   }
 
   private static String xmlEntitySystemId(Object source) {
     if (source == null) {
+      return "";
+    }
+    if (source instanceof String || source instanceof URL) {
+      return source.toString();
+    }
+    if (invoke(source, "getCharacterStream") != null || invoke(source, "getByteStream") != null) {
       return "";
     }
     Object systemId = invoke(source, "getSystemId");
@@ -2198,14 +2384,10 @@ public final class Java11RaspHooks {
     if (systemId != null) {
       return String.valueOf(systemId);
     }
-    systemId = invoke(source, "getBaseSystemId");
-    if (systemId != null) {
-      return String.valueOf(systemId);
-    }
-    return String.valueOf(source);
+    return "";
   }
 
-  private static Finding classifyHttpRequest(Object request) {
+  private static Finding classifyHttpRequest(Object request, Map<?, ?> parameters) {
     if (request == null) {
       return null;
     }
@@ -2226,19 +2408,19 @@ public final class Java11RaspHooks {
     if (defaultJwt != null) {
       return defaultJwt;
     }
-    Finding typedPayload = classifyTypedPayloadDeserializationRequest(request, uri);
+    Finding typedPayload = classifyTypedPayloadDeserializationRequest(parameters, uri);
     if (typedPayload != null) {
       return typedPayload;
     }
-    Finding debugProcessLaunch = classifyDebugProcessLaunchRequest(request, uri, query);
+    Finding debugProcessLaunch = classifyDebugProcessLaunchRequest(request, uri, query, parameters);
     if (debugProcessLaunch != null) {
       return debugProcessLaunch;
     }
-    Finding ogcFilterSqlInjection = classifyOgcFilterSqlInjectionRequest(request, uri);
+    Finding ogcFilterSqlInjection = classifyOgcFilterSqlInjectionRequest(parameters, uri);
     if (ogcFilterSqlInjection != null) {
       return ogcFilterSqlInjection;
     }
-    Finding templateSource = classifyTemplateSourceRequest(request, uri);
+    Finding templateSource = classifyTemplateSourceRequest(parameters, uri);
     if (templateSource != null) {
       return templateSource;
     }
@@ -2246,7 +2428,7 @@ public final class Java11RaspHooks {
     if (forgedInclude != null) {
       return forgedInclude;
     }
-    Finding internalForward = classifyInternalForwardRequest(request, uri);
+    Finding internalForward = classifyInternalForwardRequest(parameters, uri);
     if (internalForward != null) {
       return internalForward;
     }
@@ -2290,12 +2472,10 @@ public final class Java11RaspHooks {
         abbreviate("user-agent=" + userAgent + " uri=" + path, 1200));
   }
 
-  private static Finding classifyTypedPayloadDeserializationRequest(Object request, String uri) {
-    Object parameterMap = invoke(request, "getParameterMap");
-    if (!(parameterMap instanceof Map<?, ?>)) {
+  private static Finding classifyTypedPayloadDeserializationRequest(Map<?, ?> parameters, String uri) {
+    if (parameters == null) {
       return null;
     }
-    Map<?, ?> parameters = (Map<?, ?>) parameterMap;
     for (Map.Entry<?, ?> entry : parameters.entrySet()) {
       String name = String.valueOf(entry.getKey());
       List<String> values = new ArrayList<String>();
@@ -2439,13 +2619,11 @@ public final class Java11RaspHooks {
   }
 
   private static Finding classifyDebugProcessLaunchRequest(
-      Object request, String uri, String query) {
+      Object request, String uri, String query, Map<?, ?> parameters) {
     if (!isDebugProcessLaunchContext(request, uri)) {
       return null;
     }
-    Object parameterMap = invoke(request, "getParameterMap");
-    if (parameterMap instanceof Map<?, ?>) {
-      Map<?, ?> parameters = (Map<?, ?>) parameterMap;
+    if (parameters != null) {
       for (Map.Entry<?, ?> entry : parameters.entrySet()) {
         String name = String.valueOf(entry.getKey());
         if (!isDebugProcessLaunchParameter(name)) {
@@ -2522,15 +2700,13 @@ public final class Java11RaspHooks {
         || "cmd".equals(normalized);
   }
 
-  private static Finding classifyOgcFilterSqlInjectionRequest(Object request, String uri) {
-    if (!isOgcRequest(request, uri)) {
+  private static Finding classifyOgcFilterSqlInjectionRequest(Map<?, ?> parameters, String uri) {
+    if (!isOgcRequest(parameters, uri)) {
       return null;
     }
-    Object parameterMap = invoke(request, "getParameterMap");
-    if (!(parameterMap instanceof Map<?, ?>)) {
+    if (parameters == null) {
       return null;
     }
-    Map<?, ?> parameters = (Map<?, ?>) parameterMap;
     for (Map.Entry<?, ?> entry : parameters.entrySet()) {
       String name = String.valueOf(entry.getKey());
       if (!isOgcFilterSqlParameter(name)) {
@@ -2561,15 +2737,13 @@ public final class Java11RaspHooks {
     return null;
   }
 
-  private static boolean isOgcRequest(Object request, String uri) {
+  private static boolean isOgcRequest(Map<?, ?> parameters, String uri) {
     if (OGC_REQUEST_CONTROL_PATH.matcher(uri == null ? "" : uri).find()) {
       return true;
     }
-    Object parameterMap = invoke(request, "getParameterMap");
-    if (!(parameterMap instanceof Map<?, ?>)) {
+    if (parameters == null) {
       return false;
     }
-    Map<?, ?> parameters = (Map<?, ?>) parameterMap;
     for (Map.Entry<?, ?> entry : parameters.entrySet()) {
       String name = normalizeParameterName(String.valueOf(entry.getKey()));
       List<String> values = new ArrayList<String>();
@@ -2612,15 +2786,13 @@ public final class Java11RaspHooks {
     return OGC_FILTER_SQL_INJECTION_VALUE.matcher(percentDecode(value)).find();
   }
 
-  private static Finding classifyTemplateSourceRequest(Object request, String uri) {
+  private static Finding classifyTemplateSourceRequest(Map<?, ?> parameters, String uri) {
     if (!TEMPLATE_SOURCE_CONTROL_PATH.matcher(uri == null ? "" : uri).find()) {
       return null;
     }
-    Object parameterMap = invoke(request, "getParameterMap");
-    if (!(parameterMap instanceof Map<?, ?>)) {
+    if (parameters == null) {
       return null;
     }
-    Map<?, ?> parameters = (Map<?, ?>) parameterMap;
     for (Map.Entry<?, ?> entry : parameters.entrySet()) {
       String name = String.valueOf(entry.getKey());
       if (!isTemplateSourceParameterName(name)) {
@@ -2680,12 +2852,10 @@ public final class Java11RaspHooks {
     return null;
   }
 
-  private static Finding classifyInternalForwardRequest(Object request, String uri) {
-    Object parameterMap = invoke(request, "getParameterMap");
-    if (!(parameterMap instanceof Map<?, ?>)) {
+  private static Finding classifyInternalForwardRequest(Map<?, ?> parameters, String uri) {
+    if (parameters == null) {
       return null;
     }
-    Map<?, ?> parameters = (Map<?, ?>) parameterMap;
     for (Map.Entry<?, ?> entry : parameters.entrySet()) {
       String name = String.valueOf(entry.getKey());
       if (!isInternalForwardParameter(name)) {
@@ -2884,7 +3054,9 @@ public final class Java11RaspHooks {
     if (value == null || value.trim().length() == 0) {
       return "";
     }
-    List<String> variants = pathVariants(value);
+    List<String> variants = decodedPathVariants(value);
+    int decodedCount = variants.size();
+    addLowByteVariants(variants, value);
     for (int i = 0; i < variants.size(); i++) {
       String normalized = normalizePath(stripServletPathParameters(variants.get(i)));
       if (PROTECTED_WEB_RESOURCE_PATH.matcher(normalized).find()) {
@@ -2893,7 +3065,7 @@ public final class Java11RaspHooks {
       if (SCRIPT_FILE_WRITE.matcher(normalized).matches()) {
         return normalized;
       }
-      if (hasConfusingDotSegment(normalized) || hasPathControlCharacter(normalized)) {
+      if (hasConfusingDotSegment(normalized) || (i < decodedCount && hasPathControlCharacter(normalized))) {
         return normalized;
       }
       String canonicalProtectedPath = canonicalProtectedWebResourcePath(normalized);
@@ -3056,20 +3228,20 @@ public final class Java11RaspHooks {
             1200));
   }
 
-  private static RequestSnapshot captureRequestSnapshot(Object request) {
+  private static RequestSnapshot captureRequestSnapshot(Object request, Map<?, ?> parameters) {
     String uri = requestUri(request);
     String xDeToken = requestHeader(request, "X-DE-TOKEN").trim();
     if (isCompactHmacJwt(xDeToken)) {
-      return new RequestSnapshot(request, uri, "X-DE-TOKEN", xDeToken);
+      return new RequestSnapshot(parameters, uri, "X-DE-TOKEN", xDeToken);
     }
     String authorization = requestHeader(request, "Authorization").trim();
     if (authorization.regionMatches(true, 0, "Bearer ", 0, "Bearer ".length())) {
       String bearer = authorization.substring("Bearer ".length()).trim();
       if (isCompactHmacJwt(bearer)) {
-        return new RequestSnapshot(request, uri, "Authorization: Bearer", bearer);
+        return new RequestSnapshot(parameters, uri, "Authorization: Bearer", bearer);
       }
     }
-    return new RequestSnapshot(request, uri, "", "");
+    return new RequestSnapshot(parameters, uri, "", "");
   }
 
   private static boolean isCompactHmacJwt(String token) {
@@ -3197,11 +3369,13 @@ public final class Java11RaspHooks {
     }
     String path = uri.split("\\?", 2)[0];
     boolean sensitiveControlPath = SENSITIVE_CONTROL_PATH.matcher(path).find();
-    List<String> variants = pathVariants(path);
+    List<String> variants = decodedPathVariants(path);
+    int decodedCount = variants.size();
+    addLowByteVariants(variants, path);
     for (int i = 0; i < variants.size(); i++) {
       String normalized = variants.get(i).replace('\\', '/');
       if (hasConfusingDotSegment(normalized)
-          || (sensitiveControlPath && hasPathControlCharacter(normalized))) {
+          || (sensitiveControlPath && i < decodedCount && hasPathControlCharacter(normalized))) {
         return normalized;
       }
       String canonicalControlPath = canonicalSensitiveControlPath(normalized);
@@ -3255,32 +3429,41 @@ public final class Java11RaspHooks {
   }
 
   private static List<String> pathVariants(String path) {
+    List<String> variants = decodedPathVariants(path);
+    addLowByteVariants(variants, path);
+    return variants;
+  }
+
+  private static List<String> decodedPathVariants(String path) {
     List<String> variants = new ArrayList<String>();
     addVariant(variants, path);
     addOverlongUtf8Variants(variants, path);
-    String once = percentDecode(path);
+    String once = PercentEncodedText.decode(path, false);
     addVariant(variants, once);
     addVariant(variants, decodeUnicodeEscapes(once));
     addLenientPercentVariants(variants, once);
     addOverlongUtf8Variants(variants, once);
-    String twice = percentDecode(once);
+    String twice = PercentEncodedText.decode(once, false);
     addVariant(variants, twice);
     addVariant(variants, decodeUnicodeEscapes(twice));
     addLenientPercentVariants(variants, twice);
     addOverlongUtf8Variants(variants, twice);
     addLenientPercentVariants(variants, path);
+    return variants;
+  }
+
+  private static void addLowByteVariants(List<String> variants, String path) {
     String ghost = lowByteUnicodeDecode(path);
     if (!ghost.equals(path)) {
       addVariant(variants, ghost);
       addVariant(variants, decodeUnicodeEscapes(ghost));
       addOverlongUtf8Variants(variants, ghost);
-      String decodedGhost = percentDecode(ghost);
+      String decodedGhost = PercentEncodedText.decode(ghost, false);
       addVariant(variants, decodedGhost);
       addVariant(variants, decodeUnicodeEscapes(decodedGhost));
       addLenientPercentVariants(variants, decodedGhost);
       addOverlongUtf8Variants(variants, decodedGhost);
     }
-    return variants;
   }
 
   private static void addOverlongUtf8Variants(List<String> variants, String value) {
@@ -3416,34 +3599,7 @@ public final class Java11RaspHooks {
   }
 
   private static String jettyLenientPercentDecode(String value) {
-    if (value == null || value.indexOf('%') < 0) {
-      return value == null ? "" : value;
-    }
-    StringBuilder decoded = new StringBuilder(value.length());
-    boolean changed = false;
-    for (int i = 0; i < value.length(); i++) {
-      char ch = value.charAt(i);
-      if (ch == '%' && i + 2 < value.length()) {
-        int high = jettyLenientHexDigit(value.charAt(i + 1));
-        int low = jettyLenientHexDigit(value.charAt(i + 2));
-        if (high >= 0 && low >= 0) {
-          decoded.append((char) ((high << 4) + low));
-          changed = true;
-          i += 2;
-          continue;
-        }
-      }
-      decoded.append(ch);
-    }
-    return changed ? decoded.toString() : value;
-  }
-
-  private static int jettyLenientHexDigit(char ch) {
-    if (ch > 0x7f) {
-      return -1;
-    }
-    int digit = ((ch & 0x1f) + ((ch >> 6) * 0x19) - 0x10);
-    return digit >= 0 && digit <= 15 ? digit : -1;
+    return PercentEncodedText.decode(value, true);
   }
 
   private static String overlongUtf8Decode(String value) {
@@ -3614,177 +3770,6 @@ public final class Java11RaspHooks {
     return 90;
   }
 
-  private static boolean isLocalRuntimeDtd(String value) {
-    String normalized = normalizePath(value);
-    if (normalized.startsWith("jar:file:") && isTrustedEmbeddedRuntimeDtd(normalized)) {
-      return true;
-    }
-    if (normalized.startsWith("file:") && isTrustedLocalFrameworkConfigXml(normalized)) {
-      return true;
-    }
-    if (!normalized.endsWith(".dtd")) {
-      return false;
-    }
-    if (isTrustedRuntimeDtdUrl(value) || isTrustedRuntimeDtdUrl(normalized)) {
-      return true;
-    }
-    if (normalized.startsWith("jar:file:")) {
-      return trustedRuntimeResource(normalized.substring("jar:".length()));
-    }
-    if (normalized.startsWith("file:")) {
-      return trustedRuntimeResource(normalized);
-    }
-    return false;
-  }
-
-  private static boolean isTrustedEmbeddedRuntimeDtd(String value) {
-    String normalized = lower(value == null ? "" : value.trim()).replace('\\', '/');
-    return normalized.endsWith("!/org/apache/tomcat/util/modeler/mbeans-descriptors.dtd")
-        || normalized.endsWith("!/javax/servlet/jsp/resources/web-jsptaglibrary_1_1.dtd")
-        || normalized.endsWith("!/javax/servlet/jsp/resources/web-jsptaglibrary_1_2.dtd")
-        || normalized.endsWith("!/jakarta/servlet/jsp/resources/web-jsptaglibrary_1_2.dtd")
-        || normalized.endsWith("!/struts-default.xml")
-        || normalized.endsWith("!/struts-plugin.xml")
-        || normalized.endsWith("!/com/bea/common/security/store/data/package.jdo");
-  }
-
-  private static boolean isTrustedLocalFrameworkConfigXml(String value) {
-    String normalized = lower(value == null ? "" : value.trim()).replace('\\', '/');
-    return isTrustedLocalStrutsConfigXml(normalized)
-        || isTrustedLocalStrutsValidationXml(normalized)
-        || normalized.endsWith("/com/opensymphony/xwork2/validator/validators/default.xml");
-  }
-
-  private static boolean isTrustedLocalStrutsConfigXml(String normalized) {
-    return isDirectStrutsConfigXml(normalized, "/target/classes/")
-        || isDirectStrutsConfigXml(normalized, "/web-inf/classes/");
-  }
-
-  private static boolean isDirectStrutsConfigXml(String normalized, String directory) {
-    if (!normalized.endsWith(".xml")) {
-      return false;
-    }
-    int index = normalized.lastIndexOf(directory);
-    if (index < 0) {
-      return false;
-    }
-    String fileName = normalized.substring(index + directory.length());
-    if (fileName.indexOf('/') >= 0 || fileName.indexOf("..") >= 0) {
-      return false;
-    }
-    return fileName.startsWith("struts") || isStrutsXmlConfigurationStack();
-  }
-
-  private static boolean isStrutsXmlConfigurationStack() {
-    StackTraceElement[] stack = Thread.currentThread().getStackTrace();
-    for (int i = 0; i < stack.length; i++) {
-      String className = stack[i].getClassName();
-      if ("com.opensymphony.xwork2.config.providers.XmlConfigurationProvider".equals(className)
-          || "org.apache.struts2.config.StrutsXmlConfigurationProvider".equals(className)) {
-        return true;
-      }
-    }
-    return false;
-  }
-
-  private static boolean isTrustedLocalStrutsValidationXml(String normalized) {
-    if (!normalized.endsWith("-validation.xml")) {
-      return false;
-    }
-    if (trustedRuntimeResource(normalized)
-        && (normalized.indexOf("/org/apache/struts2/") >= 0
-            || normalized.indexOf("/com/opensymphony/xwork2/") >= 0)) {
-      return true;
-    }
-    return isClasspathStrutsValidationXml(normalized, "/target/classes/")
-        || isClasspathStrutsValidationXml(normalized, "/web-inf/classes/");
-  }
-
-  private static boolean isClasspathStrutsValidationXml(String normalized, String directory) {
-    int index = normalized.lastIndexOf(directory);
-    if (index < 0) {
-      return false;
-    }
-    String fileName = normalized.substring(index + directory.length());
-    return fileName.length() > "-validation.xml".length()
-        && fileName.indexOf("..") < 0
-        && fileName.endsWith("-validation.xml");
-  }
-
-  private static boolean trustedRuntimeResource(String value) {
-    String normalized = normalizePath(value);
-    String[] trustedRoots =
-        new String[] {
-          normalizeFileProperty("catalina.home"),
-          normalizeFileProperty("catalina.base"),
-          normalizeFileProperty("java.home"),
-          normalizeFileProperty("jetty.home"),
-          normalizeFileProperty("jetty.base"),
-          normalizeFileProperty("activemq.home"),
-          normalizeFileProperty("karaf.home"),
-          normalizeEnvPath("CATALINA_HOME"),
-          normalizeEnvPath("CATALINA_BASE"),
-          normalizeEnvPath("JETTY_HOME"),
-          normalizeEnvPath("JETTY_BASE"),
-          normalizeEnvPath("ACTIVEMQ_HOME"),
-          normalizeEnvPath("KARAF_HOME")
-        };
-    for (String trustedRoot : trustedRoots) {
-      if (hasTrustedPrefix(normalized, "file:", trustedRoot)) {
-        return true;
-      }
-    }
-    return false;
-  }
-
-  private static boolean isTrustedRuntimeDtdUrl(String value) {
-    String normalized = lower(value == null ? "" : value.trim()).replace('\\', '/').replace("://", ":/");
-    return "http:/www.eclipse.org/jetty/configure_9_0.dtd".equals(normalized)
-        || "https:/www.eclipse.org/jetty/configure_9_0.dtd".equals(normalized)
-        || "http:/www.eclipse.org/jetty/configure_9_3.dtd".equals(normalized)
-        || "https:/www.eclipse.org/jetty/configure_9_3.dtd".equals(normalized)
-        || "http:/java.sun.com/dtd/web-app_2_2.dtd".equals(normalized)
-        || "http:/java.sun.com/dtd/web-app_2_3.dtd".equals(normalized)
-        || "http:/java.sun.com/dtd/web-facesconfig_1_1.dtd".equals(normalized)
-        || "http:/java.sun.com/dtd/web-jsptaglibrary_1_1.dtd".equals(normalized)
-        || "http:/java.sun.com/dtd/web-jsptaglibrary_1_2.dtd".equals(normalized)
-        || "http:/mybatis.org/dtd/mybatis-3-config.dtd".equals(normalized)
-        || "http:/mybatis.org/dtd/mybatis-3-mapper.dtd".equals(normalized)
-        || "http:/www.springframework.org/dtd/spring-beans.dtd".equals(normalized)
-        || "https:/java.sun.com/dtd/web-app_2_2.dtd".equals(normalized)
-        || "https:/java.sun.com/dtd/web-app_2_3.dtd".equals(normalized)
-        || "https:/java.sun.com/dtd/web-facesconfig_1_1.dtd".equals(normalized)
-        || "https:/java.sun.com/dtd/web-jsptaglibrary_1_1.dtd".equals(normalized)
-        || "https:/java.sun.com/dtd/web-jsptaglibrary_1_2.dtd".equals(normalized)
-        || "https:/mybatis.org/dtd/mybatis-3-config.dtd".equals(normalized)
-        || "https:/mybatis.org/dtd/mybatis-3-mapper.dtd".equals(normalized)
-        || "https:/www.springframework.org/dtd/spring-beans.dtd".equals(normalized);
-  }
-
-  private static String normalizeFileProperty(String name) {
-    String value = System.getProperty(name);
-    if (value == null || value.trim().length() == 0) {
-      return "";
-    }
-    return normalizePath(new File(value).getAbsolutePath());
-  }
-
-  private static String normalizeEnvPath(String name) {
-    String value = System.getenv(name);
-    if (value == null || value.trim().length() == 0) {
-      return "";
-    }
-    return normalizePath(new File(value).getAbsolutePath());
-  }
-
-  private static boolean hasTrustedPrefix(String value, String uriPrefix, String trustedPath) {
-    if (trustedPath.length() == 0) {
-      return false;
-    }
-    return value.startsWith(uriPrefix + trustedPath + "/")
-        || value.startsWith(uriPrefix + "/" + trustedPath + "/");
-  }
-
   private static boolean isWebInfDeploymentArtifact(String path) {
     String normalized = normalizePath(path);
     String lower = lower(normalized);
@@ -3864,7 +3849,7 @@ public final class Java11RaspHooks {
 
   private static boolean looksLikeRemoteJmxConfig(String argument) {
     String normalized = lower(argument == null ? "" : argument.trim());
-    if (normalized.length() == 0 || !containsRemoteProtocol(normalized)) {
+    if (normalized.length() == 0 || !containsRemoteProtocol(normalized) || !JmxDispatch.isLocationArgument(argument)) {
       return false;
     }
     return normalized.indexOf("brokerconfig=") >= 0
@@ -3897,65 +3882,6 @@ public final class Java11RaspHooks {
     return 88;
   }
 
-  private static String jmxScriptWriteTarget(String argument) {
-    if (argument == null || argument.trim().length() == 0) {
-      return "";
-    }
-    Matcher matcher = SCRIPT_FILE_TOKEN.matcher(argument);
-    while (matcher.find()) {
-      String target = normalizePath(matcher.group());
-      if (SCRIPT_FILE_WRITE.matcher(target).matches()) {
-        return target;
-      }
-    }
-    return "";
-  }
-
-  private static List<String> jmxArgumentTexts(Object arguments) {
-    List<String> values = new ArrayList<String>();
-    collectJmxArgumentTexts(values, arguments, 0);
-    return values;
-  }
-
-  private static void collectJmxArgumentTexts(List<String> values, Object value, int depth) {
-    if (value == null || depth > 3 || values.size() >= 32) {
-      return;
-    }
-    if (value instanceof Object[]) {
-      Object[] array = (Object[]) value;
-      for (int i = 0; i < array.length && values.size() < 32; i++) {
-        collectJmxArgumentTexts(values, array[i], depth + 1);
-      }
-      return;
-    }
-    if (value instanceof Iterable<?>) {
-      for (Object item : (Iterable<?>) value) {
-        if (values.size() >= 32) {
-          break;
-        }
-        collectJmxArgumentTexts(values, item, depth + 1);
-      }
-      return;
-    }
-    if (value instanceof Map<?, ?>) {
-      Map<?, ?> map = (Map<?, ?>) value;
-      for (Map.Entry<?, ?> entry : map.entrySet()) {
-        if (values.size() >= 32) {
-          break;
-        }
-        collectJmxArgumentTexts(
-            values,
-            String.valueOf(entry.getKey()) + "=" + String.valueOf(entry.getValue()),
-            depth + 1);
-      }
-      return;
-    }
-    String text = String.valueOf(value).trim();
-    if (text.length() > 0) {
-      values.add(text);
-    }
-  }
-
   private static Object invoke(Object target, String methodName) {
     if (target == null) {
       return null;
@@ -3971,36 +3897,6 @@ public final class Java11RaspHooks {
         return null;
       }
     }
-  }
-
-  private static Object objectValue(Object target, String propertyName) {
-    if (target == null || propertyName == null || propertyName.length() == 0) {
-      return null;
-    }
-    if (target instanceof Map) {
-      return ((Map<?, ?>) target).get(propertyName);
-    }
-    String suffix = Character.toUpperCase(propertyName.charAt(0)) + propertyName.substring(1);
-    Object value = invoke(target, "get" + suffix);
-    if (value != null) {
-      return value;
-    }
-    return invoke(target, "is" + suffix);
-  }
-
-  private static Object firstMapValue(Map<?, ?> map, String... keys) {
-    if (map == null || keys == null) {
-      return null;
-    }
-    for (String key : keys) {
-      if (map.containsKey(key)) {
-        Object value = map.get(key);
-        if (value != null) {
-          return value;
-        }
-      }
-    }
-    return null;
   }
 
   private static String invokeString(Object target, String methodName) {
@@ -4460,11 +4356,15 @@ public final class Java11RaspHooks {
   }
 
   private static Finding classifyUrlOpen(Object url) {
+    return classifyUrlOpen(url, CURRENT_REQUEST_URLS.get(), null, false);
+  }
+
+  private static Finding classifyUrlOpen(Object url, List<String> requestUrls, String peer, boolean redirected) {
     UrlParts parts = urlParts(url);
     if (parts == null || parts.host.length() == 0) {
       return null;
     }
-    if (isCloudMetadataHost(parts.host)) {
+    if (NetworkHost.isMetadata(parts.host) || (peer != null && NetworkHost.isMetadata(peer))) {
       return new Finding(
           "java11_ssrf_cloud_metadata",
           95,
@@ -4472,10 +4372,9 @@ public final class Java11RaspHooks {
           "url",
           parts.fullUrl);
     }
-    if (isDataEaseApisixStartupProbe(parts)) {
-      return null;
-    }
-    if (isLoopbackHost(parts.host) && LOOPBACK_ADMIN_PATH.matcher(parts.path).find()) {
+    boolean supplied = redirected || !requestControlledUrlMatch(parts.comparisonKey, requestUrls).isEmpty();
+    if ((isLoopbackHost(parts.host) || (peer != null && isLoopbackHost(peer))) && LOOPBACK_ADMIN_PATH.matcher(parts.path).find()
+        && (supplied || (requestUrls != null && requestUrls.contains(parts.path)))) {
       return new Finding(
           "java11_ssrf_loopback_admin",
           88,
@@ -4483,14 +4382,13 @@ public final class Java11RaspHooks {
           "url",
           parts.fullUrl);
     }
-    String requestControlledUrl = requestControlledUrlMatch(parts.comparisonKey);
-    if (requestControlledUrl.length() > 0) {
+    if (supplied && (NetworkHost.isInternal(parts.host) || (peer != null && NetworkHost.isInternal(peer)))) {
       return new Finding(
           "java11_ssrf_request_parameter_url",
           92,
           "Request parameter controlled outbound URL reached a Java 11 URL sink",
           "url",
-          abbreviate(requestControlledUrl, 1200));
+          abbreviate(parts.fullUrl, 1200));
     }
     return null;
   }
@@ -4531,38 +4429,19 @@ public final class Java11RaspHooks {
     return "";
   }
 
-  private static boolean isDataEaseApisixStartupProbe(UrlParts parts) {
-    if (parts == null || !isLoopbackHost(parts.host) || !parts.path.startsWith("/apisix/admin/")) {
-      return false;
-    }
-    String fullUrl = lower(parts.fullUrl);
-    if (fullUrl.indexOf(":9180/apisix/admin/") < 0) {
-      return false;
-    }
-    return isDataEaseApisixStartupStack();
-  }
-
-  private static boolean isDataEaseApisixStartupStack() {
-    boolean dataEaseRouteManager = false;
-    boolean springReadyEvent = false;
-    StackTraceElement[] stack = Thread.currentThread().getStackTrace();
-    for (int i = 0; i < stack.length; i++) {
-      String className = stack[i].getClassName();
-      if ("io.dataease.xpack.permissions.apisix.manage.XpackRouteManage".equals(className)) {
-        dataEaseRouteManager = true;
-      }
-      if ("org.springframework.boot.SpringApplicationRunListeners".equals(className)
-          || "org.springframework.boot.context.event.EventPublishingRunListener".equals(className)
-          || "org.springframework.context.event.SimpleApplicationEventMulticaster".equals(className)) {
-        springReadyEvent = true;
-      }
-    }
-    return dataEaseRouteManager && springReadyEvent;
-  }
-
   private static UrlParts urlParts(Object value) {
     if (value == null) {
       return null;
+    }
+    if (value instanceof java.net.URI) {
+      java.net.URI uri = (java.net.URI) value;
+      String protocol = lower(uri.getScheme());
+      String host = normalizeHost(uri.getHost());
+      String rawPath = uri.getRawPath() == null || uri.getRawPath().isEmpty() ? "/" : uri.getRawPath();
+      int port = uri.getPort() < 0 ? ("https".equals(protocol) ? 443 : 80) : uri.getPort();
+      String query = uri.getRawQuery();
+      return new UrlParts(protocol, host, rawPath, HttpTransportObservation.address(uri),
+          protocol + "://" + NetworkHost.destinationKey(host) + ":" + port + rawPath + (query == null ? "" : "?" + query));
     }
     if (value instanceof URL) {
       URL url = (URL) value;
@@ -4570,7 +4449,7 @@ public final class Java11RaspHooks {
           lower(url.getProtocol()),
           normalizeHost(url.getHost()),
           url.getPath() == null || url.getPath().length() == 0 ? "/" : url.getPath(),
-          String.valueOf(url),
+          HttpTransportObservation.isHttp(url) ? HttpTransportObservation.address(url) : String.valueOf(url),
           urlComparisonKey(url));
     }
     try {
@@ -4579,15 +4458,15 @@ public final class Java11RaspHooks {
           lower(url.getProtocol()),
           normalizeHost(url.getHost()),
           url.getPath() == null || url.getPath().length() == 0 ? "/" : url.getPath(),
-          String.valueOf(url),
+          HttpTransportObservation.isHttp(url) ? HttpTransportObservation.address(url) : String.valueOf(url),
           urlComparisonKey(url));
     } catch (Exception ignored) {
       return null;
     }
   }
 
-  private static void captureRequestControlledUrls(Object request) {
-    List<String> values = requestControlledUrls(request);
+  private static void captureRequestControlledUrls(Map<?, ?> parameters) {
+    List<String> values = requestControlledUrls(parameters);
     if (values.isEmpty()) {
       CURRENT_REQUEST_URLS.remove();
     } else {
@@ -4595,16 +4474,12 @@ public final class Java11RaspHooks {
     }
   }
 
-  private static List<String> requestControlledUrls(Object request) {
+  private static List<String> requestControlledUrls(Map<?, ?> parameters) {
     List<String> urls = new ArrayList<String>();
-    if (request == null) {
+    if (parameters == null) {
       return urls;
     }
-    Object parameterMap = invoke(request, "getParameterMap");
-    if (!(parameterMap instanceof Map<?, ?>)) {
-      return urls;
-    }
-    for (Map.Entry<?, ?> entry : ((Map<?, ?>) parameterMap).entrySet()) {
+    for (Map.Entry<?, ?> entry : parameters.entrySet()) {
       collectRequestControlledUrl(urls, String.valueOf(entry.getKey()), entry.getValue());
       if (urls.size() >= 16) {
         break;
@@ -4645,21 +4520,27 @@ public final class Java11RaspHooks {
         || lower.indexOf("endpoint") >= 0
         || lower.indexOf("target") >= 0
         || lower.indexOf("callback") >= 0
-        || lower.indexOf("webhook") >= 0;
+        || lower.indexOf("webhook") >= 0 || lower.equals("path") || lower.equals("route");
   }
 
   private static void addRequestControlledUrl(List<String> urls, Object value) {
+    if (value instanceof String) {
+      String path = (String) value;
+      if (path.startsWith("/") && !path.startsWith("//") && LOOPBACK_ADMIN_PATH.matcher(path).find()) {
+        if (!urls.contains(path)) urls.add(path);
+        return;
+      }
+    }
     String key = urlComparisonKey(value);
     if (key.length() > 0 && !urls.contains(key)) {
       urls.add(key);
     }
   }
 
-  private static String requestControlledUrlMatch(String key) {
+  private static String requestControlledUrlMatch(String key, List<String> urls) {
     if (key == null || key.length() == 0) {
       return "";
     }
-    List<String> urls = CURRENT_REQUEST_URLS.get();
     if (urls == null || urls.isEmpty()) {
       return "";
     }
@@ -4676,7 +4557,7 @@ public final class Java11RaspHooks {
       if (!"http".equals(protocol) && !"https".equals(protocol)) {
         return "";
       }
-      String host = normalizeHost(url.getHost());
+      String host = NetworkHost.destinationKey(url.getHost());
       if (host.length() == 0) {
         return "";
       }
@@ -4728,10 +4609,6 @@ public final class Java11RaspHooks {
     return lower(normalized.substring(dot + 1));
   }
 
-  private static boolean isCloudMetadataHost(String host) {
-    return NetworkHost.isMetadata(host) || "169.254.169.253".equals(host);
-  }
-
   private static boolean isLoopbackHost(String host) {
     return NetworkHost.isLoopback(host);
   }
@@ -4769,22 +4646,6 @@ public final class Java11RaspHooks {
     return false;
   }
 
-  private static boolean isNettyHostsFileRead(String path) {
-    String lower = path.toLowerCase(Locale.ROOT);
-    if (!lower.endsWith("/etc/hosts") && !lower.endsWith("/windows/system32/drivers/etc/hosts")) {
-      return false;
-    }
-    StackTraceElement[] stack = Thread.currentThread().getStackTrace();
-    for (int i = 0; i < stack.length; i++) {
-      String className = stack[i].getClassName();
-      if ("io.netty.resolver.HostsFileEntriesProvider$ParserImpl".equals(className)
-          || "io.netty.resolver.DefaultHostsFileEntriesResolver".equals(className)) {
-        return true;
-      }
-    }
-    return false;
-  }
-
   private static boolean nioOptionsContainWrite(Object options) {
     if (options == null) {
       return false;
@@ -4811,15 +4672,9 @@ public final class Java11RaspHooks {
   }
 
   private static boolean isNioWriteOption(Object option) {
-    if (option == null) {
-      return false;
-    }
-    String value = String.valueOf(option).toUpperCase(Locale.ROOT);
-    return "WRITE".equals(value)
-        || "APPEND".equals(value)
-        || "CREATE".equals(value)
-        || "CREATE_NEW".equals(value)
-        || "TRUNCATE_EXISTING".equals(value);
+    return option == java.nio.file.StandardOpenOption.WRITE || option == java.nio.file.StandardOpenOption.APPEND
+        || (option instanceof String && ("WRITE".equalsIgnoreCase((String) option)
+            || "APPEND".equalsIgnoreCase((String) option)));
   }
 
   private static void emitFileFinding(
@@ -4828,11 +4683,15 @@ public final class Java11RaspHooks {
       return;
     }
     String action = shouldBlock() ? "block" : "log";
-    String previous = lastLoggedPath.get();
-    if (!"block".equals(action) && finding.detailValue.equals(previous)) {
+    if ("attachment_file_open".equals(finding.decisionBasis)) {
+      if (!"block".equals(action) && io.ohmyrasp.agent.xml.AttachmentFileRead.repeated()) return;
+    } else if ((lastLoggedPath == LAST_LOGGED_FILE_READ || lastLoggedPath == null)
+        && !"block".equals(action) && HostReadPath.repeated(finding.detailValue, finding.algorithm)) {
       return;
+    } else if (lastLoggedPath != null) {
+      if (!"block".equals(action) && finding.detailValue.equals(lastLoggedPath.get())) return;
+      lastLoggedPath.set(finding.detailValue);
     }
-    lastLoggedPath.set(finding.detailValue);
     appendEvent(finding, hook, action);
     if ("block".equals(action)) {
       throw new Java11RaspBlockException("OhMyRASP Java 11 blocked suspicious file access");
@@ -4866,25 +4725,35 @@ public final class Java11RaspHooks {
   }
 
   private static final class RequestSnapshot {
+    String lastUpload;
     final String uri;
     final String tokenSource;
     final String token;
 
     final List<String> sqlInputs;
+    final List<String> parameterValues;
 
-    RequestSnapshot(Object request, String uri, String tokenSource, String token) {
+    RequestSnapshot(Map<?, ?> parameters, String uri, String tokenSource, String token) {
       sqlInputs = new ArrayList<String>();
-      Object map = invoke(request, "getParameterMap");
-      if (map instanceof Map<?, ?>) {
-        for (Object value : ((Map<?, ?>) map).values()) {
-          List<String> items = new ArrayList<String>();
-          collectParameterValues(items, value);
-          for (String item : items) {
-            if (SqlStatement.mayControlStructure(item)) {
-              sqlInputs.add(item);
-            }
+      if (parameters != null) {
+        // Snapshot values at request entry. Framework-owned parameter arrays can change later.
+        parameterValues = new ArrayList<String>();
+        for (Object value : parameters.values()) {
+          if (value instanceof String[]) {
+            java.util.Collections.addAll(parameterValues, (String[]) value);
+          } else {
+            List<String> items = new ArrayList<String>();
+            collectParameterValues(items, value);
+            parameterValues.addAll(items);
           }
         }
+        for (String item : parameterValues) {
+          if (SqlStatement.mayControlStructure(item)) {
+            sqlInputs.add(item);
+          }
+        }
+      } else {
+        parameterValues = null;
       }
       this.uri = uri == null ? "" : uri;
       this.tokenSource = tokenSource == null ? "" : tokenSource;
@@ -4985,6 +4854,14 @@ public final class Java11RaspHooks {
   }
 
   private static void appendEvent(Finding finding, String hook, String action) {
+    appendEvent(finding, hook, action, null);
+  }
+
+  private static void appendEvent(Finding finding, String hook, String action, String resolvedAddress) {
+    appendEvent(finding, hook, action, resolvedAddress, -1);
+  }
+
+  private static void appendEvent(Finding finding, String hook, String action, String resolvedAddress, int argc) {
     if (RaspRuntime.detectionOff()) {
       return;
     }
@@ -5014,7 +4891,14 @@ public final class Java11RaspHooks {
             + json(finding.detailKey)
             + "\":\""
             + json(finding.detailValue)
-            + "\"}"
+            + "\""
+            + (argc < 0 ? "" : ",\"process_operation\":\"ProcessImpl.start\",\"argument_count\":\"" + argc + "\"")
+            + (resolvedAddress == null ? "" : ",\"resolved_address\":\"" + json(resolvedAddress) + "\"")
+            + (finding.policyDigest != null && DISPATCH.deliveredPart(MultipartFilename.receiver())
+                ? ",\"multipart_source\":\"active_request_lookup\"" : "")
+            + (finding.policyDigest == null ? "" : ",\"archive_policy_sha256\":\"" + finding.policyDigest + "\"")
+            + (finding.decisionBasis == null ? "" : ",\"decision_basis\":\"" + json(finding.decisionBasis) + "\"")
+            + "}"
             + "}";
     RaspRuntime.writeEvent(logPath, event);
   }
@@ -5076,8 +4960,22 @@ public final class Java11RaspHooks {
     final String message;
     final String detailKey;
     final String detailValue;
+    final String decisionBasis;
+    final String policyDigest;
 
     Finding(String algorithm, int confidence, String message, String detailKey, String detailValue) {
+      this(algorithm, confidence, message, detailKey, detailValue, null);
+    }
+
+    Finding(String algorithm, int confidence, String message, String detailKey, String detailValue,
+        String decisionBasis) {
+      this(algorithm, confidence, message, detailKey, detailValue, decisionBasis, null);
+    }
+
+    Finding(String algorithm, int confidence, String message, String detailKey, String detailValue,
+        String decisionBasis, String policyDigest) {
+      this.policyDigest = policyDigest;
+      this.decisionBasis = decisionBasis;
       this.algorithm = algorithm;
       this.confidence = confidence;
       this.message = message;
