@@ -7,6 +7,7 @@ import static io.ohmyrasp.agent.detect.DeserializationTypes.deserializationGadge
 import static io.ohmyrasp.agent.detect.DeserializationTypes.normalizeJavaTypeName;
 import static io.ohmyrasp.agent.detect.DetectorStrings.abbreviate;
 import static io.ohmyrasp.agent.detect.DetectorStrings.lower;
+import static io.ohmyrasp.agent.detect.DetectorStrings.normalizePath;
 import io.ohmyrasp.agent.model.Detection;
 import io.ohmyrasp.agent.model.RequestContext;
 import java.util.LinkedHashMap;
@@ -551,5 +552,84 @@ public final class DeserializationDetector {
   public static Optional<Detection> detectHessianType(String type, RequestContext request) {
     // Compatibility for declarations with no class allocation.
     return Optional.empty();
+  }
+
+  public static Optional<Detection> detectXmlDecoderExpression(
+      String targetType,
+      String methodName,
+      List<String> arguments,
+      RequestContext request,
+      List<String> stackClassNames) {
+    if (request == null || !request.active()) {
+      return Optional.empty();
+    }
+    if (!isXmlDecoderStack(stackClassNames)) {
+      return Optional.empty();
+    }
+    String normalizedTarget = normalizeJavaTypeName(targetType);
+    String normalizedMethod = lower(methodName);
+    List<String> safeArguments = arguments == null ? List.of() : arguments;
+    String joinedArguments = String.join(" ", safeArguments);
+
+    boolean processBuilderStart =
+        normalizedTarget.equals("java.lang.ProcessBuilder") && normalizedMethod.equals("start");
+    boolean runtimeExec =
+        normalizedTarget.equals("java.lang.Runtime") && normalizedMethod.startsWith("exec");
+    boolean reflectiveInvoke =
+        normalizedTarget.equals("java.lang.reflect.Method") && normalizedMethod.equals("invoke");
+    if (processBuilderStart || runtimeExec || reflectiveInvoke) {
+      return Optional.of(
+          Detection.log(
+              "deserialization",
+              "xml_decoder_runtime",
+              95,
+              "XMLDecoder object graph invoked a runtime execution primitive",
+              request,
+              Map.of(
+                  "target", normalizedTarget,
+                  "method", String.valueOf(methodName),
+                  "arguments", abbreviate(joinedArguments))));
+    }
+
+    boolean writerConstruction =
+        (normalizedTarget.equals("java.io.PrintWriter")
+                || normalizedTarget.equals("java.io.FileWriter")
+                || normalizedTarget.equals("java.io.FileOutputStream"))
+            && (normalizedMethod.equals("new") || normalizedMethod.equals("newinstance"));
+    if (writerConstruction) {
+      for (String argument : safeArguments) {
+        String path = normalizePath(argument);
+        if (HostFileMutationDetector.isScriptTarget(path)) {
+          return Optional.of(
+              Detection.log(
+                  "deserialization",
+                  "xml_decoder_webshell",
+                  95,
+                  "XMLDecoder object graph created a writer for a server-side script path",
+                  request,
+                  Map.of(
+                      "target", normalizedTarget,
+                      "method", String.valueOf(methodName),
+                      "path", abbreviate(path))));
+        }
+      }
+    }
+    return Optional.empty();
+  }
+
+  private static boolean isXmlDecoderStack(List<String> stackClassNames) {
+    if (stackClassNames == null || stackClassNames.isEmpty()) {
+      return false;
+    }
+    for (String className : stackClassNames) {
+      if (className == null) {
+        continue;
+      }
+      if (className.equals("java.beans.XMLDecoder")
+          || className.startsWith("com.sun.beans.decoder.")) {
+        return true;
+      }
+    }
+    return false;
   }
 }

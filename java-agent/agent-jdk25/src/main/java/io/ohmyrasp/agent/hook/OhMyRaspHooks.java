@@ -1543,7 +1543,7 @@ public final class OhMyRaspHooks {
       String methodName = invokeString(statement, "getMethodName").orElse("");
       Object arguments = invoke(statement, "getArguments").orElse(new Object[0]);
       emit(
-          DETECTORS.detectXmlDecoderExpression(
+          DeserializationDetector.detectXmlDecoderExpression(
               javaBeansTargetType(target),
               methodName,
               javaBeansArguments(target, arguments),

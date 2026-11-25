@@ -2347,7 +2347,7 @@ final class DetectorEngineTest {
   @Test
   void detectsXmlDecoderProcessBuilderStart() {
     var result =
-        engine.detectXmlDecoderExpression(
+        DeserializationDetector.detectXmlDecoderExpression(
             "java.lang.ProcessBuilder",
             "start",
             List.of("sh", "-c", "id"),
@@ -2389,7 +2389,7 @@ final class DetectorEngineTest {
             body);
 
     var result =
-        engine.detectXmlDecoderExpression(
+        DeserializationDetector.detectXmlDecoderExpression(
             "java.lang.ProcessBuilder",
             "start",
             List.of("sh", "-c", "id"),
@@ -2404,7 +2404,7 @@ final class DetectorEngineTest {
   @Test
   void detectsXmlDecoderRuntimeExec() {
     var result =
-        engine.detectXmlDecoderExpression(
+        DeserializationDetector.detectXmlDecoderExpression(
             "java.lang.Runtime", "exec", List.of("id"), request(), xmlDecoderStack());
 
     assertAlgorithm(result, "xml_decoder_runtime");
@@ -2413,7 +2413,7 @@ final class DetectorEngineTest {
   @Test
   void detectsXmlDecoderServerSideScriptWriter() {
     var result =
-        engine.detectXmlDecoderExpression(
+        DeserializationDetector.detectXmlDecoderExpression(
             "java.io.PrintWriter", "new", List.of("/tmp/shell.jsp"), request(), xmlDecoderStack());
 
     assertAlgorithm(result, "xml_decoder_webshell");
@@ -2422,7 +2422,7 @@ final class DetectorEngineTest {
   @Test
   void ignoresJavaBeansRuntimeOutsideXmlDecoderStack() {
     var result =
-        engine.detectXmlDecoderExpression(
+        DeserializationDetector.detectXmlDecoderExpression(
             "java.lang.ProcessBuilder", "start", List.of("id"), request(), List.of("app.BeanUtil"));
 
     assertTrue(result.isEmpty());
@@ -2431,7 +2431,7 @@ final class DetectorEngineTest {
   @Test
   void ignoresBackgroundXmlDecoderRuntime() {
     var result =
-        engine.detectXmlDecoderExpression(
+        DeserializationDetector.detectXmlDecoderExpression(
             "java.lang.ProcessBuilder",
             "start",
             List.of("id"),
