@@ -343,7 +343,7 @@ cd java-agent
 bash scripts/run-fp-report.sh                      # writes java-agent/docs/FALSE-POSITIVE-REPORT.md
 ```
 
-**2. Detection coverage doc** (derived from `HookRegistry.java`, the detector classes in `agent-jdk25/src/main/java/io/ohmyrasp/agent/detect/`, and `acceptance/vulhub/*/*.sh`):
+**2. Detection coverage doc** (derived from the sources listed at the top of `java-agent/scripts/gen-detection-coverage.py`: hooks, detector classes, the rule catalogue, the Vulhub acceptance scripts, the JDK 25 runtime suite's `required_algorithms` array and the probes):
 
 ```bash
 cd java-agent
