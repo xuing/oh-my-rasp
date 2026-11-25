@@ -10,6 +10,8 @@ import io.ohmyrasp.agent.file.HostDirectory;
 import io.ohmyrasp.agent.jmx.JmxDispatch;
 import io.ohmyrasp.agent.jmx.JmxWriteScope;
 import io.ohmyrasp.agent.detect.DetectorEngine;
+import io.ohmyrasp.agent.detect.JdbcDetector;
+import io.ohmyrasp.agent.detect.SqlRequestIndicators;
 import io.ohmyrasp.agent.http.ArchiveUploadPolicy;
 import io.ohmyrasp.agent.http.MultipartFilename;
 import io.ohmyrasp.agent.http.ServletDispatchScope;
@@ -128,7 +130,7 @@ public final class OhMyRaspHooks {
     if (policy.selectsAlgorithm("xss_userinput")) emit(DETECTORS.detectMarkupParameter(request));
     if (policy.selectsAlgorithm("request_scanner")) emit(DETECTORS.detectScannerUserAgent(request));
     if (policy.loaded() && !request.body().isBlank()) {
-      for (Detection candidate : DETECTORS.sqlRequestMetadata(request, policy::selectsAlgorithm)) {
+      for (Detection candidate : SqlRequestIndicators.sqlRequestMetadata(request, policy::selectsAlgorithm)) {
         emit(Optional.of(candidate));
       }
     }
@@ -434,7 +436,7 @@ public final class OhMyRaspHooks {
         // A managed policy may independently select the existing JDBC classifier.
         if (!POLICY.loaded()) return;
       }
-      emit(DETECTORS.detectSql(query, request, jdbcReceiver), true,
+      emit(JdbcDetector.detectSql(query, request, jdbcReceiver), true,
           algorithm -> MyBatisSqlTrace.repeatedObservation(query, algorithm));
     } catch (OhMyRaspBlockException blocked) {
       throw blocked;
@@ -467,7 +469,7 @@ public final class OhMyRaspHooks {
       return;
     }
     try {
-      emit(DETECTORS.detectJdbcUrl(url, currentRequest()));
+      emit(JdbcDetector.detectJdbcUrl(url, currentRequest()));
     } catch (OhMyRaspBlockException blocked) {
       throw blocked;
     } catch (Throwable throwable) {
@@ -488,7 +490,7 @@ public final class OhMyRaspHooks {
     }
     try {
       RequestContext context = new RequestContext(method, uri, query, parameters, headers, body);
-      emit(DETECTORS.detectJdbcUrl(url, context));
+      emit(JdbcDetector.detectJdbcUrl(url, context));
     } catch (OhMyRaspBlockException blocked) {
       throw blocked;
     } catch (Throwable throwable) {
@@ -503,7 +505,7 @@ public final class OhMyRaspHooks {
     }
     try {
       emit(
-          DETECTORS.detectSqlException(
+          JdbcDetector.detectSqlException(
               server, errorCode, errorState, errorMessage, query, currentRequest()));
     } catch (OhMyRaspBlockException blocked) {
       throw blocked;
@@ -517,7 +519,7 @@ public final class OhMyRaspHooks {
       return;
     }
     try {
-      emit(DETECTORS.detectSqlRegex(query, regex, currentRequest()));
+      emit(JdbcDetector.detectSqlRegex(query, regex, currentRequest()));
     } catch (OhMyRaspBlockException blocked) {
       throw blocked;
     } catch (Throwable throwable) {

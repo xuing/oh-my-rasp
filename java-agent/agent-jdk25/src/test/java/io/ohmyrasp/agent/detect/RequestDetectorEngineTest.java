@@ -1071,7 +1071,7 @@ final class RequestDetectorEngineTest {
             body);
 
     assertTrue(engine.detectRequest(context).isEmpty());
-    var result = engine.sqlRequestMetadata(context, "request_sql_sort_injection"::equals).stream().findFirst();
+    var result = SqlRequestIndicators.sqlRequestMetadata(context, "request_sql_sort_injection"::equals).stream().findFirst();
 
     assertAlgorithm(result, "request_sql_sort_injection");
     assertEquals("type", result.orElseThrow().details().get("field"));
@@ -1100,7 +1100,7 @@ final class RequestDetectorEngineTest {
             body);
 
     assertTrue(engine.detectRequest(context).isEmpty());
-    var result = engine.sqlRequestMetadata(context, "request_sql_identifier_injection"::equals).stream().findFirst();
+    var result = SqlRequestIndicators.sqlRequestMetadata(context, "request_sql_identifier_injection"::equals).stream().findFirst();
 
     assertAlgorithm(result, "request_sql_identifier_injection");
     assertEquals("metricName", result.orElseThrow().details().get("field"));

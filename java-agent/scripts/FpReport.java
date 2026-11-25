@@ -1,4 +1,5 @@
 import io.ohmyrasp.agent.detect.DetectorEngine;
+import io.ohmyrasp.agent.detect.JdbcDetector;
 import io.ohmyrasp.agent.model.Detection;
 import io.ohmyrasp.agent.model.RequestContext;
 
@@ -53,7 +54,7 @@ public final class FpReport {
             Case.of("{\"table\":\"reports\",\"column\":\"Select title\"}")),
             (c, r) -> ENGINE.detectRequest(new RequestContext("POST", "/reports/query", "",
                 Map.of(), Map.of("content-type", "application/json"), c.payload()))),
-        new Category("SQL queries", sqlCorpus(), (c, r) -> ENGINE.detectSql(c.payload(), r)),
+        new Category("SQL queries", sqlCorpus(), (c, r) -> JdbcDetector.detectSql(c.payload(), r)),
         new Category("OS commands", commandCorpus(), (c, r) -> ENGINE.detectCommand(splitCommand(c.payload()), r)),
         new Category("Inline shell reports", List.of(
             Case.of("printf '%s' 'example: cat /etc/passwd'"),
@@ -113,7 +114,7 @@ public final class FpReport {
             (c, r) -> ENGINE.detectFileUpload(c.payload(),
                 new RequestContext("POST", "/plugin/add", "", Map.of(), Map.of()))),
         new Category("Upload filenames", uploadCorpus(), (c, r) -> ENGINE.detectFileUpload(c.payload(), r)),
-        new Category("JDBC URLs", jdbcCorpus(), (c, r) -> ENGINE.detectJdbcUrl(c.payload(), r)),
+        new Category("JDBC URLs", jdbcCorpus(), (c, r) -> JdbcDetector.detectJdbcUrl(c.payload(), r)),
         new Category("Application response markup", List.of(
             Case.tainted("<script src='/assets/report.js'></script>", "weekly"),
             Case.tainted("<p>&lt;script&gt;</p>", "<script>")),

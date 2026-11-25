@@ -16,7 +16,7 @@ import java.util.Set;
 import java.util.regex.Pattern;
 
 /** Classify JDBC statements, connection options and database error signals. */
-final class JdbcDetector {
+public final class JdbcDetector {
   private JdbcDetector() {}
 
   private static final Pattern H2_CODE_CONTAINER =
@@ -47,7 +47,7 @@ final class JdbcDetector {
       Pattern.compile(
           "(?is)(?:[?&;]\\s*(?:statementinterceptors|queryinterceptors)\\s*=|serverstatusdiffinterceptor|[?&;]\\s*detectcustomcollations\\s*=\\s*(?:true|1|yes)\\b)");
 
-  static Optional<Detection> detectSql(String query, RequestContext request) {
+  public static Optional<Detection> detectSql(String query, RequestContext request) {
     return detectSql(query, request, null);
   }
 
@@ -58,7 +58,7 @@ final class JdbcDetector {
     return classifySql(new SqlStatement(query, jdbcClass), request);
   }
 
-  static Optional<Detection> detectSql(String query, RequestContext request, Object jdbcReceiver) {
+  public static Optional<Detection> detectSql(String query, RequestContext request, Object jdbcReceiver) {
     if (query == null || query.isBlank()) return Optional.empty();
     return classifySql(SqlStatement.fromJdbc(query, jdbcReceiver), request);
   }
@@ -134,7 +134,7 @@ final class JdbcDetector {
     return false;
   }
 
-  static Optional<Detection> detectJdbcUrl(String url, RequestContext request) {
+  public static Optional<Detection> detectJdbcUrl(String url, RequestContext request) {
     if (url == null || url.isBlank()) {
       return Optional.empty();
     }
@@ -164,7 +164,7 @@ final class JdbcDetector {
     return Optional.empty();
   }
 
-  static Optional<Detection> detectSqlException(
+  public static Optional<Detection> detectSqlException(
       String server,
       String errorCode,
       String errorState,
@@ -195,7 +195,7 @@ final class JdbcDetector {
                 "query", abbreviate(query))));
   }
 
-  static Optional<Detection> detectSqlRegex(
+  public static Optional<Detection> detectSqlRegex(
       String query, String regex, RequestContext request) {
     if (query == null || query.isBlank() || regex == null || regex.isBlank()) {
       return Optional.empty();
