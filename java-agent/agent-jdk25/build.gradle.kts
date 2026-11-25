@@ -61,6 +61,13 @@ val agentJar = tasks.register<ShadowJar>("agentJar") {
     exclude("**/module-info.class")
 }
 
+// Keep the standalone corpus runner incremental and compile against the packaged ABI used by CI.
+tasks.register<JavaCompile>("compileFpReport") {
+    source(rootProject.file("scripts/fp-harness/FpReport.java"))
+    classpath = files(agentJar.flatMap { it.archiveFile })
+    destinationDirectory.set(layout.buildDirectory.dir("classes/fpReport"))
+}
+
 val shirudoMode = (providers.gradleProperty("shirudoMode").orNull ?: "block").trim().lowercase()
 require(shirudoMode in setOf("block", "monitor")) {
     "shirudoMode must be 'block' or 'monitor', got: '$shirudoMode'"

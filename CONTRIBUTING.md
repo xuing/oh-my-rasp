@@ -86,6 +86,34 @@ npm run test:e2e    # playwright test
 
 ### Java agent
 
+For detector development on Linux, start with the JDK 25 agent. Run the primary
+unit tests, the complete benign corpus and the packaged probe for the rule you
+changed. These commands exercise file reads and file deletion respectively.
+
+```bash
+java-agent/scripts/check-jdk25.sh file-read
+java-agent/scripts/check-jdk25.sh --tests '*DetectorEngineTest' file-delete
+```
+
+The script reuses build outputs and Gradle dependencies in a per-checkout cache.
+It prints the cache path and prefers the user's runtime directory. Set
+`RASP_JDK25_CACHE` to choose a different cache parent. Run with `--help` for the
+available probes. To focus the unit-test step, put a Gradle filter before the
+probe name (for example `--tests '*HostReadPathTest' file-read`). Each run still checks
+the full benign corpus. Extra probe options use container paths under `/workspace`
+(the read-only Java project) or `/state` (the cache for this checkout).
+
+The file, process and multipart probes run each scenario once by default,
+including concurrent access. If successive rule changes trade false positives
+for missed detections, retain examples of both and use `--rounds N` for focused
+comparisons with varied inputs.
+
+Once the change passes on JDK 25, verify the same behavior on JDK 21 with the
+primary JAR, apply any required backport changes, and run the affected Java 8,
+11 and 17 probes together. Shared detector code is compiled into each agent;
+each applicable runtime still needs its packaged check. Use the full build and
+compatibility matrix for integration.
+
 Run unit tests and `verifyShirudoUpatchJar` via Docker (matching `.github/workflows/agent.yml`):
 
 ```bash
@@ -107,6 +135,63 @@ bash scripts/acceptance.sh
 ```
 
 Per-runtime Vulhub scripts are named `scripts/acceptance-vulhub-<component>-<jdk>.sh`. The Java 21 runtime compatibility matrix lives in `scripts/acceptance-java21.sh`.
+
+For an offline coverage review, use the same local Vulhub checkout and the
+retained event logs. From `java-agent/`, run:
+
+```bash
+python3 scripts/check-vulhub-java-coverage.py --vulhub-root "$VULHUB_ROOT" \
+  --evidence-report /tmp/vulhub-inventory.json
+python3 scripts/check-vulhub-event-decisions.py --report /tmp/vulhub-decisions.json
+```
+
+The inventory reads Vulhub's catalogue, Compose manifests and README paths.
+It records literal script references and ledger rows sharing a vulnerability
+identifier separately. Either relationship can be ambiguous. Event files with
+probe names may include exploratory or startup detections. The decision check
+needs a JDK 17+ with `javac` and the built Java 8/11/17 agent jars. It passes
+retained arguments to detector callbacks, compares the recorded rule and block
+decision, and checks a benign input for each tested hook and track. Exit 1
+indicates a difference from history, which can include a corrected false
+positive. To check for changes between agent builds, pass a prior report
+with `--compare-report` and write the candidate to a new file. Comparison
+requires matching input digests and still fails on any candidate benign alert.
+Historical file reads that require the original filesystem, working directory or request
+source have an explicit unavailable status. Their paths are excluded from the probe batch.
+For processes, a message naming an interpreter or initialization context cannot
+supply the original caller. A display string from an array API does not preserve
+argument boundaries. These records also receive an unavailable status.
+The comparison distinguishes changes in evidence availability from changes in tested
+detector outcomes and reports both.
+An archive filename cannot establish deployment authorization. To require every retained
+block to be replayed and matched, pass `--require-complete`; this still applies when
+comparing two reports. An end-to-end result requires separate evidence of the application outcome.
+
+The runtime matrix runs [the HTTP transport check](java-agent/scripts/fp-harness/check-http-transport.py)
+against the built agent. Its local responder verifies cache hits, redirect receipts and
+request attribution under block and monitor modes.
+
+The Linux matrix checks open modes and provider namespaces against the packaged agent.
+The fixtures read ordinary ZIP entries, check locally opened channels and consume concurrent
+directory walks in block and monitor modes. [File-read check](java-agent/scripts/fp-harness/check-file-read.py)
+
+The Linux matrix also runs `java-agent/scripts/fp-harness/check-process-launch.py`.
+It verifies argument boundaries, application list accesses, per-stage redirection
+and explicit dispatch policy with locally executed report commands.
+
+The multipart check covers both the Javax and Jakarta Servlet APIs.
+Pass `--api-dir` to `java-agent/scripts/fp-harness/check-multipart-archive.py` to
+use local copies of its pinned API jars.
+
+The packaged-agent job exercises MyBatis rendering and a recording JDBC receiver
+in block and monitor modes. For a local run, pass the agent JAR to
+[`check-mybatis-mapping.py`](java-agent/scripts/fp-harness/check-mybatis-mapping.py).
+Its `--mybatis-jar` option accepts an existing library for offline checks.
+
+The runtime compatibility job also runs `scripts/fp-harness/check-xml-resolution.py`
+against the packaged agent. To exercise a separate Apache Xerces installation,
+pass its JARs with `--xerces-classpath`. The fixture uses an in-memory URL
+handler and temporary catalogue archives and checks both block and monitor modes.
 
 ### Daemon (Rust)
 
@@ -187,9 +272,7 @@ Run `npm run i18n:check` (included in `npm run build` and `npm test`) before ope
 
 Prioritize zero observed false positives on normal application workloads. Check
 the business result and the detection log against an uninstrumented run, including
-alerts that did not block the request. Before considering a heuristic with known
-false positives, run more than ten rounds with varied benign inputs and retest
-each refinement. If the ambiguity persists, recommend opt-in monitoring and
+alerts that did not block the request. If repeated refinements expose a persistent ambiguity, recommend opt-in monitoring and
 document which legitimate actions produce alerts.
 
 Contributions that add detection rules or hook families should include runnable verification via either:

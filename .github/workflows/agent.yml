@@ -25,6 +25,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Test offline coverage evidence handling
+        run: python3 -m unittest discover -s java-agent/scripts/evidence -p 'test_*.py'
       - name: Check detector false-positive-suppression parity
         working-directory: java-agent
         run: bash scripts/check-detector-parity.sh
@@ -107,6 +109,9 @@ jobs:
             jar: agent-jdk25/build/libs/ohmyrasp-agent.jar
             upatch: agent-jdk25/build/libs/ohmyrasp-jdk25.jar
     steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          sparse-checkout: java-agent/scripts/fp-harness
       - name: Download agent compatibility artifacts
         uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
@@ -120,6 +125,41 @@ jobs:
           check-latest: true
       - name: Start the agent on JDK ${{ matrix.java }}
         run: java -javaagent:"java-agent/${{ matrix.jar }}" -version
+      - name: Check a background pipeline in block mode
+        run: |
+          set -euo pipefail
+          probe="$(mktemp -d)"
+          javac -d "$probe" java-agent/scripts/fp-harness/BackgroundProcessCheck.java
+          touch "$probe/events.jsonl"
+          java -Dohmyrasp.standalone=true -Dohmyrasp.mode=block -Dohmyrasp.control=none \
+            -Dohmyrasp.log="$probe/events.jsonl" -Dohmyrasp.log.sync=true \
+            -javaagent:"java-agent/${{ matrix.jar }}" -cp "$probe" BackgroundProcessCheck \
+            > "$probe/console.log" 2>&1 || { cat "$probe/console.log"; exit 1; }
+          python3 - "$probe" <<'PY'
+          import json, sys
+          from pathlib import Path
+          probe = Path(sys.argv[1])
+          events = [json.loads(line) for line in (probe / "events.jsonl").read_text().splitlines()]
+          started = any(e.get("event", "").endswith("-agent-start") for e in events)
+          if not started and "[OHMYRASP] agent started with ASM transformer" not in (probe / "console.log").read_text():
+              sys.exit("Agent startup record missing")
+          if any(e.get("kind") == "detection" or e.get("event") == "ohmyrasp-detection" for e in events):
+              sys.exit("Ordinary background job produced a detection")
+          PY
+      - name: Verify HTTP acquisition, redirect and asynchronous request attribution
+        run: python3 java-agent/scripts/fp-harness/check-http-transport.py "java-agent/${{ matrix.jar }}"
+      - name: Verify validated process arguments and pipeline stages
+        run: python3 java-agent/scripts/fp-harness/check-process-launch.py "java-agent/${{ matrix.jar }}"
+      - name: Verify Javax and Jakarta multipart authorization
+        run: python3 java-agent/scripts/fp-harness/check-multipart-archive.py "java-agent/${{ matrix.jar }}"
+      - name: Verify host filesystem read decisions
+        run: python3 java-agent/scripts/fp-harness/check-file-read.py "java-agent/${{ matrix.jar }}"
+      - name: Verify MyBatis template and JDBC handoff
+        run: python3 java-agent/scripts/fp-harness/check-mybatis-mapping.py "java-agent/${{ matrix.jar }}"
+      - name: Verify resolved JMX dispatch
+        run: python3 java-agent/scripts/fp-harness/check-jmx-dispatch.py "java-agent/${{ matrix.jar }}"
+      - name: Verify XML catalogue and transport decisions
+        run: python3 java-agent/scripts/fp-harness/check-xml-resolution.py "java-agent/${{ matrix.jar }}"
       - name: Start the standalone agent on JDK ${{ matrix.java }}
         if: matrix.upatch
         run: java -javaagent:"java-agent/${{ matrix.upatch }}" -version
