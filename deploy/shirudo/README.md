@@ -25,7 +25,7 @@ with `shirudo bpm build`.
 Choose one primary package per JVM. The JDK 21 and 25 names contain the same agent bytecode.
 For JDK 21, extract `ohmyrasp-jdk21-shirudo.tar.gz` to sign the staged package with your operator keys.
 
-Benign-traffic precision across the curated engine corpus: **0 / 187** false positives across **25** categories (0.0%; see [FALSE-POSITIVE-REPORT.md](../../java-agent/docs/FALSE-POSITIVE-REPORT.md)).
+Benign-traffic precision across the curated engine corpus: **0 / 189** false positives across **25** categories (0.0%; see [FALSE-POSITIVE-REPORT.md](../../java-agent/docs/FALSE-POSITIVE-REPORT.md)).
 
 ## Security Protections Included
 

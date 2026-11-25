@@ -61,7 +61,7 @@ def main():
             rows = [json.loads(line) for line in log.read_text().splitlines()]
             events = [r for r in rows if r.get("kind") == "detection" or r.get("event") == "ohmyrasp-detection"]
             names = Counter(e["details"]["class"] for e in events)
-            if names != {"org.apache.commons.beanutils.BeanComparator": 5 if args.collections_dir else 3,
+            if names != {"org.apache.commons.beanutils.BeanComparator": 7 if args.collections_dir else 3,
                          "org.apache.xalan.xsltc.trax.TemplatesImpl": 1} or any(
                              (e["action"] == "block") != (mode == "block") for e in events):
                 raise SystemExit(f"incorrect type decisions on {track} in {mode}")

@@ -1302,7 +1302,6 @@ public final class Java11RaspHooks {
       return 95;
     }
     if (lower.contains("invokertransformer")
-        || lower.contains("chainedtransformer")
         || lower.contains("beancomparator")
         || lower.startsWith("bsh.")
         || lower.contains("convertedclosure")) {

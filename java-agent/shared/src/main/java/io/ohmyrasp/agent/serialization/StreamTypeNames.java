@@ -60,7 +60,7 @@ public final class StreamTypeNames {
               + "javax\\.script\\.ScriptEngineManager|"
               + "bsh\\.(?:XThis(?:\\$Handler)?|This|NameSpace|Interpreter|BSH[A-Za-z0-9_$]+)|"
               + "org\\.apache\\.commons\\.beanutils\\.BeanComparator|"
-              + "org\\.apache\\.commons\\.collections(?:4)?\\.functors\\.(?:Invoker|Instantiate|Chained)Transformer|"
+              + "org\\.apache\\.commons\\.collections(?:4)?\\.functors\\.(?:Invoker|Instantiate)Transformer|"
               + "org\\.codehaus\\.groovy\\.runtime\\.(?:ConvertedClosure|MethodClosure)|"
               + "org\\.springframework\\.beans\\.factory\\.config\\.(?:PropertyPathFactoryBean|MethodInvokingFactoryBean)"
               + ")$");

@@ -78,6 +78,26 @@ public final class StreamResolutionCheck {
     }
   }
 
+  private static void checkChain(String api, Object marker, String mode) throws Exception {
+    Class<?> transformer = Class.forName(api + ".Transformer");
+    Class<?> chain = Class.forName(api + ".functors.ChainedTransformer");
+    Constructor<?> constant = Class.forName(api + ".functors.ConstantTransformer").getConstructor(Object.class);
+    Object steps = Array.newInstance(transformer, 2);
+    Constructor<?> compose = chain.getConstructor(steps.getClass());
+    Method transform = transformer.getMethod("transform", Object.class);
+    Array.set(steps, 0, constant.newInstance("daily"));
+    Array.set(steps, 1, constant.newInstance("weekly"));
+
+    Object restored = read(compose.newInstance(steps), "default");
+    if (!"weekly".equals(transform.invoke(restored, "input"))) throw new AssertionError("chain result changed");
+
+    Array.set(steps, 1, constant.newInstance(marker));
+    Object monitored = check("nested chain value", compose.newInstance(steps), "default", chain, true, mode);
+    if (monitored != null && transform.invoke(monitored, "input").getClass() != LISTED) {
+      throw new AssertionError("nested chain value changed");
+    }
+  }
+
   public static void main(String[] args) throws Exception {
     String track = args[0], mode = args[1];
     Object marker = LISTED.getConstructor().newInstance();
@@ -86,8 +106,10 @@ public final class StreamResolutionCheck {
         new Class<?>[]{TemplatesImpl.class}, new ReportHandler());
     try (HttpTransportCheck.Scope scope = new HttpTransportCheck.Scope(track, "weekly")) {
       if (args.length > 2) {
-        checkCommonsCollections("org.apache.commons.collections.functors", marker, mode);
-        checkCommonsCollections("org.apache.commons.collections4.functors", marker, mode);
+        for (String api : new String[]{"org.apache.commons.collections", "org.apache.commons.collections4"}) {
+          checkCommonsCollections(api + ".functors", marker, mode);
+          checkChain(api, marker, mode);
+        }
       }
       check("integer", new Primitive(42), "default", Primitive.class, false, mode);
       check("case-sensitive", new bsh.BshMonthly(), "default", bsh.BshMonthly.class, false, mode);
