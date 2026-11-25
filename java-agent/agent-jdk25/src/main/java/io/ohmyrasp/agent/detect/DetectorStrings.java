@@ -1,5 +1,6 @@
 package io.ohmyrasp.agent.detect;
 
+import java.nio.file.Path;
 import java.util.Locale;
 
 /** Text transformations shared by primary-agent detectors. */
@@ -43,5 +44,16 @@ final class DetectorStrings {
       return value;
     }
     return value.substring(0, 300) + "...";
+  }
+
+  static String normalizePath(String path) {
+    if (path == null) {
+      return "";
+    }
+    try {
+      return Path.of(path).normalize().toString().replace('\\', '/').toLowerCase(Locale.ROOT);
+    } catch (RuntimeException e) {
+      return path.replace('\\', '/').toLowerCase(Locale.ROOT);
+    }
   }
 }

@@ -16,6 +16,7 @@ Hooks call the public [DetectorEngine facade](../java-agent/agent-jdk25/src/main
 |---|---|
 | JDBC statement, connection options, or database error | [JdbcDetector](../java-agent/agent-jdk25/src/main/java/io/ohmyrasp/agent/detect/JdbcDetector.java) |
 | SQL-like fields in a request, selected by policy | [SqlRequestIndicators](../java-agent/agent-jdk25/src/main/java/io/ohmyrasp/agent/detect/SqlRequestIndicators.java) |
+| Host write targets, archive extraction, generated content and deletion | [HostFileMutationDetector](../java-agent/agent-jdk25/src/main/java/io/ohmyrasp/agent/detect/HostFileMutationDetector.java) |
 | Process arguments and caller stack | [ProcessDetector](../java-agent/agent-jdk25/src/main/java/io/ohmyrasp/agent/detect/ProcessDetector.java) |
 | Deserialization transport and resolved type | [DeserializationDetector](../java-agent/agent-jdk25/src/main/java/io/ohmyrasp/agent/detect/DeserializationDetector.java) and [DeserializationTypes](../java-agent/agent-jdk25/src/main/java/io/ohmyrasp/agent/detect/DeserializationTypes.java) |
 | Resource selected through class loading, JNDI, JAAS, or Spring configuration | [RemoteResourceDetector](../java-agent/agent-jdk25/src/main/java/io/ohmyrasp/agent/detect/RemoteResourceDetector.java) |
