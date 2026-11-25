@@ -117,6 +117,80 @@ class LinkTest(unittest.TestCase):
         self.assertEqual(check_docs.REF_LINK.match("[build]: missing.md").group(1), "missing.md")
 
 
+class AnchorTest(unittest.TestCase):
+    def test_github_heading_slugs(self) -> None:
+        text = "\n".join([
+            "# Java agent",
+            "### Process launches",
+            "## `request_scanner` and [JNDI](x.md) lookups",
+            "## Usage",
+            "## Usage",
+            "```",
+            "# not a heading",
+            "```",
+            '<a id="Custom-Anchor"></a>',
+        ])
+        self.assertEqual(check_docs.heading_anchors(text), {
+            "java-agent", "process-launches", "request_scanner-and-jndi-lookups", "usage", "usage-1",
+            "custom-anchor"})
+
+    def test_real_anchor_targets(self) -> None:
+        self.assertIn("process-launches", check_docs.anchors_of("docs/detection.md"))
+        self.assertIn("rules-the-jdk-25-runtime-suite-requires",
+                      check_docs.anchors_of("java-agent/docs/DETECTION-COVERAGE.md"))
+
+
+class LedgerTest(unittest.TestCase):
+    SCRIPTS = {"acceptance/vulhub/x/a-java8.sh": 'check "java8_file_sensitive_read"\n'}
+
+    def problems(self, line: str) -> list[str]:
+        return check_docs.ledger_line_problems("ledger.md:1", line, self.SCRIPTS.get)
+
+    def test_true_claim_passes(self) -> None:
+        self.assertEqual(self.problems(
+            "- [x] X (`scenario`; real Java8 acceptance: `acceptance/vulhub/x/a-java8.sh` blocks"
+            " `java8_file_sensitive_read`)"), [])
+        self.assertEqual(self.problems(
+            "`java-agent/acceptance/vulhub/x/a-java8.sh` blocks the read with `java8_file_sensitive_read`"), [])
+
+    def test_claim_the_script_never_names(self) -> None:
+        [problem] = self.problems("`acceptance/vulhub/x/a-java8.sh` blocks `java8_file_script_write`")
+        self.assertIn("never names `java8_file_script_write`", problem)
+
+    def test_claim_belongs_to_the_nearest_script(self) -> None:
+        line = "`acceptance/vulhub/x/a-java8.sh` passes; `acceptance/vulhub/x/a-java8.sh` blocks `other_rule`"
+        self.assertEqual(len(self.problems(line)), 1)
+
+    def test_historical_and_unattributed_claims_are_not_checked(self) -> None:
+        self.assertEqual(self.problems("`acceptance/vulhub/x/a-java8.sh` recorded `java8_old_rule`"), [])
+        self.assertEqual(self.problems("the agent blocks `java8_old_rule`"), [])
+
+    def test_missing_script(self) -> None:
+        [problem] = self.problems("real acceptance: `acceptance/vulhub/x/renamed-java8.sh`")
+        self.assertIn("`acceptance/vulhub/x/renamed-java8.sh` is not a tracked script", problem)
+
+    def test_patterns_and_links_are_not_script_mentions(self) -> None:
+        line = "see `acceptance/vulhub/<component>/<scenario>-<jdk>.sh` and [a](../../java-agent/acceptance/x.sh)"
+        self.assertEqual(check_docs.script_mentions(line), [])
+
+    def test_unreferenced_scripts(self) -> None:
+        ledger = "- `acceptance/vulhub/x/a-java8.sh` blocks `r`\n- `java-agent/acceptance/vulhub/y/b-java11.sh`\n"
+        scripts = ["acceptance/vulhub/x/a-java8.sh", "acceptance/vulhub/y/b-java11.sh", "acceptance/vulhub/z/c-java17.sh"]
+        self.assertEqual(check_docs.unreferenced_scripts(ledger, scripts), ["acceptance/vulhub/z/c-java17.sh"])
+
+
+class RuntimeSuiteListTest(unittest.TestCase):
+    def test_required_array_is_read_in_script_order(self) -> None:
+        required = gen_coverage.jdk25_required_algorithms()
+        self.assertEqual(required[0], "request_internal_identity")
+        self.assertEqual(len(required), len(set(required)))
+
+    def test_probe_names_primary_rules_only(self) -> None:
+        checked = gen_coverage.probe_checked_rules()
+        self.assertIn("servlet-admission", checked["request_scanner"])
+        self.assertTrue(all(not name.startswith("java8_") for name in checked))
+
+
 class SpliceTest(unittest.TestCase):
     def test_reversed_markers_fail(self) -> None:
         text = f"{gen_coverage.REGION_END}\nhand\n{gen_coverage.REGION_BEGIN}\n"

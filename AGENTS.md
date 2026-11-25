@@ -43,7 +43,8 @@ python3 deploy/shirudo/gen-readmes.py                  # deploy/shirudo READMEs
 - a released tag or a pinned version is copied into a doc;
 - a hand-written count appears outside a generated region;
 - the release asset list drifts from the workflow;
-- a relative link does not resolve.
+- a relative link, or the heading anchor it names, does not resolve;
+- an evidence ledger ([vulhub-coverage.md](docs/development/vulhub-coverage.md), [algorithm-coverage.md](docs/development/algorithm-coverage.md)) names an acceptance script that does not exist, says "`<script>` blocks `<id>`" for an id the script never names, or lacks a row for a script under `java-agent/acceptance/vulhub/`.
 
 When it flags something, link to the fact's home. Do not reword the text just to get past the pattern.
 

@@ -1,9 +1,11 @@
 name: docs
 
 # Fails when hand-written docs restate facts that drift (release tags, pinned
-# versions, code-base counts, the release asset list) or a generated doc is
-# stale. No path filter: a change to a Dockerfile, a workflow, or the agent
-# sources can make a doc wrong without touching any Markdown.
+# versions, code-base counts, the release asset list), a generated doc is
+# stale, a link or anchor is broken, or an evidence ledger disagrees with the
+# acceptance scripts. No path filter: a change to a Dockerfile, a workflow, the
+# agent sources or an acceptance script can make a doc wrong without touching
+# any Markdown.
 
 on:
   push:

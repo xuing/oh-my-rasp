@@ -25,16 +25,26 @@ are skipped):
              ohmyrasp-* artifact a doc names is one the release workflow or a
              Gradle build produces
   links      relative Markdown links (inline and reference-style) resolve to
-             tracked files
+             tracked files, and a #fragment on a Markdown target names one of
+             its headings (also checked in the evidence ledgers)
+
+and over the evidence ledgers (LEDGERS), which need no Vulhub snapshot here:
+
+  ledger     every acceptance script path they name is a tracked file; every
+             "`<script>.sh` blocks `<id>`" claim names an id written in that
+             script; every script under java-agent/acceptance/vulhub/ has a
+             row in the Vulhub ledger
 
 Usage: python3 scripts/check-docs.py
 """
 from __future__ import annotations
 
+import functools
 import json
 import re
 import subprocess
 import sys
+import urllib.parse
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -55,11 +65,15 @@ GENERATED_FILES = {
 GENERATED_FILE_PATTERNS = [re.compile(r"deploy/shirudo/ohmyrasp-[a-z0-9]+/README\.md")]  # gen-readmes.py
 GENERATED_REGIONS = {"metrics": ("README.md", "README.zh-CN.md")}  # gen-detection-coverage.py
 
+VULHUB_LEDGER = "docs/development/vulhub-coverage.md"
+LEDGERS = (VULHUB_LEDGER, "docs/development/algorithm-coverage.md")
 SKIP_PREFIXES = ("docs/internal/",)
 SKIP_FILES = {
     "CHANGELOG.md",  # history by design
-    "docs/development/vulhub-coverage.md",  # evidence ledger, guarded by check-vulhub-java-coverage.py
-    "docs/development/algorithm-coverage.md",  # evidence ledger
+    # The evidence ledgers record CVE ids, vulnerable target versions and the Source Audit counts that
+    # java-agent/scripts/check-vulhub-java-coverage.py verifies against a Vulhub snapshot, so the
+    # release, pins, counts and assets checks do not apply. The links and ledger checks do.
+    *LEDGERS,
 }
 
 REGION = re.compile(r"<!-- BEGIN GENERATED (\S+).*?<!-- END GENERATED \1 -->", re.S)
@@ -95,6 +109,13 @@ INLINE_LINK = re.compile(r"\]\((?:<([^>\n]+)>|([^)\s]+))(?:\s+\"[^\"]*\")?\)")  
 REF_LINK = re.compile(r"^\s{0,3}\[[^\]]+\]:\s*<?([^\s>]+)>?")
 INLINE_CODE = re.compile(r"`[^`]*`")
 FENCE = re.compile(r"^(```|~~~)")
+HEADING = re.compile(r"^ {0,3}#{1,6}\s+(.*?)(?:\s+#+)?\s*$")
+HTML_ANCHOR = re.compile(r"<a\s+(?:id|name)=\"([^\"]+)\"")
+
+# An acceptance script as the ledgers name it: relative to java-agent/ or to the repo root.
+SCRIPT_PATH = re.compile(r"(?<![\w/.<-])(?:java-agent/)?(acceptance/[\w./-]+\.sh)\b")
+# "`acceptance/x.sh` blocks `rule_id`": the first code span after "block(s)", within one clause.
+BLOCKS_CLAIM = re.compile(r"\bblocks?\b[^`;]{0,100}?`([A-Za-z]\w*)`")
 
 
 def git(*args: str) -> str:
@@ -254,14 +275,9 @@ def check_lines(files: list[str], problems: list[str]) -> None:
     value_pats = [(v, owner, token(v)) for v, owner in sorted(values.items(), key=lambda kv: -len(kv[0]))]
     produced, _, _ = release_workflow()
     built = gradle_archives()
-    tracked_paths = set(tracked())
-    tracked_dirs = {str(p) for f in tracked_paths for p in Path(f).parents}
 
     for rel in files:
-        in_fence = False
         for no, line in visible_lines(rel):
-            if FENCE.match(line.strip()):
-                in_fence = not in_fence
             where = f"{rel}:{no}"
             for tag, pat in tags:
                 if pat.search(line):
@@ -284,21 +300,112 @@ def check_lines(files: list[str], problems: list[str]) -> None:
                     problems.append(
                         f"assets: {where}: `{name}` is produced by neither"
                         f" {RELEASE_WORKFLOW.relative_to(ROOT)} nor a Gradle build")
+
+
+def heading_anchors(text: str) -> set[str]:
+    """The #fragments GitHub gives a Markdown file: heading slugs (-1, -2 for repeats) and <a id>/<a name>."""
+    anchors: set[str] = set()
+    seen: dict[str, int] = {}
+    in_fence = False
+    for line in text.split("\n"):
+        if FENCE.match(line.strip()):
+            in_fence = not in_fence
+        if in_fence:
+            continue
+        anchors.update(a.lower() for a in HTML_ANCHOR.findall(line))
+        heading = HEADING.match(line)
+        if not heading:
+            continue
+        title = re.sub(r"\[([^\]]*)\]\([^)]*\)", r"\1", heading.group(1))  # a link keeps its text
+        slug = re.sub(r"[^\w\- ]", "", re.sub(r"<[^>]+>", "", title).lower()).replace(" ", "-")
+        repeat = seen.get(slug, 0)
+        seen[slug] = repeat + 1
+        anchors.add(f"{slug}-{repeat}" if repeat else slug)
+    return anchors
+
+
+@functools.cache
+def anchors_of(rel: str) -> set[str]:
+    return heading_anchors(read(rel))
+
+
+def check_links(files: list[str], problems: list[str]) -> None:
+    tracked_paths = set(tracked())
+    tracked_dirs = {str(p) for f in tracked_paths for p in Path(f).parents}
+    for rel in files:
+        in_fence = False
+        for no, line in visible_lines(rel):
+            if FENCE.match(line.strip()):
+                in_fence = not in_fence
             if in_fence:
                 continue
+            where = f"{rel}:{no}"
             for m in [*INLINE_LINK.finditer(INLINE_CODE.sub("", line)), *REF_LINK.finditer(line)]:
                 target = next(g for g in m.groups() if g)
-                if re.match(r"[a-z][a-z0-9+.-]*:", target) or target.startswith("#"):
+                if re.match(r"[a-z][a-z0-9+.-]*:", target):
                     continue
-                path = target.split("#", 1)[0].split("?", 1)[0]
-                if not path:
-                    continue
-                try:
-                    norm = str(((ROOT / rel).parent / path).resolve().relative_to(ROOT.resolve()))
-                except ValueError:
-                    norm = None
-                if norm not in tracked_paths and norm not in tracked_dirs:
-                    problems.append(f"links: {where}: `{target}` does not resolve to a tracked file")
+                path, _, fragment = target.split("?", 1)[0].partition("#")
+                norm: str | None = rel
+                if path:
+                    try:
+                        norm = str(((ROOT / rel).parent / path).resolve().relative_to(ROOT.resolve()))
+                    except ValueError:
+                        norm = None
+                    if norm not in tracked_paths and norm not in tracked_dirs:
+                        problems.append(f"links: {where}: `{target}` does not resolve to a tracked file")
+                        continue
+                if fragment and norm and norm.endswith(".md") and norm in tracked_paths \
+                        and urllib.parse.unquote(fragment).lower() not in anchors_of(norm):
+                    problems.append(f"links: {where}: `{target}`: {norm} has no heading with anchor `#{fragment}`")
+
+
+# --- evidence ledgers ---------------------------------------------------------
+
+def script_mentions(line: str) -> list[tuple[int, str]]:
+    """(end offset, path relative to java-agent/) of each acceptance script the line names."""
+    return [(m.end(), m.group(1)) for m in SCRIPT_PATH.finditer(line)]
+
+
+def ledger_line_problems(where: str, line: str, script_text) -> list[str]:
+    """Problems on one ledger line. script_text(path) is the script's text, or None if it is not tracked.
+
+    A "blocks `X`" claim belongs to the nearest script named before it on the line, and X must be
+    written in that script: as the expected algorithm, or as the argument a helper checks.
+    """
+    problems = []
+    mentions = script_mentions(line)
+    for _, path in mentions:
+        if script_text(path) is None:
+            problems.append(f"ledger: {where}: `{path}` is not a tracked script under java-agent/")
+    for claim in BLOCKS_CLAIM.finditer(line):
+        before = [path for end, path in mentions if end <= claim.start()]
+        if not before or (text := script_text(before[-1])) is None:
+            continue
+        rule = claim.group(1)
+        if not re.search(rf"(?<!\w){re.escape(rule)}(?!\w)", text):
+            problems.append(
+                f"ledger: {where}: `{before[-1]}` never names `{rule}`; say what the script asserts")
+    return problems
+
+
+def unreferenced_scripts(ledger: str, scripts: list[str]) -> list[str]:
+    """Scripts (relative to java-agent/) that the ledger text never names."""
+    named = {path for line in ledger.split("\n") for _, path in script_mentions(line)}
+    return sorted(set(scripts) - named)
+
+
+def check_ledgers(problems: list[str]) -> None:
+    scripts = {p.removeprefix("java-agent/") for p in tracked("java-agent/acceptance") if p.endswith(".sh")}
+
+    @functools.cache
+    def script_text(path: str) -> str | None:
+        return read(f"java-agent/{path}") if path in scripts else None
+
+    for rel in LEDGERS:
+        for no, line in enumerate(read(rel).split("\n"), start=1):
+            problems.extend(ledger_line_problems(f"{rel}:{no}", line, script_text))
+    for path in unreferenced_scripts(read(VULHUB_LEDGER), [p for p in scripts if p.startswith("acceptance/vulhub/")]):
+        problems.append(f"ledger: java-agent/{path} has no row in {VULHUB_LEDGER}")
 
 
 def check_release_runbook(problems: list[str]) -> None:
@@ -329,6 +436,8 @@ def main() -> int:
     files = doc_files()
     check_generated(problems)
     check_lines(files, problems)
+    check_links([*files, *LEDGERS], problems)
+    check_ledgers(problems)
     check_release_runbook(problems)
     if not release_tags():
         print("check-docs: warning: no v* tags found (shallow clone?); release check skipped", file=sys.stderr)
