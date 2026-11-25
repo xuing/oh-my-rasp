@@ -41,7 +41,7 @@ jobs:
             -v "$PWD/java-agent:/workspace" \
             -w /workspace \
             "$gradle_image" \
-            gradle --no-daemon --no-problems-report clean check :stageYarnProbe :stageServletProbe :stageElasticLz4Probe \
+            gradle --no-daemon --no-problems-report clean check :stageYarnProbe :stageServletProbe :stageElasticLz4Probe :stageSpringProcessProbe \
             :agent-jdk25:jdk21Jars \
             :agent-java8:shirudoUpatchJar \
             :agent-java11:shirudoUpatchJar \
@@ -86,6 +86,7 @@ jobs:
         with:
           name: java-agents
           path: |
+            java-agent/build/spring-process-probe/**/*.jar
             java-agent/build/runtime-probes/*.jar
             java-agent/build/servlet-probe/*.jar
             java-agent/agent-java8/build/libs/ohmyrasp-agent-java8.jar
@@ -192,6 +193,8 @@ jobs:
           if any(e.get("kind") == "detection" or e.get("event") == "ohmyrasp-detection" for e in events):
               sys.exit("Ordinary background job produced a detection")
           PY
+      - name: Verify Spring process initialization against the packaged agent
+        run: python3 java-agent/scripts/fp-harness/check-spring-process.py "java-agent/${{ matrix.jar }}" --jar-dir java-agent/build/spring-process-probe
       - name: Verify local RMI class resolution and codebase policy
         run: python3 java-agent/scripts/fp-harness/check-rmi-codebase.py "java-agent/${{ matrix.jar }}"
       - name: Verify JNDI URL and local provider selection

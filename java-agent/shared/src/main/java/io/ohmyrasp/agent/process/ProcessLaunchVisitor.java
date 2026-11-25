@@ -1,6 +1,7 @@
 package io.ohmyrasp.agent.process;
 
 import io.ohmyrasp.agent.asm.ScopedMethodAdvice;
+import io.ohmyrasp.agent.rules.product.spring.SpringProcessVisitor;
 import java.io.IOException;
 import java.io.InputStream;
 import org.objectweb.asm.ClassReader;
@@ -39,11 +40,25 @@ public final class ProcessLaunchVisitor {
   public static boolean platformHandoff() { return PLATFORM_HANDOFF; }
 
   public static boolean matches(String owner) {
-    return "java/lang/Runtime".equals(owner) || (PLATFORM_HANDOFF ? "java/lang/ProcessImpl" : "java/lang/ProcessBuilder").equals(owner);
+    return "java/lang/Runtime".equals(owner) || "java/lang/ProcessBuilder".equals(owner)
+        || (PLATFORM_HANDOFF && "java/lang/ProcessImpl".equals(owner)) || SpringProcessVisitor.matches(owner);
   }
 
   public static MethodVisitor wrap(String owner, MethodVisitor visitor, int access, String name,
       String descriptor, final Type hooks) {
+    if (SpringProcessVisitor.matches(owner)) return SpringProcessVisitor.wrap(owner, visitor, access, name, descriptor);
+    if (PLATFORM_HANDOFF && "java/lang/ProcessBuilder".equals(owner) && "start".equals(name)
+        && (access & Opcodes.ACC_STATIC) == 0) {
+      return new AdviceAdapter(Opcodes.ASM9, visitor, access, name, descriptor) {
+        @Override public void visitMethodInsn(int op, String callee, String method, String desc, boolean itf) {
+          if (op == INVOKESTATIC && "java/lang/ProcessImpl".equals(callee) && "start".equals(method) && START.equals(desc)) {
+            loadThis();
+            invokeStatic(hooks, Method.getMethod("void beforeSpringProcessStart(java.lang.ProcessBuilder)"));
+          }
+          super.visitMethodInsn(op, callee, method, desc, itf);
+        }
+      };
+    }
     if (!PLATFORM_HANDOFF) {
       final Method fallback;
       final boolean builder = "java/lang/ProcessBuilder".equals(owner);
@@ -58,8 +73,7 @@ public final class ProcessLaunchVisitor {
       }
       return new AdviceAdapter(Opcodes.ASM9, visitor, access, name, descriptor) {
         @Override protected void onMethodEnter() {
-          if (builder) loadThis();
-          else loadArg(0);
+          if (builder) loadThis(); else loadArg(0);
           invokeStatic(hooks, fallback);
         }
       };

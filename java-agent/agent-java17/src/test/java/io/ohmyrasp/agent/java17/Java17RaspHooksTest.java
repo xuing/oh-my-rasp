@@ -303,7 +303,7 @@ final class Java17RaspHooksTest {
   }
 
   @Test
-  void logsSpringBeanInitializationProcessCommandStack() throws Exception {
+  void springInitializationFramesAloneDoNotSelectTheProcess() throws Exception {
     Path log = Files.createTempFile("ohmyrasp-java17-spring-bean-process", ".jsonl");
     Files.delete(log);
     System.setProperty("ohmyrasp.java17.log", log.toString());
@@ -311,10 +311,7 @@ final class Java17RaspHooksTest {
     org.springframework.context.support.AbstractApplicationContext
         .invokeJava17SpringBeanInitTouchCommand();
 
-    String text = new String(Files.readAllBytes(log), StandardCharsets.UTF_8);
-    assertTrue(text.contains("\"algorithm\":\"java17_command_execution_exploit_primitive\""));
-    assertTrue(text.contains("\"action\":\"log\""));
-    assertTrue(text.contains("touch /tmp/ohmyrasp-activemq46604-success"));
+    assertFalse(Files.exists(log));
   }
 
   @Test

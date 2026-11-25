@@ -271,6 +271,16 @@ public final class Java8RaspHooks {
     if (block) throw new Java8RaspBlockException("OhMyRASP blocked unauthorized YARN submission");
   }
 
+  public static void beforeSpringProcessStart(ProcessBuilder builder) {
+    if (RaspRuntime.detectionOff() || !io.ohmyrasp.agent.rules.product.spring.SpringProcessInit.selects(builder)) return;
+    Finding finding = new Finding("java8_command_execution_exploit_primitive", 95,
+        "Spring dispatched an HTTP-defined initializer to ProcessBuilder.start",
+        "method", "ProcessBuilder.start", "remote_bean_init_dispatch");
+    boolean block = shouldBlock();
+    appendEvent(finding, "Spring.initMethod", block ? "block" : "log");
+    if (block) throw new Java8RaspBlockException("OhMyRASP blocked a Spring process initializer");
+  }
+
   public static void beforeProcessLaunch(String[] argv) {
     if (RaspRuntime.detectionOff()) return;
     Finding finding = classifyCommand(argv);
@@ -1083,22 +1093,7 @@ public final class Java8RaspHooks {
     if (joined.length() == 0) {
       return null;
     }
-    if (isBenignLocalBrowserLaunchCommand(command)) {
-      return null;
-    }
-    if (isBenignSystemInventoryCommand(command)) {
-      return null;
-    }
-    if (isTeamCityMetadataVerifierCommand(command)) {
-      return null;
-    }
     StackTraceElement[] stack = Thread.currentThread().getStackTrace();
-    if (isTikaExternalParserVersionCheckStack(stack) && isTikaExternalParserAvailabilityProbe(command)) {
-      return null;
-    }
-    if (isOfficeProcessCleanupStack(stack) && isOfficeProcessCleanupCommand(command, joined)) {
-      return null;
-    }
     if (SolrExecutableListener.onStack(stack)) {
       return new Finding(
           "java8_command_execution_exploit_primitive",
@@ -1130,17 +1125,6 @@ public final class Java8RaspHooks {
           "Database Java routine reached a Java 8 process sink",
           "command",
           joined, "database_stack");
-    }
-    if (isSpringBeanInitializationRuntimeStack(stack)) {
-      if (isBenignSpringIdentityProbeCommand(command)) {
-        return null;
-      }
-      return new Finding(
-          "java8_command_execution_exploit_primitive",
-          92,
-          "Spring bean initialization reached a Java 8 process sink",
-          "command",
-          joined, "bean_initialization");
     }
     if (isJavaDeserializationCommandStack(stack)) {
       return new Finding(
@@ -1242,22 +1226,6 @@ public final class Java8RaspHooks {
     return false;
   }
 
-  private static boolean isSpringBeanInitializationRuntimeStack(StackTraceElement[] stack) {
-    boolean beanInitialization = false;
-    boolean applicationContextRefresh = false;
-    for (StackTraceElement element : stack) {
-      String className = element.getClassName();
-      if ("org.springframework.beans.factory.support.AbstractAutowireCapableBeanFactory"
-          .equals(className)) {
-        beanInitialization = true;
-      }
-      if (className.startsWith("org.springframework.context.support.")) {
-        applicationContextRefresh = true;
-      }
-    }
-    return beanInitialization && applicationContextRefresh;
-  }
-
   private static boolean isJavaDeserializationCommandStack(StackTraceElement[] stack) {
     for (StackTraceElement element : stack) {
       String className = element.getClassName();
@@ -1269,20 +1237,6 @@ public final class Java8RaspHooks {
       }
     }
     return false;
-  }
-
-  private static boolean isBenignSpringIdentityProbeCommand(String[] command) {
-    if (command == null || command.length != 2) {
-      return false;
-    }
-    String executable = command[0] == null ? "" : command[0].trim().replace('\\', '/');
-    int slash = executable.lastIndexOf('/');
-    String fileName = slash >= 0 ? executable.substring(slash + 1) : executable;
-    if (!"id".equals(fileName)) {
-      return false;
-    }
-    String subject = command[1] == null ? "" : command[1].trim();
-    return subject.matches("[A-Za-z0-9_.@-]{1,128}");
   }
 
   private static boolean isXStreamDeserializationCommandStack(StackTraceElement[] stack) {
@@ -1306,197 +1260,6 @@ public final class Java8RaspHooks {
       }
     }
     return false;
-  }
-
-  private static boolean isOfficeProcessCleanupStack(StackTraceElement[] stack) {
-    for (StackTraceElement element : stack) {
-      if ("cn.keking.service.OfficePluginManager".equals(element.getClassName())) {
-        return true;
-      }
-    }
-    return false;
-  }
-
-  private static boolean isTikaExternalParserVersionCheckStack(StackTraceElement[] stack) {
-    for (StackTraceElement element : stack) {
-      if ("org.apache.tika.parser.external.ExternalParser".equals(element.getClassName())
-          && "check".equals(element.getMethodName())) {
-        return true;
-      }
-    }
-    return false;
-  }
-
-  private static boolean isTikaExternalParserAvailabilityProbe(String[] command) {
-    if (command == null || command.length == 0 || command.length > 2) {
-      return false;
-    }
-    String executable = command[0] == null ? "" : command[0].trim();
-    if (!isKnownTikaExternalParserExecutable(executable)) {
-      return false;
-    }
-    if (command.length == 1) {
-      return true;
-    }
-    String argument = command[1] == null ? "" : command[1].trim().toLowerCase(Locale.ROOT);
-    return "-version".equals(argument) || "--version".equals(argument) || "-ver".equals(argument);
-  }
-
-  private static boolean isKnownTikaExternalParserExecutable(String value) {
-    if (value.length() == 0) {
-      return false;
-    }
-    String normalized = value.replace('\\', '/');
-    int slash = normalized.lastIndexOf('/');
-    String fileName = lower(slash >= 0 ? normalized.substring(slash + 1) : normalized);
-    return "ffmpeg".equals(fileName) || "exiftool".equals(fileName) || "tesseract".equals(fileName);
-  }
-
-  private static boolean isOfficeProcessCleanupCommand(String[] command, String joined) {
-    String script = joined;
-    if (command != null && command.length >= 3 && isShellCommandFlag(command[1])) {
-      script = command[2] == null ? "" : command[2];
-    }
-    String compact = script.toLowerCase(Locale.ROOT).replaceAll("\\s+", "");
-    return "ps-ef|grepsoffice.bin".equals(compact)
-        || "ps-ef|grepsoffice.bin|grep-vgrep|wc-l".equals(compact)
-        || "ps-ef|grepsoffice.bin|grep-vgrep|awk'{print\"kill-9\"$2}'|sh".equals(compact)
-        || "kill-15`ps-ef|grepsoffice.bin|awk'nr==1{print$2}'`".equals(compact);
-  }
-
-  private static boolean isBenignSystemInventoryCommand(String[] command) {
-    if (command == null) {
-      return false;
-    }
-    String joined = lower(join(command)).replace('\\', '/').replaceAll("\\s+", " ").trim();
-    String joinedNoPipeSpaces = joined.replace(" | ", "|");
-    if ("cat /etc/os-release|grep ^id".equals(joinedNoPipeSpaces)
-        || "/bin/cat /etc/os-release|grep ^id".equals(joinedNoPipeSpaces)
-        || "/usr/bin/cat /etc/os-release|grep ^id".equals(joinedNoPipeSpaces)) {
-      return true;
-    }
-    if ("ldconfig -p".equals(joined)
-        || "/sbin/ldconfig -p".equals(joined)
-        || "/usr/sbin/ldconfig -p".equals(joined)) {
-      return true;
-    }
-    if ("uname -o".equals(joined)
-        || "/bin/uname -o".equals(joined)
-        || "/usr/bin/uname -o".equals(joined)) {
-      return true;
-    }
-    String executable = command[0] == null ? "" : command[0].trim().replace('\\', '/');
-    int slash = executable.lastIndexOf('/');
-    String fileName = slash >= 0 ? executable.substring(slash + 1) : executable;
-    if (command.length == 2
-        && "getconf".equals(fileName)
-        && isBenignGetconfVariable(command[1])) {
-      return true;
-    }
-    if (command.length == 2 && "vcgencmd".equals(fileName) && "measure_temp".equals(command[1])) {
-      return true;
-    }
-    if (command.length == 3
-        && "dmidecode".equals(fileName)
-        && "-t".equals(command[1])
-        && "4".equals(command[2])) {
-      return true;
-    }
-    if (command.length == 2 && "cpuid".equals(fileName) && "-1r".equals(command[1])) {
-      return true;
-    }
-    return command.length == 2 && "lscpu".equals(fileName) && "-p=cpu,node".equals(command[1]);
-  }
-
-  private static boolean isBenignGetconfVariable(String value) {
-    return "CLK_TCK".equals(value) || "PAGE_SIZE".equals(value) || "PAGESIZE".equals(value);
-  }
-
-  private static boolean isTeamCityMetadataVerifierCommand(String[] command) {
-    if (command == null || command.length < 4) {
-      return false;
-    }
-    String executable = command[0] == null ? "" : lower(normalizePath(command[0].trim()));
-    if (!"java".equals(executable) && !executable.endsWith("/java")) {
-      return false;
-    }
-    boolean teamCityClasspath = false;
-    boolean verifierMain = false;
-    boolean metadataCachePath = false;
-    for (int i = 1; i < command.length; i++) {
-      String value = command[i] == null ? "" : command[i].trim();
-      String lowerValue = lower(normalizePath(value));
-      if (("-classpath".equals(value) || "-cp".equals(value)) && i + 1 < command.length) {
-        String classpath = lower(normalizePath(command[i + 1]));
-        teamCityClasspath =
-            classpath.indexOf("/opt/teamcity/webapps/root/web-inf/lib/server-core.jar") >= 0
-                || classpath.indexOf("/opt/teamcity/webapps/root/web-inf/lib/server.jar") >= 0
-                || classpath.indexOf("/teamcity/webapps/root/web-inf/lib/server-core.jar") >= 0
-                || classpath.indexOf("/teamcity/webapps/root/web-inf/lib/server.jar") >= 0;
-      }
-      if ("jetbrains.buildServer.serverSide.metadata.impl.cache.DatabaseConnectionVerifier"
-          .equals(value)) {
-        verifierMain = true;
-      }
-      if (lowerValue.indexOf("/teamcity_server/datadir/system/caches/buildsmetadata") >= 0) {
-        metadataCachePath = true;
-      }
-    }
-    return teamCityClasspath && verifierMain && metadataCachePath;
-  }
-
-  private static boolean isBenignLocalBrowserLaunchCommand(String[] command) {
-    if (command == null || command.length < 3 || !isShellCommandFlag(command[1])) {
-      return false;
-    }
-    String script = lower(command[2] == null ? "" : command[2].trim());
-    if (script.indexOf(';') >= 0
-        || script.indexOf('&') >= 0
-        || script.indexOf('`') >= 0
-        || script.indexOf('$') >= 0
-        || script.indexOf('>') >= 0
-        || script.indexOf('<') >= 0) {
-      return false;
-    }
-    String[] parts = script.split("\\s*\\|\\|\\s*");
-    if (parts.length == 0) {
-      return false;
-    }
-    for (String part : parts) {
-      String[] tokens = part.trim().split("\\s+");
-      if (tokens.length != 2 || !isKnownLocalBrowserCommand(tokens[0]) || !isLocalBrowserUrl(tokens[1])) {
-        return false;
-      }
-    }
-    return true;
-  }
-
-  private static boolean isKnownLocalBrowserCommand(String value) {
-    String normalized = value == null ? "" : value.trim().replace('\\', '/');
-    int slash = normalized.lastIndexOf('/');
-    String fileName = slash >= 0 ? normalized.substring(slash + 1) : normalized;
-    return "xdg-open".equals(fileName)
-        || "firefox".equals(fileName)
-        || "mozilla".equals(fileName)
-        || "konqueror".equals(fileName)
-        || "opera".equals(fileName);
-  }
-
-  private static boolean isLocalBrowserUrl(String value) {
-    String normalized = stripQuotes(value == null ? "" : value.trim());
-    return normalized.startsWith("http://localhost:")
-        || normalized.startsWith("https://localhost:")
-        || normalized.startsWith("http://127.0.0.1:")
-        || normalized.startsWith("https://127.0.0.1:");
-  }
-
-  private static String stripQuotes(String value) {
-    if (value.length() >= 2
-        && ((value.startsWith("\"") && value.endsWith("\""))
-            || (value.startsWith("'") && value.endsWith("'")))) {
-      return value.substring(1, value.length() - 1);
-    }
-    return value;
   }
 
   private static boolean isScriptFilePath(String value) {
@@ -4317,13 +4080,6 @@ public final class Java8RaspHooks {
     return normalized;
   }
 
-  private static boolean isShellCommandFlag(String value) {
-    if (value == null) {
-      return false;
-    }
-    String normalized = value.toLowerCase(Locale.ROOT);
-    return "-c".equals(normalized) || "/c".equals(normalized);
-  }
 
   private static String[] toArray(List<String> command) {
     if (command == null) {

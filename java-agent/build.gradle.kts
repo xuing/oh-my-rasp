@@ -68,3 +68,14 @@ tasks.register<Sync>("stageElasticLz4Probe") {
     from(rootProject.configurations.detachedConfiguration(release))
     into(layout.buildDirectory.dir("elastic-lz4-probe"))
 }
+
+// Exercise the bean lifecycle on Java 8-compatible Spring and the actual primary playground libraries.
+tasks.register<Sync>("stageSpringProcessProbe") {
+    val legacy = rootProject.dependencies.create("org.springframework:spring-context:5.3.39")
+    into("legacy") { from(rootProject.configurations.detachedConfiguration(legacy)) }
+    into("modern") {
+        from(rootProject.project(":playground").configurations.named("runtimeClasspath"))
+        include("spring-*.jar", "commons-logging-*.jar", "micrometer-*.jar")
+    }
+    into(layout.buildDirectory.dir("spring-process-probe"))
+}

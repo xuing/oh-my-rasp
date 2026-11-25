@@ -3,7 +3,7 @@
 set -euo pipefail
 
 usage() {
-  echo "Usage: $0 [--tests Gradle-test-filter] [elastic-lz4|file-delete|file-read|file-streams|http-transport|jmx-dispatch|jndi-route|jwt-verification|multipart-archive|mybatis-mapping|process-launch|rmi-codebase|serial-filter|spark-submit|stream-resolution|sqlite-identifiers|write-namespace|yarn-submit|xml-resolution [probe options]]"
+  echo "Usage: $0 [--tests Gradle-test-filter] [elastic-lz4|file-delete|file-read|file-streams|http-transport|jmx-dispatch|jndi-route|jwt-verification|multipart-archive|mybatis-mapping|process-launch|rmi-codebase|serial-filter|spark-submit|stream-resolution|sqlite-identifiers|spring-process|write-namespace|yarn-submit|xml-resolution [probe options]]"
   echo "The benign corpus always runs. Unit tests default to the whole primary module."
 }
 
@@ -15,7 +15,7 @@ if [[ "${1:-}" == --tests ]]; then
 fi
 case "${1:-}" in
   -h|--help) usage; exit 0 ;;
-  ""|elastic-lz4|file-delete|file-read|file-streams|http-transport|jmx-dispatch|jndi-route|jwt-verification|multipart-archive|mybatis-mapping|process-launch|rmi-codebase|serial-filter|spark-submit|stream-resolution|sqlite-identifiers|write-namespace|yarn-submit|xml-resolution) ;;
+  ""|elastic-lz4|file-delete|file-read|file-streams|http-transport|jmx-dispatch|jndi-route|jwt-verification|multipart-archive|mybatis-mapping|process-launch|rmi-codebase|serial-filter|spark-submit|stream-resolution|sqlite-identifiers|spring-process|write-namespace|yarn-submit|xml-resolution) ;;
   *) usage >&2; exit 2 ;;
 esac
 
@@ -69,6 +69,7 @@ if [[ -n "$TEST_FILTER" ]]; then test_options=(--tests "$TEST_FILTER"); fi
 extra_tasks=()
 if [[ "${1:-}" == elastic-lz4 ]]; then extra_tasks+=(:stageElasticLz4Probe); fi
 if [[ "${1:-}" == yarn-submit ]]; then extra_tasks+=(:stageYarnProbe); fi
+if [[ "${1:-}" == spring-process ]]; then extra_tasks+=(:stageSpringProcessProbe); fi
 gradle --no-daemon --no-problems-report --configuration-cache \
   --project-cache-dir /state/project -I /tmp/build-output.gradle \
   :agent-jdk25:test "${test_options[@]}" :agent-jdk25:agentJar :agent-jdk25:compileFpReport "${extra_tasks[@]}"
@@ -82,6 +83,8 @@ if (( $# )); then
   shift
   if [[ "$probe" == elastic-lz4 ]]; then
     python3 scripts/fp-harness/check-elastic-lz4.py "$jar" --jar-dir /state/build/ohmyrasp/elastic-lz4-probe "$@"
+  elif [[ "$probe" == spring-process ]]; then
+    python3 scripts/fp-harness/check-spring-process.py "$jar" --jar-dir /state/build/ohmyrasp/spring-process-probe "$@"
   elif [[ "$probe" == yarn-submit ]]; then
     python3 scripts/fp-harness/check-yarn-submit.py "$jar" --jar-dir /state/build/ohmyrasp/yarn-probe "$@"
   elif [[ "$probe" == file-delete ]]; then

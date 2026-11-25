@@ -1,6 +1,7 @@
 {
   "primary": {
     "base64_avx512_tail_underflow": "The candidate input shape targets a particular JDK Base64 decoder implementation.",
+    "command_spring_remote_init": "HTTP-backed Spring XML supplied the lifecycle setting and Spring dispatched ProcessBuilder.start on that same bean at the JVM process handoff.",
     "command_config_injection": "RocketMQ filter-server ownership of a process launch supplies the configuration context.",
     "command_config_listener": "The Apache Solr executable-listener implementation appears on the process stack.",
     "deserialization_blacklist": "Known class families, type-resolution behavior or unmarshaller implementations affect the judgment.",
@@ -50,7 +51,7 @@
   },
   "backports": {
     "base64_avx512_tail_underflow": "The input shape corresponds to a JDK decoder implementation defect.",
-    "command_execution_exploit_primitive": "decision_basis=configured_listener identifies the Solr executable listener. Other component-specific callers share this ID with general process branches.",
+    "command_execution_exploit_primitive": "decision_basis=configured_listener identifies the Solr executable listener. remote_bean_init_dispatch identifies a Spring initializer selected from HTTP-backed XML. Other component-specific callers share this ID with general process branches.",
     "command_execution_shell_meta": "decision_basis=configuration_launcher identifies the RocketMQ filter-server branch. The scheduler job branch records decision_basis=scheduled_script.",
     "deserialization_fastjson_resource_url": "Fastjson autoType reaches a URL-shaped resource lookup.",
     "deserialization_gadget_class": "The stream resolver selected a listed class or a proxy implementing a listed interface. The event identifies the resolution operation.",

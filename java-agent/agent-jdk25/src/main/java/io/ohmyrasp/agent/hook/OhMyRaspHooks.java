@@ -304,6 +304,13 @@ public final class OhMyRaspHooks {
     DISPATCH.exit();
   }
 
+  public static void beforeSpringProcessStart(ProcessBuilder builder) {
+    if (detectionDisabled() || !io.ohmyrasp.agent.rules.product.spring.SpringProcessInit.selects(builder)) return;
+    emit(Optional.of(Detection.log("command", "command_spring_remote_init", 95,
+        "Spring dispatched an HTTP-defined initializer to ProcessBuilder.start", currentRequest(),
+        Map.of("decision_basis", "remote_bean_init_dispatch", "method", "ProcessBuilder.start"))), true, true);
+  }
+
   public static void beforeProcessLaunch(String[] argv) {
     if (detectionDisabled()) return;
     try {

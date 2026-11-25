@@ -144,7 +144,7 @@ public final class OhMyRaspJava11Agent {
     retransformByName(instrumentation, "org.apache.catalina.authenticator.AuthenticatorBase");
     retransformByName(instrumentation, "org.apache.catalina.core.StandardWrapperValve");
     if (io.ohmyrasp.agent.process.ProcessLaunchVisitor.platformHandoff()) retransformByName(instrumentation, "java.lang.ProcessImpl");
-    else retransform(instrumentation, ProcessBuilder.class);
+    retransform(instrumentation, ProcessBuilder.class);
     retransform(instrumentation, Runtime.class);
     retransform(instrumentation, javax.naming.InitialContext.class);
     retransform(instrumentation, ObjectInputStream.class);
@@ -186,7 +186,8 @@ public final class OhMyRaspJava11Agent {
     java.util.Set<Class<?>> multipartOwners = io.ohmyrasp.agent.http.MultipartFilename.loadedOwners(loadedClasses);
     for (Class<?> loaded : loadedClasses) {
       String internalName = loaded.getName().replace('.', '/');
-      if (io.ohmyrasp.agent.loading.CodebaseVisitor.RMI_ROUTER.equals(internalName)
+      if (io.ohmyrasp.agent.rules.product.spring.SpringProcessVisitor.matches(internalName)
+          || io.ohmyrasp.agent.loading.CodebaseVisitor.RMI_ROUTER.equals(internalName)
           || io.ohmyrasp.agent.loading.CodebaseVisitor.directoryResource(internalName)
           || Lz4TransportVisitor.OWNER.equals(internalName)
           || io.ohmyrasp.agent.naming.JndiLookupVisitor.URL_CONTEXT.equals(internalName)

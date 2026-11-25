@@ -42,7 +42,7 @@ ASM hook at sink
 
 **Stage 2: RequestContext parameter correlation.** A `ThreadLocal<RequestContext>` is populated at HTTP request entry across both `javax.servlet` and `jakarta.servlet` namespaces. At sink invocation, detectors call `RequestContext.hasParameterIn(value)` to check whether the sink argument contains a substring from a request parameter value (or a bounded request body) before raising a request-correlated finding. This is **request-parameter substring correlation**, not bytecode dataflow taint tracking. SQL injection and OS command injection require confirmed parameter correlation (or a structural signature) before escalating to severity 95.
 
-**Stage 3: StackWalker call-stack analysis.** `OhMyRaspHooks` captures a live `StackWalker` trace (`RETAIN_CLASS_REFERENCE`, `SHOW_REFLECT_FRAMES`) at sink invocation. `detectCommand` inspects the trace for expression-engine frames (OGNL, MVEL, SpEL, Groovy, JEXL, Nashorn, Velocity, Jiffle, XStream), executable-listener frames (Solr `RunExecutableListener`), config-launcher frames, and reflective deserialization stacks. The presence of these frames changes both the algorithm label and the confidence score, classifying `ProcessBuilder.start` differently depending on whether it originates from Struts2/OGNL, a Spring bean-init chain, an XStream unmarshaller, or ordinary application code.
+**Stage 3: StackWalker call-stack analysis.** `OhMyRaspHooks` captures a live `StackWalker` trace (`RETAIN_CLASS_REFERENCE`, `SHOW_REFLECT_FRAMES`) at sink invocation. `detectCommand` inspects the trace for expression-engine frames (OGNL, MVEL, SpEL, Groovy, JEXL, Nashorn, Velocity, Jiffle, XStream), executable-listener frames (Solr `RunExecutableListener`), config-launcher frames, and reflective deserialization stacks. The presence of these frames changes both the algorithm label and the confidence score, classifying `ProcessBuilder.start` differently depending on whether it originates from Struts2/OGNL, an XStream unmarshaller, or ordinary application code.
 
 **Stage 4: Algorithm classification and policy decision.** The detector returns a named algorithm signature (such as `java8_jndi_remote_lookup` or `java17_request_path_confusion`) with a confidence score and recommended action. `AgentRuntime` applies the active mode (`off`, `monitor`, or `block`) and per-algorithm switches:
 
@@ -151,10 +151,16 @@ Expression-engine and RCE-gadget-chain stacks appear consistently across framewo
 
 - **Expression engines:** OGNL (Struts2), MVEL (Druid, OFBiz, Unomi), SpEL (Spring), Groovy, JEXL, Nashorn, Velocity, Jiffle (GeoServer), XStream
 - **Executable listeners:** Solr `RunExecutableListener`
-- **Config launchers:** Spring `ProcessBuilderFactoryBean` and bean-initialization patterns
+- **Config launchers:** RocketMQ filter-server process launches
 - **Deep reflective stacks:** gadget-chain indicators from deserialization (`ObjectInputStream`, Axis2, AMF)
 
 A novel Struts2 bypass that passes through OGNL evaluation is caught at the process sink without requiring an OGNL-specific HTTP signature. The same applies to Spring SpEL injections reaching a process or file sink.
+
+### Spring process initialization
+
+The Spring rule observes the HTTP(S) stream that `UrlResource` supplies to the XML reader. It associates the initializer setting with the definition that the parser assigns to that resource and follows the setting into a merged definition. At startup, the guard requires Spring to reflectively dispatch `ProcessBuilder.start()` on the same builder that reaches the JVM process handoff. Replacing the initializer locally clears the original attribution. A URL in definition metadata alone does not establish this origin.
+
+An ordinary Bean can launch a local helper during startup. The process still passes through the regular command policies. Deployments that intentionally use HTTP-backed XML to select the process launcher itself as an initializer are subject to this rule. The event records a launch attempt and can occur outside an HTTP request. [Packaged Spring check](../java-agent/scripts/fp-harness/SpringProcessCheck.java)
 
 ### SQL syntax-aware detection
 
