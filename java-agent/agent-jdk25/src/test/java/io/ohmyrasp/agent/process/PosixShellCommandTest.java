@@ -10,6 +10,11 @@ import java.util.List;
 import org.junit.jupiter.api.Test;
 
 class PosixShellCommandTest {
+  private static List<String> literalWords(String source) {
+    LiteralShellCommand parsed = LiteralShellCommand.parse(source);
+    return parsed == null ? null : parsed.words;
+  }
+
   @Test
   void runtimeStringHasJdkTokenBoundaries() {
     assertArrayEquals(new String[]{"printf", "%s", "'first", "last'"},
@@ -29,21 +34,21 @@ class PosixShellCommandTest {
 
   @Test
   void literalWordsPreserveQuotedDataAndEmptyArguments() {
-    assertEquals(List.of(), LiteralShellCommand.words("  # first\n# second"));
-    assertEquals(List.of("printf", "%s", "", "quarter two", "x#y"), LiteralShellCommand.words(
+    assertEquals(List.of(), literalWords("  # first\n# second"));
+    assertEquals(List.of("printf", "%s", "", "quarter two", "x#y"), literalWords(
         "# report\nprintf '%s' '' quarter\\ two x#y ; # comment\n"));
-    assertEquals(List.of("cat", "/reports/weekly"), LiteralShellCommand.words("cat /reports/'week'\"ly\""));
-    assertEquals(List.of("printf", "%s", "pre\\fix"), LiteralShellCommand.words("printf %s \"pre\\fix\""));
-    assertEquals(List.of("echo", "weekly"), LiteralShellCommand.words("echo week\\\nly"));
+    assertEquals(List.of("cat", "/reports/weekly"), literalWords("cat /reports/'week'\"ly\""));
+    assertEquals(List.of("printf", "%s", "pre\\fix"), literalWords("printf %s \"pre\\fix\""));
+    assertEquals(List.of("echo", "weekly"), literalWords("echo week\\\nly"));
   }
 
   @Test
   void complexShellProgramsRemainAvailableForTheSourceRules() {
     for (String program : List.of("printf %s \"$1\"", "printf x | cat", "printf x\ncat /etc/passwd",
         "echo value > report", "echo *.txt", "printf 'unfinished", "echo `date`", "echo $'text'")) {
-      assertNull(LiteralShellCommand.words(program), program);
+      assertNull(literalWords(program), program);
     }
-    assertNull(PosixShellCommand.from(List.of("bash", "-lc", "echo report")).literalArguments());
+    assertNull(PosixShellCommand.from(List.of("bash", "-lc", "echo report")).literalCommand());
   }
 
   @Test

@@ -19,19 +19,20 @@ public final class ProcessLaunchIndicators {
     int first = exe + 1;
     if ("bash".equals(name) && first < argv.size() && "-i".equals(argv.get(first))) return true;
     if (shell != null) {
-      List<String> literal = shell.literalArguments();
-      if (literal != null && literal.isEmpty()) return false;
-      if (literal != null && literal.get(0).indexOf('=') < 0) {
-        String tool = literal.get(0);
-        if ("echo".equals(tool) || stringPrintf(tool, literal)) return false;
+      LiteralShellCommand literal = shell.literalCommand();
+      if (literal == null) return programIndicator.matcher(shell.source()).find();
+      if (literal.words.isEmpty()) return false;
+      String tool = literal.words.get(0);
+      if (tool.indexOf('=') < 0) {
+        if ("echo".equals(tool) || stringPrintf(tool, literal.words)) return false;
         // For shell programs, only settle a read on literal absolute paths (with an optional --).
         // Other reader modes may interpret an operand as another program.
         if (fileReaders.contains(PosixShellCommand.basename(tool))) {
-          Boolean read = literalFileRead(literal, sensitivePaths);
+          Boolean read = literalFileRead(literal.words, sensitivePaths);
           if (read != null) return read;
         }
       }
-      return programIndicator.matcher(shell.source()).find();
+      return literal.matchesSource(programIndicator);
     }
     boolean cmd = "cmd".equalsIgnoreCase(name) || "cmd.exe".equalsIgnoreCase(name);
     boolean powershell = "powershell".equalsIgnoreCase(name) || "powershell.exe".equalsIgnoreCase(name)

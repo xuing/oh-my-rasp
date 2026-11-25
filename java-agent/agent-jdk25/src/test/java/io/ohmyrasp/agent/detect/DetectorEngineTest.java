@@ -445,7 +445,7 @@ final class DetectorEngineTest {
   @Test
   void literalOutputDoesNotExemptOtherShellOperations() {
     for (String program : List.of("printf '%s' weekly\ncat /etc/passwd", "REPORT=/bin/echo cat /etc/passwd",
-        "printf %s weekly; cat /etc/passwd")) {
+        "printf %s weekly; cat /etc/passwd", "eval 'cat /etc/passwd' # report")) {
       assertAlgorithm(engine.detectCommand(List.of("sh", "-c", program), request()), "command_common");
     }
     for (String program : List.of("echo 'guide: cat /etc/passwd'", "printf 'percent %% [%8.3s]' 'cat /etc/passwd'")) {

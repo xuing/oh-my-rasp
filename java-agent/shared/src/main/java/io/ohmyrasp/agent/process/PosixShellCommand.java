@@ -159,7 +159,7 @@ public final class PosixShellCommand {
     return end == program.length() || !(Character.isLetterOrDigit(program.charAt(end)) || program.charAt(end) == '_');
   }
 
-  List<String> literalArguments() { return plainInline ? LiteralShellCommand.words(source) : null; }
+  LiteralShellCommand literalCommand() { return plainInline ? LiteralShellCommand.parse(source) : null; }
 
   public String source() { return source; }
   public boolean hasOperator() { return !operators.isEmpty(); }

@@ -75,6 +75,8 @@ public class ProcessLaunchCheck {
             new ProcessBuilder("/bin/sh", "-c", "printf '%s' 'example: cat /etc/passwd'").start(), example));
         check(track, mode, "shell-comment", "weekly", false, () -> exited(
             new ProcessBuilder("/bin/sh", "-c", "printf '%s' weekly # example: cat /etc/passwd").start(), "weekly"));
+        check(track, mode, "comment-next-to-command", "weekly", false, () -> exited(
+            new ProcessBuilder("/bin/sh", "-c", "# example: cat /etc/passwd\n/bin/true # cat /etc/passwd").start(), ""));
         check(track, mode, "comment-only", "weekly", false, () -> exited(
             new ProcessBuilder("/bin/sh", "-c", "# example: cat /etc/passwd").start(), ""));
         check(track, mode, "shell-other-file", "weekly", false, () -> {
