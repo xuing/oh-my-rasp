@@ -94,7 +94,9 @@ public final class EvidenceProbe {
           }
           System.out.println((listed ? "listed" : "unlisted") + "\t");
           continue;
-        case "beforeClassLoaderUrl":
+        case "onClassDefinitionSource":
+          arguments[0] = value.split(" ", 3)[2];
+          break;
         case "beforeRmiCodebaseLoader":
           // Reconstruct the retained URL components without opening a connection or consulting installed handlers.
           java.net.URL url = new java.net.URL(null, value.split(" ", 3)[2], new java.net.URLStreamHandler() {
@@ -102,13 +104,8 @@ public final class EvidenceProbe {
               throw new AssertionError("offline codebase receipt");
             }
           });
-          if (methodName.equals("beforeRmiCodebaseLoader")) {
-            parameters[0] = java.net.URL[].class;
-            arguments[0] = new java.net.URL[] {url};
-          } else {
-            parameters[0] = Object.class;
-            arguments[0] = url;
-          }
+          parameters[0] = java.net.URL[].class;
+          arguments[0] = new java.net.URL[] {url};
           break;
         case "beforeXmlEntity":
           parameters = new Class<?>[]{String.class, Object.class};

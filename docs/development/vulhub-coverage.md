@@ -192,7 +192,7 @@ coverage, separate from the Java 25 behavioral replay suite:
   `java8_jdbc_mysql_deserialization`, normal JDBC URL smoke traffic emits no
   detection, and block mode records `action:"block"` before throwing
   `Java8RaspBlockException` on Temurin 8.
-- [x] Check [URL classpath configuration and JDK RMI loader selection](../detection.md#rmi-codebase-selection).
+- [x] Check [URL class-definition origins and JDK RMI loader selection](../detection.md#rmi-codebase-selection).
 - [x] Add the ninth functional Java 8 era behavior hook:
   `ScriptEngine.eval(String...)` is transformed through `AbstractScriptEngine`,
   Nashorn, and `ScriptEngineImpl` implementations, runtime/reflective runtime,
@@ -1742,7 +1742,7 @@ coverage, separate from the Java 25 behavioral replay suite:
   public URL traffic emits no detection, and block mode records
   `action:"block"` before throwing `Java11RaspBlockException` on Temurin 11,
   Tomcat 10.1/JDK11, and Tomcat 9/JDK11.
-- [x] Check [URL classpath configuration and JDK RMI loader selection](../detection.md#rmi-codebase-selection).
+- [x] Check [URL class-definition origins and JDK RMI loader selection](../detection.md#rmi-codebase-selection).
 - [x] Add the eighth functional Java 11 era behavior hook:
   `DriverManager.getConnection` and direct H2 `org.h2.jdbc.JdbcConnection`
   constructors are transformed by the dedicated Java 11 agent, H2 `INIT`
@@ -1870,7 +1870,7 @@ coverage, separate from the Java 25 behavioral replay suite:
   traffic emits no detection, and block mode records `action:"block"` before
   throwing `Java17RaspBlockException` on Temurin 17, Tomcat 11/JDK17,
   Tomcat 10.1/JDK17, and Tomcat 9/JDK17.
-- [x] Check [URL classpath configuration and JDK RMI loader selection](../detection.md#rmi-codebase-selection).
+- [x] Check [URL class-definition origins and JDK RMI loader selection](../detection.md#rmi-codebase-selection).
 - [x] Add the Java 17 era JDBC URL primitive behavior hook:
   `DriverManager.getConnection` and direct H2 `org.h2.jdbc.JdbcConnection`
   constructors are transformed by the dedicated Java 17 agent, H2 `INIT`
@@ -2605,7 +2605,7 @@ above.
 
 - [x] Apache HugeGraph - CVE-2024-27348 Gremlin Groovy execution (`request_hugegraph_cve_2024_27348_gremlin_rce`; real Java11 acceptance: `scripts/acceptance-vulhub-hugegraph-java11.sh` blocks `java11_command_execution_exploit_primitive`)
 - [x] Apache HugeGraph - CVE-2024-43441 default JWT secret (`request_hugegraph_cve_2024_43441_default_jwt_secret`; real Java11 acceptance: `scripts/acceptance-vulhub-hugegraph-43441-java11.sh` blocks `java11_request_default_jwt_secret`)
-- [x] Liferay Portal - CVE-2020-7961 JSONWS typed parameter (`request_liferay_jsonws_typed_parameter`; real Java8 acceptance: `scripts/acceptance-vulhub-liferay-7961-java8.sh` blocks `java8_classloader_remote_codebase`)
+- [x] Liferay Portal - CVE-2020-7961 JSONWS typed parameter (`request_liferay_jsonws_typed_parameter`; historical Java8 acceptance: `scripts/acceptance-vulhub-liferay-7961-java8.sh` recorded `java8_classloader_remote_codebase` during classpath configuration). Verification at the current class-definition boundary is pending.
 - [x] Nacos - CVE-2021-29441 `Nacos-Server` identity bypass (`request_nacos_cve_2021_29441_list_users`, `request_nacos_cve_2021_29441_create_user`; real Java8 acceptance: `scripts/acceptance-vulhub-nacos-29441-java8.sh` blocks `java8_request_internal_identity`)
 - [x] Nacos - CVE-2021-29442 Derby ops SQL execution (`sql_nacos_cve_2021_29442_derby_ops_code_execution`; real Java8 acceptance: `scripts/acceptance-vulhub-nacos-java8.sh` blocks `java8_command_execution_exploit_primitive`)
 - [x] Nexus Repository - CVE-2019-7238 ExtDirect JEXL filter (`request_nexus_cve_2019_7238_extdirect_jexl_filter`; real Java8 acceptance: `scripts/acceptance-vulhub-nexus-7238-java8.sh` blocks `java8_jexl_runtime_execution`)

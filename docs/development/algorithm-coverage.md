@@ -470,16 +470,11 @@ same patch as any new Java-compatible Vulhub replay.
   positions at JDBC. See [MyBatis dynamic SQL](../detection.md#mybatis-dynamic-sql)
   for policy behavior and the [Vulhub ledger](vulhub-coverage.md) for the
   earlier MeterSphere evidence.
-- Java 8 records URL classpath configuration and selection of the JDK RMI codebase loader.
+- Java 8 records URL class-definition origins and selection of the JDK RMI codebase loader.
   The historical `java/rmi-codebase` application result used an annotation-entry hook.
   [Current codebase policy](../detection.md#rmi-codebase-selection)
-  `scripts/acceptance-vulhub-liferay-7961-java8.sh` provides real Vulhub
-  application evidence for Liferay Portal CVE-2020-7961 on OpenJDK 8:
-  baseline posts the JSONWS typed C3P0/Jackson parameter, loads
-  `LifExp.class` from the attacker HTTP server, and creates
-  `/tmp/ohmyrasp-liferay-7961-success`, while protected mode keeps Liferay's
-  Tika and local-browser startup checks quiet and blocks the remote
-  `URLClassLoader` codebase with `java8_classloader_remote_codebase`.
+  The historical Liferay Portal CVE-2020-7961 run blocked classpath configuration.
+  The [Vulhub ledger](vulhub-coverage.md) tracks application verification for the current rule.
 - The Java 8 era track hooks `ScriptEngine.eval(String...)` and
   `compile(String...)` sources through `AbstractScriptEngine`, Nashorn, and
   `ScriptEngineImpl` implementations, plus Rhino/Mozilla
@@ -1939,7 +1934,7 @@ same patch as any new Java-compatible Vulhub replay.
   real Java 8 Vulhub acceptance verifies the lower-level
   `java8_file_generated_plot_script_command` sink against both OpenTSDB 2.4.0
   and 2.4.1.
-- `classloader_remote` covers URL classpath configuration and JDK RMI codebase-loader selection.
+- `classloader_remote` covers URL class-definition origins and JDK RMI codebase-loader selection.
   [Codebase policy](../detection.md#rmi-codebase-selection)
 - `jmx_remote_config` covers request-time JMX/MBean invocations that mutate
   runtime configuration with a remote Spring/XBean-style config source. This

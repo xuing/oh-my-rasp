@@ -31,7 +31,7 @@ SOURCES = {
     "Runtime.exec(String)": ("beforeRuntimeExecString", "command", "whoami"),
     "ScriptEngine.eval": ("beforeScriptEval", "script", "quantity * price"),
     "XMLEntityManager.setupCurrentEntity": ("beforeXmlEntity", "entity", "section relative.dtd"),
-    "URLClassLoader": ("beforeClassLoaderUrl", "codebase", "URLClassLoader file file:/srv/app/classes/"),
+    "URLClassLoader": ("onClassDefinitionSource", "codebase", "URLClassLoader file file:/srv/app/classes/"),
     "RMIClassLoader": ("beforeRmiCodebaseLoader", "codebase", "RMIClassLoader file file:/srv/app/classes/"),
     "DriverManager.getConnection": ("beforeJdbcConnection", "jdbc_url", "jdbc:h2:mem:orders"),
     "org.h2.jdbc.JdbcConnection.<init>": ("beforeH2JdbcConnection", "jdbc_url", "jdbc:h2:mem:orders"),
@@ -286,10 +286,10 @@ def collect(logs):
                         continue
                     row["evidence_limit"] = "recorded path pair only; extraction root and filesystem unknown"
                 if hook in ("RMIClassLoader", "URLClassLoader"):
-                    basis = "rmi_codebase_loader_selection" if hook == "RMIClassLoader" else "classloader_url_configuration"
+                    basis = "rmi_codebase_loader_selection" if hook == "RMIClassLoader" else "url_class_definition"
                     if row.get("historical_decision_basis") != basis:
                         row.update(status="source evidence required",
-                                   evidence_limit="legacy display or annotation cannot establish the JDK classpath operation")
+                                   evidence_limit="configuration or annotation cannot establish loader selection or a class definition")
                         continue
                     row["_expected_detail"] = ("codebase", value, "codebase_url_matched")
                     parts = value.split(" ", 2)

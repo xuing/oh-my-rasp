@@ -101,7 +101,7 @@ class EvidenceTest(unittest.TestCase):
             records = [{"event": "ohmyrasp-java8-agent-start"}]
             for hook, basis in (("RMIClassLoader", None), ("URLClassLoader", None),
                                 ("RMIClassLoader", "rmi_codebase_loader_selection"),
-                                ("URLClassLoader", "classloader_url_configuration")):
+                                ("URLClassLoader", "classloader_url_configuration"), ("URLClassLoader", "url_class_definition")):
                 details = {"codebase": hook + " https https://reports.invalid/catalog/"}
                 if basis:
                     details["decision_basis"] = basis
@@ -110,7 +110,8 @@ class EvidenceTest(unittest.TestCase):
             (case / "events.jsonl").write_text("\n".join(map(json.dumps, records)))
             _, rows, batches, _, _ = decisions.collect(case.parent)
             self.assertEqual([r["status"] for r in rows[:2]], ["source evidence required"] * 2)
-            self.assertEqual([method for _, method, _ in batches["8"]], ["beforeRmiCodebaseLoader", "beforeClassLoaderUrl"])
+            self.assertEqual(rows[3]["status"], "source evidence required")
+            self.assertEqual([method for _, method, _ in batches["8"]], ["beforeRmiCodebaseLoader", "onClassDefinitionSource"])
 
     def test_jaas_configuration_does_not_prove_login(self):
         rule = "java8_jaas_jndi_remote_provider"
