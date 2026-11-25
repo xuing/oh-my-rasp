@@ -21,7 +21,8 @@ public final class OpenWireThrowableCheck {
     boolean denied = args[0].equals("block");
     Throwable result = new BaseDataStreamMarshaller().createThrowable("report label", "private report text");
     int expected = denied ? 0 : 1;
-    if (!result.getMessage().equals(denied ? "rejected" : "constructed")
+    if (!"rejected".equals(result.getMessage()) || BaseDataStreamMarshaller.labelConstructions != 1
+        || (result.getCause() instanceof ClassCastException) == denied
         || BaseDataStreamMarshaller.initializations != expected || BaseDataStreamMarshaller.constructions != expected)
       throw new AssertionError("unexpected initializer or constructor outcome");
   }

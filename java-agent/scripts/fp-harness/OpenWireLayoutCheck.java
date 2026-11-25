@@ -35,6 +35,10 @@ public final class OpenWireLayoutCheck {
         }
         if (call(insn, Opcodes.INVOKEVIRTUAL, "java/lang/reflect/Constructor", "newInstance",
                  "([Ljava/lang/Object;)Ljava/lang/Object;")) {
+          AbstractInsnNode use = insn.getNext();
+          while (use != null && use.getOpcode() < 0) use = use.getNext();
+          if (!(use instanceof TypeInsnNode) || use.getOpcode() != Opcodes.CHECKCAST
+              || !"java/lang/Throwable".equals(((TypeInsnNode) use).desc)) continue;
           AbstractInsnNode hook = insn.getPrevious();
           if (!call(hook, Opcodes.INVOKESTATIC, "io/ohmyrasp/agent/java11/Java11RaspHooks",
                     "beforeOpenWireThrowable", "(Ljava/lang/Class;)V")

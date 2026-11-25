@@ -7,6 +7,6 @@ final class OpenWireHookModule implements HookModule {
   @Override public boolean matchesClass(String name) { return OpenWireThrowableVisitor.matches(name); }
 
   @Override public MethodVisitor visitMethod(String owner, MethodVisitor mv, int access, String name, String desc) {
-    return OpenWireThrowableVisitor.wrap(mv, name, desc, "io/ohmyrasp/agent/hook/OhMyRaspHooks");
+    return OpenWireThrowableVisitor.wrap(mv, access, name, desc, "io/ohmyrasp/agent/hook/OhMyRaspHooks");
   }
 }

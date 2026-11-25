@@ -197,15 +197,10 @@ run_protected() {
     echo "protected ActiveMQ CVE-2023-46604 created ${success_file}" >&2
     exit 1
   fi
-  if ! grep -Eq '"hook":"OpenWire[.]createThrowable".*"algorithm":"java11_deserialization_protocol_class".*"action":"block".*"decision_basis":"non_throwable_constructor"' "$protected_log"; then
+  if ! grep -Eq '"hook":"OpenWire[.]createThrowable".*"algorithm":"java11_deserialization_protocol_class".*"action":"block".*"class":"[^"]+".*"decision_basis":"non_throwable_constructor"' "$protected_log"; then
     cat "$protected_log" >&2 || true
     docker logs "$protected_name" >&2 || true
     echo "missing OpenWire non-Throwable constructor block for ActiveMQ CVE-2023-46604" >&2
-    exit 1
-  fi
-  if ! grep -Fq "touch ${success_file}" "$protected_log"; then
-    cat "$protected_log" >&2 || true
-    echo "ActiveMQ CVE-2023-46604 block event did not include the Spring XML ProcessBuilder command" >&2
     exit 1
   fi
   printf 'protected_marker=absent\n' >> "${protected_dir}/attempts.log"

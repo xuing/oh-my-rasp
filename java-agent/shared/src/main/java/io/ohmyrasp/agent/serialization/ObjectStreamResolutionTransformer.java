@@ -34,7 +34,7 @@ public abstract class ObjectStreamResolutionTransformer implements ClassFileTran
     reader.accept(new ClassVisitor(Opcodes.ASM9, writer) {
       @Override public MethodVisitor visitMethod(int access, String name, String desc, String signature, String[] exceptions) {
         MethodVisitor original = super.visitMethod(access, name, desc, signature, exceptions);
-        if (openWire) return OpenWireThrowableVisitor.wrap(original, name, desc, hooks);
+        if (openWire) return OpenWireThrowableVisitor.wrap(original, access, name, desc, hooks);
         if (!"readNonProxyDesc".equals(name) && !"readProxyDesc".equals(name)) return original;
         return new MethodVisitor(Opcodes.ASM9, original) {
           @Override public void visitMethodInsn(int op, String owner, String method, String descriptor, boolean itf) {
