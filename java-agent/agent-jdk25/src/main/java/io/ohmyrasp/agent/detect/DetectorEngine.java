@@ -10,6 +10,15 @@ import static io.ohmyrasp.agent.detect.DetectorStrings.normalizePath;
 import static io.ohmyrasp.agent.detect.DetectorStrings.percentDecode;
 import static io.ohmyrasp.agent.detect.DetectorStrings.protocolOf;
 import static io.ohmyrasp.agent.detect.ExpressionSyntax.containsRuntimeExpressionPrimitive;
+import static io.ohmyrasp.agent.detect.FilePaths.PRIVATE_READ_NAME;
+import static io.ohmyrasp.agent.detect.FilePaths.UNIX_READ_TARGET;
+import static io.ohmyrasp.agent.detect.FilePaths.WINDOWS_ABSOLUTE_PATH;
+import static io.ohmyrasp.agent.detect.FilePaths.WINDOWS_READ_TARGET;
+import static io.ohmyrasp.agent.detect.FilePaths.containsParentSegment;
+import static io.ohmyrasp.agent.detect.FilePaths.isAbsolutePathLike;
+import static io.ohmyrasp.agent.detect.FilePaths.looksLikeApplicationSecretPath;
+import static io.ohmyrasp.agent.detect.FilePaths.requestControlsReadPath;
+import static io.ohmyrasp.agent.detect.FilePaths.sensitiveFileLocation;
 import static io.ohmyrasp.agent.detect.HostFileMutationDetector.fileOperationFromDynamicCode;
 import static io.ohmyrasp.agent.detect.HostFileMutationDetector.unsafeConfigPersistencePath;
 import static io.ohmyrasp.agent.detect.RemoteResourceDetector.SSRF_PROTOCOLS;
@@ -39,7 +48,6 @@ import io.ohmyrasp.agent.net.HttpTransportObservation;
 import io.ohmyrasp.agent.net.NetworkHost;
 import java.net.URI;
 import java.util.ArrayList;
-import java.util.Base64;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
@@ -49,16 +57,6 @@ import java.util.Set;
 import java.util.regex.Pattern;
 
 public final class DetectorEngine {
-  private static final String UNIX_READ_TARGET =
-      "etc/(?:issue|passwd|shadow|apache2/apache2\\.conf)|proc/self/environ|root/\\.ssh|root/\\.bash_(?:history|profile)";
-
-  private static final String WINDOWS_READ_TARGET = "windows/system32/(?:inetsrv/metabase\\.xml|drivers/etc/hosts)";
-
-  private static final String PRIVATE_READ_NAME = "\\.bash_history|\\.zsh_history|\\.mysql_history|id_rsa";
-
-  // Higher-level argument and URI detectors can receive a path fragment. Host opens have a native root.
-  private static final Pattern DANGEROUS_FILE_READ = Pattern.compile("(?is)(?:^|/)(?:"
-      + UNIX_READ_TARGET + "|" + WINDOWS_READ_TARGET + "|" + PRIVATE_READ_NAME + ")$");
 
   private static final Pattern SENSITIVE_HOST_READ = Pattern.compile("^(?:/(?:" + UNIX_READ_TARGET
       + ")|[a-z]:/" + WINDOWS_READ_TARGET + "|(?:.*/)?(?:" + PRIVATE_READ_NAME + "))$");
@@ -74,8 +72,6 @@ public final class DetectorEngine {
 
   private static final Pattern EXECUTABLE_FILE =
       Pattern.compile("(?is).+\\.(?:exe|dll|scr|vbs|cmd|bat)$");
-
-  private static final Pattern WINDOWS_ABSOLUTE_PATH = Pattern.compile("(?i)^[a-z]:/.*");
 
   private static final Pattern READ_SAFE_EXTENSION =
       Pattern.compile(
@@ -937,45 +933,6 @@ public final class DetectorEngine {
 
   private static boolean isSystemDirectory(String path) {
     return path.startsWith("/etc/") || path.startsWith("/proc/") || path.startsWith("/root/");
-  }
-
-  private static boolean requestControlsReadPath(String path, RequestContext request, boolean sensitive, boolean reportDirect) {
-    String target = HostReadPath.inputName(path);
-    for (List<String> values : request.parameters().values()) {
-      for (String value : values) {
-        String candidate = HostReadPath.inputName(value);
-        if (candidate.isEmpty()) {
-          continue;
-        }
-        if (isAbsolutePathLike(candidate) || !protocolOf(candidate).isEmpty()) {
-          if (reportDirect && target.equals(candidate)) {
-            return true;
-          }
-        } else if (((sensitive && candidate.contains("/")) || escapesRelativeRoot(candidate))
-            && (target.equals(candidate) || target.endsWith("/" + candidate))) {
-          return true;
-        }
-      }
-    }
-    return ((reportDirect && (isAbsolutePathLike(target) || !protocolOf(target).isEmpty()))
-            || escapesRelativeRoot(target)) && bodyHasSinkValue(request, target);
-  }
-
-  private static boolean escapesRelativeRoot(String path) {
-    if (!path.contains("..")) {
-      return false;
-    }
-    int depth = 0;
-    for (String segment : path.split("/+")) {
-      if (segment.equals("..")) {
-        if (--depth < 0) {
-          return true;
-        }
-      } else if (!segment.isEmpty() && !segment.equals(".")) {
-        depth++;
-      }
-    }
-    return false;
   }
 
   public Optional<Detection> detectDirectoryList(String path, RequestContext request) {
@@ -2519,38 +2476,6 @@ public final class DetectorEngine {
     return sensitiveFileLocation(normalized);
   }
 
-  private static boolean sensitiveFileLocation(String normalized) {
-    if (DANGEROUS_FILE_READ.matcher(normalized).find()) {
-      return true;
-    }
-    if (normalized.startsWith("/proc/")
-        || normalized.startsWith("/etc/")
-        || normalized.startsWith("/root/")
-        || normalized.contains("/.ssh/")) {
-      return true;
-    }
-    return looksLikeApplicationSecretPath(normalized);
-  }
-
-  private static boolean isAbsolutePathLike(String path) {
-    return path.startsWith("/") || WINDOWS_ABSOLUTE_PATH.matcher(path).matches();
-  }
-
-  private static boolean looksLikeApplicationSecretPath(String path) {
-    if (path.endsWith("/secret.key")
-        || path.endsWith("/master.key")
-        || path.endsWith("/credentials.xml")
-        || path.endsWith("/identity.key.enc")
-        || path.endsWith("/hudson.util.secret")) {
-      return true;
-    }
-    return path.contains("/secrets/")
-        && (path.endsWith(".key")
-            || path.endsWith(".key.enc")
-            || path.endsWith(".secret")
-            || path.endsWith(".credentials"));
-  }
-
   private static String archivePath(String path) {
     return path == null ? "" : path.trim().replace('\\', '/');
   }
@@ -2596,15 +2521,6 @@ public final class DetectorEngine {
       }
     }
     return Optional.empty();
-  }
-
-  private static boolean containsParentSegment(String path) {
-    for (String segment : path.split("/+")) {
-      if (segment.equals("..")) {
-        return true;
-      }
-    }
-    return false;
   }
 
   private static Optional<Detection> dataLeak(
