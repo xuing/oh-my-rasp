@@ -21,6 +21,8 @@ jobs:
         with:
           # Release tags are the source of truth for "never write a released version".
           fetch-depth: 0
+      - name: Check Java source file sizes
+        run: python3 scripts/check-java-size.py
       - name: Test the docs checker
         run: python3 -m unittest discover -s scripts -p 'test_check_docs.py'
       - name: Check docs against their sources of truth

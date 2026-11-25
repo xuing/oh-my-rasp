@@ -2,6 +2,10 @@
 
 Build, test and PR workflow live in [CONTRIBUTING.md](CONTRIBUTING.md). This file holds the rules that are easy to break without noticing.
 
+## Java source files
+
+Keep each Java file at or below 5,000 physical lines. Split production code and tests by responsibility. Run `python3 scripts/check-java-size.py` to check the working tree.
+
 ## Documentation
 
 **One home per fact.** A value that changes as releases ship or code evolves lives in exactly one place: its source file, or a generated document or region. Other docs describe the kind of thing and link to that home. A copy in prose goes stale silently, and the next release does not update it.
