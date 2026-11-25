@@ -12,6 +12,7 @@ import java.lang.reflect.Method;
 import java.net.URL;
 import java.net.URLClassLoader;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.DirectoryStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
@@ -438,7 +439,7 @@ final class Java8ShirudoStandaloneTest {
     Map<String, String> init = asyncInit();
     init.put("ohmyrasp.java8.log", "stderr");
     init.put("ohmyrasp.latency_sample", "1");
-    Class<?> runtime = loadIsolatedRuntime(init, null);
+    Class<?> runtime = loadIsolatedRuntime(init);
     Method writeEvent = runtime.getMethod("writeEvent", String.class, String.class);
 
     assertEquals(writersBefore, threadsNamed(WRITER_THREAD), "a stderr target starts no writer");
@@ -470,7 +471,7 @@ final class Java8ShirudoStandaloneTest {
     int writersBefore = threadsNamed(WRITER_THREAD);
     Map<String, String> init = asyncInit();
     init.put("ohmyrasp.java8.log", logFile.toString());
-    Class<?> runtime = loadIsolatedRuntime(init, null);
+    Class<?> runtime = loadIsolatedRuntime(init);
 
     assertEquals(writersBefore + 1, threadsNamed(WRITER_THREAD), "the writer exists before any hook");
     Method writeEvent = runtime.getMethod("writeEvent", String.class, String.class);
@@ -523,6 +524,23 @@ final class Java8ShirudoStandaloneTest {
   }
 
   @Test
+  void bakedPropertiesComeOnlyFromTheRuntimesOwnJarOrDirectory() throws Exception {
+    // For a runtime on the bootstrap search, class-relative lookup goes to the system class path,
+    // where an application JAR comes before the agent JAR. A same-named resource that is not beside
+    // the RaspRuntime classes is therefore not configuration, even when it is found first.
+    Path foreign = foreignResource("standalone=true\nlock_config=true\nmode=off\n");
+    Class<?> withoutOwn = loadIsolatedRuntime(asyncInit(), foreign);
+    assertTrue(bakedProperties(withoutOwn).isEmpty(), bakedProperties(withoutOwn).toString());
+
+    Path own = bakedResource("standalone=true\nlock_config=true\nmode=block\n");
+    Class<?> withOwn = loadIsolatedRuntime(asyncInit(), foreign, own);
+    assertEquals("block", bakedProperties(withOwn).getProperty("mode"));
+    Method mode = withOwn.getDeclaredMethod("mode");
+    mode.setAccessible(true);
+    assertEquals("BLOCK", String.valueOf(mode.invoke(null)));
+  }
+
+  @Test
   void invalidControlPathDoesNotBreakConfigurationOrEventEmission() throws Exception {
     String invalid = "bad\0control.json";
     Properties sysProps = new Properties();
@@ -543,7 +561,7 @@ final class Java8ShirudoStandaloneTest {
     int pollersBefore = threadsNamed(CONTROL_THREAD);
     Map<String, String> init = asyncInit();
     init.put("ohmyrasp.control", invalid);
-    Class<?> runtime = loadIsolatedRuntime(init, null);
+    Class<?> runtime = loadIsolatedRuntime(init);
     assertEquals(pollersBefore, threadsNamed(CONTROL_THREAD));
     runtime.getMethod("resolveLogPath").invoke(null);
   }
@@ -624,15 +642,19 @@ final class Java8ShirudoStandaloneTest {
 
   /**
    * Loads and initialises a fresh RaspRuntime in its own class loader, with the given system
-   * properties set only while its static initialiser runs. The build sets ohmyrasp.log.sync=true for
-   * every test JVM, which the shared RaspRuntime has already read. {@code bakedRoot}, when not null,
-   * is searched first, so a META-INF/ohmyrasp-shirudo.properties there becomes the baked resource.
+   * properties set only while its static initialiser runs. The build sets ohmyrasp.log.sync=true
+   * for every test JVM, which the shared RaspRuntime has already read. {@code roots} are searched
+   * in order before the compiled classes: a {@link #bakedResource} root also holds the runtime
+   * classes, so its META-INF/ohmyrasp-shirudo.properties is the runtime's own; a
+   * {@link #foreignResource} root holds only the resource.
    */
-  private static Class<?> loadIsolatedRuntime(Map<String, String> init, Path bakedRoot)
+  private static Class<?> loadIsolatedRuntime(Map<String, String> init, Path... roots)
       throws Exception {
-    URL classes = RaspRuntime.class.getProtectionDomain().getCodeSource().getLocation();
-    URL[] urls =
-        bakedRoot == null ? new URL[] {classes} : new URL[] {bakedRoot.toUri().toURL(), classes};
+    URL[] urls = new URL[roots.length + 1];
+    for (int i = 0; i < roots.length; i++) {
+      urls[i] = roots[i].toUri().toURL();
+    }
+    urls[roots.length] = RaspRuntime.class.getProtectionDomain().getCodeSource().getLocation();
     URLClassLoader isolated = new URLClassLoader(urls, null);
     Map<String, String> previous = new HashMap<String, String>();
     for (Map.Entry<String, String> entry : init.entrySet()) {
@@ -648,7 +670,31 @@ final class Java8ShirudoStandaloneTest {
     }
   }
 
+  /** A class-path root holding the RaspRuntime classes and, beside them, this baked resource. */
   private static Path bakedResource(String content) throws Exception {
+    Path root = foreignResource(content);
+    Path classes =
+        Paths.get(RaspRuntime.class.getProtectionDomain().getCodeSource().getLocation().toURI());
+    String packagePath = RaspRuntime.class.getPackage().getName().replace('.', '/');
+    Path target = Files.createDirectories(root.resolve(packagePath));
+    DirectoryStream<Path> files =
+        Files.newDirectoryStream(classes.resolve(packagePath), "RaspRuntime*.class");
+    try {
+      for (Path file : files) {
+        String name = file.getFileName().toString();
+        if (name.equals("RaspRuntime.class") || name.startsWith("RaspRuntime$")) {
+          Files.copy(file, target.resolve(name));
+        }
+      }
+    } finally {
+      files.close();
+    }
+    assertTrue(Files.exists(target.resolve("RaspRuntime.class")), target.toString());
+    return root;
+  }
+
+  /** A class-path root holding only META-INF/ohmyrasp-shirudo.properties. */
+  private static Path foreignResource(String content) throws Exception {
     Path root = Files.createTempDirectory("ohmyrasp-java8-baked-test");
     Path file = root.resolve("META-INF/ohmyrasp-shirudo.properties");
     Files.createDirectories(file.getParent());

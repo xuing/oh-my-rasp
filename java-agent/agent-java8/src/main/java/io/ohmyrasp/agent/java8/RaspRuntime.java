@@ -5,6 +5,9 @@ import java.io.FileWriter;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
+import java.net.MalformedURLException;
+import java.net.URL;
+import java.net.URLConnection;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.InvalidPathException;
@@ -43,6 +46,7 @@ public final class RaspRuntime {
   }
 
   static final String SHIRUDO_PROPERTIES_RESOURCE = "/META-INF/ohmyrasp-shirudo.properties";
+  private static final String AGENT_ENTRY_CLASS = "io.ohmyrasp.agent.java8.OhMyRaspJava8Agent";
 
   private interface PropertyLookup {
     String get(String key);
@@ -504,27 +508,67 @@ public final class RaspRuntime {
 
   private static Properties loadBakedProperties() {
     Properties props = new Properties();
-    InputStream in = RaspRuntime.class.getResourceAsStream(SHIRUDO_PROPERTIES_RESOURCE);
-    if (in == null) {
-      in = ClassLoader.getSystemResourceAsStream("META-INF/ohmyrasp-shirudo.properties");
-    }
-    if (in == null) {
-      return props;
-    }
+    InputStream in = null;
     try {
+      URL resource = ownResource(SHIRUDO_PROPERTIES_RESOURCE);
+      if (resource == null) {
+        return props;
+      }
+      URLConnection connection = resource.openConnection();
+      connection.setUseCaches(false);
+      in = connection.getInputStream();
       props.load(new InputStreamReader(in, StandardCharsets.UTF_8));
     } catch (IOException | RuntimeException e) {
-      // An unreadable or malformed resource (Properties.load throws IllegalArgumentException on a
-      // malformed unicode escape) never aborts start-up. The keys read before the bad line stay,
-      // so a damaged later line cannot erase an already-read lock_config or mode.
+      // A missing resource (FileNotFoundException) leaves no keys. An unreadable or malformed
+      // one (Properties.load throws IllegalArgumentException on a malformed unicode escape) never
+      // aborts start-up, and the keys read before the bad line stay, so a damaged later line
+      // cannot erase an already-read lock_config or mode.
     } finally {
-      try {
-        in.close();
-      } catch (IOException ignored) {
-        // nothing useful to do
+      if (in != null) {
+        try {
+          in.close();
+        } catch (IOException ignored) {
+          // nothing useful to do
+        }
       }
     }
     return props;
+  }
+
+  /**
+   * The URL of {@code name} in the agent's own JAR or class directory, or null when that location
+   * is unknown. Class-relative lookup is not used: for a class on the bootstrap search it is a
+   * system class path lookup, where an application JAR comes before the agent JAR, so a same-named
+   * resource there would win.
+   */
+  private static URL ownResource(String name) throws MalformedURLException {
+    URL location = codeLocation(RaspRuntime.class);
+    if (location == null) {
+      // Defined by the bootstrap loader, which records no code source. The agent JAR is the one the
+      // system class loader loaded the entry class from; loadClass returns that loaded class.
+      try {
+        ClassLoader system = ClassLoader.getSystemClassLoader();
+        location = codeLocation(Class.forName(AGENT_ENTRY_CLASS, false, system));
+      } catch (ClassNotFoundException | LinkageError e) {
+        return null;
+      }
+    }
+    if (location == null) {
+      return null;
+    }
+    String base = location.toString();
+    String entry = name.substring(1);
+    if (base.endsWith("/")) {
+      return new URL(base.concat(entry));
+    }
+    return new URL("jar:".concat(base).concat("!/").concat(entry));
+  }
+
+  private static URL codeLocation(Class<?> type) {
+    if (type.getProtectionDomain() == null || type.getProtectionDomain().getCodeSource() == null) {
+      return null;
+    }
+    return type.getProtectionDomain().getCodeSource().getLocation();
   }
 
   private static String bakedProperty(Properties baked, String key) {
