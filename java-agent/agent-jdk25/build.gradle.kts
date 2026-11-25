@@ -70,7 +70,7 @@ val agentJar = tasks.register<ShadowJar>("agentJar") {
 
 // Keep the standalone corpus runner incremental and compile against the packaged ABI used by CI.
 tasks.register<JavaCompile>("compileFpReport") {
-    source(rootProject.file("scripts/fp-harness/FpReport.java"))
+    source(rootProject.file("scripts/FpReport.java"))
     classpath = files(agentJar.flatMap { it.archiveFile })
     destinationDirectory.set(layout.buildDirectory.dir("classes/fpReport"))
 }

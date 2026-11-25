@@ -88,27 +88,27 @@ if (( $# )); then
   probe=$1
   shift
   if [[ "$probe" == elastic-lz4 ]]; then
-    python3 scripts/fp-harness/check-elastic-lz4.py "$jar" --jar-dir /state/build/ohmyrasp/elastic-lz4-probe "$@"
+    python3 probes/elastic-lz4/check.py "$jar" --jar-dir /state/build/ohmyrasp/elastic-lz4-probe "$@"
   elif [[ "$probe" == servlet-admission ]]; then
-    python3 scripts/fp-harness/check-servlet-admission.py "$jar" --api-dir /state/build/ohmyrasp/servlet-probe "$@"
+    python3 probes/servlet-admission/check.py "$jar" --api-dir /state/build/ohmyrasp/servlet-probe "$@"
   elif [[ "$probe" == serial-filter ]]; then
-    python3 scripts/fp-harness/check-serial-filter.py "$jar" --c3p0-dir "$output/c3p0-probe" "$@"
+    python3 probes/serial-filter/check.py "$jar" --c3p0-dir "$output/c3p0-probe" "$@"
   elif [[ "$probe" == stream-resolution ]]; then
-    python3 scripts/fp-harness/check-stream-resolution.py "$jar" --collections-dir /state/build/ohmyrasp/collections-probe "$@"
+    python3 probes/stream-resolution/check.py "$jar" --collections-dir /state/build/ohmyrasp/collections-probe "$@"
   elif [[ "$probe" == http-invoker ]]; then
-    python3 scripts/fp-harness/check-http-invoker.py "$jar" --jar-dir /state/build/ohmyrasp/spring-process-probe/legacy --api-dir /state/build/ohmyrasp/servlet-probe --xmlrpc-dir /state/build/ohmyrasp/xmlrpc-probe "$@"
+    python3 probes/http-invoker/check.py "$jar" --jar-dir /state/build/ohmyrasp/spring-process-probe/legacy --api-dir /state/build/ohmyrasp/servlet-probe --xmlrpc-dir /state/build/ohmyrasp/xmlrpc-probe "$@"
   elif [[ "$probe" == hessian-allocation ]]; then
-    python3 scripts/fp-harness/check-hessian-allocation.py "$jar" --jar-dir /state/build/ohmyrasp/hessian-probe "$@"
+    python3 probes/hessian-allocation/check.py "$jar" --jar-dir /state/build/ohmyrasp/hessian-probe "$@"
   elif [[ "$probe" == openwire-throwable ]]; then
-    python3 scripts/fp-harness/check-openwire-throwable.py "$jar" --jar-dir /state/build/ohmyrasp/openwire-probe/fixed "$@"
+    python3 probes/openwire-throwable/check.py "$jar" --jar-dir /state/build/ohmyrasp/openwire-probe/fixed "$@"
   elif [[ "$probe" == spring-process ]]; then
-    python3 scripts/fp-harness/check-spring-process.py "$jar" --jar-dir /state/build/ohmyrasp/spring-process-probe "$@"
+    python3 probes/spring-process/check.py "$jar" --jar-dir /state/build/ohmyrasp/spring-process-probe "$@"
   elif [[ "$probe" == yarn-submit ]]; then
-    python3 scripts/fp-harness/check-yarn-submit.py "$jar" --jar-dir /state/build/ohmyrasp/yarn-probe "$@"
+    python3 probes/yarn-submit/check.py "$jar" --jar-dir /state/build/ohmyrasp/yarn-probe "$@"
   elif [[ "$probe" == file-delete ]]; then
-    python3 scripts/fp-harness/check-file-read.py "$jar" --delete-only "$@"
+    python3 probes/file-read/check.py "$jar" --delete-only "$@"
   else
-    python3 "scripts/fp-harness/check-$probe.py" "$jar" "$@"
+    python3 "probes/$probe/check.py" "$jar" "$@"
   fi
   echo "JDK 25 packaged check passed: $probe"
 fi

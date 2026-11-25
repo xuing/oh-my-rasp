@@ -1,6 +1,6 @@
 # OhMyRASP False-Positive Report
 
-> **Generated** by `scripts/fp-harness/FpReport.java` against the real `DetectorEngine`.
+> **Generated** by `scripts/FpReport.java` against the real `DetectorEngine`.
 > Re-run via `scripts/run-fp-report.sh` after changing detectors.
 
 ## Method
