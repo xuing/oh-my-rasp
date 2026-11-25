@@ -3749,13 +3749,12 @@ public final class Java8RaspHooks {
       String rawPath = uri.getRawPath() == null || uri.getRawPath().isEmpty() ? "/" : uri.getRawPath();
       int port = uri.getPort() < 0 ? ("https".equals(protocol) ? 443 : 80) : uri.getPort();
       String query = uri.getRawQuery();
-      return new UrlParts(protocol, host, rawPath, HttpTransportObservation.address(uri),
+      return new UrlParts(host, rawPath, HttpTransportObservation.address(uri),
           protocol + "://" + NetworkHost.destinationKey(host) + ":" + port + rawPath + (query == null ? "" : "?" + query));
     }
     if (value instanceof URL) {
       URL url = (URL) value;
       return new UrlParts(
-          lower(url.getProtocol()),
           normalizeHost(url.getHost()),
           url.getPath() == null || url.getPath().length() == 0 ? "/" : url.getPath(),
           HttpTransportObservation.isHttp(url) ? HttpTransportObservation.address(url) : String.valueOf(url),
@@ -3764,7 +3763,6 @@ public final class Java8RaspHooks {
     try {
       URL url = new URL(String.valueOf(value));
       return new UrlParts(
-          lower(url.getProtocol()),
           normalizeHost(url.getHost()),
           url.getPath() == null || url.getPath().length() == 0 ? "/" : url.getPath(),
           HttpTransportObservation.isHttp(url) ? HttpTransportObservation.address(url) : String.valueOf(url),
@@ -3991,14 +3989,12 @@ public final class Java8RaspHooks {
   }
 
   private static final class UrlParts {
-    final String protocol;
     final String host;
     final String path;
     final String fullUrl;
     final String comparisonKey;
 
-    UrlParts(String protocol, String host, String path, String fullUrl, String comparisonKey) {
-      this.protocol = protocol;
+    UrlParts(String host, String path, String fullUrl, String comparisonKey) {
       this.host = host;
       this.path = path;
       this.fullUrl = fullUrl;
