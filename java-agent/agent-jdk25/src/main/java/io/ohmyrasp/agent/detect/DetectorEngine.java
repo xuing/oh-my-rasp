@@ -8,11 +8,14 @@ import static io.ohmyrasp.agent.detect.DetectorStrings.lower;
 import static io.ohmyrasp.agent.detect.DetectorStrings.normalizeParameterName;
 import static io.ohmyrasp.agent.detect.DetectorStrings.percentDecode;
 import static io.ohmyrasp.agent.detect.JdbcDetector.h2JdbcInitConfig;
+import static io.ohmyrasp.agent.detect.ProcessDetector.dangerousRemoteJobCommand;
 import static io.ohmyrasp.agent.detect.RemoteResourceDetector.containsRemoteProtocol;
 import static io.ohmyrasp.agent.detect.RemoteResourceDetector.remoteConfigScheme;
 import static io.ohmyrasp.agent.detect.RequestJson.jsonConfigBody;
 import static io.ohmyrasp.agent.detect.RequestJson.jsonStringFields;
 import static io.ohmyrasp.agent.detect.RequestJson.parseJsonString;
+import static io.ohmyrasp.agent.detect.RequestValues.bodyHasSinkValue;
+import static io.ohmyrasp.agent.detect.RequestValues.firstNonBlankParameter;
 import io.ohmyrasp.agent.detect.RequestJson.JsonStringField;
 import io.ohmyrasp.agent.detect.RequestJson.JsonStringToken;
 import io.ohmyrasp.agent.file.EscapingPath;
@@ -28,10 +31,6 @@ import io.ohmyrasp.agent.model.Detection;
 import io.ohmyrasp.agent.model.RequestContext;
 import io.ohmyrasp.agent.net.HttpTransportObservation;
 import io.ohmyrasp.agent.net.NetworkHost;
-import io.ohmyrasp.agent.process.PosixShellCommand;
-import io.ohmyrasp.agent.rules.general.RequestShellSyntax;
-import io.ohmyrasp.agent.rules.product.rocketmq.RocketMqFilterServer;
-import io.ohmyrasp.agent.rules.product.solr.SolrExecutableListener;
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
@@ -65,16 +64,6 @@ public final class DetectorEngine {
           "(?is)\\b(?:cmd|command)\\s*=\\s*['\"][^'\"]{1,120}['\"].{0,240}\\b(?:cmd|command)\\s*\\.\\s*execute\\s*\\(");
   private static final Pattern JAVA_UNICODE_ESCAPE =
       Pattern.compile("\\\\u+([0-9a-fA-F]{4})");
-  private static final Pattern COMMAND_COMMON =
-      Pattern.compile(
-          "(?is)(?:cat\\s+/etc/passwd|nc\\b.{0,40}\\s-e\\s+/bin/(?:ba)?sh|bash\\s+-i\\b|/dev/tcp/|curl\\b.{0,80}\\|\\s*(?:sh|bash)|wget\\b.{0,80}\\|\\s*(?:sh|bash)|\\{echo,.{10,400}\\}\\|\\{base64,-d\\})");
-  private static final Pattern WINDOWS_SHELL =
-      Pattern.compile("(?i)(?:.*[/\\\\])?(?:cmd|pwsh|powershell)(?:\\.exe)?");
-  private static final Pattern COMMAND_META = Pattern.compile("[;&|`$<>]|\\$\\{?IFS\\}?");
-  private static final Pattern COMMAND_SENSITIVE_AFTER_JOIN =
-      Pattern.compile("(?is)(?:;|&&|\\|\\|?|`)\\s*(?:cat|bash|sh|nc|curl|wget|python|perl|php)\\b");
-  private static final Pattern COMMAND_DNSLOG =
-      Pattern.compile("(?is)(^|\\W)(curl|ping|wget|nslookup|dig)\\W.*");
   private static final Pattern GENERATED_SCRIPT_EXTENSION =
       Pattern.compile("(?is).+\\.(?:gnuplot|gp|plt|plot|cmd|sh|bash|ps1)$");
   private static final Pattern GENERATED_SCRIPT_EXEC_PRIMITIVE =
@@ -109,9 +98,6 @@ public final class DetectorEngine {
   private static final Pattern DNSLOG_DOMAIN =
       Pattern.compile(
           "(?i)(?:[a-z0-9_-]+\\.)*((?:ceye|exeye|sslip|nip)\\.io|dnslog\\.cn|(?:vcap|bxss)\\.me|xip\\.(?:name|io)|burpcollaborator\\.net|tu4\\.org|2xss\\.cc|request\\.bin|requestbin\\.net|pipedream\\.net|canarytokens\\.com)$");
-  private static final Pattern DNSLOG_TEXT =
-      Pattern.compile(
-          "(?i).*((?:ceye|exeye|sslip|nip)\\.io|dnslog\\.cn|(?:vcap|bxss)\\.me|xip\\.(?:name|io)|burpcollaborator\\.net|tu4\\.org|2xss\\.cc|request\\.bin|requestbin\\.net|pipedream\\.net|canarytokens\\.com)(?:[/:?].*)?");
   private static final Pattern REQUEST_JNDI_LOOKUP =
       Pattern.compile("(?is)\\$\\{[^\\r\\n]{0,512}?jndi\\s*:\\s*([a-z][a-z0-9.+-]{0,20})://");
   private static final Pattern REQUEST_XXE_EXTERNAL_ENTITY =
@@ -240,8 +226,6 @@ public final class DetectorEngine {
   private static final Pattern REMOTE_JOB_COMMAND_VALUE =
       Pattern.compile(
           "(?is)[\"'](?:command|cmd|gluesource|shell)[\"']\\s*[:=]\\s*[\"']([^\"']{1,800})[\"']");
-  private static final Pattern REMOTE_JOB_SHELL_COMMAND =
-      Pattern.compile("(?is)(?:^|\\W)(?:bash|sh|cmd|powershell|pwsh|nc|curl|wget)\\b");
   private static final Pattern JAVA_CONFIG_CONSTRUCTOR_ARGUMENT =
       Pattern.compile("(?s)[\"']([^\"']{1,2048})[\"']");
   // Matches actual XSS execution vectors — script injection, `javascript:` URIs,
@@ -1462,114 +1446,17 @@ public final class DetectorEngine {
   }
 
   public Optional<Detection> detectCommand(List<String> command, RequestContext request) {
-    return detectCommand(command, request, List.of());
+    return ProcessDetector.detectCommand(command, request);
   }
 
   public Optional<Detection> detectCommand(
       List<String> command, RequestContext request, List<String> stackClassNames) {
-    return detectCommand(command, request, stackClassNames, false);
+    return ProcessDetector.detectCommand(command, request, stackClassNames);
   }
 
   public Optional<Detection> detectCommand(List<String> command, RequestContext request,
       List<String> stackClassNames, boolean reflectionPolicy) {
-    String joined = command == null ? "" : String.join(" ", command);
-    if (joined.isBlank()) {
-      return Optional.empty();
-    }
-    String expressionEngine = expressionEngineFromStack(stackClassNames);
-    if (!expressionEngine.isBlank()) {
-      String algorithm = expressionRuntimeAlgorithm(expressionEngine);
-      return Optional.of(
-          Detection.log(
-              expressionEngine,
-              algorithm,
-              95,
-              "Command execution reached from dynamic expression evaluation",
-              request,
-              Map.of("command", abbreviate(joined))));
-    }
-    String executableListener = SolrExecutableListener.frame(stackClassNames);
-    if (executableListener != null) {
-      return Optional.of(
-          Detection.log(
-              "command",
-              "command_config_listener",
-              90,
-              "Command execution reached from a server-configured executable listener",
-              request,
-              Map.of(
-                  "command", abbreviate(joined),
-                  "listener", abbreviate(executableListener))));
-    }
-    String configLauncher = RocketMqFilterServer.directOwner(stackClassNames);
-    if (configLauncher != null) {
-      return Optional.of(
-          Detection.log(
-              "command",
-              "command_config_injection",
-              90,
-              "Command execution reached from mutable runtime configuration",
-              request,
-              Map.of(
-                  "command", abbreviate(joined),
-                  "launcher", abbreviate(configLauncher))));
-    }
-    PosixShellCommand shell = PosixShellCommand.from(command);
-    boolean windowsShell = java.io.File.separatorChar == '\\'
-        || (command.get(0) != null && WINDOWS_SHELL.matcher(command.get(0)).matches());
-    boolean requestSyntax = shell != null && shell.hasOperator()
-        && (request.parameters().values().stream().anyMatch(values -> RequestShellSyntax.matches(shell, values))
-            || bodyHasSinkValue(request, shell.source()));
-    if (requestSyntax || (windowsShell && request.hasParameterIn(joined) && COMMAND_META.matcher(joined).find())) {
-      return Optional.of(
-          Detection.log(
-              "command",
-              "command_userinput",
-              95,
-              "Command contains request input and shell metacharacters",
-              request,
-              Map.of("command", abbreviate(joined))));
-    }
-    if (COMMAND_COMMON.matcher(joined).find()) {
-      return Optional.of(
-          Detection.log(
-              "command",
-              "command_common",
-              95,
-              "Potentially dangerous command execution detected",
-              request,
-              Map.of("command", abbreviate(joined))));
-    }
-    if (COMMAND_DNSLOG.matcher(joined).find() && DNSLOG_TEXT.matcher(joined).matches()) {
-      return Optional.of(
-          Detection.log(
-              "command",
-              "command_dnslog",
-              95,
-              "Command targets a callback collection domain",
-              request,
-              Map.of("command", abbreviate(joined))));
-    }
-    boolean syntaxError = windowsShell
-        ? hasUnbalancedQuotes(joined) || COMMAND_SENSITIVE_AFTER_JOIN.matcher(joined).find()
-            || joined.contains("$IFS") || joined.contains("${IFS}")
-        : shell != null && shell.hasUnclosedQuote();
-    if (syntaxError) {
-      return Optional.of(
-          Detection.log(
-              "command",
-              "command_error",
-              75,
-              "Command contains suspicious shell syntax",
-              request,
-              Map.of("command", abbreviate(joined))));
-    }
-    if (reflectionPolicy && processInvokedReflectively(stackClassNames)) {
-      return Optional.of(Detection.log("command", "command_reflect", 70,
-          "Reflection dispatched the process API selected by policy", request,
-          Map.of("command", abbreviate(joined), "decision_basis", "process_dispatch")));
-    }
-    return Optional.empty();
+    return ProcessDetector.detectCommand(command, request, stackClassNames, reflectionPolicy);
   }
 
   public Optional<Detection> detectUrl(String rawUrl, RequestContext request) {
@@ -2822,18 +2709,7 @@ public final class DetectorEngine {
 
   public Optional<Detection> detectWebshellCommand(
       List<String> command, RequestContext request) {
-    String joined = command == null ? "" : String.join(" ", command);
-    if (!joined.isBlank() && request.hasParameterIn(joined)) {
-      return Optional.of(
-          Detection.log(
-              "webshell",
-              "webshell_command",
-              95,
-              "Command execution is controlled by request input",
-              request,
-              Map.of("command", abbreviate(joined))));
-    }
-    return Optional.empty();
+    return ProcessDetector.detectWebshellCommand(command, request);
   }
 
   public Optional<Detection> detectWebshellFileWrite(
@@ -2928,13 +2804,6 @@ public final class DetectorEngine {
             "decision_basis", parserOpen ? "parser_url_open" : "declared_identifier")));
   }
 
-  private static boolean hasUnbalancedQuotes(String value) {
-    long single = value.chars().filter(ch -> ch == '\'').count();
-    long doubleQuote = value.chars().filter(ch -> ch == '"').count();
-    long backtick = value.chars().filter(ch -> ch == '`').count();
-    return single % 2 != 0 || doubleQuote % 2 != 0 || backtick % 2 != 0;
-  }
-
   private static boolean fileOperationFromDynamicCode(List<String> stack) {
     return fileOperationFromDynamicCode(stack, false);
   }
@@ -2977,24 +2846,6 @@ public final class DetectorEngine {
   private static boolean isReflectionFrame(String name) {
     return name.contains("java.lang.reflect") || name.contains("sun.reflect")
         || name.contains("jdk.internal.reflect") || name.contains("generatedmethodaccessor");
-  }
-
-  private static boolean processInvokedReflectively(List<String> stack) {
-    if (stack == null || stack.isEmpty()) return false;
-    int caller = 0;
-    for (int i = 0; i < stack.size(); i++) {
-      String frame = stack.get(i);
-      if ("java.lang.ProcessImpl".equals(frame) || "java.lang.ProcessBuilder".equals(frame) || "java.lang.Runtime".equals(frame)) {
-        caller = i + 1;
-        while (caller < stack.size() && ("java.lang.ProcessBuilder".equals(stack.get(caller))
-            || "java.lang.Runtime".equals(stack.get(caller)))) caller++;
-        break;
-      }
-    }
-    if (caller == stack.size()) return false;
-    String frame = stack.get(caller);
-    return frame != null && (frame.startsWith("java.lang.reflect.") || frame.startsWith("jdk.internal.reflect.")
-        || frame.startsWith("sun.reflect."));
   }
 
   private static Optional<String> configPersistenceFrame(List<String> stackClassNames) {
@@ -3149,47 +3000,6 @@ public final class DetectorEngine {
         || GENERATED_SCRIPT_EXTENSION.matcher(normalized).matches();
   }
 
-  private static String expressionEngineFromStack(List<String> stackClassNames) {
-    if (stackClassNames == null) {
-      return "";
-    }
-    for (String frame : stackClassNames) {
-      if (frame == null) continue;
-      if (frame.startsWith("org.springframework.expression.") || frame.startsWith("org.springframework.webflow.expression.")) return "spel";
-      if (frame.startsWith("org.apache.velocity.") || frame.startsWith("freemarker.")) return "template";
-      if (frame.startsWith("org.mozilla.javascript.") || frame.startsWith("jdk.nashorn.")
-          || frame.startsWith("org.openjdk.nashorn.") || frame.startsWith("com.oracle.truffle.js.")) return "javascript";
-      if (frame.startsWith("org.apache.commons.jxpath.") || frame.startsWith("javax.xml.xpath.")
-          || frame.startsWith("org.apache.xpath.") || frame.startsWith("com.sun.org.apache.xpath.internal.")
-          || frame.startsWith("net.sf.saxon.xpath.")) return "xpath";
-      if (frame.startsWith("org.apache.commons.jexl.") || frame.startsWith("org.apache.commons.jexl2.")
-          || frame.startsWith("org.apache.commons.jexl3.")) return "jexl";
-      if (frame.startsWith("javax.el.") || frame.startsWith("jakarta.el.") || frame.startsWith("org.apache.el.")) return "el";
-      if (frame.startsWith("groovy.") || frame.startsWith("org.codehaus.groovy.") || frame.startsWith("org.apache.groovy.")
-          || frame.startsWith("org.apache.tinkerpop.gremlin.groovy.")
-          || frame.startsWith("org.jenkinsci.plugins.scriptsecurity.sandbox.groovy.")) return "groovy";
-      if (frame.startsWith("javax.script.")) return "script";
-      if (frame.startsWith("ognl.") || frame.startsWith("org.apache.commons.ognl.")
-          || frame.startsWith("com.opensymphony.xwork2.ognl.")) return "ognl";
-      if (frame.startsWith("org.mvel.") || frame.startsWith("org.mvel2.")
-          || frame.startsWith("org.elasticsearch.common.mvel2.")) return "mvel";
-    }
-    return "";
-  }
-
-  private static String expressionRuntimeAlgorithm(String engine) {
-    return switch (engine) {
-      case "spel" -> "spel_runtime";
-      case "template" -> "template_runtime";
-      case "javascript" -> "javascript_runtime";
-      case "xpath" -> "xpath_runtime";
-      case "jexl" -> "jexl_runtime";
-      case "el" -> "el_runtime";
-      case "mvel", "groovy", "script" -> "script_runtime";
-      default -> engine + "_runtime";
-    };
-  }
-
   public boolean requestSuppliesHttpUrl(URI uri, String address, String host, RequestContext request) {
     return requestControlsUrl(uri, address, NetworkHost.normalize(host), request);
   }
@@ -3248,25 +3058,6 @@ public final class DetectorEngine {
     String path = destination.getRawPath();
     return (query == null || query.equals(destination.getRawQuery()))
         && (path.equals(base) || path.startsWith(base.endsWith("/") ? base : base + "/"));
-  }
-
-  private static boolean bodyHasSinkValue(RequestContext request, String value) {
-    String body = request.body();
-    if (body.isEmpty()) {
-      return false;
-    }
-    if (value.equals(body.trim())) {
-      return true;
-    }
-    if ((!body.contains(value) && body.indexOf('\\') < 0) || !jsonConfigBody(request)) {
-      return false;
-    }
-    for (JsonStringField field : jsonStringFields(body)) {
-      if (value.equals(field.value())) {
-        return true;
-      }
-    }
-    return false;
   }
 
   private static int effectivePort(URI uri) {
@@ -4304,21 +4095,6 @@ public final class DetectorEngine {
       }
       if (field.value() != null && !field.value().isBlank()) {
         return Optional.of(field);
-      }
-    }
-    return Optional.empty();
-  }
-
-  private static Optional<Map.Entry<String, String>> firstNonBlankParameter(
-      Map<String, List<String>> parameters, Set<String> candidateNames) {
-    for (Map.Entry<String, List<String>> entry : parameters.entrySet()) {
-      if (!candidateNames.contains(normalizeParameterName(entry.getKey()))) {
-        continue;
-      }
-      for (String value : entry.getValue()) {
-        if (value != null && !value.isBlank()) {
-          return Optional.of(Map.entry(entry.getKey(), value));
-        }
       }
     }
     return Optional.empty();
@@ -8411,16 +8187,6 @@ public final class DetectorEngine {
         || normalized.contains("gluesource");
   }
 
-  private static boolean dangerousRemoteJobCommand(String command) {
-    if (command == null || command.isBlank()) {
-      return false;
-    }
-    String normalized = command.trim();
-    return COMMAND_COMMON.matcher(normalized).find()
-        || (COMMAND_META.matcher(normalized).find()
-            && REMOTE_JOB_SHELL_COMMAND.matcher(normalized).find());
-  }
-
   private static Optional<String> javaArchiveUploadContext(RequestContext request) {
     if (request == null || !request.active()) {
       return Optional.empty();
@@ -8568,13 +8334,6 @@ public final class DetectorEngine {
   }
 
   public static List<String> commandFromObject(Object command) {
-    if (command instanceof List<?> list) {
-      var values = new ArrayList<String>();
-      for (Object item : list) {
-        values.add(String.valueOf(item));
-      }
-      return values;
-    }
-    return List.of(String.valueOf(command));
+    return ProcessDetector.commandFromObject(command);
   }
 }
