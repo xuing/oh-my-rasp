@@ -86,22 +86,33 @@ npm run test:e2e    # playwright test
 
 ### Java agent
 
-For detector development on Linux, start with the JDK 25 agent. Run the primary
-unit tests, the complete benign corpus and the packaged probe for the rule you
-changed. These commands exercise file reads and file deletion respectively.
+For detector development on Linux, start with the JDK 25 agent. One command runs
+the line's unit tests, the complete benign corpus and the packaged probe for the
+rule you changed. These commands exercise file reads and file deletion respectively.
 
 ```bash
-java-agent/scripts/check-jdk25.sh file-read
-java-agent/scripts/check-jdk25.sh --tests '*DetectorEngineTest' file-delete
+java-agent/scripts/check-agent.sh file-read
+java-agent/scripts/check-agent.sh --tests '*DetectorEngineTest' file-read --delete-only
 ```
 
-The script reuses build outputs and Gradle dependencies in a per-checkout cache.
-It prints the cache path and prefers the user's runtime directory. Set
-`RASP_JDK25_CACHE` to choose a different cache parent. Run with `--help` for the
+The same command checks the other agent lines, each on its own JDK:
+
+```bash
+java-agent/scripts/check-agent.sh --line java8,java11,java17 --tests '*RaspHooksTest' file-read
+java-agent/scripts/check-agent.sh --line java17 all     # every probe that applies to the line
+```
+
+`--line` takes the ids in [`java-agent/probes/lines.toml`](java-agent/probes/lines.toml)
+(default `jdk25`). The script builds a local image holding every LTS JDK from
+[`java-agent/probes/Dockerfile`](java-agent/probes/Dockerfile) and refuses to run a
+line's probes on another JDK. It reuses build outputs and Gradle dependencies in a
+per-checkout cache, prints the cache path and prefers the user's runtime directory. Set
+`RASP_AGENT_CACHE` to choose a different cache parent. Run with `--help` for the
 available probes. To focus the unit-test step, put a Gradle filter before the
-probe name (for example `--tests '*HostReadPathTest' file-read`). Each run still checks
-the full benign corpus. Extra probe options use container paths under `/workspace`
-(the read-only Java project) or `/state` (the cache for this checkout).
+probe name (for example `--tests '*HostReadPathTest' file-read`). A run that includes a
+primary line still checks the full benign corpus. Extra probe options use container
+paths under `/workspace` (the read-only Java project) or `/state` (the cache for this
+checkout).
 
 The file, process and multipart probes run each scenario once by default,
 including concurrent access. If successive rule changes trade false positives
@@ -109,10 +120,28 @@ for missed detections, retain examples of both and use `--rounds N` for focused
 comparisons with varied inputs.
 
 Once the change passes on JDK 25, verify the same behavior on JDK 21 with the
-primary JAR, apply any required backport changes, and run the affected Java 8,
-11 and 17 probes together. Shared detector code is compiled into each agent;
-each applicable runtime still needs its packaged check. Use the full build and
-compatibility matrix for integration.
+primary JAR (`--line jdk21`), apply any required backport changes, and run the
+affected Java 8, 11 and 17 probes together. Shared detector code is compiled into
+each agent; each applicable runtime still needs its packaged check. Use the full
+build and compatibility matrix for integration.
+
+#### Probes
+
+A probe is a directory under [`java-agent/probes/`](java-agent/probes/) with a
+`check.py` that takes an agent JAR and fails when the packaged agent decides
+differently from what the probe expects. Its Java fixtures sit beside it; fixtures
+that several probes use are in `java-agent/probes/common/`.
+
+To add one, create the directory and its `check.py`. The first line of the module
+docstring is the probe's description. Add a `probe.toml` only if the probe needs
+more than the JAR: a `[[fixture]]` per staged library directory (with the Gradle
+task or download that stages it), or an `[applies]` table that restricts it to a
+family or to named lines and says why. Nothing else lists probes:
+`check-agent.sh` and the CI runtime matrix both call
+[`java-agent/probes/run.py`](java-agent/probes/run.py), and
+`python3 java-agent/probes/run.py list` shows what runs where.
+`python3 -m unittest discover -s java-agent/probes -p 'test_*.py'` checks the
+registry against the build files and the CI matrix.
 
 Run unit tests and `verifyShirudoUpatchJar` via Docker (matching `.github/workflows/agent.yml`):
 
@@ -169,77 +198,77 @@ An archive filename cannot establish deployment authorization. To require every 
 block to be replayed and matched, pass `--require-complete`; this still applies when
 comparing two reports. An end-to-end result requires separate evidence of the application outcome.
 
-The runtime matrix runs [the HTTP transport check](java-agent/scripts/fp-harness/check-http-transport.py)
+The runtime matrix runs [the HTTP transport check](java-agent/probes/http-transport/check.py)
 against the built agent. Its local responder verifies cache hits, redirect receipts and
 request attribution under block and monitor modes.
 
-The [JNDI routing check](java-agent/scripts/fp-harness/check-jndi-route.py) uses in-process naming
+The [JNDI routing check](java-agent/probes/jndi-route/check.py) uses in-process naming
 providers to verify which lookups reach a provider and which ones the agent blocks.
-Run `java-agent/scripts/check-jdk25.sh jndi-route` for the primary track.
+Run `java-agent/scripts/check-agent.sh jndi-route` for the primary track.
 
 The Linux matrix checks open modes and provider namespaces against the packaged agent.
 The fixtures read ordinary ZIP entries, check locally opened channels and consume concurrent
-directory walks in block and monitor modes. [File-read check](java-agent/scripts/fp-harness/check-file-read.py)
+directory walks in block and monitor modes. [File-read check](java-agent/probes/file-read/check.py)
 
-The Linux matrix also runs `java-agent/scripts/fp-harness/check-process-launch.py`.
+The Linux matrix also runs `java-agent/probes/process-launch/check.py`.
 It verifies argument boundaries, application list accesses, per-stage redirection
 and explicit dispatch policy with locally executed report commands. The primary
 agent check uses curl and an in-process loopback responder to verify callback
 destination decisions and receipt of allowed transfers.
 
-The [stream resolution check](java-agent/scripts/fp-harness/check-stream-resolution.py)
+The [stream resolution check](java-agent/probes/stream-resolution/check.py)
 uses inert records, an application resolver and a BeanShell scalar. It checks
 the type actually read, resolver exceptions, and decisions on independent streams.
 Use `--beanshell-jar` for a local copy of the fixture library. The runtime matrix
 also passes `--collections-dir` with the JARs from `:stageCollectionsProbe` to
 verify Commons Collections predicates, constants and their nested values.
 
-The [Elasticsearch LZ4 check](java-agent/scripts/fp-harness/check-elastic-lz4.py)
+The [Elasticsearch LZ4 check](java-agent/probes/elastic-lz4/check.py)
 runs a release compressor and transport decoder without a cluster. A recording
 delegate checks the source array extent and independently tests consumption
-mismatch handling on valid data. Run `java-agent/scripts/check-jdk25.sh elastic-lz4`
+mismatch handling on valid data. Run `java-agent/scripts/check-agent.sh elastic-lz4`
 or pass the agent and a matching Elasticsearch classpath directory to the probe.
 
-The primary [serial filter check](java-agent/scripts/fp-harness/check-serial-filter.py)
+The primary [serial filter check](java-agent/probes/serial-filter/check.py)
 verifies application filter registration, JDK rejection and ordinary data reads
-in separate JVMs. Run it locally with `java-agent/scripts/check-jdk25.sh serial-filter`.
+in separate JVMs. Run it locally with `java-agent/scripts/check-agent.sh serial-filter`.
 
-The [Spark submit check](java-agent/scripts/fp-harness/check-spark-submit.py)
+The [Spark submit check](java-agent/probes/spark-submit/check.py)
 uses Javax and Jakarta servlet requests with a recording handler. It checks
 role decisions for a fixed report job. Pass `--api-dir` to use local servlet jars.
 With a Spark 2.3.1 distribution and a compatible JDK, add
 `--spark-classpath '/path/to/spark/jars/*'` to exercise Spark's original parser
 and validator against a handler that only counts submissions.
 
-The [YARN admission check](java-agent/scripts/fp-harness/check-yarn-submit.py)
+The [YARN admission check](java-agent/probes/yarn-submit/check.py)
 uses the Hadoop release REST resource and a recording client service.
-Run `java-agent/scripts/check-jdk25.sh yarn-submit` for the primary agent.
+Run `java-agent/scripts/check-agent.sh yarn-submit` for the primary agent.
 The compatibility matrix shares the fixture dependencies staged by the root
 `stageYarnProbe` Gradle task. For another agent, pass its jar and
 `--jar-dir java-agent/build/yarn-probe` to the probe.
 
-The [JWT filter check](java-agent/scripts/fp-harness/check-jwt-verification.py)
+The [JWT filter check](java-agent/probes/jwt-verification/check.py)
 runs a local filter fixture with java-jwt and a deny-only downstream receiver.
-Use `java-agent/scripts/check-jdk25.sh jwt-verification` for the primary agent.
+Use `java-agent/scripts/check-agent.sh jwt-verification` for the primary agent.
 Pass `--jar-dir` to the probe to use local copies of the pinned fixture jars.
 
 The multipart check covers both the Javax and Jakarta Servlet APIs.
-Pass `--api-dir` to `java-agent/scripts/fp-harness/check-multipart-archive.py` to
+Pass `--api-dir` to `java-agent/probes/multipart-archive/check.py` to
 use local copies of its pinned API jars. CI stages those jars once with
 `:stageServletProbe` and shares them across the runtime matrix.
 
 The packaged-agent job exercises MyBatis rendering and a recording JDBC receiver
 in block and monitor modes. For a local run, pass the agent JAR to
-[`check-mybatis-mapping.py`](java-agent/scripts/fp-harness/check-mybatis-mapping.py).
+[`probes/mybatis-mapping/check.py`](java-agent/probes/mybatis-mapping/check.py).
 Its `--mybatis-jar` option accepts an existing library for offline checks.
 
-For the MySQL-family lexer, `java-agent/scripts/fp-harness/check-mysql-comments.py`
+For the MySQL-family lexer, `java-agent/probes/mysql-comments/check.py`
 accepts the agent JAR, a private MariaDB Unix socket (`--socket`), and the
 MariaDB Connector/J classpath including its Unix socket libraries
 (`--driver-classpath`). The fixture connects as the local test user `reports`
 and issues read-only constant queries. It checks both returned rows and events.
 
-The runtime compatibility job also runs `scripts/fp-harness/check-xml-resolution.py`
+The runtime compatibility job also runs `probes/xml-resolution/check.py`
 against the packaged agent. To exercise a separate Apache Xerces installation,
 pass its JARs with `--xerces-classpath`. The fixture uses an in-memory URL
 handler and temporary catalogue archives and checks both block and monitor modes.
@@ -275,7 +304,7 @@ Hand-written docs must not restate release versions, pinned toolchain or image v
 
 Run them in this order: the coverage generator and the Shirudo README generator both read the false-positive report.
 
-**1. False-positive report** (runs `scripts/fp-harness/FpReport.java` against `DetectorEngine`):
+**1. False-positive report** (runs `scripts/FpReport.java` against `DetectorEngine`):
 
 ```bash
 cd java-agent

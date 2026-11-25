@@ -9,7 +9,7 @@ does not apply. lines.toml lists the agent lines (JAR x JDK runtime).
   run.py list                         probes and the lines each one runs on
   run.py plan  --line jdk25 [probe..] the exact commands `run` would execute
   run.py run   --line java8 [probe..] run them with the java/javac on PATH
-  run.py stage                        download fixtures that probes fetch themselves
+  run.py stage [probe..]              download fixtures that probes fetch themselves
   run.py gradle-tasks --line java8,jdk25 [probe..]
                                       Gradle tasks that build the JARs and stage fixtures
 
@@ -121,13 +121,12 @@ def select(probes: dict[str, Probe], line: Line, args) -> tuple[list[Probe], lis
     chosen, skipped = [], []
     for probe in named:
         reason = probe.skip_reason(line)
-        if args.windows and not probe.windows:
+        if (args.windows and not probe.windows) or (args.isolated and not probe.isolated):
             continue
         if args.probes and probe.manual:
             reason = None  # naming a manual probe is the opt-in
-        if reason is None and probe.isolated != args.isolated and not args.plan_only:
-            reason = ("needs --isolated: run it with no network and hostname localhost" if probe.isolated
-                      else "not an isolated probe")
+        if reason is None and probe.isolated and not args.isolated and not args.plan_only:
+            reason = "needs --isolated: run it with no network and hostname localhost"
         if reason is None:
             chosen.append(probe)
         else:
@@ -137,7 +136,7 @@ def select(probes: dict[str, Probe], line: Line, args) -> tuple[list[Probe], lis
 
 def java_major() -> str:
     text = subprocess.run(["java", "-version"], capture_output=True, text=True, check=True).stderr
-    version = re.search(r'version "([^"]+)"', text).group(1)
+    version = re.search(r'version "([^"]+)"', text)[1]
     return version.split(".")[1] if version.startswith("1.") else version.split(".")[0]
 
 
@@ -198,11 +197,12 @@ def cmd_run(probes, lines, args):
         args.report.write_text("".join(f"{line.id}\t{name}\t{status}\n" for name, status in rows))
     if failed:
         sys.exit(f"{len(failed)} probe(s) failed on {line.id}: {', '.join(failed)}")
-    print(f"{len(chosen)} probe(s) passed on {line.id}")
+    if chosen or not args.isolated:
+        print(f"{len(chosen)} probe(s) passed on {line.id}")
 
 
 def cmd_stage(probes, lines, args):
-    for probe in probes.values():
+    for probe in (probes[name] for name in args.probes) if args.probes else probes.values():
         for fixture in probe.fixtures:
             target = locate(fixture.path, args.build_root)
             if fixture.stage and not target.exists():
@@ -232,9 +232,10 @@ def main():
         p = sub.add_parser(name)
         p.add_argument("--build-root", type=Path, help="Gradle build root when build directories are redirected "
                        "(<root>/<project>/..., as java-agent/scripts/check-agent.sh does)")
+        if name != "list":
+            p.add_argument("probes", nargs="*")
         if name in ("plan", "run", "gradle-tasks"):
             p.add_argument("--line", required=True)
-            p.add_argument("probes", nargs="*")
             p.add_argument("--isolated", action="store_true", help="select the probes that need a network-less run")
             p.add_argument("--windows", action="store_true", help="select only the probes that also run on Windows")
         if name in ("plan", "run"):

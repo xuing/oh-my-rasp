@@ -50,7 +50,7 @@ See [host file reads](../detection.md#host-file-reads).
 
 Historical Commons Collections events that identify only `ChainedTransformer`
 record where the earlier agent stopped. They do not identify any component the
-current agent would have read. The [stream regression](../../java-agent/scripts/fp-harness/StreamResolutionCheck.java)
+current agent would have read. The [stream regression](../../java-agent/probes/stream-resolution/StreamResolutionCheck.java)
 checks ordinary chains and nested restricted types independently of those historical runs.
 
 Java/JVM source scope currently covers 53 Vulhub roots and 149 README
@@ -679,7 +679,7 @@ coverage, separate from the Java 25 behavioral replay suite:
   startup/readiness quiet and blocks `ObjectInputStream.resolveClass` with
   `java8_deserialization_gadget_class` on `TemplatesImpl` before marker
   creation.
-  The [packaged parser check](../../java-agent/scripts/fp-harness/XmlRpcReadCheck.java) exercises the XML-RPC library selected by both OFBiz releases using local values. See the [17.12.01 build manifest](https://github.com/apache/ofbiz-framework/blob/release17.12.01/build.gradle) and the build manifest in the [18.12.09 source archive](https://archive.apache.org/dist/ofbiz/apache-ofbiz-18.12.09.zip).
+  The [packaged parser check](../../java-agent/probes/http-invoker/XmlRpcReadCheck.java) exercises the XML-RPC library selected by both OFBiz releases using local values. See the [17.12.01 build manifest](https://github.com/apache/ofbiz-framework/blob/release17.12.01/build.gradle) and the build manifest in the [18.12.09 source archive](https://archive.apache.org/dist/ofbiz/apache-ofbiz-18.12.09.zip).
 - [x] Run the real Java 11 Adobe ColdFusion CVE-2023-26360 Vulhub application
   acceptance: `acceptance/vulhub/coldfusion/26360-java11.sh` starts
   `vulhub/coldfusion:2018.0.15`, verifies the image JRE is Java 11.0.12,
@@ -1108,7 +1108,7 @@ coverage, separate from the Java 25 behavioral replay suite:
   never executes.
 - The current [Spark submit rule](../detection.md#spark-rest-submission-authorization)
   checks the deployment role at validated submission. A
-  [packaged-agent test](../../java-agent/scripts/fp-harness/check-spark-submit.py)
+  [packaged-agent test](../../java-agent/probes/spark-submit/check.py)
   compares authorized and denied dispatch of the same report job. On Java 8,
   the Spark 2.3.1 release servlet also parsed and validated that job with an in-process
   recording handler. The block-mode role denial prevented the handoff. The historical
@@ -2014,7 +2014,7 @@ coverage, separate from the Java 25 behavioral replay suite:
   verification exceptions are correlated only with the active request's compact
   JWT token header on API/control paths, and events omit token values.
 - The current [filter dispatch rule](../detection.md#jwt-rejection-and-filter-dispatch)
-  has a [packaged-agent check](../../java-agent/scripts/fp-harness/check-jwt-verification.py)
+  has a [packaged-agent check](../../java-agent/probes/jwt-verification/check.py)
   for the downstream decision. The historical application run below exercised the
   earlier verifier hook.
 - [x] Run real DataEase CVE-2025-49001 Vulhub application acceptance on an
@@ -2477,7 +2477,7 @@ The matrix indexes upstream README paths. Checked entries have a ledger or alias
 ### ActiveMQ
 
 - [x] ActiveMQ - CVE-2015-5254 object message browse deserialization (`deserialization_activemq_cve_2015_5254_object_message_browse`; real Java7 legacy boundary: `acceptance/vulhub/activemq/5254-java7-legacy.sh`)
-- [x] ActiveMQ - CVE-2023-46604 OpenWire protocol class loading (`deserialization_activemq_cve_2023_46604_openwire_protocol_class`; historical Java11 acceptance: `acceptance/vulhub/activemq/46604-java11.sh` recorded `java11_command_execution_exploit_primitive` from initialization frames). The [offline layout check](../../java-agent/scripts/fp-harness/OpenWireLayoutCheck.java) verifies the Java 11 guard at the reflective constructor sites in the 5.17.3 client and legacy protocol JARs. The constructor guard and [Spring process guard](../detection.md#spring-process-initialization) have separate local runtime checks. End-to-end verification in this environment is pending.
+- [x] ActiveMQ - CVE-2023-46604 OpenWire protocol class loading (`deserialization_activemq_cve_2023_46604_openwire_protocol_class`; historical Java11 acceptance: `acceptance/vulhub/activemq/46604-java11.sh` recorded `java11_command_execution_exploit_primitive` from initialization frames). The [offline layout check](../../java-agent/probes/openwire-throwable/OpenWireLayoutCheck.java) verifies the Java 11 guard at the reflective constructor sites in the 5.17.3 client and legacy protocol JARs. The constructor guard and [Spring process guard](../detection.md#spring-process-initialization) have separate local runtime checks. End-to-end verification in this environment is pending.
 - [x] ActiveMQ - CVE-2016-3088 fileserver PUT/MOVE webroot write (`fileUpload_activemq_fileserver_move`; real Java7 legacy boundary: `acceptance/vulhub/activemq/3088-java7-legacy.sh`)
 - [x] ActiveMQ - CVE-2022-41678 Jolokia Log4j2 `setConfigText` webroot write (`jmx_activemq_jolokia_file_write`; real Java11 acceptance: `acceptance/vulhub/activemq/java11.sh` blocks `java11_jmx_script_file_write`)
 - [x] ActiveMQ - CVE-2022-41678 Jolokia JFR `FlightRecorder.copyTo` webroot write (`jmx_activemq_cve_2022_41678_jfr_copyto_webshell`; real Java11 acceptance: `acceptance/vulhub/activemq/java11.sh` blocks `java11_jmx_script_file_write`)
@@ -2627,7 +2627,7 @@ The matrix indexes upstream README paths. Checked entries have a ledger or alias
 - [x] Mojarra JSF - ViewState deserialization (`request_mojarra_jsf_viewstate_deserialization`; real Java7 legacy boundary: `acceptance/vulhub/mojarra/viewstate-java7-legacy.sh`)
 - [x] Neo4j Shell - CVE-2021-34371 RMI `setSessionVariable` deserialization (`deserialization_neo4j_cve_2021_34371_shell_rmi`; real Java8 acceptance: `acceptance/vulhub/neo4j/34371-java8.sh` blocks `java8_deserialization_gadget_class`)
 - [x] XXL-JOB - unauthenticated executor shell job submission (`request_xxl_job_executor_run_shell`; real Java8 acceptance: `acceptance/vulhub/xxl-job/java8.sh` blocks `java8_command_execution_shell_meta`)
-- [x] XXL-JOB - Hessian API type deserialization (`deserialization_xxl_job_hessian_api`; real Java8 Vulhub probe remains a dependency-version boundary because current `vulhub/xxl-job:2.2.0-admin` lacks the old Hessian classes) The [codec allocation check](../../java-agent/scripts/fp-harness/HessianAllocationCheck.java) verifies in-memory records independently.
+- [x] XXL-JOB - Hessian API type deserialization (`deserialization_xxl_job_hessian_api`; real Java8 Vulhub probe remains a dependency-version boundary because current `vulhub/xxl-job:2.2.0-admin` lacks the old Hessian classes) The [codec allocation check](../../java-agent/probes/hessian-allocation/HessianAllocationCheck.java) verifies in-memory records independently.
 
 ### Linkis / kkFileView / TeamCity
 

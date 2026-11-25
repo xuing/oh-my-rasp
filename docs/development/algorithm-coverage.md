@@ -1765,7 +1765,7 @@ same patch as any new Java-compatible Vulhub replay.
   and [YARN REST submission authorization](../detection.md#hadoop-yarn-rest-submission-authorization).
   The primary agent also has a separate descriptor-level scheduler command branch. Earlier Spark acceptance used an
   artifact descriptor; the current role check is exercised by the
-  [packaged servlet probe](../../java-agent/scripts/fp-harness/check-spark-submit.py).
+  [packaged servlet probe](../../java-agent/probes/spark-submit/check.py).
 - `request_internal_forward` covers request-controlled internal forwarding or
   view selection parameters that point to sensitive control paths using servlet
   path-parameter JSP suffix confusion, such as TeamCity-style

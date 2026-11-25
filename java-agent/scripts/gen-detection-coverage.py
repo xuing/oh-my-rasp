@@ -27,7 +27,9 @@ import re
 import sys
 from pathlib import Path
 
-import acceptance_scripts
+# The docs checker's tests load this file by path, so the sibling module is not importable by default.
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+import acceptance_scripts  # noqa: E402
 
 ROOT = Path(__file__).resolve().parent.parent
 AGENT = ROOT / "agent-jdk25" / "src" / "main" / "java" / "io" / "ohmyrasp" / "agent"
