@@ -148,8 +148,6 @@ def collect(logs):
                     continue
                 if hook == "URL.openConnection":
                     row["evidence_limit"] = "factory event only; actual HTTP transport and selected route unknown"
-                if hook == "MyBatis.BoundSql":
-                    row["evidence_limit"] = "order metadata recorded; substitution offsets and JDBC handoff unavailable"
                 if hook in {"FileSystem.list", "DirectoryStream.open", "SecureDirectoryStream.open"}:
                     details = event.get("details")
                     basis = details.get("decision_basis") if isinstance(details, dict) else None
@@ -167,6 +165,17 @@ def collect(logs):
                     if limit is not None:
                         row["status"], row["evidence_limit"] = limit
                         continue
+                if (hook in ("SQL.identifier", "MyBatis.BoundSql") and algorithm == f"java{track}_sql_identifier_injection"
+                        and isinstance(details, dict) and set(details) == {"identifier"}
+                        and isinstance(details["identifier"], str)
+                        and re.fullmatch(r"source=\S+ parameter=\S+ reason=\S+ valueLength=\d+", details["identifier"])):
+                    if hook == "SQL.identifier":
+                        row["status"] = "argument evidence required"
+                        row["evidence_limit"] = "identifier reason and length recorded; original argument unavailable"
+                    else:
+                        row["status"] = "source evidence required"
+                        row["evidence_limit"] = "order metadata recorded; raw substitution, offsets and JDBC handoff unavailable"
+                    continue
                 if (hook == "JmxMBeanServer.invoke" and isinstance(details, dict) and set(details) == {"invoke"}
                         and algorithm in (f"java{track}_jmx_remote_config_source", f"java{track}_jmx_script_file_write")):
                     row["status"] = "argument evidence required"

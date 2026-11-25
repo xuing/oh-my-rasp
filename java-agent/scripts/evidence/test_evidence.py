@@ -51,6 +51,24 @@ class EvidenceTest(unittest.TestCase):
         self.assertIsNone(decisions.source_for("HttpServlet.service", "request_internal_identity", "8"))
         self.assertIsNone(decisions.source_for("HttpServlet.service", "java11_request_internal_identity", "8"))
 
+    def test_sql_identifier_summary_does_not_stand_in_for_original_input(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            case = root / "vulhub-fixture-protected"
+            case.mkdir()
+            summary = "source=ReportDAO parameter=title reason=sql-comment valueLength=19"
+            def event(hook, detail):
+                return {"action": "block", "algorithm": "java8_sql_identifier_injection",
+                        "hook": hook, "details": detail}
+            records = [{"event": "ohmyrasp-java8-agent-start"}, event("SQL.identifier", {"identifier": summary}),
+                       event("MyBatis.BoundSql", {"identifier": summary}),
+                       event("SQL.identifier", {"identifier": summary, "other": "additional data"})]
+            (case / "events.jsonl").write_text("\n".join(map(json.dumps, records)))
+            _, rows, batches, _, _ = decisions.collect(root)
+            self.assertEqual([row["status"] for row in rows],
+                             ["argument evidence required", "source evidence required", "no offline adapter"])
+            self.assertFalse(batches)
+
     def test_missing_context_and_multi_argument_commands_are_not_invented(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
