@@ -57,7 +57,20 @@ public final class EvidenceProbe {
           parameters[0] = Object.class;
           arguments[0] = paths[1];
           break;
-        case "beforeJndiLookup":
+        case "jndiName":
+          // Historical display text can be checked without instantiating a naming provider.
+          java.lang.reflect.Field pattern = hooks.getDeclaredField("REMOTE_JNDI_LOOKUP");
+          pattern.setAccessible(true);
+          boolean remote = ((java.util.regex.Pattern) pattern.get(null)).matcher(value).find();
+          System.out.println((remote ? "listed" : "unlisted") + "\t");
+          continue;
+        case "jndiRoute":
+          int separator = value.indexOf('\0');
+          if (separator < 0) throw new IllegalArgumentException("missing routing operation");
+          methodName = "onJndiRoute";
+          parameters = new Class<?>[]{String.class, String.class};
+          arguments = new Object[]{value.substring(separator + 1), value.substring(0, separator)};
+          break;
         case "beforeFileRead":
         case "beforeFileWrite":
           parameters[0] = Object.class;

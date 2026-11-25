@@ -27,7 +27,6 @@ SOURCES = {
     "RandomAccessFile.open": ("beforeFileRead", "path", "/srv/orders/report.csv"),
     "UnixChannelFactory.open": ("beforeFileRead", "path", "/srv/orders/report.csv"),
     "FileOutputStream.open": ("beforeFileWrite", "path", "/srv/orders/report.csv"),
-    "InitialContext.lookup": ("beforeJndiLookup", "lookup", "java:comp/env/jdbc/orders"),
     "MultipartUpload.filename": ("beforeFileUpload", "filename", "orders.csv"),
     "Runtime.exec(String)": ("beforeRuntimeExecString", "command", "whoami"),
     "ScriptEngine.eval": ("beforeScriptEval", "script", "quantity * price"),
@@ -44,6 +43,10 @@ SERVLET_SOURCES = {
 
 
 def source_for(hook, algorithm, track):
+    if hook in ("InitialContext.lookup", "InitialContext.lookupLink", "URLContext.lookup", "URLContext.lookupLink"):
+        if algorithm == f"java{track}_jndi_remote_lookup":
+            return ("jndiRoute", "lookup", "java:comp/env/jdbc/orders")
+        return None
     if hook in ("ObjectInputStream.resolveClass", "ObjectInputStream.resolveProxyClass"):
         if algorithm == f"java{track}_deserialization_gadget_class":
             return ("streamTypeName", "class", "java.util.ArrayList")
@@ -211,6 +214,18 @@ def collect(logs):
                 if not isinstance(value, str) or not value or "[redacted]" in value or value.endswith(("...", "…")):
                     row["status"] = "argument unavailable"
                     continue
+                if method == "jndiRoute":
+                    basis = row.get("historical_decision_basis")
+                    if basis is None or basis == "lookup_name_only":
+                        method = "jndiName"
+                        row["evidence_limit"] = "display name only; original Name components and JDK provider route unknown"
+                    elif basis == ("provider_root_lookup" if hook.startswith("URLContext.") else "url_scheme_selection"):
+                        row["evidence_limit"] = "recorded routing operand only; provider response and network activity unknown"
+                        row["_expected_detail"] = ("lookup", value, "routing_operand_matched")
+                        value = hook + "\0" + value
+                    else:
+                        row.update(status="source evidence required", evidence_limit="unrecognized naming route basis")
+                        continue
                 if method == "streamTypeName":
                     row["evidence_limit"] = ("name policy only; the resolved Class and hierarchy are unavailable"
                                              if row.get("historical_decision_basis") else
@@ -278,9 +293,9 @@ def collect(logs):
 
 def check_batch(java, tmp, root, track, cases, controls):
     jar = root / f"agent-java{track}/build/libs/ohmyrasp-agent-java{track}.jar"
-    probes = {(row["hook"], source_for(row["hook"], row["algorithm"], track)) for row, _, _ in cases}
-    for hook, (method, _, safe) in sorted(probes):
-        samples = [safe]
+    probes = {(row["hook"], method, source_for(row["hook"], row["algorithm"], track)[2]) for row, method, _ in cases}
+    for hook, method, safe in sorted(probes):
+        samples = [hook + "\0" + safe if method == "jndiRoute" else safe]
         if method == "requestIdentity":
             samples.append("report-client/1.0\0/admin/reports")
         for sample in samples:
@@ -297,9 +312,9 @@ def check_batch(java, tmp, root, track, cases, controls):
         raise ValueError(f"Java {track} probe did not return one result per input (exit {result.returncode})")
     for (row, method, _), response in zip(cases, result.stdout.splitlines(), strict=True):
         blocked, encoded = response.split("\t")
-        if method == "streamTypeName":
+        if method in ("streamTypeName", "jndiName"):
             if blocked not in ("listed", "unlisted") or encoded:
-                raise ValueError("invalid type-name policy receipt")
+                raise ValueError("invalid name policy receipt")
             if "algorithm" in row:
                 row["status"] = "name policy matched" if blocked == "listed" else "name policy mismatch"
             else:

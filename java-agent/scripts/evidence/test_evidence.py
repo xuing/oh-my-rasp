@@ -69,6 +69,31 @@ class EvidenceTest(unittest.TestCase):
             self.assertFalse(issues)
             self.assertTrue(all(r["status"] == "authorization evidence required" for r in rows))
 
+    def test_jndi_display_and_routing_operand_require_different_evidence(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            case = root / "vulhub-fixture-protected"
+            case.mkdir()
+            name = "ldap://reports.invalid/weekly"
+            records = [{"event": "ohmyrasp-java8-agent-start"}]
+            for hook, basis in (("InitialContext.lookup", None), ("InitialContext.lookup", "lookup_name_only"),
+                                ("InitialContext.lookupLink", "url_scheme_selection"),
+                                ("URLContext.lookup", "provider_root_lookup"),
+                                ("URLContext.lookup", "url_scheme_selection")):
+                details = {"lookup": name}
+                if basis:
+                    details["decision_basis"] = basis
+                records.append({"hook": hook, "action": "block", "algorithm": "java8_jndi_remote_lookup",
+                                "details": details})
+            (case / "events.jsonl").write_text("\n".join(map(json.dumps, records)))
+            _, rows, batches, issues, _ = decisions.collect(root)
+            self.assertFalse(issues)
+            self.assertEqual([(method, value) for _, method, value in batches["8"]],
+                             [("jndiName", name), ("jndiName", name),
+                              ("jndiRoute", "InitialContext.lookupLink\0" + name),
+                              ("jndiRoute", "URLContext.lookup\0" + name)])
+            self.assertEqual(rows[-1]["status"], "source evidence required")
+
     def test_verifier_diagnostic_cannot_establish_filter_continuation(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)

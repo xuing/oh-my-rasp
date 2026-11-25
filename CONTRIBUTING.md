@@ -164,6 +164,7 @@ Backport class-descriptor and proxy-interface callbacks historically logged the 
 hook label. For records retaining a name, the offline probe checks the name
 predicate without loading the named class. These results stay in the unresolved
 total because the probe did not observe the resolved class or proxy interfaces.
+Historical JNDI names without a routing operand also receive a name-only check.
 The comparison distinguishes changes in evidence availability from changes in tested
 detector outcomes and reports both.
 An archive filename cannot establish deployment authorization. To require every retained
@@ -173,6 +174,10 @@ comparing two reports. An end-to-end result requires separate evidence of the ap
 The runtime matrix runs [the HTTP transport check](java-agent/scripts/fp-harness/check-http-transport.py)
 against the built agent. Its local responder verifies cache hits, redirect receipts and
 request attribution under block and monitor modes.
+
+The [JNDI routing check](java-agent/scripts/fp-harness/check-jndi-route.py) uses in-process naming
+providers to verify which lookups reach a provider and which ones the agent blocks.
+Run `java-agent/scripts/check-jdk25.sh jndi-route` for the primary track.
 
 The Linux matrix checks open modes and provider namespaces against the packaged agent.
 The fixtures read ordinary ZIP entries, check locally opened channels and consume concurrent
