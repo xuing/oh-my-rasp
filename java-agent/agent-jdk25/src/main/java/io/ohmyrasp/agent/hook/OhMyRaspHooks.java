@@ -14,6 +14,7 @@ import io.ohmyrasp.agent.detect.DeserializationDetector;
 import io.ohmyrasp.agent.detect.DetectorEngine;
 import io.ohmyrasp.agent.detect.HostFileMutationDetector;
 import io.ohmyrasp.agent.detect.JdbcDetector;
+import io.ohmyrasp.agent.detect.NetworkDestinationDetector;
 import io.ohmyrasp.agent.detect.ProcessDetector;
 import io.ohmyrasp.agent.detect.RemoteJobDetector;
 import io.ohmyrasp.agent.detect.RemoteResourceDetector;
@@ -541,7 +542,7 @@ public final class OhMyRaspHooks {
     RequestContext request = currentRequest();
     if (request.active()) {
       HTTP_SUBMISSIONS.capture(exchange, request);
-      if (uri != null && DETECTORS.requestSuppliesHttpUrl(uri, HttpTransportObservation.address(uri), uri.getHost(), request)) {
+      if (uri != null && NetworkDestinationDetector.requestSuppliesHttpUrl(uri, HttpTransportObservation.address(uri), uri.getHost(), request)) {
         HttpTransportObservation.selectedSubmission(exchange, uri);
       }
     }
@@ -572,7 +573,7 @@ public final class OhMyRaspHooks {
     try {
       RequestContext origin = HTTP_SUBMISSIONS.origin(exchange);
       RequestContext request = origin == null ? RequestContext.empty() : origin;
-      var finding = DETECTORS.classifyHttpTransport(uri, request, POLICY.loaded(), peer, HttpTransportObservation.changedOrigin(exchange, uri));
+      var finding = NetworkDestinationDetector.classifyHttpTransport(uri, request, POLICY.loaded(), peer, HttpTransportObservation.changedOrigin(exchange, uri));
       if (finding.isEmpty()) return;
       var observed = transportEvidence(finding.get(), peer == null ? "http_exchange_acquire" : "http_resolved_route", peer);
       emit(Optional.of(observed), false, null, origin != null && origin == currentRequest());
@@ -598,7 +599,7 @@ public final class OhMyRaspHooks {
   public static void captureHttpRedirect(Object connection, URL to, URL from) {
     if (detectionDisabled() || !HttpTransportObservation.isHttp(from) || !HttpTransportObservation.isHttp(to)) return;
     String source = HttpTransportObservation.address(from);
-    boolean supplied = DETECTORS.requestSuppliesHttpUrl(HttpTransportObservation.comparisonUri(from, source),
+    boolean supplied = NetworkDestinationDetector.requestSuppliesHttpUrl(HttpTransportObservation.comparisonUri(from, source),
         source, from.getHost(), currentRequest());
     HttpTransportObservation.selectedRedirect(connection, from, to, supplied);
   }
@@ -629,7 +630,7 @@ public final class OhMyRaspHooks {
     if (detectionDisabled() || url == null) return;
     try {
       RequestContext request = currentRequest();
-      var finding = DETECTORS.classifyHttpTransport(url, request, POLICY.loaded(), peer, redirected);
+      var finding = NetworkDestinationDetector.classifyHttpTransport(url, request, POLICY.loaded(), peer, redirected);
       if (finding.isEmpty()) return;
       Detection observed = transportEvidence(finding.get(), basis, peer);
       emit(Optional.of(observed), false,
@@ -647,7 +648,7 @@ public final class OhMyRaspHooks {
     }
     try {
       String raw = url instanceof URL typed ? typed.toExternalForm() : String.valueOf(url);
-      emit(DETECTORS.detectUrl(raw, currentRequest(), POLICY.loaded()));
+      emit(NetworkDestinationDetector.detectUrl(raw, currentRequest(), POLICY.loaded()));
     } catch (OhMyRaspBlockException blocked) {
       throw blocked;
     } catch (Throwable throwable) {
@@ -660,7 +661,7 @@ public final class OhMyRaspHooks {
       return;
     }
     try {
-      emit(DETECTORS.detectDns(host, currentRequest()));
+      emit(NetworkDestinationDetector.detectDns(host, currentRequest()));
     } catch (OhMyRaspBlockException blocked) {
       throw blocked;
     } catch (Throwable throwable) {
@@ -1267,7 +1268,7 @@ public final class OhMyRaspHooks {
     }
     try {
       if (!XmlCatalogResolution.consumesPackagedDtd(name, target, parserInput, document, literal)) {
-        emit(DETECTORS.detectXxeEntity(name, XmlCatalogResolution.transportId(target), currentRequest(), true));
+        emit(NetworkDestinationDetector.detectXxeEntity(name, XmlCatalogResolution.transportId(target), currentRequest(), true));
       }
     } catch (OhMyRaspBlockException blocked) {
       throw blocked;
@@ -1287,7 +1288,7 @@ public final class OhMyRaspHooks {
       }
       String systemId = source instanceof String text ? text
           : source instanceof URL target ? target.toExternalForm() : invokeString(source, "getSystemId").orElse("");
-      emit(DETECTORS.detectXxeEntity(name, systemId, currentRequest()));
+      emit(NetworkDestinationDetector.detectXxeEntity(name, systemId, currentRequest()));
     } catch (OhMyRaspBlockException blocked) {
       throw blocked;
     } catch (Throwable throwable) {
@@ -1308,7 +1309,7 @@ public final class OhMyRaspHooks {
       List<String> stackClassNames = stackTraceClassNames();
       String mechanism = stackLooksCxfAegisAttachment(stackClassNames) ? "cxf-aegis-xop" : "";
       String raw = url instanceof URL typed ? typed.toExternalForm() : String.valueOf(url);
-      emit(DETECTORS.detectXmlAttachmentReference(mechanism, raw, currentRequest()));
+      emit(NetworkDestinationDetector.detectXmlAttachmentReference(mechanism, raw, currentRequest()));
     } catch (OhMyRaspBlockException blocked) {
       throw blocked;
     } catch (Throwable throwable) {
@@ -1321,7 +1322,7 @@ public final class OhMyRaspHooks {
       return;
     }
     try {
-      emit(DETECTORS.detectXmlAttachmentReference(mechanism, href, currentRequest()));
+      emit(NetworkDestinationDetector.detectXmlAttachmentReference(mechanism, href, currentRequest()));
     } catch (OhMyRaspBlockException blocked) {
       throw blocked;
     } catch (Throwable throwable) {

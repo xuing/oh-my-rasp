@@ -2,6 +2,7 @@ import io.ohmyrasp.agent.detect.DeserializationDetector;
 import io.ohmyrasp.agent.detect.DetectorEngine;
 import io.ohmyrasp.agent.detect.HostFileMutationDetector;
 import io.ohmyrasp.agent.detect.JdbcDetector;
+import io.ohmyrasp.agent.detect.NetworkDestinationDetector;
 import io.ohmyrasp.agent.detect.ProcessDetector;
 import io.ohmyrasp.agent.detect.RemoteJobDetector;
 import io.ohmyrasp.agent.detect.RemoteResourceDetector;
@@ -82,7 +83,7 @@ public final class FpReport {
             Case.of("{\"am-container-spec\":{\"commands\":{\"command\":\"echo cat /etc/passwd\"}}}")),
             (c, r) -> RemoteJobDetector.detect("YARN", c.payload(),
                 new RequestContext("POST", "/ws/v1/cluster/apps", "", Map.of(), Map.of()), false)),
-        new Category("Outbound URLs", urlCorpus(), (c, r) -> ENGINE.detectUrl(c.payload(), r)),
+        new Category("Outbound URLs", urlCorpus(), (c, r) -> NetworkDestinationDetector.detectUrl(c.payload(), r)),
         new Category("File reads", fileReadCorpus(), (c, r) -> ENGINE.detectFileRead(c.payload(), r, false)),
         new Category("Directory listings", List.of(
             Case.tainted("/srv/orders/exports", "orders"),
@@ -113,7 +114,7 @@ public final class FpReport {
         new Category("Expressions", expressionCorpus(), (c, r) -> ENGINE.detectExpression("spel", c.payload(), r)),
         new Category("OGNL expressions", ognlCorpus(), (c, r) -> ENGINE.detectOgnl(c.payload(), r)),
         new Category("JNDI names", jndiCorpus(), (c, r) -> RemoteResourceDetector.detectJndi(c.payload(), r)),
-        new Category("DNS lookups", dnsCorpus(), (c, r) -> ENGINE.detectDns(c.payload(), r)),
+        new Category("DNS lookups", dnsCorpus(), (c, r) -> NetworkDestinationDetector.detectDns(c.payload(), r)),
         new Category("Ordinary deployment uploads", List.of(
             Case.of("weekly.jar"), Case.of("component.war"), Case.of("connector.ear")),
             (c, r) -> ENGINE.detectFileUpload(c.payload(),
