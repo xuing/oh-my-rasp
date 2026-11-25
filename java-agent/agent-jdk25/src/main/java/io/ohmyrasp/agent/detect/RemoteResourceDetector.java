@@ -1,5 +1,6 @@
 package io.ohmyrasp.agent.detect;
 
+import io.ohmyrasp.agent.naming.LookupRoute;
 import static io.ohmyrasp.agent.detect.DetectorStrings.abbreviate;
 import static io.ohmyrasp.agent.detect.DetectorStrings.lower;
 import io.ohmyrasp.agent.model.Detection;
@@ -29,7 +30,7 @@ final class RemoteResourceDetector {
   // the backports' REMOTE_JNDI_LOOKUP scheme set for cross-agent parity.
   private static final Pattern JNDI_REMOTE_LOOKUP =
       Pattern.compile(
-          "(?is)^\\s*(ldap|ldaps|rmi|iiop|corbaname|corbaloc)://[^\\s\\u0000]{1,2048}");
+          "(?is)^(ldap|ldaps|rmi|iiop|corbaname|corbaloc)://[^\\s\\u0000]{1,2048}");
 
   private static final Set<String> REMOTE_CLASSLOADER_PROTOCOLS =
       Set.of("http", "https", "ftp", "ldap", "rmi");
@@ -103,11 +104,11 @@ final class RemoteResourceDetector {
                 "requestControlled", String.valueOf(request.hasParameterIn(normalized)))));
   }
 
-  static Optional<Detection> detectJndi(String name, RequestContext request) {
+  static Optional<Detection> detectJndi(String name, RequestContext request, String operation) {
     if (name == null || name.isBlank()) {
       return Optional.empty();
     }
-    String lookup = name.trim();
+    String lookup = name;
     var remote = JNDI_REMOTE_LOOKUP.matcher(lookup);
     if (!remote.find()) {
       // Local container lookups (java:comp/env/..., java:global/..., relative
@@ -121,10 +122,12 @@ final class RemoteResourceDetector {
             "jndi",
             "jndi_disable_all",
             requestControlled ? 100 : 95,
-            "JNDI lookup resolves through a remote naming provider",
+            "JNDI lookup selects a listed naming scheme",
             request,
             Map.of(
                 "name", abbreviate(lookup),
+                "operation", operation,
+                "decision_basis", LookupRoute.basis(operation),
                 "scheme", scheme,
                 "requestControlled", String.valueOf(requestControlled))));
   }

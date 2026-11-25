@@ -1987,7 +1987,11 @@ public final class DetectorEngine {
   }
 
   public Optional<Detection> detectJndi(String name, RequestContext request) {
-    return RemoteResourceDetector.detectJndi(name, request);
+    return detectJndi(name, request, "declared_lookup");
+  }
+
+  public Optional<Detection> detectJndi(String name, RequestContext request, String operation) {
+    return RemoteResourceDetector.detectJndi(name, request, operation);
   }
 
   public Optional<Detection> detectJaasConfig(

@@ -772,16 +772,15 @@ public final class VulnerableServlet extends HttpServlet {
 
   private static String jndiLookup(HttpServletRequest request) throws Exception {
     String name = value(request, "name", "ldap://127.0.0.1:1389/a");
-    hook("beforeJndiLookup", new Class<?>[] {Object.class}, name);
     Hashtable<String, String> env = new Hashtable<>();
-    env.put(Context.INITIAL_CONTEXT_FACTORY, "com.sun.jndi.ldap.LdapCtxFactory");
     env.put("com.sun.jndi.ldap.connect.timeout", "200");
     env.put("com.sun.jndi.ldap.read.timeout", "200");
     try {
       new InitialContext(env).lookup(name);
       return "lookup completed";
     } catch (Exception e) {
-      return "lookup failed after hook: " + e.getClass().getSimpleName();
+      if (isOhMyRaspBlock(e) && e instanceof RuntimeException blocked) throw blocked;
+      return "lookup failed: " + e.getClass().getSimpleName();
     }
   }
 

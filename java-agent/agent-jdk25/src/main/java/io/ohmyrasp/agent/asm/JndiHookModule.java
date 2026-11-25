@@ -1,41 +1,13 @@
 package io.ohmyrasp.agent.asm;
 
+import io.ohmyrasp.agent.naming.JndiLookupVisitor;
 import org.objectweb.asm.MethodVisitor;
+import org.objectweb.asm.Type;
 
 final class JndiHookModule implements HookModule {
-  @Override
-  public boolean matchesClass(String className) {
-    return className.equals("javax/naming/InitialContext") || className.startsWith("com/sun/jndi/");
-  }
+  @Override public boolean matchesClass(String name) { return JndiLookupVisitor.target(name); }
 
-  @Override
-  public MethodVisitor visitMethod(
-      String className,
-      MethodVisitor methodVisitor,
-      int access,
-      String methodName,
-      String descriptor) {
-    if (className.equals("javax/naming/InitialContext") && methodName.equals("lookup")) {
-      return new EntryAdvice(methodVisitor, access, methodName, descriptor) {
-        @Override
-        protected void onMethodEnter() {
-          loadArg(0);
-          invokeHook("beforeJndiLookup", "(Ljava/lang/Object;)V");
-        }
-      };
-    }
-    if (className.startsWith("com/sun/jndi/")
-        && HookRegistry.methodNameContains(methodName, "lookup")
-        && (descriptor.startsWith("(Ljava/lang/String;")
-            || descriptor.startsWith("(Ljavax/naming/Name;"))) {
-      return new EntryAdvice(methodVisitor, access, methodName, descriptor) {
-        @Override
-        protected void onMethodEnter() {
-          loadArg(0);
-          invokeHook("beforeJndiLookup", "(Ljava/lang/Object;)V");
-        }
-      };
-    }
-    return methodVisitor;
+  @Override public MethodVisitor visitMethod(String owner, MethodVisitor mv, int access, String name, String desc) {
+    return JndiLookupVisitor.wrap(owner, mv, access, name, desc, Type.getObjectType("io/ohmyrasp/agent/hook/OhMyRaspHooks"));
   }
 }

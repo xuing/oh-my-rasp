@@ -24,7 +24,7 @@ final class HookRegistryTest {
     assertTrue(registry.isDirectTarget("jakarta.servlet.http.Part"));
     assertTrue(registry.isDirectTarget("org/apache/catalina/core/ApplicationPart"));
     assertTrue(registry.isDirectTarget("org/apache/commons/fileupload/disk/DiskFileItem"));
-    assertTrue(registry.isDirectTarget("com.sun.jndi.ldap.LdapCtx"));
+    assertTrue(registry.isDirectTarget("com.sun.jndi.toolkit.url.GenericURLContext"));
     assertTrue(registry.isDirectTarget("java/net/URLClassLoader"));
     assertTrue(registry.isDirectTarget("java/rmi/server/RMIClassLoader"));
     assertTrue(registry.isDirectTarget("javax/security/auth/login/AppConfigurationEntry"));

@@ -185,6 +185,8 @@ jobs:
           if any(e.get("kind") == "detection" or e.get("event") == "ohmyrasp-detection" for e in events):
               sys.exit("Ordinary background job produced a detection")
           PY
+      - name: Verify JNDI URL and local provider selection
+        run: python3 java-agent/scripts/fp-harness/check-jndi-route.py "java-agent/${{ matrix.jar }}"
       - name: Verify HTTP acquisition, redirect and asynchronous request attribution
         run: python3 java-agent/scripts/fp-harness/check-http-transport.py "java-agent/${{ matrix.jar }}"
       - name: Verify validated process arguments and pipeline stages

@@ -192,6 +192,7 @@ public final class OhMyRaspJava17Agent {
     for (Class<?> loaded : loadedClasses) {
       String internalName = loaded.getName().replace('.', '/');
       if (Lz4TransportVisitor.OWNER.equals(internalName)
+          || io.ohmyrasp.agent.naming.JndiLookupVisitor.URL_CONTEXT.equals(internalName)
           || io.ohmyrasp.agent.rules.product.yarn.YarnSubmitVisitor.OWNER.equals(internalName)
           || io.ohmyrasp.agent.rules.product.spark.SparkSubmitVisitor.OWNER.equals(internalName)
           || io.ohmyrasp.agent.rules.product.dataease.FilterVerificationVisitor.OWNER.equals(internalName)

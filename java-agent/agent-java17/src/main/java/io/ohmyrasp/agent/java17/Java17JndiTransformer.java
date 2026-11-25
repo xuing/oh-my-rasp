@@ -8,14 +8,10 @@ import org.objectweb.asm.ClassWriter;
 import org.objectweb.asm.MethodVisitor;
 import org.objectweb.asm.Opcodes;
 import org.objectweb.asm.Type;
-import org.objectweb.asm.commons.AdviceAdapter;
-import org.objectweb.asm.commons.Method;
+import io.ohmyrasp.agent.naming.JndiLookupVisitor;
 
 public final class Java17JndiTransformer implements ClassFileTransformer {
   private static final Type HOOKS = Type.getType(Java17RaspHooks.class);
-  private static final Method BEFORE_JNDI_LOOKUP =
-      Method.getMethod("void beforeJndiLookup(java.lang.Object)");
-
   @Override
   public byte[] transform(
       ClassLoader loader,
@@ -25,13 +21,13 @@ public final class Java17JndiTransformer implements ClassFileTransformer {
       byte[] classfileBuffer) {
     if (className == null
         || classfileBuffer == null
-        || !"javax/naming/InitialContext".equals(className)) {
+        || !JndiLookupVisitor.target(className)) {
       return null;
     }
     try {
       ClassReader reader = new ClassReader(classfileBuffer);
       ClassWriter writer = new ClassWriter(reader, ClassWriter.COMPUTE_MAXS);
-      reader.accept(new JndiClassVisitor(writer), ClassReader.EXPAND_FRAMES);
+      reader.accept(new JndiClassVisitor(className, writer), ClassReader.EXPAND_FRAMES);
       return writer.toByteArray();
     } catch (Throwable throwable) {
       if (Boolean.getBoolean("ohmyrasp.debug")) {
@@ -42,32 +38,17 @@ public final class Java17JndiTransformer implements ClassFileTransformer {
   }
 
   private static final class JndiClassVisitor extends ClassVisitor {
-    JndiClassVisitor(ClassVisitor delegate) {
+    private final String owner;
+    JndiClassVisitor(String owner, ClassVisitor delegate) {
       super(Opcodes.ASM9, delegate);
+      this.owner = owner;
     }
 
     @Override
     public MethodVisitor visitMethod(
         int access, String name, String descriptor, String signature, String[] exceptions) {
       MethodVisitor methodVisitor = super.visitMethod(access, name, descriptor, signature, exceptions);
-      if (methodVisitor == null || !isLookupMethod(name, descriptor)) {
-        return methodVisitor;
-      }
-      return new AdviceAdapter(Opcodes.ASM9, methodVisitor, access, name, descriptor) {
-        @Override
-        protected void onMethodEnter() {
-          loadArg(0);
-          invokeStatic(HOOKS, BEFORE_JNDI_LOOKUP);
-        }
-      };
-    }
-
-    private static boolean isLookupMethod(String name, String descriptor) {
-      if (!"lookup".equals(name) && !"lookupLink".equals(name)) {
-        return false;
-      }
-      return descriptor.startsWith("(Ljava/lang/String;")
-          || descriptor.startsWith("(Ljavax/naming/Name;");
+      return JndiLookupVisitor.wrap(owner, methodVisitor, access, name, descriptor, HOOKS);
     }
   }
 }

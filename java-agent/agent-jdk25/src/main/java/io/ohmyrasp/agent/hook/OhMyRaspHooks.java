@@ -19,6 +19,7 @@ import io.ohmyrasp.agent.model.RequestContext;
 import io.ohmyrasp.agent.policy.AgentPolicy;
 import io.ohmyrasp.agent.policy.PolicyEvaluation;
 import io.ohmyrasp.agent.process.PosixShellCommand;
+import io.ohmyrasp.agent.naming.LookupRoute;
 import io.ohmyrasp.agent.rules.product.spark.SparkSubmitRole;
 import io.ohmyrasp.agent.http.ServletSubmitRole;
 import io.ohmyrasp.agent.runtime.AgentRuntime;
@@ -640,16 +641,23 @@ public final class OhMyRaspHooks {
     }
   }
 
+  /** Compatibility entry for callers that explicitly supply a lookup string. */
   public static void beforeJndiLookup(Object name) {
-    if (detectionDisabled()) {
-      return;
-    }
+    if (name instanceof String text) onJndiRoute(text, "declared_lookup");
+  }
+
+  public static void beforeJndiProviderLookup(String url, Object provider, String operation) {
+    if (!LookupRoute.observedAtSelection(provider, url)) onJndiRoute(url, operation);
+  }
+
+  public static void onJndiRoute(String url, String operation) {
+    if (operation == null || detectionDisabled()) return;
     try {
-      emit(DETECTORS.detectJndi(String.valueOf(name), currentRequest()));
+      emit(DETECTORS.detectJndi(url, currentRequest(), operation));
     } catch (OhMyRaspBlockException blocked) {
       throw blocked;
-    } catch (Throwable throwable) {
-      quiet("beforeJndiLookup", throwable);
+    } catch (Throwable failure) {
+      quiet("onJndiRoute", failure);
     }
   }
 

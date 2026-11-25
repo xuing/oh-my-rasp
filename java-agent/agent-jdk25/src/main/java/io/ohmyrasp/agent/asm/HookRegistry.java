@@ -2,7 +2,6 @@ package io.ohmyrasp.agent.asm;
 
 import io.ohmyrasp.agent.sql.JdbcSqlMethod;
 import java.util.List;
-import java.util.Locale;
 import org.objectweb.asm.MethodVisitor;
 import org.objectweb.asm.Opcodes;
 
@@ -90,9 +89,5 @@ public final class HookRegistry {
       }
     }
     return methodVisitor;
-  }
-
-  static boolean methodNameContains(String methodName, String needle) {
-    return methodName != null && methodName.toLowerCase(Locale.ROOT).contains(needle);
   }
 }

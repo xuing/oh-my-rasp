@@ -5,6 +5,7 @@ import io.ohmyrasp.agent.file.ArchiveEntryContext;
 import io.ohmyrasp.agent.file.HostReadPath;
 import io.ohmyrasp.agent.file.HostDirectory;
 import io.ohmyrasp.agent.jmx.JmxDispatch;
+import io.ohmyrasp.agent.naming.LookupRoute;
 import io.ohmyrasp.agent.rules.product.spark.SparkSubmitRole;
 import io.ohmyrasp.agent.http.ServletSubmitRole;
 import io.ohmyrasp.agent.serialization.StreamTypeNames;
@@ -61,7 +62,7 @@ public final class Java8RaspHooks {
   private static final List<String> FILE_READERS = java.util.Arrays.asList("cat", "more", "less", "head", "tail");
   private static final List<String> SENSITIVE_PATHS = java.util.Arrays.asList("/etc/passwd", "/etc/shadow", "/proc/self/environ");
   private static final Pattern REMOTE_JNDI_LOOKUP =
-      Pattern.compile("(?is)^\\s*(ldap|ldaps|rmi|iiop|corbaname|corbaloc)://[^\\s\\u0000]{1,2048}");
+      Pattern.compile("(?is)^(ldap|ldaps|rmi|iiop|corbaname|corbaloc)://[^\\s\\u0000]{1,2048}");
   private static final Pattern JAAS_REMOTE_PROVIDER =
       Pattern.compile(
           "(?is)(?:^|[\\s,{])(?:user|group)\\.provider\\.url\\s*[=:]\\s*[\"']?((?:ldap|ldaps|rmi|iiop|corbaname|corbaloc)://[^\"'\\s,;}]{1,2048})");
@@ -130,7 +131,6 @@ public final class Java8RaspHooks {
       Pattern.compile("(?is)[\"'][^\"'\\r\\n]{1,200}[\"']\\s*\\.\\s*execute\\s*\\(");
   private static final ThreadLocal<String> LAST_LOGGED_REQUEST = new ThreadLocal<String>();
   private static final ThreadLocal<String> LAST_LOGGED_COMMAND = new ThreadLocal<String>();
-  private static final ThreadLocal<String> LAST_LOGGED_JNDI = new ThreadLocal<String>();
   private static final ThreadLocal<String> LAST_LOGGED_HESSIAN_TYPE = new ThreadLocal<String>();
   private static final ThreadLocal<String> LAST_LOGGED_FILE_READ = new ThreadLocal<String>();
   private static final ThreadLocal<String> LAST_LOGGED_FILE_WRITE = new ThreadLocal<String>();
@@ -304,24 +304,22 @@ public final class Java8RaspHooks {
     inspectCommand(command, "Runtime.exec(String[])");
   }
 
+  /** Compatibility entry for callers that explicitly supply a lookup string. */
   public static void beforeJndiLookup(Object name) {
-    if (name == null) {
-      return;
-    }
-    Finding finding = classifyJndiLookup(String.valueOf(name).trim());
-    if (finding == null) {
-      return;
-    }
-    String action = shouldBlock() ? "block" : "log";
-    String previous = LAST_LOGGED_JNDI.get();
-    if (!"block".equals(action) && finding.detailValue.equals(previous)) {
-      return;
-    }
-    LAST_LOGGED_JNDI.set(finding.detailValue);
-    appendEvent(finding, "InitialContext.lookup", action);
-    if ("block".equals(action)) {
-      throw new Java8RaspBlockException("OhMyRASP Java 8 blocked suspicious JNDI lookup");
-    }
+    if (name instanceof String) onJndiRoute((String) name, "declared_lookup");
+  }
+
+  public static void beforeJndiProviderLookup(String url, Object provider, String operation) {
+    if (!LookupRoute.observedAtSelection(provider, url)) onJndiRoute(url, operation);
+  }
+
+  public static void onJndiRoute(String url, String operation) {
+    if (url == null || operation == null || RaspRuntime.detectionOff()) return;
+    Finding finding = classifyJndiLookup(url, LookupRoute.basis(operation));
+    if (finding == null) return;
+    boolean block = shouldBlock();
+    appendEvent(finding, "declared_lookup".equals(operation) ? "InitialContext.lookup" : operation, block ? "block" : "log");
+    if (block) throw new Java8RaspBlockException("OhMyRASP blocked a remote JNDI lookup");
   }
 
   /** Legacy entry hooks precede class resolution and have no selected type. */
@@ -1516,7 +1514,7 @@ public final class Java8RaspHooks {
     return SCRIPT_FILE_WRITE.matcher(value.trim().replace('\\', '/')).matches();
   }
 
-  private static Finding classifyJndiLookup(String lookup) {
+  private static Finding classifyJndiLookup(String lookup, String basis) {
     if (lookup.length() == 0) {
       return null;
     }
@@ -1531,7 +1529,7 @@ public final class Java8RaspHooks {
         confidence,
         "Remote JNDI lookup reached a Java 8 naming sink",
         "lookup",
-        lookup);
+        lookup, basis);
   }
 
   private static Finding classifyHessianType(String type) {

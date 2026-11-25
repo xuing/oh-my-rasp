@@ -140,7 +140,7 @@ The descriptions live in the [general catalog](../rules/general.json) and [produ
 | `jiffle_runtime` | Runtime execution primitives occur in an expression or execution is observed under an evaluator. A library hook identifies the evaluation context. | — |
 | `jmx_file_write` | A synchronous MBean argument names the same script destination that the JDK opens for writing. The event records a write-open attempt. | — |
 | `jmx_remote_config` | A resolved JMX invocation carries a location expression with configuration indicators. | Compound broker configuration sources include XBean or Spring location expressions. |
-| `jndi_disable_all` | A naming operation or a JAAS naming-provider configuration is checked against the JNDI policy. | — |
+| `jndi_disable_all` | A lookup uses a URL scheme listed by the naming policy. Runtime events identify scheme selection or direct URL-provider lookup. | — |
 | `jndi_jaas_config` | A naming operation or a JAAS naming-provider configuration is checked against the JNDI policy. | — |
 | `link_webshell` | A link or rename selects a script-like destination. | — |
 | `loadLibrary_unc` | A native library load selects a network share. | — |
@@ -262,7 +262,7 @@ The descriptions live in the [general catalog](../rules/general.json) and [produ
 | `java8_jexl_runtime_execution`, `java11_jexl_runtime_execution`, `java17_jexl_runtime_execution` | Runtime execution syntax is observed at expression evaluation. The Commons JEXL hook supplies this signal across applications using the library. | — |
 | `java8_jmx_remote_config_source`, `java11_jmx_remote_config_source`, `java17_jmx_remote_config_source` | A resolved JMX operation receives a complete location expression with configuration indicators. The argument alone does not establish a fetch. | The classifier also recognizes broker configuration and XBean or Spring location syntax in the dispatched argument. |
 | `java8_jmx_script_file_write`, `java11_jmx_script_file_write`, `java17_jmx_script_file_write` | A synchronous MBean argument names the same script destination that the JDK opens for writing. The event records a write-open attempt. | — |
-| `java8_jndi_remote_lookup`, `java11_jndi_remote_lookup`, `java17_jndi_remote_lookup` | A naming lookup receives a remote provider identifier. | — |
+| `java8_jndi_remote_lookup`, `java11_jndi_remote_lookup`, `java17_jndi_remote_lookup` | A lookup uses a URL scheme listed by the naming policy. Runtime events identify scheme selection or direct URL-provider lookup. | — |
 | `java8_request_debug_process_launch`, `java11_request_debug_process_launch`, `java17_request_debug_process_launch` | Debug-route and executable-parameter conventions are request indicators. Process launch is unconfirmed. | — |
 | `java8_request_default_crypto_cookie`, `java11_request_default_crypto_cookie`, `java17_request_default_crypto_cookie` | — | Shiro's rememberMe representation and a known encryption key are required. |
 | `java8_request_default_jwt_secret`, `java11_request_default_jwt_secret`, `java17_request_default_jwt_secret` | — | The submitted JWT is checked against the known HugeGraph default signing secret. |
