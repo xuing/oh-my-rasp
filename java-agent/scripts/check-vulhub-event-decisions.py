@@ -232,6 +232,10 @@ def collect(logs):
                         row["status"], row["evidence_limit"] = limit
                         continue
                 if method == "archiveWrite":
+                    if row.get("historical_decision_basis") == "archive_descriptor_open":
+                        row["status"] = "filesystem evidence required"
+                        row["evidence_limit"] = "resolved target recorded; original directory descriptor and relative operand unavailable"
+                        continue
                     paths = value.split(" -> ")
                     if len(paths) != 2 or not all(paths) or any(p.endswith(("...", "…")) for p in paths):
                         row["status"] = "argument unavailable"

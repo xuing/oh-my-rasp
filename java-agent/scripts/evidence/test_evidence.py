@@ -69,6 +69,21 @@ class EvidenceTest(unittest.TestCase):
                              ["argument evidence required", "source evidence required", "no offline adapter"])
             self.assertFalse(batches)
 
+    def test_archive_descriptor_cannot_be_recreated_from_its_resolved_name(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            case = root / "vulhub-fixture-protected"
+            case.mkdir()
+            member = "/reports/weekly.txt"
+            details = {"entry": member + " -> " + member, "decision_basis": "archive_descriptor_open"}
+            event = {"action": "block", "algorithm": "java8_archive_entry_traversal_write",
+                     "hook": "ArchiveEntry.write", "details": details}
+            (case / "events.jsonl").write_text("\n".join(map(json.dumps, [
+                {"event": "ohmyrasp-java8-agent-start"}, event])))
+            _, rows, batches, _, _ = decisions.collect(root)
+            self.assertEqual(rows[0]["status"], "filesystem evidence required")
+            self.assertFalse(batches)
+
     def test_missing_context_and_multi_argument_commands_are_not_invented(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
