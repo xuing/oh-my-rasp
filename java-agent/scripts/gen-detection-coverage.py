@@ -133,8 +133,8 @@ def rule_scope_tables() -> list[str]:
     rules = ROOT / "rules"
     general = json.loads((rules / "general.json").read_text(encoding="utf-8"))
     product = json.loads((rules / "product.json").read_text(encoding="utf-8"))
-    source = "\n".join((AGENT / path).read_text(encoding="utf-8") for path in
-                       ("detect/DetectorEngine.java", "hook/OhMyRaspHooks.java"))
+    sources = sorted((AGENT / "detect").rglob("*.java")) + [AGENT / "hook" / "OhMyRaspHooks.java"]
+    source = "\n".join(path.read_text(encoding="utf-8") for path in sources)
     literal = set(re.findall(r'Detection\.log\(\s*(?:"[^"]+"|\w+)\s*,\s*"(\w+)"', source))
     primary = general["primary"].keys() | product["primary"].keys()
     if missing := literal - primary:

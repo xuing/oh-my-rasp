@@ -1,10 +1,19 @@
 package io.ohmyrasp.agent.detect;
 
-import io.ohmyrasp.agent.file.HostReadPath;
-import io.ohmyrasp.agent.file.WindowsDataStream;
+import static io.ohmyrasp.agent.detect.DetectorStrings.lower;
+import static io.ohmyrasp.agent.detect.DetectorStrings.normalizeParameterName;
+import static io.ohmyrasp.agent.detect.DetectorStrings.percentDecode;
+import static io.ohmyrasp.agent.detect.JdbcDetector.h2JdbcInitConfig;
+import static io.ohmyrasp.agent.detect.RequestJson.jsonConfigBody;
+import static io.ohmyrasp.agent.detect.RequestJson.jsonStringFields;
+import static io.ohmyrasp.agent.detect.RequestJson.parseJsonString;
+import io.ohmyrasp.agent.detect.RequestJson.JsonStringField;
+import io.ohmyrasp.agent.detect.RequestJson.JsonStringToken;
+import io.ohmyrasp.agent.file.EscapingPath;
 import io.ohmyrasp.agent.file.HostDelete;
 import io.ohmyrasp.agent.file.HostDirectory;
-import io.ohmyrasp.agent.file.EscapingPath;
+import io.ohmyrasp.agent.file.HostReadPath;
+import io.ohmyrasp.agent.file.WindowsDataStream;
 import io.ohmyrasp.agent.http.ArchiveUploadPolicy;
 import io.ohmyrasp.agent.http.PercentEncodedText;
 import io.ohmyrasp.agent.jmx.JmxDispatch;
@@ -13,11 +22,10 @@ import io.ohmyrasp.agent.model.Detection;
 import io.ohmyrasp.agent.model.RequestContext;
 import io.ohmyrasp.agent.net.HttpTransportObservation;
 import io.ohmyrasp.agent.net.NetworkHost;
+import io.ohmyrasp.agent.process.PosixShellCommand;
 import io.ohmyrasp.agent.rules.general.RequestShellSyntax;
 import io.ohmyrasp.agent.rules.product.rocketmq.RocketMqFilterServer;
 import io.ohmyrasp.agent.rules.product.solr.SolrExecutableListener;
-import io.ohmyrasp.agent.process.PosixShellCommand;
-import io.ohmyrasp.agent.sql.SqlStatement;
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
@@ -42,30 +50,8 @@ import javax.crypto.spec.IvParameterSpec;
 import javax.crypto.spec.SecretKeySpec;
 
 public final class DetectorEngine {
-  private static final Pattern SQL_POLICY =
-      Pattern.compile(
-          "(?is)(?:\\bunion\\s+(?:all\\s+)?select\\b|\\binformation_schema\\b|\\binto\\s+(?:out|dump)file\\b|/\\*!|\\bload_file\\s*\\(|\\bsleep\\s*\\(|\\bbenchmark\\s*\\()");
-  private static final Pattern H2_CODE_CONTAINER =
-      Pattern.compile("(?is)\\bcreate\\s+(?:alias|trigger)\\b");
-  private static final Pattern H2_CODE_PRIMITIVE =
-      Pattern.compile(
-          "(?is)(?:java\\.lang\\.runtime|runtime\\s*\\.\\s*getruntime\\s*\\(|processbuilder|scriptenginemanager|javax\\.naming\\.initialcontext|urlclassloader|//\\s*javascript)");
-  private static final Pattern H2_REMOTE_RUNSCRIPT =
-      Pattern.compile("(?is)\\brunscript\\s+from\\s+['\"]?\\s*(?:https?|ftp|jar|ldap|rmi)://");
-  private static final Pattern H2_INIT_SETTING = Pattern.compile("(?is)(?:^|;)\\s*init\\s*=");
   private static final Pattern BASE64_CONFIG_VALUE =
       Pattern.compile("(?is)^[A-Za-z0-9+/=_-]{32,8192}$");
-  private static final Pattern DERBY_JAR_OPERATION =
-      Pattern.compile("(?is)(?:\\bsqlj\\s*\\.\\s*(?:install|replace)_jar\\s*\\(|"
-          + "\\bsyscs_util\\s*\\.\\s*syscs_set_database_property\\s*\\(\\s*['\"]derby\\.database\\.classpath['\"])");
-  private static final Pattern DERBY_ROUTINE_LANGUAGE =
-      Pattern.compile("(?i)\\b(?:language\\s+java|parameter\\s+style\\s+java)\\b");
-  private static final Pattern DERBY_EXTERNAL_NAME = Pattern.compile("(?i)\\bexternal\\s+name\\b");
-  private static final Pattern MYSQL_JDBC_AUTO_DESERIALIZE =
-      Pattern.compile("(?is)(?:[?&;]|^)\\s*autodeserialize\\s*=\\s*(?:true|1|yes)\\b");
-  private static final Pattern MYSQL_JDBC_DESERIALIZATION_TRIGGER =
-      Pattern.compile(
-          "(?is)(?:[?&;]\\s*(?:statementinterceptors|queryinterceptors)\\s*=|serverstatusdiffinterceptor|[?&;]\\s*detectcustomcollations\\s*=\\s*(?:true|1|yes)\\b)");
   private static final Pattern SCRIPT_LITERAL_EXECUTE =
       Pattern.compile("(?is)['\"][^'\"]{1,120}['\"]\\s*\\.\\s*execute\\s*\\(");
   private static final Pattern SCRIPT_COMMAND_VARIABLE_EXECUTE =
@@ -252,25 +238,6 @@ public final class DetectorEngine {
   private static final Pattern PLOT_COMMAND_CONTROL_PATH =
       Pattern.compile(
           "(?i)(?:^|/)(?:q|graph|graphs|plot|plots|chart|charts|render|query)(?:[;/]|/|$)");
-  private static final Pattern SQL_SORT_CONTROL_PATH =
-      Pattern.compile(
-          "(?i)(?:^|/)(?:api|case|cases|list|lists|page|pages|query|search|table|track)(?:[;/]|/|$)");
-  private static final Pattern SQL_SORT_CONTEXT_BODY =
-      Pattern.compile("(?is)\"(?:orders?|sort(?:ers?)?|pageable|pagination)\"\\s*:");
-  private static final Pattern SQL_SORT_INJECTION_VALUE =
-      Pattern.compile(
-          "(?is)(?:^|[,;])\\s*(?:if\\s*\\(|case\\s+when|select\\b|sleep\\s*\\(|benchmark\\s*\\(|extractvalue\\s*\\(|updatexml\\s*\\(|load_file\\s*\\()|(?:--|#|/\\*)");
-  private static final Pattern SQL_IDENTIFIER_CONTROL_PATH =
-      Pattern.compile(
-          "(?i)(?:^|/)(?:graphql|api|query|queries|metrics?|logs?|trace|traces|search|table|tables)(?:[;/]|/|$)");
-  private static final Pattern SQL_IDENTIFIER_CONTEXT_BODY =
-      Pattern.compile(
-          "(?is)\"(?:query|variables|condition|metricname|tablename|columnname|fieldname|metric|table|column|dimension)\"\\s*:");
-  private static final Pattern SAFE_SQL_IDENTIFIER_VALUE =
-      Pattern.compile("(?is)^[A-Za-z0-9_.$:-]{1,128}$");
-  private static final Pattern SQL_IDENTIFIER_INJECTION_VALUE =
-      Pattern.compile(
-          "(?is)(?:\\b(?:where|union|select|join|sleep|benchmark|case\\s+when)\\b|\\binformation_schema\\b|(?:--|#|/\\*|;))");
   private static final Pattern REMOTE_JOB_ARTIFACT =
       Pattern.compile(
           "(?is)[\"'](?:appresource|spark\\.jars|sparkjars|jobjar|appjar|jarurl|resource)[\"']\\s*[:=]\\s*[\"']((?:https?|ftp)://[^\"'\\s,]+\\.(?:jar|war|ear)(?:[?#][^\"'\\s,]*)?)[\"']");
@@ -609,33 +576,6 @@ public final class DetectorEngine {
           "xrange",
           "x2range",
           "key");
-  private static final Set<String> SQL_SORT_INJECTION_FIELD_NAMES =
-      Set.of(
-          "direction",
-          "dir",
-          "order",
-          "orderby",
-          "ordertype",
-          "sort",
-          "sortby",
-          "sortdirection",
-          "sortorder",
-          "sorttype",
-          "type");
-  private static final Set<String> SQL_IDENTIFIER_INJECTION_FIELD_NAMES =
-      Set.of(
-          "column",
-          "columnname",
-          "dimension",
-          "dimensionname",
-          "entity",
-          "entityname",
-          "field",
-          "fieldname",
-          "metric",
-          "metricname",
-          "table",
-          "tablename");
   private static final Map<String, String> DEFAULT_JWT_HMAC_SECRETS =
       Map.of("hugegraph-default-token-secret", "FXQXbJtbCLxODc6tGci732pkH1cyf8Qg");
   private static final Set<String> DEFAULT_ENCRYPTED_COOKIE_NAMES = Set.of("rememberme");
@@ -1495,90 +1435,15 @@ public final class DetectorEngine {
   }
 
   public Optional<Detection> detectSql(String query, RequestContext request) {
-    return detectSql(query, request, null);
+    return JdbcDetector.detectSql(query, request);
   }
 
   public Optional<Detection> detectSql(String query, RequestContext request, String jdbcClass) {
-    if (query == null || query.isBlank()) {
-      return Optional.empty();
-    }
-    return classifySql(new SqlStatement(query, jdbcClass), request);
+    return JdbcDetector.detectSql(query, request, jdbcClass);
   }
 
   public Optional<Detection> detectSql(String query, RequestContext request, Object jdbcReceiver) {
-    if (query == null || query.isBlank()) return Optional.empty();
-    return classifySql(SqlStatement.fromJdbc(query, jdbcReceiver), request);
-  }
-
-  private Optional<Detection> classifySql(SqlStatement statement, RequestContext request) {
-    String query = statement.source();
-    if (request.parameters().values().stream().flatMap(List::stream)
-            .anyMatch(value -> statement.hasCommentFrom(value) || statement.matchesStructureFrom(value))
-        || requestBodyControlsSql(statement, request)) {
-      return Optional.of(
-          Detection.log(
-              "sql",
-              "sql_userinput",
-              95,
-              "SQL query structure appears altered by request input",
-              request,
-              Map.of("query", abbreviate(query))));
-    }
-    if (statement.hasCommand(H2_REMOTE_RUNSCRIPT)
-        || statement.definesSourceMatching(H2_CODE_CONTAINER, H2_CODE_PRIMITIVE)) {
-      return Optional.of(
-          Detection.log(
-              "sql",
-              "sql_h2_code_execution",
-              95,
-              "H2 SQL attempts to load script or executable Java code",
-              request,
-              Map.of("query", abbreviate(query))));
-    }
-    if (request.active() && (statement.matches(DERBY_JAR_OPERATION)
-        || statement.hasClausesInOneCommand(DERBY_ROUTINE_LANGUAGE, DERBY_EXTERNAL_NAME))) {
-      boolean requestControlled = request.hasParameterIn(query);
-      return Optional.of(
-          Detection.log(
-              "sql",
-              "sql_derby_code_execution",
-              requestControlled ? 95 : 90,
-              "Derby SQL attempts to load Java code or mutate the database classpath",
-              request,
-              Map.of(
-                  "query", abbreviate(query),
-                  "requestControlled", String.valueOf(requestControlled))));
-    }
-    boolean structuralSqlInjection = statement.hasTruncatedLiteral()
-        || (statement.hasConstantDisjunction() && request.parameters().values().stream()
-            .flatMap(List::stream).noneMatch(statement::isSubmittedConsoleSelect));
-    if (structuralSqlInjection || statement.matchesSinkPolicy()) {
-      return Optional.of(
-          Detection.log(
-              "sql",
-              "sql_policy",
-              structuralSqlInjection ? 90 : 85,
-              "SQL query matched injection policy features",
-              request,
-              Map.of("query", abbreviate(query))));
-    }
-    return Optional.empty();
-  }
-
-  private static boolean requestBodyControlsSql(SqlStatement statement, RequestContext request) {
-    String body = request.body();
-    if (body.isEmpty() || !SqlStatement.mayControlStructure(body)) {
-      return false;
-    }
-    if (!jsonConfigBody(request)) {
-      return statement.matchesStructureFrom(body);
-    }
-    for (JsonStringField field : jsonStringFields(body)) {
-      if (statement.matchesStructureFrom(field.value())) {
-        return true;
-      }
-    }
-    return false;
+    return JdbcDetector.detectSql(query, request, jdbcReceiver);
   }
 
   public static boolean isBase64TailUnderflowCandidate(
@@ -1640,33 +1505,7 @@ public final class DetectorEngine {
   }
 
   public Optional<Detection> detectJdbcUrl(String url, RequestContext request) {
-    if (url == null || url.isBlank()) {
-      return Optional.empty();
-    }
-    String normalized = lower(url);
-    if (normalized.startsWith("jdbc:h2:")
-        && H2_INIT_SETTING.matcher(url).find()
-        && h2DangerousSql(url)) {
-      return Optional.of(
-          Detection.log(
-              "jdbc",
-              "jdbc_h2_init",
-              95,
-              "H2 JDBC URL uses INIT to load script or executable Java code",
-              request,
-              Map.of("url", abbreviate(url))));
-    }
-    if (mysqlJdbcDeserializationUrl(url, request)) {
-      return Optional.of(
-          Detection.log(
-              "jdbc",
-              "jdbc_mysql_deserialization",
-              95,
-              "Request-controlled MySQL JDBC URL enables connector deserialization behavior",
-              request,
-              Map.of("url", abbreviate(url), "driver", mysqlJdbcDriver(normalized))));
-    }
-    return Optional.empty();
+    return JdbcDetector.detectJdbcUrl(url, request);
   }
 
   public Optional<Detection> detectSqlException(
@@ -1676,46 +1515,12 @@ public final class DetectorEngine {
       String errorMessage,
       String query,
       RequestContext request) {
-    String normalizedServer = lower(server);
-    String normalizedCode = errorCode == null ? "" : errorCode.trim();
-    String normalizedState = errorState == null ? "" : errorState.trim().toUpperCase(Locale.ROOT);
-    String normalizedMessage = lower(errorMessage);
-    String normalizedQuery = query == null ? "" : query;
-    if (!isSqlExceptionSignal(
-        normalizedServer, normalizedCode, normalizedState, normalizedMessage, normalizedQuery)) {
-      return Optional.empty();
-    }
-    return Optional.of(
-        Detection.log(
-            "sql_exception",
-            "sql_exception",
-            70,
-            "Database error signal detected: " + normalizedServer + " " + normalizedCode,
-            request,
-        Map.of(
-                "server", normalizedServer,
-                "errorCode", normalizedCode,
-                "errorState", normalizedState,
-                "message", abbreviate(errorMessage),
-                "query", abbreviate(query))));
+    return JdbcDetector.detectSqlException(server, errorCode, errorState, errorMessage, query, request);
   }
 
   public Optional<Detection> detectSqlRegex(
       String query, String regex, RequestContext request) {
-    if (query == null || query.isBlank() || regex == null || regex.isBlank()) {
-      return Optional.empty();
-    }
-    if (Pattern.compile(regex, Pattern.CASE_INSENSITIVE).matcher(query).find()) {
-      return Optional.of(
-          Detection.log(
-              "sql",
-              "sql_regex",
-              60,
-              "SQL query matched configured regex",
-              request,
-              Map.of("query", abbreviate(query), "regex", regex)));
-    }
-    return Optional.empty();
+    return JdbcDetector.detectSqlRegex(query, regex, request);
   }
 
   public Optional<Detection> detectCommand(List<String> command, RequestContext request) {
@@ -3597,32 +3402,6 @@ public final class DetectorEngine {
             "decision_basis", parserOpen ? "parser_url_open" : "declared_identifier")));
   }
 
-  private static boolean isSqlExceptionSignal(
-      String server, String code, String state, String message, String query) {
-    return switch (server) {
-      case "mysql" -> {
-        if (code.equals("1062")) {
-          yield query != null && Pattern.compile("(?i)rand").matcher(query).find();
-        }
-        if (code.equals("1064")) {
-          yield Pattern.compile("(?i)syntax").matcher(message).find()
-              && !Pattern.compile("(?i)in\\s*(\\(\\s*\\)|[^\\(\\w])").matcher(query).find();
-        }
-        yield Set.of("1060", "1105", "1367").contains(code);
-      }
-      case "pgsql" -> Set.of("42601", "22P02").contains(code) || Set.of("42601", "22P02").contains(state);
-      case "sqlite" -> code.equals("1")
-          && (message.contains("syntax") || message.contains("malformed match"));
-      case "oracle" -> Set.of("933", "29257", "20000", "904", "19202", "1756", "1740", "920", "907", "911")
-          .contains(code);
-      case "hsql" -> Set.of("-5583", "-5584", "-5590").contains(code)
-          || Set.of("42583", "42584", "42590").contains(state);
-      case "mssql" -> Set.of("105", "245").contains(code);
-      case "db2" -> state.equals("42603");
-      default -> false;
-    };
-  }
-
   private static boolean hasUnbalancedQuotes(String value) {
     long single = value.chars().filter(ch -> ch == '\'').count();
     long doubleQuote = value.chars().filter(ch -> ch == '"').count();
@@ -4028,30 +3807,6 @@ public final class DetectorEngine {
     return false;
   }
 
-  private static boolean h2DangerousSql(String value) {
-    if (value == null || value.isBlank()) {
-      return false;
-    }
-    return H2_REMOTE_RUNSCRIPT.matcher(value).find()
-        || (H2_CODE_CONTAINER.matcher(value).find() && H2_CODE_PRIMITIVE.matcher(value).find());
-  }
-
-  private static boolean mysqlJdbcDeserializationUrl(String url, RequestContext request) {
-    if (!request.active() || !request.hasParameterIn(url)) {
-      return false;
-    }
-    String normalized = lower(url);
-    if (!normalized.startsWith("jdbc:mysql:") && !normalized.startsWith("jdbc:mariadb:")) {
-      return false;
-    }
-    return MYSQL_JDBC_AUTO_DESERIALIZE.matcher(url).find()
-        && MYSQL_JDBC_DESERIALIZATION_TRIGGER.matcher(url).find();
-  }
-
-  private static String mysqlJdbcDriver(String normalizedUrl) {
-    return normalizedUrl.startsWith("jdbc:mariadb:") ? "mariadb" : "mysql";
-  }
-
   private static boolean looksLikeJavaBeanPollution(String parameterName) {
     if (parameterName == null || parameterName.isBlank()) {
       return false;
@@ -4398,10 +4153,6 @@ public final class DetectorEngine {
 
   private record OgcFilterSqlInjectionMatch(String parameter, int valueLength) {}
 
-  private record JsonStringField(String name, String value) {}
-
-  private record JsonStringToken(String value, int nextIndex) {}
-
   private record XmlTextField(String name, String value) {}
 
   private record RequestExpressionParameterNameMatch(
@@ -4436,10 +4187,6 @@ public final class DetectorEngine {
       String targetParameter, String targetType, String locationType, int valueLength) {}
 
   private record PlotCommandInjectionMatch(String parameter, int valueLength) {}
-
-  private record SqlSortInjectionMatch(String field, int valueLength) {}
-
-  private record SqlIdentifierInjectionMatch(String field, int valueLength) {}
 
   private record InternalResourceMatch(String component, String resource, String variant) {}
 
@@ -4917,10 +4664,6 @@ public final class DetectorEngine {
     return Optional.empty();
   }
 
-  private static String normalizeParameterName(String name) {
-    return name == null ? "" : name.replace("_", "").replace("-", "").toLowerCase(Locale.ROOT);
-  }
-
   private static boolean isBlank(String value) {
     return value == null || value.isBlank();
   }
@@ -5330,15 +5073,6 @@ public final class DetectorEngine {
     }
   }
 
-  private static boolean h2JdbcInitConfig(String value) {
-    if (value == null || value.isBlank()) {
-      return false;
-    }
-    return lower(value).contains("jdbc:h2:")
-        && H2_INIT_SETTING.matcher(value).find()
-        && h2DangerousSql(value);
-  }
-
   private static boolean dangerousJavaConfigConstructor(String value) {
     for (String variant : decodedVariants(value)) {
       String normalized = lower(variant).replace('/', '.');
@@ -5523,22 +5257,6 @@ public final class DetectorEngine {
 
   private static String jsonBodyParameter(String name) {
     return "body." + (name == null || name.isBlank() ? "<unnamed>" : name);
-  }
-
-  private static boolean jsonConfigBody(RequestContext request) {
-    if (request.body().isBlank()) {
-      return false;
-    }
-    String method = lower(request.method());
-    if (!method.equals("post") && !method.equals("put") && !method.equals("patch")) {
-      return false;
-    }
-    String trimmed = request.body().trim();
-    if (!trimmed.startsWith("{") && !trimmed.startsWith("[")) {
-      return false;
-    }
-    String contentType = lower(request.header("content-type").orElse(""));
-    return contentType.isBlank() || contentType.contains("json");
   }
 
   private static Optional<MessageSelectorExpressionMatch> messageSelectorExpression(
@@ -7118,53 +6836,6 @@ public final class DetectorEngine {
     return values;
   }
 
-  private static List<JsonStringField> jsonStringFields(String json) {
-    if (json == null || json.isBlank()) {
-      return List.of();
-    }
-    var fields = new ArrayList<JsonStringField>();
-    int index = 0;
-    while (index < json.length()) {
-      int quote = json.indexOf('"', index);
-      if (quote < 0) {
-        break;
-      }
-      Optional<JsonStringToken> key = parseJsonString(json, quote);
-      if (key.isEmpty()) {
-        index = quote + 1;
-        continue;
-      }
-      JsonStringToken keyToken = key.orElseThrow();
-      index = skipWhitespace(json, keyToken.nextIndex());
-      if (index >= json.length() || json.charAt(index) != ':') {
-        continue;
-      }
-      index = skipWhitespace(json, index + 1);
-      if (index >= json.length()) {
-        continue;
-      }
-      if (json.charAt(index) == '[') {
-        int arrayValue = skipWhitespace(json, index + 1);
-        if (arrayValue < json.length()
-            && (json.charAt(arrayValue) == '"' || json.charAt(arrayValue) == ']')) {
-          index = addJsonStringArrayFields(json, index, keyToken.value(), fields);
-        } else {
-          index = arrayValue;
-        }
-        continue;
-      }
-      if (json.charAt(index) != '"') {
-        continue;
-      }
-      Optional<JsonStringToken> value = parseJsonString(json, index);
-      if (value.isPresent()) {
-        fields.add(new JsonStringField(keyToken.value(), value.orElseThrow().value()));
-        index = value.orElseThrow().nextIndex();
-      }
-    }
-    return fields;
-  }
-
   private static boolean xmlRequestBody(RequestContext request) {
     if (request == null || request.body().isBlank() || request.body().length() > 65536) {
       return false;
@@ -7203,85 +6874,6 @@ public final class DetectorEngine {
         .replace("&quot;", "\"")
         .replace("&apos;", "'")
         .replace("&amp;", "&");
-  }
-
-  private static int addJsonStringArrayFields(
-      String json, int arrayIndex, String fieldName, List<JsonStringField> fields) {
-    int current = skipWhitespace(json, arrayIndex + 1);
-    while (current < json.length() && json.charAt(current) != ']') {
-      if (json.charAt(current) != '"') {
-        current++;
-        continue;
-      }
-      Optional<JsonStringToken> value = parseJsonString(json, current);
-      if (value.isEmpty()) {
-        current++;
-        continue;
-      }
-      fields.add(new JsonStringField(fieldName, value.orElseThrow().value()));
-      current = skipWhitespace(json, value.orElseThrow().nextIndex());
-      if (current < json.length() && json.charAt(current) == ',') {
-        current = skipWhitespace(json, current + 1);
-      }
-    }
-    return current < json.length() ? current + 1 : current;
-  }
-
-  private static Optional<JsonStringToken> parseJsonString(String json, int quoteIndex) {
-    if (json == null
-        || quoteIndex < 0
-        || quoteIndex >= json.length()
-        || json.charAt(quoteIndex) != '"') {
-      return Optional.empty();
-    }
-    var value = new StringBuilder();
-    for (int i = quoteIndex + 1; i < json.length(); i++) {
-      char ch = json.charAt(i);
-      if (ch == '"') {
-        return Optional.of(new JsonStringToken(value.toString(), i + 1));
-      }
-      if (ch != '\\') {
-        value.append(ch);
-        continue;
-      }
-      if (++i >= json.length()) {
-        return Optional.empty();
-      }
-      char escaped = json.charAt(i);
-      switch (escaped) {
-        case '"', '\\', '/' -> value.append(escaped);
-        case 'b' -> value.append('\b');
-        case 'f' -> value.append('\f');
-        case 'n' -> value.append('\n');
-        case 'r' -> value.append('\r');
-        case 't' -> value.append('\t');
-        case 'u' -> {
-          if (i + 4 >= json.length()) {
-            return Optional.empty();
-          }
-          int codepoint = 0;
-          for (int j = 1; j <= 4; j++) {
-            int digit = Character.digit(json.charAt(i + j), 16);
-            if (digit < 0) {
-              return Optional.empty();
-            }
-            codepoint = (codepoint << 4) + digit;
-          }
-          value.append((char) codepoint);
-          i += 4;
-        }
-        default -> value.append(escaped);
-      }
-    }
-    return Optional.empty();
-  }
-
-  private static int skipWhitespace(String value, int index) {
-    int current = index;
-    while (current < value.length() && Character.isWhitespace(value.charAt(current))) {
-      current++;
-    }
-    return current;
   }
 
   private static RequestContext redactExpressionParameterRequest(RequestContext request) {
@@ -8504,110 +8096,7 @@ public final class DetectorEngine {
 
   /** Optional observations for policies that explicitly select request metadata. */
   public List<Detection> sqlRequestMetadata(RequestContext request, java.util.function.Predicate<String> selected) {
-    List<Detection> candidates = new ArrayList<>();
-    if (selected.test("request_sql_sort_injection")) {
-      sqlSortInjection(request).ifPresent(match -> candidates.add(sqlMetadataFinding(request,
-          "request_sql_sort_injection", match.field(), match.valueLength())));
-    }
-    if (selected.test("request_sql_identifier_injection")) {
-      sqlIdentifierInjection(request).ifPresent(match -> candidates.add(sqlMetadataFinding(request,
-          "request_sql_identifier_injection", match.field(), match.valueLength())));
-    }
-    return candidates;
-  }
-
-  private static Detection sqlMetadataFinding(RequestContext request, String algorithm, String field, int length) {
-    return Detection.log("request", algorithm, 90, "A request field contains SQL-like text",
-        new RequestContext(request.method(), request.uri(), "", Map.of(), Map.of()),
-        Map.of("field", field, "valueLength", String.valueOf(length), "decision_basis", "request_metadata"));
-  }
-
-  private static Optional<SqlSortInjectionMatch> sqlSortInjection(RequestContext request) {
-    if (request == null
-        || !request.active()
-        || !jsonConfigBody(request)
-        || !sqlSortContext(request)) {
-      return Optional.empty();
-    }
-    for (JsonStringField field : jsonStringFields(request.body())) {
-      if (isSqlSortInjectionField(field.name()) && dangerousSqlSortValue(field.value())) {
-        return Optional.of(new SqlSortInjectionMatch(field.name(), field.value().length()));
-      }
-    }
-    return Optional.empty();
-  }
-
-  private static boolean sqlSortContext(RequestContext request) {
-    if (!SQL_SORT_CONTROL_PATH.matcher(request.uri() == null ? "" : request.uri()).find()) {
-      return false;
-    }
-    return SQL_SORT_CONTEXT_BODY.matcher(request.body()).find();
-  }
-
-  private static boolean isSqlSortInjectionField(String name) {
-    return SQL_SORT_INJECTION_FIELD_NAMES.contains(normalizeParameterName(name));
-  }
-
-  private static boolean dangerousSqlSortValue(String value) {
-    if (value == null || value.isBlank() || value.length() > 512) {
-      return false;
-    }
-    String decoded = percentDecode(value).trim();
-    String normalized = lower(decoded);
-    if (normalized.equals("asc")
-        || normalized.equals("desc")
-        || normalized.equals("ascending")
-        || normalized.equals("descending")) {
-      return false;
-    }
-    return SQL_SORT_INJECTION_VALUE.matcher(decoded).find()
-        || SQL_POLICY.matcher(decoded).find();
-  }
-
-  private static Optional<SqlIdentifierInjectionMatch> sqlIdentifierInjection(
-      RequestContext request) {
-    if (request == null
-        || !request.active()
-        || !jsonConfigBody(request)
-        || !sqlIdentifierContext(request)) {
-      return Optional.empty();
-    }
-    for (JsonStringField field : jsonStringFields(request.body())) {
-      if (isSqlIdentifierInjectionField(field.name())
-          && dangerousSqlIdentifierValue(field.value())) {
-        return Optional.of(
-            new SqlIdentifierInjectionMatch(field.name(), field.value().length()));
-      }
-    }
-    return Optional.empty();
-  }
-
-  private static boolean sqlIdentifierContext(RequestContext request) {
-    if (!SQL_IDENTIFIER_CONTROL_PATH.matcher(request.uri() == null ? "" : request.uri()).find()) {
-      return false;
-    }
-    String body = request.body();
-    boolean graphqlBody =
-        body.contains("\"query\"")
-            && body.contains("\"variables\"")
-            && lower(body).contains("graphql");
-    return graphqlBody || SQL_IDENTIFIER_CONTEXT_BODY.matcher(body).find();
-  }
-
-  private static boolean isSqlIdentifierInjectionField(String name) {
-    return SQL_IDENTIFIER_INJECTION_FIELD_NAMES.contains(normalizeParameterName(name));
-  }
-
-  private static boolean dangerousSqlIdentifierValue(String value) {
-    if (value == null || value.isBlank() || value.length() > 512) {
-      return false;
-    }
-    String decoded = percentDecode(value).trim();
-    if (SAFE_SQL_IDENTIFIER_VALUE.matcher(decoded).matches()) {
-      return false;
-    }
-    return SQL_IDENTIFIER_INJECTION_VALUE.matcher(decoded).find()
-        || SQL_POLICY.matcher(decoded).find();
+    return SqlRequestIndicators.sqlRequestMetadata(request, selected);
   }
 
   private static Optional<String> jwtHmacAlgorithm(String headerPart) {
@@ -9130,27 +8619,6 @@ public final class DetectorEngine {
       }
     }
     return false;
-  }
-
-  private static String percentDecode(String value) {
-    if (value == null || value.indexOf('%') < 0) {
-      return value == null ? "" : value;
-    }
-    StringBuilder decoded = new StringBuilder(value.length());
-    for (int i = 0; i < value.length(); i++) {
-      char ch = value.charAt(i);
-      if (ch == '%' && i + 2 < value.length()) {
-        int high = Character.digit(value.charAt(i + 1), 16);
-        int low = Character.digit(value.charAt(i + 2), 16);
-        if (high >= 0 && low >= 0) {
-          decoded.append((char) ((high << 4) + low));
-          i += 2;
-          continue;
-        }
-      }
-      decoded.append(ch);
-    }
-    return decoded.toString();
   }
 
   private static String jettyLenientPercentDecode(String value) {
@@ -9922,10 +9390,6 @@ public final class DetectorEngine {
     return normalized.substring(dot + 1);
   }
 
-  private static String lower(String value) {
-    return value == null ? "" : value.toLowerCase(Locale.ROOT);
-  }
-
   private static Optional<Detection> dataLeak(
       String kind, String matchedValue, RequestContext request) {
     return Optional.of(
@@ -9998,13 +9462,7 @@ public final class DetectorEngine {
   }
 
   public static String abbreviate(String value) {
-    if (value == null) {
-      return "";
-    }
-    if (value.length() <= 300) {
-      return value;
-    }
-    return value.substring(0, 300) + "...";
+    return DetectorStrings.abbreviate(value);
   }
 
   public static List<String> commandFromObject(Object command) {
