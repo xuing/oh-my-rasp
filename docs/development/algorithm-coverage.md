@@ -20,8 +20,8 @@ same patch as any new Java-compatible Vulhub replay.
   Java 8 command hook logs `java8_command_execution_exploit_primitive` for
   exploit-grade process primitives such as `/etc/passwd` reads, reverse-shell
   patterns, and curl/wget-to-shell pipelines, and
-  `java8_command_execution_shell_meta` for shell `-c` invocations containing
-  command metacharacters. It logs by default and only blocks when
+  `java8_command_execution_shell_meta` for POSIX shell control syntax from a request or a
+  supported runtime configuration launcher. It logs by default and only blocks when
   `ohmyrasp.java8.block` or `OHMYRASP_JAVA8_BLOCK` is enabled.
   It also treats process execution reached from Solr
   `org.apache.solr.core.RunExecutableListener` as exploit-grade behavior,
@@ -397,8 +397,9 @@ same patch as any new Java-compatible Vulhub replay.
   `scripts/acceptance-vulhub-cxf-java8.sh` provides real Vulhub application
   evidence for XML attachment file reads: Apache CXF 3.2.14 CVE-2024-28752
   baseline resolves an Aegis/XOP `href="file:///etc/hosts"` reference and
-  returns base64-encoded hosts content, while protected mode blocks the
-  lower-level Java file read before that content is returned.
+  returns base64-encoded hosts content, while the historical protected build blocked the
+  lower-level Java file read. The retained path does not establish the source
+  information required by the [current file-read rules](../detection.md#host-file-reads).
   `scripts/acceptance-vulhub-rocketmq-37582-java8.sh` provides real Vulhub
   application evidence for script/executable writes: RocketMQ NameServer 5.1.0
   CVE-2023-37582 baseline redirects `configStorePath` to a traversal `.sh`
@@ -428,19 +429,9 @@ same patch as any new Java-compatible Vulhub replay.
   real Vulhub application evidence: OpenTSDB 2.4.0 and 2.4.1 baselines create
   marker files through Gnuplot `system` directives, while protected mode blocks
   the generated `.gnuplot` write before either marker is created.
-- The Java 8 era track hooks `URL.openConnection` and `openStream`. Cloud
-  metadata targets such as `169.254.169.254`, `169.254.170.2`,
-  `100.100.100.200`, `metadata.google.internal`, and `fd00:ec2::254` log
-  `java8_ssrf_cloud_metadata`; loopback administrative paths such as
-  `/actuator`, `/jolokia`, `/manager`, `/console`, and `/solr/admin` log
-  `java8_ssrf_loopback_admin`; and active-request parameters named like
-  `url`, `uri`, `href`, `endpoint`, `target`, `callback`, or `webhook` that
-  are copied into same-thread outbound HTTP(S) URL sinks log or block
-  `java8_ssrf_request_parameter_url`. Normal public HTTP(S) URLs that are not
-  request-controlled are ignored. DataEase APISIX route self-checks to
-  `127.0.0.1:9180/apisix/admin/...` stay quiet only from the DataEase
-  `XpackRouteManage` Spring ready-event startup stack; the same URL outside
-  that stack still blocks as loopback admin SSRF.
+- The Java 8 era track reports cloud metadata, request-selected loopback
+  administrative destinations and request-selected internal HTTP endpoints at the
+  [JDK transport boundaries](../detection.md#http-transport-evidence).
 - The Java 8 era track hooks `ZipEntry.getName` and SevenZipBinding
   `SimpleInArchiveItemImpl.getPath`, then correlates dangerous entry names with
   the next Java file-write sink on the same thread. Absolute paths, Windows
@@ -482,17 +473,10 @@ same patch as any new Java-compatible Vulhub replay.
   `select count(1) total from ...` error, while protected mode blocks in the
   OAP JVM before the SQL is built and does not store the raw metric value in
   the event log.
-  The Java 8/11/17 JDBC-era transformers also hook MyBatis
-  `org.apache.ibatis.mapping.BoundSql` construction. When the final SQL
-  contains an `order by` clause, the hook inspects MyBatis parameter objects
-  for sort metadata such as `orders[].type`, `orders[].name`, and
-  `orders[].prefix`; suspicious identifier or direction values log or block
-  the era-specific `javaX_sql_identifier_injection` algorithm while normal
-  values such as `desc` stay quiet. Real Java 8 Vulhub evidence is provided by
-  `scripts/acceptance-vulhub-metersphere-45788-java8.sh`: baseline
-  MeterSphere 1.15.4 reaches the time-delay order-by path, while protected mode
-  blocks at `MyBatis.BoundSql` with `java8_sql_identifier_injection` and does
-  not log the session id, CSRF token, or raw SQL value.
+  The MyBatis path records actual mapper substitutions and checks their
+  positions at JDBC. See [MyBatis dynamic SQL](../detection.md#mybatis-dynamic-sql)
+  for policy behavior and the [Vulhub ledger](vulhub-coverage.md) for the
+  earlier MeterSphere evidence.
 - The Java 8 era track hooks `URLClassLoader` constructors, `addURL`, and
   `RMIClassLoader` codebase APIs. Remote HTTP(S), FTP, LDAP, or RMI codebases,
   including `jar:` URLs that wrap one of those remote schemes, log
@@ -567,18 +551,17 @@ same patch as any new Java-compatible Vulhub replay.
   XMLDecoder object graphs that construct server-side script writers log
   `java8_xml_decoder_script_file_write`; ordinary JavaBeans statements outside
   an XMLDecoder stack are ignored.
-- The Java 8 era track hooks Xerces `XMLEntityManager.setupCurrentEntity`.
-  XML external entities that resolve to `file:`, `jar:`, HTTP(S), FTP, LDAP,
-  RMI/IIOP/CORBA-style, SMB/UNC, or similar remote-capable protocols log
-  `java8_xxe_external_entity_protocol`; ordinary XML without external
-  entities is ignored. Exact framework runtime DTD URLs for Jetty, Java
-  EE/Servlet/JSP/JSF, Spring, MyBatis mapper/config XML, embedded Tomcat
-  modeler and Struts plugin metadata loaded from local fat JARs, standard local
-  Struts2/XWork descriptor XML files such as classpath `struts*.xml`, simple
-  classpath-root XML includes loaded by XWork `XmlConfigurationProvider`, and
-  trusted local Struts/XWork `*-validation.xml` action metadata are treated as
-  normal bootstrapping metadata, while arbitrary HTTP(S) DTDs, out-of-stack
-  local app XML reads, and untrusted local validation XML paths remain covered.
+- The XML hook covers the JDK parser and standalone Apache Xerces. It checks the
+  expanded destination immediately before the entity manager opens a URL. The
+  parser can consume an application-supplied reader or byte stream directly.
+  An application-supplied main document has its own parser role.
+  A packaged DTD can be selected by a SAX resolver mapping an HTTP(S) identifier
+  to a local archive in the context class loader's URL search path. A relative
+  sibling DTD can also be resolved in the same archive when the parser itself
+  opened the root document there. These checks use parser object identity and
+  archive location. Supplying a base URI alone grants no local archive access.
+  Live hooks record `parser_url_open` for this transport decision. Earlier
+  events from method entry only identify a proposed entity source.
   `scripts/acceptance-vulhub-solr-xxe-java8.sh` provides real Vulhub
   application evidence: Solr 7.0.1 CVE-2017-12629 baseline uses
   `defType=xmlparser` with the Lucene query-parser JAR DTD indirection to
@@ -669,8 +652,8 @@ same patch as any new Java-compatible Vulhub replay.
 - The Java 11 era track hooks process execution:
   `ProcessBuilder.start` and `Runtime.exec` are transformed by the dedicated
   Java 11 agent. Exploit-grade process primitives log or block
-  `java11_command_execution_exploit_primitive`; shell `-c` invocations
-  containing command metacharacters log or block
+  `java11_command_execution_exploit_primitive`; shell control syntax from a request
+  or a supported configuration launcher can log or block
   `java11_command_execution_shell_meta`; normal `/bin/true` smoke and Tomcat
   traffic stay quiet. Dynamic expression-language stacks such as MVEL, OGNL,
   Groovy, Apache Commons JEXL, Spring SpEL, and Spring WebFlow are attributed to
@@ -747,21 +730,9 @@ same patch as any new Java-compatible Vulhub replay.
   `java11_archive_entry_traversal_write`; safe archive entries and ordinary
   temporary extraction writes stay quiet. The Java 11 Tomcat 10.1 and Tomcat 9
   matrix verifies the behavior in both baseline and protected containers.
-- The Java 11 era track hooks `URL.openConnection` and `openStream`. Cloud
-  metadata targets such as `169.254.169.254`, `169.254.170.2`,
-  `100.100.100.200`, `metadata.google.internal`, and `fd00:ec2::254` log or
-  block `java11_ssrf_cloud_metadata`; loopback administrative paths such as
-  `/actuator`, `/jolokia`, `/manager`, `/console`, and `/solr/admin` log or
-  block `java11_ssrf_loopback_admin`; and active-request parameters named like
-  `url`, `uri`, `href`, `endpoint`, `target`, `callback`, or `webhook` that
-  are copied into same-thread outbound HTTP(S) URL sinks log or block
-  `java11_ssrf_request_parameter_url`. Normal public HTTP(S) URLs that are not
-  request-controlled are ignored,
-  and DataEase APISIX route self-checks to
-  `127.0.0.1:9180/apisix/admin/...` stay quiet only from the DataEase
-  `XpackRouteManage` Spring ready-event startup stack. The same URL outside
-  that stack still blocks as loopback admin SSRF, and the Java 11 Tomcat
-  10.1/Tomcat 9 matrix verifies both SSRF behaviors.
+- The Java 11 era track reports cloud metadata, request-selected loopback
+  administrative destinations and request-selected internal HTTP endpoints at the
+  [JDK transport boundaries](../detection.md#http-transport-evidence).
 - The Java 11 era track hooks `URLClassLoader` constructors and `addURL`, plus
   `RMIClassLoader` codebase APIs. Remote HTTP(S), FTP, LDAP, and RMI
   codebases, including `jar:` URLs that wrap remote schemes, log or block
@@ -910,12 +881,10 @@ same patch as any new Java-compatible Vulhub replay.
   `java17_archive_entry_traversal_write` for ZipEntry and SevenZipBinding
   ZipSlip-style entry extraction, plus
   `java17_ssrf_cloud_metadata` for cloud metadata hosts and
-  `java17_ssrf_loopback_admin` for loopback administrative paths, and
-  `java17_ssrf_request_parameter_url` for active-request parameters copied into
-  same-thread outbound HTTP(S) URL sinks. DataEase APISIX route self-checks to
-  `127.0.0.1:9180/apisix/admin/...` stay quiet only from the DataEase
-  `XpackRouteManage` Spring ready-event startup stack; the same URL outside
-  that stack still blocks as loopback admin SSRF. It also logs or blocks
+  `java17_ssrf_loopback_admin` for request-selected loopback administrative
+  routes and `java17_ssrf_request_parameter_url` for request-selected internal
+  destinations under the [HTTP transport rules](../detection.md#http-transport-evidence).
+  It also logs or blocks
   `java17_classloader_remote_codebase` for URLClassLoader or
   RMIClassLoader remote codebases. Process sinks reached from MVEL, OGNL,
   Groovy, Apache Commons JEXL, Spring SpEL, Spring WebFlow, or database Java
@@ -989,13 +958,8 @@ same patch as any new Java-compatible Vulhub replay.
   `ProcessImpl` type error; protected mode injects `agent-java17`, keeps
   Jetty/Servlet/Spring runtime DTD startup quiet, and blocks the same request
   with `java17_command_execution_exploit_primitive`.
-- `scripts/acceptance-vulhub-geoserver-40822-java17.sh` runs real Java 17
-  GeoServer Vulhub application acceptance for CVE-2021-40822. It starts
-  `vulhub/geoserver:2.19.1` baseline/protected pairs, verifies the baseline
-  `/geoserver/TestWfsPost` form post relays a request-parameter-controlled
-  `url` to an isolated listener, keeps protected startup quiet for OSHI system
-  inventory probes, and blocks the same outbound URL sink with
-  `java17_ssrf_request_parameter_url` before the listener receives the relay.
+- The [Vulhub ledger](vulhub-coverage.md) records the historical GeoServer
+  CVE-2021-40822 application run and the limits of its factory-level evidence.
 - `scripts/acceptance-vulhub-geoserver-25157-java17.sh` runs real Java 17
   GeoServer Vulhub application acceptance for CVE-2023-25157/CVE-2023-25158.
   It starts `vulhub/geoserver:2.22.1` with
@@ -1133,7 +1097,7 @@ same patch as any new Java-compatible Vulhub replay.
 - `request_path_confusion`
 - `request_internal_resource`
 - `request_forged_include_attribute`
-- `command_reflect`
+- [`command_reflect`](../detection.md#process-launches)
 - `command_userinput`
 - `command_common`
 - `command_error`
@@ -1151,9 +1115,9 @@ same patch as any new Java-compatible Vulhub replay.
 - `writeFile_reflect`
 - `writeFile_config_path`
 - `writeFile_generated_script`
-- `deleteFile_userinput`
+- [`deleteFile_userinput`](../detection.md#host-file-deletion)
 - `directory_reflect`
-- `directory_userinput`
+- [`directory_userinput`](../detection.md#host-directory-listings)
 - `directory_unwanted`
 - `ssrf_userinput`
 - `ssrf_aws`
@@ -1231,6 +1195,12 @@ same patch as any new Java-compatible Vulhub replay.
 
 ## Hook Architecture Notes
 
+- Synchronous servlet dispatches suspend the caller's request evidence, response
+  binding and pending archive member. Servlet exit restores the caller on normal
+  return and on propagated application exceptions. At a pre-servlet valve or
+  filter, backports inspect the query string of multipart requests. The target
+  servlet supplies the full parameter map after its multipart configuration is
+  available.
 - The ASM transformer delegates hook selection to `HookRegistry`. Each runtime
   family has its own small `HookModule`, such as process, file, network, JNDI,
   expression engines, polymorphic deserialization, SQL, servlet, and XXE. This keeps hook-point expansion
@@ -1863,35 +1833,12 @@ same patch as any new Java-compatible Vulhub replay.
   `key=;system ...` Gnuplot injection before the generated plot script is
   written, while requiring graph/query endpoint context and multiple plot
   markers.
-- `request_sql_sort_injection` covers JSON list/search/table APIs where sort or
-  order metadata fields carry SQL control expressions instead of ordinary
-  direction values such as `asc` or `desc`. This targets MeterSphere-style
-  order-by injection in `orders[].type`, while requiring a JSON sort/order body
-  context and logging only field name and value length. The playground and
-  acceptance suite include the Vulhub-shaped MeterSphere
-  `POST /test/case/list/1/10` case-list request.
-- `request_sql_identifier_injection` covers JSON and GraphQL API bodies where
-  identifier-like fields such as `metricName`, `tableName`, or `columnName`
-  carry SQL control syntax instead of ordinary identifier values. This targets
-  SkyWalking GraphQL metric-name SQL injection and MyBatis order-by metadata
-  injection such as MeterSphere CVE-2021-45788, while ignoring normal metric
-  names such as `service_instance_jvm_memory.max` and normal sort directions
-  such as `asc` or `desc`. The request classifier logs only field name and
-  value length; the lower-level MyBatis `BoundSql` hook logs only source,
-  parameter, reason, and value length for `orders[].type`, `orders[].name`, and
-  `orders[].prefix`. The playground and acceptance suite include the
-  Vulhub-shaped SkyWalking 8.3.0 `POST /graphql` `metricName` request. Real
-  Java 8 SkyWalking Vulhub evidence is provided by
-  `scripts/acceptance-vulhub-skywalking-java8.sh`: baseline SkyWalking 8.3.0
-  passes the GraphQL `metricName` into the H2-backed query and returns an SQL
-  error containing the injected table expression, while protected mode blocks
-  the lower-level `H2LogQueryDAO.queryLogs` identifier argument with
-  `java8_sql_identifier_injection`. Real Java 8 MeterSphere Vulhub evidence is
-  provided by `scripts/acceptance-vulhub-metersphere-45788-java8.sh`: baseline
-  MeterSphere 1.15.4 delays through the case-list sort direction, while
-  protected mode blocks the lower-level MyBatis `BoundSql` order metadata with
-  `java8_sql_identifier_injection` without logging the session id, CSRF token,
-  or raw SQL value.
+- `request_sql_sort_injection` and `request_sql_identifier_injection` are
+  selectable JSON metadata observations for report and GraphQL fields.
+  The [mapper and JDBC rules](../detection.md#mybatis-dynamic-sql) examine
+  actual SQL. The SkyWalking DAO hook separately observes the identifier
+  argument. The [Vulhub ledger](vulhub-coverage.md) records the historical
+  SkyWalking and MeterSphere application checks and their evidence.
 - `request_ogc_filter_sql_injection` covers OGC/WFS/WMS/WPS filter parameters
   such as `CQL_FILTER`, `ECQL_FILTER`, or `FILTER` when they carry SQL-only
   control primitives like nested `SELECT`, `CAST(SELECT ...)`, comments, or
@@ -1994,10 +1941,11 @@ same patch as any new Java-compatible Vulhub replay.
   runtime configuration launchers, such as RocketMQ filter-server startup
   commands built from broker configuration in CVE-2023-33246. This is
   stack-gated so ordinary scheduler-launched low-signal commands such as
-  `touch /tmp/success` are not treated as attacks by themselves. The real
-  Java 8 RocketMQ Vulhub acceptance also verifies that the lower-level
-  filter-server shell command emitted by `rocketmq-attack` is blocked as
-  `java8_command_execution_shell_meta` before the marker file is created.
+  `touch /tmp/success` are not treated as attacks by themselves. The direct
+  process caller must be the configuration owner, or its launch helper called
+  by that owner. The retained Java 8 Vulhub run recorded a
+  `java8_command_execution_shell_meta` block under the earlier policy.
+  Its event does not retain the stack needed to recheck the direct-caller condition.
 - `readFile_userinput_unwanted` covers request-controlled file read targets
   that use unwanted local or interpreter protocols such as `file:` or `php:`.
   This targets Metabase CVE-2021-41277-style GeoJSON fetches like
@@ -2014,13 +1962,19 @@ same patch as any new Java-compatible Vulhub replay.
   expected input. A constant predicate in that directly submitted report can
   select all rows. File and timing function signatures still apply. A fixed conjunction
   or unequal comparison in an application query can pass. The driver determines
-  whether dollar-quoted text is a literal. Comments between SQL tokens act as separators. A request-supplied
-  comment opener is checked at its position in the statement.
-- The primary agent accepts ordinary HTTP requests without a User-Agent. Tomcat
-  deployment directory scans are excluded from reflective-listing alerts when
-  the file API caller belongs to the deployment scanner outside an active request.
-- `readFile_userinput` checks direct path input, sensitive file targets, and relative
-  request paths whose parent segments escape their starting directory. An ordinary
+  whether dollar-quoted text is a literal. PostgreSQL tags are case-sensitive.
+  A matched request fragment must supply the executable separator and verb for a stacked statement.
+  The SQL hook examines JDBC templates before preparation and statement execution. Option arguments
+  and bound parameters keep their JDBC meaning. The primary agent also observes application calls
+  through standard JDBC interfaces. Agent attachment can instrument already loaded, modifiable
+  JDBC implementations. See [SQL syntax-aware detection](../detection.md#sql-syntax-aware-detection).
+- The primary agent accepts ordinary HTTP requests without a User-Agent.
+  Reflective file operations are attributed to their caller at the file API.
+  A script extension alone is insufficient evidence for a background write.
+  Archive traversal and configuration-persistence checks run independently.
+- `readFile_userinput` checks input associated with protected file targets and relative
+  request paths whose parent segments escape their starting directory. Ordinary absolute
+  report paths can be selected by a managed rule. See [host file reads](../detection.md#host-file-reads). An ordinary
   extension does not suppress a request-controlled traversal. This applies at the
   Java file-read sink. It covers direct file-disclosure helpers such as the
   Vulhub WebLogic weak-password lab `GET /hello/file.jsp?path=/etc/passwd`,
@@ -2062,16 +2016,30 @@ same patch as any new Java-compatible Vulhub replay.
   read-only or background MBean activity. The playground and acceptance suite
   include the Vulhub-shaped ActiveMQ `/api/jolokia/` Broker MBean invocation
   used by the CVE-2024-32114 plus CVE-2026-34197 chain.
-- `jmx_file_write` covers request-time JMX/MBean invocations that pass a
-  server-side script path to a mutating operation. This targets Jolokia MBean
-  write chains such as Log4j2 configuration rewrites and JFR `copyTo` webshell
-  writes without product-specific endpoint matching. The playground and
-  acceptance suite include the Vulhub-shaped ActiveMQ CVE-2022-41678
-  `/api/jolokia/` Log4j2 `setConfigText` and FlightRecorder `copyTo`
-  file-write flows.
+- For `jmx_file_write`, see [JMX invocation arguments](../detection.md#jmx-invocation-arguments).
+- At Java process sinks, `Runtime.exec(String)` uses the JDK's whitespace
+  tokenization. For a direct POSIX shell invocation the syntax checks inspect
+  the inline program supplied with `-c`. Later arguments are positional data.
+  Quoted or escaped punctuation and shell comments are excluded from operator
+  evidence, and ordinary positional parameter expansion alone is insufficient.
+  The primary agent and servlet-aware backports correlate request parameters
+  with operators or command words in that program. At the backport process
+  hook, shell operators also count as evidence when the registered configuration
+  launcher calls the JVM process API directly or through its own launch helper.
+  A shell pipeline alone supplies no evidence about its source. Terminal
+  redirection follows the same rule, including when a request supplies the
+  redirection operator. Command-content
+  signatures and the other stack-based policies are evaluated separately.
+- Backport process detections record `details.decision_basis` at the point
+  where the rule matches. It distinguishes argument evidence from the observed
+  execution context, such as deserialization or expression evaluation. The
+  classifier takes one stack snapshot for the command-context predicates.
+  Archive upload detections that depend on a deployment context record that
+  basis as well. The reason label describes a decision already made. Rechecking
+  the original classification still requires the context that produced it.
 - `deserialization_gadget` extends Java object stream coverage beyond exact
   blacklist types to known ysoserial gadget families, including BeanShell,
-  ROME, C3P0, and Commons BeanUtils classes used by vulhub cases such as JMeter
+  ROME, C3P0, and the Commons BeanUtils `BeanComparator` type used by Vulhub cases such as JMeter
   RMI, ActiveMQ object message deserialization, and ColdFusion AMF payloads.
   The playground and acceptance suite include the Vulhub-shaped
   `/flex2gateway/amf` `application/x-amf` Java object stream path for Adobe
@@ -2080,6 +2048,16 @@ same patch as any new Java-compatible Vulhub replay.
   execution succeeds through the AMF gadget chain, while protected mode blocks
   the same request at the later `Runtime.exec(String)` sink because the process
   execution occurs inside the Java deserialization stack.
+  Ordinary BeanUtils dynamic form and schema objects can be restored in the
+  same stream. The serial guard delegates its enforcement decision to the
+  normal policy evaluator. When composing a preconfigured JVM filter with a
+  per-stream filter, either filter's rejection takes precedence. The
+  [filter composition model](../../java-agent/verification/SerialFilterComposition.tla)
+  covers construction, stream-specific attachment and tri-state decisions
+  in this factory path. Run TLC with the
+  [model configuration](../../java-agent/verification/SerialFilterComposition.cfg)
+  from the model directory.
+
 - `deserialization_cluster_message` covers dangerous Java deserialization
   gadget classes resolved while a cluster or message replication transport is
   unmarshalling data, such as Tomcat Tribes stack frames. This targets
@@ -2344,7 +2322,8 @@ same patch as any new Java-compatible Vulhub replay.
   CVE-2024-23897 CLI vectors for `help 1 "@/proc/self/environ"` and
   `connect-node "@/etc/passwd"`.
 - The primary agent's `ssrf_userinput` checks request-supplied destinations
-  and internal administrative routes. Business values in the path or query of
+  and internal administrative routes. For local file URLs, the checks use
+  path control, sensitive locations and the URL authority. Business values in the path or query of
   a fixed upstream and routine internal health checks can pass. XML attachment
   resolvers also check internal IP literals, including IPv6. Cloud metadata and
   DNS callback rules match destination hosts at DNS label boundaries. The Java 8/11/17
@@ -2366,9 +2345,9 @@ same patch as any new Java-compatible Vulhub replay.
   This targets Apache CXF Aegis-style `xop:Include href` SSRF/file reads while
   leaving ordinary `cid:` attachments and public HTTP references alone. The
   playground and acceptance suite include the Vulhub-shaped
-  `/test` multipart SOAP request for Apache CXF CVE-2024-28752, and the real
-  Java 8 Vulhub acceptance verifies the lower-level file-read sink blocks the
-  same `file:///etc/hosts` XOP reference before disclosure.
+  `/test` multipart SOAP request for Apache CXF CVE-2024-28752, and an earlier
+  Java 8 Vulhub acceptance recorded a lower-level file block. Current builds
+  correlate local attachments with the data source that actually opens the file.
 - `fileUpload_path_traversal` covers multipart upload filenames that contain
   parent-directory or absolute-path attempts, including encoded forms. This
   targets arbitrary file writes such as Apache Flink `/jars/upload` filename
@@ -2392,21 +2371,10 @@ same patch as any new Java-compatible Vulhub replay.
   filename length so expression payloads are not echoed into security logs. The
   playground and acceptance suite include the Vulhub-shaped `/index.action`
   multipart upload filename payload for S2-046/CVE-2017-5638.
-- `fileUpload_java_archive` covers uploads of Java executable archives such as
-  JAR, WAR, EAR, or `.class` files only when the active request context is a
-  plugin, extension, driver, connector, job, or JAR deployment surface. This
-  targets plugin/JAR execution surfaces such as MeterSphere plugin upload and
-  Flink JAR upload without blocking ordinary repository artifact uploads. The
-  playground and acceptance suite include the Vulhub-shaped MeterSphere
-  `POST /plugin/add` multipart `Evil.jar` upload across Java 17/Tomcat
-  11/10.1/9, Java 11/Tomcat 10.1/9, and Java 8/Tomcat 10.0/9/8.5. Real
-  Vulhub evidence is `scripts/acceptance-vulhub-metersphere-plugin-java8.sh`:
-  baseline MeterSphere 1.16.3 loads the official Vulhub Backdoor plugin and
-  executes `org.vulhub.Evil`, while protected mode blocks the same upload at
-  `MultipartUpload.filename` before the plugin JAR is written or loaded. The
-  real Java 8 Flink Vulhub acceptance also verifies that the lower-level
-  file-move sink blocks a traversal `.jar` upload before the marker content is
-  created.
+- `fileUpload_java_archive` enforces the [declared upload policy](../detection.md#java-archive-upload-authorization)
+  at the multipart filename hook. The playground declares a deployment freeze
+  for its upload control. Historical MeterSphere and Flink results and their
+  validation boundaries are recorded in the [Vulhub ledger](vulhub-coverage.md).
 - `fileUpload_webdav` covers WebDAV-style `MOVE`/`COPY` operations that produce
   server-side script files or write to unsafe absolute filesystem destinations.
   This targets ActiveMQ fileserver CVE-2016-3088 shapes such as moving an

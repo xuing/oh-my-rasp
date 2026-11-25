@@ -2,6 +2,12 @@
 
 OhMyRASP intercepts dangerous JDK operations inside the running JVM rather than inspecting traffic at a network boundary. This document describes the five-stage detection pipeline, active detection techniques, false-positive evaluation, and deployment limits.
 
+## Rule scope
+
+Classify the decision by the evidence it needs. Request input contributing control syntax to a shell program can be recognized in different applications. A decision that depends on how a particular product launches that process belongs with that product. A library-specific hook can still provide evidence for a general decision at a standard runtime boundary.
+
+For new shared decision code, place cross-product predicates in [general rules](../java-agent/shared/src/main/java/io/ohmyrasp/agent/rules/general/) and implementation-specific predicates under [product rules](../java-agent/shared/src/main/java/io/ohmyrasp/agent/rules/product/). Keep hook wiring with the runtime subsystem. When two branches share a policy ID, record each basis in the appropriate catalog. Scope and blocking confidence are independent. See the [rule scope tables](../java-agent/docs/DETECTION-COVERAGE.md#rule-scope).
+
 ## Detection pipeline
 
 Every detection decision passes through the same pipeline:
@@ -40,6 +46,50 @@ A "verified algorithm signature" means an end-to-end acceptance test launched a 
 
 ## Detection techniques
 
+### Java archive upload authorization
+
+The filename hook can enforce an application-declared role when application code or
+its multipart framework reads the submitted name of a JAR, WAR, EAR or class file.
+Declare the operation in the web application's `WEB-INF/web.xml`. For example, a
+deployment endpoint can require the servlet role assigned to release engineers.
+
+```xml
+<context-param>
+  <param-name>ohmyrasp.archiveUpload.POST/releases/import</param-name>
+  <param-value>role:release-engineer</param-value>
+</context-param>
+```
+
+The key uses the HTTP method followed by the servlet path and path info, relative
+to the current application. Matching is exact. The agent calls the current
+request's `isUserInRole` at the filename hook. A false result produces
+`required_role_denied`. Use the role that the deployment actually defines for
+that operation. The value `deny` declares a freeze on Java archive uploads to
+the operation. Its decision basis is `archive_upload_denied`. Monitor mode
+records either finding. Block mode can enforce it.
+
+Without a declaration, the local role check stays quiet. Includes and unavailable
+role information supply no role denial. On the primary agent a distributed rule
+can still explicitly select `fileUpload_java_archive` by algorithm name or an
+equality condition to observe or prohibit archive submissions on deployment
+surfaces. Its decision basis is `deployment_context`. A filename or route gives
+no evidence of a failed authorization check. Applications using an object-level
+ACL or a custom uploader still need their own operation-level access checks.
+
+For additional Servlet Part and Spring MultipartFile implementations the archive
+check follows a part returned by the current request. Single-item lookup, indexing
+a returned list, and consuming a returned collection's iterator are observed at
+their actual handoffs. The agent does not enumerate the collection or ask the part
+for its filename again. A matching method name on an unrelated object does not
+establish an upload. A later request needs its own part lookup. Custom bulk access
+through unobserved helpers, streams or maps can lack this evidence.
+
+A declared-policy denial records the SHA-256 of the exact context parameter key,
+a zero byte and the trimmed configured value, encoded in UTF-8. An observed
+request lookup is identified in the event when available. The digest lets an
+operator compare a retained deployment declaration without recording principal
+or role names. A historical filename event alone cannot reconstruct authorization.
+
 ### Request-parameter substring correlation
 
 Request parameter values (and bounded request bodies up to 8192 characters) are captured into `ThreadLocal<RequestContext>` at HTTP entry. `RequestContext.hasParameterIn(value)` checks whether a dangerous sink argument contains a parameter value of at least 2 characters, a parameter name of at least 8 characters with non-alphanumeric delimiters, or matches within the request body for sink values of at least 8 characters. This is value-level substring correlation, not bytecode dataflow taint tracking: if an application transforms a parameter string before reaching the sink in a way that breaks substring matching, correlation will not trigger, while structural and call-stack rules still evaluate the sink.
@@ -61,14 +111,36 @@ A novel Struts2 bypass that passes through OGNL evaluation is caught at the proc
 
 `detectSql` combines parameter correlation with structural SQL analysis across partitioned rule sets:
 
-- **`SQLI_USER_INPUT`:** injection structures correlated with request parameters (`OR`/`AND` tautologies, `UNION SELECT`, comment prefixes `--`, `#`, `/*`).
-- **`SQLI_STRUCTURAL`:** standalone structural injection signatures (quote-terminated comments `['"]\s*--`, quote-terminated `OR`/`AND` tautologies, and unquoted `OR <id>=<id>` tautologies) enforced across driver-wide JDBC `Statement` sinks even outside an active HTTP `RequestContext`, while leaving benign `WHERE 1=1 AND ...` query-builder prefixes quiet.
-- **`SQL_POLICY`:** schema enumeration (`information_schema`) and file-export keywords (`INTO OUTFILE`, `LOAD_FILE`).
+- The shared SQL lexer correlates a request value with its location in executable SQL. Literals and ordinary comments keep their boundaries. PostgreSQL dollar-quote tags and H2 block-comment nesting are interpreted using driver evidence. At an unidentified pool or proxy, ambiguous text can be rechecked at the concrete driver.
+- Template preparation includes callable statements and JDBC options for generated keys, result-set behavior and holdability. Binding a value supplies data to the prepared template. The primary call-site hook preserves the option arguments and inspects the receiver and SQL template. A preparation finding records a submission to the driver. Evidence of execution requires a later observation.
+- Independent structural checks cover a constant disjunction, a truncated literal and configured file or timing operations. The primary H2 classifier checks the command and its source operand in one declaration. Derby routine signatures require executable clauses in the same statement.
 - **H2 code execution:** `CREATE ALIAS` and `CREATE TRIGGER` with `AS $$` Java inline blocks (covering CVE-2022-23221 and variants), plus H2 `INIT` URL checks in `detectJdbcUrl`.
 - **Derby code execution:** `SQLJ.INSTALL_JAR` and `LANGUAGE JAVA EXTERNAL NAME` procedure patterns.
 - **`detectSqlRegex`:** GeoServer OGC filter CQL injection (`strConcat`, Jiffle script fragments).
 
 Zero false positives on the benign SQL corpus (see [False-positive methodology](#false-positive-methodology)).
+
+### MyBatis dynamic SQL
+
+The mapper hook observes raw property substitutions as MyBatis appends them. It
+propagates their character offsets through token parsing, bound placeholders,
+dynamic SQL assembly, trim nodes, whitespace compaction and observed PageHelper
+SQL builder copies. The parameter
+object stays in the application. At JDBC, the agent checks whether the final
+template contains executable syntax introduced by a marked range. Findings
+record the reason and the decision basis `mapper_substitution_at_jdbc`.
+
+An unchanged copy returned by the same `BoundSql` can be checked during its
+statement handler's JDBC call. A replacement SQL string with different text
+needs its own source evidence. JDBC's general SQL checks still apply.
+Computed OGNL expressions, custom language drivers and arbitrary third-party
+rewrites can lack origin information. Raw substitution identifies a source of
+SQL text; application authorization is a separate question. [MyBatis mapper reference](https://mybatis.org/mybatis-3/sqlmap-xml.html#String_Substitution)
+
+The primary agent makes the JSON-only observations `request_sql_sort_injection`
+and `request_sql_identifier_injection` available to distributed policies that
+explicitly select them. Use a log action to observe those fields. The default
+mapper decision waits for JDBC.
 
 ### Deserialization defenses
 
@@ -85,6 +157,18 @@ Multiple hook modules and detectors cover Java deserialization surfaces:
 
 Fastjson CVE-2017-18349 and the 1.2.47 `@type` bypass, XStream CVE-2021-21351 and CVE-2021-29505, and WebLogic XMLDecoder CVE-2017-10271 all have verified Java 8 acceptance runs.
 
+### JMX invocation arguments
+
+The agent inspects the arguments forwarded by the JDK management server to a resolved `DynamicMBean`. Lookup failures retain their JMX exceptions. The argument check uses supplied strings and string arrays. Calling application display methods or iterating application objects during dispatch could consume them before the managed operation runs.
+
+The remote configuration check considers complete URI expressions, including a URI supplied as a property value. This dispatch event describes the configuration argument.
+
+The JMX file rule correlates text supplied to the innermost synchronous invocation with the path at a writable host-file open. The path must match an argument or a complete quoted value within it. The operation name can be arbitrary. The agent observes output-stream and writable random-access opens, plus supported Unix NIO channel opens. A blocking decision precedes the open. A monitoring event records an attempt. Changes of thread, rewrites of the supplied filename, and directory-descriptor-relative opens without an absolute operand can lose the correlation. Other file policies may act earlier in the call.
+
+### Packaged XML catalogs
+
+When a parser remaps an external DTD identifier to a local archive, the agent checks the parser's selected input and the archive's origin. It can establish the origin from a URL class loader or from the code source of a class actually defined by the built-in system loader. The check also recognizes a relative DTD in the same archive as a root document opened by the parser. Applications that supply a document reader and set a base URI do not establish that archive origin.
+
 ### Multi-form path-confusion decoding
 
 `request_path_confusion` decodes every incoming URI in six forms simultaneously:
@@ -95,6 +179,8 @@ Fastjson CVE-2017-18349 and the 1.2.47 `@type` bypass, XStream CVE-2021-21351 an
 4. Low-byte Unicode normalization
 5. Overlong UTF-8 decoding (for example, `%c0%ae` -> `.`)
 6. Lenient percent-decode
+
+Percent decoding preserves valid UTF-8 scalars. The control-character check uses the decoded text before low-byte projection, so a non-ASCII report name can pass through ordinary servlet routing.
 
 Comparing all six representations catches path-semantic mismatches (such as traversal sequences appearing only after decoding) without product-specific path signatures. Verified scenarios include Shiro semicolon traversal (CVE-2010-3863, CVE-2020-1957), Nexus repeated encoded-slash, GlassFish overlong UTF-8 (CVE-2010-1000028), Openfire `%u002e%u002e` encoding (CVE-2023-32315), Spring high-Unicode normalization, Flink double-percent encoding, and Jetty `ConcatServlet` `%2e/WEB-INF` traversal.
 
@@ -107,11 +193,116 @@ Comparing all six representations catches path-semantic mismatches (such as trav
 
 [`Base64HookModule`](../java-agent/agent-jdk25/src/main/java/io/ohmyrasp/agent/asm/Base64HookModule.java) (and `Java{8,11,17}Base64Transformer` across the backport agents) instruments `java.util.Base64$Decoder.decode0([BII[B)I` across JDK 8, 11, 17, 21, and 25. Before the native x86-64 AVX-512 stub can underflow the tail buffer and write past the destination array, `DetectorEngine.isBase64TailUnderflowCandidate` performs a zero-allocation check for non-MIME inputs of length `>= 65` with `1 <= (length & 63) <= 3`, `1 <= padding <= 2` (`padding <= remainder`), and valid Base64 alphabet bytes (`+`/`/` for standard, `-`/`_` for URL-safe). Matching inputs are blocked (even outside an HTTP request context) and logged using length, padding, remainder, and alphabet metadata only; raw input bytes are never recorded.
 
+### Process launches
+
+On the supported OpenJDK launch path the agent checks the argument array at
+`ProcessImpl.start`. At this point the process builder has taken its snapshot.
+The policy check runs before the platform starts that stage or opens its redirect
+files. It does not read the application's mutable command list a second time.
+Each pipeline stage is checked separately; earlier stages may already have started.
+JDKs without the recognized handoff retain the public-API hooks.
+
+Process events at the handoff identify the public API and argument count. Display
+text alone does not recover the argument vector, and a recorded decision reason
+does not recover a call stack. The primary agent treats direct reflective dispatch
+alone as an explicitly selected `command_reflect` policy. An ordinary report job
+invoked by a reflective framework has its own caller at the process API.
+[JDK process builder](https://docs.oracle.com/en/java/javase/21/docs/api/java.base/java/lang/ProcessBuilder.html)
+
+For untyped temporary output the generated-script rule checks whether request input
+supplies an operation in code position or its complete operand. Quoted report fields
+and comments are ordinary data. The JDK write hooks use the encoded handoff and the
+lines consumed by the writer. A denied streamed line can follow earlier lines already
+written to the file. Counting the denied write does not establish execution of a script.
+
+### Host file reads
+
+On supported OpenJDK Unix builds, the file-read hook checks the path and the read-access
+flag selected by the channel factory before the operating-system open. This includes
+synchronous and asynchronous file channels. Reading attributes, reading a symbolic
+link's target string and reading an entry inside a ZIP filesystem do not open the
+corresponding host path for content. Ordinary NIO content operations retain a fallback
+until the native hook has run. Relative opens through a directory descriptor carry
+no absolute path at this hook and need separate evidence.
+
+For a request-selected host path, the open hook can resolve symbolic links and check
+the observed destination against the protected-file rules. The check runs on the
+path being opened. NIO's final-link policy is respected, and creating a new file
+cannot consume pre-existing content. Input streams and random-access files are checked
+at their validated path open. Link resolution is a point-in-time observation and does
+not track every hard link or subsequent filesystem mutation.
+
+On the primary agent an exact `readFile_userinput` rule can select ordinary reads
+by supplied absolute path. An application's use of a supplied path to select an
+ordinary report produces no default finding solely because of its filename extension.
+The primary agent can apply an explicit `readFile_outsideWebroot` policy to otherwise
+uncorrelated reads under system directories. The request-controlled and sensitive-file
+checks continue independently. Backport agents correlate reads of the system hosts file
+with the captured request path. They use the same check for libraries and application
+code. When removing a parent component could change a protected target, the
+location check compares file identity at the operation. A later replacement of
+the file falls outside that observation. [JDK file channel access modes](https://docs.oracle.com/en/java/javase/21/docs/api/java.base/java/nio/channels/FileChannel.html)
+
+For CXF Aegis package reads, a local reference is associated with the specific Javax
+or Jakarta Activation data source constructed for that reference. The local-file
+decision is made when that data source actually opens the matching host file. A MIME
+part selected by content ID can be backed by an ordinary file. On the primary agent
+a deferred read retains the originating request for policy evaluation. [XOP package references](https://www.w3.org/TR/xop10/#xop_href)
+
+### Host file deletion
+
+An operator can confine request-selected file deletion to a directory by passing `-Dohmyrasp.file.delete_root=/absolute/allowed/directory` at JVM startup. Choose the enclosing directory within which requests may move between subdirectories. The rule checks operations originating under this root. Jobs using independent directories keep their existing behavior. Without a configured root, relative names containing parent segments alone produce no delete finding.
+
+On Linux, NIO deletion is checked at the provider's remove operation. The agent correlates the request path with the actual operand and resolves the entry's parent, preserving a final symbolic link. For a relative deletion against an open directory it uses the directory descriptor. An in-root sibling is allowed. A request-selected entry whose parent resolves outside the configured root can be blocked, including through an intermediate symbolic link. Advance normalization, an unavailable descriptor or missing request data can prevent correlation. A filesystem rename between the check and the native removal is outside this check's guarantees.
+
+On the primary agent an exact absolute path in a request can also be monitored with an explicit `deleteFile_userinput` rule using action `log`. Legitimate cleanup can contain the same path. A `delete_on_exit_registration` event describes the scheduling operation. Whether the file was removed depends on JVM shutdown.
+
+### Host directory listings
+
+The `File` hook checks a successful listing before names reach the caller or its
+filename filter. On supported OpenJDK providers the NIO hook checks the opened
+directory stream before it reaches the application. A denied stream is closed.
+The default rule requires both a request-selected directory (or traversal root)
+and an observed protected host directory. ZIP entries remain in the archive namespace.
+
+On Unix, a secure stream's directory identity can be compared with the current
+protected directories through its attribute view, including for operations relative
+to an open directory descriptor. A non-secure listing uses the selected pathname
+and has a time interval between enumeration and path inspection. A lazy tree walk
+retains its originating request; the decision applies when a directory is actually
+enumerated. Parent entries already returned by an earlier step can remain visible.
+The primary agent supports explicit policies for ordinary requested paths, location
+alone, and reflective dispatch. [JDK directory streams](https://docs.oracle.com/en/java/javase/21/docs/api/java.base/java/nio/file/SecureDirectoryStream.html)
+
+### HTTP transport evidence
+
+The JDK URLConnection hooks check the selected HTTP or HTTPS target after response-cache
+selection and again before writing a request. This covers requests on a reused connection.
+Creating or configuring a connection object leaves the HTTP rules quiet. The JDK HttpClient
+hooks follow the submission through asynchronous work and subsequent exchanges. Actual
+transport events record the phase and omit the outbound query string, user-info and fragment.
+Managed policy evaluation still sees the comparison inputs. [Java URL connection semantics](https://docs.oracle.com/en/java/javase/21/docs/api/java.base/java/net/URL.html#openConnection())
+
+The default request-correlated rule checks a supplied destination against an internal
+address. It can use a direct socket address already resolved by the JDK or the selected
+direct route for an HTTP client connection. IPv6 destination comparisons use the address
+bytes and preserve the zone identifier, which can name a local network interface. The agent performs no extra DNS lookup.
+A supplied administrative path can also select a protected local route. A fixed local
+self-check and a supplied hostname with no internal route evidence stay quiet under
+this rule. The primary agent supports an explicitly selected `ssrf_userinput` policy
+for those broader destinations. The separate cloud metadata and callback rules still apply.
+
+Automatic changes of destination are checked in the originating HTTP operation.
+An explicit proxy's address belongs to the proxy. Custom transports, proxy-side DNS
+and third-party HTTP stacks can require additional evidence. The JDK HTTP/2 pool
+check uses the selected connection's direct address before reserving a stream. A block records a denied
+attempt at the indicated phase. The remote application's outcome needs separate evidence.
+
 ### SSRF heuristics
 
 `detectUrl` and `detectXmlAttachmentReference` check:
 
-- **Cloud metadata endpoints:** `169.254.169.254`, `/latest/meta-data`
+- **Cloud metadata endpoints** use the shared address classification in [NetworkHost](../java-agent/shared/src/main/java/io/ohmyrasp/agent/net/NetworkHost.java). A fixed DNS resolver address is handled as an ordinary destination.
 - **Dangerous protocols:** `ldap`, `rmi`, `file`, `jar`, `dict`, `gopher`, `sftp`, `tftp`
 - **Internal RFC-1918 address space:** `10.x`, `172.16-31.x`, `192.168.x`
 - **Known DNS callback domains:** `ceye.io`, `dnslog.cn`, `burpcollaborator.net`, and other well-known out-of-band callback domains (see the DNS patterns in `DetectorEngine`)
