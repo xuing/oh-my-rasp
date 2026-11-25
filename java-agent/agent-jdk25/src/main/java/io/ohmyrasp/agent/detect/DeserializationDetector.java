@@ -254,60 +254,19 @@ final class DeserializationDetector {
   static Optional<Detection> detectHttpInvokerDeserialization(
       String mechanism, RequestContext request) {
     RequestContext safeRequest = request == null ? RequestContext.empty() : request;
-    if (!safeRequest.active()) {
+    if (!safeRequest.active() || !"SpringHttpInvoker".equals(mechanism)) {
       return Optional.empty();
     }
-    String source = mechanism == null || mechanism.isBlank() ? "SpringHttpInvoker" : mechanism;
-    String contentType = safeRequest.header("content-type").orElse("");
-    String normalizedContentType = lower(contentType);
-    int confidence =
-        normalizedContentType.contains("application/x-java-serialized-object")
-            ? 98
-            : (normalizedContentType.contains("application/x-java")
-                    || normalizedContentType.contains("application/octet-stream"))
-                ? 95
-                : 90;
-    return Optional.of(
-        Detection.log(
-            "deserialization",
-            "deserialization_http_invoker",
-            confidence,
-            "HTTP remote invocation endpoint is deserializing a Java object stream",
-            safeRequest,
-            Map.of(
-                "mechanism", source,
-                "method", safeRequest.method(),
-                "uri", abbreviate(safeRequest.uri()),
-                "contentType", abbreviate(contentType))));
+    return Optional.of(Detection.log("deserialization", "deserialization_http_invoker", 95,
+        "Spring HTTP Invoker requested an object read", safeRequest,
+        Map.of("mechanism", mechanism, "decision_basis", "invocation_stream_read")));
   }
 
-  static Optional<Detection> detectHttpObjectStreamDeserialization(
-      String streamClassName, RequestContext request, List<String> stackClassNames) {
-    RequestContext safeRequest = request == null ? RequestContext.empty() : request;
-    if (!safeRequest.active()) {
-      return Optional.empty();
-    }
-    String source =
-        httpObjectStreamSource(
-            streamClassName, safeRequest.header("content-type").orElse(""), stackClassNames);
-    if (source.isBlank()) {
-      return Optional.empty();
-    }
-    String contentType = safeRequest.header("content-type").orElse("");
-    int confidence = "serialized-content-type".equals(source) ? 98 : 95;
-    return Optional.of(
-        Detection.log(
-            "deserialization",
-            "deserialization_http_object_stream",
-            confidence,
-            "HTTP request body is being read through a Java ObjectInputStream",
-            safeRequest,
-            Map.of(
-                "source", source,
-                "streamClass", abbreviate(streamClassName),
-                "method", safeRequest.method(),
-                "uri", abbreviate(safeRequest.uri()),
-                "contentType", abbreviate(contentType))));
+  static Optional<Detection> detectHttpObjectStreamDeserialization(String source, RequestContext request) {
+    if (source == null || request == null || !request.active()) return Optional.empty();
+    return Optional.of(Detection.log("deserialization", "deserialization_http_object_stream", 95,
+        "ObjectInputStream requested an object read from a servlet input stream", request,
+        Map.of("streamClass", source, "decision_basis", "servlet_stream_read")));
   }
 
   static Optional<Detection> detectHessianAllocation(Class<?> selected, String basis, RequestContext request) {
@@ -595,35 +554,6 @@ final class DeserializationDetector {
       }
     }
     return Optional.empty();
-  }
-
-  private static String httpObjectStreamSource(
-      String streamClassName, String contentType, List<String> stackClassNames) {
-    String stream = lower(streamClassName);
-    if (stream.contains("servletinputstream")
-        || stream.contains("coyoteinputstream")
-        || stream.contains("servletrequestinputstream")
-        || stream.contains("requestinputstream")
-        || stream.contains("httpinput")) {
-      return "servlet-input-stream";
-    }
-    String normalizedContentType = lower(contentType);
-    if (normalizedContentType.contains("application/x-java-serialized-object")
-        || normalizedContentType.contains("application/x-java")) {
-      return "serialized-content-type";
-    }
-    List<String> safeStack = stackClassNames == null ? List.of() : stackClassNames;
-    for (String className : safeStack) {
-      String item = lower(className);
-      if ((item.contains("readonlyaccessfilter")
-              || item.contains("jmxinvokerservlet")
-              || item.contains("org.jboss.invocation.http.servlet.invokerservlet")
-              || item.contains("httpserverilservlet"))
-          && (item.contains("jboss") || item.contains("invoker") || item.contains("httpil"))) {
-        return "middleware-http-invoker";
-      }
-    }
-    return "";
   }
 
   private static boolean suspiciousFileBackedSessionId(String sessionId) {

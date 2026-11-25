@@ -2059,25 +2059,11 @@ same patch as any new Java-compatible Vulhub replay.
 - The OpenWire rule for CVE-2023-46604 checks the actual constructor at the
   protocol's exception slot. [Detection behavior](../detection.md) ·
   [Historical application evidence](vulhub-coverage.md)
-- `deserialization_http_invoker` covers Spring HTTP Invoker endpoints when they
-  deserialize a Java object stream for a remote invocation request. This targets
-  Dubbo HTTP protocol/Spring remoting shapes such as CVE-2019-17564 at the
-  framework boundary before any particular gadget class is resolved, and logs
-  only request metadata such as method, URI, content type, and mechanism. The
-  playground and acceptance suite include the Vulhub-shaped Dubbo
-  `/org.vulhub.api.CalcService` POST flow, and the Java 8 Vulhub acceptance
-  verifies the lower-level Spring HTTP Invoker object-stream sink blocks a
-  CommonsCollections6 payload before gadget side effects.
-- `deserialization_http_object_stream` covers Java `ObjectInputStream`
-  construction over a servlet/request-body input stream during an active HTTP
-  request, plus Java-serialized request content types and known middleware
-  HTTP-invoker stacks. This targets JBoss HTTPInvoker, JMXInvokerServlet, and
-  JBossMQ HTTPIL object-stream deserialization boundaries before relying on a
-  particular gadget class, while ignoring file/background object streams. The
-  playground and acceptance suite include the Vulhub-shaped `/invoker/readonly`,
-  `/invoker/JMXInvokerServlet`, and `/jbossmq-httpil/HTTPServerILServlet` POST
-  flows for JBoss CVE-2017-12149, the classic JMXInvokerServlet issue, and
-  CVE-2017-7504. The real JBoss CVE-2017-12149 Vulhub probe verifies the
+- The primary agent's Spring HTTP Invoker and directly servlet-backed object-read
+  policies require explicit selection. The [deserialization checks](../detection.md#deserialization-defenses)
+  describe the actual calls and the independent class policy. The
+  [Vulhub ledger](vulhub-coverage.md) records historical Dubbo CVE-2019-17564 evidence.
+  The real JBoss CVE-2017-12149 Vulhub probe verifies the
   `/invoker/readonly` CommonsCollections5 object-stream baseline on Java
   7u221/JBoss AS 6.1.0 and records that current Java 8+ LTS agents cannot
   inject into that legacy JVM because it rejects classfile major version 52.0.

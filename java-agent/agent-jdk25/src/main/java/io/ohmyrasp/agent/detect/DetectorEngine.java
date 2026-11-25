@@ -1418,7 +1418,12 @@ public final class DetectorEngine {
 
   public Optional<Detection> detectHttpObjectStreamDeserialization(
       String streamClassName, RequestContext request, List<String> stackClassNames) {
-    return DeserializationDetector.detectHttpObjectStreamDeserialization(streamClassName, request, stackClassNames);
+    // Compatibility for metadata-only callers.
+    return Optional.empty();
+  }
+
+  public Optional<Detection> detectHttpObjectStreamDeserialization(String source, RequestContext request) {
+    return DeserializationDetector.detectHttpObjectStreamDeserialization(source, request);
   }
 
   public Optional<Detection> detectHessianType(String type, RequestContext request) {

@@ -1400,20 +1400,16 @@ public final class OhMyRaspHooks {
     }
   }
 
-  public static void beforeObjectInputStream(Object inputStream) {
-    if (detectionDisabled()) {
-      return;
-    }
-    try {
-      String streamClassName = inputStream == null ? "" : inputStream.getClass().getName();
-      emit(
-          DETECTORS.detectHttpObjectStreamDeserialization(
-              streamClassName, currentRequest(), stackTraceClassNames()));
-    } catch (OhMyRaspBlockException blocked) {
-      throw blocked;
-    } catch (Throwable throwable) {
-      quiet("beforeObjectInputStream", throwable);
-    }
+  public static void beforeObjectInputStream(Object inputStream) {}
+
+  public static void afterObjectInputStreamConstruction(java.io.ObjectInputStream stream, Object input) {
+    ServletObjectStreams.constructed(stream, input);
+  }
+
+  public static void beforeServletObjectRead(java.io.ObjectInputStream stream) {
+    if (detectionDisabled() || !POLICY.selectsAlgorithm("deserialization_http_object_stream")) return;
+    String source = ServletObjectStreams.source(stream);
+    if (source != null) emit(DETECTORS.detectHttpObjectStreamDeserialization(source, currentRequest()));
   }
 
   public static void beforeSessionDeserialization(String sessionId, String mechanism) {
@@ -1465,16 +1461,16 @@ public final class OhMyRaspHooks {
     emit(DETECTORS.detectProtocolClassInstantiation(selected, currentRequest()), true, true);
   }
 
-  public static void beforeHttpInvokerDeserialization(String mechanism) {
-    if (detectionDisabled()) {
-      return;
-    }
-    try {
-      emit(DETECTORS.detectHttpInvokerDeserialization(mechanism, currentRequest()));
-    } catch (OhMyRaspBlockException blocked) {
-      throw blocked;
-    } catch (Throwable throwable) {
-      quiet("beforeHttpInvokerDeserialization", throwable);
+  public static void beforeHttpInvokerDeserialization(String mechanism) {}
+
+  public static void beforeHttpInvokerRead(Object exporter) {
+    if (detectionDisabled() || !POLICY.selectsAlgorithm("deserialization_http_invoker")) return;
+    for (Class<?> c = exporter.getClass(); c != null; c = c.getSuperclass()) {
+      if ("org.springframework.remoting.httpinvoker.HttpInvokerServiceExporter".equals(c.getName())
+          || "org.springframework.remoting.httpinvoker.SimpleHttpInvokerServiceExporter".equals(c.getName())) {
+        emit(DETECTORS.detectHttpInvokerDeserialization("SpringHttpInvoker", currentRequest()));
+        return;
+      }
     }
   }
 

@@ -1854,7 +1854,6 @@ public final class VulnerableServlet extends HttpServlet {
   }
 
   private static String dubboHttpInvoker(HttpServletRequest request) throws Exception {
-    hook("beforeHttpInvokerDeserialization", new Class<?>[] {String.class}, "SpringHttpInvoker");
     return "dubbo-http-invoker=" + Math.max(request.getContentLengthLong(), 0);
   }
 
@@ -1944,7 +1943,6 @@ public final class VulnerableServlet extends HttpServlet {
   private static String jbossHttpObjectStream(HttpServletRequest request, String component)
       throws Exception {
     var input = request.getInputStream();
-    hook("beforeObjectInputStream", new Class<?>[] {Object.class}, input);
     byte[] body = input.readAllBytes();
     return "jboss-http-object-stream=" + component + " bytes=" + body.length;
   }
@@ -4008,16 +4006,9 @@ public final class VulnerableServlet extends HttpServlet {
       case "deserialization-protocol-class" -> {
         return "OpenWire type declared";
       }
-      case "deserialization-http-invoker" ->
-          hook(
-              "beforeHttpInvokerDeserialization",
-              new Class<?>[] {String.class},
-              "SpringHttpInvoker");
-      case "deserialization-http-object-stream" ->
-          hook(
-              "beforeObjectInputStream",
-              new Class<?>[] {Object.class},
-              new PlaygroundServletInputStream());
+      case "deserialization-http-invoker", "deserialization-http-object-stream" -> {
+        return "Object stream declared";
+      }
       case "deserialization-hessian-type" -> {
         return "Hessian type declared";
       }
@@ -4857,9 +4848,5 @@ public final class VulnerableServlet extends HttpServlet {
         "java.io.ObjectInputStream");
   }
 
-  private static final class PlaygroundServletInputStream extends ByteArrayInputStream {
-    PlaygroundServletInputStream() {
-      super(new byte[0]);
-    }
-  }
+
 }

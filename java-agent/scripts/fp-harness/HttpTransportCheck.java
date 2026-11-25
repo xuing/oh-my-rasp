@@ -21,7 +21,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 
 /** An in-process HTTP origin and proxy. It only serves fixture content on loopback. */
 public class HttpTransportCheck {
-  public static final class Request {
+  public static class Request {
     private final String endpoint;
     private final String uri;
     Request(String endpoint) { this(endpoint, "/reports"); }

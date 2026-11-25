@@ -2204,7 +2204,8 @@ final class DetectorEngineTest {
 
     assertAlgorithm(result, "deserialization_http_invoker");
     assertEquals("SpringHttpInvoker", result.orElseThrow().details().get("mechanism"));
-    assertEquals("application/x-java-serialized-object", result.orElseThrow().details().get("contentType"));
+    assertTrue(result.orElseThrow().requiresExplicitRule());
+    assertEquals("invocation_stream_read", result.orElseThrow().details().get("decision_basis"));
   }
 
   @Test
@@ -2216,17 +2217,18 @@ final class DetectorEngineTest {
   }
 
   @Test
-  void detectsHttpRequestObjectStreamDeserialization() {
+  void checksObservedServletObjectReadForExplicitPolicy() {
     var result =
         engine.detectHttpObjectStreamDeserialization(
-            "org.apache.catalina.connector.CoyoteInputStream", request(), List.of());
+            "report.RequestBody", request());
 
     assertAlgorithm(result, "deserialization_http_object_stream");
-    assertEquals("servlet-input-stream", result.orElseThrow().details().get("source"));
+    assertTrue(result.orElseThrow().requiresExplicitRule());
+    assertEquals("servlet_stream_read", result.orElseThrow().details().get("decision_basis"));
   }
 
   @Test
-  void detectsHttpObjectStreamBySerializedContentType() {
+  void serializedContentTypeAloneDoesNotIdentifyTheStream() {
     var context =
         new RequestContext(
             "POST",
@@ -2239,44 +2241,40 @@ final class DetectorEngineTest {
         engine.detectHttpObjectStreamDeserialization(
             "java.io.BufferedInputStream", context, List.of());
 
-    assertAlgorithm(result, "deserialization_http_object_stream");
-    assertEquals("serialized-content-type", result.orElseThrow().details().get("source"));
+    assertTrue(result.isEmpty());
   }
 
   @Test
-  void detectsMiddlewareHttpInvokerObjectStreamStack() {
+  void readOnlyAccessFilterStackAloneDoesNotIdentifyTheStream() {
     var result =
         engine.detectHttpObjectStreamDeserialization(
             "java.io.BufferedInputStream",
             request(),
             List.of("org.jboss.invocation.http.servlet.ReadOnlyAccessFilter"));
 
-    assertAlgorithm(result, "deserialization_http_object_stream");
-    assertEquals("middleware-http-invoker", result.orElseThrow().details().get("source"));
+    assertTrue(result.isEmpty());
   }
 
   @Test
-  void detectsJbossJmxInvokerObjectStreamStack() {
+  void invokerServletStackAloneDoesNotIdentifyTheStream() {
     var result =
         engine.detectHttpObjectStreamDeserialization(
             "java.io.BufferedInputStream",
             request(),
             List.of("org.jboss.invocation.http.servlet.InvokerServlet"));
 
-    assertAlgorithm(result, "deserialization_http_object_stream");
-    assertEquals("middleware-http-invoker", result.orElseThrow().details().get("source"));
+    assertTrue(result.isEmpty());
   }
 
   @Test
-  void detectsJbossMqHttpilObjectStreamStack() {
+  void httpilStackAloneDoesNotIdentifyTheStream() {
     var result =
         engine.detectHttpObjectStreamDeserialization(
             "java.io.BufferedInputStream",
             request(),
             List.of("org.jboss.mq.il.http.HTTPServerILServlet"));
 
-    assertAlgorithm(result, "deserialization_http_object_stream");
-    assertEquals("middleware-http-invoker", result.orElseThrow().details().get("source"));
+    assertTrue(result.isEmpty());
   }
 
   @Test

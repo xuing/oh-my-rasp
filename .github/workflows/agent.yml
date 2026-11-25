@@ -203,6 +203,8 @@ jobs:
           if any(e.get("kind") == "detection" or e.get("event") == "ohmyrasp-detection" for e in events):
               sys.exit("Ordinary background job produced a detection")
           PY
+      - name: Verify ordinary Spring RPC and serialization policy
+        run: python3 java-agent/scripts/fp-harness/check-http-invoker.py "java-agent/${{ matrix.jar }}" --jar-dir java-agent/build/spring-process-probe/legacy --api-dir java-agent/build/servlet-probe
       - name: Verify Hessian allocation and safe decoder substitutions
         run: python3 java-agent/scripts/fp-harness/check-hessian-allocation.py "java-agent/${{ matrix.jar }}" --jar-dir java-agent/build/hessian-probe
       - name: Verify OpenWire exception types against the packaged agent

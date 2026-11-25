@@ -1304,14 +1304,14 @@ XML
   expect_block "$version" deserialization_tomcat_cve_2025_24813_session_file -H "Cookie: ${tomcat_cve_2025_24813_session_cookie}" "${protected_url}/"
   expect_body_contains "${protected_url}/rasp/policy/deserialization-protocol-class" "OpenWire type declared"
   expect_body_contains "${protected_url}/api/openwire" "OpenWire type declared" -G --data-urlencode "class=reports.Weekly"
-  expect_block "$version" deserialization_http_invoker -H "Content-Type: application/x-java-serialized-object" "${protected_url}/rasp/policy/deserialization-http-invoker"
-  expect_block "$version" deserialization_dubbo_cve_2019_17564_http_invoker -X POST -H "Content-Type: application/x-java-serialized-object" --data-binary "$java_serialized_body" "${protected_url}/org.vulhub.api.CalcService"
-  expect_block "$version" deserialization_http_object_stream "${protected_url}/rasp/policy/deserialization-http-object-stream"
-  expect_block "$version" deserialization_jboss_readonly -X POST -H "Content-Type: application/x-java-serialized-object" --data-binary "$java_serialized_body" "${protected_url}/invoker/readonly"
-  expect_block "$version" deserialization_jboss_jmxinvoker -X POST -H "Content-Type: application/x-java-serialized-object" --data-binary "$java_serialized_body" "${protected_url}/invoker/JMXInvokerServlet"
-  expect_block "$version" deserialization_jbossmq_httpil -X POST -H "Content-Type: application/x-java-serialized-object" --data-binary "$java_serialized_body" "${protected_url}/jbossmq-httpil/HTTPServerILServlet"
-  expect_block "$version" deserialization_jboss_cve_2017_12149_readonly -X POST -H "Content-Type: application/x-java-serialized-object" --data-binary "$java_serialized_body" "${protected_url}/invoker/readonly"
-  expect_block "$version" deserialization_jboss_cve_2017_7504_httpil -X POST -H "Content-Type: application/x-java-serialized-object" --data-binary "$java_serialized_body" "${protected_url}/jbossmq-httpil/HTTPServerILServlet"
+  expect_body_contains "${protected_url}/rasp/policy/deserialization-http-invoker" "Object stream declared" -H "Content-Type: application/x-java-serialized-object"
+  expect_body_contains "${protected_url}/org.vulhub.api.CalcService" "dubbo-http-invoker=" -X POST -H "Content-Type: application/x-java-serialized-object" --data-binary "$java_serialized_body"
+  expect_body_contains "${protected_url}/rasp/policy/deserialization-http-object-stream" "Object stream declared"
+  expect_body_contains "${protected_url}/invoker/readonly" "jboss-http-object-stream=" -X POST -H "Content-Type: application/x-java-serialized-object" --data-binary "$java_serialized_body"
+  expect_body_contains "${protected_url}/invoker/JMXInvokerServlet" "jboss-http-object-stream=" -X POST -H "Content-Type: application/x-java-serialized-object" --data-binary "$java_serialized_body"
+  expect_body_contains "${protected_url}/jbossmq-httpil/HTTPServerILServlet" "jboss-http-object-stream=" -X POST -H "Content-Type: application/x-java-serialized-object" --data-binary "$java_serialized_body"
+  expect_body_contains "${protected_url}/invoker/readonly" "jboss-http-object-stream=" -X POST -H "Content-Type: application/x-java-serialized-object" --data-binary "$java_serialized_body"
+  expect_body_contains "${protected_url}/jbossmq-httpil/HTTPServerILServlet" "jboss-http-object-stream=" -X POST -H "Content-Type: application/x-java-serialized-object" --data-binary "$java_serialized_body"
   expect_body_contains "${protected_url}/rasp/policy/deserialization-hessian-type" "Hessian type declared"
   expect_body_contains "${protected_url}/xxl-job-admin/api" "xxl-job-hessian-api=" -X POST -H "Content-Type: x-application/hessian" --data-binary "$xxl_job_hessian_body"
   expect_block "$version" deserialization_xmlrpc_serialized -H "Content-Type: application/xml" "${protected_url}/rasp/policy/deserialization-xmlrpc-serialized"
@@ -1466,8 +1466,6 @@ required_algorithms=(
   deserialization_jms_object_message
   deserialization_signed_object
   deserialization_session_file
-  deserialization_http_invoker
-  deserialization_http_object_stream
   deserialization_xmlrpc_serialized
   deserialization_rmi_registry_bind
   deserialization_polymorphic_type

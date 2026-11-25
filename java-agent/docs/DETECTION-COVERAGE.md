@@ -103,8 +103,8 @@ The descriptions live in the [general catalog](../rules/general.json) and [produ
 | `deserialization_fastjson_resource_url` | — | Fastjson autoType resolves a URL-shaped class resource. |
 | `deserialization_gadget` | — | Known class families, type-resolution behavior or unmarshaller implementations affect the judgment. |
 | `deserialization_hessian_type` | — | A built-in Hessian decoder selects a class covered by the allocation policy for reflection or Unsafe allocation. |
-| `deserialization_http_invoker` | — | The HTTP remoting invocation mechanism determines where object-stream input is expected. |
-| `deserialization_http_object_stream` | A Java object stream is read from an HTTP request body. | — |
+| `deserialization_http_invoker` | — | An explicitly selected policy governs a Spring HTTP Invoker exporter calling ObjectInputStream.readObject for a remote invocation. |
+| `deserialization_http_object_stream` | An explicitly selected policy governs reads from an ObjectInputStream constructed directly over a servlet input stream. | — |
 | `deserialization_jms_object_message` | Object deserialization is correlated with a particular messaging or RPC transport. | — |
 | `deserialization_logging_message` | — | Known cluster, logging or remoting implementation frames supply transport provenance. |
 | `deserialization_polymorphic_type` | — | Known class families, type-resolution behavior or unmarshaller implementations affect the judgment. |

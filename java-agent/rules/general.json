@@ -8,7 +8,7 @@
     "command_reflect": "Explicit policy selects reflective dispatch at the process API.",
     "command_userinput": "Request input matches control syntax in the selected inline shell program. File and positional arguments retain their roles.",
     "deleteFile_userinput": "A request-selected host entry escapes the configured deletion root. Exact absolute-path matches can also be selected explicitly by policy.",
-    "deserialization_http_object_stream": "A Java object stream is read from an HTTP request body.",
+    "deserialization_http_object_stream": "An explicitly selected policy governs reads from an ObjectInputStream constructed directly over a servlet input stream.",
     "deserialization_jms_object_message": "Object deserialization is correlated with a particular messaging or RPC transport.",
     "deserialization_rmi_registry_bind": "The registry bind is observed in an RMI transport context with a proxy or reference type.",
     "deserialization_rmi_transport": "Object deserialization is correlated with a particular messaging or RPC transport.",
