@@ -144,7 +144,6 @@ public final class Java8RaspHooks {
   private static final ThreadLocal<String> LAST_LOGGED_ARCHIVE = new ThreadLocal<String>();
   private static final ThreadLocal<String> LAST_LOGGED_JDBC = new ThreadLocal<String>();
   private static final ThreadLocal<String> LAST_LOGGED_SQL_IDENTIFIER = new ThreadLocal<String>();
-  private static final ThreadLocal<String> LAST_LOGGED_SQL_STATEMENT = new ThreadLocal<String>();
   private static final ThreadLocal<String> LAST_LOGGED_BASE64 = new ThreadLocal<String>();
   private static final ThreadLocal<String> LAST_LOGGED_SCRIPT = new ThreadLocal<String>();
   private static final ThreadLocal<String> LAST_LOGGED_JEXL = new ThreadLocal<String>();
@@ -696,10 +695,8 @@ public final class Java8RaspHooks {
     String action = shouldBlock() ? "block" : "log";
     if ("mapper_substitution_at_jdbc".equals(finding.decisionBasis)) {
       if (!"block".equals(action) && MyBatisSqlTrace.repeatedObservation(sql, finding.algorithm)) return;
-    } else {
-      String previous = LAST_LOGGED_SQL_STATEMENT.get();
-      if (!"block".equals(action) && finding.detailValue.equals(previous)) return;
-      LAST_LOGGED_SQL_STATEMENT.set(finding.detailValue);
+    } else if (!"block".equals(action) && io.ohmyrasp.agent.sql.JdbcObservation.repeated(receiver, sql)) {
+      return;
     }
     appendEvent(finding, hook, action);
     if ("block".equals(action)) {

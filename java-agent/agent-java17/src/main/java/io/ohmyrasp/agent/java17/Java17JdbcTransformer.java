@@ -98,7 +98,8 @@ public final class Java17JdbcTransformer implements ClassFileTransformer {
           && (isSqlStatementMethod(className, name, descriptor)
               || (jdbcImplementation && (JdbcSqlMethod.preparesSql(name, descriptor)
                   || JdbcSqlMethod.executesSql(name, descriptor))))) {
-        return new AdviceAdapter(Opcodes.ASM9, methodVisitor, access, name, descriptor) {
+        MethodVisitor scope = new io.ohmyrasp.agent.sql.JdbcObservationAdvice(methodVisitor, access, name, descriptor);
+        return new AdviceAdapter(Opcodes.ASM9, scope, access, name, descriptor) {
           @Override
           protected void onMethodEnter() {
             if ((access & Opcodes.ACC_STATIC) == 0) loadThis();

@@ -5,9 +5,14 @@ import org.sqlite.Function;
 public final class SqliteIdentifierCheck {
   private static int calls;
 
+  private static long eventOffset() {
+    return new java.io.File(System.getProperty("ohmyrasp.log")).length();
+  }
+
   private static void check(Connection db, String track, String mode, String name, String query,
       String label, boolean policy, boolean prepared) throws Exception {
     int before = calls;
+    long startOffset = eventOffset();
     boolean denied = false;
     try (HttpTransportCheck.Scope scope = new HttpTransportCheck.Scope(track, label);
          Statement stmt = prepared ? db.prepareStatement(query) : db.createStatement()) {
@@ -26,7 +31,7 @@ public final class SqliteIdentifierCheck {
     if (calls - before != (policy && !denied ? 1 : 0)) throw new AssertionError("incorrect function receipt for " + name);
     if (!mode.equals("observe") && denied != (policy && mode.equals("block"))) throw new AssertionError(name);
     System.out.println("receipt," + name + "," + policy + "," + denied + "," + (calls - before) + ","
-        + java.util.Base64.getEncoder().encodeToString(query.getBytes(java.nio.charset.StandardCharsets.UTF_8)));
+        + java.util.Base64.getEncoder().encodeToString(query.getBytes(java.nio.charset.StandardCharsets.UTF_8)) + "," + startOffset + "," + eventOffset());
   }
 
   private static Connection pooled(Connection delegate) {
@@ -65,6 +70,7 @@ public final class SqliteIdentifierCheck {
       check(pool, track, mode, "pooled-title", "SELECT 7 AS [benchmark(7) samples]", "benchmark(7) samples", false, true);
       check(pool, track, mode, "pooled-expression", "SELECT 7 AS [reviewer's total], benchmark(7)", "reviewer's total", true, true);
       check(db, track, mode, "actual", "SELECT benchmark(7) AS [weekly]", "weekly", true, true);
+      check(db, track, mode, "next-request", "SELECT benchmark(7) AS [weekly]", "weekly", true, true);
       check(db, track, mode, "after-label", "SELECT 7 AS [reviewer's note], benchmark(7)", "reviewer's note", true, false);
     }
   }

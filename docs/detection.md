@@ -187,6 +187,8 @@ Zero false positives on the benign SQL corpus (see [False-positive methodology](
 
 A dollar sign or a non-ASCII character inside a bare SQLite identifier belongs to that name. Function policies check the whole identifier. [SQLite tokenizer](https://github.com/sqlite/sqlite/blob/version-3.47.1/src/tokenize.c)
 
+For generic SQL findings on the Java 8, 11 and 17 agents, monitor-mode deduplication lasts for a JDBC call. Nested overloads on the same receiver can share a receipt. A later call or a different receiver gets its own decision, even for identical SQL. [Packaged JDBC check](../java-agent/scripts/fp-harness/SqliteIdentifierCheck.java)
+
 SQLite named bind parameters are data tokens, including names with namespace segments and parenthesized suffixes. The concrete driver check resumes after the parameter. [SQLite parameter grammar](https://www.sqlite.org/lang_expr.html#parameters)
 
 SQLite line comments extend through a bare carriage return and end at a line feed or the end of the statement. The agent uses the concrete driver grammar at JDBC handoff. For an unknown driver it defers signatures in text whose interpretation depends on the comment terminator. [SQLite comment syntax](https://www.sqlite.org/lang_comment.html)

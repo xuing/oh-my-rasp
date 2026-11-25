@@ -17,8 +17,13 @@ public final class MysqlCommentCheck {
         });
   }
 
+  private static long eventOffset() {
+    return new java.io.File(System.getProperty("ohmyrasp.log")).length();
+  }
+
   private static void check(Open open, String track, String mode, String name, String sql,
       String requestValue, boolean selected, int value, int columns) throws Exception {
+    long startOffset = eventOffset();
     boolean denied = false;
     try (HttpTransportCheck.Scope scope = new HttpTransportCheck.Scope(track, requestValue);
          Statement statement = open.get();
@@ -30,7 +35,7 @@ public final class MysqlCommentCheck {
       denied = true;
     }
     System.out.println("receipt," + name + "," + selected + "," + denied + "," + columns + "," +
-        Base64.getEncoder().encodeToString(sql.getBytes(StandardCharsets.UTF_8)));
+        Base64.getEncoder().encodeToString(sql.getBytes(StandardCharsets.UTF_8)) + "," + startOffset + "," + eventOffset());
     if (!"observe".equals(mode) && denied != (selected && "block".equals(mode))) throw new AssertionError(name);
   }
 

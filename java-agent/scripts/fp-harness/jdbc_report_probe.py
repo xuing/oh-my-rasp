@@ -26,12 +26,28 @@ def check_reports(agent, fixture, libraries, scenario_count, selected_count, ext
             if run.returncode:
                 raise SystemExit(run.stdout + run.stderr)
             receipts = [line.split(",") for line in run.stdout.splitlines() if line.startswith("receipt,")]
-            expected_queries = {base64.b64decode(r[5], validate=True).decode() for r in receipts if r[2] == "true"}
-            if len(receipts) != scenario_count or len({r[1] for r in receipts}) != scenario_count or len(expected_queries) != selected_count:
+            if (len(receipts) != scenario_count or len({r[1] for r in receipts}) != scenario_count
+                    or sum(r[2] == "true" for r in receipts) != selected_count):
                 raise SystemExit("incomplete SQL receipts")
-            events = [e for line in log.read_text().splitlines() if (e := json.loads(line)).get("kind", e.get("event"))
-                      in ("detection", "ohmyrasp-detection")]
-            expected = "sql_policy" if track == "main" else f"java{track}_sql_statement_injection"
-            if {e["details"].get("query") for e in events} != expected_queries or any(e["algorithm"] != expected or e["action"] != ("block" if mode == "block" else "log")
-                                 for e in events):
-                raise SystemExit(f"unexpected JDBC decisions in {mode}")
+            spool = log.read_bytes()
+            previous = 0
+            algorithm = "sql_policy" if track == "main" else f"java{track}_sql_statement_injection"
+            action = "block" if mode == "block" else "log"
+            for _, name, selected, _, _, encoded, start, end in receipts:
+                start, end = int(start), int(end)
+                if not previous <= start <= end <= len(spool) or detections(spool[previous:start]):
+                    raise SystemExit(f"unexpected events outside {name} in {mode}")
+                previous = end
+                query = base64.b64decode(encoded, validate=True).decode()
+                events = detections(spool[start:end])
+                wrong_receipt = any(e["algorithm"] != algorithm or e["action"] != action
+                                    or e["details"].get("query") != query for e in events)
+                if bool(events) != (selected == "true") or wrong_receipt or (mode == "block" and len(events) > 1):
+                    raise SystemExit(f"unexpected JDBC decisions for {name} in {mode}")
+            if detections(spool[previous:]):
+                raise SystemExit(f"unexpected events after final JDBC receipt in {mode}")
+
+
+def detections(chunk):
+    return [e for line in chunk.splitlines() if (e := json.loads(line)).get("kind", e.get("event"))
+            in ("detection", "ohmyrasp-detection")]
