@@ -189,6 +189,10 @@ public final class OhMyRaspJava8Agent {
         retransform(instrumentation, loaded);
       }
     }
+    // The bootstrap provider can load while another transformer is running, after
+    // the loaded-class snapshot. Revisit the platform owner outside that transform.
+    retransformByName(instrumentation, java.io.File.separatorChar == '/'
+        ? "sun.nio.fs.UnixFileSystemProvider" : "sun.nio.fs.WindowsFileSystemProvider");
     retransformByName(instrumentation, "com.sun.tools.javac.api.JavacTool");
     retransform(instrumentation, java.util.Base64.Decoder.class);
   }
