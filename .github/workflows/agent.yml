@@ -180,6 +180,9 @@ jobs:
         run: python3 java-agent/scripts/fp-harness/check-file-read.py "java-agent/${{ matrix.jar }}"
       - name: Verify MyBatis template and JDBC handoff
         run: python3 java-agent/scripts/fp-harness/check-mybatis-mapping.py "java-agent/${{ matrix.jar }}"
+      - name: Verify plot output stream ownership
+        if: startsWith(matrix.jar, 'agent-java')
+        run: python3 java-agent/scripts/fp-harness/check-plot-stream.py "java-agent/${{ matrix.jar }}"
       - name: Verify resolved JMX dispatch
         run: python3 java-agent/scripts/fp-harness/check-jmx-dispatch.py "java-agent/${{ matrix.jar }}"
       - name: Verify XML catalogue and transport decisions

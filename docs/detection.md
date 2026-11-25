@@ -215,6 +215,12 @@ and comments are ordinary data. The JDK write hooks use the encoded handoff and 
 lines consumed by the writer. A denied streamed line can follow earlier lines already
 written to the file. Counting the denied write does not establish execution of a script.
 
+### Plot output streams
+
+The Java backports associate a plot filename with the actual output stream after its file open succeeds. Byte-array slices and single-byte writes are checked at the JDK's native write call. This association follows the stream when another thread uses it. Each successful write can supply bounded context for the next write. A rejected write contributes no bytes. An I/O exception invalidates the prefix because a partial write may have occurred.
+
+The content rule looks for lowercase plot directives outside ordinary quoted labels and comments. Overlapping writes, a stream opened for append, or access through a channel or file descriptor can make the preceding line uncertain. The detector resumes matching at an observed line boundary in those cases. This check does not cover arbitrary channel writers or establish that a plot interpreter ran. [Gnuplot quoting](https://gnuplot.info/docs_6.1/loc4437.html)
+
 ### Host file reads
 
 On supported OpenJDK Unix builds, the file-read hook checks the path and the read-access

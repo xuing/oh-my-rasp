@@ -173,9 +173,11 @@ def collect(logs):
                     row["evidence_limit"] = "combined display text cannot establish resolved MBean dispatch or the original argument types"
                     continue
                 if (hook == "FileOutputStream.write" and algorithm == f"java{track}_file_generated_plot_script_command"
-                        and isinstance(details, dict) and set(details) == {"path"}):
+                        and isinstance(details, dict) and "path" in details and set(details) <= {"path", "decision_basis"}):
                     row["status"] = "source evidence required"
-                    row["evidence_limit"] = "target path only; original write bytes and their association with the stream are missing"
+                    row["evidence_limit"] = ("stream-bound write recorded; original bytes unavailable"
+                                             if details.get("decision_basis") == "plot_stream_write" else
+                                             "target path only; original write bytes and their association with the stream are missing")
                     continue
                 source_spec = source_for(hook, algorithm, track)
                 if source_spec is None:

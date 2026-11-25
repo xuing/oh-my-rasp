@@ -4,6 +4,7 @@ import io.ohmyrasp.agent.file.EscapingPath;
 import io.ohmyrasp.agent.file.HostReadPath;
 import io.ohmyrasp.agent.file.HostDirectory;
 import io.ohmyrasp.agent.jmx.JmxDispatch;
+import io.ohmyrasp.agent.rules.general.PlotWrite;
 import io.ohmyrasp.agent.jmx.JmxWriteScope;
 import io.ohmyrasp.agent.file.HostDelete;
 import io.ohmyrasp.agent.http.ArchiveUploadPolicy;
@@ -102,11 +103,6 @@ public final class Java8RaspHooks {
           "(?is)(?:%\\{|\\$\\{|#(?:context|application|session|request|response)|\\b(?:ognl|freemarker|execute)\\b|\\x00)");
   private static final Pattern MULTIPART_TRAVERSAL_UPLOAD_FILE =
       Pattern.compile("(?i)(?:^|/|%2f|%5c)\\.\\.(?:/|$|%2f|%5c)");
-  private static final Pattern GENERATED_PLOT_SCRIPT_FILE =
-      Pattern.compile("(?i).+\\.(?:gnuplot|gp|plt|plot)$");
-  private static final Pattern GENERATED_PLOT_COMMAND =
-      Pattern.compile(
-          "(?is)(?:\\b(?:yrange|y2range|xrange|x2range|key)\\b[^\\r\\n]{0,300}\\b(?:system|shell)\\s*\\(|\\bkey\\b[^\\r\\n]{0,300};\\s*system\\b|;\\s*system\\s*[\"'])");
   private static final Pattern WEBROOT_PATH =
       Pattern.compile(
           "(?i)(?:^|/)(?:webapps?|webroot|ROOT|www|wwwroot|htdocs|html|public|static|uploads?)(?:/|$)");
@@ -156,9 +152,6 @@ public final class Java8RaspHooks {
   private static final ThreadLocal<String> LAST_LOGGED_FILE_READ = new ThreadLocal<String>();
   private static final ThreadLocal<String> LAST_LOGGED_FILE_WRITE = new ThreadLocal<String>();
   private static final ThreadLocal<String> LAST_LOGGED_FILE_UPLOAD = new ThreadLocal<String>();
-  private static final ThreadLocal<String> LAST_LOGGED_PLOT_SCRIPT = new ThreadLocal<String>();
-  private static final ThreadLocal<String> CURRENT_PLOT_SCRIPT_WRITE = new ThreadLocal<String>();
-  private static final ThreadLocal<String> CURRENT_PLOT_SCRIPT_CONTENT = new ThreadLocal<String>();
   private static final ThreadLocal<String> LAST_LOGGED_URL = new ThreadLocal<String>();
   private static final ThreadLocal<List<String>> CURRENT_REQUEST_URLS =
       new ThreadLocal<List<String>>();
@@ -454,7 +447,6 @@ public final class Java8RaspHooks {
   public static void beforeFileWrite(Object path) {
     String rawPath = pathValue(path);
     String normalizedPath = normalizePath(rawPath);
-    trackGeneratedPlotScriptWrite(normalizedPath);
     String entry = ARCHIVE_ENTRY.get();
     if (entry != null) {
       ARCHIVE_ENTRY.remove();
@@ -467,14 +459,22 @@ public final class Java8RaspHooks {
     emitFileFinding(finding, LAST_LOGGED_FILE_WRITE, "FileOutputStream.open");
   }
 
-  public static void beforeFileContentWrite(byte[] bytes, int offset, int length) {
-    String path = CURRENT_PLOT_SCRIPT_WRITE.get();
-    if (path == null || path.length() == 0) {
-      return;
+  /** Previously transformed callers have no receiver identity for this callback. */
+  @Deprecated public static void beforeFileContentWrite(byte[] bytes, int offset, int length) {}
+
+  public static void inspectPlotWrite(PlotWrite attempt) {
+    if (attempt == null) return;
+    try {
+      if (!attempt.hasDirective() || RaspRuntime.detectionOff()) return;
+      Finding finding = new Finding("java8_file_generated_plot_script_command", 91,
+          "A plot directive reached its open output stream", "path", attempt.path(), "plot_stream_write");
+      boolean block = shouldBlock();
+      appendEvent(finding, "FileOutputStream.write", block ? "block" : "log");
+      if (block) throw new Java8RaspBlockException("OhMyRASP blocked a plot directive");
+    } catch (RuntimeException | Error failure) {
+      PlotWrite.cancelled(attempt);
+      throw failure;
     }
-    String content = appendPlotScriptContent(bytesToString(bytes, offset, length));
-    Finding finding = classifyGeneratedPlotScriptWrite(path, content);
-    emitFileFinding(finding, LAST_LOGGED_PLOT_SCRIPT, "FileOutputStream.write");
   }
 
   public static void beforeRandomAccessFileOpen(Object path, String mode) {
@@ -1708,55 +1708,6 @@ public final class Java8RaspHooks {
         "Java archive upload conflicts with the application's deployment policy",
         "filename",
         normalizePath(filename), basis, evaluation.policyDigest);
-  }
-
-  private static Finding classifyGeneratedPlotScriptWrite(String path, String content) {
-    String normalized = normalizePath(path);
-    if (!isGeneratedPlotScriptPath(normalized) || content == null || content.length() == 0) {
-      return null;
-    }
-    if (!GENERATED_PLOT_COMMAND.matcher(content).find()) {
-      return null;
-    }
-    return new Finding(
-        "java8_file_generated_plot_script_command",
-        91,
-        "Generated plot script carries a command execution directive",
-        "path",
-        normalized);
-  }
-
-  private static void trackGeneratedPlotScriptWrite(String normalizedPath) {
-    if (isGeneratedPlotScriptPath(normalizedPath)) {
-      String previous = CURRENT_PLOT_SCRIPT_WRITE.get();
-      CURRENT_PLOT_SCRIPT_WRITE.set(normalizedPath);
-      if (!normalizedPath.equals(previous)) {
-        CURRENT_PLOT_SCRIPT_CONTENT.remove();
-      }
-      return;
-    }
-    if (normalizedPath != null && normalizedPath.length() > 0) {
-      CURRENT_PLOT_SCRIPT_WRITE.remove();
-      CURRENT_PLOT_SCRIPT_CONTENT.remove();
-    }
-  }
-
-  private static boolean isGeneratedPlotScriptPath(String path) {
-    return path != null && GENERATED_PLOT_SCRIPT_FILE.matcher(normalizePath(path)).matches();
-  }
-
-  private static String appendPlotScriptContent(String chunk) {
-    if (chunk == null || chunk.length() == 0) {
-      String current = CURRENT_PLOT_SCRIPT_CONTENT.get();
-      return current == null ? "" : current;
-    }
-    String current = CURRENT_PLOT_SCRIPT_CONTENT.get();
-    String combined = current == null ? chunk : current + chunk;
-    if (combined.length() > 8192) {
-      combined = combined.substring(combined.length() - 8192);
-    }
-    CURRENT_PLOT_SCRIPT_CONTENT.set(combined);
-    return combined;
   }
 
   private static Finding classifyArchiveWrite(String entry, String path) {
@@ -4785,17 +4736,7 @@ public final class Java8RaspHooks {
     }
   }
 
-  private static String bytesToString(byte[] bytes, int offset, int length) {
-    if (bytes == null || length <= 0) {
-      return "";
-    }
-    int safeOffset = Math.max(0, Math.min(offset, bytes.length));
-    int safeLength = Math.max(0, Math.min(length, bytes.length - safeOffset));
-    if (safeLength <= 0) {
-      return "";
-    }
-    return new String(bytes, safeOffset, safeLength, StandardCharsets.UTF_8);
-  }
+
 
   private static String normalizePath(String path) {
     if (path == null) {

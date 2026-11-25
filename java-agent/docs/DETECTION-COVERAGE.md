@@ -248,7 +248,7 @@ The descriptions live in the [general catalog](../rules/general.json) and [produ
 | `fileUpload_multipart_html` | A submitted filename suggests executable, script or active web content. Its suffix alone does not establish execution. | — |
 | `fileUpload_multipart_script` | A submitted filename suggests executable, script or active web content. Its suffix alone does not establish execution. | — |
 | `fileUpload_path_traversal` | The submitted filename contains path-escape indicators. | — |
-| `java8_file_generated_plot_script_command`, `java11_file_generated_plot_script_command`, `java17_file_generated_plot_script_command` | A generated plotting script contains a command directive at a file-write boundary. The script grammar matters regardless of which application generates it. | — |
+| `java8_file_generated_plot_script_command`, `java11_file_generated_plot_script_command`, `java17_file_generated_plot_script_command` | A directive in plot syntax reaches the output stream opened for that plot file. The event records a write attempt. | — |
 | `java8_file_script_write`, `java11_file_script_write`, `java17_file_script_write` | A file write selects a target with a script or executable suffix. This is a file-type indicator. | Maven repository layout and TeamCity plugin startup provide product-specific exclusions to the general file rule. |
 | `java8_file_sensitive_read`, `java11_file_sensitive_read`, `java17_file_sensitive_read` | A host file open selects a protected location. Request and resolved-path evidence depend on the branch. | — |
 | `java8_jaas_jndi_remote_provider`, `java11_jaas_jndi_remote_provider`, `java17_jaas_jndi_remote_provider` | A JAAS JNDI login module receives remote naming-provider options. | — |

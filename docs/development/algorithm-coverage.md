@@ -420,12 +420,7 @@ same patch as any new Java-compatible Vulhub replay.
   CVE-2020-17519 baseline returns `/etc/passwd` through a double-encoded
   `/jobmanager/logs/..%252f...` traversal, while protected mode blocks the
   lower-level `FileInputStream.open` sink before passwd content is disclosed.
-  Generated plot script writes are inspected at `FileOutputStream.write` only
-  after a same-thread plot script path such as `.gnuplot`, `.gp`, `.plt`, or
-  `.plot` is opened; bounded plot controls such as `yrange`, `y2range`, and
-  `key` that contain command directives log
-  `java8_file_generated_plot_script_command`, while ordinary generated plot
-  scripts remain quiet. `scripts/acceptance-vulhub-opentsdb-java8.sh` provides
+  For generated plot script writes, see [plot output streams](../detection.md#plot-output-streams). `scripts/acceptance-vulhub-opentsdb-java8.sh` provides
   real Vulhub application evidence: OpenTSDB 2.4.0 and 2.4.1 baselines create
   marker files through Gnuplot `system` directives, while protected mode blocks
   the generated `.gnuplot` write before either marker is created.

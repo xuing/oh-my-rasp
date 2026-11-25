@@ -1,5 +1,7 @@
 package io.ohmyrasp.agent.java11;
 
+import io.ohmyrasp.agent.rules.general.PlotWrite;
+
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
@@ -1957,8 +1959,11 @@ final class Java11RaspHooksTest {
     System.setProperty("ohmyrasp.java11.log", log.toString());
 
     byte[] content = "set yrange [0:42]\nplot '-' using 1:2".getBytes(StandardCharsets.UTF_8);
-    Java11RaspHooks.beforeFileWrite("/tmp/opentsdb/safe.gnuplot");
-    Java11RaspHooks.beforeFileContentWrite(content, 0, content.length);
+    Object stream = new Object();
+    PlotWrite.opened(stream, "/tmp/opentsdb/safe.gnuplot", false);
+    PlotWrite write = PlotWrite.bytes(stream, content, 0, content.length);
+    Java11RaspHooks.inspectPlotWrite(write);
+    PlotWrite.finished(write, true);
 
     assertFalse(Files.exists(log));
   }
@@ -1972,8 +1977,11 @@ final class Java11RaspHooksTest {
     byte[] content =
         "set yrange [0:system('touch /tmp/ohmyrasp-opentsdb-success')]\nplot '-' using 1:2"
             .getBytes(StandardCharsets.UTF_8);
-    Java11RaspHooks.beforeFileWrite("/tmp/opentsdb/evil.gnuplot");
-    Java11RaspHooks.beforeFileContentWrite(content, 0, content.length);
+    Object stream = new Object();
+    PlotWrite.opened(stream, "/tmp/opentsdb/evil.gnuplot", false);
+    PlotWrite write = PlotWrite.bytes(stream, content, 0, content.length);
+    Java11RaspHooks.inspectPlotWrite(write);
+    PlotWrite.finished(write, true);
 
     String text = new String(Files.readAllBytes(log), StandardCharsets.UTF_8);
     assertTrue(text.contains("\"algorithm\":\"java11_file_generated_plot_script_command\""));
@@ -1991,11 +1999,12 @@ final class Java11RaspHooksTest {
     byte[] content =
         "set key ;system \"touch /tmp/ohmyrasp-opentsdb-success\" \"\"\nplot '-' using 1:2"
             .getBytes(StandardCharsets.UTF_8);
-    Java11RaspHooks.beforeFileWrite("/tmp/opentsdb/evil.gnuplot");
+    Object stream = new Object();
+    PlotWrite.opened(stream, "/tmp/opentsdb/evil.gnuplot", false);
 
     assertThrows(
         Java11RaspBlockException.class,
-        () -> Java11RaspHooks.beforeFileContentWrite(content, 0, content.length));
+        () -> Java11RaspHooks.inspectPlotWrite(PlotWrite.bytes(stream, content, 0, content.length)));
 
     String text = new String(Files.readAllBytes(log), StandardCharsets.UTF_8);
     assertTrue(text.contains("\"algorithm\":\"java11_file_generated_plot_script_command\""));

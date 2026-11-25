@@ -4,6 +4,7 @@ import io.ohmyrasp.agent.file.UnixDeleteVisitor;
 import io.ohmyrasp.agent.file.UnixReadVisitor;
 import io.ohmyrasp.agent.file.DirectoryListVisitor;
 import io.ohmyrasp.agent.file.StreamReadVisitor;
+import io.ohmyrasp.agent.file.PlotWriteVisitor;
 import java.lang.instrument.ClassFileTransformer;
 import java.security.ProtectionDomain;
 import org.objectweb.asm.ClassReader;
@@ -19,8 +20,6 @@ public final class Java17FileTransformer implements ClassFileTransformer {
   private static final Type HOOKS = Type.getType(Java17RaspHooks.class);
   private static final Method BEFORE_FILE_WRITE =
       Method.getMethod("void beforeFileWrite(java.lang.Object)");
-  private static final Method BEFORE_FILE_CONTENT_WRITE =
-      Method.getMethod("void beforeFileContentWrite(byte[], int, int)");
   private static final Method BEFORE_NIO_FILE_WRITE =
       Method.getMethod("void beforeNioFileWrite(java.lang.Object)");
 
@@ -36,7 +35,7 @@ public final class Java17FileTransformer implements ClassFileTransformer {
     }
     try {
       ClassReader reader = new ClassReader(classfileBuffer);
-      ClassWriter writer = new ClassWriter(reader, ClassWriter.COMPUTE_MAXS);
+      ClassWriter writer = new ClassWriter(reader, PlotWriteVisitor.OWNER.equals(className) ? ClassWriter.COMPUTE_FRAMES : ClassWriter.COMPUTE_MAXS);
       reader.accept(new FileClassVisitor(className, writer), ClassReader.EXPAND_FRAMES);
       return writer.toByteArray();
     } catch (Throwable throwable) {
@@ -70,6 +69,8 @@ public final class Java17FileTransformer implements ClassFileTransformer {
       if (methodVisitor == null) {
         return methodVisitor;
       }
+      if (PlotWriteVisitor.OWNER.equals(className))
+        methodVisitor = PlotWriteVisitor.wrap(methodVisitor, access, name, descriptor, HOOKS);
       if ("java/io/FileOutputStream".equals(className) && "open".equals(name)) {
         return StreamReadVisitor.outputOpen(methodVisitor, name, descriptor, HOOKS.getInternalName());
       }
@@ -95,9 +96,6 @@ public final class Java17FileTransformer implements ClassFileTransformer {
       if ("java/nio/file/Files".equals(className)) {
         return visitNioFilesMethod(methodVisitor, access, name, descriptor);
       }
-      if ("java/io/FileOutputStream".equals(className) && isFileOutputStreamByteWrite(name, descriptor)) {
-        return visitFileOutputStreamWrite(methodVisitor, access, name, descriptor);
-      }
       if (!"<init>".equals(name)) {
         return methodVisitor;
       }
@@ -107,34 +105,6 @@ public final class Java17FileTransformer implements ClassFileTransformer {
           protected void onMethodEnter() {
             loadArg(0);
             invokeStatic(HOOKS, BEFORE_FILE_WRITE);
-          }
-        };
-      }
-      return methodVisitor;
-    }
-
-    private MethodVisitor visitFileOutputStreamWrite(
-        MethodVisitor methodVisitor, int access, String name, String descriptor) {
-      if ("write".equals(name) && "([B)V".equals(descriptor)) {
-        return new AdviceAdapter(Opcodes.ASM9, methodVisitor, access, name, descriptor) {
-          @Override
-          protected void onMethodEnter() {
-            loadArg(0);
-            push(0);
-            loadArg(0);
-            arrayLength();
-            invokeStatic(HOOKS, BEFORE_FILE_CONTENT_WRITE);
-          }
-        };
-      }
-      if ("write".equals(name) && "([BII)V".equals(descriptor)) {
-        return new AdviceAdapter(Opcodes.ASM9, methodVisitor, access, name, descriptor) {
-          @Override
-          protected void onMethodEnter() {
-            loadArg(0);
-            loadArg(1);
-            loadArg(2);
-            invokeStatic(HOOKS, BEFORE_FILE_CONTENT_WRITE);
           }
         };
       }
@@ -221,10 +191,6 @@ public final class Java17FileTransformer implements ClassFileTransformer {
     private static boolean isNioPathSecondWrite(String name, String descriptor) {
       return ("copy".equals(name) || "move".equals(name))
           && descriptor.startsWith("(Ljava/nio/file/Path;Ljava/nio/file/Path;");
-    }
-
-    private static boolean isFileOutputStreamByteWrite(String name, String descriptor) {
-      return "write".equals(name) && ("([B)V".equals(descriptor) || "([BII)V".equals(descriptor));
     }
   }
 }
