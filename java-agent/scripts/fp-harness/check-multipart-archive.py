@@ -8,15 +8,9 @@ from pathlib import Path
 import os
 import subprocess
 import tempfile
-from urllib.request import urlopen
 import zipfile
 
-APIS = {
-    "javax": ("javax/servlet/javax.servlet-api/3.1.0/javax.servlet-api-3.1.0.jar",
-              "af456b2dd41c4e82cf54f3e743bc678973d9fe35bd4d3071fa05c7e5333b8482"),
-    "jakarta": ("jakarta/servlet/jakarta.servlet-api/5.0.0/jakarta.servlet-api-5.0.0.jar",
-                "33d3a5bda82c7d2f1b898685faa954f1fc34f7b0ae5c2f6ccc6d051e8a10973b"),
-}
+from servlet_fixture import APIS, api_jar
 
 
 def main():
@@ -33,15 +27,10 @@ def main():
         track = next((v for v in ("8", "11", "17") if
                       f"io/ohmyrasp/agent/java{v}/Java{v}RaspHooks.class" in jar.namelist()), "main")
     with tempfile.TemporaryDirectory(prefix="multipart-check-") as tmp:
-        for namespace, (artifact, sha) in APIS.items():
+        for namespace in APIS:
             classes = Path(tmp) / namespace
             classes.mkdir()
-            api = (args.api_dir or classes) / Path(artifact).name
-            if args.api_dir is None:
-                with urlopen("https://repo.maven.apache.org/maven2/" + artifact, timeout=25) as response:
-                    api.write_bytes(response.read(512 * 1024))
-            if hashlib.sha256(api.read_bytes()).hexdigest() != sha:
-                raise SystemExit(f"wrong {namespace} API digest")
+            api = api_jar(namespace, classes, args.api_dir)
             check = classes / "MultipartAccessCheck.java"
             check.write_text((source / check.name).read_text().replace("import javax.servlet", f"import {namespace}.servlet"))
             subprocess.run(["javac", "-cp", api.resolve(), "-d", classes, source / "HttpTransportCheck.java", source / "MultipartIsolationCheck.java", check], check=True)

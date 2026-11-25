@@ -1827,29 +1827,12 @@ same patch as any new Java-compatible Vulhub replay.
   era servlet hooks also enforce this request classification as
   `javaX_request_ogc_filter_sql_injection`; real Java 17 Vulhub evidence is
   provided by `scripts/acceptance-vulhub-geoserver-25157-java17.sh`.
-- `request_remote_job_submission` covers request-time job/application
-  descriptors that submit a remote Java executable artifact together with an
-  entry class, or a shell command in a container/job command field, to a job
-  control endpoint. This targets Apache Spark standalone REST application
-  submission and Hadoop YARN ResourceManager REST container command submission
-  shapes while logging only mechanism, URI, descriptor length, artifact
-  scheme/type, or command length rather than the submitted descriptor. The
-  playground and acceptance suite include both the Vulhub-shaped Spark REST
-  `/v1/submissions/create` `appResource`/`mainClass` shape and the
-  Vulhub-shaped Hadoop `/ws/v1/cluster/apps`
-  `am-container-spec.commands.command` reverse-shell submission.
-  The dedicated Java 8/11/17 agents also hook Spark standalone REST
-  `handleSubmit` and Hadoop YARN ResourceManager
-  `RMWebServices.submitApplication`, emitting
-  `javaX_request_remote_job_submission` for the remote artifact plus
-  entry-class shape or for AM/container command submission. Real Java 8 Vulhub
-  evidence is provided by `scripts/acceptance-vulhub-spark-java8.sh`, where
-  Spark 2.3.1 baseline fetches a hosted payload JAR and the worker creates
-  `/tmp/ohmyrasp-spark-success`, and by
-  `scripts/acceptance-vulhub-hadoop-yarn-java8.sh`, where Hadoop 2.8.1
-  baseline schedules a NodeManager command that creates
-  `/tmp/ohmyrasp-yarn-success`; protected mode blocks each REST submission
-  before the worker/container marker is created.
+- `request_remote_job_submission` checks [Spark REST submission authorization](../detection.md#spark-rest-submission-authorization)
+  and also has a separate scheduler command branch. The Java backports
+  observe YARN application-master command submission at
+  `RMWebServices.submitApplication`. Earlier Spark acceptance used an
+  artifact descriptor; the current role check is exercised by the
+  [packaged servlet probe](../../java-agent/scripts/fp-harness/check-spark-submit.py).
 - `request_internal_forward` covers request-controlled internal forwarding or
   view selection parameters that point to sensitive control paths using servlet
   path-parameter JSP suffix confusion, such as TeamCity-style

@@ -62,6 +62,23 @@ A "verified algorithm signature" means an end-to-end acceptance test launched a 
 
 ## Detection techniques
 
+### Spark REST submission authorization
+
+Set `-Dohmyrasp.spark.submitRole=submitter` on the Spark REST server JVM to
+require the deployment's `submitter` servlet role for job creation. Use a role
+mapped by that deployment's servlet container. At the call to `handleSubmit`,
+the agent checks the actual creation message and calls `isUserInRole` on the
+submitting request. A false decision emits `required_submit_role_denied`.
+Block mode stops the handoff. Monitor mode records the denial and allows the
+handler to proceed. Local and remote artifacts use the same authorization check.
+
+An unset or blank role, servlet wildcards, and an unavailable role service
+leave this rule silent. On an unprotected cluster the operator must declare the
+required role to enforce this boundary. Events omit the submitted descriptor,
+artifact location and caller identity. In the primary agent, a descriptor-only
+artifact finding from the synthetic policy API requires explicit selection.
+[Spark submission servlet](https://github.com/apache/spark/blob/v2.3.1/core/src/main/scala/org/apache/spark/deploy/rest/RestSubmissionServer.scala)
+
 ### Java archive upload authorization
 
 The filename hook can enforce an application-declared role when application code or

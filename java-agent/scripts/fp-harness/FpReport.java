@@ -62,6 +62,10 @@ public final class FpReport {
             Case.of("example.velocitymetrics.Recorder")),
             (c, r) -> ENGINE.detectCommand(List.of("printf", "%s", "weekly"), r,
                 List.of("java.lang.ProcessImpl", "java.lang.ProcessBuilder", c.payload()))),
+        new Category("Spark job descriptors", List.of(
+            Case.of("{\"action\":\"CreateSubmissionRequest\",\"appResource\":\"https://artifacts.example.test/reports.jar\",\"mainClass\":\"reports.Weekly\"}")),
+            (c, r) -> ENGINE.detectRemoteJobSubmission("Spark REST", c.payload(),
+                new RequestContext("POST", "/v1/submissions/create", "", Map.of(), Map.of()))),
         new Category("Outbound URLs", urlCorpus(), (c, r) -> ENGINE.detectUrl(c.payload(), r)),
         new Category("File reads", fileReadCorpus(), (c, r) -> ENGINE.detectFileRead(c.payload(), r, false)),
         new Category("Directory listings", List.of(

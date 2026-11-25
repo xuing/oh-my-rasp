@@ -1176,8 +1176,8 @@ XML
   expect_body_contains "${protected_url}/rasp/policy/request-skywalking-graphql-sql-identifier" "policy request-skywalking-graphql-sql-identifier triggered"
   expect_body_contains "${protected_url}/graphql" "skywalking-graphql=" \
     -H "Content-Type: application/json" --data-binary '{"query":"graphql report","variables":{"metricName":"select label"}}'
-  expect_block "$version" request_remote_job_submission "${protected_url}/rasp/policy/remote-job-submission"
-  expect_block "$version" request_spark_unacc_rest_submission -X POST -H "Content-Type: application/json" --data-binary "$spark_rest_submission_body" "${protected_url}/v1/submissions/create"
+  expect_body_contains "${protected_url}/rasp/policy/remote-job-submission" "policy remote-job-submission triggered"
+  expect_body_contains "${protected_url}/v1/submissions/create" "spark-rest-submission=" -X POST -H "Content-Type: application/json" --data-binary "$spark_rest_submission_body"
   expect_block "$version" request_hadoop_yarn_command_submission "${protected_url}/rasp/policy/remote-hadoop-yarn-command-submission"
   expect_block "$version" request_teamcity_cve_2024_27198_internal_forward "${protected_url}/rasp/policy/request-internal-forward"
   expect_block "$version" request_java_bean_pollution -G --data-urlencode "class.module.classLoader.resources.context.parent.pipeline.first.pattern=%{c2}i" "${protected_url}/rasp/request"

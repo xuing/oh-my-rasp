@@ -193,6 +193,10 @@ The primary [serial filter check](java-agent/scripts/fp-harness/check-serial-fil
 verifies application filter registration, JDK rejection and ordinary data reads
 in separate JVMs. Run it locally with `java-agent/scripts/check-jdk25.sh serial-filter`.
 
+The [Spark submit check](java-agent/scripts/fp-harness/check-spark-submit.py)
+uses Javax and Jakarta servlet requests with a recording handler. It checks
+role decisions for a fixed report job. Pass `--api-dir` to use local servlet jars.
+
 The [JWT filter check](java-agent/scripts/fp-harness/check-jwt-verification.py)
 runs a local filter fixture with java-jwt and a deny-only downstream receiver.
 Use `java-agent/scripts/check-jdk25.sh jwt-verification` for the primary agent.

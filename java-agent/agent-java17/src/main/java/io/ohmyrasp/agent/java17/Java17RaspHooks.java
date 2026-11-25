@@ -5,6 +5,7 @@ import io.ohmyrasp.agent.file.ArchiveEntryContext;
 import io.ohmyrasp.agent.file.HostReadPath;
 import io.ohmyrasp.agent.file.HostDirectory;
 import io.ohmyrasp.agent.jmx.JmxDispatch;
+import io.ohmyrasp.agent.rules.product.spark.SparkSubmitRole;
 import io.ohmyrasp.agent.serialization.StreamTypeNames;
 import io.ohmyrasp.agent.rules.product.beanshell.BeanShellTypes;
 import io.ohmyrasp.agent.rules.general.PlotWrite;
@@ -126,11 +127,6 @@ public final class Java17RaspHooks {
           "(?is)(?:^|\\s)(?:where|join|union|select|insert|update|delete|drop|alter|create|merge|call|case|when|then|else|sleep|benchmark|order|group|having|limit|and|or)\\b");
   private static final Pattern SCRIPT_LITERAL_EXECUTE =
       Pattern.compile("(?is)[\"'][^\"'\\r\\n]{1,200}[\"']\\s*\\.\\s*execute\\s*\\(");
-  private static final Pattern REMOTE_JOB_ARTIFACT =
-      Pattern.compile(
-          "(?is)\"(?:appResource|spark\\.jars)\"\\s*:\\s*\"((?:https?|ftp)://[^\"\\s]{1,2048}\\.(?:jar|zip|py))\"");
-  private static final Pattern REMOTE_JOB_MAIN_CLASS =
-      Pattern.compile("(?is)\"mainClass\"\\s*:\\s*\"[^\"\\r\\n]{1,512}\"");
   private static final ThreadLocal<String> LAST_LOGGED_REQUEST = new ThreadLocal<String>();
   private static final ThreadLocal<String> LAST_LOGGED_REMOTE_JOB = new ThreadLocal<String>();
   private static final ThreadLocal<String> LAST_LOGGED_COMMAND = new ThreadLocal<String>();
@@ -253,9 +249,16 @@ public final class Java17RaspHooks {
     if ("block".equals(action)) throw new Java17RaspBlockException("OhMyRASP Java 17 blocked suspicious file upload");
   }
 
-  public static void beforeSparkRestSubmit(String descriptor) {
-    Finding finding = classifyRemoteJobSubmission("Spark REST", descriptor);
-    emitRemoteJobFinding(finding, "SparkRest.handleSubmit");
+  /** Previously transformed handlers supplied only descriptor text. */
+  public static void beforeSparkRestSubmit(String descriptor) {}
+
+  public static void beforeSparkSubmitDispatch(boolean creation, Object request, Class<?> requestApi) {
+    if (RaspRuntime.detectionOff() || !SparkSubmitRole.denied(creation, request, requestApi)) return;
+    Finding finding = new Finding("java17_request_remote_job_submission", 95,
+        "Spark job submission lacks the deployment's required role", "operation", "handleSubmit", "required_submit_role_denied");
+    boolean block = shouldBlock();
+    appendEvent(finding, "SparkRest.handleSubmit", block ? "block" : "log");
+    if (block) throw new Java17RaspBlockException("OhMyRASP blocked unauthorized Spark submission");
   }
 
   public static void beforeYarnApplicationSubmit(Object submission) {
@@ -1830,30 +1833,6 @@ public final class Java17RaspHooks {
     if ("block".equals(action)) {
       throw new Java17RaspBlockException("OhMyRASP Java 17 blocked suspicious remote job submission");
     }
-  }
-
-  private static Finding classifyRemoteJobSubmission(String mechanism, String descriptor) {
-    String normalized = descriptor == null ? "" : descriptor.trim();
-    if (normalized.length() == 0 || normalized.indexOf("CreateSubmissionRequest") < 0) {
-      return null;
-    }
-    Matcher artifact = REMOTE_JOB_ARTIFACT.matcher(normalized);
-    if (artifact.find() && REMOTE_JOB_MAIN_CLASS.matcher(normalized).find()) {
-      String artifactUrl = artifact.group(1);
-      return new Finding(
-          "java17_request_remote_job_submission",
-          92,
-          "Spark REST request submits a remote executable artifact",
-          "submission",
-          mechanism
-              + " "
-              + artifactScheme(artifactUrl)
-              + " "
-              + artifactExtension(artifactUrl)
-              + " descriptorHash="
-              + Integer.toHexString(normalized.hashCode()));
-    }
-    return null;
   }
 
   private static Finding classifyYarnApplicationSubmission(Object submission) {
@@ -4406,34 +4385,6 @@ public final class Java17RaspHooks {
 
   private static String lower(String value) {
     return value == null ? "" : value.toLowerCase(Locale.ROOT);
-  }
-
-  private static String artifactScheme(String value) {
-    int index = value == null ? -1 : value.indexOf(':');
-    if (index <= 0) {
-      return "unknown";
-    }
-    return lower(value.substring(0, index));
-  }
-
-  private static String artifactExtension(String value) {
-    if (value == null) {
-      return "unknown";
-    }
-    String normalized = value;
-    int query = normalized.indexOf('?');
-    if (query >= 0) {
-      normalized = normalized.substring(0, query);
-    }
-    int fragment = normalized.indexOf('#');
-    if (fragment >= 0) {
-      normalized = normalized.substring(0, fragment);
-    }
-    int dot = normalized.lastIndexOf('.');
-    if (dot < 0 || dot == normalized.length() - 1) {
-      return "unknown";
-    }
-    return lower(normalized.substring(dot + 1));
   }
 
   private static boolean isLoopbackHost(String host) {

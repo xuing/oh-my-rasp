@@ -3,7 +3,7 @@
 set -euo pipefail
 
 usage() {
-  echo "Usage: $0 [--tests Gradle-test-filter] [file-delete|file-read|file-streams|http-transport|jmx-dispatch|jwt-verification|multipart-archive|mybatis-mapping|process-launch|serial-filter|stream-resolution|sqlite-identifiers|write-namespace|xml-resolution [probe options]]"
+  echo "Usage: $0 [--tests Gradle-test-filter] [file-delete|file-read|file-streams|http-transport|jmx-dispatch|jwt-verification|multipart-archive|mybatis-mapping|process-launch|serial-filter|spark-submit|stream-resolution|sqlite-identifiers|write-namespace|xml-resolution [probe options]]"
   echo "The benign corpus always runs. Unit tests default to the whole primary module."
 }
 
@@ -15,7 +15,7 @@ if [[ "${1:-}" == --tests ]]; then
 fi
 case "${1:-}" in
   -h|--help) usage; exit 0 ;;
-  ""|file-delete|file-read|file-streams|http-transport|jmx-dispatch|jwt-verification|multipart-archive|mybatis-mapping|process-launch|serial-filter|stream-resolution|sqlite-identifiers|write-namespace|xml-resolution) ;;
+  ""|file-delete|file-read|file-streams|http-transport|jmx-dispatch|jwt-verification|multipart-archive|mybatis-mapping|process-launch|serial-filter|spark-submit|stream-resolution|sqlite-identifiers|write-namespace|xml-resolution) ;;
   *) usage >&2; exit 2 ;;
 esac
 

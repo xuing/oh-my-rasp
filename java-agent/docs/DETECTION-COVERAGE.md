@@ -8,7 +8,7 @@
 
 | Metric | Count |
 |--------|------:|
-| Hook families (instrumentation points) | 28 |
+| Hook families (instrumentation points) | 29 |
 | Detector capabilities (engine entry points) | 56 |
 | Verified algorithm signatures (asserted by tests) | 43 |
 | End-to-end vulnerability acceptance scenarios | 136 |
@@ -44,6 +44,7 @@ rewrites a family of risky call sites and routes them to the detector engine.
 | RmiRegistry | `RmiRegistryHookModule` |
 | Servlet | `ServletHookModule` |
 | Session | `SessionHookModule` |
+| SparkSubmit | `SparkSubmitHookModule` |
 | SpringConfig | `SpringConfigHookModule` |
 | Sql | `SqlHookModule` |
 | XmlAttachment | `XmlAttachmentHookModule` |
@@ -175,10 +176,10 @@ The descriptions live in the [general catalog](../rules/general.json) and [produ
 | `request_plot_command_injection` | A plotting parameter contains a plot-interpreter command directive. | — |
 | `request_remote_content_stream` | — | The meaning of stream, import or repository configuration fields depends on the application contract. |
 | `request_remote_import_script_write` | — | The meaning of stream, import or repository configuration fields depends on the application contract. |
-| `request_remote_job_submission` | — | Job-submission descriptors or scheduler fields determine whether the application can select executable work. |
+| `request_remote_job_submission` | — | Spark submission checks an explicitly required servlet role at dispatch. A descriptor-only remote artifact finding requires explicit policy selection. |
 | `request_repository_webroot_write` | — | The meaning of stream, import or repository configuration fields depends on the application contract. |
 | `request_scanner` | The user-agent resembles a scanner. This is client-supplied metadata. | — |
-| `request_scheduler_shell_job` | — | Job-submission descriptors or scheduler fields determine whether the application can select executable work. |
+| `request_scheduler_shell_job` | — | Spark submission checks an explicitly required servlet role at dispatch. A descriptor-only remote artifact finding requires explicit policy selection. |
 | `request_serialized_client_state` | Client state in a request contains a Java object stream. | — |
 | `request_server_side_script_put` | An HTTP PUT selects a script-like destination. | — |
 | `request_setup_state_reset` | — | The meaning of a bypass flag or setup-state field depends on the application's access-control contract. |
@@ -269,7 +270,7 @@ The descriptions live in the [general catalog](../rules/general.json) and [produ
 | `java8_request_jwt_verification_failure`, `java11_request_jwt_verification_failure`, `java17_request_jwt_verification_failure` | — | The DataEase filter continues after catching a signature or algorithm rejection for its selected credential. |
 | `java8_request_ogc_filter_sql_injection`, `java11_request_ogc_filter_sql_injection`, `java17_request_ogc_filter_sql_injection` | An OGC service or route and a filter parameter contain SQL-control indicators. JDBC execution is unconfirmed. | — |
 | `java8_request_path_confusion`, `java11_request_path_confusion`, `java17_request_path_confusion` | Normalization changes path structure or reveals control characters in a sensitive route. | The backports have a TeamCity-specific normal-path exclusion. |
-| `java8_request_remote_job_submission`, `java11_request_remote_job_submission`, `java17_request_remote_job_submission` | — | Spark REST and YARN ResourceManager submission contracts identify executable job artifacts or commands. |
+| `java8_request_remote_job_submission`, `java11_request_remote_job_submission`, `java17_request_remote_job_submission` | — | Spark checks the configured submit role at validated creation handoff. YARN separately inspects application-master command submission. |
 | `java8_request_session_file_deserialization`, `java11_request_session_file_deserialization`, `java17_request_session_file_deserialization` | — | The file-backed servlet session use case interprets a filesystem-shaped JSESSIONID. The cookie alone does not prove deserialization. |
 | `java8_request_template_source`, `java11_request_template_source`, `java17_request_template_source` | A template or preview parameter selects a remote source. This branch uses route and parameter conventions. | — |
 | `java8_request_typed_payload_deserialization`, `java11_request_typed_payload_deserialization`, `java17_request_typed_payload_deserialization` | — | The typed request payload matches known class names or implementation-specific triggers. |

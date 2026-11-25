@@ -35,6 +35,7 @@ public final class HookRegistry {
               new SqlHookModule(),
               new ServletHookModule(),
               new JwtHookModule(),
+              new SparkSubmitHookModule(),
               new MultipartUploadHookModule(),
               new XmlAttachmentHookModule(),
               new XxeHookModule()));

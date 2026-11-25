@@ -2,6 +2,7 @@ package io.ohmyrasp.agent.detect;
 
 import java.nio.file.Path;
 import java.util.Locale;
+import java.util.Set;
 
 /** Text transformations shared by primary-agent detectors. */
 final class DetectorStrings {
@@ -55,5 +56,45 @@ final class DetectorStrings {
     } catch (RuntimeException e) {
       return path.replace('\\', '/').toLowerCase(Locale.ROOT);
     }
+  }
+
+  static boolean containsPathToken(String path, Set<String> tokens) {
+    if (path == null || path.isBlank()) {
+      return false;
+    }
+    for (String segment : path.split("[/;?&#._=-]+")) {
+      if (tokens.contains(segment)) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  static String protocolOf(String value) {
+    if (value == null) {
+      return "";
+    }
+    int index = value.indexOf("://");
+    if (index < 1) {
+      return "";
+    }
+    return value.substring(0, index).toLowerCase(Locale.ROOT);
+  }
+
+  static String extensionOf(String value) {
+    String normalized = lower(value);
+    int query = normalized.indexOf('?');
+    if (query >= 0) {
+      normalized = normalized.substring(0, query);
+    }
+    int fragment = normalized.indexOf('#');
+    if (fragment >= 0) {
+      normalized = normalized.substring(0, fragment);
+    }
+    int dot = normalized.lastIndexOf('.');
+    if (dot < 0 || dot == normalized.length() - 1) {
+      return "";
+    }
+    return normalized.substring(dot + 1);
   }
 }

@@ -1111,6 +1111,11 @@ coverage, separate from the Java 25 behavioral replay suite:
   the protected Java 8 agent starts quietly and blocks the Tomcat webroot JSP
   write with `java8_file_script_write`, so the uploaded JSP returns 404 and
   never executes.
+- The current [Spark submit rule](../detection.md#spark-rest-submission-authorization)
+  checks the deployment role at validated submission. A
+  [packaged-agent test](../../java-agent/scripts/fp-harness/check-spark-submit.py)
+  compares authorized and denied dispatch of the same report job. The historical
+  run below exercised the earlier descriptor rule.
 - [x] Run the real Java 8 Apache Spark Vulhub application acceptance:
   `scripts/acceptance-vulhub-spark-java8.sh` starts standalone Spark 2.3.1
   baseline/protected master and worker containers on Java 8u171 plus a local

@@ -1169,33 +1169,12 @@ final class Java8RaspHooksTest {
   }
 
   @Test
-  void logsSparkRestRemoteJobSubmission() throws Exception {
-    Path log = Files.createTempFile("ohmyrasp-java8-spark-rest", ".jsonl");
-    Files.delete(log);
-    System.setProperty("ohmyrasp.java8.log", log.toString());
-
-    Java8RaspHooks.beforeSparkRestSubmit(sparkRestSubmissionBody());
-
-    String text = new String(Files.readAllBytes(log), StandardCharsets.UTF_8);
-    assertTrue(text.contains("\"algorithm\":\"java8_request_remote_job_submission\""));
-    assertTrue(text.contains("\"action\":\"log\""));
-    assertTrue(text.contains("\"hook\":\"SparkRest.handleSubmit\""));
-  }
-
-  @Test
-  void blocksSparkRestRemoteJobSubmissionWhenBlockModeIsEnabled() throws Exception {
-    Path log = Files.createTempFile("ohmyrasp-java8-spark-rest-block", ".jsonl");
-    Files.delete(log);
+  void remoteSparkArtifactAloneDoesNotEstablishAuthorization() throws Exception {
+    Path log = Files.createTempFile("ohmyrasp-spark", ".jsonl");
     System.setProperty("ohmyrasp.java8.log", log.toString());
     System.setProperty("ohmyrasp.java8.block", "true");
-
-    assertThrows(
-        Java8RaspBlockException.class,
-        () -> Java8RaspHooks.beforeSparkRestSubmit(sparkRestSubmissionBody()));
-
-    String text = new String(Files.readAllBytes(log), StandardCharsets.UTF_8);
-    assertTrue(text.contains("\"algorithm\":\"java8_request_remote_job_submission\""));
-    assertTrue(text.contains("\"action\":\"block\""));
+    Java8RaspHooks.beforeSparkRestSubmit(sparkRestSubmissionBody());
+    assertEquals(0L, Files.size(log));
   }
 
   @Test

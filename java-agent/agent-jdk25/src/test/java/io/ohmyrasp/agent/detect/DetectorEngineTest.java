@@ -3610,11 +3610,13 @@ final class DetectorEngineTest {
         """;
     var context = new RequestContext("POST", "/v1/submissions/create", "", Map.of(), Map.of());
 
-    var result = engine.detectRemoteJobSubmission("Spark REST", descriptor, context);
+    assertTrue(engine.detectRemoteJobSubmission("Spark REST", descriptor, context).isEmpty());
+    var result = engine.detectRemoteJobSubmission("Spark REST", descriptor, context, true);
 
     assertAlgorithm(result, "request_remote_job_submission");
     assertEquals("https", result.orElseThrow().details().get("artifactScheme"));
     assertEquals("jar", result.orElseThrow().details().get("artifactType"));
+    assertTrue(result.orElseThrow().requiresExplicitRule());
   }
 
   @Test
@@ -3637,6 +3639,15 @@ final class DetectorEngineTest {
 
     assertAlgorithm(result, "request_remote_job_submission");
     assertEquals("44", result.orElseThrow().details().get("commandLength"));
+  }
+
+  @Test
+  void artifactMetadataDoesNotMaskAnIndependentSchedulerCommandFinding() {
+    String descriptor = "{\"appResource\":\"https://reports.invalid/weekly.jar\",\"mainClass\":\"Weekly\","
+        + "\"command\":\"cat /etc/passwd\"}";
+    var finding = engine.detectRemoteJobSubmission("YARN", descriptor, requestUri("/ws/v1/cluster/apps")).orElseThrow();
+    assertTrue(finding.details().containsKey("commandLength"));
+    assertFalse(finding.requiresExplicitRule());
   }
 
   @Test

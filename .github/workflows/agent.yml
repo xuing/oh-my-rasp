@@ -190,6 +190,8 @@ jobs:
       - name: Verify plot output stream ownership
         if: startsWith(matrix.jar, 'agent-java')
         run: python3 java-agent/scripts/fp-harness/check-plot-stream.py "java-agent/${{ matrix.jar }}"
+      - name: Verify Spark submit role at servlet dispatch
+        run: python3 java-agent/scripts/fp-harness/check-spark-submit.py "java-agent/${{ matrix.jar }}"
       - name: Verify resolved serialization classes and proxy interfaces
         run: python3 java-agent/scripts/fp-harness/check-stream-resolution.py "java-agent/${{ matrix.jar }}"
       - name: Verify JVM and per-stream deserialization filters

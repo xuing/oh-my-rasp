@@ -127,7 +127,7 @@ start_cluster() {
   local worker_ui_port="$4"
   local dir="$5"
   local protected="$6"
-  local agent_opts="-javaagent:/opt/ohmyrasp/ohmyrasp-agent-java8.jar -Dohmyrasp.java8.log=/opt/ohmyrasp/logs/events.jsonl -Dohmyrasp.java8.block=true"
+  local agent_opts="-javaagent:/opt/ohmyrasp/ohmyrasp-agent-java8.jar -Dohmyrasp.java8.log=/opt/ohmyrasp/logs/events.jsonl -Dohmyrasp.java8.block=true -Dohmyrasp.spark.submitRole=submitter"
 
   cleanup_prefix "$prefix"
   docker network create "${prefix}-net" >/dev/null
@@ -213,7 +213,7 @@ run_protected() {
       echo "protected Spark still executed the submitted application marker command" >&2
       exit 1
     fi
-    if grep -Eq '"algorithm":"java8_request_remote_job_submission".*"action":"block"' "$protected_log"; then
+    if grep -Eq '"algorithm":"java8_request_remote_job_submission".*"action":"block".*"decision_basis":"required_submit_role_denied"' "$protected_log"; then
       copy_artifacts "$protected_prefix" "$protected_dir"
       cleanup_prefix "$protected_prefix"
       return
