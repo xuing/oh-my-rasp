@@ -149,7 +149,7 @@ or role names. A historical filename event alone cannot reconstruct authorizatio
 
 ### Request-parameter substring correlation
 
-If a servlet container rejects parameter-map access, the agents can still inspect the request URI, headers and decoded URL query values. For example, an upload limit can make form fields unavailable while a header policy still applies. The application retains its own upload error handling.
+If a servlet container rejects parameter-map access, the agents can still inspect the request URI, headers and decoded URL query values. For example, an upload limit can make form fields unavailable while a header policy still applies. The query fallback accepts ASCII hexadecimal escapes and valid UTF-8. Malformed fields are skipped individually. Valid fields retain their order and repeated values. The application retains its own upload error handling.
 
 Request parameter values (and bounded request bodies up to 8192 characters) are captured into `ThreadLocal<RequestContext>` at HTTP entry. `RequestContext.hasParameterIn(value)` checks whether a dangerous sink argument contains a parameter value of at least 2 characters, a parameter name of at least 8 characters with non-alphanumeric delimiters, or matches within the request body for sink values of at least 8 characters. This is value-level substring correlation, not bytecode dataflow taint tracking: if an application transforms a parameter string before reaching the sink in a way that breaks substring matching, correlation will not trigger, while structural and call-stack rules still evaluate the sink.
 

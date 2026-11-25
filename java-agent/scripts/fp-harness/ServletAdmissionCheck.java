@@ -26,7 +26,7 @@ public class ServletAdmissionCheck extends HttpServlet {
       throws ServletException, java.io.IOException {
     calls++;
     if (parametersUnavailable) {
-      if (!java.util.List.of("a b", "c").equals(OhMyRaspHooks.currentRequest().parameters().get("label")))
+      if (!java.util.List.of("a b", "é", "\uFFFD", "+", "c").equals(OhMyRaspHooks.currentRequest().parameters().get("label")))
         throw new AssertionError("query parameters lost");
       try { request.getParameterMap(); throw new AssertionError("container exception lost"); }
       catch (IllegalStateException expected) { /* The application handles its upload limit. */ }
@@ -43,7 +43,7 @@ public class ServletAdmissionCheck extends HttpServlet {
         new Class<?>[]{HttpServletRequest.class}, (proxy, method, args) -> switch (method.getName()) {
           case "getMethod" -> "POST";
           case "getRequestURI" -> errorDispatch ? nestedUri : "/reports";
-          case "getQueryString" -> parametersUnavailable ? "label=a%20b&label=c" : null;
+          case "getQueryString" -> parametersUnavailable ? "label=a+b&label=%FF&label=%C3%A9&label=%EF%BF%BD&label=%+1&label=%2B&label=c" : null;
           case "getHeaderNames" -> Collections.enumeration(Collections.singletonList("User-Agent"));
           case "getHeader" -> "User-Agent".equalsIgnoreCase((String) args[0]) ? agent : null;
           case "getParameterMap" -> Collections.emptyMap();

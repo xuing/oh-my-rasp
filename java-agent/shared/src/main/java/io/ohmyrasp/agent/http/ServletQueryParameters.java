@@ -1,7 +1,8 @@
 package io.ohmyrasp.agent.http;
 
-import java.io.UnsupportedEncodingException;
-import java.net.URLDecoder;
+import java.nio.ByteBuffer;
+import java.nio.charset.CharacterCodingException;
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -20,16 +21,44 @@ public final class ServletQueryParameters {
       int equal = field.indexOf('=');
       String name = equal < 0 ? field : field.substring(0, equal);
       if (name.isEmpty()) continue;
-      try {
-        String key = URLDecoder.decode(name, "UTF-8");
-        String value = equal < 0 ? "" : URLDecoder.decode(field.substring(equal + 1), "UTF-8");
-        result.computeIfAbsent(key, ignored -> new ArrayList<String>()).add(value);
-      } catch (IllegalArgumentException ignored) {
-        // A malformed escape provides no reliable decoded value.
-      } catch (UnsupportedEncodingException impossible) {
-        throw new AssertionError(impossible);
-      }
+      String key = decode(name);
+      String value = equal < 0 ? "" : decode(field.substring(equal + 1));
+      if (key != null && value != null) result.computeIfAbsent(key, ignored -> new ArrayList<String>()).add(value);
     }
     return result;
+  }
+
+  private static String decode(String raw) {
+    if (raw.indexOf('%') < 0) return raw.replace('+', ' ');
+    StringBuilder text = new StringBuilder(raw.length());
+    ByteBuffer bytes = ByteBuffer.allocate(raw.length() / 3);
+    for (int i = 0; i < raw.length();) {
+      char ch = raw.charAt(i);
+      if (ch != '%') {
+        text.append(ch == '+' ? ' ' : ch);
+        i++;
+        continue;
+      }
+      bytes.clear();
+      do {
+        if (i + 2 >= raw.length()) return null;
+        int high = hex(raw.charAt(i + 1));
+        int low = hex(raw.charAt(i + 2));
+        if (high < 0 || low < 0) return null;
+        bytes.put((byte) ((high << 4) | low));
+        i += 3;
+      } while (i < raw.length() && raw.charAt(i) == '%');
+      bytes.flip();
+      try {
+        text.append(StandardCharsets.UTF_8.newDecoder().decode(bytes));
+      } catch (CharacterCodingException malformed) {
+        return null;
+      }
+    }
+    return text.toString();
+  }
+
+  private static int hex(char ch) {
+    return ch <= 127 ? Character.digit(ch, 16) : -1;
   }
 }
