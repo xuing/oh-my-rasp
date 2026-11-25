@@ -717,7 +717,7 @@ public final class Java11RaspHooks {
     while (padding < 3 && src[sl - 1 - padding] == '=') {
       padding++;
     }
-    Finding finding =
+    var finding =
         new Finding(
             "java11_base64_avx512_tail_underflow",
             99,

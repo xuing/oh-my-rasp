@@ -84,7 +84,7 @@ public final class RaspRuntime {
   static {
     if (!INITIAL_CONFIG.controlDisabled && CONTROL_PATH != null) {
       reloadControl();
-      Thread poller =
+      var poller =
           new Thread(
               new Runnable() {
                 public void run() {
@@ -264,7 +264,7 @@ public final class RaspRuntime {
 
   static {
     if (WRITER_ENABLED) {
-      Thread writer =
+      var writer =
           new Thread(
               new Runnable() {
                 public void run() {
