@@ -232,7 +232,8 @@ def compare(baseline: dict[str, dict[str, int]], sites: list[Site]) -> list[str]
                 f"the baseline allows {allowed}"
                 + (" (the class is not in the baseline)" if cls not in baseline else "")
                 + "\n    in method(s): " + "; ".join(where)
-                + "\n    (counts are per class, so the new site may be any of these)")
+                + ("" if cls not in baseline else
+                   "\n    (the baseline counts per class, so the new site may be any of these)"))
     return messages
 
 
