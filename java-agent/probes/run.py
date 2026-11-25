@@ -12,6 +12,7 @@ does not apply. lines.toml lists the agent lines (JAR x JDK runtime).
   run.py stage [probe..]              download fixtures that probes fetch themselves
   run.py gradle-tasks --line java8,jdk25 [probe..]
                                       Gradle tasks that build the JARs and stage fixtures
+  run.py lines probe..                the lines every named probe applies to, comma-separated
 
 With no probe named, every probe that applies to the line runs. Arguments after
 `--` go to the probe (one probe only). CI and java-agent/scripts/check-agent.sh
@@ -134,6 +135,17 @@ def select(probes: dict[str, Probe], line: Line, args) -> tuple[list[Probe], lis
     return chosen, skipped
 
 
+def require_runnable(probes, line, args, skipped):
+    """Naming a probe that cannot run on this line is a mistake, not a pass."""
+    if not args.probes or args.isolated:
+        return
+    unrunnable = [f"{probe.id}: {reason}" for probe, reason in skipped if not probe.isolated]
+    unrunnable += [f"{name}: not one of the probes that run on Windows" for name in args.probes
+                   if args.windows and not probes[name].windows]
+    if unrunnable:
+        sys.exit(f"cannot run on {line.id}: " + "; ".join(unrunnable))
+
+
 def java_major() -> str:
     text = subprocess.run(["java", "-version"], capture_output=True, text=True, check=True).stderr
     version = re.search(r'version "([^"]+)"', text)[1]
@@ -156,6 +168,7 @@ def cmd_plan(probes, lines, args):
     line = lines[args.line]
     args.plan_only = True
     chosen, skipped = select(probes, line, args)
+    require_runnable(probes, line, args, skipped)
     for probe in chosen:
         print(" ".join(["python3", *(os.path.relpath(part, JAVA_AGENT) if part.startswith("/") else part
                                     for part in command(probe, line, args)[1:])]))
@@ -169,9 +182,11 @@ def cmd_run(probes, lines, args):
         sys.exit(f"line {line.id} runs on JDK {line.jdk}, but `java` on PATH is JDK {java_major()}. "
                  "A pass on another runtime says nothing about this line. Use --any-jdk to override.")
     chosen, skipped = select(probes, line, args)
+    require_runnable(probes, line, args, skipped)
     in_actions = os.environ.get("GITHUB_ACTIONS") == "true"
-    failed = []
+    failed, status = [], {probe.id: "not-run" for probe in chosen}
     for probe in chosen:
+        status[probe.id] = "fail"
         missing = [f.path for f in probe.fixtures if not locate(f.path, args.build_root).exists()]
         if missing:
             print(f"FAIL {line.id} {probe.id}: fixture not staged: {', '.join(missing)} "
@@ -189,12 +204,13 @@ def cmd_run(probes, lines, args):
             failed.append(probe.id)
             if not args.keep_going:
                 break
+        else:
+            status[probe.id] = "pass"
     for probe, reason in skipped:
         print(f"skip {line.id} {probe.id}: {reason}")
     if args.report:
-        ran = {p.id: ("fail" if p.id in failed else "pass") for p in chosen}
-        rows = [(p.id, ran.get(p.id, "skipped")) for p in probes.values() if p.id in ran or any(p is s for s, _ in skipped)]
-        args.report.write_text("".join(f"{line.id}\t{name}\t{status}\n" for name, status in rows))
+        status.update({probe.id: "skipped" for probe, _ in skipped})
+        args.report.write_text("".join(f"{line.id}\t{name}\t{status[name]}\n" for name in probes if name in status))
     if failed:
         sys.exit(f"{len(failed)} probe(s) failed on {line.id}: {', '.join(failed)}")
     if chosen or not args.isolated:
@@ -205,10 +221,15 @@ def cmd_stage(probes, lines, args):
     for probe in (probes[name] for name in args.probes) if args.probes else probes.values():
         for fixture in probe.fixtures:
             target = locate(fixture.path, args.build_root)
-            if fixture.stage and not target.exists():
+            # A directory may exist yet hold only another probe's files, so directories are always restaged.
+            if fixture.stage and not (target.is_file() and target.stat().st_size):
                 subprocess.run([sys.executable, str(probe.script),
                                 *(part.replace("{path}", str(target)) for part in fixture.stage)], check=True)
                 print(f"staged {fixture.path} ({probe.id})")
+
+
+def cmd_lines(probes, lines, args):
+    print(",".join(line.id for line in lines.values() if all(probes[name].skip_reason(line) is None for name in args.probes)))
 
 
 def cmd_gradle_tasks(probes, lines, args):
@@ -227,7 +248,8 @@ def main():
         argv = argv[:argv.index("--")]
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     sub = parser.add_subparsers(dest="action", required=True)
-    commands = {"list": cmd_list, "plan": cmd_plan, "run": cmd_run, "stage": cmd_stage, "gradle-tasks": cmd_gradle_tasks}
+    commands = {"list": cmd_list, "plan": cmd_plan, "run": cmd_run, "stage": cmd_stage,
+                "gradle-tasks": cmd_gradle_tasks, "lines": cmd_lines}
     for name in commands:
         p = sub.add_parser(name)
         p.add_argument("--build-root", type=Path, help="Gradle build root when build directories are redirected "

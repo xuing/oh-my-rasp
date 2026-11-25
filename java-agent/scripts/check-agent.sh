@@ -14,7 +14,8 @@ Usage: $0 [--line LINE[,LINE...]] [--tests GRADLE-TEST-FILTER] [PROBE|all [probe
   --line   agent lines to check (default jdk25); see java-agent/probes/lines.toml
   --tests  limit each line's unit tests, for example '*RaspHooksTest'
   PROBE    one packaged probe, or "all" for every probe that applies to the line.
-           Without it only the unit tests and the benign corpus run.
+           Probes run on the line's own JDK. Without one, only the unit tests and
+           the benign corpus run, and those run on the build JDK for every line.
 
 Probes:
 USAGE
@@ -23,7 +24,7 @@ USAGE
 
 lines=jdk25
 tests=""
-while [[ "${1:-}" == --* ]]; do
+while [[ "${1:-}" == -* ]]; do
   case "$1" in
     --line) lines=${2:?--line needs a value}; shift 2 ;;
     --tests) tests=${2:?--tests needs a value}; shift 2 ;;
@@ -42,7 +43,7 @@ for line in "${line_ids[@]}"; do
 done
 
 gradle_image=$(awk '$1 == "FROM" && $2 ~ /^gradle:/ {print $2; exit}' "$root/Dockerfile")
-image=ohmyrasp/probes:local
+image=ohmyrasp/probes:$(cat "$root/probes/Dockerfile" <(printf '%s' "$gradle_image") | sha256sum | cut -c1-12)
 docker build -q --build-arg "GRADLE_IMAGE=$gradle_image" -t "$image" "$root/probes" >/dev/null
 
 uid=$(id -u)
@@ -144,4 +145,8 @@ if [[ -n "$probe" ]]; then
       "$image" python3 probes/run.py run --line "$line" --build-root /state/build --isolated --keep-going "${selection[@]}" -- "$@" </dev/null
   done
 fi
-echo "Agent check passed: lines=$lines probe=${probe:-none}"
+if [[ -n "$probe" ]]; then
+  echo "Agent check passed: lines=$lines, unit tests on the build JDK, probe=$probe on each line's own JDK"
+else
+  echo "Agent check passed: lines=$lines, unit tests on the build JDK only. Name a probe (or all) to run the packaged JAR on each line's own JDK."
+fi

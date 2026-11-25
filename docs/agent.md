@@ -131,7 +131,7 @@ From `java-agent/`, [`docker-compose.yml`](../java-agent/docker-compose.yml) run
 
 The `/rasp/labs` view loads archived Java range scenarios from [`archived-java-ranges.json`](../java-agent/playground/src/main/resources/ohmyrasp/labs/archived-java-ranges.json). Protected containers write events to `logs/tomcat{9,10,11}-protected/events.jsonl`. [`docker-compose.daemon.yml`](../java-agent/docker-compose.daemon.yml) pairs Tomcat 11 (`18090`) with the host daemon console (`7070`) over a shared spool/control volume.
 
-End-to-end verification scripts in `java-agent/scripts/`:
+End-to-end verification scripts in `java-agent/acceptance/`:
 
 ```bash
 # Tomcat 11 -> 10 -> 9 baseline/protected suite (JDK 25)

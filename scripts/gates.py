@@ -66,9 +66,8 @@ GATES = (
          ("java-agent/agent-", "java-agent/shared/", "java-agent/probes/"),
          (f"java-agent/scripts/check-agent.sh --line {ALL_LINES} all",), needs="docker", slow=True,
          local="agent.yml runs probes/run.py for each row of the runtime-compatibility matrix"),
-    Gate("api", "Go control-plane API: generated bindings and tests", ("api/",),
-         (f"docker run --rm -v \"$PWD/api\":/src -w /src {GO} go generate ./...",
-          f"docker run --rm -v \"$PWD/api\":/src -w /src {GO} go test ./..."), needs="docker",
+    Gate("api", "Go control-plane API tests, including the generated-bindings freshness test", ("api/",),
+         (f"docker run --rm -v \"$PWD/api\":/src -w /src {GO} go test ./...",), needs="docker",
          local="ohmyrasp-control.yml runs `go test ./...` with the integration services up"),
     Gate("console", "React console: i18n parity, build, lint, types, end-to-end", ("console/",),
          ("cd console && npm ci", "cd console && npm run build", "cd console && npm test"),
@@ -122,7 +121,8 @@ def select(paths: list[str], slow: bool) -> list[tuple[Gate, str]]:
     elif len(probes) <= 3:
         for probe in probes:
             chosen.append((Gate(f"probe:{probe}", f"the {probe} probe on every line it applies to", (),
-                                (f"java-agent/scripts/check-agent.sh --line {ALL_LINES} {probe}",), needs="docker"),
+                                (f'java-agent/scripts/check-agent.sh --line "$(python3 java-agent/probes/run.py lines {probe})" {probe}',),
+                                needs="docker"),
                            f"java-agent/probes/{probe}/"))
     return chosen
 

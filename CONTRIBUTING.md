@@ -120,8 +120,9 @@ for missed detections, retain examples of both and use `--rounds N` for focused
 comparisons with varied inputs.
 
 Once the change passes on JDK 25, verify the same behavior on JDK 21 with the
-primary JAR (`--line jdk21`), apply any required backport changes, and run the
-affected Java 8, 11 and 17 probes together. Shared detector code is compiled into
+primary JAR (`--line jdk21 <probe>`), apply any required backport changes, and run
+the affected Java 8, 11 and 17 probes together. Only probes run on a line's own
+JDK: the unit tests of every line run on the build JDK. Shared detector code is compiled into
 each agent; each applicable runtime still needs its packaged check. Use the full
 build and compatibility matrix for integration.
 
