@@ -27,8 +27,12 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.regex.Pattern;
 
+/**
+ * The HTTP request chain. {@link #detectRequest} runs the request-level detectors in a fixed
+ * first-match order that {@code DetectorEngineDispatchTest} pins; the checks below it are the
+ * steps only this chain uses. Every other hook calls the detector class of its family directly.
+ */
 public final class DetectorEngine {
-
   private static final Pattern SCRIPT_FILE_REQUEST_PATH =
       Pattern.compile(
           "(?is).+\\.(?:aspx?|jspx?|php[345]?|phar|phtml|sh|py|pl|rb|so|dll|dylib|ashx|cer|asa)(?:[;/\\\\].*|\\.*$)");

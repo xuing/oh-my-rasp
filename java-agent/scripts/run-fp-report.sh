@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Regenerate docs/FALSE-POSITIVE-REPORT.md by running the FP harness against the
-# real DetectorEngine inside the JDK 25 build image. Requires Docker.
+# real detector classes inside the JDK 25 build image. Requires Docker.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"

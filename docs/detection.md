@@ -10,23 +10,30 @@ For new shared decision code, place cross-product predicates in [general rules](
 
 ## Primary-agent detector layout
 
-Hooks call the public [DetectorEngine facade](../java-agent/agent-jdk25/src/main/java/io/ohmyrasp/agent/detect/DetectorEngine.java). Put the decision beside the evidence it consumes. The facade keeps the HTTP first-match order visible, including credential and serialized client-state checks. The [policy evaluator](../java-agent/agent-jdk25/src/main/java/io/ohmyrasp/agent/policy/AgentPolicy.java) applies operator selection and actions after classification.
+Each hook calls the detector class that owns its decision, listed below. Put the decision beside the evidence it consumes. [DetectorEngine](../java-agent/agent-jdk25/src/main/java/io/ohmyrasp/agent/detect/DetectorEngine.java) holds only the HTTP request chain: `detectRequest` runs the request detectors in a first-match order, including credential and serialized client-state checks, and `DetectorEngineDispatchTest` pins that order. The [policy evaluator](../java-agent/agent-jdk25/src/main/java/io/ohmyrasp/agent/policy/AgentPolicy.java) applies operator selection and actions after classification.
 
 | Evidence at the decision point | Implementation |
 |---|---|
+| HTTP request chain (first match wins) | [DetectorEngine](../java-agent/agent-jdk25/src/main/java/io/ohmyrasp/agent/detect/DetectorEngine.java) |
 | HTTP configuration and naming lookups | [RequestConfigurationDetector](../java-agent/agent-jdk25/src/main/java/io/ohmyrasp/agent/detect/RequestConfigurationDetector.java) |
 | Template loading and expression-bearing request fields | [RequestTemplateDetector](../java-agent/agent-jdk25/src/main/java/io/ohmyrasp/agent/detect/RequestTemplateDetector.java) and [RequestExpressionDetector](../java-agent/agent-jdk25/src/main/java/io/ohmyrasp/agent/detect/RequestExpressionDetector.java) |
 | XML entities and polymorphic binding in request data | [RequestPayloadDetector](../java-agent/agent-jdk25/src/main/java/io/ohmyrasp/agent/detect/RequestPayloadDetector.java) |
 | Remote sources and filesystem targets in a request | [RequestResourceDetector](../java-agent/agent-jdk25/src/main/java/io/ohmyrasp/agent/detect/RequestResourceDetector.java) |
 | JDBC statement, connection options, or database error | [JdbcDetector](../java-agent/agent-jdk25/src/main/java/io/ohmyrasp/agent/detect/JdbcDetector.java) |
 | SQL-like fields in a request, selected by policy | [SqlRequestIndicators](../java-agent/agent-jdk25/src/main/java/io/ohmyrasp/agent/detect/SqlRequestIndicators.java) |
-| Host write targets, archive extraction, generated content and deletion | [HostFileMutationDetector](../java-agent/agent-jdk25/src/main/java/io/ohmyrasp/agent/detect/HostFileMutationDetector.java) |
-| Process arguments and caller stack | [ProcessDetector](../java-agent/agent-jdk25/src/main/java/io/ohmyrasp/agent/detect/ProcessDetector.java) |
-| Deserialization transport and resolved type | [DeserializationDetector](../java-agent/agent-jdk25/src/main/java/io/ohmyrasp/agent/detect/DeserializationDetector.java) and [DeserializationTypes](../java-agent/agent-jdk25/src/main/java/io/ohmyrasp/agent/detect/DeserializationTypes.java) |
-| Resource selected through class loading, JNDI, JAAS, or Spring configuration | [RemoteResourceDetector](../java-agent/agent-jdk25/src/main/java/io/ohmyrasp/agent/detect/RemoteResourceDetector.java) |
+| Local reads, directory listings, includes, `@file` arguments and forged include attributes | [FileAccessDetector](../java-agent/agent-jdk25/src/main/java/io/ohmyrasp/agent/detect/FileAccessDetector.java) |
+| Upload file names and WebDAV destinations | [FileUploadDetector](../java-agent/agent-jdk25/src/main/java/io/ohmyrasp/agent/detect/FileUploadDetector.java) |
+| Host write targets, archive extraction, renames, links, generated content and deletion | [HostFileMutationDetector](../java-agent/agent-jdk25/src/main/java/io/ohmyrasp/agent/detect/HostFileMutationDetector.java) |
+| Process arguments, caller stack and dynamic-loader environment | [ProcessDetector](../java-agent/agent-jdk25/src/main/java/io/ohmyrasp/agent/detect/ProcessDetector.java) |
+| Deserialization transport, resolved type and XMLDecoder object graph | [DeserializationDetector](../java-agent/agent-jdk25/src/main/java/io/ohmyrasp/agent/detect/DeserializationDetector.java) and [DeserializationTypes](../java-agent/agent-jdk25/src/main/java/io/ohmyrasp/agent/detect/DeserializationTypes.java) |
+| Resource selected through class loading, JNDI, JAAS, Spring configuration or a JMX operation | [RemoteResourceDetector](../java-agent/agent-jdk25/src/main/java/io/ohmyrasp/agent/detect/RemoteResourceDetector.java) |
+| Outbound URL, HTTP transport, XML attachment reference, DNS name or XML entity system ID | [NetworkDestinationDetector](../java-agent/agent-jdk25/src/main/java/io/ohmyrasp/agent/detect/NetworkDestinationDetector.java) |
+| Expression, OGNL, Java source, eval, callable name or native library path | [CodeExecutionDetector](../java-agent/agent-jdk25/src/main/java/io/ohmyrasp/agent/detect/CodeExecutionDetector.java) |
+| Response content, and markup reflected from request input | [ResponseContentDetector](../java-agent/agent-jdk25/src/main/java/io/ohmyrasp/agent/detect/ResponseContentDetector.java) |
+| Base64 decoder input bounds | [Base64DecodeDetector](../java-agent/agent-jdk25/src/main/java/io/ohmyrasp/agent/detect/Base64DecodeDetector.java) |
 | Credentials or serialized state observed in a request | [CredentialDetector](../java-agent/agent-jdk25/src/main/java/io/ohmyrasp/agent/detect/CredentialDetector.java) and [SerializedRequestState](../java-agent/agent-jdk25/src/main/java/io/ohmyrasp/agent/detect/SerializedRequestState.java) |
 
-Each domain owns its matching constants, event construction and redaction. Shared request parsing stays in the primary agent. The Java 8-compatible shared source tree provides runtime observations and portable predicates to all agent tracks. The general and product catalogs describe rule applicability independently of these Java boundaries.
+Each domain owns its matching constants, event construction and redaction. A helper that several domains need lives in a shared utility of the package ([DetectorStrings](../java-agent/agent-jdk25/src/main/java/io/ohmyrasp/agent/detect/DetectorStrings.java), [FilePaths](../java-agent/agent-jdk25/src/main/java/io/ohmyrasp/agent/detect/FilePaths.java), [RequestDecoding](../java-agent/agent-jdk25/src/main/java/io/ohmyrasp/agent/detect/RequestDecoding.java), [RequestValues](../java-agent/agent-jdk25/src/main/java/io/ohmyrasp/agent/detect/RequestValues.java), [RequestJson](../java-agent/agent-jdk25/src/main/java/io/ohmyrasp/agent/detect/RequestJson.java)), not in another domain. Each detector's unit tests are in `<Detector>Test` beside it. Shared request parsing stays in the primary agent. The Java 8-compatible shared source tree provides runtime observations and portable predicates to all agent tracks. The general and product catalogs describe rule applicability independently of these Java boundaries.
 
 ## Detection pipeline
 

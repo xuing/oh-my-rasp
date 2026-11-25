@@ -37,4 +37,6 @@ java-agent/scripts/check-agent.sh --help               # lines and probes
 
 **Acceptance scripts are found by path.** A new one goes in `acceptance/vulhub/<component>/<scenario>-<jdk>.sh` or `acceptance/runtime/`. A script anywhere else is not counted by the coverage tooling.
 
+**A primary-agent rule lives in its family's detector class.** Hooks in `agent-jdk25` call the class in `agent-jdk25/src/main/java/io/ohmyrasp/agent/detect/` that owns the decision, and its tests are in `<Detector>Test` beside the other detector tests; [docs/detection.md](../docs/detection.md#primary-agent-detector-layout) maps each kind of evidence to its class. `DetectorEngine` holds only the HTTP request chain, whose first-match order `DetectorEngineDispatchTest` pins. Put a helper that a second family needs in a shared utility of the package (`DetectorStrings`, `FilePaths`, `RequestDecoding`, `RequestValues`, `RequestJson`), not in one of the families. To check one family, run `java-agent/scripts/check-agent.sh --tests '*FileAccessDetectorTest'`, with that family's test class in place of `FileAccessDetectorTest`.
+
 **A new rule id needs a description.** Add it to `rules/general.json` or `rules/product.json`, then regenerate the docs as [../AGENTS.md](../AGENTS.md) describes.

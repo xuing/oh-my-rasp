@@ -1,7 +1,7 @@
 # Algorithm Coverage
 
 This PoC migrates the JavaScript detector behavior into Java-native detector
-methods in `DetectorEngine`. Runtime API hooks call these methods directly where
+methods in the detector classes of `agent-jdk25`. Runtime API hooks call these methods directly where
 there is a concrete Java API to instrument. Semantic hook methods exist for
 policy families whose original hook point is language- or framework-specific,
 so the playground can still verify policy execution and JSONL log collection.

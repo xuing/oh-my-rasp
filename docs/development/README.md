@@ -4,7 +4,7 @@ This directory holds the durable technical ledgers kept in sync with the Java ag
 
 ## algorithm-coverage.md
 
-[`algorithm-coverage.md`](algorithm-coverage.md) records every hook point and detection algorithm implemented in `DetectorEngine`, organized by runtime era (Java 25 primary, Java 8/11/17 backports) and attack family. Update it in the same commit whenever you add, remove, or rename a detector or change an acceptance key.
+[`algorithm-coverage.md`](algorithm-coverage.md) records every hook point and detection algorithm implemented in the `agent-jdk25` detector classes, organized by runtime era (Java 25 primary, Java 8/11/17 backports) and attack family. Update it in the same commit whenever you add, remove, or rename a detector or change an acceptance key.
 
 ## vulhub-coverage.md
 

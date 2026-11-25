@@ -24,7 +24,7 @@ import java.util.Optional;
  * False-positive measurement harness.
  *
  * <p>Runs a curated corpus of <em>benign but plausible</em> inputs through the
- * real {@link DetectorEngine} and counts how many produce a detection. Each
+ * real detector classes and counts how many produce a detection. Each
  * input is presented with a realistic request context: where a value would
  * normally be user-supplied, it is placed in a request parameter so taint-aware
  * detectors see it exactly as they would in production.

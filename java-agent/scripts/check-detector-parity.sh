@@ -5,7 +5,7 @@
 # Guards against false-positive-suppression drift between the flat single-file
 # RASP hook implementations (agent-java8 is the source of truth; agent-java11 and
 # agent-java17 are its byte-identical siblings) and, where applicable, the
-# agent-jdk25 DetectorEngine.
+# agent-jdk25 detect/ package.
 #
 # It asserts, purely via grep, that the three benign-path carve-outs added in
 # commit 8920474 are present in every module that must carry them:
@@ -56,7 +56,7 @@ for variant in java8 java11 java17; do
 done
 
 # ---------------------------------------------------------------------------
-# agent-jdk25 uses a different architecture (detect/DetectorEngine.java) and a
+# agent-jdk25 uses a different architecture (one class per rule family in detect/) and a
 # different symbol set:
 #
 #   * Nacos    -> isBenignInternalServicePath   (same name; guards looksLikeInternalIdentityBypass)
