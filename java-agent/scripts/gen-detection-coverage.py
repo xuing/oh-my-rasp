@@ -25,6 +25,7 @@ Usage:  python3 scripts/gen-detection-coverage.py [--check]
 """
 from __future__ import annotations
 
+import functools
 import json
 import re
 import sys
@@ -34,6 +35,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import acceptance_scripts  # noqa: E402
 import detector_entry_points  # noqa: E402
+import rule_catalogue  # noqa: E402
 
 ROOT = Path(__file__).resolve().parent.parent
 AGENT = ROOT / "agent-jdk25" / "src" / "main" / "java" / "io" / "ohmyrasp" / "agent"
@@ -67,36 +69,75 @@ def detector_capabilities() -> list[str]:
     return detector_entry_points.capabilities()
 
 
+@functools.cache
 def asserted_algorithms() -> list[str]:
-    """Algorithm IDs appearing in literal event assertions in the acceptance scripts."""
+    """Rule ids the acceptance scripts assert: each catalogue id written in a script as a whole token."""
     algos: set[str] = set()
     for script in acceptance_scripts.runtime_and_vulhub_scripts(ACCEPTANCE):
-        text = script.read_text(encoding="utf-8", errors="ignore")
-        algos.update(re.findall(r'"algorithm":"([a-z0-9_]+)"', text))
+        algos |= rule_catalogue.asserted(script.read_text(encoding="utf-8", errors="ignore"))
     return sorted(algos)
 
 
-def primary_rule_ids() -> set[str]:
-    rules = ROOT / "rules"
-    return {key for name in ("general.json", "product.json")
-            for key in json.loads((rules / name).read_text(encoding="utf-8"))["primary"]}
+ARRAY = "required_algorithms"
+# `required_algorithms=(` or `+=(`, optionally declared; the rest of the line may hold entries.
+ARRAY_ASSIGN = re.compile(rf"^\s*(?:(?:declare|local|typeset)(?:\s+-\w+)*\s+)?{ARRAY}(\+?)=\((.*)$")
+ARRAY_READ = re.compile(rf"\$\{{#?{ARRAY}\[[@*]\]\}}")
+ARRAY_ENTRY = re.compile(r"""(["']?)([A-Za-z]\w*)\1""")
+COMMENT = re.compile(r"(?:^|\s)#.*")
+
+
+def parse_required_algorithms(text: str, name: str) -> list[str]:
+    """The ids in a script's required_algorithms array: one `=(...)` assignment and any `+=(...)` appends.
+
+    Entries may be quoted and followed by comments; the closing parenthesis may sit anywhere. A use of
+    the array this parser does not read exits with the line, so the generated list is never short.
+    """
+    required: list[str] = []
+    assigned = False
+    open_at = 0
+    for no, raw in enumerate(text.split("\n"), start=1):
+        line = COMMENT.sub("", raw)
+        if not open_at:
+            assign = ARRAY_ASSIGN.match(line)
+            if not assign:
+                if ARRAY in ARRAY_READ.sub("", line):
+                    raise SystemExit(f"{name}:{no}: cannot read this use of {ARRAY}: {raw.strip()}")
+                continue
+            if not assign.group(1):
+                if assigned or required:
+                    raise SystemExit(f"{name}:{no}: {ARRAY} is assigned after it already holds entries;"
+                                     " use one `=(...)` and `+=(...)` appends after it")
+                assigned = True
+            open_at, line = no, assign.group(2)
+        body, closed, rest = line.partition(")")
+        for word in body.split():
+            entry = ARRAY_ENTRY.fullmatch(word)
+            if not entry:
+                raise SystemExit(f"{name}:{no}: cannot read {ARRAY} entry `{word}`; write a rule id")
+            required.append(entry.group(2))
+        if closed:
+            if rest.strip():
+                raise SystemExit(f"{name}:{no}: cannot read `{rest.strip()}` after the closing parenthesis")
+            open_at = 0
+    if open_at:
+        raise SystemExit(f"{name}:{open_at}: {ARRAY}=( is never closed")
+    if not assigned:
+        raise SystemExit(f"{name}: the {ARRAY}=( ... ) array was not found")
+    return list(dict.fromkeys(required))
 
 
 def jdk25_required_algorithms() -> list[str]:
     """The required_algorithms array of the JDK 25 runtime suite, in script order."""
     script = ACCEPTANCE / "runtime" / "jdk25.sh"
-    array = re.search(r"^required_algorithms=\(\n(.*?)^\)", script.read_text(encoding="utf-8"), re.M | re.S)
-    if not array:
-        raise SystemExit(f"{script}: the required_algorithms=( ... ) array was not found")
-    required = array.group(1).split()
-    if unknown := sorted(set(required) - primary_rule_ids()):
+    required = parse_required_algorithms(script.read_text(encoding="utf-8"), str(script.relative_to(REPO)))
+    if unknown := [r for r in required if r not in rule_catalogue.primary_ids()]:
         raise ValueError(f"{script.name} requires rules missing a scope description: {unknown}")
     return required
 
 
 def probe_checked_rules() -> dict[str, list[str]]:
     """Primary rule id -> the packaged-agent probes whose sources name it as a string literal."""
-    primary = primary_rule_ids()
+    primary = rule_catalogue.primary_ids()
     found: dict[str, set[str]] = {}
     for probe in sorted(p for p in PROBES.iterdir() if (p / "check.py").is_file()):
         for src in (*probe.rglob("*.py"), *probe.rglob("*.java")):
@@ -178,15 +219,13 @@ def rule_scope_tables() -> list[str]:
 
     families: dict[str, list[str]] = {}
     emitted: dict[str, set[str]] = {}
-    for module in BACKPORTS:
-        track = module.removeprefix("agent-")
-        hooks = ROOT / module / "src/main/java/io/ohmyrasp/agent" / track / f"{track.capitalize()}RaspHooks.java"
-        for name in sorted(set(re.findall(r'new Finding\(\s*"(\w+)"', hooks.read_text(encoding="utf-8")))):
+    for track, names in rule_catalogue.backport_findings().items():
+        for name in sorted(names):
             family = name.removeprefix(track + "_")
             emitted.setdefault(track, set()).add(family)
-            names = families.setdefault(family, [])
-            if name not in names:
-                names.append(name)
+            names_of = families.setdefault(family, [])
+            if name not in names_of:
+                names_of.append(name)
     # The backport lines are separate source trees that must decide alike: a rule one line emits, all emit.
     if gaps := {family: sorted(track for track, ids in emitted.items() if family not in ids)
                 for family in families if any(family not in ids for ids in emitted.values())}:
@@ -274,9 +313,10 @@ def render() -> str:
     lines.extend(rule_scope_tables())
     w("## Algorithm signatures asserted in acceptance scripts")
     w("")
-    w("The acceptance scripts contain literal event assertions for these algorithm identifiers. Runtime evidence for individual environments is tracked in the [Vulhub coverage ledger](../../docs/development/vulhub-coverage.md).")
-    w("")
-    w("A script that loops over a list of identifiers, as the JDK 25 runtime suite does, is listed in the next section instead.")
+    w("Each rule id of the [catalog](../rules/) that a runtime or Vulhub acceptance script writes as a whole token:")
+    w("as the algorithm of an expected event, as the argument of a helper that checks one, or in a list the script")
+    w("loops over, such as the JDK 25 suite's `required_algorithms`. Runtime evidence for individual environments is")
+    w("tracked in the [Vulhub coverage ledger](../../docs/development/vulhub-coverage.md).")
     w("")
     for algorithm in algos:
         w(f"- `{algorithm}`")

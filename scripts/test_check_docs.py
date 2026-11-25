@@ -180,10 +180,62 @@ class LedgerTest(unittest.TestCase):
 
 
 class RuntimeSuiteListTest(unittest.TestCase):
+    def parse(self, body: str) -> list[str]:
+        return gen_coverage.parse_required_algorithms(body, "jdk25.sh")
+
     def test_required_array_is_read_in_script_order(self) -> None:
+        self.assertEqual(self.parse("required_algorithms=(\n  zeta_rule\n  alpha_rule\n  mid_rule\n)\n"),
+                         ["zeta_rule", "alpha_rule", "mid_rule"])
         required = gen_coverage.jdk25_required_algorithms()
-        self.assertEqual(required[0], "request_internal_identity")
-        self.assertEqual(len(required), len(set(required)))
+        self.assertEqual(required[:2], ["request_internal_identity", "request_default_jwt_secret"])
+
+    def test_entry_forms(self) -> None:
+        # Review counterexamples: quoted entries, trailing comments, an indented ")" and a later "+=".
+        text = "\n".join([
+            "required_algorithms=(",
+            '  "request_internal_identity"',
+            "  'request_default_jwt_secret'  # required",
+            "  # a comment line",
+            "  request_scanner request_internal_identity",
+            "  )",
+            'for a in "${required_algorithms[@]}"; do :; done  # ${#required_algorithms[@]} entries',
+            'if [[ "$extra" == 1 ]]; then',
+            "  required_algorithms+=(xss_echo)",
+            "fi",
+            "required_algorithms+=(",
+            "  sql_userinput)",
+        ])
+        self.assertEqual(self.parse(text), ["request_internal_identity", "request_default_jwt_secret",
+                                            "request_scanner", "xss_echo", "sql_userinput"])
+        self.assertEqual(self.parse("local -a required_algorithms=(a_rule b_rule)"), ["a_rule", "b_rule"])
+
+    def test_unreadable_forms_fail_with_the_line(self) -> None:
+        cases = {
+            "required_algorithms=(\n  a_rule\n  $EXTRA\n)": "jdk25.sh:3:",
+            'required_algorithms=(\n  "${extra[@]}"\n)': "jdk25.sh:2:",
+            "required_algorithms=(\n  a_rule\n": "jdk25.sh:1:",
+            "required_algorithms=(a_rule) && true": "jdk25.sh:1:",
+            "required_algorithms=(a_rule)\nrequired_algorithms[3]=b_rule": "jdk25.sh:2:",
+            "required_algorithms+=(a_rule)\nrequired_algorithms=(b_rule)": "jdk25.sh:2:",
+            "mapfile -t required_algorithms < list.txt": "jdk25.sh:1:",
+            "echo none": "jdk25.sh:",
+        }
+        for text, where in cases.items():
+            with self.subTest(text=text), self.assertRaises(SystemExit) as raised:
+                self.parse(text)
+            self.assertIn(where, str(raised.exception))
+
+    def test_acceptance_assertions_are_whole_catalogue_tokens(self) -> None:
+        # Review counterexamples: a capitalised id (weblogic/2894-java8.sh) and an id passed to a helper (java17.sh).
+        asserted = gen_coverage.asserted_algorithms()
+        self.assertIn("fileUpload_multipart_script", asserted)
+        self.assertIn("java17_request_typed_payload_deserialization", asserted)
+        catalogue = gen_coverage.rule_catalogue
+        self.assertEqual(catalogue.asserted('expect_block "$v" java17_request_typed_payload_deserialization /x'),
+                         {"java17_request_typed_payload_deserialization"})
+        self.assertEqual(catalogue.asserted(
+            'curl x > "${dir}/jmx_file_write.response"\n    jmx_file_write:/rasp/java8/jmx-file-write \\\n'
+            "java8_jmx_file_writes /rasp/jmx_file_write"), set())
 
     def test_probe_names_primary_rules_only(self) -> None:
         checked = gen_coverage.probe_checked_rules()

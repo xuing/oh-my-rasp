@@ -1,0 +1,65 @@
+"""Rule ids, and what it means for a script to assert one.
+
+The catalogue (rules/general.json and rules/product.json) describes every primary rule id and every
+backport rule family. A backport line emits a family as `<line>_<family>` (java8_file_script_write),
+except for the few families its hooks emit unprefixed. Those are read from the hooks, so the set of
+ids is exactly what the agents can log.
+
+A script asserts an id when the id appears in it as a whole token: not as part of a longer word, a
+file name, a path or a `key:value` pair.
+gen-detection-coverage.py builds its acceptance lists with this definition and scripts/check-docs.py
+checks the ledger claims with it.
+"""
+from __future__ import annotations
+
+import functools
+import json
+import re
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parent.parent  # java-agent/
+RULES = ROOT / "rules"
+BACKPORT_LINES = ("java8", "java11", "java17")
+# A word that stands alone: not part of a dotted name, a path, a hyphenated slug or a `key:value` pair
+# (java8.sh loops over `jmx_file_write:/rasp/java8/jmx-file-write` routes and writes `jmx_file_write.response`).
+TOKEN = re.compile(r"(?<![\w./-])\w+(?![\w/-]|[.:][\w/])")
+
+
+def _catalogue(section: str) -> set[str]:
+    return {key for name in ("general.json", "product.json")
+            for key in json.loads((RULES / name).read_text(encoding="utf-8"))[section]}
+
+
+def primary_ids() -> set[str]:
+    return _catalogue("primary")
+
+
+def backport_families() -> set[str]:
+    return _catalogue("backports")
+
+
+def backport_findings() -> dict[str, list[str]]:
+    """Backport line -> the rule ids its hooks emit as `new Finding("<id>"`, in source order."""
+    found: dict[str, list[str]] = {}
+    for line in BACKPORT_LINES:
+        hooks = ROOT / f"agent-{line}" / "src/main/java/io/ohmyrasp/agent" / line / f"{line.capitalize()}RaspHooks.java"
+        names = re.findall(r'new Finding\(\s*"(\w+)"', hooks.read_text(encoding="utf-8"))
+        found[line] = list(dict.fromkeys(names))
+    return found
+
+
+@functools.cache
+def rule_ids() -> frozenset[str]:
+    """Every id an agent can log: primary ids, and each backport family with its line prefix or as emitted."""
+    families = backport_families()
+    prefixed = {f"{line}_{family}" for line in BACKPORT_LINES for family in families}
+    return frozenset(primary_ids() | prefixed | {n for names in backport_findings().values() for n in names})
+
+
+def tokens(text: str) -> set[str]:
+    return set(TOKEN.findall(text))
+
+
+def asserted(text: str) -> set[str]:
+    """The rule ids that appear in a script as whole tokens."""
+    return tokens(text) & rule_ids()
