@@ -1927,7 +1927,7 @@ same patch as any new Java-compatible Vulhub replay.
 - The primary agent and backports share [Groovy and Commons Collections serialization type policies](../detection.md#deserialization-defenses). The [source audit](vulhub-coverage.md#source-audit) describes the limits of earlier container-only records.
 - `deserialization_gadget` extends Java object stream coverage beyond exact
   blacklist types to known ysoserial gadget families, including BeanShell,
-  ROME, C3P0, and the Commons BeanUtils `BeanComparator` type used by Vulhub cases such as JMeter
+  ROME, the [resolved c3p0 type policy](../detection.md#deserialization-defenses), and the Commons BeanUtils `BeanComparator` type used by Vulhub cases such as JMeter
   RMI, ActiveMQ object message deserialization, and ColdFusion AMF payloads.
   The playground and acceptance suite include the Vulhub-shaped
   `/flex2gateway/amf` `application/x-amf` Java object stream path for Adobe

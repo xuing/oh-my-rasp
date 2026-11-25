@@ -1,6 +1,7 @@
 package io.ohmyrasp.agent.hook;
 
 import io.ohmyrasp.agent.rules.product.beanshell.BeanShellTypes;
+import io.ohmyrasp.agent.rules.product.c3p0.C3p0StreamTypes;
 import java.io.ObjectInputFilter;
 import java.io.ObjectInputStream;
 
@@ -38,8 +39,9 @@ public final class DeserializationGuard {
     // component instance. Leave array policy (including length limits) to the
     // application filter; ordinary object elements have their own class checks.
     try {
-      return serialClass == null || serialClass.isArray() || !BeanShellTypes.permitsTypeCheck(serialClass)
-          ? ObjectInputFilter.Status.UNDECIDED : check(serialClass.getName(), stream);
+      if (serialClass == null || serialClass.isArray() || !BeanShellTypes.permitsTypeCheck(serialClass)
+          || !C3p0StreamTypes.permitsTypeCheck(serialClass)) return ObjectInputFilter.Status.UNDECIDED;
+      return check(serialClass.getName(), stream);
     } catch (LinkageError | SecurityException unavailable) {
       return ObjectInputFilter.Status.UNDECIDED;
     }

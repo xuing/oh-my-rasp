@@ -42,7 +42,7 @@ jobs:
             -w /workspace \
             "$gradle_image" \
             gradle --no-daemon --no-problems-report clean check :stageYarnProbe :stageServletProbe :stageElasticLz4Probe :stageSpringProcessProbe :stageOpenWireProbe :stageHessianProbe :stageXmlRpcProbe :stageCollectionsProbe \
-            :agent-jdk25:jdk21Jars \
+            :agent-jdk25:jdk21Jars :agent-jdk25:stageC3p0Probe \
             :agent-java8:shirudoUpatchJar \
             :agent-java11:shirudoUpatchJar \
             :agent-java17:shirudoUpatchJar \
@@ -105,6 +105,7 @@ jobs:
             java-agent/agent-java11/build/libs/ohmyrasp-agent-java11.jar
             java-agent/agent-java17/build/libs/ohmyrasp-agent-java17.jar
             java-agent/agent-jdk25/build/libs/ohmyrasp-agent.jar
+            java-agent/agent-jdk25/build/c3p0-probe/*.jar
             java-agent/agent-jdk25/build/jdk21/ohmyrasp-agent-jdk21.jar
             java-agent/agent-jdk25/build/jdk21/ohmyrasp-jdk21.jar
             java-agent/agent-java8/build/libs/ohmyrasp-java8.jar
@@ -251,7 +252,7 @@ jobs:
         run: python3 java-agent/scripts/fp-harness/check-stream-resolution.py "java-agent/${{ matrix.jar }}" --beanshell-jar java-agent/build/runtime-probes/bsh.jar --collections-dir java-agent/build/collections-probe
       - name: Verify JVM and per-stream deserialization filters
         if: startsWith(matrix.jar, 'agent-jdk25/')
-        run: python3 java-agent/scripts/fp-harness/check-serial-filter.py "java-agent/${{ matrix.jar }}"
+        run: python3 java-agent/scripts/fp-harness/check-serial-filter.py "java-agent/${{ matrix.jar }}" --c3p0-dir java-agent/agent-jdk25/build/c3p0-probe
       - name: Verify authentication rejection and downstream filter dispatch
         run: python3 java-agent/scripts/fp-harness/check-jwt-verification.py "java-agent/${{ matrix.jar }}" --jar-dir java-agent/build/runtime-probes --api-dir java-agent/build/servlet-probe
       - name: Verify resolved JMX dispatch

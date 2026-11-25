@@ -1,7 +1,8 @@
 package io.ohmyrasp.agent.detect;
 
-import java.util.Set;
+import io.ohmyrasp.agent.rules.product.c3p0.C3p0StreamTypes;
 import io.ohmyrasp.agent.serialization.StreamTypeNames;
+import java.util.Set;
 
 /** Type names and class families used by deserialization and request classifiers. */
 final class DeserializationTypes {
@@ -10,7 +11,7 @@ final class DeserializationTypes {
   private static final Set<String> DESERIALIZATION_GADGET_PREFIXES =
       Set.of(
           "bsh.",
-          "com.mchange.v2.c3p0.",
+          C3p0StreamTypes.PACKAGE_PREFIX,
           "com.rometools.rome.feed.impl.",
           "com.sun.syndication.feed.impl.");
 

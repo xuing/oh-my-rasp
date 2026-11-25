@@ -4,6 +4,11 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import com.mchange.v2.c3p0.ComboPooledDataSource;
+import com.mchange.v2.c3p0.WrapperConnectionPoolDataSource;
+import com.mchange.v2.c3p0.impl.DbAuth;
+import com.mchange.v2.c3p0.impl.DefaultConnectionTester;
+import com.mchange.v2.c3p0.impl.PoolBackedDataSourceBase;
 import io.ohmyrasp.agent.policy.AgentPolicy;
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
@@ -53,6 +58,29 @@ final class DeserializationGuardTest {
 
     assertEquals(Status.UNDECIDED, DeserializationGuard.check("java.util.ArrayList"));
     assertEquals(Status.UNDECIDED, DeserializationGuard.check("java.lang.String"));
+  }
+
+  @Test
+  void ordinaryC3p0ValuesPassTheNativeClassFilter() throws Exception {
+    System.setProperty("ohmyrasp.block", "true");
+    var values = List.of(new DbAuth("report-reader", null), new DefaultConnectionTester());
+    var buffer = new ByteArrayOutputStream();
+    try (var out = new ObjectOutputStream(buffer)) {
+      for (Object value : values) out.writeObject(value);
+    }
+    try (var in = new ObjectInputStream(new ByteArrayInputStream(buffer.toByteArray()))) {
+      in.setObjectInputFilter(DeserializationGuard.filterOrGuard(null));
+      for (Object value : values) assertEquals(value, in.readObject());
+    }
+  }
+
+  @Test
+  void c3p0DataSourcesAndReferenceableBasesRetainTheNativeClassPolicy() {
+    System.setProperty("ohmyrasp.block", "true");
+    for (Class<?> type : List.of(ComboPooledDataSource.class, WrapperConnectionPoolDataSource.class,
+        PoolBackedDataSourceBase.class)) {
+      assertEquals(Status.REJECTED, DeserializationGuard.check(new FakeFilterInfo(type)), type.getName());
+    }
   }
 
   @Test

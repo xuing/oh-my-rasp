@@ -19,8 +19,14 @@ dependencies {
 
     testImplementation(localGroovy())
     testImplementation("com.alibaba:fastjson:1.2.83")
+    testImplementation("com.mchange:c3p0:0.15.1")
     testImplementation("org.junit.jupiter:junit-jupiter:6.1.3")
     testRuntimeOnly("org.junit.platform:junit-platform-launcher:6.1.3")
+}
+
+tasks.register<Sync>("stageC3p0Probe") {
+    from(configurations.testRuntimeClasspath) { include("c3p0-*.jar", "mchange-commons-java-*.jar") }
+    into(layout.buildDirectory.dir("c3p0-probe"))
 }
 
 // Build once with the JDK 25 toolchain for both supported LTS runtimes.

@@ -80,6 +80,19 @@ public final class SerialFilterCheck {
     if (denials.get() != 1) throw new AssertionError("application array limit");
   }
 
+  private static void checkC3p0(String mode) throws Exception {
+    Class<?> credentials = Class.forName("com.mchange.v2.c3p0.impl.DbAuth");
+    Object account = credentials.getConstructor(String.class, String.class).newInstance("report-reader", null);
+    Object tester = Class.forName("com.mchange.v2.c3p0.impl.DefaultConnectionTester").getConstructor().newInstance();
+    checkRead("c3p0-account", account, null, mode, true);
+    checkRead("c3p0-tester", tester, null, mode, true);
+    ObjectInputFilter localPolicy = info -> info.serialClass() == credentials
+        ? ObjectInputFilter.Status.REJECTED : ObjectInputFilter.Status.UNDECIDED;
+    checkRead("c3p0-application-policy", account, localPolicy, mode, false);
+    Object poolType = Class.forName("com.mchange.v2.c3p0.WrapperConnectionPoolDataSource");
+    checkRead("c3p0-pool-type", poolType, null, mode, !mode.equals("block"));
+  }
+
   public static void main(String[] args) throws Exception {
     String setup = args[0], mode = args[1];
     AtomicInteger calls = new AtomicInteger();
@@ -103,6 +116,7 @@ public final class SerialFilterCheck {
       ObjectInputFilter.Config.setSerialFilterFactory(factory);
       if (ObjectInputFilter.Config.getSerialFilterFactory() != factory) throw new AssertionError("factory identity");
     }
+    if (setup.equals("plain") && args.length > 2) checkC3p0(mode);
     boolean custom = !setup.equals("plain");
     ObjectInputFilter stream = setup.equals("stream") ? application : null;
     checkRead("ordinary", new Report("weekly"), stream, mode, !custom);
