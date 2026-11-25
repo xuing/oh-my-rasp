@@ -26,7 +26,8 @@ final class RequestDetectorEngineTest {
         new RequestContext(
             "GET", "/rasp/request", "", Map.of(), Map.of("user-agent", "sqlmap/1.7"));
 
-    var result = engine.detectRequest(context);
+    assertTrue(engine.detectRequest(context).isEmpty());
+    var result = engine.detectScannerUserAgent(context);
 
     assertTrue(result.isPresent());
     assertEquals("request_scanner", result.orElseThrow().algorithm());

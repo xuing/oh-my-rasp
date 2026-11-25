@@ -250,6 +250,9 @@ jobs:
         run: python3 java-agent/scripts/fp-harness/check-spark-submit.py "java-agent/${{ matrix.jar }}" --api-dir java-agent/build/servlet-probe
       - name: Verify resolved serialization classes and proxy interfaces
         run: python3 java-agent/scripts/fp-harness/check-stream-resolution.py "java-agent/${{ matrix.jar }}" --beanshell-jar java-agent/build/runtime-probes/bsh.jar --collections-dir java-agent/build/collections-probe
+      - name: Verify servlet admission and application callbacks
+        if: startsWith(matrix.jar, 'agent-jdk25/')
+        run: python3 java-agent/scripts/fp-harness/check-servlet-admission.py "java-agent/${{ matrix.jar }}" --api-dir java-agent/build/servlet-probe
       - name: Verify JVM and per-stream deserialization filters
         if: startsWith(matrix.jar, 'agent-jdk25/')
         run: python3 java-agent/scripts/fp-harness/check-serial-filter.py "java-agent/${{ matrix.jar }}" --c3p0-dir java-agent/agent-jdk25/build/c3p0-probe

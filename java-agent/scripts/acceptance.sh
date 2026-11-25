@@ -991,7 +991,7 @@ XML
   expect_not_blocked "$version" baseline_teamcity_cve_2024_27198_internal_forward "${baseline_url}/rasp/policy/request-internal-forward"
   expect_not_blocked "$version" baseline_dataease_geo_whitelist_traversal --path-as-is "${baseline_url}/geo/../dataease/de2api/datasource/types"
 
-  expect_block "$version" request_scanner -A "sqlmap/1.7" "${protected_url}/rasp/request"
+  expect_body_contains "${protected_url}/rasp/request" "request inspected" -A "sqlmap/1.7"
   expect_body_contains "${protected_url}/rasp/request" "request inspected" -H "User-Agent:"
   expect_block "$version" xss_userinput -G -A "Mozilla/5.0" --data-urlencode "q=<script>alert(1)</script>" "${protected_url}/rasp/request"
   expect_block "$version" request_internal_identity "${protected_url}/rasp/policy/request-internal-identity"
@@ -1370,7 +1370,6 @@ XML
 }
 
 required_algorithms=(
-  request_scanner
   xss_userinput
   request_internal_identity
   request_default_jwt_secret

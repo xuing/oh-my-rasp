@@ -9,7 +9,7 @@
 | Metric | Count |
 |--------|------:|
 | Hook families (instrumentation points) | 30 |
-| Detector capabilities (engine entry points) | 56 |
+| Detector capabilities (engine entry points) | 57 |
 | Algorithm signatures asserted in acceptance scripts | 44 |
 | End-to-end vulnerability acceptance scenarios | 136 |
 | JDK lines exercised | 6 |
@@ -54,7 +54,7 @@ rewrites a family of risky call sites and routes them to the detector engine.
 
 ## Detector capabilities
 
-The engine exposes **56** detection entry points:
+The engine exposes **57** detection entry points:
 
 - `detectArchiveExtraction` · `detectArgumentFileExpansion` · `detectBase64Decode`
 - `detectClassLoaderUrl` · `detectCommand` · `detectDeserialization`
@@ -68,13 +68,13 @@ The engine exposes **56** detection entry points:
 - `detectLink` · `detectLoadLibrary` · `detectOgnl`
 - `detectPolymorphicType` · `detectProtocolClassInstantiation` · `detectRemoteJobSubmission`
 - `detectRename` · `detectRequest` · `detectResponseDataLeak`
-- `detectRmiRegistryBind` · `detectServletIncludeAttributes` · `detectSessionDeserialization`
-- `detectSpringConfigLocation` · `detectSql` · `detectSqlException`
-- `detectSqlRegex` · `detectUrl` · `detectWebdavUpload`
-- `detectWebshellCallable` · `detectWebshellCommand` · `detectWebshellEval`
-- `detectWebshellFileWrite` · `detectWebshellLdPreload` · `detectWindowsStreamWrite`
-- `detectXmlAttachmentReference` · `detectXmlDecoderExpression` · `detectXmlRpcSerializableValue`
-- `detectXssEcho` · `detectXxeEntity`
+- `detectRmiRegistryBind` · `detectScannerUserAgent` · `detectServletIncludeAttributes`
+- `detectSessionDeserialization` · `detectSpringConfigLocation` · `detectSql`
+- `detectSqlException` · `detectSqlRegex` · `detectUrl`
+- `detectWebdavUpload` · `detectWebshellCallable` · `detectWebshellCommand`
+- `detectWebshellEval` · `detectWebshellFileWrite` · `detectWebshellLdPreload`
+- `detectWindowsStreamWrite` · `detectXmlAttachmentReference` · `detectXmlDecoderExpression`
+- `detectXmlRpcSerializableValue` · `detectXssEcho` · `detectXxeEntity`
 
 ## Rule scope
 
@@ -180,7 +180,7 @@ The descriptions live in the [general catalog](../rules/general.json) and [produ
 | `request_remote_import_script_write` | — | The meaning of stream, import or repository configuration fields depends on the application contract. |
 | `request_remote_job_submission` | — | Spark and YARN check their deployment-specific submit roles. Descriptor-only remote artifacts and YARN command indicators require explicit policy selection. |
 | `request_repository_webroot_write` | — | The meaning of stream, import or repository configuration fields depends on the application contract. |
-| `request_scanner` | The user-agent resembles a scanner. This is client-supplied metadata. | — |
+| `request_scanner` | Client-supplied scanner-like user-agent metadata requires an explicit algorithm policy. | — |
 | `request_scheduler_shell_job` | — | Scheduler request fields select a shell-backed job type and supply its source. |
 | `request_serialized_client_state` | Client state in a request contains a Java object stream. | — |
 | `request_server_side_script_put` | An HTTP PUT selects a script-like destination. | — |

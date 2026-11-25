@@ -60,6 +60,8 @@ ASM hook at sink
 
 The primary agent records `log` when a managed block rule matches outside its enforcement scope in block mode. In monitor mode, it records a would-be block as `monitor`.
 
+On the primary agent a block decision at servlet entry stops dispatch before application code runs, including when the response cannot redirect. Scanner-like User-Agent metadata requires a policy selecting `request_scanner`. [Servlet admission check](../java-agent/scripts/fp-harness/ServletAdmissionCheck.java)
+
 ## Coverage numbers
 
 Hook-family, detector-capability, asserted-signature, and acceptance-scenario counts, the per-JDK scenario distribution, and the tested vulnerability matrix are generated from the agent source and acceptance suite by [`gen-detection-coverage.py`](../java-agent/scripts/gen-detection-coverage.py) into [`DETECTION-COVERAGE.md`](../java-agent/docs/DETECTION-COVERAGE.md). Vulhub component roots and CVE tracking live in [`vulhub-coverage.md`](development/vulhub-coverage.md). This page does not restate those numbers.

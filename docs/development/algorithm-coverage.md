@@ -979,7 +979,7 @@ same patch as any new Java-compatible Vulhub replay.
 `scripts/acceptance.sh` currently requires these algorithms to appear in
 `logs/protected/events.jsonl`:
 
-- `request_scanner`
+- `request_scanner` (explicit header policy at [servlet admission](../detection.md))
 - `xss_userinput`
 - `request_internal_identity`
 - `request_default_jwt_secret`

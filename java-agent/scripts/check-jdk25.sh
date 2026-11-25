@@ -3,7 +3,7 @@
 set -euo pipefail
 
 usage() {
-  echo "Usage: $0 [--tests Gradle-test-filter] [elastic-lz4|file-delete|file-read|file-streams|hessian-allocation|http-invoker|http-transport|jmx-dispatch|jndi-route|jwt-verification|multipart-archive|mybatis-mapping|openwire-throwable|process-launch|rmi-codebase|serial-filter|spark-submit|stream-resolution|sqlite-identifiers|spring-process|write-namespace|yarn-submit|xml-resolution [probe options]]"
+  echo "Usage: $0 [--tests Gradle-test-filter] [elastic-lz4|file-delete|file-read|file-streams|hessian-allocation|http-invoker|http-transport|jmx-dispatch|jndi-route|jwt-verification|multipart-archive|mybatis-mapping|openwire-throwable|process-launch|rmi-codebase|serial-filter|servlet-admission|spark-submit|stream-resolution|sqlite-identifiers|spring-process|write-namespace|yarn-submit|xml-resolution [probe options]]"
   echo "The benign corpus always runs. Unit tests default to the whole primary module."
 }
 
@@ -15,7 +15,7 @@ if [[ "${1:-}" == --tests ]]; then
 fi
 case "${1:-}" in
   -h|--help) usage; exit 0 ;;
-  ""|elastic-lz4|file-delete|file-read|file-streams|hessian-allocation|http-invoker|http-transport|jmx-dispatch|jndi-route|jwt-verification|multipart-archive|mybatis-mapping|openwire-throwable|process-launch|rmi-codebase|serial-filter|spark-submit|stream-resolution|sqlite-identifiers|spring-process|write-namespace|yarn-submit|xml-resolution) ;;
+  ""|elastic-lz4|file-delete|file-read|file-streams|hessian-allocation|http-invoker|http-transport|jmx-dispatch|jndi-route|jwt-verification|multipart-archive|mybatis-mapping|openwire-throwable|process-launch|rmi-codebase|serial-filter|servlet-admission|spark-submit|stream-resolution|sqlite-identifiers|spring-process|write-namespace|yarn-submit|xml-resolution) ;;
   *) usage >&2; exit 2 ;;
 esac
 
@@ -69,6 +69,7 @@ if [[ -n "$TEST_FILTER" ]]; then test_options=(--tests "$TEST_FILTER"); fi
 extra_tasks=()
 if [[ "${1:-}" == elastic-lz4 ]]; then extra_tasks+=(:stageElasticLz4Probe); fi
 if [[ "${1:-}" == yarn-submit ]]; then extra_tasks+=(:stageYarnProbe); fi
+if [[ "${1:-}" == servlet-admission ]]; then extra_tasks+=(:stageServletProbe); fi
 if [[ "${1:-}" == serial-filter ]]; then extra_tasks+=(:agent-jdk25:stageC3p0Probe); fi
 if [[ "${1:-}" == stream-resolution ]]; then extra_tasks+=(:stageCollectionsProbe); fi
 if [[ "${1:-}" == http-invoker ]]; then extra_tasks+=(:stageSpringProcessProbe :stageServletProbe :stageXmlRpcProbe); fi
@@ -88,6 +89,8 @@ if (( $# )); then
   shift
   if [[ "$probe" == elastic-lz4 ]]; then
     python3 scripts/fp-harness/check-elastic-lz4.py "$jar" --jar-dir /state/build/ohmyrasp/elastic-lz4-probe "$@"
+  elif [[ "$probe" == servlet-admission ]]; then
+    python3 scripts/fp-harness/check-servlet-admission.py "$jar" --api-dir /state/build/ohmyrasp/servlet-probe "$@"
   elif [[ "$probe" == serial-filter ]]; then
     python3 scripts/fp-harness/check-serial-filter.py "$jar" --c3p0-dir "$output/c3p0-probe" "$@"
   elif [[ "$probe" == stream-resolution ]]; then

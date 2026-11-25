@@ -60,7 +60,7 @@
     "request_ogc_filter_sql_injection": "An OGC filter argument contains SQL-control indicators. JDBC execution is unconfirmed.",
     "request_path_confusion": "Alternative interpretations of the request target expose protected web resources or ambiguous path structure.",
     "request_plot_command_injection": "A plotting parameter contains a plot-interpreter command directive.",
-    "request_scanner": "The user-agent resembles a scanner. This is client-supplied metadata.",
+    "request_scanner": "Client-supplied scanner-like user-agent metadata requires an explicit algorithm policy.",
     "request_serialized_client_state": "Client state in a request contains a Java object stream.",
     "request_server_side_script_put": "An HTTP PUT selects a script-like destination.",
     "request_sql_identifier_injection": "An explicitly selected policy inspects SQL-related request fields before any JDBC handoff.",

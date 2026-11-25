@@ -269,18 +269,6 @@ public final class DetectorEngine {
 
   public Optional<Detection> detectRequest(RequestContext request) {
     String userAgent = request.header("user-agent").orElse("").toLowerCase(Locale.ROOT);
-    for (String marker : SCANNER_MARKERS) {
-      if (userAgent.contains(marker)) {
-        return Optional.of(
-            Detection.log(
-                "request",
-                "request_scanner",
-                90,
-                "Scanner-like user agent detected: " + marker,
-                request,
-                Map.of("userAgent", userAgent)));
-      }
-    }
     if (looksLikeInternalIdentityBypass(userAgent, request)) {
       return Optional.of(
           Detection.log(
@@ -444,6 +432,23 @@ public final class DetectorEngine {
                 "XSS-like request parameter detected",
                 request,
                 Map.of("value", abbreviate(value))));
+      }
+    }
+    return Optional.empty();
+  }
+
+  public Optional<Detection> detectScannerUserAgent(RequestContext request) {
+    String userAgent = request.header("user-agent").orElse("").toLowerCase(Locale.ROOT);
+    for (String marker : SCANNER_MARKERS) {
+      if (userAgent.contains(marker)) {
+        return Optional.of(
+            Detection.log(
+                "request",
+                "request_scanner",
+                90,
+                "Scanner-like user agent detected: " + marker,
+                request,
+                Map.of("userAgent", userAgent)));
       }
     }
     return Optional.empty();

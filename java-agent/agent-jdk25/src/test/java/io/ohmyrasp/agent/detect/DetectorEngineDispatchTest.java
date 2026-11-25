@@ -15,7 +15,7 @@ class DetectorEngineDispatchTest {
     String basic = "Basic " + Base64.getEncoder().encodeToString("tomcat:tomcat".getBytes(StandardCharsets.UTF_8));
     var multiple = new RequestContext("GET", "/manager/html", "", Map.of(),
         Map.of("user-agent", "nikto", "authorization", basic));
-    assertEquals("request_scanner", engine.detectRequest(multiple).orElseThrow().algorithm());
+    assertEquals("request_default_credential", engine.detectRequest(multiple).orElseThrow().algorithm());
 
     var credentials = new RequestContext("GET", "/manager/html", "", Map.of(), Map.of("authorization", basic));
     var finding = engine.detectRequest(credentials).orElseThrow();
