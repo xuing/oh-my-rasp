@@ -14,25 +14,38 @@ MYBATIS_VERSION = "3.5.19"
 MYBATIS_SHA256 = "93eea616ae355751bd5fbabb57f0732713fbe79f3196f33c51a0aeeb4255862a"
 
 
+def download_jar(target):
+    name = f"mybatis-{MYBATIS_VERSION}.jar"
+    url = f"https://repo.maven.apache.org/maven2/org/mybatis/mybatis/{MYBATIS_VERSION}/{name}"
+    with urllib.request.urlopen(url, timeout=45) as response:
+        data = response.read()
+    if hashlib.sha256(data).hexdigest() != MYBATIS_SHA256:
+        raise SystemExit("MyBatis JAR digest mismatch")
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_bytes(data)
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("agent", type=Path)
+    parser.add_argument("agent", type=Path, nargs="?")
+    parser.add_argument("--download-to", type=Path, help="Stage the pinned test JAR for the runtime matrix")
     parser.add_argument("--mybatis-jar", type=Path, help="Use a local MyBatis distribution")
     args = parser.parse_args()
+    if args.download_to:
+        if args.agent or args.mybatis_jar:
+            parser.error("--download-to stages the dependency as a separate operation")
+        download_jar(args.download_to)
+        return
+    if not args.agent:
+        parser.error("provide an agent JAR or --download-to")
     jar = args.agent.resolve(strict=True)
     with tempfile.TemporaryDirectory(prefix="mybatis-mapping-") as directory:
         work = Path(directory)
         if args.mybatis_jar:
             mybatis = args.mybatis_jar.resolve(strict=True)
         else:
-            name = f"mybatis-{MYBATIS_VERSION}.jar"
-            mybatis = work / name
-            url = f"https://repo.maven.apache.org/maven2/org/mybatis/mybatis/{MYBATIS_VERSION}/{name}"
-            with urllib.request.urlopen(url, timeout=45) as response:
-                data = response.read()
-            if hashlib.sha256(data).hexdigest() != MYBATIS_SHA256:
-                raise SystemExit("MyBatis JAR digest mismatch")
-            mybatis.write_bytes(data)
+            mybatis = work / "mybatis.jar"
+            download_jar(mybatis)
         source = Path(__file__).with_name("MyBatisMappingCheck.java")
         subprocess.run(["javac", "-cp", mybatis, "-d", work, source], check=True)
         with zipfile.ZipFile(jar) as agent:
