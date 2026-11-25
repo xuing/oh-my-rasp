@@ -205,7 +205,7 @@ docker run --rm -v "$PWD/api":/src -w /src "$GO_IMAGE" go test ./...
 GRADLE_IMAGE="$(awk '$1 == "FROM" && $2 ~ /^gradle:/ { print $2; exit }' java-agent/Dockerfile)"
 docker run --rm -v "$PWD/java-agent":/workspace -w /workspace "$GRADLE_IMAGE" \
   gradle --no-daemon :agent-jdk25:check
-(cd java-agent && bash scripts/acceptance.sh)
+(cd java-agent && bash acceptance/runtime/jdk25.sh)
 
 # Shirudo upatch Beefile/JAR checks + Temurin 8/11/17/21/25 smoke tests
 ./deploy/shirudo/build-all.sh --jar-only

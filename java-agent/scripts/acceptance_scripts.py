@@ -47,7 +47,7 @@ def split_leaf(stem: str) -> tuple[str, str | None]:
 
 
 def legacy_stem(script: Path) -> str:
-    """The pre-regroup script name without 'acceptance-vulhub-' and '.sh', e.g. 'activemq-3088-java7-legacy'."""
+    """The target-plus-JDK name the flat file names used to carry, e.g. 'activemq-3088-java7-legacy'."""
     component = script.parent.name
     scenario, jdk = split_leaf(script.stem)
     if component == "java" or (component == "tomcat" and scenario.startswith("tomcat8")):
@@ -60,5 +60,5 @@ def legacy_stem(script: Path) -> str:
 
 
 def vulhub_scripts(root: Path = ACCEPTANCE) -> list[Path]:
-    """Vulhub scenario scripts, ordered as the flat acceptance-vulhub-*.sh names used to sort."""
+    """Vulhub scenario scripts, ordered as the old flat file names sorted."""
     return sorted(root.glob("vulhub/*/*.sh"), key=lambda p: legacy_stem(p) + ".sh")

@@ -131,10 +131,10 @@ Run parity, Vulhub ledger, and Docker acceptance checks from `java-agent/`:
 cd java-agent
 bash scripts/check-detector-parity.sh
 python3 scripts/check-vulhub-java-coverage.py --vulhub-root "$VULHUB_ROOT"
-bash scripts/acceptance.sh
+bash acceptance/runtime/jdk25.sh
 ```
 
-Per-runtime Vulhub scripts are named `scripts/acceptance-vulhub-<component>-<jdk>.sh`. The Java 21 runtime compatibility matrix lives in `scripts/acceptance-java21.sh`.
+Per-runtime Vulhub scripts live at `acceptance/vulhub/<component>/<scenario>-<jdk>.sh`, one directory per top-level Vulhub component. The Java 21 runtime compatibility matrix lives in `acceptance/runtime/java21.sh`.
 
 Set `VULHUB_ROOT` to a checkout of the revision in the [Source Audit](docs/development/vulhub-coverage.md#source-audit). An offline coverage review uses this checkout and the retained event logs. From `java-agent/`, run:
 
@@ -282,7 +282,7 @@ cd java-agent
 bash scripts/run-fp-report.sh                      # writes java-agent/docs/FALSE-POSITIVE-REPORT.md
 ```
 
-**2. Detection coverage doc** (derived from `HookRegistry.java`, `DetectorEngine.java`, and `acceptance-vulhub-*.sh`):
+**2. Detection coverage doc** (derived from `HookRegistry.java`, `DetectorEngine.java`, and `acceptance/vulhub/*/*.sh`):
 
 ```bash
 cd java-agent
@@ -304,7 +304,7 @@ Commit regenerated docs in the same PR as the code change that triggered them.
 1. Implement the hook module under `java-agent/agent-jdk25/src/main/java/io/ohmyrasp/agent/asm/` and register it in `HookRegistry.defaults()`.
 2. Add the corresponding detector method(s) to `DetectorEngine`.
 3. Write unit tests covering the new detection path in `agent-jdk25/src/test/`.
-4. Add or extend an acceptance scenario under `java-agent/scripts/`.
+4. Add or extend an acceptance scenario under `java-agent/acceptance/` (`vulhub/<component>/` for a Vulhub target, `runtime/` for the JDK-level suites).
 5. Update `docs/development/algorithm-coverage.md` and, if mapped to a Vulhub scenario, `docs/development/vulhub-coverage.md` in the same patch.
 6. Regenerate `java-agent/docs/DETECTION-COVERAGE.md`, `java-agent/docs/FALSE-POSITIVE-REPORT.md`, and `deploy/shirudo/` READMEs, and verify `bash java-agent/scripts/check-detector-parity.sh`.
 
@@ -328,7 +328,7 @@ document which legitimate actions produce alerts.
 
 Contributions that add detection rules or hook families should include runnable verification via either:
 
-- A **Vulhub acceptance scenario** (`java-agent/scripts/acceptance-vulhub-*.sh`) proving baseline exploitation and protected-mode blocking.
+- A **Vulhub acceptance scenario** (`java-agent/acceptance/vulhub/<component>/*.sh`) proving baseline exploitation and protected-mode blocking.
 - A **playground reproduction** using the comparative Tomcat testbeds under `java-agent/playground*/`.
 
 ## Pull request expectations
