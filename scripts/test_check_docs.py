@@ -123,16 +123,28 @@ class AnchorTest(unittest.TestCase):
             "# Java agent",
             "### Process launches",
             "## `request_scanner` and [JNDI](x.md) lookups",
-            "## Usage",
-            "## Usage",
             "```",
             "# not a heading",
             "```",
             '<a id="Custom-Anchor"></a>',
         ])
         self.assertEqual(check_docs.heading_anchors(text), {
-            "java-agent", "process-launches", "request_scanner-and-jndi-lookups", "usage", "usage-1",
-            "custom-anchor"})
+            "java-agent", "process-launches", "request_scanner-and-jndi-lookups", "custom-anchor"})
+
+    def test_entities_are_decoded_before_slugging(self) -> None:
+        # Review counterexample: GitHub renders "A &amp; B" as "A & B", whose slug is a--b.
+        self.assertEqual(check_docs.heading_anchors("## A &amp; B"), {"a--b"})
+
+    def test_a_repeat_takes_the_first_free_suffix(self) -> None:
+        # Review counterexample: the third heading's own slug usage-1 is taken by the second "Usage".
+        self.assertEqual(check_docs.heading_anchors("## Usage\n## Usage\n## Usage-1"), {"usage", "usage-1", "usage-1-1"})
+        self.assertEqual(check_docs.heading_anchors("## Usage\n## Usage\n## Usage"), {"usage", "usage-1", "usage-2"})
+
+    def test_unmodelled_heading_shapes_fail(self) -> None:
+        for text in ("Title\n=====", "Title\n---", "## _Draft_ notes", "## ![logo](x.png) Intro"):
+            with self.subTest(text=text), self.assertRaises(check_docs.UnsupportedHeading):
+                check_docs.heading_anchors(text)
+        self.assertEqual(check_docs.heading_anchors("- item\n---\n| a |\n|---|"), set())  # a rule, not a heading
 
     def test_real_anchor_targets(self) -> None:
         self.assertIn("process-launches", check_docs.anchors_of("docs/detection.md"))

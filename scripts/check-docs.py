@@ -26,7 +26,9 @@ are skipped):
              Gradle build produces
   links      relative Markdown links (inline and reference-style) resolve to
              tracked files, and a #fragment on a Markdown target names one of
-             its headings (also checked in the evidence ledgers)
+             its ATX headings or <a id> anchors (also checked in the evidence
+             ledgers). Links inside generated files and regions are left to
+             their generator.
 
 and over the evidence ledgers (LEDGERS), which need no Vulhub snapshot here:
 
@@ -40,6 +42,7 @@ Usage: python3 scripts/check-docs.py
 from __future__ import annotations
 
 import functools
+import html
 import json
 import re
 import subprocess
@@ -110,7 +113,9 @@ REF_LINK = re.compile(r"^\s{0,3}\[[^\]]+\]:\s*<?([^\s>]+)>?")
 INLINE_CODE = re.compile(r"`[^`]*`")
 FENCE = re.compile(r"^(```|~~~)")
 HEADING = re.compile(r"^ {0,3}#{1,6}\s+(.*?)(?:\s+#+)?\s*$")
+SETEXT_UNDERLINE = re.compile(r"^ {0,3}(?:=+|-+)\s*$")
 HTML_ANCHOR = re.compile(r"<a\s+(?:id|name)=\"([^\"]+)\"")
+HTML_COMMENT = re.compile(r"<!--.*?-->", re.S)
 
 # An acceptance script as the ledgers name it: relative to java-agent/ or to the repo root.
 SCRIPT_PATH = re.compile(r"(?<![\w/.<-])(?:java-agent/)?(acceptance/[\w./-]+\.sh)\b")
@@ -302,25 +307,46 @@ def check_lines(files: list[str], problems: list[str]) -> None:
                         f" {RELEASE_WORKFLOW.relative_to(ROOT)} nor a Gradle build")
 
 
+class UnsupportedHeading(ValueError):
+    """A heading whose GitHub anchor heading_anchors does not model."""
+
+
 def heading_anchors(text: str) -> set[str]:
-    """The #fragments GitHub gives a Markdown file: heading slugs (-1, -2 for repeats) and <a id>/<a name>."""
+    """The #fragments GitHub gives a Markdown file: ATX heading slugs and <a id>/<a name>.
+
+    Slugs follow github-slugger: entities decoded, tags dropped, lowercased, characters other than
+    letters, digits, "_", "-" and spaces removed, spaces turned into "-". A repeated slug gets the
+    first free "-1", "-2", ... suffix, so "Usage", "Usage", "Usage-1" give usage, usage-1, usage-1-1.
+    Setext headings and images or _emphasis_ in a heading raise UnsupportedHeading rather than guess.
+    """
     anchors: set[str] = set()
     seen: dict[str, int] = {}
     in_fence = False
-    for line in text.split("\n"):
+    previous = ""
+    for no, line in enumerate(HTML_COMMENT.sub(lambda m: "\n" * m.group(0).count("\n"), text).split("\n"), start=1):
         if FENCE.match(line.strip()):
             in_fence = not in_fence
         if in_fence:
+            previous = ""
             continue
         anchors.update(a.lower() for a in HTML_ANCHOR.findall(line))
+        if SETEXT_UNDERLINE.match(line) and previous.strip() \
+                and not re.match(r"\s*(?:[|#>*+-]|\d+[.)]\s)", previous):
+            raise UnsupportedHeading(f"line {no - 1}: a setext heading (text underlined with = or -)")
+        previous = line
         heading = HEADING.match(line)
         if not heading:
             continue
         title = re.sub(r"\[([^\]]*)\]\([^)]*\)", r"\1", heading.group(1))  # a link keeps its text
-        slug = re.sub(r"[^\w\- ]", "", re.sub(r"<[^>]+>", "", title).lower()).replace(" ", "-")
-        repeat = seen.get(slug, 0)
-        seen[slug] = repeat + 1
-        anchors.add(f"{slug}-{repeat}" if repeat else slug)
+        if re.search(r"!\[|(?<!\w)_\S", INLINE_CODE.sub("", heading.group(1))):
+            raise UnsupportedHeading(f"line {no}: an image or _emphasis_ in the heading `{heading.group(1)}`")
+        base = re.sub(r"[^\w\- ]", "", html.unescape(re.sub(r"<[^>]+>", "", title)).lower()).replace(" ", "-")
+        slug = base
+        while slug in seen:
+            seen[base] += 1
+            slug = f"{base}-{seen[base]}"
+        seen[slug] = 0
+        anchors.add(slug)
     return anchors
 
 
@@ -354,8 +380,15 @@ def check_links(files: list[str], problems: list[str]) -> None:
                     if norm not in tracked_paths and norm not in tracked_dirs:
                         problems.append(f"links: {where}: `{target}` does not resolve to a tracked file")
                         continue
-                if fragment and norm and norm.endswith(".md") and norm in tracked_paths \
-                        and urllib.parse.unquote(fragment).lower() not in anchors_of(norm):
+                if not (fragment and norm and norm.endswith(".md") and norm in tracked_paths):
+                    continue
+                try:
+                    anchors = anchors_of(norm)
+                except UnsupportedHeading as e:
+                    problems.append(f"links: {where}: `{target}`: cannot check the anchor, {norm} {e}; write it as"
+                                    " `## Title` or teach heading_anchors in scripts/check-docs.py the GitHub rule")
+                    continue
+                if urllib.parse.unquote(fragment).lower() not in anchors:
                     problems.append(f"links: {where}: `{target}`: {norm} has no heading with anchor `#{fragment}`")
 
 
