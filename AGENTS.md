@@ -39,12 +39,13 @@ python3 deploy/shirudo/gen-readmes.py                  # deploy/shirudo READMEs
 
 **Check before you push.** `python3 scripts/check-docs.py` runs in CI (`.github/workflows/docs.yml`). It fails when:
 
-- a generated doc is stale;
+- a generated doc is stale, or its generator fails;
 - a released tag or a pinned version is copied into a doc;
 - a hand-written count appears outside a generated region;
 - the release asset list drifts from the workflow;
-- a relative link, or the heading anchor it names, does not resolve;
-- an evidence ledger ([vulhub-coverage.md](docs/development/vulhub-coverage.md), [algorithm-coverage.md](docs/development/algorithm-coverage.md)) names an acceptance script that does not exist, says "`<script>` blocks `<id>`" for an id the script never names, or lacks a row for a script under `java-agent/acceptance/vulhub/`.
+- a relative link in a hand-written doc does not resolve to a tracked file, or its `#anchor` matches no `## heading` or `<a id>` of the target. Links inside generated files and regions are left to their generator;
+- a line of an evidence ledger ([vulhub-coverage.md](docs/development/vulhub-coverage.md), [algorithm-coverage.md](docs/development/algorithm-coverage.md)) that names an acceptance script names one that is not tracked, has a backticked rule id from `java-agent/rules/*.json` that is not a whole word in every script the line names, or has a backticked word shaped like a rule id that the catalog lacks. The scenario labels in the parenthesis that opens a Covered Targets row, up to its first `;`, are not checked against the script;
+- a script under `java-agent/acceptance/vulhub/` is not named on a `- [x]` row of the Vulhub ledger's Covered Targets.
 
 When it flags something, link to the fact's home. Do not reword the text just to get past the pattern.
 
