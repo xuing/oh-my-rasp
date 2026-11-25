@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # Incremental check of one or more agent lines against the current checkout:
-# the line's unit tests, the benign corpus (primary lines), then packaged probes
-# on the line's own JDK. Lines and probes come from java-agent/probes/.
+# the line's unit tests, the benign corpus (primary lines), the dynamic-call
+# check (backport lines), then packaged probes on the line's own JDK. Lines and
+# probes come from java-agent/probes/.
 set -euo pipefail
 
 root=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)
@@ -98,6 +99,7 @@ IFS=, read -r -a line_ids <<<"$LINES"
 
 tasks=()
 primary=false
+backports=()
 for line in "${line_ids[@]}"; do
   read -r family test_task < <(python3 - "$line" <<'PY'
 import sys, tomllib
@@ -109,9 +111,14 @@ PY
     tasks+=("$test_task")
     if [[ -n "$TEST_FILTER" ]]; then tasks+=(--tests "$TEST_FILTER"); fi
   fi
-  if [[ "$family" == primary ]]; then primary=true; fi
+  if [[ "$family" == primary ]]; then primary=true; else backports+=("${line%-on-*}"); fi
 done
 build_tasks=()
+# The backport JARs are always built: the dynamic-call check below reads them.
+for line in "${backports[@]}"; do
+  read -r -a line_tasks < <("${registry[@]}" gradle-tasks --line "$line" background-process)
+  build_tasks+=("${line_tasks[@]}")
+done
 if [[ -n "$PROBE" ]]; then
   read -r -a build_tasks < <("${registry[@]}" gradle-tasks --line "$LINES" "${selection[@]}")
 fi
@@ -120,6 +127,10 @@ gradle --no-daemon --no-problems-report --configuration-cache \
   --project-cache-dir /state/project -I /tmp/build-output.gradle \
   "${tasks[@]}" "${build_tasks[@]}"
 
+if (( ${#backports[@]} )); then
+  python3 scripts/check-dynamic-calls.py --check --build-root /state/build \
+    --line "$(printf '%s\n' "${backports[@]}" | sort -u | paste -sd,)"
+fi
 if $primary; then
   output=/state/build/agent-jdk25
   java -cp "$output/libs/ohmyrasp-agent.jar:$output/classes/fpReport" FpReport --check >/tmp/fp-report.md

@@ -29,6 +29,8 @@ java-agent/scripts/check-agent.sh --help               # lines and probes
 
 **A backport change reaches all three lines.** `agent-java8`, `agent-java11` and `agent-java17` may differ in syntax, never in what they decide. Make the same behaviour change in each line in the same commit, and put its test in `backport-tests/`, where one test runs on all three. A test that only one line can run stays in that line's `src/test` and says why in its first line.
 
+**Backport lines gain no invokedynamic call sites.** Their hooks run inside JDK bootstrap classes, where the first use of a lambda, a method reference, a record's generated `toString`/`equals`/`hashCode` or a pattern `switch` links at run time and can re-enter the hooked call. Write an anonymous or static nested class there. `var`, text blocks, `switch` expressions over strings or enums and `instanceof` patterns compile without such call sites and are fine. `scripts/check-dynamic-calls.py --check` compares the built JARs with [`scripts/dynamic-calls.baseline.json`](scripts/dynamic-calls.baseline.json); `check-agent.sh` runs it for backport lines. Raise the baseline only for code that never runs inside a hook, and say why in the commit.
+
 **`shared/` stays Java 8 source.** The Java 8 line compiles it with `--release 8`.
 
 **Probes are registered by directory.** A new probe is a directory under `probes/` with a `check.py`, plus a `probe.toml` when it needs staged fixtures or applies to some lines only (give the reason). Do not name a probe in a workflow or script: both call `probes/run.py`.

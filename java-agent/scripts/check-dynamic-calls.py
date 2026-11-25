@@ -306,10 +306,16 @@ def main(argv: list[str] | None = None) -> int:
     mode.add_argument("--check", action="store_true", help="fail when a backport line gained a gated call site")
     mode.add_argument("--update", action="store_true", help="rewrite the baseline from the JARs")
     mode.add_argument("--summary", action="store_true", help="counts per line and kind, and the top classes")
+    parser.add_argument("--line", help="comma-separated lines to read instead of all of them (not with --update)")
     args = parser.parse_args(argv)
 
     java_agent = args.java_agent.resolve()
     jars = jar_paths(java_agent, args.build_root)
+    if args.line:
+        wanted = args.line.split(",")
+        if args.update or any(line not in jars for line in wanted):
+            parser.error(f"--line takes any of {', '.join(jars)} and cannot be combined with --update")
+        jars = {line: jars[line] for line in wanted}
     absent = [str(path) for _, path in jars.values() if not path.is_file()]
     if absent:
         print("missing JAR(s), build them first (see CONTRIBUTING.md, `gradle :agent-java8:agentJava8Jar ...`):\n  "
