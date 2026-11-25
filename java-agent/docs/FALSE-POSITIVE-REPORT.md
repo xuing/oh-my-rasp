@@ -5,7 +5,7 @@
 
 ## Method
 
-A curated corpus of **178** benign-but-plausible inputs across **24** detector categories is run through the engine. Each input is presented with a realistic request context; where a value would be user-supplied it is placed in a request parameter so taint-aware detectors evaluate it as in production. A *false positive* is any detector returning a detection for legitimate input. This is a detector-precision probe on benign traffic, **not** a production-traffic false-positive rate.
+A curated corpus of **181** benign-but-plausible inputs across **25** detector categories is run through the engine. Each input is presented with a realistic request context; where a value would be user-supplied it is placed in a request parameter so taint-aware detectors evaluate it as in production. A *false positive* is any detector returning a detection for legitimate input. This is a detector-precision probe on benign traffic, **not** a production-traffic false-positive rate.
 
 ## Result
 
@@ -15,6 +15,7 @@ A curated corpus of **178** benign-but-plausible inputs across **24** detector c
 | Report field metadata | 2 | 0 | 0.0% |
 | SQL queries | 27 | 0 | 0.0% |
 | OS commands | 18 | 0 | 0.0% |
+| Inline shell reports | 3 | 0 | 0.0% |
 | Process dispatch | 4 | 0 | 0.0% |
 | Spark job descriptors | 1 | 0 | 0.0% |
 | YARN job descriptors | 2 | 0 | 0.0% |
@@ -35,7 +36,7 @@ A curated corpus of **178** benign-but-plausible inputs across **24** detector c
 | JDBC URLs | 5 | 0 | 0.0% |
 | Request parameters | 6 | 0 | 0.0% |
 | Base64 decoding | 8 | 0 | 0.0% |
-| **Overall** | **178** | **0** | **0.0%** |
+| **Overall** | **181** | **0** | **0.0%** |
 
 No false positives observed across the corpus.
 
@@ -107,6 +108,12 @@ No false positives observed across the corpus.
 - `tar czf backup.tgz /var/app/uploads`
 - `node /srv/app/index.js`
 - `/usr/bin/pdftoppm -png /tmp/in.pdf /tmp/out`
+
+**Inline shell reports**
+
+- `printf '%s' 'example: cat /etc/passwd'`
+- `printf '%s' weekly # example: cat /etc/passwd`
+- `cat /etc/passwd.example`
 
 **Process dispatch**
 

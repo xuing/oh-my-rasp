@@ -2,7 +2,7 @@
   "primary": {
     "archive_traversal": "An archive entry and its destination cross the extraction boundary.",
     "classloader_remote": "A class loader is given a remote code source.",
-    "command_common": "A recognized direct tool has a sensitive operand, or an inline shell program contains a common command indicator.",
+    "command_common": "Recognized direct or literal shell file-reader operands select a listed path. Other shell programs are checked for command indicators.",
     "command_dnslog": "A directly launched network tool names a listed callback host in a recognized destination argument.",
     "command_error": "Command text matches a configured or built-in suspicious-command, shell-syntax or callback-domain indicator.",
     "command_reflect": "Explicit policy selects reflective dispatch at the process API.",

@@ -60,6 +60,10 @@ public class ProcessLaunchCheck {
     int rounds = args.length > 2 ? Integer.parseInt(args[2]) : 1;
     Path dir = Files.createTempDirectory("launch-receipts");
     try {
+      // Record only the operand of the literal file-reader case, without opening the named file.
+      Path recorder = dir.resolve("cat");
+      Files.write(recorder, "#!/bin/sh\nprintf '%s\\n' \"$@\"\n".getBytes(StandardCharsets.US_ASCII));
+      if (!recorder.toFile().setExecutable(true, true)) throw new IOException("operand recorder is not executable");
       for (int n = 0; n < rounds; n++) {
         check(track, mode, "ordinary", "weekly", false, ProcessLaunchCheck::ordinary);
         String example = "example: cat /etc/passwd";
@@ -67,6 +71,20 @@ public class ProcessLaunchCheck {
             () -> exited(new ProcessBuilder("/usr/bin/printf", "%s", example).start(), example));
         check(track, mode, "print-positional-data", "weekly", false, () -> exited(
             new ProcessBuilder("/bin/sh", "-c", "printf '%s' \"$1\"", "report", example).start(), example));
+        check(track, mode, "quoted-shell-report", "weekly", false, () -> exited(
+            new ProcessBuilder("/bin/sh", "-c", "printf '%s' 'example: cat /etc/passwd'").start(), example));
+        check(track, mode, "shell-comment", "weekly", false, () -> exited(
+            new ProcessBuilder("/bin/sh", "-c", "printf '%s' weekly # example: cat /etc/passwd").start(), "weekly"));
+        check(track, mode, "shell-other-file", "weekly", false, () -> {
+          ProcessBuilder reader = new ProcessBuilder("/bin/sh", "-c", "cat /etc/passwd.example");
+          reader.environment().put("PATH", dir.toString());
+          exited(reader.start(), "/etc/passwd.example\n");
+        });
+        check(track, mode, "shell-file-operand", "weekly", true, () -> {
+          ProcessBuilder reader = new ProcessBuilder("/bin/sh", "-c", "cat '/etc/passwd'");
+          reader.environment().put("PATH", dir.toString());
+          exited(reader.start(), "/etc/passwd\n");
+        });
         check(track, mode, "spelling-report", "weekly", false, SpellingReport::format);
         check(track, mode, "empty-runtime", PROGRAM, false, () -> {
           try {
@@ -103,6 +121,7 @@ public class ProcessLaunchCheck {
         if (receipt.equals("previous") != blocked) throw new AssertionError("redirect changed");
       }
     } finally {
+      Files.deleteIfExists(dir.resolve("cat"));
       Files.deleteIfExists(dir.resolve("existing-report"));
       Files.delete(dir);
     }

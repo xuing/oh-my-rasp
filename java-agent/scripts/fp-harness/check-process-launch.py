@@ -79,7 +79,12 @@ def main():
                 else:
                     api = Counter(e["details"].get("process_api", e["hook"]) for e in events)
                     expected = ({"ProcessBuilder.startPipeline": 2 * rounds} if name == "ProcessPipelineCheck" else
-                                {"Runtime.exec(String)": rounds, "Runtime.exec(String[])": rounds, "ProcessBuilder.start": 2 * rounds})
+                                {"Runtime.exec(String)": rounds, "Runtime.exec(String[])": rounds, "ProcessBuilder.start": 3 * rounds})
+                    if name == "ProcessLaunchCheck":
+                        rule = "command_common" if track == "main" else f"java{track}_command_execution_exploit_primitive"
+                        commands = [e["details"].get("command") for e in events if e["algorithm"] == rule]
+                        if commands != ["/bin/sh -c cat '/etc/passwd'"] * rounds:
+                            raise SystemExit(f"unexpected literal process decisions in {mode}")
                     if api != expected or any((e["action"] == "block") != (mode == "block") for e in events):
                         observed = Counter((e["algorithm"], e["details"].get("process_api", e["hook"]), e["action"]) for e in events)
                         raise SystemExit(f"unexpected {name} decisions in {mode}: {dict(observed)}")

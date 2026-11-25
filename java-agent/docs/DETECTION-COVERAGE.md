@@ -89,7 +89,7 @@ The descriptions live in the [general catalog](../rules/general.json) and [produ
 | `archive_traversal` | An archive entry and its destination cross the extraction boundary. | — |
 | `base64_avx512_tail_underflow` | — | The candidate input shape targets a particular JDK Base64 decoder implementation. |
 | `classloader_remote` | A class loader is given a remote code source. | — |
-| `command_common` | A recognized direct tool has a sensitive operand, or an inline shell program contains a common command indicator. | — |
+| `command_common` | Recognized direct or literal shell file-reader operands select a listed path. Other shell programs are checked for command indicators. | — |
 | `command_config_injection` | — | RocketMQ filter-server ownership of a process launch supplies the configuration context. |
 | `command_config_listener` | — | The Apache Solr executable-listener implementation appears on the process stack. |
 | `command_dnslog` | A directly launched network tool names a listed callback host in a recognized destination argument. | — |

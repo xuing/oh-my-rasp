@@ -28,6 +28,24 @@ class PosixShellCommandTest {
   }
 
   @Test
+  void literalWordsPreserveQuotedDataAndEmptyArguments() {
+    assertEquals(List.of("printf", "%s", "", "quarter two", "x#y"), LiteralShellCommand.words(
+        "# report\nprintf '%s' '' quarter\\ two x#y ; # comment\n"));
+    assertEquals(List.of("cat", "/reports/weekly"), LiteralShellCommand.words("cat /reports/'week'\"ly\""));
+    assertEquals(List.of("printf", "%s", "pre\\fix"), LiteralShellCommand.words("printf %s \"pre\\fix\""));
+    assertEquals(List.of("echo", "weekly"), LiteralShellCommand.words("echo week\\\nly"));
+  }
+
+  @Test
+  void complexShellProgramsRemainAvailableForTheSourceRules() {
+    for (String program : List.of("printf %s \"$1\"", "printf x | cat", "printf x\ncat /etc/passwd",
+        "echo value > report", "echo *.txt", "printf 'unfinished", "echo `date`", "echo $'text'")) {
+      assertNull(LiteralShellCommand.words(program), program);
+    }
+    assertNull(PosixShellCommand.from(List.of("bash", "-lc", "echo report")).literalArguments());
+  }
+
+  @Test
   void treatsOnlyActivePunctuationAndWholeCommandWordsAsControlEvidence() {
     var script = PosixShellCommand.from(List.of("sh", "-c", "printf 'R&D' # order | cat\nprintf ok; date"));
     assertFalse(script.containsControlFrom("R&D"));

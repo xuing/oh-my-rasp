@@ -7,6 +7,7 @@ import java.util.StringTokenizer;
 /** The inline program of a POSIX shell invocation. Positional arguments remain separate. */
 public final class PosixShellCommand {
   private final String source;
+  private final boolean plainInline;
   private final BitSet operators = new BitSet();
   private final BitSet commandWords = new BitSet();
   private final boolean unclosedQuote;
@@ -21,7 +22,7 @@ public final class PosixShellCommand {
     return result;
   }
 
-  private static String basename(String name) {
+  static String basename(String name) {
     return name == null ? "" : name.substring(name.lastIndexOf('/') + 1);
   }
 
@@ -64,9 +65,11 @@ public final class PosixShellCommand {
     if (i >= argv.size()) {
       return null;
     }
-    if (!isShell(argv.get(i++))) {
+    String name = basename(argv.get(i++));
+    if (!isShell(name)) {
       return null;
     }
+    int firstOption = i;
     boolean inline = false;
     while (i < argv.size()) {
       String option = argv.get(i);
@@ -85,10 +88,14 @@ public final class PosixShellCommand {
         inline = true;
       }
     }
-    return inline && i < argv.size() && argv.get(i) != null ? new PosixShellCommand(argv.get(i)) : null;
+    if (!inline || i >= argv.size() || argv.get(i) == null) return null;
+    boolean plain = i == firstOption + 1 && "-c".equals(argv.get(firstOption))
+        && ("sh".equals(name) || "dash".equals(name) || "bash".equals(name));
+    return new PosixShellCommand(argv.get(i), plain);
   }
 
-  private PosixShellCommand(String program) {
+  private PosixShellCommand(String program, boolean plainInline) {
+    this.plainInline = plainInline;
     source = program;
     char quote = 0;
     boolean backtick = false;
@@ -151,6 +158,8 @@ public final class PosixShellCommand {
     int end = i + 4;
     return end == program.length() || !(Character.isLetterOrDigit(program.charAt(end)) || program.charAt(end) == '_');
   }
+
+  List<String> literalArguments() { return plainInline ? LiteralShellCommand.words(source) : null; }
 
   public String source() { return source; }
   public boolean hasOperator() { return !operators.isEmpty(); }

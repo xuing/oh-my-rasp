@@ -55,6 +55,11 @@ public final class FpReport {
                 Map.of(), Map.of("content-type", "application/json"), c.payload()))),
         new Category("SQL queries", sqlCorpus(), (c, r) -> ENGINE.detectSql(c.payload(), r)),
         new Category("OS commands", commandCorpus(), (c, r) -> ENGINE.detectCommand(splitCommand(c.payload()), r)),
+        new Category("Inline shell reports", List.of(
+            Case.of("printf '%s' 'example: cat /etc/passwd'"),
+            Case.of("printf '%s' weekly # example: cat /etc/passwd"),
+            Case.of("cat /etc/passwd.example")),
+            (c, r) -> ENGINE.detectCommand(List.of("/bin/sh", "-c", c.payload()), r)),
         new Category("Process dispatch", List.of(
             Case.of("java.lang.reflect.Method"),
             Case.of("example.spelling.MonthlyReport"),
