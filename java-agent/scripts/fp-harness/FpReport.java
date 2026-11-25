@@ -413,11 +413,10 @@ public final class FpReport {
   }
 
   private static List<Case> requestParamCorpus() {
-    // Request parameters that carry benign HTML markup / plain text — rich-text
-    // comments, CMS fields, search terms with angle brackets. None is an XSS
-    // execution vector; they must not trip `xss_userinput` (the live, every-request
-    // detector) or any other request sub-detector.
+    // Ordinary text submitted to a search form, editor or documentation service.
     return List.of(
+        Case.tainted("The <script> element is documented here.", "The <script> element is documented here."),
+        Case.tainted("JavaScript: a reference guide", "JavaScript: a reference guide"),
         Case.tainted("I love <b>bold</b> and <i>italic</i> text", "I love <b>bold</b> and <i>italic</i> text"),
         Case.tainted("<p>Hello world</p>", "<p>Hello world</p>"),
         Case.tainted("<div class=\"card\">welcome home</div>", "<div class=\"card\">welcome home</div>"),

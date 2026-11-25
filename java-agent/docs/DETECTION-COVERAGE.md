@@ -9,7 +9,7 @@
 | Metric | Count |
 |--------|------:|
 | Hook families (instrumentation points) | 30 |
-| Detector capabilities (engine entry points) | 57 |
+| Detector capabilities (engine entry points) | 58 |
 | Algorithm signatures asserted in acceptance scripts | 44 |
 | End-to-end vulnerability acceptance scenarios | 136 |
 | JDK lines exercised | 6 |
@@ -54,7 +54,7 @@ rewrites a family of risky call sites and routes them to the detector engine.
 
 ## Detector capabilities
 
-The engine exposes **57** detection entry points:
+The engine exposes **58** detection entry points:
 
 - `detectArchiveExtraction` · `detectArgumentFileExpansion` · `detectBase64Decode`
 - `detectClassLoaderUrl` · `detectCommand` · `detectDeserialization`
@@ -65,16 +65,17 @@ The engine exposes **57** detection entry points:
 - `detectHttpObjectStreamDeserialization` · `detectInclude` · `detectJaasConfig`
 - `detectJavaCompilation` · `detectJdbcUrl` · `detectJmxFileWrite`
 - `detectJmxMBeanInvoke` · `detectJndi` · `detectJwtVerificationFailure`
-- `detectLink` · `detectLoadLibrary` · `detectOgnl`
-- `detectPolymorphicType` · `detectProtocolClassInstantiation` · `detectRemoteJobSubmission`
-- `detectRename` · `detectRequest` · `detectResponseDataLeak`
-- `detectRmiRegistryBind` · `detectScannerUserAgent` · `detectServletIncludeAttributes`
-- `detectSessionDeserialization` · `detectSpringConfigLocation` · `detectSql`
-- `detectSqlException` · `detectSqlRegex` · `detectUrl`
-- `detectWebdavUpload` · `detectWebshellCallable` · `detectWebshellCommand`
-- `detectWebshellEval` · `detectWebshellFileWrite` · `detectWebshellLdPreload`
-- `detectWindowsStreamWrite` · `detectXmlAttachmentReference` · `detectXmlDecoderExpression`
-- `detectXmlRpcSerializableValue` · `detectXssEcho` · `detectXxeEntity`
+- `detectLink` · `detectLoadLibrary` · `detectMarkupParameter`
+- `detectOgnl` · `detectPolymorphicType` · `detectProtocolClassInstantiation`
+- `detectRemoteJobSubmission` · `detectRename` · `detectRequest`
+- `detectResponseDataLeak` · `detectRmiRegistryBind` · `detectScannerUserAgent`
+- `detectServletIncludeAttributes` · `detectSessionDeserialization` · `detectSpringConfigLocation`
+- `detectSql` · `detectSqlException` · `detectSqlRegex`
+- `detectUrl` · `detectWebdavUpload` · `detectWebshellCallable`
+- `detectWebshellCommand` · `detectWebshellEval` · `detectWebshellFileWrite`
+- `detectWebshellLdPreload` · `detectWindowsStreamWrite` · `detectXmlAttachmentReference`
+- `detectXmlDecoderExpression` · `detectXmlRpcSerializableValue` · `detectXssEcho`
+- `detectXxeEntity`
 
 ## Rule scope
 
@@ -225,8 +226,8 @@ The descriptions live in the [general catalog](../rules/general.json) and [produ
 | `xml_decoder_runtime` | JavaBeans XML decoding is correlated with runtime invocation or a script-file operation. | — |
 | `xml_decoder_webshell` | JavaBeans XML decoding is correlated with runtime invocation or a script-file operation. | — |
 | `xpath_runtime` | Runtime execution primitives occur in an expression or execution is observed under an evaluator. A library hook identifies the evaluation context. | — |
-| `xss_echo` | Reflected output or an input pattern supplies an XSS indicator. | — |
-| `xss_userinput` | Reflected output or an input pattern supplies an XSS indicator. | — |
+| `xss_echo` | An explicit policy can observe or deny markup indicators in submitted text before the application handles it. | — |
+| `xss_userinput` | An explicit policy can observe or deny markup indicators in submitted text before the application handles it. | — |
 | `xxe_file` | An XML external entity refers to a file. | — |
 | `xxe_protocol` | The XML parser selects an external protocol. At the instrumented transport boundary the agent can check local catalog provenance. | — |
 

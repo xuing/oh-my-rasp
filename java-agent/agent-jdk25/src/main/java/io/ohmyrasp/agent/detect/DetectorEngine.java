@@ -102,14 +102,7 @@ public final class DetectorEngine {
       Pattern.compile(
           "(?i)(?:^|/)(?:server-info\\.action|setup|install|bootstrap|setupadministrator\\.action|finishsetup\\.action)(?:[;/]|/|$)");
 
-  // Matches actual XSS execution vectors — script injection, `javascript:` URIs,
-  // and inline DOM event-handler attributes (including attribute-injection forms
-  // that carry no full tag). It deliberately does NOT match benign HTML markup
-  // like <b>, <p>, <div> or <a href>: the prior "any tag-open" pattern fired on
-  // legitimate HTML-bearing input (comments, rich text, search terms, markup
-  // fields), a real false-positive source for the live `xss_userinput` detector.
-  // The curated event-handler set avoids matching benign params such as
-  // `online=`, `once=`, or `onboarding=`.
+  // Syntax indicators for explicitly selected input policies and response observations.
   private static final Pattern XSS_INPUT =
       Pattern.compile(
           "(?is)<\\s*script\\b"
@@ -422,6 +415,10 @@ public final class DetectorEngine {
                   "uri", abbreviate(request.uri()),
                   "decoded", abbreviate(confusingPath.orElseThrow()))));
     }
+    return Optional.empty();
+  }
+
+  public Optional<Detection> detectMarkupParameter(RequestContext request) {
     for (String value : request.allParameterValues()) {
       if (value != null && XSS_INPUT.matcher(value).find()) {
         return Optional.of(

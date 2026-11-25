@@ -46,6 +46,10 @@ def main():
                                          for e in events):
                         raise SystemExit(f"unexpected {namespace} Java {track} {mode} receipts: {events}")
                     continue
+                markup = events[:2]
+                if [(e["algorithm"], e["action"]) for e in markup] != [("xss_userinput", "log"), ("xss_userinput", mode)]:
+                    raise SystemExit(f"unexpected {namespace} {mode} input policy receipts: {markup}")
+                events = events[2:]
                 expected = [(mode, "/reports")] * 3 + [("log", "/reports"), ("log", "/error"),
                             ("log", "/reports"), ("log", "/reports")]
                 if ([(e["action"], e["request"]["uri"]) for e in events] != expected

@@ -993,7 +993,7 @@ XML
 
   expect_body_contains "${protected_url}/rasp/request" "request inspected" -A "sqlmap/1.7"
   expect_body_contains "${protected_url}/rasp/request" "request inspected" -H "User-Agent:"
-  expect_block "$version" xss_userinput -G -A "Mozilla/5.0" --data-urlencode "q=<script>alert(1)</script>" "${protected_url}/rasp/request"
+  expect_body_contains "${protected_url}/rasp/request" "request inspected" -G --data-urlencode "q=The <script> element is documented here."
   expect_block "$version" request_internal_identity "${protected_url}/rasp/policy/request-internal-identity"
   expect_block "$version" request_nacos_cve_2021_29441_list_users -H "User-Agent: Nacos-Server" "${protected_url}/nacos/v1/auth/users?pageNo=1&pageSize=9"
   expect_block "$version" request_nacos_cve_2021_29441_create_user -X POST -H "User-Agent: Nacos-Server" "${protected_url}/nacos/v1/auth/users?username=vulhub&password=vulhub"
@@ -1370,7 +1370,6 @@ XML
 }
 
 required_algorithms=(
-  xss_userinput
   request_internal_identity
   request_default_jwt_secret
   request_jwt_verification_failure

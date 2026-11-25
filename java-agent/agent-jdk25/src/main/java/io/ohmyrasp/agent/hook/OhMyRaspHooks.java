@@ -125,6 +125,7 @@ public final class OhMyRaspHooks {
   private static void inspectRequest(RequestContext request) {
     emit(DETECTORS.detectRequest(request));
     AgentPolicy policy = POLICY;
+    if (policy.selectsAlgorithm("xss_userinput")) emit(DETECTORS.detectMarkupParameter(request));
     if (policy.selectsAlgorithm("request_scanner")) emit(DETECTORS.detectScannerUserAgent(request));
     if (policy.loaded() && !request.body().isBlank()) {
       for (Detection candidate : DETECTORS.sqlRequestMetadata(request, policy::selectsAlgorithm)) {

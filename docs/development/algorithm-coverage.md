@@ -980,7 +980,7 @@ same patch as any new Java-compatible Vulhub replay.
 `logs/protected/events.jsonl`:
 
 - `request_scanner` (explicit header policy at servlet admission, including when [form parsing fails](../detection.md#request-parameter-substring-correlation))
-- `xss_userinput`
+- `xss_userinput` (explicit request-parameter policy, see [XSS detection](../detection.md#response-side-data-leak-detection))
 - `request_internal_identity`
 - `request_default_jwt_secret`
 - `request_jwt_verification_failure`

@@ -473,6 +473,8 @@ attempt at the indicated phase. The remote application's outcome needs separate 
 - **Mobile phone numbers:** validated against Chinese carrier prefix tables
 - **Payment card numbers:** Luhn-validated (card brand not distinguished)
 
+On the primary agent, `xss_userinput` requires a policy explicitly selecting the algorithm. A log action observes matching request parameters, and a block action denies their submission in block mode. An application can accept markup as documentation or store it as ordinary text.
+
 `detectXssEcho` checks whether an XSS-like input payload is reflected verbatim in the response body.
 
 > **Wiring status: not yet active on live traffic.** Both `detectResponseDataLeak` and `detectXssEcho` are implemented and exposed via `OhMyRaspHooks.beforeResponseDataLeak` and `OhMyRaspHooks.beforeXssEcho`, but **no ASM hook module currently instruments a servlet response-output sink** (`HttpServletResponse.getWriter()` / `ServletOutputStream`). Today they execute only when called directly by the playground probes (`response` and `xss-echo` actions in [`VulnerableServlet.java`](../java-agent/playground/src/main/java/io/ohmyrasp/playground/VulnerableServlet.java)). Wiring response-body scanning onto the hot response path is deferred to avoid adding outbound-body scanning overhead on every request.

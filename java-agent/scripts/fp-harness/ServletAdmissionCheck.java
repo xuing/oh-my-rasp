@@ -15,6 +15,7 @@ import io.ohmyrasp.agent.policy.AgentPolicy;
 public class ServletAdmissionCheck extends HttpServlet {
   private int calls;
   private int redirects;
+  private String note;
 
   private boolean errorDispatch;
   private boolean dispatchNested;
@@ -25,6 +26,8 @@ public class ServletAdmissionCheck extends HttpServlet {
   @Override protected void doPost(HttpServletRequest request, HttpServletResponse response)
       throws ServletException, java.io.IOException {
     calls++;
+    if (note != null && !java.util.List.of(note).equals(OhMyRaspHooks.currentRequest().parameters().get("note")))
+      throw new AssertionError("documentation text changed");
     if (parametersUnavailable) {
       if (!java.util.List.of("a b", "é", "\uFFFD", "+", "c").equals(OhMyRaspHooks.currentRequest().parameters().get("label")))
         throw new AssertionError("query parameters lost");
@@ -46,7 +49,7 @@ public class ServletAdmissionCheck extends HttpServlet {
           case "getQueryString" -> parametersUnavailable ? "label=a+b&label=%FF&label=%C3%A9&label=%EF%BF%BD&label=%+1&label=%2B&label=c" : null;
           case "getHeaderNames" -> Collections.enumeration(Collections.singletonList("User-Agent"));
           case "getHeader" -> "User-Agent".equalsIgnoreCase((String) args[0]) ? agent : null;
-          case "getParameterMap" -> Collections.emptyMap();
+          case "getParameterMap" -> note == null ? Collections.emptyMap() : Collections.singletonMap("note", new String[]{note});
           default -> null;
         });
     req = new HttpServletRequestWrapper(req) {
@@ -80,6 +83,15 @@ public class ServletAdmissionCheck extends HttpServlet {
   public static void main(String[] args) throws Exception {
     ServletAdmissionCheck servlet = new ServletAdmissionCheck();
     boolean block = args[0].equals("block");
+    servlet.note = "The <script> element is documented here.";
+    servlet.check("report-client", false, true);
+    OhMyRaspHooks.installPolicy(AgentPolicy.parse("{\"rules\":[{\"hook\":\"request\",\"action\":\"block\"}]}"), "test");
+    servlet.check("report-client", false, true);
+    OhMyRaspHooks.installPolicy(AgentPolicy.parse("{\"rules\":[{\"algorithm\":\"xss_userinput\",\"action\":\"log\"}]}"), "test");
+    servlet.check("report-client", false, true);
+    OhMyRaspHooks.installPolicy(AgentPolicy.parse("{\"rules\":[{\"algorithm\":\"xss_userinput\",\"action\":\"block\"}]}"), "test");
+    servlet.check("report-client", block, true);
+    servlet.note = null;
     servlet.check("Nikto", false, true);
     OhMyRaspHooks.installPolicy(AgentPolicy.parse("{\"rules\":[{\"algorithm\":\"request_scanner\",\"action\":\"block\"}]}"), "test");
     servlet.check("Nikto", block, true);
