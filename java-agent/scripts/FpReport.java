@@ -1,3 +1,4 @@
+import io.ohmyrasp.agent.detect.Base64DecodeDetector;
 import io.ohmyrasp.agent.detect.CodeExecutionDetector;
 import io.ohmyrasp.agent.detect.DeserializationDetector;
 import io.ohmyrasp.agent.detect.DetectorEngine;
@@ -134,7 +135,7 @@ public final class FpReport {
             "Base64 decoding",
             base64Corpus(),
             (c, r) ->
-                ENGINE.detectBase64Decode(
+                Base64DecodeDetector.detectBase64Decode(
                     c.payload().getBytes(StandardCharsets.ISO_8859_1),
                     0,
                     c.payload().length(),

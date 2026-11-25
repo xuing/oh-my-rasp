@@ -9,6 +9,7 @@ import io.ohmyrasp.agent.file.WindowsDataStream;
 import io.ohmyrasp.agent.file.HostDirectory;
 import io.ohmyrasp.agent.jmx.JmxDispatch;
 import io.ohmyrasp.agent.jmx.JmxWriteScope;
+import io.ohmyrasp.agent.detect.Base64DecodeDetector;
 import io.ohmyrasp.agent.detect.CodeExecutionDetector;
 import io.ohmyrasp.agent.detect.CredentialDetector;
 import io.ohmyrasp.agent.detect.DeserializationDetector;
@@ -460,14 +461,14 @@ public final class OhMyRaspHooks {
       byte[] src, int sp, int sl, boolean isURL, boolean isMIME) {
     // Pure arithmetic fast path first so benign Base64 decoding never triggers
     // class initialization or allocates on the hot path.
-    if (!DetectorEngine.isBase64TailUnderflowCandidate(src, sp, sl, isURL, isMIME)) {
+    if (!Base64DecodeDetector.isBase64TailUnderflowCandidate(src, sp, sl, isURL, isMIME)) {
       return;
     }
     if (detectionDisabled()) {
       return;
     }
     try {
-      emit(DETECTORS.detectBase64Decode(src, sp, sl, isURL, isMIME, currentRequest()), true);
+      emit(Base64DecodeDetector.detectBase64Decode(src, sp, sl, isURL, isMIME, currentRequest()), true);
     } catch (OhMyRaspBlockException blocked) {
       throw blocked;
     } catch (Throwable throwable) {

@@ -215,7 +215,7 @@ final class DetectorEngineTest {
     byte[] urlLen66 = ("A".repeat(64) + "-=").getBytes(StandardCharsets.ISO_8859_1);
     byte[] sliceWithOffset = ("!!" + "B".repeat(64) + "B=" + "!!").getBytes(StandardCharsets.ISO_8859_1);
 
-    var stdResult = engine.detectBase64Decode(stdLen66, 0, stdLen66.length, false, false, request());
+    var stdResult = Base64DecodeDetector.detectBase64Decode(stdLen66, 0, stdLen66.length, false, false, request());
     assertAlgorithm(stdResult, "base64_avx512_tail_underflow");
     assertEquals("base64", stdResult.orElseThrow().hook());
     assertEquals("66", stdResult.orElseThrow().details().get("length"));
@@ -226,18 +226,18 @@ final class DetectorEngineTest {
     assertFalse(stdResult.orElseThrow().details().toString().contains("AAAA"));
 
     assertAlgorithm(
-        engine.detectBase64Decode(stdLen67, 0, stdLen67.length, false, false, RequestContext.empty()),
+        Base64DecodeDetector.detectBase64Decode(stdLen67, 0, stdLen67.length, false, false, RequestContext.empty()),
         "base64_avx512_tail_underflow");
     assertAlgorithm(
-        engine.detectBase64Decode(stdLen130, 0, stdLen130.length, false, false, RequestContext.empty()),
+        Base64DecodeDetector.detectBase64Decode(stdLen130, 0, stdLen130.length, false, false, RequestContext.empty()),
         "base64_avx512_tail_underflow");
     var urlResult =
-        engine.detectBase64Decode(urlLen66, 0, urlLen66.length, true, false, RequestContext.empty());
+        Base64DecodeDetector.detectBase64Decode(urlLen66, 0, urlLen66.length, true, false, RequestContext.empty());
     assertAlgorithm(urlResult, "base64_avx512_tail_underflow");
     assertEquals("URL-safe", urlResult.orElseThrow().details().get("alphabet"));
 
     assertAlgorithm(
-        engine.detectBase64Decode(
+        Base64DecodeDetector.detectBase64Decode(
             sliceWithOffset, 2, sliceWithOffset.length - 2, false, false, RequestContext.empty()),
         "base64_avx512_tail_underflow");
   }
@@ -253,17 +253,17 @@ final class DetectorEngineTest {
     byte[] nonAlpha = ("A".repeat(63) + "!A=").getBytes(StandardCharsets.ISO_8859_1);
     byte[] cand = ("A".repeat(64) + "A=").getBytes(StandardCharsets.ISO_8859_1);
 
-    assertTrue(engine.detectBase64Decode(validAligned, 0, validAligned.length, false, false, request()).isEmpty());
-    assertTrue(engine.detectBase64Decode(shortPadded, 0, shortPadded.length, false, false, request()).isEmpty());
-    assertTrue(engine.detectBase64Decode(unpadded65, 0, unpadded65.length, false, false, request()).isEmpty());
-    assertTrue(engine.detectBase64Decode(triplePad67, 0, triplePad67.length, false, false, request()).isEmpty());
-    assertTrue(engine.detectBase64Decode(excessPad65, 0, excessPad65.length, false, false, request()).isEmpty());
-    assertTrue(engine.detectBase64Decode(urlCharInStandard, 0, urlCharInStandard.length, false, false, request()).isEmpty());
-    assertTrue(engine.detectBase64Decode(nonAlpha, 0, nonAlpha.length, false, false, request()).isEmpty());
-    assertTrue(engine.detectBase64Decode(cand, 0, cand.length, false, true, request()).isEmpty());
-    assertTrue(engine.detectBase64Decode(null, 0, 66, false, false, request()).isEmpty());
-    assertTrue(engine.detectBase64Decode(cand, -1, cand.length, false, false, request()).isEmpty());
-    assertTrue(engine.detectBase64Decode(cand, 0, cand.length + 1, false, false, request()).isEmpty());
+    assertTrue(Base64DecodeDetector.detectBase64Decode(validAligned, 0, validAligned.length, false, false, request()).isEmpty());
+    assertTrue(Base64DecodeDetector.detectBase64Decode(shortPadded, 0, shortPadded.length, false, false, request()).isEmpty());
+    assertTrue(Base64DecodeDetector.detectBase64Decode(unpadded65, 0, unpadded65.length, false, false, request()).isEmpty());
+    assertTrue(Base64DecodeDetector.detectBase64Decode(triplePad67, 0, triplePad67.length, false, false, request()).isEmpty());
+    assertTrue(Base64DecodeDetector.detectBase64Decode(excessPad65, 0, excessPad65.length, false, false, request()).isEmpty());
+    assertTrue(Base64DecodeDetector.detectBase64Decode(urlCharInStandard, 0, urlCharInStandard.length, false, false, request()).isEmpty());
+    assertTrue(Base64DecodeDetector.detectBase64Decode(nonAlpha, 0, nonAlpha.length, false, false, request()).isEmpty());
+    assertTrue(Base64DecodeDetector.detectBase64Decode(cand, 0, cand.length, false, true, request()).isEmpty());
+    assertTrue(Base64DecodeDetector.detectBase64Decode(null, 0, 66, false, false, request()).isEmpty());
+    assertTrue(Base64DecodeDetector.detectBase64Decode(cand, -1, cand.length, false, false, request()).isEmpty());
+    assertTrue(Base64DecodeDetector.detectBase64Decode(cand, 0, cand.length + 1, false, false, request()).isEmpty());
   }
 
   @Test
