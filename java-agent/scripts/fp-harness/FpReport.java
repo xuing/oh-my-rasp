@@ -304,6 +304,8 @@ public final class FpReport {
         Case.of("/var/app/uploads/avatar-1001.png"),
         Case.of("/tmp/app-export-2026-05.csv"),
         Case.of("/srv/data/cache/thumb-42.jpg"),
+        Case.of("weekly.txt::$DATA"),
+        Case.of("index.txt::$INDEX"),
         Case.of("/var/app/logs/audit-2026-06-06.log"));
   }
 

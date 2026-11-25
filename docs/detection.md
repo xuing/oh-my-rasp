@@ -249,6 +249,10 @@ decision is made when that data source actually opens the matching host file. A 
 part selected by content ID can be backed by an ordinary file. On the primary agent
 a deferred read retains the originating request for policy evaluation. [XOP package references](https://www.w3.org/TR/xop10/#xop_href)
 
+### Windows file streams
+
+At a writable Windows file open, the primary agent applies the ordinary file policy to the base file of an explicitly named default data stream. Named data streams can contain legitimate metadata. An explicit `writeFile_NTFS` selector can monitor or block attempts to open a named data stream for writing. Its event records the requested stream name and base path. Select action `log` to observe normal usage. The hooks cover the JDK output stream, writable random-access file and Windows NIO dispatcher. An upload filename alone does not establish the destination filesystem. [Windows file streams](https://learn.microsoft.com/en-us/windows/win32/fileio/file-streams)
+
 ### Host file deletion
 
 An operator can confine request-selected file deletion to a directory by passing `-Dohmyrasp.file.delete_root=/absolute/allowed/directory` at JVM startup. Choose the enclosing directory within which requests may move between subdirectories. The rule checks operations originating under this root. Jobs using independent directories keep their existing behavior. Without a configured root, relative names containing parent segments alone produce no delete finding.

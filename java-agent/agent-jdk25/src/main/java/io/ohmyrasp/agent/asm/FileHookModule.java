@@ -8,7 +8,8 @@ import io.ohmyrasp.agent.file.StreamReadVisitor;
 final class FileHookModule implements HookModule {
   @Override
   public boolean matchesClass(String className) {
-    return className.equals(UnixReadVisitor.FACTORY) || StreamReadVisitor.matches(className)
+    return (java.io.File.separatorChar == '\\' && WindowsStreamWriteAdvice.DISPATCHER.equals(className))
+        || className.equals(UnixReadVisitor.FACTORY) || StreamReadVisitor.matches(className)
         || className.equals("java/io/FileOutputStream")
         || DirectoryListVisitor.matches(className)
         || className.equals("java/nio/file/Files");
@@ -21,6 +22,8 @@ final class FileHookModule implements HookModule {
       int access,
       String methodName,
       String descriptor) {
+    if (java.io.File.separatorChar == '\\')
+      methodVisitor = WindowsStreamWriteAdvice.wrap(className, methodVisitor, access, methodName, descriptor);
     methodVisitor = io.ohmyrasp.agent.file.UnixDeleteVisitor.wrap(className, methodVisitor, methodName, descriptor,
         "io/ohmyrasp/agent/hook/OhMyRaspHooks");
     if (DirectoryListVisitor.matches(className)) {

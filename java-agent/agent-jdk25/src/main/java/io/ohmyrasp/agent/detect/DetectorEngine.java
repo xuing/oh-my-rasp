@@ -1,6 +1,7 @@
 package io.ohmyrasp.agent.detect;
 
 import io.ohmyrasp.agent.file.HostReadPath;
+import io.ohmyrasp.agent.file.WindowsDataStream;
 import io.ohmyrasp.agent.file.HostDelete;
 import io.ohmyrasp.agent.file.HostDirectory;
 import io.ohmyrasp.agent.file.EscapingPath;
@@ -107,7 +108,6 @@ public final class DetectorEngine {
   private static final Pattern HTML_FILE = Pattern.compile("(?is).+\\.(?:htm|html|js)$");
   private static final Pattern EXECUTABLE_FILE =
       Pattern.compile("(?is).+\\.(?:exe|dll|scr|vbs|cmd|bat)$");
-  private static final Pattern NTFS_STREAM = Pattern.compile("(?is).*::\\$(?:data|index)$");
   private static final Pattern WINDOWS_ABSOLUTE_PATH = Pattern.compile("(?i)^[a-z]:/.*");
   private static final Pattern READ_SAFE_EXTENSION =
       Pattern.compile(
@@ -2117,9 +2117,13 @@ public final class DetectorEngine {
 
   public Optional<Detection> detectJmxFileWrite(String path, JmxWriteScope scope,
       String api, RequestContext request) {
-    if (!request.active() || scope == null || !SCRIPT_FILE.matcher(normalizePath(path)).matches()
-        || !scope.selects(path)) return Optional.empty();
-    boolean controlled = request.hasParameterIn(path);
+    if (!request.active() || scope == null) return Optional.empty();
+    WindowsDataStream stream = java.io.File.separatorChar == '\\' ? WindowsDataStream.parse(path) : null;
+    if (stream != null && !stream.name().isEmpty()) return Optional.empty();
+    String file = stream == null ? path : stream.file();
+    if (!SCRIPT_FILE.matcher(normalizePath(file)).matches() || !(scope.selects(path) || (stream != null && scope.selects(file))))
+      return Optional.empty();
+    boolean controlled = request.hasParameterIn(path) || (stream != null && request.hasParameterIn(file));
     return Optional.of(Detection.log("jmx", "jmx_file_write", controlled ? 100 : 90,
         "A managed operation opens its selected script destination for writing", request,
         Map.of("path", abbreviate(path), "mbean", abbreviate(scope.bean()), "operation", scope.operation(),
@@ -2332,6 +2336,15 @@ public final class DetectorEngine {
     return false;
   }
 
+  public Optional<Detection> detectWindowsStreamWrite(WindowsDataStream stream, RequestContext request,
+      List<String> stackClassNames, boolean namedStreamPolicy) {
+    if (stream.name().isEmpty()) return detectFileWrite(stream.file(), request, stackClassNames);
+    if (!namedStreamPolicy) return Optional.empty();
+    return Optional.of(Detection.log("writeFile", "writeFile_NTFS", 70, "Windows requested a named data stream for writing",
+        request, Map.of("path", abbreviate(stream.file()), "stream", abbreviate(stream.name()),
+            "decision_basis", "named_data_stream")));
+  }
+
   public Optional<Detection> detectFileWrite(String path, RequestContext request) {
     return detectFileWrite(path, request, List.of());
   }
@@ -2341,16 +2354,6 @@ public final class DetectorEngine {
     String normalized = normalizePath(path);
     if (normalized.isBlank()) {
       return Optional.empty();
-    }
-    if (NTFS_STREAM.matcher(normalized).matches()) {
-      return Optional.of(
-          Detection.log(
-              "writeFile",
-              "writeFile_NTFS",
-              90,
-              "NTFS alternate data stream write detected",
-              request,
-              Map.of("path", normalized)));
     }
     if ((normalized.endsWith(".jsp") || normalized.endsWith(".jspx"))
         && fileOperationFromDynamicCode(stackClassNames)) {
@@ -2558,7 +2561,6 @@ public final class DetectorEngine {
               Map.of("filename", abbreviate(filename))));
     }
     if (SCRIPT_FILE.matcher(normalized).matches()
-        || NTFS_STREAM.matcher(normalized).matches()
         || normalized.endsWith("/.htaccess")
         || normalized.endsWith("/.user.ini")
         || normalized.equals(".htaccess")

@@ -35,7 +35,8 @@ public record Detection(
   public boolean requiresExplicitRule() {
     if (details == null) return false;
     String basis = details.get("decision_basis");
-    return ("deleteFile_userinput".equals(algorithm) && "requested_path_only".equals(basis))
+    return ("writeFile_NTFS".equals(algorithm) && "named_data_stream".equals(basis))
+        || ("deleteFile_userinput".equals(algorithm) && "requested_path_only".equals(basis))
         || ("command_reflect".equals(algorithm) && "process_dispatch".equals(basis))
         || ("directory_userinput".equals(algorithm) && "requested_path_only".equals(basis))
         || ("directory_unwanted".equals(algorithm) && "directory_location".equals(basis))

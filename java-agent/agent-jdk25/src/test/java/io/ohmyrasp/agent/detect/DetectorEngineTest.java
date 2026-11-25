@@ -1126,10 +1126,18 @@ final class DetectorEngineTest {
   }
 
   @Test
-  void detectsNtfsFileWrite() {
-    var result = engine.detectFileWrite("C:/inetpub/wwwroot/upload.txt::$DATA", request());
-
-    assertAlgorithm(result, "writeFile_NTFS");
+  void appliesFilePolicyToTheDefaultWindowsStreamAndRequiresASelectorForNamedStreams() {
+    var ordinary = new io.ohmyrasp.agent.file.WindowsDataStream("weekly.csv", "");
+    var script = new io.ohmyrasp.agent.file.WindowsDataStream("report.jsp", "");
+    var metadata = new io.ohmyrasp.agent.file.WindowsDataStream("weekly.csv", "author");
+    assertTrue(engine.detectWindowsStreamWrite(ordinary, request(), List.of(), true).isEmpty());
+    assertAlgorithm(engine.detectWindowsStreamWrite(script, request(), List.of(), false), "writeFile_script");
+    assertTrue(engine.detectWindowsStreamWrite(metadata, request(), List.of(), false).isEmpty());
+    var selected = engine.detectWindowsStreamWrite(metadata, request(), List.of(), true).orElseThrow();
+    assertEquals("writeFile_NTFS", selected.algorithm());
+    assertEquals("author", selected.details().get("stream"));
+    assertTrue(selected.requiresExplicitRule());
+    assertTrue(engine.detectFileUpload("weekly.csv::$DATA", request()).isEmpty());
   }
 
   @Test

@@ -9,7 +9,7 @@
 | Metric | Count |
 |--------|------:|
 | Hook families (instrumentation points) | 28 |
-| Detector capabilities (engine entry points) | 55 |
+| Detector capabilities (engine entry points) | 56 |
 | Verified algorithm signatures (asserted by tests) | 43 |
 | End-to-end vulnerability acceptance scenarios | 136 |
 | JDK lines exercised | 6 |
@@ -52,7 +52,7 @@ rewrites a family of risky call sites and routes them to the detector engine.
 
 ## Detector capabilities
 
-The engine exposes **55** detection entry points:
+The engine exposes **56** detection entry points:
 
 - `detectArchiveExtraction` · `detectArgumentFileExpansion` · `detectBase64Decode`
 - `detectClassLoaderUrl` · `detectCommand` · `detectDeserialization`
@@ -70,9 +70,9 @@ The engine exposes **55** detection entry points:
 - `detectSpringConfigLocation` · `detectSql` · `detectSqlException`
 - `detectSqlRegex` · `detectUrl` · `detectWebdavUpload`
 - `detectWebshellCallable` · `detectWebshellCommand` · `detectWebshellEval`
-- `detectWebshellFileWrite` · `detectWebshellLdPreload` · `detectXmlAttachmentReference`
-- `detectXmlDecoderExpression` · `detectXmlRpcSerializableValue` · `detectXssEcho`
-- `detectXxeEntity`
+- `detectWebshellFileWrite` · `detectWebshellLdPreload` · `detectWindowsStreamWrite`
+- `detectXmlAttachmentReference` · `detectXmlDecoderExpression` · `detectXmlRpcSerializableValue`
+- `detectXssEcho` · `detectXxeEntity`
 
 ## Rule scope
 
@@ -214,7 +214,7 @@ The descriptions live in the [general catalog](../rules/general.json) and [produ
 | `webshell_eval` | The monitored operation involves a callable, command, evaluated text, file write or loader environment setting. The individual rule determines the required evidence. | — |
 | `webshell_file_put_contents` | The monitored operation involves a callable, command, evaluated text, file write or loader environment setting. The individual rule determines the required evidence. | — |
 | `webshell_ld_preload` | The monitored operation involves a callable, command, evaluated text, file write or loader environment setting. The individual rule determines the required evidence. | — |
-| `writeFile_NTFS` | A file-write decision uses a stream name, dispatch stack, script suffix or generated interpreter content. | — |
+| `writeFile_NTFS` | Explicit policy selects a writable Windows open of a named data stream. The unnamed default stream uses ordinary base-file policy. | — |
 | `writeFile_config_path` | — | RocketMQ configuration-persistence frames identify the file write. |
 | `writeFile_generated_script` | A file-write decision uses a stream name, dispatch stack, script suffix or generated interpreter content. | — |
 | `writeFile_reflect` | A file-write decision uses a stream name, dispatch stack, script suffix or generated interpreter content. | — |

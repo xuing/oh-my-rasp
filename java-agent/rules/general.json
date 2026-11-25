@@ -87,7 +87,7 @@
     "webshell_eval": "The monitored operation involves a callable, command, evaluated text, file write or loader environment setting. The individual rule determines the required evidence.",
     "webshell_file_put_contents": "The monitored operation involves a callable, command, evaluated text, file write or loader environment setting. The individual rule determines the required evidence.",
     "webshell_ld_preload": "The monitored operation involves a callable, command, evaluated text, file write or loader environment setting. The individual rule determines the required evidence.",
-    "writeFile_NTFS": "A file-write decision uses a stream name, dispatch stack, script suffix or generated interpreter content.",
+    "writeFile_NTFS": "Explicit policy selects a writable Windows open of a named data stream. The unnamed default stream uses ordinary base-file policy.",
     "writeFile_generated_script": "A file-write decision uses a stream name, dispatch stack, script suffix or generated interpreter content.",
     "writeFile_reflect": "A file-write decision uses a stream name, dispatch stack, script suffix or generated interpreter content.",
     "writeFile_script": "A file-write decision uses a stream name, dispatch stack, script suffix or generated interpreter content.",

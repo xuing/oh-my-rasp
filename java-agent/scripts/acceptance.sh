@@ -1234,7 +1234,7 @@ XML
   expect_block "$version" readFile_jenkins_cve_2024_23897_connect_node_passwd -G --data-urlencode "arg=connect-node" --data-urlencode "arg=@/etc/passwd" "${protected_url}/rasp/policy/argument-file-expansion"
   expect_block "$version" writeFile_script -G --data-urlencode "path=/usr/local/tomcat/webapps/ROOT/shell.jsp" "${protected_url}/rasp/file/write"
   expect_block "$version" writeFile_reflect "${protected_url}/rasp/file/write-reflect"
-  expect_block "$version" writeFile_NTFS "${protected_url}/rasp/policy/write-ntfs"
+  expect_body_contains "${protected_url}/rasp/policy/write-ntfs" "policy write-ntfs triggered"
   expect_block "$version" writeFile_config_path "${protected_url}/rasp/policy/write-config-path"
   expect_block "$version" writeFile_rocketmq_cve_2023_37582_namesrv_config_path "${protected_url}/rasp/policy/write-rocketmq-cve-2023-37582-config-path"
   expect_block "$version" writeFile_generated_script -G --data-urlencode "payload=${generated_script_payload}" "${protected_url}/rasp/policy/write-generated-script"
@@ -1437,7 +1437,6 @@ required_algorithms=(
   readFile_userinput_unwanted
   readFile_unwanted
   readFile_argument_expansion
-  writeFile_NTFS
   writeFile_script
   writeFile_reflect
   writeFile_config_path

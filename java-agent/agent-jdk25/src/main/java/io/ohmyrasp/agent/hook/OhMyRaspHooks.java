@@ -1,6 +1,7 @@
 package io.ohmyrasp.agent.hook;
 
 import io.ohmyrasp.agent.file.HostReadPath;
+import io.ohmyrasp.agent.file.WindowsDataStream;
 import io.ohmyrasp.agent.file.HostDirectory;
 import io.ohmyrasp.agent.jmx.JmxDispatch;
 import io.ohmyrasp.agent.jmx.JmxWriteScope;
@@ -816,13 +817,18 @@ public final class OhMyRaspHooks {
   }
 
   public static void beforeFileWrite(String path, List<String> stackClassNames) {
+    inspectFileWrite(path, stackClassNames, null);
+  }
+
+  private static void inspectFileWrite(String path, List<String> stackClassNames, Object operand) {
     if (detectionDisabled()) {
       return;
     }
     String archiveEntry = ARCHIVE_ENTRY.get();
     try {
       emit(DETECTORS.detectArchiveExtraction(archiveEntry, path, currentRequest()));
-      emit(DETECTORS.detectFileWrite(path, currentRequest(), stackClassNames));
+      if (java.io.File.separatorChar != '\\' || WindowsDataStream.parse(path) == null || !HostReadPath.isHostPath(operand))
+        emit(DETECTORS.detectFileWrite(path, currentRequest(), stackClassNames));
     } catch (OhMyRaspBlockException blocked) {
       throw blocked;
     } catch (Throwable throwable) {
@@ -831,6 +837,20 @@ public final class OhMyRaspHooks {
       if (archiveEntry != null) {
         ARCHIVE_ENTRY.remove();
       }
+    }
+  }
+
+  public static void beforeWindowsStreamWrite(String path, int writeAccess) {
+    if (writeAccess == 0 || java.io.File.separatorChar != '\\') return;
+    WindowsDataStream stream = WindowsDataStream.parse(path);
+    if (stream == null || detectionDisabled()) return;
+    try {
+      emit(DETECTORS.detectWindowsStreamWrite(stream, currentRequest(),
+          stream.name().isEmpty() ? stackTraceClassNames() : List.of(), POLICY.selectsAlgorithm("writeFile_NTFS")));
+    } catch (OhMyRaspBlockException blocked) {
+      throw blocked;
+    } catch (Throwable failure) {
+      quiet("beforeWindowsStreamWrite", failure);
     }
   }
 
@@ -1050,14 +1070,14 @@ public final class OhMyRaspHooks {
     if (detectionDisabled()) {
       return;
     }
-    beforeFileWrite(pathFrom(path));
+    inspectFileWrite(pathFrom(path), stackTraceClassNames(), path);
   }
 
   public static void beforePathWrite(Object path, List<String> stackClassNames) {
     if (detectionDisabled()) {
       return;
     }
-    beforeFileWrite(pathFrom(path), stackClassNames);
+    inspectFileWrite(pathFrom(path), stackClassNames, path);
   }
 
   public static GeneratedLineWrite beginGeneratedLines(Object target) {

@@ -5,7 +5,7 @@
 
 ## Method
 
-A curated corpus of **167** benign-but-plausible inputs across **22** detector categories is run through the engine. Each input is presented with a realistic request context; where a value would be user-supplied it is placed in a request parameter so taint-aware detectors evaluate it as in production. A *false positive* is any detector returning a detection for legitimate input. This is a detector-precision probe on benign traffic, **not** a production-traffic false-positive rate.
+A curated corpus of **169** benign-but-plausible inputs across **22** detector categories is run through the engine. Each input is presented with a realistic request context; where a value would be user-supplied it is placed in a request parameter so taint-aware detectors evaluate it as in production. A *false positive* is any detector returning a detection for legitimate input. This is a detector-precision probe on benign traffic, **not** a production-traffic false-positive rate.
 
 ## Result
 
@@ -20,7 +20,7 @@ A curated corpus of **167** benign-but-plausible inputs across **22** detector c
 | File reads | 15 | 0 | 0.0% |
 | Directory listings | 4 | 0 | 0.0% |
 | Temporary report output | 3 | 0 | 0.0% |
-| File writes | 4 | 0 | 0.0% |
+| File writes | 6 | 0 | 0.0% |
 | File deletes | 4 | 0 | 0.0% |
 | Archive writes | 5 | 0 | 0.0% |
 | Deserialization classes | 9 | 0 | 0.0% |
@@ -33,7 +33,7 @@ A curated corpus of **167** benign-but-plausible inputs across **22** detector c
 | JDBC URLs | 5 | 0 | 0.0% |
 | Request parameters | 6 | 0 | 0.0% |
 | Base64 decoding | 8 | 0 | 0.0% |
-| **Overall** | **167** | **0** | **0.0%** |
+| **Overall** | **169** | **0** | **0.0%** |
 
 No false positives observed across the corpus.
 
@@ -169,6 +169,8 @@ No false positives observed across the corpus.
 - `/var/app/uploads/avatar-1001.png`
 - `/tmp/app-export-2026-05.csv`
 - `/srv/data/cache/thumb-42.jpg`
+- `weekly.txt::$DATA`
+- `index.txt::$INDEX`
 - `/var/app/logs/audit-2026-06-06.log`
 
 **File deletes**
