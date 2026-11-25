@@ -5,7 +5,7 @@
 
 ## Method
 
-A curated corpus of **176** benign-but-plausible inputs across **23** detector categories is run through the engine. Each input is presented with a realistic request context; where a value would be user-supplied it is placed in a request parameter so taint-aware detectors evaluate it as in production. A *false positive* is any detector returning a detection for legitimate input. This is a detector-precision probe on benign traffic, **not** a production-traffic false-positive rate.
+A curated corpus of **178** benign-but-plausible inputs across **24** detector categories is run through the engine. Each input is presented with a realistic request context; where a value would be user-supplied it is placed in a request parameter so taint-aware detectors evaluate it as in production. A *false positive* is any detector returning a detection for legitimate input. This is a detector-precision probe on benign traffic, **not** a production-traffic false-positive rate.
 
 ## Result
 
@@ -17,6 +17,7 @@ A curated corpus of **176** benign-but-plausible inputs across **23** detector c
 | OS commands | 18 | 0 | 0.0% |
 | Process dispatch | 4 | 0 | 0.0% |
 | Spark job descriptors | 1 | 0 | 0.0% |
+| YARN job descriptors | 2 | 0 | 0.0% |
 | Outbound URLs | 23 | 0 | 0.0% |
 | File reads | 15 | 0 | 0.0% |
 | Directory listings | 4 | 0 | 0.0% |
@@ -34,7 +35,7 @@ A curated corpus of **176** benign-but-plausible inputs across **23** detector c
 | JDBC URLs | 5 | 0 | 0.0% |
 | Request parameters | 6 | 0 | 0.0% |
 | Base64 decoding | 8 | 0 | 0.0% |
-| **Overall** | **176** | **0** | **0.0%** |
+| **Overall** | **178** | **0** | **0.0%** |
 
 No false positives observed across the corpus.
 
@@ -117,6 +118,11 @@ No false positives observed across the corpus.
 **Spark job descriptors**
 
 - `{"action":"CreateSubmissionRequest","appResource":"https://artifacts.example....`
+
+**YARN job descriptors**
+
+- `{"am-container-spec":{"commands":{"command":"java reports.Weekly"}}}`
+- `{"am-container-spec":{"commands":{"command":"echo cat /etc/passwd"}}}`
 
 **Outbound URLs**
 

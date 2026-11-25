@@ -1178,36 +1178,12 @@ final class Java11RaspHooksTest {
   }
 
   @Test
-  void logsYarnResourceManagerApplicationSubmission() throws Exception {
-    Path log = Files.createTempFile("ohmyrasp-java11-yarn-rest", ".jsonl");
-    Files.delete(log);
-    System.setProperty("ohmyrasp.java11.log", log.toString());
-
-    Java11RaspHooks.beforeYarnApplicationSubmit(yarnSubmission("touch /tmp/ohmyrasp-yarn-success"));
-
-    String text = new String(Files.readAllBytes(log), StandardCharsets.UTF_8);
-    assertTrue(text.contains("\"algorithm\":\"java11_request_remote_job_submission\""));
-    assertTrue(text.contains("\"action\":\"log\""));
-    assertTrue(text.contains("\"hook\":\"RMWebServices.submitApplication\""));
-    assertTrue(text.contains("commands=1"));
-    assertFalse(text.contains("touch /tmp/ohmyrasp-yarn-success"));
-  }
-
-  @Test
-  void blocksYarnResourceManagerApplicationSubmissionWhenBlockModeIsEnabled() throws Exception {
-    Path log = Files.createTempFile("ohmyrasp-java11-yarn-rest-block", ".jsonl");
-    Files.delete(log);
+  void reportCommandAloneDoesNotEstablishSubmitAuthority() throws Exception {
+    Path log = Files.createTempFile("ohmyrasp-yarn", ".jsonl");
     System.setProperty("ohmyrasp.java11.log", log.toString());
     System.setProperty("ohmyrasp.java11.block", "true");
-
-    assertThrows(
-        Java11RaspBlockException.class,
-        () -> Java11RaspHooks.beforeYarnApplicationSubmit(yarnSubmission("touch /tmp/ohmyrasp-yarn-block-success")));
-
-    String text = new String(Files.readAllBytes(log), StandardCharsets.UTF_8);
-    assertTrue(text.contains("\"algorithm\":\"java11_request_remote_job_submission\""));
-    assertTrue(text.contains("\"action\":\"block\""));
-    assertFalse(text.contains("touch /tmp/ohmyrasp-yarn-block-success"));
+    Java11RaspHooks.beforeYarnApplicationSubmit(yarnSubmission("java reports.Weekly"));
+    assertEquals(0L, Files.size(log));
   }
 
   @Test

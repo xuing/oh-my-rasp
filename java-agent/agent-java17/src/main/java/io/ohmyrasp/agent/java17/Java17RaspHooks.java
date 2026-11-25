@@ -6,6 +6,7 @@ import io.ohmyrasp.agent.file.HostReadPath;
 import io.ohmyrasp.agent.file.HostDirectory;
 import io.ohmyrasp.agent.jmx.JmxDispatch;
 import io.ohmyrasp.agent.rules.product.spark.SparkSubmitRole;
+import io.ohmyrasp.agent.http.ServletSubmitRole;
 import io.ohmyrasp.agent.serialization.StreamTypeNames;
 import io.ohmyrasp.agent.rules.product.beanshell.BeanShellTypes;
 import io.ohmyrasp.agent.rules.general.PlotWrite;
@@ -128,7 +129,6 @@ public final class Java17RaspHooks {
   private static final Pattern SCRIPT_LITERAL_EXECUTE =
       Pattern.compile("(?is)[\"'][^\"'\\r\\n]{1,200}[\"']\\s*\\.\\s*execute\\s*\\(");
   private static final ThreadLocal<String> LAST_LOGGED_REQUEST = new ThreadLocal<String>();
-  private static final ThreadLocal<String> LAST_LOGGED_REMOTE_JOB = new ThreadLocal<String>();
   private static final ThreadLocal<String> LAST_LOGGED_COMMAND = new ThreadLocal<String>();
   private static final ThreadLocal<String> LAST_LOGGED_JNDI = new ThreadLocal<String>();
   private static final ThreadLocal<String> LAST_LOGGED_HESSIAN_TYPE = new ThreadLocal<String>();
@@ -261,9 +261,18 @@ public final class Java17RaspHooks {
     if (block) throw new Java17RaspBlockException("OhMyRASP blocked unauthorized Spark submission");
   }
 
-  public static void beforeYarnApplicationSubmit(Object submission) {
-    Finding finding = classifyYarnApplicationSubmission(submission);
-    emitRemoteJobFinding(finding, "RMWebServices.submitApplication");
+  /** Earlier instrumentation supplied the command descriptor before admission checks. */
+  public static void beforeYarnApplicationSubmit(Object submission) {}
+
+  public static void afterYarnSubmitPrepared(Object prepared, Object request, Class<?> requestApi) {
+    if (prepared == null || RaspRuntime.detectionOff()
+        || !ServletSubmitRole.denied("ohmyrasp.yarn.submitRole", request, requestApi)) return;
+    Finding finding = new Finding("java17_request_remote_job_submission", 95,
+        "YARN job submission lacks the deployment's required role", "operation", "SubmitApplicationRequest.newInstance",
+        "required_submit_role_denied");
+    boolean block = shouldBlock();
+    appendEvent(finding, "RMWebServices.submitApplication", block ? "block" : "log");
+    if (block) throw new Java17RaspBlockException("OhMyRASP blocked unauthorized YARN submission");
   }
 
   public static void beforeProcessLaunch(String[] argv) {
@@ -1817,79 +1826,6 @@ public final class Java17RaspHooks {
         || lower.indexOf("detectcustomcollations=true") >= 0
         || lower.indexOf("detectcustomcollations=1") >= 0
         || lower.indexOf("detectcustomcollations=yes") >= 0;
-  }
-
-  private static void emitRemoteJobFinding(Finding finding, String hook) {
-    if (finding == null) {
-      return;
-    }
-    String action = shouldBlock() ? "block" : "log";
-    String previous = LAST_LOGGED_REMOTE_JOB.get();
-    if (!"block".equals(action) && finding.detailValue.equals(previous)) {
-      return;
-    }
-    LAST_LOGGED_REMOTE_JOB.set(finding.detailValue);
-    appendEvent(finding, hook, action);
-    if ("block".equals(action)) {
-      throw new Java17RaspBlockException("OhMyRASP Java 17 blocked suspicious remote job submission");
-    }
-  }
-
-  private static Finding classifyYarnApplicationSubmission(Object submission) {
-    Object container = invoke(submission, "getContainerLaunchContextInfo");
-    List<String> commands = yarnCommandTexts(invoke(container, "getCommands"));
-    if (commands.isEmpty()) {
-      return null;
-    }
-    String joined = joinList(commands);
-    String applicationType = invokeString(submission, "getApplicationType");
-    if (applicationType.length() == 0) {
-      applicationType = "YARN";
-    }
-    return new Finding(
-        "java17_request_remote_job_submission",
-        90,
-        "YARN ResourceManager REST request submits an application master command",
-        "submission",
-        "YARN ResourceManager type="
-            + abbreviate(applicationType, 64)
-            + " commands="
-            + commands.size()
-            + " commandHash="
-            + Integer.toHexString(joined.hashCode()));
-  }
-
-  private static List<String> yarnCommandTexts(Object commands) {
-    List<String> values = new ArrayList<String>();
-    collectYarnCommandTexts(values, commands);
-    return values;
-  }
-
-  private static void collectYarnCommandTexts(List<String> values, Object commands) {
-    if (commands == null || values.size() >= 32) {
-      return;
-    }
-    if (commands instanceof Iterable<?>) {
-      for (Object command : (Iterable<?>) commands) {
-        collectYarnCommandTexts(values, command);
-        if (values.size() >= 32) {
-          break;
-        }
-      }
-      return;
-    }
-    Class<?> type = commands.getClass();
-    if (type.isArray()) {
-      int length = Array.getLength(commands);
-      for (int index = 0; index < length && values.size() < 32; index++) {
-        collectYarnCommandTexts(values, Array.get(commands, index));
-      }
-      return;
-    }
-    String text = String.valueOf(commands).trim();
-    if (text.length() > 0) {
-      values.add(abbreviate(text, 2048));
-    }
   }
 
   private static void emitClassLoaderFindings(Object sources, String mechanism) {

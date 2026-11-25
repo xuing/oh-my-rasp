@@ -1828,9 +1828,8 @@ same patch as any new Java-compatible Vulhub replay.
   `javaX_request_ogc_filter_sql_injection`; real Java 17 Vulhub evidence is
   provided by `scripts/acceptance-vulhub-geoserver-25157-java17.sh`.
 - `request_remote_job_submission` checks [Spark REST submission authorization](../detection.md#spark-rest-submission-authorization)
-  and also has a separate scheduler command branch. The Java backports
-  observe YARN application-master command submission at
-  `RMWebServices.submitApplication`. Earlier Spark acceptance used an
+  and [YARN REST submission authorization](../detection.md#hadoop-yarn-rest-submission-authorization).
+  The primary agent also has a separate descriptor-level scheduler command branch. Earlier Spark acceptance used an
   artifact descriptor; the current role check is exercised by the
   [packaged servlet probe](../../java-agent/scripts/fp-harness/check-spark-submit.py).
 - `request_internal_forward` covers request-controlled internal forwarding or

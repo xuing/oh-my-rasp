@@ -38,3 +38,19 @@ subprojects {
         systemProperty("ohmyrasp.log.sync", "true")
     }
 }
+
+// Kept separate from agent packaging: these libraries run the upstream REST admission fixture.
+val yarnProbeRuntime by configurations.creating {
+    isCanBeConsumed = false
+}
+dependencies {
+    val hadoop = "2.8.1"
+    yarnProbeRuntime("org.apache.hadoop:hadoop-yarn-server-resourcemanager:$hadoop")
+    yarnProbeRuntime("org.apache.hadoop:hadoop-yarn-common:$hadoop")
+    yarnProbeRuntime("org.apache.hadoop:hadoop-common:$hadoop")
+    yarnProbeRuntime("javax.servlet:javax.servlet-api:3.1.0")
+}
+tasks.register<Sync>("stageYarnProbe") {
+    from(yarnProbeRuntime)
+    into(layout.buildDirectory.dir("yarn-probe"))
+}

@@ -79,6 +79,22 @@ artifact location and caller identity. In the primary agent, a descriptor-only
 artifact finding from the synthetic policy API requires explicit selection.
 [Spark submission servlet](https://github.com/apache/spark/blob/v2.3.1/core/src/main/scala/org/apache/spark/deploy/rest/RestSubmissionServer.scala)
 
+### Hadoop YARN REST submission authorization
+
+Set `-Dohmyrasp.yarn.submitRole=submitter` on the ResourceManager JVM to require
+a deployment-mapped servlet role for REST application submission. Hadoop first
+checks the caller and converts the application context. Once the internal
+`SubmitApplicationRequest` has been prepared, the agent checks `isUserInRole`
+on the submitting HTTP request. A false result records `required_submit_role_denied`.
+Block mode stops the request before the client service receives it. Monitor mode
+logs the denial and allows Hadoop to continue its own admission checks.
+
+This setting uses the servlet container’s role mapping. Hadoop retains its own
+queue ACLs and scheduler decisions. An unset, blank or wildcard role, or an
+unavailable role lookup, leaves this rule silent. The event omits commands and
+caller names. In the primary agent the synthetic YARN command-descriptor finding
+requires an explicit policy selection. [ResourceManager REST service](https://github.com/apache/hadoop/blob/rel/release-2.8.1/hadoop-yarn-project/hadoop-yarn/hadoop-yarn-server/hadoop-yarn-server-resourcemanager/src/main/java/org/apache/hadoop/yarn/server/resourcemanager/webapp/RMWebServices.java)
+
 ### Java archive upload authorization
 
 The filename hook can enforce an application-declared role when application code or

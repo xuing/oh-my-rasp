@@ -3620,7 +3620,7 @@ final class DetectorEngineTest {
   }
 
   @Test
-  void detectsHadoopUnauthorizedYarnResourceManagerContainerCommandSubmission() {
+  void yarnCommandDescriptorRequiresExplicitSelection() {
     var descriptor =
         """
         {
@@ -3635,7 +3635,9 @@ final class DetectorEngineTest {
         """;
     var context = new RequestContext("POST", "/ws/v1/cluster/apps", "", Map.of(), Map.of());
 
-    var result = engine.detectRemoteJobSubmission("YARN", descriptor, context);
+    assertTrue(engine.detectRemoteJobSubmission("YARN", descriptor, context).isEmpty());
+    var result = engine.detectRemoteJobSubmission("YARN", descriptor, context, true);
+    assertTrue(result.orElseThrow().requiresExplicitRule());
 
     assertAlgorithm(result, "request_remote_job_submission");
     assertEquals("44", result.orElseThrow().details().get("commandLength"));
@@ -3645,7 +3647,7 @@ final class DetectorEngineTest {
   void artifactMetadataDoesNotMaskAnIndependentSchedulerCommandFinding() {
     String descriptor = "{\"appResource\":\"https://reports.invalid/weekly.jar\",\"mainClass\":\"Weekly\","
         + "\"command\":\"cat /etc/passwd\"}";
-    var finding = engine.detectRemoteJobSubmission("YARN", descriptor, requestUri("/ws/v1/cluster/apps")).orElseThrow();
+    var finding = engine.detectRemoteJobSubmission("job", descriptor, requestUri("/jobs/run"), true).orElseThrow();
     assertTrue(finding.details().containsKey("commandLength"));
     assertFalse(finding.requiresExplicitRule());
   }

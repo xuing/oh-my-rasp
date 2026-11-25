@@ -200,6 +200,13 @@ With a Spark 2.3.1 distribution and a compatible JDK, add
 `--spark-classpath '/path/to/spark/jars/*'` to exercise Spark's original parser
 and validator against a handler that only counts submissions.
 
+The [YARN admission check](java-agent/scripts/fp-harness/check-yarn-submit.py)
+uses the Hadoop release REST resource and a recording client service.
+Run `java-agent/scripts/check-jdk25.sh yarn-submit` for the primary agent.
+The compatibility matrix shares the fixture dependencies staged by the root
+`stageYarnProbe` Gradle task. For another agent, pass its jar and
+`--jar-dir java-agent/build/yarn-probe` to the probe.
+
 The [JWT filter check](java-agent/scripts/fp-harness/check-jwt-verification.py)
 runs a local filter fixture with java-jwt and a deny-only downstream receiver.
 Use `java-agent/scripts/check-jdk25.sh jwt-verification` for the primary agent.

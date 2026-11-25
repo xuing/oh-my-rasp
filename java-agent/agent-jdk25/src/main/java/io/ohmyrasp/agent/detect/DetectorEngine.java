@@ -1146,8 +1146,8 @@ public final class DetectorEngine {
   }
 
   public Optional<Detection> detectRemoteJobSubmission(String mechanism, String descriptor,
-      RequestContext request, boolean artifactPolicy) {
-    return RemoteJobDetector.detect(mechanism, descriptor, request, artifactPolicy);
+      RequestContext request, boolean descriptorPolicy) {
+    return RemoteJobDetector.detect(mechanism, descriptor, request, descriptorPolicy);
   }
 
   public Optional<Detection> detectSql(String query, RequestContext request) {

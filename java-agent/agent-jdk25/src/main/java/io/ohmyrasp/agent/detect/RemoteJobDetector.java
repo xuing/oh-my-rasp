@@ -9,6 +9,7 @@ import static io.ohmyrasp.agent.detect.DetectorStrings.protocolOf;
 import static io.ohmyrasp.agent.detect.ProcessDetector.dangerousRemoteJobCommand;
 import io.ohmyrasp.agent.model.RequestContext;
 import io.ohmyrasp.agent.model.Detection;
+import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
@@ -48,7 +49,7 @@ final class RemoteJobDetector {
       Set.of("create", "submit", "submissions", "run", "execute", "apps", "batches");
 
   static Optional<Detection> detect(
-      String mechanism, String descriptor, RequestContext request, boolean artifactPolicy) {
+      String mechanism, String descriptor, RequestContext request, boolean descriptorPolicy) {
     RequestContext safeRequest = request == null ? RequestContext.empty() : request;
     String safeDescriptor = descriptor == null ? "" : descriptor;
     String normalizedMechanism = lower(mechanism).replaceAll("[^a-z0-9]", "");
@@ -57,28 +58,26 @@ final class RemoteJobDetector {
         || !remoteJobSubmissionContext(safeRequest, normalizedMechanism, safeDescriptor)) {
       return Optional.empty();
     }
+    boolean yarn = normalizedMechanism.equals("yarn") || normalizedMechanism.equals("hadoop");
+    if (yarn && !descriptorPolicy) return Optional.empty();
     if (!normalizedMechanism.equals("spark") && !normalizedMechanism.equals("sparkrest")) {
       var command = REMOTE_JOB_COMMAND_VALUE.matcher(safeDescriptor);
       while (command.find()) {
         String value = command.group(1);
         if (dangerousRemoteJobCommand(value)) {
-          return Optional.of(
-              Detection.log(
-                  "request",
-                  "request_remote_job_submission",
-                  95,
-                  "Request submits a shell command to a job control endpoint",
-                  safeRequest,
-                  Map.of(
-                      "mechanism", abbreviate(mechanism),
-                      "uri", abbreviate(safeRequest.uri()),
-                      "method", safeRequest.method(),
-                      "descriptorLength", String.valueOf(safeDescriptor.length()),
-                      "commandLength", String.valueOf(value.length()))));
+          Map<String, String> details = new LinkedHashMap<>();
+          details.put("mechanism", abbreviate(mechanism));
+          details.put("uri", abbreviate(safeRequest.uri()));
+          details.put("method", safeRequest.method());
+          details.put("descriptorLength", String.valueOf(safeDescriptor.length()));
+          details.put("commandLength", String.valueOf(value.length()));
+          if (yarn) details.put("decision_basis", "command_descriptor_only");
+          return Optional.of(Detection.log("request", "request_remote_job_submission", 95,
+              "Request submits a shell command to a job control endpoint", safeRequest, details));
         }
       }
     }
-    if (!artifactPolicy) return Optional.empty();
+    if (!descriptorPolicy) return Optional.empty();
     var artifact = REMOTE_JOB_ARTIFACT.matcher(safeDescriptor);
     if (artifact.find() && REMOTE_JOB_MAIN_CLASS.matcher(safeDescriptor).find()) {
       String artifactUrl = artifact.group(1);

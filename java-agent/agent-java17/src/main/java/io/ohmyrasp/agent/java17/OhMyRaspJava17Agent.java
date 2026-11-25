@@ -144,7 +144,6 @@ public final class OhMyRaspJava17Agent {
     retransformByName(instrumentation, "org.glassfish.jersey.server.ServerRuntime");
     retransformByName(instrumentation, "org.apache.catalina.authenticator.AuthenticatorBase");
     retransformByName(instrumentation, "org.apache.catalina.core.StandardWrapperValve");
-    retransformByName(instrumentation, "org.apache.hadoop.yarn.server.resourcemanager.webapp.RMWebServices");
     if (io.ohmyrasp.agent.process.ProcessLaunchVisitor.platformHandoff()) retransformByName(instrumentation, "java.lang.ProcessImpl");
     else retransform(instrumentation, ProcessBuilder.class);
     retransform(instrumentation, Runtime.class);
@@ -190,7 +189,8 @@ public final class OhMyRaspJava17Agent {
     java.util.Set<Class<?>> multipartOwners = io.ohmyrasp.agent.http.MultipartFilename.loadedOwners(loadedClasses);
     for (Class<?> loaded : loadedClasses) {
       String internalName = loaded.getName().replace('.', '/');
-      if (io.ohmyrasp.agent.rules.product.spark.SparkSubmitVisitor.OWNER.equals(internalName)
+      if (io.ohmyrasp.agent.rules.product.yarn.YarnSubmitVisitor.OWNER.equals(internalName)
+          || io.ohmyrasp.agent.rules.product.spark.SparkSubmitVisitor.OWNER.equals(internalName)
           || io.ohmyrasp.agent.rules.product.dataease.FilterVerificationVisitor.OWNER.equals(internalName)
           || multipartOwners.contains(loaded) || io.ohmyrasp.agent.http.MultipartFilenameVisitor.known(internalName, true)
           || io.ohmyrasp.agent.file.DirectoryListVisitor.matches(internalName) || io.ohmyrasp.agent.xml.AttachmentFileVisitor.matches(internalName) || XmlEntityOpenVisitor.matches(internalName) || MyBatisSqlVisitor.matches(internalName)

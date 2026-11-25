@@ -1137,6 +1137,11 @@ coverage, separate from the Java 25 behavioral replay suite:
   11 -> 10.1 -> 9, `scripts/acceptance-java11.sh` passed Tomcat 10.1 -> 9,
   and `scripts/acceptance-java8.sh` passed Tomcat 10.0 -> 9 -> 8.5 with
   baseline/protected checks for every current LTS-era behavior algorithm.
+- The current [YARN submission rule](../detection.md#hadoop-yarn-rest-submission-authorization)
+  was checked with Hadoop 2.8.1's release REST service and an unstarted recording
+  client. Authorized report jobs reached the client, and role-denied jobs stopped
+  before it in block mode. The earlier cluster run below used a command-descriptor
+  rule. Its log does not contain the deployment role decision.
 - [x] Run the real Java 8 Apache Hadoop YARN Vulhub application acceptance:
   `scripts/acceptance-vulhub-hadoop-yarn-java8.sh` starts the
   `vulhub/hadoop:2.8.1` ResourceManager/NodeManager cluster on Java 8u131.

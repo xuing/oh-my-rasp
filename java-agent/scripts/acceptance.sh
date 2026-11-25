@@ -1178,7 +1178,7 @@ XML
     -H "Content-Type: application/json" --data-binary '{"query":"graphql report","variables":{"metricName":"select label"}}'
   expect_body_contains "${protected_url}/rasp/policy/remote-job-submission" "policy remote-job-submission triggered"
   expect_body_contains "${protected_url}/v1/submissions/create" "spark-rest-submission=" -X POST -H "Content-Type: application/json" --data-binary "$spark_rest_submission_body"
-  expect_block "$version" request_hadoop_yarn_command_submission "${protected_url}/rasp/policy/remote-hadoop-yarn-command-submission"
+  expect_body_contains "${protected_url}/rasp/policy/remote-hadoop-yarn-command-submission" "policy remote-hadoop-yarn-command-submission triggered"
   expect_block "$version" request_teamcity_cve_2024_27198_internal_forward "${protected_url}/rasp/policy/request-internal-forward"
   expect_block "$version" request_java_bean_pollution -G --data-urlencode "class.module.classLoader.resources.context.parent.pipeline.first.pattern=%{c2}i" "${protected_url}/rasp/request"
   expect_block "$version" request_spring_cve_2022_22965_tomcatwar_accesslog_jsp -H "suffix: %>//" -H "c1: Runtime" -H "c2: <%" "${protected_url}/?${spring_cve_2022_22965_query}"
@@ -1420,7 +1420,6 @@ required_algorithms=(
   request_remote_import_script_write
   request_repository_webroot_write
   request_plot_command_injection
-  request_remote_job_submission
   request_internal_forward
   request_java_bean_pollution
   request_path_confusion

@@ -19,13 +19,13 @@ with `shirudo bpm build`.
 | `ohmyrasp-java8` | Java 8 (classfile `<= 52`) | `ohmyrasp-java8.jar` | 24 ASM transformers | 44 algorithms | 96 (java8) |
 | `ohmyrasp-java11` | Java 11 (classfile `<= 55`) | `ohmyrasp-java11.jar` | 24 ASM transformers | 44 algorithms | 10 (java11) |
 | `ohmyrasp-java17` | Java 17 and Java 21 (classfile `<= 61`) | `ohmyrasp-java17.jar` | 24 ASM transformers | 44 algorithms | 12 (java17) + 3 (java21) |
-| `ohmyrasp-jdk21` | Java 21 and Java 25 (classfile `<= 65`) | `ohmyrasp-jdk21.jar` | 29 ASM hook modules | 56 `detect*` capabilities | 136 total scenarios across 6 JDK lines |
-| `ohmyrasp-jdk25` | Java 21 and Java 25 (classfile `<= 65`) | `ohmyrasp-jdk25.jar` | 29 ASM hook modules | 56 `detect*` capabilities | 136 total scenarios across 6 JDK lines |
+| `ohmyrasp-jdk21` | Java 21 and Java 25 (classfile `<= 65`) | `ohmyrasp-jdk21.jar` | 30 ASM hook modules | 56 `detect*` capabilities | 136 total scenarios across 6 JDK lines |
+| `ohmyrasp-jdk25` | Java 21 and Java 25 (classfile `<= 65`) | `ohmyrasp-jdk25.jar` | 30 ASM hook modules | 56 `detect*` capabilities | 136 total scenarios across 6 JDK lines |
 
 Choose one primary package per JVM. The JDK 21 and 25 names contain the same agent bytecode.
 For JDK 21, extract `ohmyrasp-jdk21-shirudo.tar.gz` to sign the staged package with your operator keys.
 
-Benign-traffic precision across the curated engine corpus: **0 / 176** false positives across **23** categories (0.0%; see [FALSE-POSITIVE-REPORT.md](../../java-agent/docs/FALSE-POSITIVE-REPORT.md)).
+Benign-traffic precision across the curated engine corpus: **0 / 178** false positives across **24** categories (0.0%; see [FALSE-POSITIVE-REPORT.md](../../java-agent/docs/FALSE-POSITIVE-REPORT.md)).
 
 ## Security Protections Included
 
@@ -40,7 +40,7 @@ Each package injects ASM bytecode hooks at JVM class-load / retransform time acr
 | **HTTP Request, Path Confusion, Auth & SSRF** | Six-form URI path-confusion decoding (Shiro, GlassFish, Jetty, Spring), weak/default JWT HMAC secret checks, Shiro default `rememberMe` AES detection, forged internal identities, and cloud-metadata / loopback-admin / obfuscated-IP SSRF guards. | `Java*ServletTransformer`, `Java*UrlTransformer`, `Java*JwtTransformer` | `JwtHookModule`, `NetworkHookModule`, `ServletHookModule` |
 | **File I/O, Uploads & Archive Traversal** | Guards sensitive reads (`/etc/passwd`, `/proc/self/environ`, SSH keys), webroot script writes, ZipSlip archive traversal (`ZipEntry` / 7z), multipart upload path traversal, and `.gnuplot` command injection. | `Java*FileTransformer`, `Java*MultipartUploadTransformer`, `Java*ArchiveTransformer` | `ArchiveHookModule`, `FileHookModule`, `MultipartUploadHookModule` |
 | **Expression Engines, Scripting, ClassLoading & JMX/JAAS** | Inspects Nashorn/Rhino `ScriptEngine`, JEXL, Jakarta/JSP EL, `JavacTool`/Janino compilation, remote `URLClassLoader`/`RMIClassLoader` codebases, JAAS remote JNDI providers, and mutating JMX MBean invocations. | `Java*ClassLoaderTransformer`, `Java*ScriptEngineTransformer`, `Java*JexlTransformer`, `Java*ElTransformer`, `Java*JavaCompilationTransformer`, `Java*JaasTransformer`, `Java*JmxTransformer` | `ClassLoaderHookModule`, `ExpressionHookModule`, `JaasHookModule`, `JavaCompilationHookModule`, `JmxHookModule`, `SpringConfigHookModule` |
-| **Other / Newly Added** | Additional ASM instrumentation hooks detected in agent sources. | - | `SparkSubmitHookModule` |
+| **Other / Newly Added** | Additional ASM instrumentation hooks detected in agent sources. | - | `SparkSubmitHookModule`, `YarnSubmitHookModule` |
 
 ### Blocking Semantics Across Tracks
 

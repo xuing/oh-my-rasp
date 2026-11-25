@@ -41,7 +41,7 @@ jobs:
             -v "$PWD/java-agent:/workspace" \
             -w /workspace \
             "$gradle_image" \
-            gradle --no-daemon --no-problems-report clean check \
+            gradle --no-daemon --no-problems-report clean check :stageYarnProbe \
             :agent-jdk25:jdk21Jars \
             :agent-java8:shirudoUpatchJar \
             :agent-java11:shirudoUpatchJar \
@@ -62,6 +62,14 @@ jobs:
           set -euo pipefail
           ./deploy/shirudo/stage-jars.sh
           ./deploy/shirudo/verify-shirudo-upatch.sh
+      - name: Upload YARN fixture libraries
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: yarn-probe-libs
+          path: java-agent/build/yarn-probe/*.jar
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 1
       - name: Upload agent compatibility artifacts
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
@@ -190,6 +198,13 @@ jobs:
       - name: Verify plot output stream ownership
         if: startsWith(matrix.jar, 'agent-java')
         run: python3 java-agent/scripts/fp-harness/check-plot-stream.py "java-agent/${{ matrix.jar }}"
+      - name: Download YARN fixture libraries
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: yarn-probe-libs
+          path: ${{ runner.temp }}/yarn-probe
+      - name: Verify YARN admission with a recording client
+        run: python3 java-agent/scripts/fp-harness/check-yarn-submit.py "java-agent/${{ matrix.jar }}" --jar-dir "$RUNNER_TEMP/yarn-probe"
       - name: Verify Spark submit role at servlet dispatch
         run: python3 java-agent/scripts/fp-harness/check-spark-submit.py "java-agent/${{ matrix.jar }}"
       - name: Verify resolved serialization classes and proxy interfaces

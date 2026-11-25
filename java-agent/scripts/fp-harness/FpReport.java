@@ -66,6 +66,11 @@ public final class FpReport {
             Case.of("{\"action\":\"CreateSubmissionRequest\",\"appResource\":\"https://artifacts.example.test/reports.jar\",\"mainClass\":\"reports.Weekly\"}")),
             (c, r) -> ENGINE.detectRemoteJobSubmission("Spark REST", c.payload(),
                 new RequestContext("POST", "/v1/submissions/create", "", Map.of(), Map.of()))),
+        new Category("YARN job descriptors", List.of(
+            Case.of("{\"am-container-spec\":{\"commands\":{\"command\":\"java reports.Weekly\"}}}"),
+            Case.of("{\"am-container-spec\":{\"commands\":{\"command\":\"echo cat /etc/passwd\"}}}")),
+            (c, r) -> ENGINE.detectRemoteJobSubmission("YARN", c.payload(),
+                new RequestContext("POST", "/ws/v1/cluster/apps", "", Map.of(), Map.of()))),
         new Category("Outbound URLs", urlCorpus(), (c, r) -> ENGINE.detectUrl(c.payload(), r)),
         new Category("File reads", fileReadCorpus(), (c, r) -> ENGINE.detectFileRead(c.payload(), r, false)),
         new Category("Directory listings", List.of(

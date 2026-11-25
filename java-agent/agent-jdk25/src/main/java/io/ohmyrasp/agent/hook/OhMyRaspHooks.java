@@ -20,6 +20,7 @@ import io.ohmyrasp.agent.policy.AgentPolicy;
 import io.ohmyrasp.agent.policy.PolicyEvaluation;
 import io.ohmyrasp.agent.process.PosixShellCommand;
 import io.ohmyrasp.agent.rules.product.spark.SparkSubmitRole;
+import io.ohmyrasp.agent.http.ServletSubmitRole;
 import io.ohmyrasp.agent.runtime.AgentRuntime;
 import io.ohmyrasp.agent.runtime.DetectionMode;
 import io.ohmyrasp.agent.xml.XmlCatalogResolution;
@@ -230,16 +231,26 @@ public final class OhMyRaspHooks {
 
   public static void beforeSparkSubmitDispatch(boolean creation, Object request, Class<?> requestApi) {
     if (detectionDisabled() || !SparkSubmitRole.denied(creation, request, requestApi)) return;
+    emitSubmitRoleDenial(request, "Spark", "SparkRest.handleSubmit");
+  }
+
+  public static void afterYarnSubmitPrepared(Object prepared, Object request, Class<?> requestApi) {
+    if (prepared == null || detectionDisabled()
+        || !ServletSubmitRole.denied("ohmyrasp.yarn.submitRole", request, requestApi)) return;
+    emitSubmitRoleDenial(request, "YARN", "RMWebServices.submitApplication");
+  }
+
+  private static void emitSubmitRoleDenial(Object request, String service, String operation) {
     try {
       RequestContext context = new RequestContext("POST", invokeString(request, "getRequestURI").orElse(""),
           "", Map.of(), Map.of());
       emit(Optional.of(Detection.log("request", "request_remote_job_submission", 95,
-          "Spark job submission lacks the deployment's required role", context,
-          Map.of("decision_basis", "required_submit_role_denied", "operation", "SparkRest.handleSubmit"))), true, true);
+          service + " job submission lacks the deployment's required role", context,
+          Map.of("decision_basis", "required_submit_role_denied", "operation", operation))), true, true);
     } catch (OhMyRaspBlockException blocked) {
       throw blocked;
     } catch (Throwable failure) {
-      quiet("beforeSparkSubmitDispatch", failure);
+      quiet(operation, failure);
     }
   }
 

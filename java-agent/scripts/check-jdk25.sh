@@ -3,7 +3,7 @@
 set -euo pipefail
 
 usage() {
-  echo "Usage: $0 [--tests Gradle-test-filter] [file-delete|file-read|file-streams|http-transport|jmx-dispatch|jwt-verification|multipart-archive|mybatis-mapping|process-launch|serial-filter|spark-submit|stream-resolution|sqlite-identifiers|write-namespace|xml-resolution [probe options]]"
+  echo "Usage: $0 [--tests Gradle-test-filter] [file-delete|file-read|file-streams|http-transport|jmx-dispatch|jwt-verification|multipart-archive|mybatis-mapping|process-launch|serial-filter|spark-submit|stream-resolution|sqlite-identifiers|write-namespace|yarn-submit|xml-resolution [probe options]]"
   echo "The benign corpus always runs. Unit tests default to the whole primary module."
 }
 
@@ -15,7 +15,7 @@ if [[ "${1:-}" == --tests ]]; then
 fi
 case "${1:-}" in
   -h|--help) usage; exit 0 ;;
-  ""|file-delete|file-read|file-streams|http-transport|jmx-dispatch|jwt-verification|multipart-archive|mybatis-mapping|process-launch|serial-filter|spark-submit|stream-resolution|sqlite-identifiers|write-namespace|xml-resolution) ;;
+  ""|file-delete|file-read|file-streams|http-transport|jmx-dispatch|jwt-verification|multipart-archive|mybatis-mapping|process-launch|serial-filter|spark-submit|stream-resolution|sqlite-identifiers|write-namespace|yarn-submit|xml-resolution) ;;
   *) usage >&2; exit 2 ;;
 esac
 
@@ -66,9 +66,11 @@ GRADLE
 
 test_options=()
 if [[ -n "$TEST_FILTER" ]]; then test_options=(--tests "$TEST_FILTER"); fi
+extra_tasks=()
+if [[ "${1:-}" == yarn-submit ]]; then extra_tasks+=(:stageYarnProbe); fi
 gradle --no-daemon --no-problems-report --configuration-cache \
   --project-cache-dir /state/project -I /tmp/build-output.gradle \
-  :agent-jdk25:test "${test_options[@]}" :agent-jdk25:agentJar :agent-jdk25:compileFpReport
+  :agent-jdk25:test "${test_options[@]}" :agent-jdk25:agentJar :agent-jdk25:compileFpReport "${extra_tasks[@]}"
 
 output=/state/build/agent-jdk25
 jar="$output/libs/ohmyrasp-agent.jar"
@@ -77,7 +79,9 @@ grep -F '| **Overall**' /tmp/fp-report.md
 if (( $# )); then
   probe=$1
   shift
-  if [[ "$probe" == file-delete ]]; then
+  if [[ "$probe" == yarn-submit ]]; then
+    python3 scripts/fp-harness/check-yarn-submit.py "$jar" --jar-dir /state/build/ohmyrasp/yarn-probe "$@"
+  elif [[ "$probe" == file-delete ]]; then
     python3 scripts/fp-harness/check-file-read.py "$jar" --delete-only "$@"
   else
     python3 "scripts/fp-harness/check-$probe.py" "$jar" "$@"
