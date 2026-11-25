@@ -3,12 +3,10 @@ package io.ohmyrasp.agent.detect;
 import static io.ohmyrasp.agent.detect.DeserializationTypes.dangerousDeserializationType;
 import static io.ohmyrasp.agent.detect.DeserializationTypes.dangerousHessianType;
 import static io.ohmyrasp.agent.detect.DeserializationTypes.dangerousPolymorphicType;
-import static io.ohmyrasp.agent.detect.DeserializationTypes.dangerousProtocolInstantiationType;
 import static io.ohmyrasp.agent.detect.DeserializationTypes.deserializationGadgetType;
 import static io.ohmyrasp.agent.detect.DeserializationTypes.normalizeJavaTypeName;
 import static io.ohmyrasp.agent.detect.DetectorStrings.abbreviate;
 import static io.ohmyrasp.agent.detect.DetectorStrings.lower;
-import static io.ohmyrasp.agent.detect.RemoteResourceDetector.remoteConfigScheme;
 import io.ohmyrasp.agent.model.Detection;
 import io.ohmyrasp.agent.model.RequestContext;
 import java.util.LinkedHashMap;
@@ -245,39 +243,12 @@ final class DeserializationDetector {
             .withAction("block"));
   }
 
-  static Optional<Detection> detectProtocolClassInstantiation(
-      String protocol, String className, List<String> arguments, RequestContext request) {
-    String mechanism = protocol == null ? "" : protocol.trim();
-    if (mechanism.isBlank() || className == null || className.isBlank()) {
-      return Optional.empty();
-    }
-    RequestContext safeRequest = request == null ? RequestContext.empty() : request;
-    String normalized = normalizeJavaTypeName(className);
-    if (!dangerousProtocolInstantiationType(normalized)) {
-      return Optional.empty();
-    }
-    List<String> safeArguments = arguments == null ? List.of() : arguments;
-    Optional<String> remoteArgument = remoteConfigArgument(safeArguments);
-    boolean requestControlled =
-        safeRequest.hasParameterIn(className)
-            || safeRequest.hasParameterIn(normalized)
-            || remoteArgument.filter(safeRequest::hasParameterIn).isPresent();
-    int confidence = requestControlled ? 100 : remoteArgument.isPresent() ? 98 : 95;
-    return Optional.of(
-        Detection.log(
-            "deserialization",
-            "deserialization_protocol_class",
-            confidence,
-            "Protocol unmarshalling attempted to instantiate a dangerous class",
-            safeRequest,
-            Map.of(
-                "protocol", mechanism,
-                "class", normalized,
-                "originalClass", abbreviate(className),
-                "argument", abbreviate(remoteArgument.orElse("")),
-                "remoteConfigScheme",
-                    remoteArgument.flatMap(RemoteResourceDetector::remoteConfigScheme).orElse(""),
-                "requestControlled", String.valueOf(requestControlled))));
+  static Optional<Detection> detectOpenWireThrowable(Class<?> selected, RequestContext request) {
+    if (selected == null || Throwable.class.isAssignableFrom(selected)) return Optional.empty();
+    return Optional.of(Detection.log("deserialization", "deserialization_protocol_class", 100,
+        "OpenWire selected a non-Throwable constructor for an exception",
+        request == null ? RequestContext.empty() : request,
+        Map.of("protocol", "OpenWire", "class", selected.getName(), "decision_basis", "non_throwable_constructor")));
   }
 
   static Optional<Detection> detectHttpInvokerDeserialization(
@@ -684,21 +655,5 @@ final class DeserializationDetector {
         || lower.contains("%2e")
         || lower.contains("%2f")
         || lower.contains("%5c");
-  }
-
-  private static Optional<String> remoteConfigArgument(List<String> arguments) {
-    if (arguments == null || arguments.isEmpty()) {
-      return Optional.empty();
-    }
-    for (String argument : arguments) {
-      if (argument == null || argument.isBlank()) {
-        continue;
-      }
-      String normalized = argument.trim();
-      if (remoteConfigScheme(normalized).isPresent()) {
-        return Optional.of(normalized);
-      }
-    }
-    return Optional.empty();
   }
 }

@@ -1457,20 +1457,12 @@ public final class OhMyRaspHooks {
 
   public static void beforeProtocolClassInstantiation(
       String protocol, String className, Object arguments) {
-    if (detectionDisabled()) {
-      return;
-    }
-    try {
-      emit(
-          DETECTORS.detectProtocolClassInstantiation(
-              protocol, className, toStringList(arguments), currentRequest()),
-          true,
-          true);
-    } catch (OhMyRaspBlockException blocked) {
-      throw blocked;
-    } catch (Throwable throwable) {
-      quiet("beforeProtocolClassInstantiation", throwable);
-    }
+    // A declared class name is not the type of a resolved constructor.
+  }
+
+  public static void beforeOpenWireThrowable(Class<?> selected) {
+    if (detectionDisabled()) return;
+    emit(DETECTORS.detectProtocolClassInstantiation(selected, currentRequest()), true, true);
   }
 
   public static void beforeHttpInvokerDeserialization(String mechanism) {

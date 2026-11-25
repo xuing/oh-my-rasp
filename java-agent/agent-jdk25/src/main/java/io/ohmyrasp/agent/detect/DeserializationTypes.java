@@ -91,11 +91,6 @@ final class DeserializationTypes {
     return false;
   }
 
-  static boolean dangerousProtocolInstantiationType(String className) {
-    return dangerousDeserializationType(className)
-        || PROTOCOL_CONFIG_INSTANTIATION_TYPES.contains(className);
-  }
-
   static boolean dangerousPolymorphicType(String className) {
     return POLYMORPHIC_CONSTRUCTION_BLACKLIST.contains(className)
         || dangerousDeserializationType(className);

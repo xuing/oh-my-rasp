@@ -10,7 +10,7 @@
 |--------|------:|
 | Hook families (instrumentation points) | 30 |
 | Detector capabilities (engine entry points) | 56 |
-| Verified algorithm signatures (asserted by tests) | 43 |
+| Algorithm signatures asserted in acceptance scripts | 44 |
 | End-to-end vulnerability acceptance scenarios | 136 |
 | JDK lines exercised | 6 |
 
@@ -108,7 +108,7 @@ The descriptions live in the [general catalog](../rules/general.json) and [produ
 | `deserialization_jms_object_message` | Object deserialization is correlated with a particular messaging or RPC transport. | — |
 | `deserialization_logging_message` | — | Known cluster, logging or remoting implementation frames supply transport provenance. |
 | `deserialization_polymorphic_type` | — | Known class families, type-resolution behavior or unmarshaller implementations affect the judgment. |
-| `deserialization_protocol_class` | — | Known class families, type-resolution behavior or unmarshaller implementations affect the judgment. |
+| `deserialization_protocol_class` | — | The constructor selected for an OpenWire exception belongs to a class outside the Throwable hierarchy. |
 | `deserialization_remoting_transport` | — | Known cluster, logging or remoting implementation frames supply transport provenance. |
 | `deserialization_rmi_registry_bind` | The registry bind is observed in an RMI transport context with a proxy or reference type. | — |
 | `deserialization_rmi_transport` | Object deserialization is correlated with a particular messaging or RPC transport. | — |
@@ -243,6 +243,7 @@ The descriptions live in the [general catalog](../rules/general.json) and [produ
 | `java8_deserialization_fastjson_resource_url`, `java11_deserialization_fastjson_resource_url`, `java17_deserialization_fastjson_resource_url` | — | Fastjson autoType reaches a URL-shaped resource lookup. |
 | `java8_deserialization_gadget_class`, `java11_deserialization_gadget_class`, `java17_deserialization_gadget_class` | — | The stream resolver selected a listed class or a proxy implementing a listed interface. The event identifies the resolution operation. |
 | `java8_deserialization_hessian_type`, `java11_deserialization_hessian_type`, `java17_deserialization_hessian_type` | — | Hessian type resolution is checked against known dangerous types. |
+| `java8_deserialization_protocol_class`, `java11_deserialization_protocol_class`, `java17_deserialization_protocol_class` | — | The constructor selected for an OpenWire exception belongs to a class outside the Throwable hierarchy. |
 | `java8_directory_userinput`, `java11_directory_userinput`, `java17_directory_userinput` | A request-selected protected directory or walk reaches a listing operation. | — |
 | `java8_el_runtime_execution`, `java11_el_runtime_execution`, `java17_el_runtime_execution` | An expression at the Unified EL evaluation boundary contains runtime execution syntax. | — |
 | `fileUpload_java_archive` | The application declares deployment authorization and the request supplies an archive. Deployment-context metadata alone requires explicit policy. | — |
@@ -286,11 +287,12 @@ The descriptions live in the [general catalog](../rules/general.json) and [produ
 | `java8_xml_decoder_script_file_write`, `java11_xml_decoder_script_file_write`, `java17_xml_decoder_script_file_write` | JavaBeans XML decoding is correlated with a runtime or script-file operation. | — |
 | `java8_xxe_external_entity_protocol`, `java11_xxe_external_entity_protocol`, `java17_xxe_external_entity_protocol` | The XML parser opens an external entity transport after resolver and input selection. | — |
 
-## Verified algorithm signatures
+## Algorithm signatures asserted in acceptance scripts
 
 The acceptance scripts contain literal event assertions for these algorithm identifiers. Runtime evidence for individual environments is tracked in the [Vulhub coverage ledger](../../docs/development/vulhub-coverage.md).
 
 - `java11_command_execution_exploit_primitive`
+- `java11_deserialization_protocol_class`
 - `java11_file_script_write`
 - `java11_file_sensitive_read`
 - `java11_jdbc_h2_code_execution`

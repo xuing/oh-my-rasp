@@ -56,9 +56,9 @@ ASM hook at sink
 
 ## Coverage numbers
 
-Hook-family, detector-capability, verified-signature, and acceptance-scenario counts, the per-JDK scenario distribution, and the tested vulnerability matrix are generated from the agent source and acceptance suite by [`gen-detection-coverage.py`](../java-agent/scripts/gen-detection-coverage.py) into [`DETECTION-COVERAGE.md`](../java-agent/docs/DETECTION-COVERAGE.md). Vulhub component roots and CVE tracking live in [`vulhub-coverage.md`](development/vulhub-coverage.md). This page does not restate those numbers.
+Hook-family, detector-capability, asserted-signature, and acceptance-scenario counts, the per-JDK scenario distribution, and the tested vulnerability matrix are generated from the agent source and acceptance suite by [`gen-detection-coverage.py`](../java-agent/scripts/gen-detection-coverage.py) into [`DETECTION-COVERAGE.md`](../java-agent/docs/DETECTION-COVERAGE.md). Vulhub component roots and CVE tracking live in [`vulhub-coverage.md`](development/vulhub-coverage.md). This page does not restate those numbers.
 
-A "verified algorithm signature" means an end-to-end acceptance test launched a real vulnerable application inside a Docker container under the agent, sent an exploit payload, and asserted that the named algorithm was detected and blocked. Signatures implemented in `DetectorEngine` without an end-to-end acceptance assertion are not included in the verified-signature count.
+The signature inventory counts literal algorithm IDs in the acceptance scripts. The [Vulhub coverage ledger](development/vulhub-coverage.md) records application outcomes and the boundaries of historical evidence.
 
 ## Detection techniques
 
@@ -211,7 +211,7 @@ Multiple hook modules and detectors cover Java deserialization surfaces:
 - **`detectPolymorphicType`:** inspects `@type`, `javaClass`, and `class` JSON keys (Fastjson, Jackson) and YAML `!!` tags.
 - **`detectHessianType`:** covers Hessian type-loading gadget chains (active with or without an HTTP `RequestContext`).
 - **`detectHttpInvokerDeserialization` and `detectHttpObjectStreamDeserialization`:** cover Spring HTTP Invoker.
-- **`detectProtocolClassInstantiation`:** covers ActiveMQ OpenWire class instantiation (CVE-2023-46604, active with or without an HTTP `RequestContext`).
+- **`detectProtocolClassInstantiation`** checks that the constructor selected by the OpenWire exception marshaller belongs to a `Throwable` subtype. The guard runs before reflective invocation, including outside HTTP requests. Legitimate application exceptions keep their message. If the library rejects a type first, its rejection is preserved. OpenWire can convert a rejected operation to a fallback exception; the relevant outcome is whether the constructor ran. [Local contract check](../java-agent/scripts/fp-harness/OpenWireThrowableCheck.java) · [Apache advisory](https://activemq.apache.org/news/cve-2023-46604)
 - **`detectRmiRegistryBind`:** covers RMI Registry gadget delivery.
 - **`detectSessionDeserialization`:** covers serialized session-file deserialization paths.
 
@@ -530,7 +530,7 @@ For `InitialContext.lookup` and `lookupLink`, the agent checks the name componen
 
 Detailed tables of hooks, detectors, algorithm signatures, and acceptance scenarios are maintained in:
 
-- [`java-agent/docs/DETECTION-COVERAGE.md`](../java-agent/docs/DETECTION-COVERAGE.md): generated hook families, detector capabilities, verified algorithm signatures, and acceptance matrix
+- [`java-agent/docs/DETECTION-COVERAGE.md`](../java-agent/docs/DETECTION-COVERAGE.md): generated hook families, detector capabilities, asserted algorithm signatures, and acceptance matrix
 - [`java-agent/docs/FALSE-POSITIVE-REPORT.md`](../java-agent/docs/FALSE-POSITIVE-REPORT.md): generated per-category false-positive report from `FpReport.java`
 - [`docs/development/algorithm-coverage.md`](development/algorithm-coverage.md): algorithm-level narrative and per-scenario notes
 - [`docs/development/vulhub-coverage.md`](development/vulhub-coverage.md): Vulhub CVE tracking checklist with boundary classifications

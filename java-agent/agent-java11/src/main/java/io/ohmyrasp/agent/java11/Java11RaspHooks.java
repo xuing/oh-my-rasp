@@ -332,6 +332,16 @@ public final class Java11RaspHooks {
   public static void beforeObjectStreamClassResolve(Object descriptor) {}
   public static void beforeObjectStreamProxyResolve(String[] interfaceNames) {}
 
+  public static void beforeOpenWireThrowable(Class<?> selected) {
+    if (RaspRuntime.detectionOff() || selected == null || Throwable.class.isAssignableFrom(selected)) return;
+    Finding finding = new Finding("java11_deserialization_protocol_class", 100,
+        "OpenWire selected a non-Throwable constructor for an exception",
+        "class", selected.getName(), "non_throwable_constructor");
+    boolean block = shouldBlock();
+    appendEvent(finding, "OpenWire.createThrowable", block ? "block" : "log");
+    if (block) throw new Java11RaspBlockException("OhMyRASP blocked an invalid OpenWire exception type");
+  }
+
   public static void afterObjectStreamClassResolve(Class<?> selected) {
     inspectResolvedType(selected, "ObjectInputStream.resolveClass", "resolved_class");
   }

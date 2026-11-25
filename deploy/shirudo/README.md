@@ -16,9 +16,9 @@ with `shirudo bpm build`.
 
 | Package | Target JVMs | Upatch / JAR | Instrumentation | Detection Scope | Vulhub Replay |
 |---|---|---|---|---|---|
-| `ohmyrasp-java8` | Java 8 (classfile `<= 52`) | `ohmyrasp-java8.jar` | 24 ASM transformers | 44 algorithms | 96 (java8) |
-| `ohmyrasp-java11` | Java 11 (classfile `<= 55`) | `ohmyrasp-java11.jar` | 24 ASM transformers | 44 algorithms | 10 (java11) |
-| `ohmyrasp-java17` | Java 17 and Java 21 (classfile `<= 61`) | `ohmyrasp-java17.jar` | 24 ASM transformers | 44 algorithms | 12 (java17) + 3 (java21) |
+| `ohmyrasp-java8` | Java 8 (classfile `<= 52`) | `ohmyrasp-java8.jar` | 24 ASM transformers | 45 algorithms | 96 (java8) |
+| `ohmyrasp-java11` | Java 11 (classfile `<= 55`) | `ohmyrasp-java11.jar` | 24 ASM transformers | 45 algorithms | 10 (java11) |
+| `ohmyrasp-java17` | Java 17 and Java 21 (classfile `<= 61`) | `ohmyrasp-java17.jar` | 24 ASM transformers | 45 algorithms | 12 (java17) + 3 (java21) |
 | `ohmyrasp-jdk21` | Java 21 and Java 25 (classfile `<= 65`) | `ohmyrasp-jdk21.jar` | 30 ASM hook modules | 56 `detect*` capabilities | 136 total scenarios across 6 JDK lines |
 | `ohmyrasp-jdk25` | Java 21 and Java 25 (classfile `<= 65`) | `ohmyrasp-jdk25.jar` | 30 ASM hook modules | 56 `detect*` capabilities | 136 total scenarios across 6 JDK lines |
 

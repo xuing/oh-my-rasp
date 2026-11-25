@@ -2,7 +2,7 @@
 
 > **Generated** by `deploy/shirudo/gen-readmes.py` from `java-agent/` sources.
 
-The `ohmyrasp-java11` package installs the `ohmyrasp-java11` Java upatch: a standalone, daemonless OhMyRASP runtime self-protection agent targeting **Java 11** JVMs (classfile version `<= 55`). It covers **24 ASM transformer families** and **44 detection algorithms**, validated against **10** real Vulhub scenarios on `java11`.
+The `ohmyrasp-java11` package installs the `ohmyrasp-java11` Java upatch: a standalone, daemonless OhMyRASP runtime self-protection agent targeting **Java 11** JVMs (classfile version `<= 55`). It covers **24 ASM transformer families** and **45 detection algorithms**, validated against **10** real Vulhub scenarios on `java11`.
 
 ## Security Coverage
 
@@ -17,7 +17,7 @@ The `ohmyrasp-java11` package installs the `ohmyrasp-java11` Java upatch: a stan
 | **File I/O, Uploads & Archive Traversal** | Guards sensitive reads (`/etc/passwd`, `/proc/self/environ`, SSH keys), webroot script writes, ZipSlip archive traversal (`ZipEntry` / 7z), multipart upload path traversal, and `.gnuplot` command injection. | `Java11FileTransformer`, `Java11MultipartUploadTransformer`, `Java11ArchiveTransformer` |
 | **Expression Engines, Scripting, ClassLoading & JMX** | Inspects Nashorn/Rhino `ScriptEngine`, JEXL, Jakarta/JSP EL, `JavacTool`/Janino compilation, remote `URLClassLoader`/`RMIClassLoader` codebases, and mutating JMX MBean invocations. | `Java11ClassLoaderTransformer`, `Java11ScriptEngineTransformer`, `Java11JexlTransformer`, `Java11ElTransformer`, `Java11JavaCompilationTransformer`, `Java11JmxTransformer` |
 
-<details><summary>All detection algorithm IDs (44)</summary>
+<details><summary>All detection algorithm IDs (45)</summary>
 
 - `java11_archive_entry_traversal_write`
 - `java11_base64_avx512_tail_underflow`
@@ -27,6 +27,7 @@ The `ohmyrasp-java11` package installs the `ohmyrasp-java11` Java upatch: a stan
 - `java11_deserialization_fastjson_resource_url`
 - `java11_deserialization_gadget_class`
 - `java11_deserialization_hessian_type`
+- `java11_deserialization_protocol_class`
 - `java11_directory_userinput`
 - `java11_el_runtime_execution`
 - `java11_file_generated_plot_script_command`

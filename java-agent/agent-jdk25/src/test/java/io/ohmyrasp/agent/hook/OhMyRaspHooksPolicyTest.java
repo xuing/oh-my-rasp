@@ -94,11 +94,7 @@ final class OhMyRaspHooksPolicyTest {
 
     assertThrows(
         OhMyRaspBlockException.class,
-        () ->
-            OhMyRaspHooks.beforeProtocolClassInstantiation(
-                "OpenWire",
-                "org.springframework.context.support.ClassPathXmlApplicationContext",
-                "http://attacker.example/poc.xml"));
+        () -> OhMyRaspHooks.beforeOpenWireThrowable(StringBuilder.class));
   }
 
   @Test

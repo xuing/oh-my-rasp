@@ -2055,7 +2055,13 @@ public final class DetectorEngine {
 
   public Optional<Detection> detectProtocolClassInstantiation(
       String protocol, String className, List<String> arguments, RequestContext request) {
-    return DeserializationDetector.detectProtocolClassInstantiation(protocol, className, arguments, request);
+    // Compatibility for declaration-only callers. No constructor has been selected.
+    return Optional.empty();
+  }
+
+  /** OpenWire's exception slot is checked using the declaring class of its chosen constructor. */
+  public Optional<Detection> detectProtocolClassInstantiation(Class<?> selected, RequestContext request) {
+    return DeserializationDetector.detectOpenWireThrowable(selected, request);
   }
 
   public Optional<Detection> detectHttpInvokerDeserialization(

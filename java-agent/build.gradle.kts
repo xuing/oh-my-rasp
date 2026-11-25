@@ -79,3 +79,16 @@ tasks.register<Sync>("stageSpringProcessProbe") {
     }
     into(layout.buildDirectory.dir("spring-process-probe"))
 }
+
+// The runtime fixture only uses the vendor-fixed release. The older JARs are read as data by the layout audit.
+tasks.register<Sync>("stageOpenWireProbe") {
+    for ((folder, release) in mapOf("fixed" to "5.15.16", "layout" to "5.17.3")) {
+        val modules = listOf("activemq-client", "activemq-openwire-legacy").map {
+            rootProject.dependencies.create("org.apache.activemq:$it:$release@jar")
+        }
+        into(folder) {
+            from(rootProject.configurations.detachedConfiguration(*modules.toTypedArray()).apply { isTransitive = false })
+        }
+    }
+    into(layout.buildDirectory.dir("openwire-probe"))
+}

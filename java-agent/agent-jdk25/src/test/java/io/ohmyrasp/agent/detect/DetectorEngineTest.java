@@ -2174,57 +2174,14 @@ final class DetectorEngineTest {
   }
 
   @Test
-  void detectsOpenWireProtocolClassInstantiationWithRemoteSpringConfig() {
-    String xml = "http://attacker.example/poc.xml";
-    var result =
-        engine.detectProtocolClassInstantiation(
-            "OpenWire",
-            "org.springframework.context.support.ClassPathXmlApplicationContext",
-            List.of(xml),
-            request(Map.of("xml", List.of(xml))));
-
-    assertAlgorithm(result, "deserialization_protocol_class");
-    assertEquals("OpenWire", result.orElseThrow().details().get("protocol"));
-    assertEquals("http", result.orElseThrow().details().get("remoteConfigScheme"));
-  }
-
-  @Test
-  void detectsOpenWireProtocolClassInstantiationWithXbeanContext() {
-    var result =
-        engine.detectProtocolClassInstantiation(
-            "OpenWire",
-            "org.apache.xbean.spring.context.ResourceXmlApplicationContext",
-            List.of("xbean:http://attacker.example/poc.xml"),
-            request());
-
-    assertAlgorithm(result, "deserialization_protocol_class");
-  }
-
-  @Test
-  void detectsOpenWireProtocolClassInstantiationWithGadgetFamily() {
-    var result =
-        engine.detectProtocolClassInstantiation(
-            "OpenWire", "bsh.XThis", List.of("payload"), RequestContext.empty());
-
-    assertAlgorithm(result, "deserialization_protocol_class");
-  }
-
-  @Test
-  void ignoresOrdinaryOpenWireThrowableClass() {
-    var result =
-        engine.detectProtocolClassInstantiation(
-            "OpenWire", "java.lang.Exception", List.of("normal failure"), request());
-
-    assertTrue(result.isEmpty());
-  }
-
-  @Test
-  void ignoresProtocolClassInstantiationWithoutProtocolContext() {
-    var result =
-        engine.detectProtocolClassInstantiation(
-            "", "org.springframework.context.support.ClassPathXmlApplicationContext", List.of(), request());
-
-    assertTrue(result.isEmpty());
+  void checksTheConstructorTypeSelectedForTheOpenWireException() {
+    var invalid = engine.detectProtocolClassInstantiation(StringBuilder.class, RequestContext.empty());
+    assertAlgorithm(invalid, "deserialization_protocol_class");
+    assertEquals("non_throwable_constructor", invalid.orElseThrow().details().get("decision_basis"));
+    assertTrue(engine.detectProtocolClassInstantiation(IllegalArgumentException.class, request()).isEmpty());
+    assertTrue(engine.detectProtocolClassInstantiation(Error.class, request()).isEmpty());
+    assertTrue(engine.detectProtocolClassInstantiation(null, request()).isEmpty());
+    assertTrue(engine.detectProtocolClassInstantiation("OpenWire", "bsh.Report", List.of("weekly"), request()).isEmpty());
   }
 
   @Test

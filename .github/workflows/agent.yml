@@ -41,7 +41,7 @@ jobs:
             -v "$PWD/java-agent:/workspace" \
             -w /workspace \
             "$gradle_image" \
-            gradle --no-daemon --no-problems-report clean check :stageYarnProbe :stageServletProbe :stageElasticLz4Probe :stageSpringProcessProbe \
+            gradle --no-daemon --no-problems-report clean check :stageYarnProbe :stageServletProbe :stageElasticLz4Probe :stageSpringProcessProbe :stageOpenWireProbe \
             :agent-jdk25:jdk21Jars \
             :agent-java8:shirudoUpatchJar \
             :agent-java11:shirudoUpatchJar \
@@ -57,6 +57,13 @@ jobs:
           docker run --rm --pull never --network none -v "$PWD:/workspace:ro" -w /workspace \
             "$gradle_image" java -cp agent-jdk25/build/libs/ohmyrasp-agent.jar \
             scripts/fp-harness/FpReport.java --check | diff -u docs/FALSE-POSITIVE-REPORT.md -
+      - name: Inspect the Vulhub-version OpenWire constructor sites offline
+        working-directory: java-agent
+        run: |
+          gradle_image="$(awk '$1 == "FROM" && $2 ~ /^gradle:/ { print $2; exit }' Dockerfile)"
+          docker run --rm --pull never --network none -v "$PWD:/workspace:ro" -w /workspace \
+            "$gradle_image" java -cp agent-java11/build/libs/ohmyrasp-agent-java11.jar \
+            scripts/fp-harness/OpenWireLayoutCheck.java build/openwire-probe/layout/*.jar
       - name: Verify Elasticsearch transport block isolation
         working-directory: java-agent
         run: |
@@ -86,6 +93,7 @@ jobs:
         with:
           name: java-agents
           path: |
+            java-agent/build/openwire-probe/fixed/*.jar
             java-agent/build/spring-process-probe/**/*.jar
             java-agent/build/runtime-probes/*.jar
             java-agent/build/servlet-probe/*.jar
@@ -193,6 +201,8 @@ jobs:
           if any(e.get("kind") == "detection" or e.get("event") == "ohmyrasp-detection" for e in events):
               sys.exit("Ordinary background job produced a detection")
           PY
+      - name: Verify OpenWire exception types against the packaged agent
+        run: python3 java-agent/scripts/fp-harness/check-openwire-throwable.py "java-agent/${{ matrix.jar }}" --jar-dir java-agent/build/openwire-probe/fixed
       - name: Verify Spring process initialization against the packaged agent
         run: python3 java-agent/scripts/fp-harness/check-spring-process.py "java-agent/${{ matrix.jar }}" --jar-dir java-agent/build/spring-process-probe
       - name: Verify local RMI class resolution and codebase policy

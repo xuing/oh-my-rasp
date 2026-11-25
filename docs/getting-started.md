@@ -294,7 +294,7 @@ docker compose up -d --build
 | 10 | `http://localhost:18082/rasp/ui` | `http://localhost:18083/rasp/ui` |
 | 11 | `http://localhost:18084/rasp/ui` | `http://localhost:18085/rasp/ui` |
 
-`/rasp/ui` fires test cases across SQL injection, command injection, JNDI/Log4Shell, deserialization, XXE, file read/write, SSRF, Base64 AVX-512 tail-underflow, and expression injection (OGNL/SpEL/FreeMarker) covering the end-to-end verified algorithm signatures listed in [DETECTION-COVERAGE.md](../java-agent/docs/DETECTION-COVERAGE.md).
+`/rasp/ui` fires test cases across SQL injection, command injection, JNDI/Log4Shell, deserialization, XXE, file read/write, SSRF, Base64 AVX-512 tail-underflow, and expression injection (OGNL/SpEL/FreeMarker) covering the algorithm signatures asserted in the acceptance scripts listed in [DETECTION-COVERAGE.md](../java-agent/docs/DETECTION-COVERAGE.md).
 
 ### Option C: Automated acceptance script
 

@@ -174,7 +174,8 @@ public final class OhMyRaspJava8Agent {
     java.util.Set<Class<?>> multipartOwners = io.ohmyrasp.agent.http.MultipartFilename.loadedOwners(loadedClasses);
     for (Class<?> loaded : loadedClasses) {
       String internalName = loaded.getName().replace('.', '/');
-      if (io.ohmyrasp.agent.rules.product.spring.SpringProcessVisitor.matches(internalName)
+      if (io.ohmyrasp.agent.rules.product.activemq.OpenWireThrowableVisitor.matches(internalName)
+          || io.ohmyrasp.agent.rules.product.spring.SpringProcessVisitor.matches(internalName)
           || io.ohmyrasp.agent.loading.CodebaseVisitor.RMI_ROUTER.equals(internalName)
           || io.ohmyrasp.agent.loading.CodebaseVisitor.directoryResource(internalName)
           || Lz4TransportVisitor.OWNER.equals(internalName)
