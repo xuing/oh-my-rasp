@@ -1,0 +1,323 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+cd "$(dirname "$0")/../.."
+
+compose=(docker compose -f docker-compose.java17.yml)
+if [[ -n "${OHMYRASP_JAVA17_TOMCAT_VERSIONS:-}" ]]; then
+  read -r -a versions <<< "$OHMYRASP_JAVA17_TOMCAT_VERSIONS"
+else
+  versions=(11 10 9)
+fi
+services=()
+
+for version in "${versions[@]}"; do
+  services+=("tomcat${version}-java17-baseline" "tomcat${version}-java17-protected")
+done
+
+baseline_port() {
+  case "$1" in
+    11) echo "${OHMYRASP_TOMCAT11_JAVA17_BASELINE_PORT:-18130}" ;;
+    10) echo "${OHMYRASP_TOMCAT10_JAVA17_BASELINE_PORT:-18132}" ;;
+    9) echo "${OHMYRASP_TOMCAT9_JAVA17_BASELINE_PORT:-18134}" ;;
+    *) echo "unsupported Java 17 Tomcat version: $1" >&2; exit 1 ;;
+  esac
+}
+
+protected_port() {
+  case "$1" in
+    11) echo "${OHMYRASP_TOMCAT11_JAVA17_PROTECTED_PORT:-18131}" ;;
+    10) echo "${OHMYRASP_TOMCAT10_JAVA17_PROTECTED_PORT:-18133}" ;;
+    9) echo "${OHMYRASP_TOMCAT9_JAVA17_PROTECTED_PORT:-18135}" ;;
+    *) echo "unsupported Java 17 Tomcat version: $1" >&2; exit 1 ;;
+  esac
+}
+
+for version in "${versions[@]}"; do
+  rm -rf "logs/tomcat${version}-java17-baseline" "logs/tomcat${version}-java17-protected"
+  mkdir -p "logs/tomcat${version}-java17-baseline" "logs/tomcat${version}-java17-protected"
+done
+
+"${compose[@]}" build --pull "${services[@]}"
+"${compose[@]}" up -d "${services[@]}"
+
+cleanup() {
+  for version in "${versions[@]}"; do
+    "${compose[@]}" logs --no-color "tomcat${version}-java17-baseline" \
+      > "logs/tomcat${version}-java17-baseline/tomcat.log" || true
+    "${compose[@]}" logs --no-color "tomcat${version}-java17-protected" \
+      > "logs/tomcat${version}-java17-protected/tomcat.log" || true
+  done
+  "${compose[@]}" down -v --remove-orphans >/dev/null 2>&1 || true
+}
+trap cleanup EXIT
+
+wait_for() {
+  local name="$1"
+  local url="$2"
+  for _ in $(seq 1 120); do
+    if curl -fsS "${url}/rasp/health" >/dev/null 2>&1; then
+      return
+    fi
+    sleep 1
+  done
+  echo "${name} did not become healthy at ${url}" >&2
+  exit 1
+}
+
+typed_payload_body() {
+  printf "%s" "argumentCollection=<wddxPacket version='1.0'><header/><data><struct type='xcom.sun.rowset.JdbcRowSetImplx'><var name='dataSourceName'><string>ldap://127.0.0.1:1389/Exploit</string></var><var name='autoCommit'><boolean value='true'/></var></struct></data></wddxPacket>"
+}
+
+run_baseline() {
+  local version="$1"
+  local url="$2"
+  local dir="logs/tomcat${version}-java17-baseline"
+  local upload_file="${dir}/java-archive-upload.jar"
+  printf 'PK\003\004ohmyrasp-java17-upload' > "$upload_file"
+  curl -fsS "${url}/rasp/java17/normal" > "${dir}/normal.response"
+  curl -fsS "${url}/rasp/java17/command" > "${dir}/command.response"
+  curl -fsS "${url}/rasp/java17/command-shell?join=%26%26" > "${dir}/command_shell.response"
+  curl -fsS "${url}/rasp/java17/jndi" > "${dir}/jndi.response"
+  curl -fsS -X POST -H "Content-Type: application/x-www-form-urlencoded" \
+    --data-binary "$(typed_payload_body)" \
+    "${url}/rasp/java17/typed-payload" > "${dir}/typed_payload.response"
+  if ! grep -q "java17 typed payload attempted" "${dir}/typed_payload.response"; then
+    cat "${dir}/typed_payload.response" >&2
+    echo "baseline tomcat${version}-java17 typed payload did not reach endpoint" >&2
+    exit 1
+  fi
+  curl -fsS "${url}/rasp/java17/deserialization" > "${dir}/deserialization.response"
+  curl -fsS "${url}/rasp/java17/file-read" > "${dir}/file_read.response"
+  curl -fsS "${url}/rasp/java17/file-write" > "${dir}/file_write.response"
+  curl -fsS "${url}/rasp/java17/ssrf-metadata" > "${dir}/ssrf_metadata.response"
+  curl -fsS "${url}/rasp/java17/ssrf-loopback" > "${dir}/ssrf_loopback.response"
+  curl -fsS "${url}/rasp/java17/archive-traversal" > "${dir}/archive_traversal.response"
+  curl -fsS "${url}/rasp/java17/classloader" > "${dir}/classloader.response"
+  curl -fsS "${url}/rasp/java17/rmi-classloader" > "${dir}/rmi_classloader.response"
+  curl -fsS "${url}/rasp/java17/jdbc-h2" > "${dir}/jdbc_h2.response"
+  curl -fsS "${url}/rasp/java17/jdbc-derby" > "${dir}/jdbc_derby.response"
+  curl -fsS "${url}/rasp/java17/jdbc-mysql" > "${dir}/jdbc_mysql.response"
+  curl -fsS "${url}/rasp/java17/script" > "${dir}/script.response"
+  curl -fsS "${url}/rasp/java17/compile" > "${dir}/compile.response"
+  curl -fsS "${url}/rasp/java17/jaas" > "${dir}/jaas.response"
+  curl -fsS "${url}/rasp/java17/jmx-remote-config" > "${dir}/jmx_remote_config.response"
+  curl -fsS "${url}/rasp/java17/jmx-file-write" > "${dir}/jmx_file_write.response"
+  curl -fsS "${url}/rasp/java17/xml-decoder-runtime" > "${dir}/xml_decoder_runtime.response"
+  curl -fsS "${url}/rasp/java17/xml-decoder-webshell" > "${dir}/xml_decoder_webshell.response"
+  curl -fsS "${url}/rasp/java17/xxe-file" > "${dir}/xxe_file.response"
+  curl -fsS \
+    -F "file=@${upload_file};filename=Evil.jar;type=application/java-archive" \
+    "${url}/rasp/java17/plugin/add" > "${dir}/upload_java_archive.response"
+  if ! grep -q "java17 upload attempted 1" "${dir}/upload_java_archive.response"; then
+    cat "${dir}/upload_java_archive.response" >&2
+    echo "baseline tomcat${version}-java17 upload did not reach multipart endpoint" >&2
+    exit 1
+  fi
+}
+
+verify_startup_and_normal() {
+  local version="$1"
+  local url="$2"
+  local log="logs/tomcat${version}-java17-protected/events.jsonl"
+  curl -fsS "${url}/rasp/java17/normal" > "logs/tomcat${version}-java17-protected/normal.response"
+  curl -fsS "${url}/rasp/java17/ssrf-metadata" > "logs/tomcat${version}-java17-protected/configured_url.response"
+  grep -Fq 'metadata connection configured' "logs/tomcat${version}-java17-protected/configured_url.response"
+  curl -fsS "${url}/rasp/java17/command-shell" > "logs/tomcat${version}-java17-protected/fixed_shell.response"
+  grep -Fq 'command shell attempted 1' "logs/tomcat${version}-java17-protected/fixed_shell.response" || {
+    echo "Fixed shell workload returned an unexpected result" >&2
+    exit 1
+  }
+
+  if ! grep -q '"event":"ohmyrasp-java17-agent-start"' "$log"; then
+    cat "$log" >&2
+    echo "missing Java 17 startup probe event on Tomcat ${version}" >&2
+    exit 1
+  fi
+  if ! grep -q '"instrumentation":"available"' "$log"; then
+    cat "$log" >&2
+    echo "missing Java 17 instrumentation availability on Tomcat ${version}" >&2
+    exit 1
+  fi
+  if ! grep -q '"request_hook":"installed"' "$log"; then
+    cat "$log" >&2
+    echo "missing Java 17 request hook startup marker on Tomcat ${version}" >&2
+    exit 1
+  fi
+  if ! grep -q '"file_hook":"installed"' "$log"; then
+    cat "$log" >&2
+    echo "missing Java 17 file hook startup marker on Tomcat ${version}" >&2
+    exit 1
+  fi
+  if ! grep -q '"upload_hook":"installed"' "$log"; then
+    cat "$log" >&2
+    echo "missing Java 17 upload hook startup marker on Tomcat ${version}" >&2
+    exit 1
+  fi
+  if ! grep -q '"archive_hook":"installed"' "$log"; then
+    cat "$log" >&2
+    echo "missing Java 17 archive hook startup marker on Tomcat ${version}" >&2
+    exit 1
+  fi
+  if ! grep -q '"url_hook":"installed"' "$log"; then
+    cat "$log" >&2
+    echo "missing Java 17 URL hook startup marker on Tomcat ${version}" >&2
+    exit 1
+  fi
+  if ! grep -q '"classloader_hook":"installed"' "$log"; then
+    cat "$log" >&2
+    echo "missing Java 17 classloader hook startup marker on Tomcat ${version}" >&2
+    exit 1
+  fi
+  if ! grep -q '"jdbc_hook":"installed"' "$log"; then
+    cat "$log" >&2
+    echo "missing Java 17 JDBC hook startup marker on Tomcat ${version}" >&2
+    exit 1
+  fi
+  if ! grep -q '"script_hook":"installed"' "$log"; then
+    cat "$log" >&2
+    echo "missing Java 17 script hook startup marker on Tomcat ${version}" >&2
+    exit 1
+  fi
+  if ! grep -q '"java_compile_hook":"installed"' "$log"; then
+    cat "$log" >&2
+    echo "missing Java 17 Java compilation hook startup marker on Tomcat ${version}" >&2
+    exit 1
+  fi
+  if ! grep -q '"jaas_hook":"installed"' "$log"; then
+    cat "$log" >&2
+    echo "missing Java 17 JAAS hook startup marker on Tomcat ${version}" >&2
+    exit 1
+  fi
+  if ! grep -q '"jmx_hook":"installed"' "$log"; then
+    cat "$log" >&2
+    echo "missing Java 17 JMX hook startup marker on Tomcat ${version}" >&2
+    exit 1
+  fi
+  if ! grep -q '"java_beans_hook":"installed"' "$log"; then
+    cat "$log" >&2
+    echo "missing Java 17 JavaBeans hook startup marker on Tomcat ${version}" >&2
+    exit 1
+  fi
+  if ! grep -q '"xxe_hook":"installed"' "$log"; then
+    cat "$log" >&2
+    echo "missing Java 17 XXE hook startup marker on Tomcat ${version}" >&2
+    exit 1
+  fi
+  if grep -q '"event":"ohmyrasp-detection"' "$log"; then
+    cat "$log" >&2
+    echo "Java 17 normal traffic produced a detection on Tomcat ${version}" >&2
+    exit 1
+  fi
+}
+
+expect_block() {
+  local version="$1"
+  local name="$2"
+  local algorithm="$3"
+  local path="$4"
+  local url="http://localhost:$(protected_port "$version")"
+  local log="logs/tomcat${version}-java17-protected/events.jsonl"
+  local status
+  status="$(curl -sS -o "logs/tomcat${version}-java17-protected/${name}.response" \
+    -w "%{http_code}" "${url}${path}" || true)"
+  if [[ "$status" =~ ^2 ]]; then
+    echo "protected tomcat${version}-java17 ${name} unexpectedly returned ${status}" >&2
+    cat "logs/tomcat${version}-java17-protected/${name}.response" >&2
+    exit 1
+  fi
+  if ! grep -q "\"algorithm\":\"${algorithm}\".*\"action\":\"block\"" "$log"; then
+    cat "$log" >&2
+    echo "missing protected tomcat${version}-java17 ${name} block event for ${algorithm}" >&2
+    exit 1
+  fi
+  echo "blocked tomcat${version}-java17 ${name}"
+}
+
+expect_block_form() {
+  local version="$1"
+  local name="$2"
+  local algorithm="$3"
+  local path="$4"
+  local url="http://localhost:$(protected_port "$version")"
+  local log="logs/tomcat${version}-java17-protected/events.jsonl"
+  local status
+  status="$(curl -sS -o "logs/tomcat${version}-java17-protected/${name}.response" \
+    -w "%{http_code}" \
+    -X POST \
+    -H "Content-Type: application/x-www-form-urlencoded" \
+    --data-binary "$(typed_payload_body)" \
+    "${url}${path}" || true)"
+  if [[ "$status" =~ ^2 ]]; then
+    echo "protected tomcat${version}-java17 ${name} unexpectedly returned ${status}" >&2
+    cat "logs/tomcat${version}-java17-protected/${name}.response" >&2
+    exit 1
+  fi
+  if ! grep -q "\"algorithm\":\"${algorithm}\".*\"action\":\"block\"" "$log"; then
+    cat "$log" >&2
+    echo "missing protected tomcat${version}-java17 ${name} block event for ${algorithm}" >&2
+    exit 1
+  fi
+  echo "blocked tomcat${version}-java17 ${name}"
+}
+
+expect_block_upload() {
+  local version="$1"
+  local name="$2"
+  local algorithm="$3"
+  local url="http://localhost:$(protected_port "$version")"
+  local log="logs/tomcat${version}-java17-protected/events.jsonl"
+  local upload_file="logs/tomcat${version}-java17-protected/java-archive-upload.jar"
+  local status
+  printf 'PK\003\004ohmyrasp-java17-upload' > "$upload_file"
+  status="$(curl -sS -o "logs/tomcat${version}-java17-protected/${name}.response" \
+    -w "%{http_code}" \
+    -F "file=@${upload_file};filename=Evil.jar;type=application/java-archive" \
+    "${url}/rasp/java17/plugin/add" || true)"
+  if [[ "$status" =~ ^2 ]] \
+      && grep -q "java17 upload attempted 1" "logs/tomcat${version}-java17-protected/${name}.response"; then
+    echo "protected tomcat${version}-java17 ${name} unexpectedly returned ${status}" >&2
+    cat "logs/tomcat${version}-java17-protected/${name}.response" >&2
+    exit 1
+  fi
+  if ! grep -q "\"algorithm\":\"${algorithm}\".*\"action\":\"block\"" "$log"; then
+    cat "$log" >&2
+    echo "missing protected tomcat${version}-java17 ${name} block event for ${algorithm}" >&2
+    exit 1
+  fi
+  echo "blocked tomcat${version}-java17 ${name}"
+}
+
+for version in "${versions[@]}"; do
+  baseline_url="http://localhost:$(baseline_port "$version")"
+  protected_url="http://localhost:$(protected_port "$version")"
+  wait_for "tomcat${version}-java17-baseline" "$baseline_url"
+  wait_for "tomcat${version}-java17-protected" "$protected_url"
+  run_baseline "$version" "$baseline_url"
+  verify_startup_and_normal "$version" "$protected_url"
+  expect_block "$version" command java17_command_execution_exploit_primitive /rasp/java17/command
+  expect_block "$version" command_shell java17_command_execution_shell_meta "/rasp/java17/command-shell?join=%26%26"
+  expect_block "$version" jndi java17_jndi_remote_lookup /rasp/java17/jndi
+  expect_block_form "$version" typed_payload java17_request_typed_payload_deserialization /rasp/java17/typed-payload
+  expect_block "$version" deserialization java17_deserialization_gadget_class /rasp/java17/deserialization
+  expect_block "$version" file_read java17_file_sensitive_read /rasp/java17/file-read
+  expect_block "$version" file_write java17_file_script_write /rasp/java17/file-write
+  expect_block "$version" ssrf_loopback java17_ssrf_loopback_admin "/rasp/java17/ssrf-loopback?path=/admin/weekly-report"
+  expect_block "$version" archive_traversal java17_archive_entry_traversal_write /rasp/java17/archive-traversal
+  curl -fsS "${protected_url}/rasp/java17/classloader" | grep -Fq "classloader attempted"
+  curl -fsS "${protected_url}/rasp/java17/rmi-classloader" | grep -Fq "local-rmi-class=java.lang.String"
+  expect_block "$version" jdbc_h2 java17_jdbc_h2_code_execution /rasp/java17/jdbc-h2
+  expect_block "$version" jdbc_derby java17_jdbc_derby_code_loading /rasp/java17/jdbc-derby
+  expect_block "$version" jdbc_mysql java17_jdbc_mysql_deserialization /rasp/java17/jdbc-mysql
+  expect_block "$version" script java17_script_engine_runtime_execution /rasp/java17/script
+  expect_block "$version" compile java17_java_compile_runtime_execution /rasp/java17/compile
+  curl -fsS "${protected_url}/rasp/java17/jaas" | grep -Fq "jaas attempted"
+  expect_block "$version" jmx_remote_config java17_jmx_remote_config_source /rasp/java17/jmx-remote-config
+  curl -fsS "${protected_url}/rasp/java17/jmx-file-write" | grep -Fq "jmx file write attempted"
+  expect_block "$version" xml_decoder_runtime java17_xml_decoder_runtime_execution /rasp/java17/xml-decoder-runtime
+  expect_block "$version" xml_decoder_webshell java17_xml_decoder_script_file_write /rasp/java17/xml-decoder-webshell
+  expect_block "$version" xxe_file java17_xxe_external_entity_protocol /rasp/java17/xxe-file
+  expect_block_upload "$version" upload_java_archive fileUpload_java_archive
+done
+
+echo "java17 acceptance passed on Tomcat versions: ${versions[*]} baseline/protected containers"
