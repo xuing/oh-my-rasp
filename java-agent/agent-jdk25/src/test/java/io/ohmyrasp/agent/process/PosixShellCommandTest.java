@@ -29,6 +29,7 @@ class PosixShellCommandTest {
 
   @Test
   void literalWordsPreserveQuotedDataAndEmptyArguments() {
+    assertEquals(List.of(), LiteralShellCommand.words("  # first\n# second"));
     assertEquals(List.of("printf", "%s", "", "quarter two", "x#y"), LiteralShellCommand.words(
         "# report\nprintf '%s' '' quarter\\ two x#y ; # comment\n"));
     assertEquals(List.of("cat", "/reports/weekly"), LiteralShellCommand.words("cat /reports/'week'\"ly\""));

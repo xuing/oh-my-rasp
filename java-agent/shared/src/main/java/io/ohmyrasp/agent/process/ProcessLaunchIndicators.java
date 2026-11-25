@@ -20,7 +20,8 @@ public final class ProcessLaunchIndicators {
     if ("bash".equals(name) && first < argv.size() && "-i".equals(argv.get(first))) return true;
     if (shell != null) {
       List<String> literal = shell.literalArguments();
-      if (literal != null && !literal.isEmpty() && literal.get(0).indexOf('=') < 0) {
+      if (literal != null && literal.isEmpty()) return false;
+      if (literal != null && literal.get(0).indexOf('=') < 0) {
         String tool = literal.get(0);
         if ("echo".equals(tool) || stringPrintf(tool, literal)) return false;
         // For shell programs, only settle a read on literal absolute paths (with an optional --).
