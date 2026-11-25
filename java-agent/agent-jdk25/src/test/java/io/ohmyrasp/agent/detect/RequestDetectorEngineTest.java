@@ -1253,7 +1253,7 @@ final class RequestDetectorEngineTest {
 
   @Test
   void detectsXssRequestInput() {
-    var result = engine.detectMarkupParameter(request(Map.of("q", List.of("<script>alert(1)</script>"))));
+    var result = ResponseContentDetector.detectMarkupParameter(request(Map.of("q", List.of("<script>alert(1)</script>"))));
 
     assertTrue(result.isPresent());
     assertEquals("xss_userinput", result.orElseThrow().algorithm());
@@ -1263,7 +1263,7 @@ final class RequestDetectorEngineTest {
   void detectsXssRequestInputEventHandlerAttributeInjection() {
     // Attribute-injection XSS carries no full tag, only an event handler.
     var result =
-        engine.detectMarkupParameter(request(Map.of("name", List.of("\" onerror=alert(1) x=\""))));
+        ResponseContentDetector.detectMarkupParameter(request(Map.of("name", List.of("\" onerror=alert(1) x=\""))));
 
     assertTrue(result.isPresent());
     assertEquals("xss_userinput", result.orElseThrow().algorithm());
@@ -1280,7 +1280,7 @@ final class RequestDetectorEngineTest {
             "<div class=\"card\"><a href=\"/home\">home</a></div>",
             "<html><body><h1>Title</h1></body></html>",
             "online=true&onboarding=1")) {
-      var result = engine.detectMarkupParameter(request(Map.of("comment", List.of(benign))));
+      var result = ResponseContentDetector.detectMarkupParameter(request(Map.of("comment", List.of(benign))));
       assertTrue(
           result.isEmpty() || !"xss_userinput".equals(result.orElseThrow().algorithm()),
           "benign markup should not trip xss_userinput: " + benign);

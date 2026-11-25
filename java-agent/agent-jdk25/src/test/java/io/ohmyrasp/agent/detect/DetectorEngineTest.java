@@ -2708,21 +2708,21 @@ final class DetectorEngineTest {
 
   @Test
   void detectsResponseIdentityCardLeak() {
-    var result = engine.detectResponseDataLeak("application/json", "{\"id\":\"11010519491231002X\"}", request());
+    var result = ResponseContentDetector.detectResponseDataLeak("application/json", "{\"id\":\"11010519491231002X\"}", request());
 
     assertAlgorithm(result, "response_dataLeak");
   }
 
   @Test
   void detectsResponseMobileLeak() {
-    var result = engine.detectResponseDataLeak("text/html", "phone=13800138000", request());
+    var result = ResponseContentDetector.detectResponseDataLeak("text/html", "phone=13800138000", request());
 
     assertAlgorithm(result, "response_dataLeak");
   }
 
   @Test
   void detectsResponseBankCardLeak() {
-    var result = engine.detectResponseDataLeak("application/xml", "<card>4111 1111 1111 1111</card>", request());
+    var result = ResponseContentDetector.detectResponseDataLeak("application/xml", "<card>4111 1111 1111 1111</card>", request());
 
     assertAlgorithm(result, "response_dataLeak");
   }
@@ -2730,7 +2730,7 @@ final class DetectorEngineTest {
   @Test
   void detectsXssEcho() {
     var result =
-        engine.detectXssEcho(
+        ResponseContentDetector.detectXssEcho(
             "hello <script>alert(1)</script>",
             request(Map.of("q", List.of("<script>alert(1)</script>"))));
 
@@ -2739,7 +2739,7 @@ final class DetectorEngineTest {
 
   @Test
   void ignoresApplicationScriptWithoutMatchingRequestParameter() {
-    var result = engine.detectXssEcho("<script src='/assets/report.js'></script>", request(Map.of("q", List.of("weekly"))));
+    var result = ResponseContentDetector.detectXssEcho("<script src='/assets/report.js'></script>", request(Map.of("q", List.of("weekly"))));
     assertTrue(result.isEmpty());
   }
 

@@ -9,6 +9,7 @@ import io.ohmyrasp.agent.detect.NetworkDestinationDetector;
 import io.ohmyrasp.agent.detect.ProcessDetector;
 import io.ohmyrasp.agent.detect.RemoteJobDetector;
 import io.ohmyrasp.agent.detect.RemoteResourceDetector;
+import io.ohmyrasp.agent.detect.ResponseContentDetector;
 import io.ohmyrasp.agent.model.Detection;
 import io.ohmyrasp.agent.model.RequestContext;
 
@@ -127,7 +128,7 @@ public final class FpReport {
         new Category("Application response markup", List.of(
             Case.tainted("<script src='/assets/report.js'></script>", "weekly"),
             Case.tainted("<p>&lt;script&gt;</p>", "<script>")),
-            (c, r) -> ENGINE.detectXssEcho(c.payload(), r)),
+            (c, r) -> ResponseContentDetector.detectXssEcho(c.payload(), r)),
         new Category("Request parameters", requestParamCorpus(), (c, r) -> ENGINE.detectRequest(r)),
         new Category(
             "Base64 decoding",

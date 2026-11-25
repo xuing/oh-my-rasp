@@ -21,6 +21,7 @@ import io.ohmyrasp.agent.detect.NetworkDestinationDetector;
 import io.ohmyrasp.agent.detect.ProcessDetector;
 import io.ohmyrasp.agent.detect.RemoteJobDetector;
 import io.ohmyrasp.agent.detect.RemoteResourceDetector;
+import io.ohmyrasp.agent.detect.ResponseContentDetector;
 import io.ohmyrasp.agent.detect.SqlRequestIndicators;
 import io.ohmyrasp.agent.http.ArchiveUploadPolicy;
 import io.ohmyrasp.agent.http.MultipartFilename;
@@ -137,7 +138,7 @@ public final class OhMyRaspHooks {
   private static void inspectRequest(RequestContext request) {
     emit(DETECTORS.detectRequest(request));
     AgentPolicy policy = POLICY;
-    if (policy.selectsAlgorithm("xss_userinput")) emit(DETECTORS.detectMarkupParameter(request));
+    if (policy.selectsAlgorithm("xss_userinput")) emit(ResponseContentDetector.detectMarkupParameter(request));
     if (policy.selectsAlgorithm("request_scanner")) emit(DETECTORS.detectScannerUserAgent(request));
     if (policy.loaded() && !request.body().isBlank()) {
       for (Detection candidate : SqlRequestIndicators.sqlRequestMetadata(request, policy::selectsAlgorithm)) {
@@ -1658,7 +1659,7 @@ public final class OhMyRaspHooks {
       return;
     }
     try {
-      emit(DETECTORS.detectResponseDataLeak(contentType, content, currentRequest()));
+      emit(ResponseContentDetector.detectResponseDataLeak(contentType, content, currentRequest()));
     } catch (OhMyRaspBlockException blocked) {
       throw blocked;
     } catch (Throwable throwable) {
@@ -1674,7 +1675,7 @@ public final class OhMyRaspHooks {
       int separator = type.indexOf(';');
       String mediaType = (separator < 0 ? type : type.substring(0, separator)).trim();
       if ("text/html".equalsIgnoreCase(mediaType) || "application/xhtml+xml".equalsIgnoreCase(mediaType))
-        emit(DETECTORS.detectXssEcho(content, currentRequest()));
+        emit(ResponseContentDetector.detectXssEcho(content, currentRequest()));
     } catch (OhMyRaspBlockException blocked) {
       throw blocked;
     } catch (Throwable throwable) {
