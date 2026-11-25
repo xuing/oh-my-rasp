@@ -427,6 +427,8 @@ final class DetectorEngineTest {
         request(Map.of("program", List.of("weekly; Write-Output")))), "command_userinput");
     assertTrue(engine.detectCommand(List.of("pwsh", "-c", afterComment),
         request(Map.of("description", List.of("report | template")))).isEmpty());
+    assertAlgorithm(engine.detectCommand(List.of("pwsh", "-Command", "Write-Output item#tag; Write-Output ready"),
+        request(Map.of("program", List.of("tag; Write-Output")))), "command_userinput");
     String literal = "Write-Output 'Sales & Reports'";
     assertTrue(engine.detectCommand(List.of("pwsh", "-Command", literal), request(Map.of("label", List.of(literal)))).isEmpty());
     assertTrue(engine.detectCommand(List.of("cmd", "/d", "/c", "echo", "Sales & Reports"),

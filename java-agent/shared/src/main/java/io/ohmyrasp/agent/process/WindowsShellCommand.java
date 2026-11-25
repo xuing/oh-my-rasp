@@ -62,16 +62,17 @@ public final class WindowsShellCommand {
     source = text;
     StringBuilder visible = new StringBuilder(text);
     boolean start = true;
+    boolean tokenStart = true;
     char quote = 0;
     for (int i = 0; i < text.length(); i++) {
       char c = text.charAt(i);
       if (!cmd) {
         c = powerShellQuote(c);
-        if (quote == 0) {
+        if (quote == 0 && tokenStart) {
           int end = literalEnd(text, i);
           if (end > i) {
             for (int j = i; j < end; j++) visible.setCharAt(j, ' ');
-            if (c == '@') start = false;
+            if (c == '@') { start = false; tokenStart = false; }
             i = end - 1;
             continue;
           }
@@ -81,6 +82,7 @@ public final class WindowsShellCommand {
         visible.setCharAt(i, ' ');
         if (i + 1 < text.length()) visible.setCharAt(++i, ' ');
         start = false;
+        tokenStart = false;
         continue;
       }
       if (quote != 0 || c == '"' || (!cmd && c == '\'')) {
@@ -88,14 +90,19 @@ public final class WindowsShellCommand {
         if (c == quote) quote = 0;
         else if (quote == 0) quote = c;
         start = false;
+        tokenStart = false;
         continue;
       }
       if ("&|".indexOf(c) >= 0 || (!cmd && c == ';') || c == '\n') {
         operators.set(i);
         start = true;
+        tokenStart = true;
       } else if (!Character.isWhitespace(c)) {
         if (start) commands.set(i);
         start = false;
+        tokenStart = !cmd && "(){},<>".indexOf(c) >= 0;
+      } else {
+        tokenStart = true;
       }
     }
     active = visible.toString();
@@ -126,7 +133,7 @@ public final class WindowsShellCommand {
       int end = text.indexOf('\n', i);
       return end < 0 ? text.length() : end;
     }
-    if (text.startsWith("--%", i)) {
+    if (text.startsWith("--%", i) && (i + 3 == text.length() || Character.isWhitespace(text.charAt(i + 3)))) {
       int end = i + 3;
       while (end < text.length() && text.charAt(end) != '\n' && text.charAt(end) != '|') end++;
       return end;
