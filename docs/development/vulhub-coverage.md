@@ -48,6 +48,11 @@ check excludes those arguments from execution when the layout is missing. A reta
 filename alone cannot identify the originating HTTP input or attachment data source.
 See [host file reads](../detection.md#host-file-reads).
 
+Historical Commons Collections events that identify only `ChainedTransformer`
+record where the earlier agent stopped. They do not identify any component the
+current agent would have read. The [stream regression](../../java-agent/scripts/fp-harness/StreamResolutionCheck.java)
+checks ordinary chains and nested restricted types independently of those historical runs.
+
 Java/JVM source scope currently covers 53 Vulhub roots and 148 README
 environment or alias paths:
 

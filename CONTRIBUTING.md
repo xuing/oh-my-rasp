@@ -165,8 +165,7 @@ hook label. For records retaining a name, the offline probe checks the name
 predicate without loading the named class. These results stay in the unresolved
 total because the probe did not observe the resolved class or proxy interfaces.
 Historical JNDI names without a routing operand also receive a name-only check.
-The comparison distinguishes changes in evidence availability from changes in tested
-detector outcomes and reports both.
+The comparison reports changes in replayed decisions, name policies and evidence availability separately.
 An archive filename cannot establish deployment authorization. To require every retained
 block to be replayed and matched, pass `--require-complete`; this still applies when
 comparing two reports. An end-to-end result requires separate evidence of the application outcome.

@@ -253,9 +253,9 @@ def collect(logs):
                         row.update(status="source evidence required", evidence_limit="unrecognized naming route basis")
                         continue
                 if method == "streamTypeName":
-                    row["evidence_limit"] = ("name policy only; the resolved Class and hierarchy are unavailable"
+                    row["evidence_limit"] = ("name policy only; resolved Class, hierarchy and nested values are unavailable"
                                              if row.get("historical_decision_basis") else
-                                             "name policy only; the legacy label cannot distinguish descriptors and interfaces")
+                                             "name policy only; legacy labels lack resolver outcome and nested values")
                 if method == "requestIdentity":
                     arguments = identity_arguments(value)
                     if arguments is None:
@@ -405,8 +405,13 @@ def changed_decisions(previous, current):
         tested = {"matched", "mismatch"}
         name_only = {"name policy matched", "name policy mismatch"}
         outcomes = {prior["status"], row["status"]}
+        kind = "evidence availability"
+        if outcomes <= tested:
+            kind = "detector outcome"
+        elif outcomes <= name_only:
+            kind = "name policy"
         changes.append({"file": key[0], "line": key[1], "before": prior["status"], "after": row["status"],
-                        "kind": "detector outcome" if outcomes <= tested or outcomes <= name_only else "evidence availability"})
+                        "kind": kind})
     return changes
 
 

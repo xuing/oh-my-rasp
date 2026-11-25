@@ -232,6 +232,7 @@ run_protected() {
   fi
 
   docker exec "$protected_name" rm -f "$success_file"
+  receipt_offset=$(wc -c < "$protected_log")
   start_listener "$protected_dir"
   run_exploit "$protected_dir"
   sleep 3
@@ -247,11 +248,7 @@ run_protected() {
     echo "missing java8_deserialization_gadget_class block event for RMI Registry bypass" >&2
     exit 1
   fi
-  if ! grep -Fq '"class":"org.apache.commons.collections.functors.ChainedTransformer"' "$protected_log"; then
-    cat "$protected_log" >&2 || true
-    echo "RMI Registry bypass block event did not identify ChainedTransformer gadget class" >&2
-    exit 1
-  fi
+  python3 scripts/evidence/check_functor_block.py "$protected_log" "$receipt_offset" org.apache.commons.collections.functors
 }
 
 rm -rf "$baseline_dir" "$protected_dir"

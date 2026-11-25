@@ -234,6 +234,7 @@ if grep -q '"event":"ohmyrasp-detection"' "${protected_log}"; then
 fi
 
 docker exec "${protected_name}" rm -f "${marker}"
+receipt_offset=$(wc -c < "$protected_log")
 before_count="$(deserialization_block_count)"
 protected_status="$(send_login_payload "${protected_port}" "${protected_payload}" "${protected_response}")"
 for _ in $(seq 1 20); do
@@ -255,10 +256,6 @@ if docker exec "${protected_name}" test -f "${marker}"; then
   cat "${protected_log}" >&2 || true
   exit 1
 fi
-if ! grep -Fq '"class":"org.apache.commons.collections4.functors.ChainedTransformer"' "${protected_log}"; then
-  echo "Apereo CAS 4.1 block event did not identify CommonsCollections4 ChainedTransformer" >&2
-  cat "${protected_log}" >&2 || true
-  exit 1
-fi
+python3 "${script_dir}/evidence/check_functor_block.py" "$protected_log" "$receipt_offset" org.apache.commons.collections4.functors
 
 echo "vulhub Apereo CAS 4.1 Java8 acceptance passed"

@@ -211,14 +211,11 @@ run_protected() {
   assert_protected_startup_quiet
 
   docker exec "$protected_name" rm -f "$marker"
+  receipt_offset=$(wc -c < "$protected_log")
   previous_count="$(block_count)"
   send_payload "$protected_tribes_port" "${protected_dir}/poc.out"
   wait_for_deserialization_block "$previous_count"
-  if ! grep -Fq '"class":"org.apache.commons.collections.functors.ChainedTransformer"' "$protected_log"; then
-    cat "$protected_log" >&2 || true
-    echo "Tomcat CVE-2026-34486 block event did not record the CommonsCollections6 ChainedTransformer gadget class" >&2
-    exit 1
-  fi
+  python3 scripts/evidence/check_functor_block.py "$protected_log" "$receipt_offset" org.apache.commons.collections.functors
   sleep 2
   if docker exec "$protected_name" test -f "$marker"; then
     cat "$protected_log" >&2 || true

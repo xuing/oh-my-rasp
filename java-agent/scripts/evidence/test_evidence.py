@@ -1,6 +1,7 @@
 import importlib.util
 import json
 from pathlib import Path
+import subprocess
 import sys
 import tempfile
 import unittest
@@ -15,6 +16,25 @@ spec.loader.exec_module(decisions)
 
 
 class EvidenceTest(unittest.TestCase):
+    def test_functor_receipt_requires_one_new_resolved_component_block(self):
+        pkg = "org.apache.commons.collections4.functors"
+        details = {"class": pkg + ".InstantiateTransformer", "decision_basis": "resolved_class"}
+        block = {"event": "ohmyrasp-detection", "action": "block", "algorithm": "java8_deserialization_gadget_class",
+                 "hook": "ObjectInputStream.resolveClass", "details": details}
+        with tempfile.TemporaryDirectory() as tmp:
+            log = Path(tmp) / "events.jsonl"
+            log.write_text(json.dumps(block) + "\n")
+            cmd = [sys.executable, SCRIPTS / "evidence/check_functor_block.py", log, str(log.stat().st_size), pkg]
+            with log.open("a") as spool:
+                for row in (dict(block, action="log"), dict(block, hook="ObjectInputStream.resolveProxyClass"),
+                            dict(block, details=dict(details, decision_basis="descriptor")),
+                            dict(block, details={**details, "class": pkg + ".ChainedTransformer"})):
+                    print(json.dumps(row), file=spool)
+            self.assertEqual(subprocess.run(cmd, capture_output=True).returncode, 1)
+            with log.open("a") as spool:
+                print(json.dumps(block), file=spool)
+            subprocess.run(cmd, check=True)
+
     def test_catalog_relations_and_logs_are_independent(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
@@ -328,7 +348,7 @@ class EvidenceTest(unittest.TestCase):
         change, = decisions.changed_decisions(report("matched"), report("name policy matched"))
         self.assertEqual(change["kind"], "evidence availability")
         change, = decisions.changed_decisions(report("name policy matched"), report("name policy mismatch"))
-        self.assertEqual(change["kind"], "detector outcome")
+        self.assertEqual(change["kind"], "name policy")
 
     def test_compare_preserves_visible_mismatches_and_checks_input_identity(self):
         record = {"file": "a", "line": 2, "status": "mismatch", "observed": []}
