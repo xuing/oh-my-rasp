@@ -1455,7 +1455,7 @@ public final class OhMyRaspHooks {
       return;
     }
     try {
-      emit(DETECTORS.detectFastjsonClassResource(resource, currentRequest()));
+      emit(DETECTORS.detectFastjsonClassResource(resource, currentRequest()), true, true);
     } catch (OhMyRaspBlockException blocked) {
       throw blocked;
     } catch (Throwable throwable) {

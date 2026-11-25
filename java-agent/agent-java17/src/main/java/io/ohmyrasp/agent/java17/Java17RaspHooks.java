@@ -642,6 +642,7 @@ public final class Java17RaspHooks {
   }
 
   public static void beforeFastjsonClassResource(String resource) {
+    if (RaspRuntime.detectionOff()) return;
     Finding finding = classifyFastjsonClassResource(resource);
     if (finding == null) {
       return;
@@ -3707,8 +3708,7 @@ public final class Java17RaspHooks {
   }
 
   private static Finding classifyFastjsonClassResource(String resource) {
-    String mechanism = fastjsonClassResourceMechanism(resource);
-    if (mechanism.length() == 0) {
+    if (io.ohmyrasp.agent.rules.product.fastjson.FastjsonClassResource.mechanism(resource) == null) {
       return null;
     }
     return new Finding(
@@ -3717,29 +3717,6 @@ public final class Java17RaspHooks {
         "Fastjson autoType attempted to resolve a URL-shaped class resource",
         "resource",
         abbreviate(resource, 1200));
-  }
-
-  private static String fastjsonClassResourceMechanism(String resource) {
-    if (resource == null || resource.trim().length() == 0) {
-      return "";
-    }
-    String normalized = lower(resource.trim());
-    if (normalized.startsWith("http://")) {
-      return "http";
-    }
-    if (normalized.startsWith("https://")) {
-      return "https";
-    }
-    if (normalized.startsWith("jar:http://")) {
-      return "jar:http";
-    }
-    if (normalized.startsWith("jar:https://")) {
-      return "jar:https";
-    }
-    if (normalized.startsWith("jar:file:/proc/self/fd/")) {
-      return "jar:file:proc-fd";
-    }
-    return "";
   }
 
   private static UrlParts urlParts(Object value) {

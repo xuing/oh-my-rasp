@@ -89,6 +89,21 @@ final class OhMyRaspHooksPolicyTest {
   }
 
   @Test
+  void fastjsonWorkerEnforcesTheSelectedResourcePolicy() {
+    assertFalse(OhMyRaspHooks.currentRequest().active());
+    String resource = "https://example.invalid/report.class";
+    assertDoesNotThrow(() -> OhMyRaspHooks.beforeFastjsonClassResource(resource));
+    System.setProperty("ohmyrasp.block", "true");
+    assertDoesNotThrow(() -> OhMyRaspHooks.beforeFastjsonClassResource("reports/Weekly.class"));
+    assertThrows(OhMyRaspBlockException.class, () -> OhMyRaspHooks.beforeFastjsonClassResource(resource));
+
+    OhMyRaspHooks.installPolicy(AgentPolicy.parse("""
+        {"rules":[{"algorithm":"deserialization_fastjson_resource_url","action":"log"}]}
+        """), "agent-one");
+    assertDoesNotThrow(() -> OhMyRaspHooks.beforeFastjsonClassResource(resource));
+  }
+
+  @Test
   void protocolClassInstantiationPolicyBlockThrowsWithoutHttpRequest() {
     OhMyRaspHooks.installPolicy(protocolPolicy("block"), "agent-one");
 

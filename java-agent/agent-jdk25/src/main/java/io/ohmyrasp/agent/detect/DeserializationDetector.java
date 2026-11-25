@@ -224,8 +224,8 @@ final class DeserializationDetector {
 
   static Optional<Detection> detectFastjsonClassResource(
       String resource, RequestContext request) {
-    Optional<String> mechanism = fastjsonClassResourceMechanism(resource);
-    if (mechanism.isEmpty()) {
+    String mechanism = io.ohmyrasp.agent.rules.product.fastjson.FastjsonClassResource.mechanism(resource);
+    if (mechanism == null) {
       return Optional.empty();
     }
     RequestContext safeRequest = request == null ? RequestContext.empty() : request;
@@ -237,10 +237,10 @@ final class DeserializationDetector {
                 "Fastjson autoType attempted to resolve a URL-shaped class resource",
                 safeRequest,
                 Map.of(
-                    "mechanism", mechanism.orElseThrow(),
+                    "mechanism", mechanism,
                     "resource", abbreviate(resource),
                     "source", "ParserConfig.checkAutoType"))
-            .withAction("block"));
+            .withAction(safeRequest.active() ? "block" : "log"));
   }
 
   static Optional<Detection> detectOpenWireThrowable(Class<?> selected, RequestContext request) {
@@ -283,29 +283,6 @@ final class DeserializationDetector {
         "Apache XML-RPC requested an object read for a serialized extension value",
         request == null ? RequestContext.empty() : request,
         Map.of("mechanism", mechanism, "decision_basis", "xmlrpc_extension_read")));
-  }
-
-  private static Optional<String> fastjsonClassResourceMechanism(String resource) {
-    if (resource == null || resource.isBlank()) {
-      return Optional.empty();
-    }
-    String normalized = lower(resource.trim());
-    if (normalized.startsWith("http://")) {
-      return Optional.of("http");
-    }
-    if (normalized.startsWith("https://")) {
-      return Optional.of("https");
-    }
-    if (normalized.startsWith("jar:http://")) {
-      return Optional.of("jar:http");
-    }
-    if (normalized.startsWith("jar:https://")) {
-      return Optional.of("jar:https");
-    }
-    if (normalized.startsWith("jar:file:/proc/self/fd/")) {
-      return Optional.of("jar:file:proc-fd");
-    }
-    return Optional.empty();
   }
 
   private static boolean suspiciousRmiRemoteBindType(String className) {

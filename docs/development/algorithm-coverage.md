@@ -2103,6 +2103,7 @@ same patch as any new Java-compatible Vulhub replay.
   suite include Vulhub-shaped `/fastjson` JSON POSTs for CVE-2017-18349 and
   Fastjson 1.2.47, plus real Java 8 Fastjson 1.2.24 and 1.2.45
   baseline/protected containers in `scripts/acceptance-vulhub-fastjson-java8.sh`.
+  See the [1.2.83 candidate](vulhub-coverage.md#candidates) for the separate application control and its verification scope.
   They also include `/exploit` JSON POSTs for Jackson CVE-2017-7525 and its
   Spring XML context bypass, and a SnakeYAML `JdbcConnection` constructor hook
   for the HertzBeat CVE-2024-42323 parser boundary. The real Jackson Vulhub
