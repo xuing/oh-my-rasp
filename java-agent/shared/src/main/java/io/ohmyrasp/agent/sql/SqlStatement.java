@@ -147,7 +147,7 @@ public final class SqlStatement {
         int width = ch == '#' ? 1 : 2;
         i += width;
         if (line) {
-          boolean lfOnly = mysqlLineRules && ch != '/';
+          boolean lfOnly = dialect == Dialect.SQLITE || (mysqlLineRules && ch != '/');
           while (i < sql.length() && sql.charAt(i) != '\n' && (lfOnly || sql.charAt(i) != '\r')) i++;
           if (uncertainDialect && ch == '-' && i < sql.length() && sql.charAt(i) == '\r')
             ambiguousLineComment = true;
@@ -186,11 +186,13 @@ public final class SqlStatement {
       commentsRemoved = commonCode(commentsRemoved, alternate);
       alternate = null;
     }
-    if ((dialect == Dialect.WRAPPER || dialect == Dialect.UNSPECIFIED) && sql.indexOf('[') >= 0 && sql.indexOf(']') >= 0) {
-      // A pool or a source-only callback exposes no backend grammar. Use code that is also
-      // visible when brackets delimit identifiers. The concrete driver gets its own pass.
-      commentsRemoved = commonCode(commentsRemoved, new SqlStatement(sql, false, Dialect.SQLITE));
-      if (sql.contains("]]") || sql.contains("/*"))
+    if (uncertainDialect) {
+      boolean brackets = sql.indexOf('[') >= 0 && sql.indexOf(']') >= 0;
+      // SQLite keeps CR inside a line comment, including when no space follows the dashes.
+      boolean sqliteComment = sql.indexOf('\r') >= 0 && sql.contains("--");
+      if (brackets || sqliteComment)
+        commentsRemoved = commonCode(commentsRemoved, new SqlStatement(sql, false, Dialect.SQLITE));
+      if (brackets && (sql.contains("]]") || sql.contains("/*")))
         commentsRemoved = commonCode(commentsRemoved, new SqlStatement(sql, false, Dialect.SQL_SERVER));
     }
     text = commentsRemoved == null ? sql : commentsRemoved;

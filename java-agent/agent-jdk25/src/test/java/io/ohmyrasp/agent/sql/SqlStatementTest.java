@@ -11,6 +11,16 @@ import org.junit.jupiter.api.Test;
 
 class SqlStatementTest {
   @Test
+  void sqliteLineCommentsEndOnlyAtLf() {
+    String comment = "select 7 --report\r benchmark(7)";
+    for (String driver : List.of("org.sqlite.jdbc4.JDBC4Statement", "reports.StatementWrapper", "")) {
+      assertFalse(new SqlStatement(comment, driver).matchesSinkPolicy(), driver);
+      assertTrue(new SqlStatement(comment + "\n, benchmark(7)", driver).matchesSinkPolicy(), driver);
+    }
+    assertTrue(new SqlStatement(comment, "org.postgresql.jdbc.PgStatement").matchesSinkPolicy());
+  }
+
+  @Test
   void distinguishesDirectConsoleExecutionFromNestedApplicationCode() {
     var editor = frame("org.h2.server.web.WebApp", "getResult");
     var jdbc = frame("org.h2.jdbc.JdbcStatement", "execute");

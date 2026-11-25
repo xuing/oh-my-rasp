@@ -34,7 +34,7 @@ def main():
                             "4164d95347aeab42b754cabb7945b93e54f29ddb2eded967dbe979b4045cb685")
         logging = dependency(work, args.slf4j_api, "org/slf4j/slf4j-api/1.7.36/slf4j-api-1.7.36.jar",
                              "d3ef575e3e4979678dc01bf1dcce51021493b4d11fb7f1be8ad982877c16a1c0")
-        check_reports(agent, "SqliteIdentifierCheck", (sqlite, logging), scenario_count=6, selected_count=3)
+        check_reports(agent, "SqliteIdentifierCheck", (sqlite, logging), scenario_count=9, selected_count=4)
 
 
 if __name__ == "__main__":

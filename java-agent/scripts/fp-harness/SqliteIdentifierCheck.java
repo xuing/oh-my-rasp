@@ -41,7 +41,10 @@ public final class SqliteIdentifierCheck {
       String track = args[0], mode = args[1];
       check(db, track, mode, "alias", "SELECT 7 AS [benchmark(7) samples]", "benchmark(7) samples", false, false);
       check(db, track, mode, "sort", "SELECT 7 AS [weekly -- total] ORDER BY [weekly -- total]", "weekly -- total", false, true);
+      check(db, track, mode, "cr-comment", "SELECT 7 AS weekly -- report\r benchmark(7)", "weekly", false, false);
+      check(db, track, mode, "lf-expression", "SELECT -- report\r\n benchmark(7) AS weekly", "weekly", true, true);
       Connection pool = pooled(db);
+      check(pool, track, mode, "pooled-cr-comment", "SELECT 7 AS weekly --report\r benchmark(7)", "weekly", false, true);
       check(pool, track, mode, "pooled-title", "SELECT 7 AS [benchmark(7) samples]", "benchmark(7) samples", false, true);
       check(pool, track, mode, "pooled-expression", "SELECT 7 AS [reviewer's total], benchmark(7)", "reviewer's total", true, true);
       check(db, track, mode, "actual", "SELECT benchmark(7) AS [weekly]", "weekly", true, true);
