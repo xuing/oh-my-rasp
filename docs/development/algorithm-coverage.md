@@ -2090,7 +2090,7 @@ same patch as any new Java-compatible Vulhub replay.
   baseline on Java 7u221/JBoss AS 4.0.5 and records the same Java 7 runtime
   boundary for current Java 8+ LTS agents.
 - `deserialization_hessian_type` applies at built-in Hessian object allocation.
-  The local verification uses inert records with both codec distributions.
+  The local verification round-trips inert records through Caucho Hessian and Dubbo’s public Hessian2 serialization interface.
   The [XXL-JOB entry](vulhub-coverage.md) records the dependency boundary for the Vulhub image.
 - `deserialization_xmlrpc_serialized` covers Apache XML-RPC extension values
   where a `<serializable>` XML element is decoded and passed to

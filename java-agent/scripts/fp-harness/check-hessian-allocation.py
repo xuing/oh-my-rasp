@@ -21,14 +21,15 @@ def main():
     src = Path(__file__).parent
     with tempfile.TemporaryDirectory(prefix="hessian-alloc-") as tmp:
         cp = os.pathsep.join((tmp, str(args.jar_dir / "*")))
-        subprocess.run(["javac", "-d", tmp, src / "HessianAllocationCheck.java", src / "HttpTransportCheck.java",
-                        src / "stream-types/listed/BeanComparator.java", src / "stream-types/BshMonthly.java", src / "stream-types/reports/BeanComparator.java"], check=True)
-        for pkg in ("com.caucho.hessian.io", "com.alibaba.com.caucho.hessian.io"):
+        subprocess.run(["javac", "-cp", cp, "-d", tmp, src / "HessianAllocationCheck.java", src / "HttpTransportCheck.java",
+                        src / "stream-types/listed/BeanComparator.java", src / "stream-types/BshMonthly.java",
+                        src / "stream-types/reports/BeanComparator.java"], check=True)
+        for codec in ("caucho", "dubbo"):
             for mode in ("block", "monitor"):
-                log = Path(tmp) / f"{pkg}-{mode}.jsonl"
+                log = Path(tmp) / f"{codec}-{mode}.jsonl"
                 run = subprocess.run(["java", "-Xverify:all", f"-javaagent:{agent}", "-Dohmyrasp.standalone=true",
                                       "-Dohmyrasp.control=none", f"-Dohmyrasp.mode={mode}", "-Dohmyrasp.log.sync=true",
-                                      f"-Dohmyrasp.log={log}", "-cp", cp, "HessianAllocationCheck", pkg, mode],
+                                      f"-Dohmyrasp.log={log}", "-cp", cp, "HessianAllocationCheck", codec, mode],
                                      text=True, capture_output=True, timeout=45)
                 if run.returncode:
                     raise SystemExit(run.stdout + run.stderr)
@@ -37,7 +38,7 @@ def main():
                 if len(events) != 2 or any(e["algorithm"] != rule or (e["action"] == "block") != (mode == "block")
                                           or e["details"].get("class") != "HessianAllocationCheck$Monthly"
                                           or e["details"].get("decision_basis") not in ("hessian_constructor", "hessian_unsafe_allocation") for e in events):
-                    raise SystemExit(f"unexpected {pkg} allocation decisions in {mode}: {events}")
+                    raise SystemExit(f"unexpected {codec} allocation decisions in {mode}: {events}")
 
 
 if __name__ == "__main__":

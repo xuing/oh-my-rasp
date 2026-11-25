@@ -1,5 +1,9 @@
 import java.io.*;
-import java.lang.reflect.*;
+import com.caucho.hessian.io.Hessian2Input;
+import com.caucho.hessian.io.Hessian2Output;
+import com.caucho.hessian.io.SerializerFactory;
+import org.apache.dubbo.common.serialize.hessian2.Hessian2Serialization;
+import org.apache.dubbo.common.serialize.hessian2.Hessian2SerializerFactory;
 import java.util.HashMap;
 import org.apache.commons.beanutils.BeanComparator;
 
@@ -10,34 +14,43 @@ public final class HessianAllocationCheck {
     public int month = 7;
     public Monthly() { constructed++; }
   }
-  private final Object factory;
-  private final Class<?> factoryType, input, output;
+  private final SerializerFactory factory;
+  private final Hessian2Serialization dubbo;
 
-  private HessianAllocationCheck(String pkg) throws Exception {
-    factoryType = Class.forName(pkg + ".SerializerFactory");
-    factory = factoryType.getDeclaredConstructor().newInstance();
-    input = Class.forName(pkg + ".Hessian2Input");
-    output = Class.forName(pkg + ".Hessian2Output");
+  private HessianAllocationCheck(boolean rpc) {
+    factory = rpc ? null : new SerializerFactory();
+    dubbo = rpc ? new Hessian2Serialization() : null;
   }
 
-  private byte[] encode(Object value) throws Exception {
+  private byte[] encode(Object value) throws IOException {
     ByteArrayOutputStream bytes = new ByteArrayOutputStream();
-    Object out = output.getConstructor(OutputStream.class).newInstance(bytes);
-    output.getMethod("writeObject", Object.class).invoke(out, value);
-    output.getMethod("flush").invoke(out);
+    if (dubbo != null) {
+      org.apache.dubbo.common.serialize.ObjectOutput out = dubbo.serialize(null, bytes);
+      out.writeObject(value);
+      out.flushBuffer();
+    } else {
+      Hessian2Output out = new Hessian2Output(bytes);
+      out.writeObject(value);
+      out.flush();
+    }
     return bytes.toByteArray();
   }
 
   private Object decode(byte[] bytes, Class<?> expected) throws Exception {
-    Object in = input.getConstructor(InputStream.class).newInstance(new ByteArrayInputStream(bytes));
-    input.getMethod("setSerializerFactory", factoryType).invoke(in, factory);
-    if (expected == null) return input.getMethod("readObject").invoke(in);
-    return input.getMethod("readObject", Class.class).invoke(in, expected);
+    ByteArrayInputStream stream = new ByteArrayInputStream(bytes);
+    if (dubbo != null) {
+      org.apache.dubbo.common.serialize.ObjectInput in = dubbo.deserialize(null, stream);
+      return expected == null ? in.readObject() : in.readObject(expected);
+    }
+    Hessian2Input in = new Hessian2Input(stream);
+    in.setSerializerFactory(factory);
+    return expected == null ? in.readObject() : in.readObject(expected);
   }
 
-  private void check(String mode, boolean caucho) throws Exception {
+  private void check(String mode) throws Exception {
     String listed = BeanComparator.class.getName();
-    factoryType.getMethod("getDeserializer", String.class).invoke(factory, listed);
+    if (dubbo != null) Hessian2SerializerFactory.SERIALIZER_FACTORY.getDeserializer(listed);
+    else factory.getDeserializer(listed);
     if (decode(encode(new bsh.BshMonthly()), null).getClass() != bsh.BshMonthly.class)
       throw new AssertionError("ordinary package DTO changed");
     if (((BeanComparator[])decode(encode(new BeanComparator[0]), null)).length != 0)
@@ -45,7 +58,8 @@ public final class HessianAllocationCheck {
     byte[] bytes = encode(new Monthly());
     if (decode(bytes, reports.BeanComparator.class).getClass() != reports.BeanComparator.class)
       throw new AssertionError("expected-type substitution changed");
-    Object selected = factoryType.getMethod("getDeserializer", Class.class).invoke(factory, Monthly.class);
+    Object selected = dubbo != null ? Hessian2SerializerFactory.SERIALIZER_FACTORY.getDeserializer(Monthly.class)
+        : factory.getDeserializer(Monthly.class);
     boolean reflective = selected.getClass().getSimpleName().equals("JavaDeserializer");
     if (!reflective && !selected.getClass().getSimpleName().equals("UnsafeDeserializer"))
       throw new AssertionError("unexpected report deserializer " + selected.getClass());
@@ -64,19 +78,16 @@ public final class HessianAllocationCheck {
       if (Monthly.constructed - before != (reflective && !blocked ? 1 : 0)) throw new AssertionError("constructor receipt");
       if (blocked != "block".equals(mode)) throw new AssertionError("wrong allocation decision");
     }
-    if (caucho) {
-      Object restricted = factoryType.getDeclaredConstructor().newInstance();
-      Object classFactory = factoryType.getMethod("getClassFactory").invoke(restricted);
-      classFactory.getClass().getMethod("deny", String.class).invoke(classFactory, listed);
-      Object in = input.getConstructor(InputStream.class).newInstance(new ByteArrayInputStream(encode(new BeanComparator())));
-      input.getMethod("setSerializerFactory", factoryType).invoke(in, restricted);
-      Object mapped = input.getMethod("readObject").invoke(in);
-      if (!(mapped instanceof HashMap)) throw new AssertionError("library fallback did not select a map");
+    if (dubbo == null) {
+      SerializerFactory restricted = new SerializerFactory();
+      restricted.getClassFactory().deny(listed);
+      Hessian2Input in = new Hessian2Input(new ByteArrayInputStream(encode(new BeanComparator())));
+      in.setSerializerFactory(restricted);
+      if (!(in.readObject() instanceof HashMap)) throw new AssertionError("library fallback did not select a map");
     }
   }
 
   public static void main(String[] args) throws Exception {
-    String pkg = args[0];
-    new HessianAllocationCheck(pkg).check(args[1], pkg.equals("com.caucho.hessian.io"));
+    new HessianAllocationCheck("dubbo".equals(args[0])).check(args[1]);
   }
 }
