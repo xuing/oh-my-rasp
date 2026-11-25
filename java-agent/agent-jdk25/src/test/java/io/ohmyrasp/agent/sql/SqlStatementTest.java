@@ -1,8 +1,11 @@
 package io.ohmyrasp.agent.sql;
 
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import java.util.BitSet;
 import org.junit.jupiter.api.Test;
 
 class SqlStatementTest {
@@ -47,6 +50,38 @@ class SqlStatementTest {
     assertFalse(new SqlStatement(example, "org.postgresql.jdbc.PgStatement").matchesSinkPolicy());
     assertTrue(new SqlStatement(example, "com.mysql.cj.jdbc.StatementImpl").matchesSinkPolicy());
     assertTrue(new SqlStatement("select $$manual$$, sleep(2)", "org.h2.jdbc.JdbcStatement").matchesSinkPolicy());
+  }
+
+  @Test
+  void recognizesTaggedDataAndNestedCommentsInPostgresql() {
+    String driver = "org.postgresql.jdbc.PgStatement";
+    String text = "select $Guide_2$Inner $Other$ sleep(1); -- words $Guide_2$";
+    assertFalse(new SqlStatement(text, driver).matchesSinkPolicy());
+    assertTrue(new SqlStatement(text + ", sleep(1)", driver).matchesSinkPolicy());
+    assertTrue(new SqlStatement(text, "com.mysql.cj.jdbc.StatementImpl").matchesSinkPolicy());
+    assertFalse(new SqlStatement("/* outer /* note */ sleep(1) */ select 1", driver).matchesSinkPolicy());
+    assertFalse(new SqlStatement("/*! sleep(1) */ select 1", driver).matchesSinkPolicy());
+    assertTrue(new SqlStatement("/*! sleep(1) */ select 1", "com.mysql.cj.jdbc.StatementImpl").matchesSinkPolicy());
+    assertFalse(new SqlStatement("select E'example\\' sleep(1)'", driver).matchesSinkPolicy());
+  }
+
+  @Test
+  void requiresMapperOffsetsInExecutableSql() {
+    assertNull(mapperDecision("select '", "O''Brien -- weekly", "'"));
+    assertEquals("quoted-slot-comment", mapperDecision("select '", "label' -- note", "'"));
+    assertNull(mapperDecision("select id from reports order by id limit 1; select '", "sleep(0)", "'"));
+    assertEquals("sort-policy-operation", mapperDecision("select id from reports order /* rank */ by id ", ",sleep(0)", ""));
+    assertEquals("additional-statement", mapperDecision("select 1 ", "; select 7", ""));
+    assertNull(mapperDecision("", "select 1; select 7", ""));
+    // A later unambiguous boundary remains visible when the first marker's
+    // comment meaning differs across the two MySQL parsing modes.
+    assertEquals("additional-statement", mapperDecision("select 1 ", "--note\n; select 7", ""));
+  }
+
+  private static String mapperDecision(String prefix, String value, String suffix) {
+    BitSet supplied = new BitSet();
+    supplied.set(prefix.length(), prefix.length() + value.length());
+    return new SqlStatement(prefix + value + suffix).mapperControl(supplied);
   }
 
   private static StackTraceElement frame(String owner, String method) {
