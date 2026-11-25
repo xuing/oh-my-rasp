@@ -7,7 +7,8 @@ import tomllib
 from collections import Counter
 from pathlib import Path
 
-SCRIPT = re.compile(r"\bacceptance-vulhub-[\w.-]+\.sh\b")
+# Ledger rows name a scenario as acceptance/vulhub/<component>/<scenario>-<jdk>.sh; keep the part below acceptance/.
+SCRIPT = re.compile(r"\bacceptance/(vulhub/[\w.-]+/[\w.-]+\.sh)\b")
 CVE = re.compile(r"\bCVE-\d{4}-\d{4,}\b", re.I)
 LOG_DIR = re.compile(r"""\blogs/(vulhub-[\w.-]+-protected)(?=["'/\s])""")
 
@@ -44,6 +45,7 @@ def event_summary(path):
 
 
 def build_report(root, java_roots, ledger_rows, scripts_dir, logs_dir):
+    """scripts_dir is java-agent/acceptance; script keys are paths below it, e.g. vulhub/activemq/java11.sh."""
     if not logs_dir.is_dir():
         raise ValueError(f"missing logs directory: {logs_dir}")
     with (root / "environments.toml").open("rb") as stream:
@@ -60,18 +62,19 @@ def build_report(root, java_roots, ledger_rows, scripts_dir, logs_dir):
             for p in sorted(logs_dir.glob("vulhub-*/**/events.jsonl"))}
     scripts = {}
     paths_in_scripts = {}
-    for script in sorted(scripts_dir.glob("acceptance-vulhub-*.sh")):
+    for script in sorted(scripts_dir.glob("vulhub/*/*.sh")):
+        key = script.relative_to(scripts_dir).as_posix()
         text = script.read_text()
         # Match literal evidence references only. Dynamic shell variables and
         # version loops do not uniquely identify an individual environment.
         directories = sorted(set(LOG_DIR.findall(text)))
-        scripts[script.name] = {
+        scripts[key] = {
             "declared_protected_dirs": directories,
             "retained_event_files": [f"{d}/events.jsonl" for d in directories if f"{d}/events.jsonl" in logs],
         }
         for env in entries:
             if re.search(r"(?<![\w.-])" + re.escape(env) + r"(?![\w.-])", text):
-                paths_in_scripts.setdefault(env, []).append(script.name)
+                paths_in_scripts.setdefault(env, []).append(key)
 
     rows_by_cve = {}
     for number, row in ledger_rows:

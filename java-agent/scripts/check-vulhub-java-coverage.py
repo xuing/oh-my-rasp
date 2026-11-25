@@ -95,7 +95,7 @@ AGENT_ROOT = Path(__file__).resolve().parent.parent
 REPO_ROOT = AGENT_ROOT.parent
 CHECKLIST = REPO_ROOT / "docs" / "development" / "vulhub-coverage.md"
 ALGORITHM_DOC = REPO_ROOT / "docs" / "development" / "algorithm-coverage.md"
-SCRIPTS = AGENT_ROOT / "scripts"
+SCRIPTS = AGENT_ROOT / "acceptance"
 
 
 def read_text(path: Path) -> str:
@@ -135,7 +135,7 @@ def search_corpus(checklist: Path, algorithm_doc: Path, scripts_dir: Path) -> st
         read_text(checklist),
         read_text(algorithm_doc),
     ]
-    for script in sorted(scripts_dir.glob("acceptance*.sh")):
+    for script in sorted(scripts_dir.glob("runtime/*.sh")) + sorted(scripts_dir.glob("vulhub/*/*.sh")):
         parts.append(read_text(script))
     return "\n".join(parts)
 
@@ -232,7 +232,7 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
     )
     parser.add_argument("--checklist", type=Path, default=CHECKLIST, help="Coverage checklist path.")
     parser.add_argument("--algorithm-doc", type=Path, default=ALGORITHM_DOC, help="Algorithm coverage doc path.")
-    parser.add_argument("--scripts-dir", type=Path, default=SCRIPTS, help="Directory containing acceptance scripts.")
+    parser.add_argument("--scripts-dir", type=Path, default=SCRIPTS, help="Acceptance directory (runtime/ and vulhub/<component>/).")
     parser.add_argument("--evidence-report", type=Path,
                         help="Write a JSON inventory of every catalog entry and local historical decisions.")
     parser.add_argument("--logs-dir", type=Path, default=AGENT_ROOT / "logs",

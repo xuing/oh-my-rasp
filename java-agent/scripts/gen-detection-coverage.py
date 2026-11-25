@@ -7,7 +7,7 @@ acceptance scenarios are added. Re-run it after changing any of:
 
   * agent/src/main/java/io/ohmyrasp/agent/asm/HookRegistry.java   (hook families)
   * agent-jdk25/src/main/java/io/ohmyrasp/agent/detect/ (public facade and rule owners)
-  * scripts/acceptance-vulhub-*.sh                                (verified scenarios)
+  * acceptance/vulhub/*/*.sh                                      (verified scenarios)
 
 It also owns the "By the numbers" region of the root README.md and
 README.zh-CN.md, between these markers (one region per file):
@@ -27,9 +27,11 @@ import re
 import sys
 from pathlib import Path
 
+import acceptance_scripts
+
 ROOT = Path(__file__).resolve().parent.parent
 AGENT = ROOT / "agent-jdk25" / "src" / "main" / "java" / "io" / "ohmyrasp" / "agent"
-SCRIPTS = ROOT / "scripts"
+ACCEPTANCE = acceptance_scripts.ACCEPTANCE
 OUT = ROOT / "docs" / "DETECTION-COVERAGE.md"
 REPO = ROOT.parent
 FP_REPORT = ROOT / "docs" / "FALSE-POSITIVE-REPORT.md"
@@ -63,7 +65,7 @@ def detector_capabilities() -> list[str]:
 def asserted_algorithms() -> list[str]:
     """Algorithm IDs appearing in literal event assertions in the acceptance scripts."""
     algos: set[str] = set()
-    for script in SCRIPTS.glob("acceptance*.sh"):
+    for script in acceptance_scripts.runtime_and_vulhub_scripts(ACCEPTANCE):
         text = script.read_text(encoding="utf-8", errors="ignore")
         algos.update(re.findall(r'"algorithm":"([a-z0-9_]+)"', text))
     return sorted(algos)
@@ -72,8 +74,8 @@ def asserted_algorithms() -> list[str]:
 def vulnerability_matrix() -> list[tuple[str, str]]:
     """(target, jdk) for each end-to-end vulhub acceptance scenario."""
     rows: list[tuple[str, str]] = []
-    for script in sorted(SCRIPTS.glob("acceptance-vulhub-*.sh")):
-        stem = script.stem[len("acceptance-vulhub-"):]
+    for script in acceptance_scripts.vulhub_scripts(ACCEPTANCE):
+        stem = acceptance_scripts.legacy_stem(script)
         jdk = next((j for j in JDK_ORDER if stem.endswith("-" + j)), None)
         if jdk is None:
             # Fall back to the trailing javeNN token.
