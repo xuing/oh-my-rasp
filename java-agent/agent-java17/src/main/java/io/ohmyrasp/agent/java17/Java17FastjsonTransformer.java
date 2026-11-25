@@ -24,8 +24,8 @@ public final class Java17FastjsonTransformer implements ClassFileTransformer {
       return null;
     }
     try {
-      ClassReader reader = new ClassReader(classfileBuffer);
-      ClassWriter writer = new ClassWriter(reader, ClassWriter.COMPUTE_MAXS);
+      var reader = new ClassReader(classfileBuffer);
+      var writer = new ClassWriter(reader, ClassWriter.COMPUTE_MAXS);
       reader.accept(new FastjsonClassVisitor(writer), ClassReader.EXPAND_FRAMES);
       return writer.toByteArray();
     } catch (Throwable throwable) {

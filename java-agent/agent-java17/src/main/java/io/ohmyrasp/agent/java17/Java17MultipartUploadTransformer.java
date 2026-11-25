@@ -15,10 +15,10 @@ public final class Java17MultipartUploadTransformer implements ClassFileTransfor
     try {
       boolean known = MultipartFilenameVisitor.known(owner, true);
       if (loader == null && !known) return null;
-      ClassReader reader = new ClassReader(bytes);
+      var reader = new ClassReader(bytes);
       boolean caller = MultipartFilenameVisitor.multipartCaller(reader);
       if (!known && !caller && !MultipartFilenameVisitor.mentionsGetter(reader)) return null;
-      ClassWriter writer = new ClassWriter(reader, ClassWriter.COMPUTE_MAXS);
+      var writer = new ClassWriter(reader, ClassWriter.COMPUTE_MAXS);
       final boolean[] changed = {false};
       ClassVisitor methods = new ClassVisitor(Opcodes.ASM9, writer) {
         @Override public MethodVisitor visitMethod(int access, String name, String desc, String sig, String[] exceptions) {

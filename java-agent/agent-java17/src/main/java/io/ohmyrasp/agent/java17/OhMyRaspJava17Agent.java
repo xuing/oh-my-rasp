@@ -231,7 +231,7 @@ public final class OhMyRaspJava17Agent {
   }
 
   private static String json(String value) {
-    StringBuilder builder = new StringBuilder(value.length() + 16);
+    var builder = new StringBuilder(value.length() + 16);
     for (int i = 0; i < value.length(); i++) {
       char ch = value.charAt(i);
       switch (ch) {
