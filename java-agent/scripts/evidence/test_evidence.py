@@ -94,6 +94,23 @@ class EvidenceTest(unittest.TestCase):
                               ("jndiRoute", "URLContext.lookup\0" + name)])
             self.assertEqual(rows[-1]["status"], "source evidence required")
 
+    def test_jaas_configuration_does_not_prove_login(self):
+        rule = "java8_jaas_jndi_remote_provider"
+        url = "ldap://reports.invalid/empty"
+        with tempfile.TemporaryDirectory() as tmp:
+            case = Path(tmp) / "vulhub-login-protected"
+            case.mkdir()
+            records = [{"event": "ohmyrasp-java8-agent-start"}]
+            for hook, details in (("AppConfigurationEntry.<init>", {"config": url}),
+                                  ("JndiLoginModule.lookup", {"lookup": url}),
+                                  ("JndiLoginModule.lookup", {"lookup": url, "decision_basis": "url_scheme_selection"})):
+                records.append({"hook": hook, "action": "block", "algorithm": rule, "details": details})
+            (case / "events.jsonl").write_text("\n".join(map(json.dumps, records)))
+            _, rows, batches, _, _ = decisions.collect(case.parent)
+            self.assertEqual([r["status"] for r in rows[:2]], ["source evidence required"] * 2)
+            self.assertEqual([(method, value) for _, method, value in batches["8"]],
+                             [("jndiRoute", "JndiLoginModule.lookup\0" + url)])
+
     def test_verifier_diagnostic_cannot_establish_filter_continuation(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)

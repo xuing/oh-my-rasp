@@ -43,6 +43,8 @@ SERVLET_SOURCES = {
 
 
 def source_for(hook, algorithm, track):
+    if hook == "JndiLoginModule.lookup" and algorithm == f"java{track}_jaas_jndi_remote_provider":
+        return ("jndiRoute", "lookup", "java:comp/env/directory")
     if hook in ("InitialContext.lookup", "InitialContext.lookupLink", "URLContext.lookup", "URLContext.lookupLink"):
         if algorithm == f"java{track}_jndi_remote_lookup":
             return ("jndiRoute", "lookup", "java:comp/env/jdbc/orders")
@@ -152,6 +154,10 @@ def collect(logs):
                 if not track or (algorithm_track and algorithm_track[1] != track):
                     row["status"] = "unknown or inconsistent agent track"
                     continue
+                if hook == "AppConfigurationEntry.<init>" and algorithm == f"java{track}_jaas_jndi_remote_provider":
+                    row.update(status="source evidence required",
+                               evidence_limit="configuration declaration only; no login module routing operand recorded")
+                    continue
                 if hook in ("SparkRest.handleSubmit", "RMWebServices.submitApplication") and algorithm == f"java{track}_request_remote_job_submission":
                     row.update(status="authorization evidence required",
                                evidence_limit="submission details alone cannot reproduce the deployment role and servlet decision")
@@ -217,6 +223,9 @@ def collect(logs):
                 if method == "jndiRoute":
                     basis = row.get("historical_decision_basis")
                     if basis is None or basis == "lookup_name_only":
+                        if hook == "JndiLoginModule.lookup":
+                            row.update(status="source evidence required", evidence_limit="login module routing basis missing")
+                            continue
                         method = "jndiName"
                         row["evidence_limit"] = "display name only; original Name components and JDK provider route unknown"
                     elif basis == ("provider_root_lookup" if hook.startswith("URLContext.") else "url_scheme_selection"):

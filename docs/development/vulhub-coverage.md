@@ -214,12 +214,8 @@ coverage, separate from the Java 25 behavioral replay suite:
   `java8_java_compile_runtime_execution`, ordinary source compilation smoke
   traffic emits no detection, and block mode records `action:"block"` before
   throwing `Java8RaspBlockException` on Temurin 8.
-- [x] Add the eleventh functional Java 8 era behavior hook:
-  `AppConfigurationEntry` construction is transformed by the dedicated Java 8
-  agent, JAAS `JndiLoginModule` entries with remote `user.provider.url` or
-  `group.provider.url` values emit `java8_jaas_jndi_remote_provider`, ordinary
-  Kerberos/SCRAM JAAS smoke traffic emits no detection, and block mode records
-  `action:"block"` before throwing `Java8RaspBlockException` on Temurin 8.
+- [x] Check URL selection in the JDK's JAAS directory lookup on Java 8.
+  [Naming policy and packaged test](../detection.md#jaas-directory-lookups)
 - [x] Add the twelfth functional Java 8 era behavior hook:
   `JmxMBeanServer.invoke` is transformed by the dedicated Java 8 agent,
   mutating MBean operations with remote broker/Spring/XML configuration sources
@@ -2514,7 +2510,7 @@ above.
 
 - [x] Apache CXF - CVE-2024-28752 Aegis XOP `href` file/SSRF reference (`xop_attachment_cxf_cve_2024_28752_aegis_file_read`; historical Java8 acceptance: `scripts/acceptance-vulhub-cxf-java8.sh` blocks `java8_file_sensitive_read`) Current application outcome awaits end-to-end verification.
 - [x] Apache Druid - CVE-2021-25646 JavaScript sampler execution (`request_druid_cve_2021_25646_javascript_sampler`; real Java8 acceptance: `scripts/acceptance-vulhub-druid-java8.sh` blocks `java8_script_engine_runtime_execution`)
-- [x] Apache Druid / Kafka - CVE-2023-25194 JAAS JNDI sampler config (`jndi_kafka_cve_2023_25194_druid_sampler_jaas`; real Java8 acceptance: `scripts/acceptance-vulhub-druid-25194-java8.sh` blocks `java8_jaas_jndi_remote_provider`)
+- [x] Apache Druid / Kafka - CVE-2023-25194 JAAS JNDI sampler config (`jndi_kafka_cve_2023_25194_druid_sampler_jaas`; historical Java8 acceptance: `scripts/acceptance-vulhub-druid-25194-java8.sh` recorded `java8_jaas_jndi_remote_provider` at configuration construction). The current directory-routing guard awaits end-to-end verification on Druid.
 
 ### Apereo CAS / Java RMI / JMeter / Log4j
 

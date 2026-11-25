@@ -526,11 +526,8 @@ same patch as any new Java-compatible Vulhub replay.
   Source containing `Runtime.exec`, `ProcessBuilder.start`, or nested
   `ScriptEngine.eval` primitives logs `java8_java_compile_runtime_execution`;
   ordinary source compilation is ignored.
-- The Java 8 era track hooks JAAS `AppConfigurationEntry` construction.
-  `JndiLoginModule` entries with remote `user.provider.url` or
-  `group.provider.url` values over LDAP/RMI/IIOP/CORBA schemes log
-  `java8_jaas_jndi_remote_provider`; Kerberos, SCRAM, and other ordinary JAAS
-  login modules are ignored.
+- Java 8 attributes a selected directory URL to the JDK login module under
+  `java8_jaas_jndi_remote_provider`. [Naming policy](../detection.md#jaas-directory-lookups)
 - The Java 8 era track hooks `JmxMBeanServer.invoke`. Mutating MBean
   operations that pass remote broker/Spring/XML configuration sources log
   `java8_jmx_remote_config_source`; mutating operations that pass
@@ -745,7 +742,7 @@ same patch as any new Java-compatible Vulhub replay.
   for the same control-syntax shapes while ignoring ordinary metric names.
 - The Java 11 era track also ports the Java 8 era runtime primitive sinks:
   `ScriptEngine.eval(String...)`, `JavacTool.getTask`, Janino-style
-  `cook`/`compile(String...)`, `AppConfigurationEntry`, `JmxMBeanServer.invoke`,
+  `cook`/`compile(String...)`, JNDI login-module lookups, `JmxMBeanServer.invoke`,
   JavaBeans `Statement`/`Expression` under XMLDecoder stacks, XMLDecoder
   `DocumentHandler` exception rethrow, and Xerces `XMLEntityManager`.
   The script hook also covers Rhino/Mozilla `Context.evaluateString`,
@@ -753,8 +750,8 @@ same patch as any new Java-compatible Vulhub replay.
   LTS behavior aligned with the Java 8 Druid evidence.
   Suspicious script strings log or block `java11_script_engine_runtime_execution`;
   dynamic Java sources with process/script primitives log or block
-  `java11_java_compile_runtime_execution`; JAAS `JndiLoginModule` remote provider
-  URLs log or block `java11_jaas_jndi_remote_provider`; mutating JMX operations
+  `java11_java_compile_runtime_execution`; remote URL selection during JAAS login
+  logs or blocks `java11_jaas_jndi_remote_provider`; mutating JMX operations
   with remote broker/Spring/XML config sources or script-write targets log or
   block `java11_jmx_remote_config_source` and `java11_jmx_script_file_write`;
   XMLDecoder object graphs that reach process execution or server-side script
@@ -2264,17 +2261,10 @@ same patch as any new Java-compatible Vulhub replay.
   CVE-2021-29442 `/nacos/v1/cs/ops/derby?sql=...` endpoint. The Java 8 Nacos
   Vulhub acceptance also verifies the lower-level database Java routine command
   sink blocks the loaded `Exec.exec` function before command output is returned.
-- `jndi_jaas_config` covers request-time JAAS configuration strings that select
-  `com.sun.security.auth.module.JndiLoginModule` with remote provider URLs such
-  as `ldap://` or `rmi://`. This targets Kafka-client/Druid-style
-  `sasl.jaas.config` injection before the later JNDI lookup is attempted. The
-  playground and acceptance suite include the Vulhub-shaped Kafka
-  CVE-2023-25194 `POST /druid/indexer/v1/sampler?for=connect` sampler body.
-  The real Java 8 Druid/Kafka Vulhub acceptance starts Druid 25.0.0 on Oracle
-  Java 8u172: baseline reaches an attacker-controlled LDAP listener from the
-  README-shaped sampler request, while protected mode blocks
-  `AppConfigurationEntry.<init>` with `java8_jaas_jndi_remote_provider` before
-  the LDAP connection is made.
+- `jndi_jaas_config` checks directory routing during JAAS login. The historical
+  Druid/Kafka CVE-2023-25194 result recorded a block during configuration
+  construction. Verification of the current rule against that application is pending.
+  [Naming policy](../detection.md#jaas-directory-lookups)
 - `readFile_argument_expansion` covers request-time command argument parsers
   that expand `@file` arguments into local file contents, such as args4j in
   Jenkins CLI handling. The detector is gated to args4j and sensitive absolute
