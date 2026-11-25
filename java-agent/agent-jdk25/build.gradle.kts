@@ -91,8 +91,11 @@ val generateShirudoDefaults = tasks.register("generateShirudoDefaults") {
     group = "build"
     description = "Generates META-INF/ohmyrasp-shirudo.properties for shirudoUpatchJar."
     val outDir = shirudoGeneratedDir
-    inputs.property("shirudoMode", shirudoMode)
-    inputs.property("shirudoLockConfig", shirudoLockConfig)
+    // Local copies: a task action that reads the script's own properties cannot be stored in the configuration cache.
+    val mode = shirudoMode
+    val lockConfig = shirudoLockConfig
+    inputs.property("shirudoMode", mode)
+    inputs.property("shirudoLockConfig", lockConfig)
     outputs.dir(outDir)
     doLast {
         val propsFile = outDir.get().file("META-INF/ohmyrasp-shirudo.properties").asFile
@@ -100,8 +103,8 @@ val generateShirudoDefaults = tasks.register("generateShirudoDefaults") {
         propsFile.writeText(
             """
             standalone=true
-            lock_config=$shirudoLockConfig
-            mode=$shirudoMode
+            lock_config=$lockConfig
+            mode=$mode
             control=none
             log=stderr
             latency_sample=0
