@@ -282,6 +282,8 @@ At a writable Windows file open, the primary agent applies the ordinary file pol
 
 Host-file and generated-script write checks use the destination filesystem. A virtual archive member can have the same spelling as a host path. Writing that member consumes the pending archive name and does not apply host-file policy to its contents. A provider can still perform independently observable host operations.
 
+On the primary agent, a ZIP input stream supplies the stored member name. A `ZipFile` lookup supplies a name only when the JDK returns an input stream. Collecting that metadata leaves application overrides of `getName()` alone. Closing the reader expires its pending observation, including when an outer servlet dispatch is suspended. The backports observe returned entry-name strings and have less information about the reader.
+
 With a pending archive name, the Unix channel hook checks the JDK's validated write flag and the host operand before opening the file. For a relative open against a directory descriptor on Linux it resolves the directory held by that descriptor. When the directory cannot be identified the agent skips that correlation. The evidence records the opening attempt, not a completed extraction. It does not recover names rewritten by an application or passed between threads.
 
 ### Host file deletion

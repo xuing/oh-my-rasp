@@ -1180,13 +1180,26 @@ public final class OhMyRaspHooks {
   }
 
   public static void afterArchiveEntry(Object entry) {
-    try {
-      String name = archiveEntryName(entry);
-      ARCHIVE_ENTRY.observe(name);
-    } catch (Throwable throwable) {
+    afterZipEntryRead(entry, null);
+  }
+
+  public static void afterZipEntryRead(Object entry, Object reader) {
+    if (!(entry instanceof ZipEntry zip)) {
       ARCHIVE_ENTRY.remove();
-      quiet("afterArchiveEntry", throwable);
+      return;
     }
+    // ZipEntry's copy constructor preserves the stored member metadata. An application's
+    // getName override can have side effects or return a different display name.
+    ZipEntry metadata = zip.getClass() == ZipEntry.class ? zip : new ZipEntry(zip);
+    ARCHIVE_ENTRY.observe(reader, metadata.getName());
+  }
+
+  public static void afterZipLookup(Object stream, String selectedName, Object reader) {
+    ARCHIVE_ENTRY.observe(reader, stream == null ? null : selectedName);
+  }
+
+  public static void closeArchiveReader(Object reader) {
+    ARCHIVE_ENTRY.closed(reader);
   }
 
   public static void clearArchiveEntry() {
@@ -1961,16 +1974,6 @@ public final class OhMyRaspHooks {
       return builder.toString();
     }
     return String.valueOf(value);
-  }
-
-  private static String archiveEntryName(Object entry) {
-    if (entry == null) {
-      return "";
-    }
-    if (entry instanceof ZipEntry zipEntry) {
-      return zipEntry.getName();
-    }
-    return invokeString(entry, "getName").orElse("");
   }
 
   private static boolean isXmlParserStack() {

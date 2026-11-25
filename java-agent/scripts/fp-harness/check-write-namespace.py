@@ -36,6 +36,8 @@ def validate(stdout, log, track, mode):
                 "host-bytes": (file_rule, None), "host-replace": (file_rule, None), "host-channel": (archive_rule, "archive_channel_open"),
                 "bound-directory": (archive_rule, "archive_descriptor_open")}
     if track == "main":
+        expected.update({"missing-lookup": None, "closed-reader": None, "closed-during-nested-request": None,
+                         "resolved-lookup": (archive_rule, "archive_channel_open")})
         expected["host-generated-bytes"] = ("writeFile_generated_script", None)
         expected.update(dict.fromkeys(("zip-generated-bytes", "zip-generated-text", "zip-generated-lines")))
     action = "block" if mode == "block" else "log"

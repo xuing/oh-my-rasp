@@ -22,6 +22,11 @@ public final class WeakOwners<T> {
     drain();
     return entries.remove(new Key(owner, null));
   }
+  public T putIfAbsent(Object owner, T value) {
+    drain();
+    T prior = entries.putIfAbsent(new Key(owner, collected), value);
+    return prior == null ? value : prior;
+  }
   public void put(Object owner, T value) {
     drain();
     entries.put(new Key(owner, collected), value);

@@ -4,10 +4,10 @@ package io.ohmyrasp.agent.http;
 public final class ServletDispatchScope<R, C> {
   private final ThreadLocal<R> request;
   private final ThreadLocal<C> companion;
-  private final ThreadLocal<String> archiveEntry;
+  private final ThreadLocal<?> archiveEntry;
   private final ThreadLocal<Saved<R, C>> active = new ThreadLocal<Saved<R, C>>();
 
-  public ServletDispatchScope(ThreadLocal<R> request, ThreadLocal<C> companion, ThreadLocal<String> archiveEntry) {
+  public ServletDispatchScope(ThreadLocal<R> request, ThreadLocal<C> companion, ThreadLocal<?> archiveEntry) {
     this.request = request;
     this.companion = companion;
     this.archiveEntry = archiveEntry;
@@ -54,7 +54,7 @@ public final class ServletDispatchScope<R, C> {
   public void enter(Object servletRequest) {
     Saved<R, C> parent = active.get();
     active.set(parent == null ? new Saved<R, C>(servletRequest, null, null, null, null)
-        : new Saved<R, C>(servletRequest, parent, request.get(), companion.get(), archiveEntry.get()));
+        : new Saved<R, C>(servletRequest, parent, request.get(), companion.get(), restoreLater(archiveEntry)));
     request.remove();
     companion.remove();
     archiveEntry.remove();
@@ -72,7 +72,12 @@ public final class ServletDispatchScope<R, C> {
     active.set(saved.parent);
     request.set(saved.request);
     companion.set(saved.companion);
-    archiveEntry.set(saved.archiveEntry);
+    saved.restoreArchive.run();
+  }
+
+  private static <T> Runnable restoreLater(ThreadLocal<T> slot) {
+    T previous = slot.get();
+    return previous == null ? slot::remove : () -> slot.set(previous);
   }
 
   private static final class Saved<R, C> {
@@ -93,14 +98,14 @@ public final class ServletDispatchScope<R, C> {
     final Saved<R, C> parent;
     final R request;
     final C companion;
-    final String archiveEntry;
+    final Runnable restoreArchive;
 
-    Saved(Object servletRequest, Saved<R, C> parent, R request, C companion, String archiveEntry) {
+    Saved(Object servletRequest, Saved<R, C> parent, R request, C companion, Runnable restoreArchive) {
       this.servletRequest = servletRequest;
       this.parent = parent;
       this.request = request;
       this.companion = companion;
-      this.archiveEntry = archiveEntry;
+      this.restoreArchive = restoreArchive;
     }
   }
 }

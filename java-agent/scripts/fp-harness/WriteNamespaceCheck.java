@@ -41,6 +41,66 @@ public final class WriteNamespaceCheck {
     return bytes.toByteArray();
   }
 
+  static final class DisplayEntry extends ZipEntry {
+    int calls;
+    DisplayEntry(String name) { super(name); }
+    @Override public String getName() { calls++; return "display-only.txt"; }
+  }
+
+  private static void primaryArchiveSources(String mode, Path work) throws Exception {
+    Path target = work.resolve("source.txt"), source = work.resolve("input.zip"), absent = work.resolve("absent.txt");
+    byte[] packed = archive(target.toString());
+    Files.write(source, packed);
+    try (ZipFile input = new ZipFile(source.toFile())) {
+      DisplayEntry missing = new DisplayEntry(absent.toString());
+      attempt("main", mode, "missing-lookup", "weekly", absent, REPORT, false, () -> {
+        if (input.getInputStream(missing) != null) throw new AssertionError("unexpected member");
+        Files.write(absent, REPORT);
+      });
+      if (missing.calls != 0) throw new AssertionError("agent rendered missing member");
+      DisplayEntry selected = new DisplayEntry(target.toString());
+      attempt("main", mode, "resolved-lookup", "weekly", target, REPORT, true, () -> {
+        try (InputStream member = input.getInputStream(selected)) {
+          if (member == null) throw new AssertionError("missing member");
+          try (HttpTransportCheck.Scope nested = new HttpTransportCheck.Scope("main", "monthly", "/nested")) {
+            Files.write(target, REPORT);
+            Files.delete(target);
+          }
+          try (SeekableByteChannel out = target.getFileSystem().provider().newByteChannel(target,
+              EnumSet.of(StandardOpenOption.WRITE, StandardOpenOption.CREATE_NEW))) {
+            out.write(ByteBuffer.wrap(REPORT));
+          }
+        }
+      });
+      if (selected.calls != 0) throw new AssertionError("agent rendered selected member");
+      Files.deleteIfExists(target);
+      DisplayEntry[] read = new DisplayEntry[1];
+      attempt("main", mode, "closed-reader", "weekly", target, REPORT, false, () -> {
+        try (ZipInputStream reader = new ZipInputStream(new ByteArrayInputStream(packed)) {
+          @Override protected ZipEntry createZipEntry(String name) { return read[0] = new DisplayEntry(name); }
+        }) {
+          if (reader.getNextEntry() != read[0]) throw new AssertionError("wrong published member");
+        }
+        Files.write(target, REPORT);
+      });
+      if (read[0] == null || read[0].calls != 0) throw new AssertionError("agent called application getter");
+      Files.delete(target);
+      attempt("main", mode, "closed-during-nested-request", "weekly", target, REPORT, false, () -> {
+        try (ZipInputStream outer = new ZipInputStream(new ByteArrayInputStream(packed))) {
+          if (outer.getNextEntry() == null) throw new AssertionError("no archive entry");
+          try (HttpTransportCheck.Scope nested = new HttpTransportCheck.Scope("main", "monthly", "/nested")) {
+            outer.closeEntry();
+          }
+          Files.write(target, REPORT);
+        }
+      });
+    } finally {
+      Files.deleteIfExists(absent);
+      Files.deleteIfExists(target);
+      Files.deleteIfExists(source);
+    }
+  }
+
   public static void main(String[] args) throws Exception {
     String track = args[0], mode = args[1];
     Path temp = Files.createTempDirectory("report-namespace"), zipFile = temp.resolve("exports.zip");
@@ -64,6 +124,7 @@ public final class WriteNamespaceCheck {
       } catch (ProviderMismatchException expected) {
         if (gets[0] != 1) throw new AssertionError("repeated path getter");
       }
+      if (track.equals("main")) primaryArchiveSources(mode, temp);
       Path members = Files.createDirectories(zip.getPath("/webapps"));
       Path member = members.resolve("weekly.jsp");
       attempt(track, mode, "zip-bytes", "weekly", member, REPORT, false, () -> Files.write(member, REPORT));
