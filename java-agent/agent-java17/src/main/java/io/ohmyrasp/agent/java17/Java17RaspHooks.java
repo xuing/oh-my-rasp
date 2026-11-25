@@ -185,7 +185,7 @@ public final class Java17RaspHooks {
     boolean deferMultipart = beforeServlet
         && requestHeader(request, "Content-Type").trim().regionMatches(true, 0, "multipart/", 0, 10);
     Object raw = deferMultipart ? null : invokeServlet(request, "getParameterMap");
-    Map<?, ?> parameters = raw instanceof Map<?, ?> ? (Map<?, ?>) raw : ServletQueryParameters.parse(requestQuery(request));
+    Map<?, ?> parameters = raw instanceof Map<?, ?> map ? map : ServletQueryParameters.parse(requestQuery(request));
     CURRENT_REQUEST.set(new RequestSnapshot(parameters));
     captureRequestControlledUrls(parameters);
     Finding finding = classifyHttpRequest(request, parameters);
@@ -248,7 +248,7 @@ public final class Java17RaspHooks {
 
   public static void beforeSparkSubmitDispatch(boolean creation, Object request, Class<?> requestApi) {
     if (RaspRuntime.detectionOff() || !SparkSubmitRole.denied(creation, request, requestApi)) return;
-    Finding finding = new Finding("java17_request_remote_job_submission", 95,
+    var finding = new Finding("java17_request_remote_job_submission", 95,
         "Spark job submission lacks the deployment's required role", "operation", "handleSubmit", "required_submit_role_denied");
     boolean block = shouldBlock();
     appendEvent(finding, "SparkRest.handleSubmit", block ? "block" : "log");
@@ -261,7 +261,7 @@ public final class Java17RaspHooks {
   public static void afterYarnSubmitPrepared(Object prepared, Object request, Class<?> requestApi) {
     if (prepared == null || RaspRuntime.detectionOff()
         || !ServletSubmitRole.denied("ohmyrasp.yarn.submitRole", request, requestApi)) return;
-    Finding finding = new Finding("java17_request_remote_job_submission", 95,
+    var finding = new Finding("java17_request_remote_job_submission", 95,
         "YARN job submission lacks the deployment's required role", "operation", "SubmitApplicationRequest.newInstance",
         "required_submit_role_denied");
     boolean block = shouldBlock();
@@ -271,7 +271,7 @@ public final class Java17RaspHooks {
 
   public static void beforeSpringProcessStart(ProcessBuilder builder) {
     if (RaspRuntime.detectionOff() || !io.ohmyrasp.agent.rules.product.spring.SpringProcessInit.selects(builder)) return;
-    Finding finding = new Finding("java17_command_execution_exploit_primitive", 95,
+    var finding = new Finding("java17_command_execution_exploit_primitive", 95,
         "Spring dispatched an HTTP-defined initializer to ProcessBuilder.start",
         "method", "ProcessBuilder.start", "remote_bean_init_dispatch");
     boolean block = shouldBlock();
@@ -310,7 +310,7 @@ public final class Java17RaspHooks {
 
   /** Compatibility entry for callers that explicitly supply a lookup string. */
   public static void beforeJndiLookup(Object name) {
-    if (name instanceof String) onJndiRoute((String) name, "declared_lookup");
+    if (name instanceof String lookup) onJndiRoute(lookup, "declared_lookup");
   }
 
   public static void beforeJndiProviderLookup(String url, Object provider, String operation) {
@@ -332,7 +332,7 @@ public final class Java17RaspHooks {
 
   public static void beforeOpenWireThrowable(Class<?> selected) {
     if (RaspRuntime.detectionOff() || selected == null || Throwable.class.isAssignableFrom(selected)) return;
-    Finding finding = new Finding("java17_deserialization_protocol_class", 100,
+    var finding = new Finding("java17_deserialization_protocol_class", 100,
         "OpenWire selected a non-Throwable constructor for an exception",
         "class", selected.getName(), "non_throwable_constructor");
     boolean block = shouldBlock();
@@ -355,7 +355,7 @@ public final class Java17RaspHooks {
     if (selected == null || RaspRuntime.detectionOff()) return false;
     String name = selected.getName();
     if (!StreamTypeNames.listed(name) || !BeanShellTypes.permitsTypeCheck(selected)) return false;
-    Finding finding = new Finding("java17_deserialization_gadget_class", deserializationConfidence(name),
+    var finding = new Finding("java17_deserialization_gadget_class", deserializationConfidence(name),
         "Stream resolver selected a listed serialization type", "class", name, basis);
     boolean block = shouldBlock();
     appendEvent(finding, hook, block ? "block" : "log");
@@ -367,7 +367,7 @@ public final class Java17RaspHooks {
 
   public static void beforeHessianAllocation(Class<?> selected, String basis) {
     if (RaspRuntime.detectionOff() || !io.ohmyrasp.agent.rules.product.hessian.HessianAllocationTypes.listed(selected)) return;
-    Finding finding = new Finding("java17_deserialization_hessian_type", 95,
+    var finding = new Finding("java17_deserialization_hessian_type", 95,
         "Hessian selected a listed type for allocation", "class", selected.getName(), basis);
     boolean block = shouldBlock();
     appendEvent(finding, "Hessian.allocate", block ? "block" : "log");
@@ -410,7 +410,7 @@ public final class Java17RaspHooks {
     if (!direct && (walk == null || !walk.selected)) return;
     String root = HostDirectory.protectedRoot(path, opened, relative);
     if (root.isEmpty()) return;
-    Finding finding = new Finding("java17_directory_userinput", 90, "Request selected a protected directory listing",
+    var finding = new Finding("java17_directory_userinput", 90, "Request selected a protected directory listing",
         "path", root, direct ? "selected_directory" : "selected_directory_walk");
     boolean block = shouldBlock();
     String operation = opened == null ? "FileSystem.list" : relative ? "SecureDirectoryStream.open" : "DirectoryStream.open";
@@ -432,11 +432,11 @@ public final class Java17RaspHooks {
     if (RaspRuntime.detectionOff()) return;
     RequestSnapshot request = CURRENT_REQUEST.get();
     if (request == null || request.parameterValues == null) return;
-    HostDelete entry = new HostDelete(path, directoryFd, directory != null, true);
+    var entry = new HostDelete(path, directoryFd, directory != null, true);
     for (String input : request.parameterValues) {
       if (entry.match(input) != HostDelete.Basis.ESCAPING_ENTRY) continue;
       if (directory != null && !HostDelete.hasEntry(directory, path, removeDirectory)) return;
-      Finding finding = new Finding("deleteFile_userinput", 85, "Request selected an entry outside the base directory",
+      var finding = new Finding("deleteFile_userinput", 85, "Request selected an entry outside the base directory",
           "path", entry.path(), "escaping_entry");
       boolean block = shouldBlock();
       appendEvent(finding, directory == null ? "host_entry_removal" : "descriptor_relative_unlink", block ? "block" : "log");
@@ -475,7 +475,7 @@ public final class Java17RaspHooks {
     if (attempt == null) return;
     try {
       if (!attempt.hasDirective() || RaspRuntime.detectionOff()) return;
-      Finding finding = new Finding("java17_file_generated_plot_script_command", 91,
+      var finding = new Finding("java17_file_generated_plot_script_command", 91,
           "A plot directive reached its open output stream", "path", attempt.path(), "plot_stream_write");
       boolean block = shouldBlock();
       appendEvent(finding, "FileOutputStream.write", block ? "block" : "log");
@@ -617,7 +617,7 @@ public final class Java17RaspHooks {
   }
 
   private static void emitHttpDestination(Finding finding, String hook, String basis, boolean block, String peer) {
-    Finding observed = new Finding(finding.algorithm, finding.confidence, finding.message,
+    var observed = new Finding(finding.algorithm, finding.confidence, finding.message,
         finding.detailKey, HttpTransportObservation.recordedAddress(finding.detailValue), basis);
     appendEvent(observed, hook, block ? "block" : "log", peer);
     if (block) throw new Java17RaspBlockException("OhMyRASP blocked an outbound HTTP destination");
@@ -948,7 +948,7 @@ public final class Java17RaspHooks {
   private static void inspectJmxFileWrite(String path, String operation) {
     JmxWriteScope scope = JmxWriteScope.current();
     if (RaspRuntime.detectionOff() || !SCRIPT_FILE_WRITE.matcher(normalizePath(path)).matches() || !scope.selects(path)) return;
-    Finding finding = new Finding("java17_jmx_script_file_write", 90,
+    var finding = new Finding("java17_jmx_script_file_write", 90,
         "A managed operation opens its selected script destination for writing", "path", path, "selected_write_open");
     boolean block = shouldBlock();
     appendEvent(finding, operation, block ? "block" : "log");
@@ -992,7 +992,7 @@ public final class Java17RaspHooks {
 
   public static void beforeDataEaseFilterContinuation(String rejection, Object request) {
     if (rejection == null || RaspRuntime.detectionOff()) return;
-    Finding finding = new Finding("java17_request_jwt_verification_failure", 95,
+    var finding = new Finding("java17_request_jwt_verification_failure", 95,
         "Authentication filter continued the request after rejecting its credential",
         "exception", rejection, "rejected_token_dispatch");
     boolean block = shouldBlock();
@@ -1026,11 +1026,11 @@ public final class Java17RaspHooks {
   }
 
   public static void rethrowIfJava17RaspBlock(Object throwable) {
-    Throwable current = throwable instanceof Throwable ? (Throwable) throwable : null;
+    Throwable current = throwable instanceof Throwable thrown ? thrown : null;
     int depth = 0;
     while (current != null && depth < 16) {
-      if (current instanceof Java17RaspBlockException) {
-        throw (Java17RaspBlockException) current;
+      if (current instanceof Java17RaspBlockException exception) {
+        throw exception;
       }
       current = current.getCause();
       depth++;
@@ -2659,7 +2659,7 @@ public final class Java17RaspHooks {
 
   private static String normalizeParameterName(String name) {
     String value = lower(name == null ? "" : name);
-    StringBuilder normalized = new StringBuilder(value.length());
+    var normalized = new StringBuilder(value.length());
     for (int i = 0; i < value.length(); i++) {
       char c = value.charAt(i);
       if ((c >= 'a' && c <= 'z') || (c >= '0' && c <= '9')) {
@@ -2673,8 +2673,8 @@ public final class Java17RaspHooks {
     if (value == null || values.size() >= 32) {
       return;
     }
-    if (value instanceof Iterable<?>) {
-      for (Object item : (Iterable<?>) value) {
+    if (value instanceof Iterable<?> iterable) {
+      for (Object item : iterable) {
         if (values.size() >= 32) {
           break;
         }
@@ -2734,7 +2734,7 @@ public final class Java17RaspHooks {
     if (headerBytes.length == 0) {
       return "";
     }
-    String header = new String(headerBytes, StandardCharsets.UTF_8);
+    var header = new String(headerBytes, StandardCharsets.UTF_8);
     Matcher matcher = JWT_HMAC_ALGORITHM.matcher(header);
     return matcher.find() ? matcher.group(1) : "";
   }
@@ -3008,7 +3008,7 @@ public final class Java17RaspHooks {
   }
 
   private static String joinPathSegments(List<String> segments) {
-    StringBuilder builder = new StringBuilder();
+    var builder = new StringBuilder();
     for (int i = 0; i < segments.size(); i++) {
       if (i > 0) {
         builder.append('/');
@@ -3020,7 +3020,7 @@ public final class Java17RaspHooks {
 
   private static String stripServletPathParameters(String path) {
     String[] segments = path.split("/", -1);
-    StringBuilder stripped = new StringBuilder(path.length());
+    var stripped = new StringBuilder(path.length());
     for (int i = 0; i < segments.length; i++) {
       if (i > 0) {
         stripped.append('/');
@@ -3036,7 +3036,7 @@ public final class Java17RaspHooks {
     if (value == null || value.indexOf('%') < 0) {
       return value == null ? "" : value;
     }
-    StringBuilder decoded = new StringBuilder(value.length());
+    var decoded = new StringBuilder(value.length());
     for (int i = 0; i < value.length(); i++) {
       char ch = value.charAt(i);
       if (ch == '%' && i + 2 < value.length()) {
@@ -3061,7 +3061,7 @@ public final class Java17RaspHooks {
     if (value == null || value.trim().length() == 0) {
       return value == null ? "" : value;
     }
-    StringBuilder decoded = new StringBuilder(value.length());
+    var decoded = new StringBuilder(value.length());
     boolean changed = false;
     for (int i = 0; i < value.length(); i++) {
       int first = encodedByteValue(value, i);
@@ -3139,7 +3139,7 @@ public final class Java17RaspHooks {
     if (value == null || lower(value).indexOf("%u") < 0) {
       return value == null ? "" : value;
     }
-    StringBuilder decoded = new StringBuilder(value.length());
+    var decoded = new StringBuilder(value.length());
     for (int i = 0; i < value.length(); i++) {
       char ch = value.charAt(i);
       if (ch == '%'
@@ -3170,7 +3170,7 @@ public final class Java17RaspHooks {
     if (value == null || value.trim().length() == 0) {
       return value == null ? "" : value;
     }
-    StringBuilder decoded = new StringBuilder(value.length());
+    var decoded = new StringBuilder(value.length());
     boolean changed = false;
     for (int i = 0; i < value.length(); i++) {
       char ch = value.charAt(i);
@@ -3362,7 +3362,7 @@ public final class Java17RaspHooks {
       return api.getMethod(methodName).invoke(request);
     } catch (java.lang.reflect.InvocationTargetException failure) {
       Throwable cause = failure.getCause();
-      if (cause instanceof Java17RaspBlockException) throw (Java17RaspBlockException) cause;
+      if (cause instanceof Java17RaspBlockException exception) throw exception;
       return null;
     } catch (ReflectiveOperationException | SecurityException ignored) {
       return null;
@@ -3495,8 +3495,8 @@ public final class Java17RaspHooks {
   }
 
   private static String javaBeansTargetType(Object target) {
-    if (target instanceof Class<?>) {
-      return ((Class<?>) target).getName();
+    if (target instanceof Class<?> type) {
+      return type.getName();
     }
     return target == null ? "" : target.getClass().getName();
   }
@@ -3504,8 +3504,8 @@ public final class Java17RaspHooks {
   private static List<String> javaBeansArguments(Object target, Object arguments) {
     List<String> values = new ArrayList<String>();
     collectJavaBeansArguments(values, arguments, 0);
-    if (target instanceof ProcessBuilder) {
-      List<String> command = ((ProcessBuilder) target).command();
+    if (target instanceof ProcessBuilder builder) {
+      List<String> command = builder.command();
       for (String item : command) {
         if (values.size() >= 64) {
           break;
@@ -3522,8 +3522,8 @@ public final class Java17RaspHooks {
     if (value == null || depth > 3 || values.size() >= 64) {
       return;
     }
-    if (value instanceof Iterable<?>) {
-      for (Object item : (Iterable<?>) value) {
+    if (value instanceof Iterable<?> iterable) {
+      for (Object item : iterable) {
         if (values.size() >= 64) {
           break;
         }
@@ -3569,7 +3569,7 @@ public final class Java17RaspHooks {
   }
 
   private static String joinList(List<String> values) {
-    StringBuilder builder = new StringBuilder();
+    var builder = new StringBuilder();
     if (values == null) {
       return "";
     }
@@ -3601,8 +3601,8 @@ public final class Java17RaspHooks {
     if (value == null) {
       return sources;
     }
-    if (value instanceof Iterable<?>) {
-      for (Object item : (Iterable<?>) value) {
+    if (value instanceof Iterable<?> iterable) {
+      for (Object item : iterable) {
         String source = javaSourceText(item);
         if (source.length() > 0) {
           sources.add(source);
@@ -3610,8 +3610,7 @@ public final class Java17RaspHooks {
       }
       return sources;
     }
-    if (value instanceof Object[]) {
-      Object[] values = (Object[]) value;
+    if (value instanceof Object[] values) {
       for (int i = 0; i < values.length; i++) {
         String source = javaSourceText(values[i]);
         if (source.length() > 0) {
@@ -3742,8 +3741,7 @@ public final class Java17RaspHooks {
     if (value == null) {
       return null;
     }
-    if (value instanceof java.net.URI) {
-      java.net.URI uri = (java.net.URI) value;
+    if (value instanceof java.net.URI uri) {
       String protocol = lower(uri.getScheme());
       String host = normalizeHost(uri.getHost());
       String rawPath = uri.getRawPath() == null || uri.getRawPath().isEmpty() ? "/" : uri.getRawPath();
@@ -3752,8 +3750,7 @@ public final class Java17RaspHooks {
       return new UrlParts(protocol, host, rawPath, HttpTransportObservation.address(uri),
           protocol + "://" + NetworkHost.destinationKey(host) + ":" + port + rawPath + (query == null ? "" : "?" + query));
     }
-    if (value instanceof URL) {
-      URL url = (URL) value;
+    if (value instanceof URL url) {
       return new UrlParts(
           lower(url.getProtocol()),
           normalizeHost(url.getHost()),
@@ -3762,7 +3759,7 @@ public final class Java17RaspHooks {
           urlComparisonKey(url));
     }
     try {
-      URL url = new URL(String.valueOf(value));
+      var url = new URL(String.valueOf(value));
       return new UrlParts(
           lower(url.getProtocol()),
           normalizeHost(url.getHost()),
@@ -3809,8 +3806,8 @@ public final class Java17RaspHooks {
       }
       return;
     }
-    if (value instanceof Iterable<?>) {
-      for (Object element : (Iterable<?>) value) {
+    if (value instanceof Iterable<?> iterable) {
+      for (Object element : iterable) {
         addRequestControlledUrl(urls, element);
         if (urls.size() >= 16) {
           return;
@@ -3833,14 +3830,13 @@ public final class Java17RaspHooks {
   }
 
   private static void addRequestControlledUrl(List<String> urls, Object value) {
-    if (value instanceof String) {
-      String path = (String) value;
+    if (value instanceof String path) {
       if (path.startsWith("/") && !path.startsWith("//") && LOOPBACK_ADMIN_PATH.matcher(path).find()) {
         if (!urls.contains(path)) urls.add(path);
         return;
       }
     }
-    String archive = value instanceof String ? HttpTransportObservation.archiveAddress((String) value) : null;
+    String archive = value instanceof String text ? HttpTransportObservation.archiveAddress(text) : null;
     String key = urlComparisonKey(archive == null ? value : archive);
     if (key.length() > 0 && !urls.contains(key)) {
       urls.add(key);
@@ -3862,7 +3858,7 @@ public final class Java17RaspHooks {
       return "";
     }
     try {
-      URL url = value instanceof URL ? (URL) value : new URL(String.valueOf(value).trim());
+      URL url = value instanceof URL given ? given : new URL(String.valueOf(value).trim());
       String protocol = lower(url.getProtocol());
       if (!"http".equals(protocol) && !"https".equals(protocol)) {
         return "";
@@ -3932,8 +3928,8 @@ public final class Java17RaspHooks {
     if (options == null) {
       return false;
     }
-    if (options instanceof Iterable<?>) {
-      for (Object option : (Iterable<?>) options) {
+    if (options instanceof Iterable<?> iterable) {
+      for (Object option : iterable) {
         if (isNioWriteOption(option)) {
           return true;
         }
@@ -3955,8 +3951,8 @@ public final class Java17RaspHooks {
 
   private static boolean isNioWriteOption(Object option) {
     return option == java.nio.file.StandardOpenOption.WRITE || option == java.nio.file.StandardOpenOption.APPEND
-        || (option instanceof String && ("WRITE".equalsIgnoreCase((String) option)
-            || "APPEND".equalsIgnoreCase((String) option)));
+        || (option instanceof String name && ("WRITE".equalsIgnoreCase(name)
+            || "APPEND".equalsIgnoreCase(name)));
   }
 
   private static void emitFileFinding(
@@ -3984,8 +3980,8 @@ public final class Java17RaspHooks {
     if (path == null) {
       return "";
     }
-    if (path instanceof File) {
-      return ((File) path).getPath();
+    if (path instanceof File file) {
+      return file.getPath();
     }
     return String.valueOf(path);
   }
@@ -4017,8 +4013,8 @@ public final class Java17RaspHooks {
         // Snapshot values at request entry. Framework-owned parameter arrays can change later.
         parameterValues = new ArrayList<String>();
         for (Object value : parameters.values()) {
-          if (value instanceof String[]) {
-            java.util.Collections.addAll(parameterValues, (String[]) value);
+          if (value instanceof String[] strings) {
+            java.util.Collections.addAll(parameterValues, strings);
           } else {
             List<String> items = new ArrayList<String>();
             collectParameterValues(items, value);
@@ -4078,7 +4074,7 @@ public final class Java17RaspHooks {
   }
 
   private static String join(String[] command) {
-    StringBuilder builder = new StringBuilder();
+    var builder = new StringBuilder();
     for (int i = 0; i < command.length; i++) {
       if (command[i] == null || command[i].trim().length() == 0) {
         continue;
@@ -4164,37 +4160,24 @@ public final class Java17RaspHooks {
   }
 
   private static String json(String value) {
-    StringBuilder builder = new StringBuilder(value.length() + 16);
+    var builder = new StringBuilder(value.length() + 16);
     for (int i = 0; i < value.length(); i++) {
       char ch = value.charAt(i);
       switch (ch) {
-        case '"':
-          builder.append("\\\"");
-          break;
-        case '\\':
-          builder.append("\\\\");
-          break;
-        case '\b':
-          builder.append("\\b");
-          break;
-        case '\f':
-          builder.append("\\f");
-          break;
-        case '\n':
-          builder.append("\\n");
-          break;
-        case '\r':
-          builder.append("\\r");
-          break;
-        case '\t':
-          builder.append("\\t");
-          break;
-        default:
+        case '"' -> builder.append("\\\"");
+        case '\\' -> builder.append("\\\\");
+        case '\b' -> builder.append("\\b");
+        case '\f' -> builder.append("\\f");
+        case '\n' -> builder.append("\\n");
+        case '\r' -> builder.append("\\r");
+        case '\t' -> builder.append("\\t");
+        default -> {
           if (ch < 0x20) {
             builder.append(String.format("\\u%04x", Integer.valueOf(ch)));
           } else {
             builder.append(ch);
           }
+        }
       }
     }
     return builder.toString();

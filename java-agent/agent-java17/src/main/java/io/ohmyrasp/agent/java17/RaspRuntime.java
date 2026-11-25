@@ -207,7 +207,7 @@ public final class RaspRuntime {
         return;
       }
       controlMtime = mtime;
-      String text = new String(Files.readAllBytes(CONTROL_PATH), StandardCharsets.UTF_8);
+      var text = new String(Files.readAllBytes(CONTROL_PATH), StandardCharsets.UTF_8);
       Matcher matcher = MODE_PATTERN.matcher(text);
       if (matcher.find()) {
         Mode parsed = parseMode(matcher.group(1));
@@ -395,7 +395,7 @@ public final class RaspRuntime {
   }
 
   private static void appendBatch(String logPath, List<String> lines) {
-    File target = new File(logPath);
+    var target = new File(logPath);
     File parent = target.getParentFile();
     if (parent != null && !parent.exists() && !parent.mkdirs()) {
       System.err.println("[OHMYRASP-JAVA17] could not create log directory: " + parent);
@@ -425,7 +425,7 @@ public final class RaspRuntime {
   }
 
   private static Properties loadBakedProperties() {
-    Properties props = new Properties();
+    var props = new Properties();
     try (InputStream stream = RaspRuntime.class.getResourceAsStream(SHIRUDO_CONFIG_RESOURCE)) {
       if (stream != null) {
         props.load(stream);
