@@ -35,21 +35,18 @@ covered section after the baseline/protected acceptance rows pass.
 
 ## Source Audit
 
-Last audited Vulhub snapshot: `/tmp/vulhub-ohmyrasp-20260603` at commit
-`d277a86`; `git pull --ff-only` returned `Already up to date` on 2026-06-11.
-
-**Root-completeness re-verified 2026-06-20.** An exhaustive enumeration of all
-152 environments in the snapshot — byte-identical to the live clone at
-`/home/ubuntu/vulhub` (same commit `d277a86`, no dir diffs) — confirms every
-Java/JVM environment maps to one of the 53 roots below. The only non-covered
-directories that even reference a Java/Tomcat base image are `base/` (Vulhub's
-shared base images, not a vulnerability env) and `httpd/` (an Apache HTTP Server
-/ C env whose Tomcat image is only an SSRF proxy backend, not a Java app a Java
-RASP can protect); `zabbix/` and the remainder are non-Java. **No uncovered Java
-vulnerability environment remains in the corpus at this commit.** The
-"Continue expanding Java 8/11/17" items below therefore refer to deeper
-per-root CVE / runtime-matrix depth, **not** new roots; only a future upstream
-`vulhub` pull could introduce a new Java root to scope.
+At snapshot `d277a86`, the [catalog audit](../../java-agent/scripts/check-vulhub-java-coverage.py)
+enumerates the upstream manifest and also reports Compose environments and
+README aliases missing from that manifest. Its `--evidence-report` output
+identifies which catalog entries fall within the Java roots used by this
+checklist. A script reference or ledger entry establishes inventory coverage.
+The evidence for a runtime block depends on the application, agent build and
+observed outcome. The [offline decision check](../../java-agent/scripts/check-vulhub-event-decisions.py)
+can compare retained hook arguments with current detector decisions. For servlet path-confusion events it checks both the decision and the recorded normalization of the original URI. A classifier match leaves the original dispatch and authorization unverified. Older JMX events combine the bean name, operation and a display string. This field cannot establish successful target lookup or the type of the supplied argument. Historical host-file
+reads with parent segments also depend on the original filesystem layout. The offline
+check excludes those arguments from execution when the layout is missing. A retained
+filename alone cannot identify the originating HTTP input or attachment data source.
+See [host file reads](../detection.md#host-file-reads).
 
 Java/JVM source scope currently covers 53 Vulhub roots and 148 README
 environment or alias paths:
@@ -572,6 +569,10 @@ coverage, separate from the Java 25 behavioral replay suite:
   into Solr's error response; the protected Java 8 agent starts quietly and
   blocks Xerces external entity resolution with
   `java8_xxe_external_entity_protocol` before passwd content is disclosed.
+  That run recorded the entity source at parser entry. Later normal-workload
+  validation on the same Solr image exercised XML document updates and reads
+  against a disposable core. The revised hook checks the parser's transport
+  boundary as described in [Algorithm Coverage](algorithm-coverage.md).
 - [x] Run the first real Java 8 Solr RemoteStreaming Vulhub application
   acceptance: `scripts/acceptance-vulhub-solr-remotestreaming-java8.sh`
   starts `vulhub/solr:8.8.1` baseline/protected containers for the
@@ -633,6 +634,11 @@ coverage, separate from the Java 25 behavioral replay suite:
   protected Java 8 agent starts quietly, keeps the safe login quiet, and blocks
   Nashorn script compilation with `java8_script_engine_runtime_execution`
   before command output is produced.
+  Following the JDBC instrumentation changes, the Spring Boot applications
+  from the H2 environments in this ledger were also checked on Java 8 with
+  ordinary Console report queries. The HTML result cells contained the
+  expected values and the protected runs emitted no detections. These checks
+  cover normal operation of the original application binaries.
 - [x] Run the first real Java 8 AJ-Report Vulhub application acceptance:
   `scripts/acceptance-vulhub-aj-report-java8.sh` starts
   `vulhub/aj-report:1.4.0` plus MySQL 5.7 baseline/protected container pairs
@@ -851,7 +857,9 @@ coverage, separate from the Java 25 behavioral replay suite:
   `href="file:///etc/hosts"` reference and returns the base64-encoded hosts
   file in the SOAP fault; the protected Java 8 agent starts quietly and blocks
   the lower-level local file read with `java8_file_sensitive_read` before
-  hosts content is returned.
+  hosts content is returned in that historical run. Its log retains the path only.
+  The [current local attachment rule](../detection.md#host-file-reads) also uses the
+  originating reference and the consuming data source.
 - [x] Run the first real Java 8 Alibaba Nacos Vulhub application acceptance:
   `scripts/acceptance-vulhub-nacos-java8.sh` starts
   `vulhub/nacos:1.4.0` baseline/protected containers for CVE-2021-29442 on
@@ -1068,6 +1076,11 @@ coverage, separate from the Java 25 behavioral replay suite:
   `/tmp/ohmyrasp-rocketmq33246-success`; the protected Java 8 agent starts
   quietly and blocks the filter-server `Runtime.exec(String[])` shell command
   with `java8_command_execution_shell_meta` before the marker file is created.
+  After the shell-source rule changed, the original broker image passed
+  normal cluster and topic reads with the updated agent. The vendor bytecode
+  also contains the expected direct process call from the configured launcher
+  helper. These checks establish normal behavior and instrumentation
+  applicability. Current end-to-end blocking still needs independent evidence.
 - [x] Run the first real Java 8 Apache RocketMQ NameServer Vulhub application
   acceptance: `scripts/acceptance-vulhub-rocketmq-37582-java8.sh` starts
   `vulhub/rocketmq:5.1.0` baseline/protected NameServer containers for
@@ -1181,8 +1194,11 @@ coverage, separate from the Java 25 behavioral replay suite:
   both `uno.py` and the marker untouched.
 - [x] Extend Java 8/11/17 archive hooks after the kkFileView ZipSlip gap:
   SevenZipBinding `net.sf.sevenzipjbinding.simple.impl.SimpleInArchiveItemImpl`
-  `getPath()` results are now correlated with the next Java file-write sink,
-  matching the existing `ZipEntry.getName()` traversal behavior.
+  `getPath()` and `ZipEntry.getName()` supply the member name. The
+  [archive path check](../../java-agent/shared/src/main/java/io/ohmyrasp/agent/file/EscapingPath.java)
+  compares the name with the observed write path. The retained kkFileView
+  path pair can be checked offline. The event contains neither the resolved
+  extraction root nor the resulting filesystem state.
 - [x] Refine Java 8/11/17 command hooks after the kkFileView startup false
   positive: `cn.keking.service.OfficePluginManager` LibreOffice cleanup
   commands such as the `soffice.bin` `ps|grep|wc` and `awk ... | sh` probes
@@ -1282,6 +1298,8 @@ coverage, separate from the Java 25 behavioral replay suite:
   positive: low-risk `stty ... < /dev/tty` terminal state probes without shell
   separators, pipelines, command substitution, or output redirection remain
   quiet, while generic shell metacharacter command chains still log or block.
+  The updated agent also passed normal OpenTSDB metric writes and reads with
+  HBase startup after the command-specific terminal exception was removed.
 - [x] Re-run the LTS Tomcat compatibility matrix after the OpenTSDB generated
   plot script file-content hook and HBase TTY probe command refinement on
   2026-06-05: `scripts/acceptance-java17.sh` passed Tomcat 11 -> 10.1 -> 9,
@@ -1826,10 +1844,9 @@ coverage, separate from the Java 25 behavioral replay suite:
   and Jasper JSP compilation outputs are ignored, while runtime writes to
   `webapps/ROOT/*.jsp` outside those deployment/compilation stacks remain
   covered.
-- [x] Refine Java 8/11/17 sensitive file-read false-positive handling from the
-  HertzBeat 1.4.4 protected startup test: Netty hosts-file resolver stack reads
-  of `/etc/hosts` are ignored, while `/etc/passwd` and other sensitive files
-  remain covered even from the same Netty-shaped stack.
+- [x] The historical HertzBeat startup test identified a normal hosts-file read.
+  The [host file-read rules](../detection.md#host-file-reads) now use the filesystem and
+  request evidence across callers, including Netty.
 - [ ] Continue expanding Java 11 Vulhub-era acceptance beyond the current real
   ActiveMQ 5.17.3, Spring WebMVC 5.3.17, HertzBeat 1.4.4, HugeGraph 1.2.0,
   Metabase 0.40.4, and Metabase 0.46.6 evidence before claiming complete
@@ -1959,7 +1976,9 @@ coverage, separate from the Java 25 behavioral replay suite:
   `url` to an isolated listener; the protected Java 17 agent keeps startup
   quiet, blocks the same `URL.openConnection` sink with
   `java17_ssrf_request_parameter_url`, and the protected listener receives no
-  relay request.
+  relay request. That run recorded the connection factory. Current coverage
+  needs an observed transport and route under the [HTTP transport rules](../detection.md#http-transport-evidence).
+  The current GeoServer application outcome remains unverified.
 - [x] Extend Java 8/11/17 servlet request hooks with OGC CQL/FILTER SQL
   injection classification: OGC `CQL_FILTER`, `ECQL_FILTER`, and `FILTER`
   parameters carrying nested `SELECT`, `CAST(SELECT ...)`, SQL comments, or
@@ -2080,11 +2099,9 @@ coverage, separate from the Java 25 behavioral replay suite:
   probes `cat /etc/os-release | grep ^ID`, `/sbin/ldconfig -p`, and
   `uname -o` are ignored while arbitrary shell commands and exploit-grade
   Spring bean-init process sinks remain covered.
-- [x] Refine Java 8/11/17 URL false-positive handling from the DataEase 2.10.7
-  protected startup test: exact local APISIX admin self-checks on
-  `http://127.0.0.1:9180/apisix/admin/...` are ignored only from the DataEase
-  `XpackRouteManage` Spring ready-event stack, while the same loopback admin
-  URL outside that startup stack still blocks as `javaX_ssrf_loopback_admin`.
+- [x] A historical DataEase startup check motivated a stack exception for its
+  configured APISIX self-check. The current HTTP rules use destination source
+  and transport evidence across applications. The stack exception was removed.
 - [x] Re-run the full LTS Tomcat matrix after the DataEase APISIX startup URL
   false-positive refinement: `scripts/acceptance-java17.sh` passed Tomcat 11
   -> 10.1 -> 9, `scripts/acceptance-java11.sh` passed Tomcat 10.1 -> 9, and
@@ -2201,19 +2218,14 @@ coverage, separate from the Java 25 behavioral replay suite:
   `scripts/acceptance-java17.sh` passed Tomcat 11 -> 10.1 -> 9,
   `scripts/acceptance-java11.sh` passed Tomcat 10.1 -> 9, and
   `scripts/acceptance-java8.sh` passed Tomcat 10.0 -> 9 -> 8.5.
-- [x] Extend Java 8/11/17 JDBC-era transformers to MyBatis
-  `org.apache.ibatis.mapping.BoundSql`: constructor-time checks now inspect
-  order-by metadata carried by request objects such as `orders[].type`,
-  `orders[].name`, and `orders[].prefix`, emit `java8_sql_identifier_injection`,
-  `java11_sql_identifier_injection`, or `java17_sql_identifier_injection` for
-  SQL control syntax, keep ordinary sort metadata such as `desc` quiet, and
-  log only source, parameter, reason, and value length. Real Vulhub evidence is
-  `scripts/acceptance-vulhub-metersphere-45788-java8.sh`: baseline
-  MeterSphere 1.15.4 on OpenJDK 8 accepts the default login, creates the
-  testcase-list context, and delays on the injected sort direction, while
-  protected mode blocks at `MyBatis.BoundSql` with
-  `java8_sql_identifier_injection` without logging the session id, CSRF token,
-  or raw SQL value.
+- [x] Historical MeterSphere case-list acceptance recorded a Java 8
+  `java8_sql_identifier_injection` event at `MyBatis.BoundSql`. Earlier
+  agents inspected order metadata at construction. The retained event lacks
+  the rendered SQL and its JDBC handoff. The [current mapper rule](../detection.md#mybatis-dynamic-sql)
+  follows actual substitutions to JDBC. Normal project-list queries were
+  checked with the project mapper XML, domain classes, MyBatis and PageHelper
+  from the MeterSphere application image, including sorted pages and total counts. Current end-to-end case-list blocking
+  remains unverified.
 - [x] Re-run the LTS Tomcat compatibility matrix after the MyBatis `BoundSql`
   SQL identifier hook on 2026-06-06: `scripts/acceptance-java17.sh` passed
   Java 17 Tomcat 11 -> 10.1 -> 9, `scripts/acceptance-java11.sh` passed
@@ -2221,12 +2233,9 @@ coverage, separate from the Java 25 behavioral replay suite:
   Tomcat 10.0 -> 9 -> 8.5.
 - [x] Extend Java 8/11/17 multipart upload filename hooks across Servlet
   `Part`, Tomcat `ApplicationPart`, Undertow `PartImpl`, Commons FileUpload,
-  Jetty multipart parts, and Spring `MultipartFile` implementations: Java
-  executable archive filenames now emit `fileUpload_java_archive` only when the
-  active request context is a plugin, extension, driver, connector, job, JAR,
-  or deployment surface. The LTS playground matrices now baseline-test
-  `/javaX/plugin/add` multipart `Evil.jar` uploads and protected mode verifies
-  `MultipartUpload.filename` block events without accepting the file.
+  Jetty multipart parts, and Spring `MultipartFile` implementations. The original test
+  associated archive extensions with deployment paths. The current playground
+  declares its policy for the tested operations.
 - [x] Add real Java 8 Vulhub MeterSphere plugin RCE acceptance:
   `scripts/acceptance-vulhub-metersphere-plugin-java8.sh` verifies
   `vulhub/metersphere:1.16.3` on OpenJDK 8 exposes `/plugin/list` without
@@ -2236,7 +2245,11 @@ coverage, separate from the Java 25 behavioral replay suite:
   keeps `/plugin/list` quiet, blocks the same `Evil.jar` upload with
   `fileUpload_java_archive` at `MultipartUpload.filename`, does not write the
   plugin JAR under `/opt/metersphere/data/body/plugin`, and cannot create the
-  marker through `customMethod`.
+  marker through `customMethod`. The retained upload event records the filename.
+  Its request URI and dispatch lifetime are unavailable for offline replay.
+  This historical run preceded the [authorization-aware rule](../detection.md#java-archive-upload-authorization).
+  An unconfigured Java 8 deployment no longer blocks archive metadata by
+  default. Current end-to-end MeterSphere enforcement remains unverified.
 - [x] Re-run the LTS Tomcat compatibility matrix after the multipart Java
   archive upload hook on 2026-06-06: `scripts/acceptance-java17.sh` passed
   Java 17 Tomcat 11 -> 10.1 -> 9, `scripts/acceptance-java11.sh` passed
@@ -2483,7 +2496,7 @@ above.
 
 ### Apache CXF / Druid / Kafka
 
-- [x] Apache CXF - CVE-2024-28752 Aegis XOP `href` file/SSRF reference (`xop_attachment_cxf_cve_2024_28752_aegis_file_read`; real Java8 acceptance: `scripts/acceptance-vulhub-cxf-java8.sh` blocks `java8_file_sensitive_read`)
+- [x] Apache CXF - CVE-2024-28752 Aegis XOP `href` file/SSRF reference (`xop_attachment_cxf_cve_2024_28752_aegis_file_read`; historical Java8 acceptance: `scripts/acceptance-vulhub-cxf-java8.sh` blocks `java8_file_sensitive_read`) Current application outcome awaits end-to-end verification.
 - [x] Apache Druid - CVE-2021-25646 JavaScript sampler execution (`request_druid_cve_2021_25646_javascript_sampler`; real Java8 acceptance: `scripts/acceptance-vulhub-druid-java8.sh` blocks `java8_script_engine_runtime_execution`)
 - [x] Apache Druid / Kafka - CVE-2023-25194 JAAS JNDI sampler config (`jndi_kafka_cve_2023_25194_druid_sampler_jaas`; real Java8 acceptance: `scripts/acceptance-vulhub-druid-25194-java8.sh` blocks `java8_jaas_jndi_remote_provider`)
 
@@ -2588,7 +2601,7 @@ above.
 
 ### GeoServer / GlassFish / Jetty / Openfire
 
-- [x] GeoServer - CVE-2021-40822 TestWfsPost SSRF (`ssrf_geoserver_cve_2021_40822_testwfspost`; real Java17 acceptance: `scripts/acceptance-vulhub-geoserver-40822-java17.sh` blocks `java17_ssrf_request_parameter_url`)
+- [x] GeoServer - CVE-2021-40822 TestWfsPost SSRF (`ssrf_geoserver_cve_2021_40822_testwfspost`; historical real Java17 acceptance: `scripts/acceptance-vulhub-geoserver-40822-java17.sh` recorded `java17_ssrf_request_parameter_url`; current boundary: transport-level application outcome awaits verification)
 - [x] GeoServer - CVE-2022-24816 / CVE-2023-35042 Jiffle WPS runtime script (`jiffle_runtime_geoserver_cve_2022_24816_wms`, `jiffle_runtime_geoserver_cve_2023_35042_jai_ext_wms`; real Java17 acceptance: `scripts/acceptance-vulhub-geoserver-24816-java17.sh` blocks `java17_command_execution_exploit_primitive` at `Runtime.exec(String)` from the JAI-EXT Jiffle runtime stack)
 - [x] GeoServer - CVE-2022-41852 WFS valueReference XPath reference (`request_geoserver_cve_2022_41852_wfs_valuereference_get`; covered by the same real Java17 acceptance as CVE-2024-36401 because `scripts/acceptance-vulhub-geoserver-java17.sh` proves the shared WFS `GetPropertyValue` `valueReference=exec(...)` XPath expression reaches `Runtime.exec` and blocks `java17_command_execution_exploit_primitive` before command-output evidence is returned)
 - [x] GeoServer - CVE-2023-25157 CQL filter SQL injection (`request_geoserver_cve_2023_25157_cql_filter_sqli`; real Java17 acceptance: `scripts/acceptance-vulhub-geoserver-25157-java17.sh` blocks `java17_request_ogc_filter_sql_injection`)
@@ -2632,8 +2645,8 @@ above.
 
 ### MeterSphere / OFBiz / OpenTSDB / RocketMQ
 
-- [x] MeterSphere - CVE-2021-45788 case-list sort SQL injection (`request_metersphere_cve_2021_45788_case_sort_sqli`; real Java8 acceptance: `scripts/acceptance-vulhub-metersphere-45788-java8.sh` blocks `java8_sql_identifier_injection` at MyBatis `BoundSql`)
-- [x] MeterSphere - plugin add Java archive upload (`fileUpload_metersphere_plugin_add_jar_upload`; real Java8 acceptance: `scripts/acceptance-vulhub-metersphere-plugin-java8.sh` blocks `fileUpload_java_archive` at `MultipartUpload.filename` before the plugin JAR is written or loaded)
+- [x] MeterSphere - CVE-2021-45788 case-list sort SQL injection (`request_metersphere_cve_2021_45788_case_sort_sqli`; historical real Java8 acceptance: `scripts/acceptance-vulhub-metersphere-45788-java8.sh` blocked at `MyBatis.BoundSql`; current boundary: JDBC origin evidence requires fresh runtime verification)
+- [x] MeterSphere - plugin add Java archive upload (`fileUpload_metersphere_plugin_add_jar_upload`; historical real Java8 acceptance: `scripts/acceptance-vulhub-metersphere-plugin-java8.sh` blocked at `MultipartUpload.filename`; current boundary: enforcement requires a deployment policy and fresh runtime evidence)
 - [x] OFBiz - CVE-2020-9496 XML-RPC serialized payload (`deserialization_ofbiz_cve_2020_9496_xmlrpc_serialized`; real Java8 acceptance: `scripts/acceptance-vulhub-ofbiz-9496-java8.sh` blocks `java8_deserialization_gadget_class`)
 - [x] OFBiz - CVE-2023-49070 XML-RPC serialized payload (`deserialization_ofbiz_cve_2023_49070_xmlrpc_serialized`; real Java8 acceptance: `scripts/acceptance-vulhub-ofbiz-49070-java8.sh` blocks `java8_deserialization_gadget_class`)
 - [x] OFBiz - CVE-2023-51467 ProgramExport Groovy expression (`request_ofbiz_cve_2023_51467_programexport`; real Java8 acceptance: `scripts/acceptance-vulhub-ofbiz-51467-java8.sh` blocks `java8_command_execution_exploit_primitive`)

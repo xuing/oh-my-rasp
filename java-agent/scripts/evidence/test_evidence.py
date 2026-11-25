@@ -1,0 +1,144 @@
+import importlib.util
+import json
+from pathlib import Path
+import sys
+import tempfile
+import unittest
+
+SCRIPTS = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(SCRIPTS))
+from vulhub_evidence import build_report
+
+spec = importlib.util.spec_from_file_location("check_decisions", SCRIPTS / "check-vulhub-event-decisions.py")
+decisions = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(decisions)
+
+
+class EvidenceTest(unittest.TestCase):
+    def test_catalog_relations_and_logs_are_independent(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            logs = root / "logs"
+            run = logs / "vulhub-example-protected"
+            run.mkdir(parents=True)
+            (root / "environments.toml").write_text(
+                '[[environment]]\npath="app/one"\ncve=["CVE-2000-0001"]\n'
+                '[[environment]]\npath="app/two"\ncve=["CVE-2000-0001"]\n')
+            scripts = root / "scripts"
+            scripts.mkdir()
+            name = "acceptance-vulhub-example.sh"
+            (scripts / name).write_text('# path app/one\nprotected_dir="logs/vulhub-example-protected"\n')
+            (run / "events.jsonl").write_text(
+                '{"hook":"example","algorithm":"test","action":"block","details":{"path":"PRIVATE-VALUE"}}\n'
+                '{"hook":"http","algorithm":"latency","action":"observe","kind":"telemetry"}\ninvalid\n')
+            inventory = build_report(root, {"app"}, [(7, f"CVE-2000-0001 `scripts/{name}`")], scripts, logs)
+            a, b = inventory["environments"]
+            self.assertEqual(a["exact_path_script_references"], [name])
+            self.assertEqual(b["exact_path_script_references"], [])
+            self.assertEqual(a["ledger_rows_sharing_identifier"], b["ledger_rows_sharing_identifier"])
+            summary, = inventory["historical_logs"].values()
+            self.assertEqual(summary["invalid_records"], 1)
+            self.assertEqual(len(summary["decisions"]), 1)
+            self.assertNotIn("PRIVATE-VALUE", json.dumps(inventory))
+
+    def test_missing_context_and_multi_argument_commands_are_not_invented(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            case = root / "vulhub-fixture-protected"
+            case.mkdir()
+            rows = [
+                {"action":"block", "algorithm":"java8_file_sensitive_read", "hook":"FileInputStream.open"},
+                {"event":"ohmyrasp-java8-agent-start"},
+                {"action":"block", "algorithm":"java8_file_sensitive_read", "hook":"FileInputStream.open",
+                 "details":{"path":"[redacted]"}},
+                {"action":"block", "algorithm":"java8_command_execution_shell_meta", "hook":"ProcessBuilder.start",
+                 "details":{"command":"two arguments"}},
+            ]
+            (case / "events.jsonl").write_text("\n".join(map(json.dumps, rows)))
+            _, records, batches, issues, _ = decisions.collect(root)
+            self.assertEqual([r["status"] for r in records],
+                             ["unknown or inconsistent agent track", "argument unavailable", "argument evidence required"])
+            self.assertFalse(batches)
+            self.assertFalse(issues)
+
+
+    def test_historical_read_inputs_do_not_resolve_against_the_probe_host(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            local = root / "visible"
+            local.mkdir()
+            (local / "report").touch()
+            (root / "elsewhere").symlink_to(local, target_is_directory=True)
+            case = root / "vulhub-fixture-protected"
+            case.mkdir()
+            source = case / "events.jsonl"
+            def record(path, basis=None, hook="FileInputStream.open"):
+                details = {"path": path}
+                if basis:
+                    details["decision_basis"] = basis
+                return {"action": "block", "algorithm": "java8_file_sensitive_read", "hook": hook, "details": details}
+            inputs = [record(str(root / "elsewhere" / ".." / "visible" / "report")),
+                      record("report"), record("/etc/./hosts"),
+                      record("/etc/passwd", "resolved_request_file", "UnixChannelFactory.open"),
+                      record("/etc/issue", "normalized_read_location"), record("/etc/issue"),
+                      record("/etc", "selected_directory_walk", "DirectoryStream.open")]
+            source.write_text("\n".join(map(json.dumps, [{"event": "ohmyrasp-java8-agent-start"}, *inputs])))
+            for _ in range(2):
+                _, rows, batches, issues, _ = decisions.collect(root)
+                self.assertEqual([row.get("status") for row in rows],
+                                 ["filesystem evidence required", "filesystem evidence required",
+                                  "source evidence required", "source evidence required",
+                                  "filesystem evidence required", None, "source evidence required"])
+                self.assertEqual([value for _, _, value in batches["8"]], ["/etc/issue"])
+                self.assertFalse(issues)
+                (root / "elsewhere").unlink(missing_ok=True)
+
+    def test_process_source_and_argument_boundaries_are_independent(self):
+        rule = "java8_command_execution_exploit_primitive"
+        plain = "Suspicious command execution reached a Java 8 process sink"
+        self.assertIsNone(decisions.process_evidence_limit("Runtime.exec(String)", rule, "8", plain, {}))
+        for hook in ("ProcessBuilder.start", "Runtime.exec(String[])", "ProcessBuilder.startPipeline"):
+            self.assertEqual(decisions.process_evidence_limit(hook, rule, "8", plain, {})[0],
+                             "argument evidence required")
+            status, reason = decisions.process_evidence_limit(hook, rule, "8", "", {"decision_basis":"database_stack"})
+            self.assertEqual(status, "source evidence required")
+            self.assertIn("argument boundaries", reason)
+        self.assertEqual(decisions.process_evidence_limit("Runtime.exec(String)", rule, "8",
+                         "Dynamic expression evaluation reached a Java 8 process sink", {})[0],
+                         "source evidence required")
+
+    def test_archive_authorization_is_not_inferred_from_a_name_or_an_emitted_reason(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            case = root / "vulhub-fixture-protected"
+            case.mkdir()
+            rows = [{"event":"ohmyrasp-java8-agent-start"}]
+            for basis in (None, "required_role_denied", "archive_upload_denied"):
+                details = {"filename":"weekly.jar"}
+                if basis:
+                    details["decision_basis"] = basis
+                rows.append({"action":"block", "hook":"MultipartUpload.filename",
+                             "algorithm":"fileUpload_java_archive", "details":details})
+            (case / "events.jsonl").write_text("\n".join(map(json.dumps, rows)))
+            _, records, batches, issues, _ = decisions.collect(root)
+            self.assertFalse(issues)
+            self.assertFalse(batches)
+            self.assertEqual([r["status"] for r in records], ["authorization evidence required"] * 3)
+            self.assertEqual(records[-1]["historical_decision_basis"], "archive_upload_denied")
+
+    def test_compare_preserves_visible_mismatches_and_checks_input_identity(self):
+        record = {"file": "a", "line": 2, "status": "mismatch", "observed": []}
+        before = {"corpus_sha256": "a", "historical_blocks": [record], "issues": []}
+        self.assertEqual(decisions.changed_decisions(before, before), [])
+        annotated = dict(before, historical_blocks=[dict(record, evidence_limit="transport unknown")])
+        self.assertEqual(decisions.changed_decisions(before, annotated), [])
+        changed_verdict = dict(before, historical_blocks=[dict(record, observed=[["example", "log"]])])
+        change, = decisions.changed_decisions(before, changed_verdict)
+        self.assertEqual(change["kind"], "detector outcome")
+        unavailable = dict(before, historical_blocks=[dict(record, status="source evidence required")])
+        change, = decisions.changed_decisions(before, unavailable)
+        self.assertEqual(change["kind"], "evidence availability")
+        changed = dict(before, historical_blocks=[dict(record, status="matched")])
+        self.assertEqual(len(decisions.changed_decisions(before, changed)), 1)
+        with self.assertRaises(ValueError):
+            decisions.changed_decisions(before, dict(before, corpus_sha256="b"))

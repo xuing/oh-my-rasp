@@ -227,6 +227,10 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
     parser.add_argument("--checklist", type=Path, default=CHECKLIST, help="Coverage checklist path.")
     parser.add_argument("--algorithm-doc", type=Path, default=ALGORITHM_DOC, help="Algorithm coverage doc path.")
     parser.add_argument("--scripts-dir", type=Path, default=SCRIPTS, help="Directory containing acceptance scripts.")
+    parser.add_argument("--evidence-report", type=Path,
+                        help="Write a JSON inventory of every catalog entry and local historical decisions.")
+    parser.add_argument("--logs-dir", type=Path, default=AGENT_ROOT / "logs",
+                        help="Retained event directory for --evidence-report.")
     return parser.parse_args(argv)
 
 
@@ -246,6 +250,17 @@ def main(argv: list[str]) -> int:
     if not args.scripts_dir.exists():
         print(f"Scripts directory does not exist: {args.scripts_dir}", file=sys.stderr)
         return 2
+
+    if args.evidence_report:
+        from vulhub_evidence import write_report
+
+        try:
+            write_report(args.evidence_report, root=vulhub_root, java_roots=JAVA_ROOTS,
+                         ledger_rows=covered_target_rows(args.checklist), scripts_dir=args.scripts_dir,
+                         logs_dir=args.logs_dir)
+        except (OSError, ValueError, KeyError) as exc:
+            print(f"Evidence inventory failed: {exc}", file=sys.stderr)
+            return 2
 
     corpus = search_corpus(args.checklist, args.algorithm_doc, args.scripts_dir)
     readmes = java_readmes(vulhub_root)

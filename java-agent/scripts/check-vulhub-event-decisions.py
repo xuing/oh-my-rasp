@@ -1,0 +1,311 @@
+#!/usr/bin/env python3
+"""Recheck retained block decisions offline. Requires built backport jars and a JDK 17+.
+
+Scans all Vulhub event files under --logs-dir, including exploratory runs. Each
+historical block is either tested or given a skip reason. Prints aggregates and
+writes a report without original inputs. Exit 1 for mismatches (or changed
+records with --compare-report), benign alerts, or unresolved records with --require-complete; 2 for invalid input. No vulnerable application or shell script runs.
+"""
+import argparse
+import base64
+from collections import Counter, defaultdict
+import hashlib
+import json
+import os
+from pathlib import Path, PurePosixPath, PureWindowsPath
+import re
+import subprocess
+import sys
+import tempfile
+
+ROOT = Path(__file__).resolve().parents[1]
+# Known fields holding the observed argument (possibly normalized by the detector).
+# Summaries of entire requests, call stacks or argv are not equivalent arguments.
+SOURCES = {
+    "HttpServlet.service": ("requestPath", "uri", "/reports/weekly"),
+    "ArchiveEntry.write": ("archiveWrite", "entry", "../report.csv -> /srv/orders/report.csv"),
+    "FileInputStream.open": ("beforeFileRead", "path", "/srv/orders/report.csv"),
+    "RandomAccessFile.open": ("beforeFileRead", "path", "/srv/orders/report.csv"),
+    "UnixChannelFactory.open": ("beforeFileRead", "path", "/srv/orders/report.csv"),
+    "FileOutputStream.open": ("beforeFileWrite", "path", "/srv/orders/report.csv"),
+    "InitialContext.lookup": ("beforeJndiLookup", "lookup", "java:comp/env/jdbc/orders"),
+    "ObjectInputStream.resolveClass": ("beforeObjectStreamProxyResolve", "class", "java.util.ArrayList"),
+    "MultipartUpload.filename": ("beforeFileUpload", "filename", "orders.csv"),
+    "Runtime.exec(String)": ("beforeRuntimeExecString", "command", "whoami"),
+    "ScriptEngine.eval": ("beforeScriptEval", "script", "quantity * price"),
+    "XMLEntityManager.setupCurrentEntity": ("beforeXmlEntity", "entity", "section relative.dtd"),
+    "URLClassLoader": ("beforeClassLoaderUrl", "codebase", "URLClassLoader file file:/srv/app/classes/"),
+    "RMIClassLoader": ("beforeRmiClassLoaderCodebase", "codebase", "RMIClassLoader file file:/srv/app/classes/"),
+    "DriverManager.getConnection": ("beforeJdbcConnection", "jdbc_url", "jdbc:h2:mem:orders"),
+    "org.h2.jdbc.JdbcConnection.<init>": ("beforeH2JdbcConnection", "jdbc_url", "jdbc:h2:mem:orders"),
+}
+START = re.compile(r"ohmyrasp-java(8|11|17)-agent-start")
+
+
+def file_read_limit(value, basis):
+    """The original namespace and request cannot be recovered from the policy target alone."""
+    path = PurePosixPath(value)
+    if basis in ("attachment_file_open", "resolved_request_file", "request_selected_hosts"):
+        return "source evidence required", "recorded policy target only; original input and binding unavailable"
+    if (basis == "normalized_read_location" or not path.is_absolute() or ".." in path.parts
+            or path.root == "//" or PureWindowsPath(value).drive or os.name != "posix"):
+        return "filesystem evidence required", "original path resolution, working directory or filesystem unavailable"
+    if basis:
+        return "source evidence required", "unrecognized file-read basis; a pathname cannot verify this decision"
+    if path == PurePosixPath("/etc/hosts"):
+        return "source evidence required", "opened path retained; request input and attachment source unavailable"
+    return None
+
+
+def process_evidence_limit(hook, algorithm, track, message, details):
+    if hook not in {"Runtime.exec(String)", "Runtime.exec(String[])", "ProcessBuilder.start",
+                    "ProcessBuilder.startPipeline", "ProcessImpl.start"}:
+        return None
+    vector = hook != "Runtime.exec(String)"
+    basis = details.get("decision_basis")
+    if basis is not None and not isinstance(basis, str):
+        return "decision evidence required", "invalid process decision basis"
+    # Older backports identified the argument-only primitive through its message.
+    # A reason emitted by a detector cannot reconstruct the original live caller.
+    primitive = algorithm == f"java{track}_command_execution_exploit_primitive"
+    argument_only = basis == "command_arguments" or (
+        basis is None and message == f"Suspicious command execution reached a Java {track} process sink")
+    if ((primitive and not argument_only) or basis in {"request_shell_syntax", "configuration_launcher", "scheduled_script"}
+            or message == f"Scheduler script job reached a Java {track} shell script process sink"):
+        reason = "original request or launch stack unavailable"
+        if vector:
+            reason += "; argument boundaries also unavailable"
+        return "source evidence required", reason
+    if vector:
+        return "argument evidence required", "display text cannot establish argv boundaries or empty arguments"
+    return None
+
+
+def collect(logs):
+    rows = []
+    batches = defaultdict(list)
+    issues = []
+    corpus_hash = hashlib.sha256()
+    files = sorted(logs.glob("vulhub-*/**/events.jsonl"))
+    for path in files:
+        source = path.relative_to(logs).as_posix()
+        track = None
+        file_hash = hashlib.sha256()
+        with path.open("rb") as stream:
+            for number, line in enumerate(stream, 1):
+                file_hash.update(line)
+                if not line.strip():
+                    continue
+                try:
+                    event = json.loads(line)
+                except ValueError:
+                    event = None
+                if not isinstance(event, dict):
+                    issues.append({"file": source, "line": number, "reason": "invalid record"})
+                    continue
+                event_name = event.get("event")
+                if isinstance(event_name, str) and event_name.endswith("-agent-start"):
+                    match = START.fullmatch(event_name)
+                    track = match[1] if match else None
+                if event.get("action") != "block":
+                    continue
+                hook, algorithm = event.get("hook"), event.get("algorithm")
+                row = {"file": source, "line": number, "track": track, "hook": hook, "algorithm": algorithm}
+                rows.append(row)
+                if not isinstance(hook, str) or not isinstance(algorithm, str):
+                    row["status"] = "invalid event"
+                    issues.append({"file": source, "line": number, "reason": "missing decision identity"})
+                    continue
+                algorithm_track = re.match(r"java(\d+)_", algorithm)
+                if not track or (algorithm_track and algorithm_track[1] != track):
+                    row["status"] = "unknown or inconsistent agent track"
+                    continue
+                if hook == "URL.openConnection":
+                    row["evidence_limit"] = "factory event only; actual HTTP transport and selected route unknown"
+                if hook == "MyBatis.BoundSql":
+                    row["evidence_limit"] = "order metadata recorded; substitution offsets and JDBC handoff unavailable"
+                if hook in {"FileSystem.list", "DirectoryStream.open", "SecureDirectoryStream.open"}:
+                    details = event.get("details")
+                    basis = details.get("decision_basis") if isinstance(details, dict) else None
+                    if basis in ("selected_directory", "selected_directory_walk"):
+                        row.update(status="source evidence required", historical_decision_basis=basis,
+                                   evidence_limit="reported directory only; original input, walk and filesystem identity unavailable")
+                        continue
+                details = event.get("details")
+                if isinstance(details, dict):
+                    if isinstance(details.get("decision_basis"), str):
+                        row["historical_decision_basis"] = details["decision_basis"]
+                    if details.get("process_operation") == "ProcessImpl.start":
+                        row["historical_operation"] = "ProcessImpl.start"
+                    limit = process_evidence_limit(hook, algorithm, track, event.get("message"), details)
+                    if limit is not None:
+                        row["status"], row["evidence_limit"] = limit
+                        continue
+                if (hook == "JmxMBeanServer.invoke" and isinstance(details, dict) and set(details) == {"invoke"}
+                        and algorithm in (f"java{track}_jmx_remote_config_source", f"java{track}_jmx_script_file_write")):
+                    row["status"] = "argument evidence required"
+                    row["evidence_limit"] = "combined display text cannot establish resolved MBean dispatch or the original argument types"
+                    continue
+                if hook not in SOURCES or (hook == "HttpServlet.service" and algorithm != f"java{track}_request_path_confusion"):
+                    row["status"] = "no offline adapter"
+                    continue
+                method, field, _ = SOURCES[hook]
+                value = details.get(field) if isinstance(details, dict) else None
+                if method == "beforeXmlEntity" and isinstance(details, dict) and "decision_basis" not in details:
+                    row["evidence_limit"] = "entity source recorded; actual transport opening unknown"
+                if not isinstance(value, str) or not value or "[redacted]" in value or value.endswith(("...", "…")):
+                    row["status"] = "argument unavailable"
+                    continue
+                if method == "requestPath":
+                    # The old event stored both strings in one abbreviated field. Only the
+                    # original operand is an input; the normalized string is an independent check.
+                    parts = value.split(" -> ")
+                    if len(parts) != 2 or not all(parts) or not parts[0].startswith("/") or "?" in parts[0]:
+                        row["status"] = "argument unavailable"
+                        continue
+                    row["evidence_limit"] = "URI classifier and normalized result only; original servlet dispatch and authorization unknown"
+                    row["_expected_path_detail"] = value
+                    value = parts[0]
+                if hook == "MultipartUpload.filename" and algorithm == "fileUpload_java_archive":
+                    if details.get("multipart_source") == "active_request_lookup":
+                        row["historical_multipart_source"] = "active_request_lookup"
+                    policy_digest = details.get("archive_policy_sha256")
+                    if isinstance(policy_digest, str) and re.fullmatch("[0-9a-f]{64}", policy_digest):
+                        row["recorded_archive_policy_sha256"] = policy_digest
+                    row["status"] = "authorization evidence required"
+                    row["evidence_limit"] = "submitted name alone cannot establish the original route policy and authorization"
+                    continue
+                if method == "beforeFileRead":
+                    limit = file_read_limit(value, row.get("historical_decision_basis"))
+                    if limit is not None:
+                        row["status"], row["evidence_limit"] = limit
+                        continue
+                if method == "archiveWrite":
+                    paths = value.split(" -> ")
+                    if len(paths) != 2 or not all(paths) or any(p.endswith(("...", "…")) for p in paths):
+                        row["status"] = "argument unavailable"
+                        continue
+                    row["evidence_limit"] = "recorded path pair only; extraction root and filesystem unknown"
+                if hook in ("RMIClassLoader", "URLClassLoader"):
+                    parts = value.split(" ", 2)
+                    if len(parts) != 3 or parts[0] != hook or not parts[2]:
+                        row["status"] = "argument unavailable"
+                        continue
+                if method == "beforeXmlEntity" and (not value.partition(" ")[0] or not value.partition(" ")[2]):
+                    row["status"] = "argument unavailable"
+                    continue
+                batches[track].append((row, method, value))
+        corpus_hash.update(source.encode() + b"\0" + file_hash.digest())
+    if not files:
+        issues.append({"reason": "no Vulhub event files"})
+    return files, rows, batches, issues, corpus_hash.hexdigest()
+
+
+def check_batch(java, tmp, root, track, cases, controls):
+    jar = root / f"agent-java{track}/build/libs/ohmyrasp-agent-java{track}.jar"
+    for hook in sorted({row["hook"] for row, _, _ in cases}):
+        method, _, safe = SOURCES[hook]
+        control = {"track": track, "hook": hook}
+        controls.append(control)
+        cases.append((control, method, safe))
+    log = tmp / "decision.jsonl"
+    cmd = [java, "-Dohmyrasp.log.sync=true", "-Dohmyrasp.control=none", "-Dohmyrasp.mode=block",
+           f"-Dohmyrasp.java{track}.block=true", f"-Dohmyrasp.java{track}.log={log}",
+           "-cp", os.pathsep.join(map(str, (tmp, jar))), "EvidenceProbe", track, str(log)]
+    data = "".join(method + "\t" + base64.b64encode(value.encode()).decode() + "\n" for _, method, value in cases)
+    result = subprocess.run(cmd, input=data, text=True, capture_output=True, timeout=90)
+    if result.returncode or len(result.stdout.splitlines()) != len(cases):
+        raise ValueError(f"Java {track} probe did not return one result per input (exit {result.returncode})")
+    for (row, _, _), response in zip(cases, result.stdout.splitlines(), strict=True):
+        blocked, encoded = response.split("\t")
+        events = [json.loads(line) for line in base64.b64decode(encoded, validate=True).splitlines()]
+        decisions = [(e.get("algorithm"), e.get("action")) for e in events if e.get("kind") != "telemetry"]
+        if "algorithm" in row:
+            ok = blocked == "true" and decisions == [(row["algorithm"], "block")]
+        else:
+            ok = blocked == "false" and not decisions
+        expected_path = row.pop("_expected_path_detail", None)
+        if expected_path is not None:
+            findings = [e for e in events if e.get("hook") == row["hook"]]
+            row["normalized_path_matched"] = (len(findings) == 1 and
+                                              findings[0].get("details", {}).get("uri") == expected_path)
+            ok = ok and row["normalized_path_matched"]
+        row["status"] = "matched" if ok else "mismatch"
+        if not ok:
+            row.update(blocked=blocked == "true", observed=decisions)
+    return hashlib.sha256(jar.read_bytes()).hexdigest()
+
+
+def changed_decisions(previous, current):
+    if previous.get("corpus_sha256") != current["corpus_sha256"] or previous.get("issues"):
+        raise ValueError("comparison requires a valid reference report over the same event files")
+    def index(report):
+        return {(row["file"], row["line"]): row for row in report["historical_blocks"]}
+    before, after = index(previous), index(current)
+    if before.keys() != after.keys():
+        raise ValueError("comparison reports contain different historical records")
+    def outcome(row):
+        return row["status"], row.get("blocked"), row.get("observed")
+    changes = []
+    for key, row in after.items():
+        prior = before[key]
+        if outcome(prior) == outcome(row):
+            continue
+        tested = {"matched", "mismatch"}
+        changes.append({"file": key[0], "line": key[1], "before": prior["status"], "after": row["status"],
+                        "kind": "detector outcome" if {prior["status"], row["status"]} <= tested else "evidence availability"})
+    return changes
+
+
+def main():
+    p = argparse.ArgumentParser(description=__doc__)
+    p.add_argument("--logs-dir", type=Path, default=ROOT / "logs")
+    p.add_argument("--agent-root", type=Path, default=ROOT, help="Java agent Gradle project containing built jars")
+    p.add_argument("--report", type=Path, required=True)
+    p.add_argument("--compare-report", type=Path, help="Compare decisions to a prior report over identical logs")
+    p.add_argument("--require-complete", action="store_true",
+                   help="Fail if any historical block is unresolved or differs, including in comparison mode.")
+    args = p.parse_args()
+    if args.compare_report and args.compare_report.resolve() == args.report.resolve():
+        p.error("write the candidate report to a different file from the reference report")
+    files, rows, batches, issues, digest = collect(args.logs_dir)
+    jdk = Path(os.environ["JAVA_HOME"]) / "bin" if os.environ.get("JAVA_HOME") else None
+    controls, jars = [], {}
+    with tempfile.TemporaryDirectory(prefix="rasp-decisions-") as scratch:
+        tmp = Path(scratch)
+        source = ROOT / "scripts/evidence/EvidenceProbe.java"
+        subprocess.run([jdk / "javac" if jdk else "javac", "--release", "8", "-d", tmp, source], check=True)
+        for track, cases in sorted(batches.items()):
+            jars[track] = check_batch(jdk / "java" if jdk else "java", tmp, args.agent_root, track, cases, controls)
+    counts = Counter(row["status"] for row in rows)
+    java = jdk / "java" if jdk else "java"
+    version = subprocess.run([java, "-version"], text=True, capture_output=True, check=True)
+    report = dict(files=len(files), corpus_sha256=digest, historical_blocks=rows, jar_sha256=jars,
+                  probe_jvm=(version.stderr or version.stdout).splitlines()[0], benign_controls=controls, issues=issues)
+    replayed = counts["matched"] + counts["mismatch"]
+    unresolved = len(rows) - replayed
+    report["replay_summary"] = {"replayed": replayed, "matched": counts["matched"],
+                                "different": counts["mismatch"], "unresolved": unresolved}
+    different = bool(counts["mismatch"])
+    if args.compare_report:
+        changes = changed_decisions(json.loads(args.compare_report.read_text()), report)
+        report["changes_from_reference"] = changes
+        different = bool(changes)
+        print(f"{len(changes)} changed historical records relative to the reference report: "
+              f"{dict(Counter(change['kind'] for change in changes))}")
+    args.report.write_text(json.dumps(report, indent=2) + "\n")
+    print(f"{len(files)} event files, {len(rows)} historical blocks: {dict(counts)}")
+    print(f"{replayed} replayed, {unresolved} unresolved. A full historical comparison requires every block to match.")
+    print(f"Benign controls: {dict(Counter(row['status'] for row in controls))}")
+    if issues or not batches:
+        return 2
+    incomplete = args.require_complete and (unresolved != 0 or counts["mismatch"] != 0)
+    return int(different or incomplete or any(row["status"] != "matched" for row in controls))
+
+
+if __name__ == "__main__":
+    try:
+        sys.exit(main())
+    except (OSError, ValueError, subprocess.SubprocessError) as exc:
+        print(f"Offline decision check failed: {exc}", file=sys.stderr)
+        sys.exit(2)
