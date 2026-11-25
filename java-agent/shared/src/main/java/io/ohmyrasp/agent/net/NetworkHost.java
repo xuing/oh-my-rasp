@@ -2,6 +2,8 @@ package io.ohmyrasp.agent.net;
 
 import java.net.InetAddress;
 import java.net.UnknownHostException;
+import java.util.Arrays;
+import java.util.List;
 import java.util.Locale;
 import java.util.regex.Pattern;
 
@@ -10,17 +12,38 @@ public final class NetworkHost {
   private static final Pattern IPV4 = Pattern.compile("[0-9]{1,10}(?:\\.[0-9]{1,10}){0,3}");
   private static final Pattern IPV6 = Pattern.compile("[0-9a-f:.]+");
 
+  private static final List<InetAddress> METADATA_ADDRESSES = Arrays.asList(
+      address("169.254.169.254"), address("169.254.170.2"), address("100.100.100.200"),
+      address("fd00:ec2::254"));
+
   private NetworkHost() {}
 
   public static String normalize(String host) {
     if (host == null) {
       return "";
     }
-    String name = host.toLowerCase(Locale.ROOT);
-    if (name.startsWith("[") && name.endsWith("]")) {
-      return name.substring(1, name.length() - 1);
+    String name = host;
+    if (host.startsWith("[") && host.endsWith("]")) {
+      name = host.substring(1, host.length() - 1);
+    } else if (host.endsWith(".") && !host.endsWith("..") && host.indexOf(':') < 0) {
+      name = host.substring(0, host.length() - 1);
     }
-    return name.endsWith(".") ? name.substring(0, name.length() - 1) : name;
+    int zone = name.indexOf('%');
+    if (zone >= 0 && name.indexOf(':') >= 0) {
+      // The zone can be an OS interface name. Preserve its spelling for destination comparisons.
+      return name.substring(0, zone).toLowerCase(Locale.ROOT) + name.substring(zone);
+    }
+    return name.toLowerCase(Locale.ROOT);
+  }
+
+  /** Identifies an HTTP destination without consulting DNS or interface state. */
+  public static String destinationKey(String host) {
+    String name = normalize(host);
+    if (name.indexOf(':') < 0) return name;
+    InetAddress ip = address(name);
+    if (ip == null) return name;
+    int zone = name.indexOf('%');
+    return ip.getHostAddress() + (zone < 0 ? "" : name.substring(zone));
   }
 
   private static InetAddress address(String name) {
@@ -33,7 +56,7 @@ public final class NetworkHost {
         return null;
       }
     } else {
-      if (!IPV4.matcher(name).matches()) {
+      if (name.isEmpty() || name.charAt(0) < '0' || name.charAt(0) > '9' || !IPV4.matcher(name).matches()) {
         return null;
       }
       String[] octets = name.split("\\.");
@@ -55,9 +78,9 @@ public final class NetworkHost {
         throw new AssertionError(impossible);
       }
     }
-    // A colon forces the JDK IPv6 literal parser. Scope names are irrelevant to the range.
+    // Brackets require an IPv6 literal even for malformed input. Never fall back to DNS.
     try {
-      return InetAddress.getByName(name);
+      return InetAddress.getByName("[" + name + "]");
     } catch (UnknownHostException invalidLiteral) {
       return null;
     }
@@ -72,10 +95,10 @@ public final class NetworkHost {
   }
 
   public static boolean isInternal(String name) {
-    if (name.equals("localhost") || name.equals("0")) {
-      return true;
-    }
-    InetAddress ip = address(name);
+    return name.equals("localhost") || isInternal(address(name));
+  }
+
+  static boolean isInternal(InetAddress ip) {
     if (ip == null) {
       return false;
     }
@@ -85,19 +108,13 @@ public final class NetworkHost {
   }
 
   public static boolean isMetadata(String name) {
-    if (name.equals("169.254.169.254") || name.equals("169.254.170.2")
-        || name.equals("100.100.100.200") || name.equals("metadata.google.internal")) {
-      return true;
-    }
-    if (name.indexOf(':') < 0) {
-      return false;
-    }
+    if (name.equals("metadata.google.internal")) return true;
     InetAddress ip = address(name);
-    if (ip == null) {
-      return false;
-    }
-    String literal = ip.getHostAddress();
-    return literal.equals("fd00:ec2:0:0:0:0:0:254") || literal.equals("169.254.169.254")
-        || literal.equals("169.254.170.2") || literal.equals("100.100.100.200");
+    // A proxy can interpret nonstandard IPv4 spellings differently from the local JVM.
+    return isMetadata(ip) && (name.indexOf(':') >= 0 || name.equals(ip.getHostAddress()));
+  }
+
+  static boolean isMetadata(InetAddress ip) {
+    return ip != null && METADATA_ADDRESSES.contains(ip);
   }
 }
