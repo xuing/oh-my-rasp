@@ -1743,7 +1743,7 @@ final class DetectorEngineTest {
 
   @Test
   void detectsDeserializationBlacklist() {
-    var result = engine.detectDeserialization("io.ohmyrasp.playground.EvilSerialized", request());
+    var result = DeserializationDetector.detectDeserialization("io.ohmyrasp.playground.EvilSerialized", request());
 
     assertTrue(result.isPresent());
     assertEquals("deserialization_blacklist", result.orElseThrow().algorithm());
@@ -1751,14 +1751,14 @@ final class DetectorEngineTest {
 
   @Test
   void detectsExpandedDeserializationGadgetClass() {
-    var result = engine.detectDeserialization("com.sun.rowset.JdbcRowSetImpl", request());
+    var result = DeserializationDetector.detectDeserialization("com.sun.rowset.JdbcRowSetImpl", request());
 
     assertAlgorithm(result, "deserialization_blacklist");
   }
 
   @Test
   void detectsBeanShellDeserializationGadgetFamily() {
-    var result = engine.detectDeserialization("bsh.XThis", request());
+    var result = DeserializationDetector.detectDeserialization("bsh.XThis", request());
 
     assertAlgorithm(result, "deserialization_gadget");
   }
@@ -1766,7 +1766,7 @@ final class DetectorEngineTest {
   @Test
   void detectsRomeDeserializationGadgetFamily() {
     var result =
-        engine.detectDeserialization("com.sun.syndication.feed.impl.ToStringBean", request());
+        DeserializationDetector.detectDeserialization("com.sun.syndication.feed.impl.ToStringBean", request());
 
     assertAlgorithm(result, "deserialization_gadget");
   }
@@ -1774,7 +1774,7 @@ final class DetectorEngineTest {
   @Test
   void detectsC3p0DeserializationGadgetFamily() {
     var result =
-        engine.detectDeserialization(
+        DeserializationDetector.detectDeserialization(
             "com.mchange.v2.c3p0.WrapperConnectionPoolDataSource", request());
 
     assertAlgorithm(result, "deserialization_gadget");
@@ -1783,7 +1783,7 @@ final class DetectorEngineTest {
   @Test
   void detectsCommonsBeanutilsDeserializationGadgetFamily() {
     var result =
-        engine.detectDeserialization("org.apache.commons.beanutils.BeanComparator", request());
+        DeserializationDetector.detectDeserialization("org.apache.commons.beanutils.BeanComparator", request());
 
     assertAlgorithm(result, "deserialization_gadget");
   }
@@ -1791,7 +1791,7 @@ final class DetectorEngineTest {
   @Test
   void detectsTomcatTribesClusterMessageDeserializationGadget() {
     var result =
-        engine.detectDeserialization(
+        DeserializationDetector.detectDeserialization(
             "org.apache.commons.collections.functors.InvokerTransformer",
             RequestContext.empty(),
             tomcatTribesStack());
@@ -1805,7 +1805,7 @@ final class DetectorEngineTest {
   @Test
   void ignoresBenignTomcatTribesClusterMessageClass() {
     var result =
-        engine.detectDeserialization("java.util.HashMap", RequestContext.empty(), tomcatTribesStack());
+        DeserializationDetector.detectDeserialization("java.util.HashMap", RequestContext.empty(), tomcatTribesStack());
 
     assertTrue(result.isEmpty());
   }
@@ -1813,7 +1813,7 @@ final class DetectorEngineTest {
   @Test
   void detectsLog4jSocketServerDeserializationGadget() {
     var result =
-        engine.detectDeserialization(
+        DeserializationDetector.detectDeserialization(
             "org.apache.commons.collections.functors.InvokerTransformer",
             RequestContext.empty(),
             log4jSocketServerStack());
@@ -1825,7 +1825,7 @@ final class DetectorEngineTest {
   @Test
   void ignoresBenignLog4jSocketServerMessageClass() {
     var result =
-        engine.detectDeserialization(
+        DeserializationDetector.detectDeserialization(
             "org.apache.logging.log4j.core.impl.MutableLogEvent",
             RequestContext.empty(),
             log4jSocketServerStack());
@@ -1836,7 +1836,7 @@ final class DetectorEngineTest {
   @Test
   void detectsCasWebflowClientStateDeserializationGadget() {
     var result =
-        engine.detectDeserialization(
+        DeserializationDetector.detectDeserialization(
             "org.apache.commons.collections4.functors.InvokerTransformer",
             RequestContext.empty(),
             casWebflowStateStack());
@@ -1848,7 +1848,7 @@ final class DetectorEngineTest {
   @Test
   void ignoresBenignWebflowClientStateClass() {
     var result =
-        engine.detectDeserialization(
+        DeserializationDetector.detectDeserialization(
             "org.springframework.webflow.execution.impl.FlowExecutionImpl",
             RequestContext.empty(),
             casWebflowStateStack());
@@ -1859,7 +1859,7 @@ final class DetectorEngineTest {
   @Test
   void fallsBackToGenericBlacklistForWebflowControllerStackWithoutClientStateDeserialization() {
     var result =
-        engine.detectDeserialization(
+        DeserializationDetector.detectDeserialization(
             "org.apache.commons.collections4.functors.InvokerTransformer",
             RequestContext.empty(),
             List.of(
@@ -1873,7 +1873,7 @@ final class DetectorEngineTest {
   @Test
   void detectsRmiTransportDeserializationGadget() {
     var result =
-        engine.detectDeserialization("bsh.XThis", RequestContext.empty(), rmiTransportStack());
+        DeserializationDetector.detectDeserialization("bsh.XThis", RequestContext.empty(), rmiTransportStack());
 
     assertAlgorithm(result, "deserialization_rmi_transport");
     assertEquals("rmi-transport", result.orElseThrow().details().get("transport"));
@@ -1882,7 +1882,7 @@ final class DetectorEngineTest {
   @Test
   void detectsNeo4jShellRmiTransportRhinoGadget() {
     var result =
-        engine.detectDeserialization(
+        DeserializationDetector.detectDeserialization(
             "org.mozilla.javascript.NativeJavaObject",
             RequestContext.empty(),
             neo4jShellRmiStack());
@@ -1894,7 +1894,7 @@ final class DetectorEngineTest {
   @Test
   void ignoresBenignRmiTransportDeserializationClass() {
     var result =
-        engine.detectDeserialization(
+        DeserializationDetector.detectDeserialization(
             "org.apache.jmeter.engine.RemoteJMeterEngineImpl",
             RequestContext.empty(),
             rmiTransportStack());
@@ -1905,7 +1905,7 @@ final class DetectorEngineTest {
   @Test
   void detectsWeblogicT3RemotingTransportDeserializationGadget() {
     var result =
-        engine.detectDeserialization(
+        DeserializationDetector.detectDeserialization(
             "sun.rmi.server.UnicastRef", RequestContext.empty(), weblogicT3Stack());
 
     assertAlgorithm(result, "deserialization_remoting_transport");
@@ -1915,7 +1915,7 @@ final class DetectorEngineTest {
   @Test
   void detectsWeblogicIiopRemotingTransportDeserializationGadget() {
     var result =
-        engine.detectDeserialization(
+        DeserializationDetector.detectDeserialization(
             "com.sun.rowset.JdbcRowSetImpl", RequestContext.empty(), weblogicIiopStack());
 
     assertAlgorithm(result, "deserialization_remoting_transport");
@@ -1925,7 +1925,7 @@ final class DetectorEngineTest {
   @Test
   void ignoresBenignWeblogicRemotingTransportDeserializationClass() {
     var result =
-        engine.detectDeserialization(
+        DeserializationDetector.detectDeserialization(
             "weblogic.rjvm.PeerInfo", RequestContext.empty(), weblogicT3Stack());
 
     assertTrue(result.isEmpty());
@@ -1934,7 +1934,7 @@ final class DetectorEngineTest {
   @Test
   void detectsActiveMqJmsObjectMessageDeserializationGadget() {
     var result =
-        engine.detectDeserialization(
+        DeserializationDetector.detectDeserialization(
             "com.rometools.rome.feed.impl.ToStringBean",
             RequestContext.empty(),
             activeMqJmsObjectMessageStack());
@@ -1946,7 +1946,7 @@ final class DetectorEngineTest {
   @Test
   void ignoresBenignJmsObjectMessageDeserializationClass() {
     var result =
-        engine.detectDeserialization(
+        DeserializationDetector.detectDeserialization(
             "com.example.messaging.OrderEvent",
             RequestContext.empty(),
             activeMqJmsObjectMessageStack());
@@ -1957,7 +1957,7 @@ final class DetectorEngineTest {
   @Test
   void detectsJenkinsCliSignedObjectDeserializationWrapper() {
     var result =
-        engine.detectDeserialization(
+        DeserializationDetector.detectDeserialization(
             "java.security.SignedObject",
             RequestContext.empty(),
             jenkinsCliSignedObjectStack());
@@ -1969,7 +1969,7 @@ final class DetectorEngineTest {
   @Test
   void ignoresSignedObjectDeserializationOutsideRemoteCli() {
     var result =
-        engine.detectDeserialization(
+        DeserializationDetector.detectDeserialization(
             "java.security.SignedObject",
             RequestContext.empty(),
             List.of("com.example.security.SignedEnvelopeVerifier", "java.io.ObjectInputStream"));
@@ -1980,7 +1980,7 @@ final class DetectorEngineTest {
   @Test
   void ignoresBenignJenkinsCliDeserializationClass() {
     var result =
-        engine.detectDeserialization(
+        DeserializationDetector.detectDeserialization(
             "hudson.cli.CLICommand", RequestContext.empty(), jenkinsCliSignedObjectStack());
 
     assertTrue(result.isEmpty());
@@ -1989,7 +1989,7 @@ final class DetectorEngineTest {
   @Test
   void detectsRmiRegistryProxyBindFromTransport() {
     var result =
-        engine.detectRmiRegistryBind(
+        DeserializationDetector.detectRmiRegistryBind(
             "bind",
             "pwn",
             "jdk.proxy1.$Proxy0",
@@ -2003,7 +2003,7 @@ final class DetectorEngineTest {
   @Test
   void detectsRmiRegistryUnicastRefBindBypassShape() {
     var result =
-        engine.detectRmiRegistryBind(
+        DeserializationDetector.detectRmiRegistryBind(
             "rebind",
             "pwn",
             "sun.rmi.server.UnicastRef",
@@ -2016,7 +2016,7 @@ final class DetectorEngineTest {
   @Test
   void ignoresRmiRegistryProxyBindOutsideTransportDispatch() {
     var result =
-        engine.detectRmiRegistryBind(
+        DeserializationDetector.detectRmiRegistryBind(
             "bind", "local", "jdk.proxy1.$Proxy0", RequestContext.empty(), List.of("app.Main"));
 
     assertTrue(result.isEmpty());
@@ -2025,7 +2025,7 @@ final class DetectorEngineTest {
   @Test
   void ignoresOrdinaryRmiRegistryImplementationBind() {
     var result =
-        engine.detectRmiRegistryBind(
+        DeserializationDetector.detectRmiRegistryBind(
             "bind",
             "service",
             "com.example.ExportedService",
@@ -2037,7 +2037,7 @@ final class DetectorEngineTest {
 
   @Test
   void detectsSuspiciousFileBackedSessionDeserialization() {
-    var result = engine.detectSessionDeserialization(".deserialize", "TomcatFileStore", request());
+    var result = DeserializationDetector.detectSessionDeserialization(".deserialize", "TomcatFileStore", request());
 
     assertAlgorithm(result, "deserialization_session_file");
   }
@@ -2045,7 +2045,7 @@ final class DetectorEngineTest {
   @Test
   void detectsTraversalFileBackedSessionDeserialization() {
     var result =
-        engine.detectSessionDeserialization("../work/.payload", "TomcatFileStore", request());
+        DeserializationDetector.detectSessionDeserialization("../work/.payload", "TomcatFileStore", request());
 
     assertAlgorithm(result, "deserialization_session_file");
   }
@@ -2053,7 +2053,7 @@ final class DetectorEngineTest {
   @Test
   void ignoresNormalRoutedTomcatSessionId() {
     var result =
-        engine.detectSessionDeserialization(
+        DeserializationDetector.detectSessionDeserialization(
             "A1B2C3D4E5F60718293A4B5C6D7E8F90.node1", "TomcatFileStore", request());
 
     assertTrue(result.isEmpty());
@@ -2061,7 +2061,7 @@ final class DetectorEngineTest {
 
   @Test
   void ignoresBenignDeserializationClass() {
-    var result = engine.detectDeserialization("java.util.HashMap", request());
+    var result = DeserializationDetector.detectDeserialization("java.util.HashMap", request());
 
     assertTrue(result.isEmpty());
   }
@@ -2072,8 +2072,8 @@ final class DetectorEngineTest {
       for (String type : List.of("CloneTransformer", "ForClosure", "InstantiateFactory", "WhileClosure",
           "PrototypeFactory$PrototypeCloneFactory", "PrototypeFactory$PrototypeSerializationFactory")) {
         String name = pkg + type;
-        assertAlgorithm(engine.detectDeserialization(name, request()), "deserialization_blacklist");
-        assertTrue(engine.detectPolymorphicType("jackson", name, request()).isEmpty(), name);
+        assertAlgorithm(DeserializationDetector.detectDeserialization(name, request()), "deserialization_blacklist");
+        assertTrue(DeserializationDetector.detectPolymorphicType("jackson", name, request()).isEmpty(), name);
       }
     }
   }
@@ -2081,7 +2081,7 @@ final class DetectorEngineTest {
   @Test
   void detectsFastjsonPolymorphicJndiGadget() {
     var result =
-        engine.detectPolymorphicType(
+        DeserializationDetector.detectPolymorphicType(
             "fastjson",
             "com.sun.rowset.JdbcRowSetImpl",
             request(Map.of("@type", List.of("com.sun.rowset.JdbcRowSetImpl"))));
@@ -2092,7 +2092,7 @@ final class DetectorEngineTest {
   @Test
   void ignoresFastjsonClassLiteralUntilConcreteDangerousTypeIsResolved() {
     var result =
-        engine.detectPolymorphicType(
+        DeserializationDetector.detectPolymorphicType(
             "fastjson", "java.lang.Class", request(Map.of("@type", List.of("java.lang.Class"))));
 
     assertTrue(result.isEmpty());
@@ -2101,7 +2101,7 @@ final class DetectorEngineTest {
   @Test
   void detectsJacksonPolymorphicTemplatesGadgetWithArraySyntax() {
     var result =
-        engine.detectPolymorphicType(
+        DeserializationDetector.detectPolymorphicType(
             "jackson",
             "[Lcom.sun.org.apache.xalan.internal.xsltc.trax.TemplatesImpl;",
             request());
@@ -2112,7 +2112,7 @@ final class DetectorEngineTest {
   @Test
   void detectsJacksonPolymorphicSpringXmlContextGadget() {
     var result =
-        engine.detectPolymorphicType(
+        DeserializationDetector.detectPolymorphicType(
             "jackson",
             "org.springframework.context.support.FileSystemXmlApplicationContext",
             request());
@@ -2123,7 +2123,7 @@ final class DetectorEngineTest {
   @Test
   void detectsXstreamPolymorphicJndiPrefixGadget() {
     var result =
-        engine.detectPolymorphicType(
+        DeserializationDetector.detectPolymorphicType(
             "xstream", "com.sun.jndi.rmi.registry.BindingEnumeration", request());
 
     assertAlgorithm(result, "deserialization_polymorphic_type");
@@ -2132,7 +2132,7 @@ final class DetectorEngineTest {
   @Test
   void detectsSnakeyamlPolymorphicH2JdbcConnection() {
     var result =
-        engine.detectPolymorphicType(
+        DeserializationDetector.detectPolymorphicType(
             "snakeyaml",
             "org.h2.jdbc.JdbcConnection",
             request(Map.of("type", List.of("org.h2.jdbc.JdbcConnection"))));
@@ -2142,7 +2142,7 @@ final class DetectorEngineTest {
 
   @Test
   void ignoresBenignPolymorphicType() {
-    var result = engine.detectPolymorphicType("jackson", "java.util.HashMap", request());
+    var result = DeserializationDetector.detectPolymorphicType("jackson", "java.util.HashMap", request());
 
     assertTrue(result.isEmpty());
   }
@@ -2150,7 +2150,7 @@ final class DetectorEngineTest {
   @Test
   void detectsFastjson1283DirectHttpClassResource() {
     var result =
-        engine.detectFastjsonClassResource(
+        DeserializationDetector.detectFastjsonClassResource(
             "http://192.168.65.254:19090/a.class", request());
 
     assertAlgorithm(result, "deserialization_fastjson_resource_url");
@@ -2162,10 +2162,10 @@ final class DetectorEngineTest {
   @Test
   void detectsFastjson1283RemoteJarAndProcFdClassResources() {
     var remote =
-        engine.detectFastjsonClassResource(
+        DeserializationDetector.detectFastjsonClassResource(
             "jar:http://192.168.65.254:19090/probe!/foo/Exception.class", request());
     var procFd =
-        engine.detectFastjsonClassResource(
+        DeserializationDetector.detectFastjsonClassResource(
             "jar:file:/proc/self/fd/3!/fd3/Exception.class", request());
 
     assertAlgorithm(remote, "deserialization_fastjson_resource_url");
@@ -2177,25 +2177,25 @@ final class DetectorEngineTest {
   @Test
   void ignoresNormalFastjsonClasspathResourcesAndUnrelatedFileUrls() {
     assertTrue(
-        engine
+        DeserializationDetector
             .detectFastjsonClassResource("com/example/orders/Order.class", request())
             .isEmpty());
     assertTrue(
-        engine
+        DeserializationDetector
             .detectFastjsonClassResource("jar:file:/opt/app/lib/models.jar!/Order.class", request())
             .isEmpty());
-    assertTrue(engine.detectFastjsonClassResource(null, request()).isEmpty());
+    assertTrue(DeserializationDetector.detectFastjsonClassResource(null, request()).isEmpty());
   }
 
   @Test
   void checksTheConstructorTypeSelectedForTheOpenWireException() {
-    var invalid = engine.detectProtocolClassInstantiation(StringBuilder.class, RequestContext.empty());
+    var invalid = DeserializationDetector.detectOpenWireThrowable(StringBuilder.class, RequestContext.empty());
     assertAlgorithm(invalid, "deserialization_protocol_class");
     assertEquals("non_throwable_constructor", invalid.orElseThrow().details().get("decision_basis"));
-    assertTrue(engine.detectProtocolClassInstantiation(IllegalArgumentException.class, request()).isEmpty());
-    assertTrue(engine.detectProtocolClassInstantiation(Error.class, request()).isEmpty());
-    assertTrue(engine.detectProtocolClassInstantiation(null, request()).isEmpty());
-    assertTrue(engine.detectProtocolClassInstantiation("OpenWire", "bsh.Report", List.of("weekly"), request()).isEmpty());
+    assertTrue(DeserializationDetector.detectOpenWireThrowable(IllegalArgumentException.class, request()).isEmpty());
+    assertTrue(DeserializationDetector.detectOpenWireThrowable(Error.class, request()).isEmpty());
+    assertTrue(DeserializationDetector.detectOpenWireThrowable(null, request()).isEmpty());
+    assertTrue(DeserializationDetector.detectProtocolClassInstantiation("OpenWire", "bsh.Report", List.of("weekly"), request()).isEmpty());
   }
 
   @Test
@@ -2212,7 +2212,7 @@ final class DetectorEngineTest {
                 "content-type",
                 "application/x-java-serialized-object"));
 
-    var result = engine.detectHttpInvokerDeserialization("SpringHttpInvoker", context);
+    var result = DeserializationDetector.detectHttpInvokerDeserialization("SpringHttpInvoker", context);
 
     assertAlgorithm(result, "deserialization_http_invoker");
     assertEquals("SpringHttpInvoker", result.orElseThrow().details().get("mechanism"));
@@ -2223,7 +2223,7 @@ final class DetectorEngineTest {
   @Test
   void ignoresHttpInvokerDeserializationOutsideRequest() {
     var result =
-        engine.detectHttpInvokerDeserialization("SpringHttpInvoker", RequestContext.empty());
+        DeserializationDetector.detectHttpInvokerDeserialization("SpringHttpInvoker", RequestContext.empty());
 
     assertTrue(result.isEmpty());
   }
@@ -2231,7 +2231,7 @@ final class DetectorEngineTest {
   @Test
   void checksObservedServletObjectReadForExplicitPolicy() {
     var result =
-        engine.detectHttpObjectStreamDeserialization(
+        DeserializationDetector.detectHttpObjectStreamDeserialization(
             "report.RequestBody", request());
 
     assertAlgorithm(result, "deserialization_http_object_stream");
@@ -2250,7 +2250,7 @@ final class DetectorEngineTest {
             Map.of("user-agent", "JUnit", "content-type", "application/x-java-serialized-object"));
 
     var result =
-        engine.detectHttpObjectStreamDeserialization(
+        DeserializationDetector.detectHttpObjectStreamDeserialization(
             "java.io.BufferedInputStream", context, List.of());
 
     assertTrue(result.isEmpty());
@@ -2259,7 +2259,7 @@ final class DetectorEngineTest {
   @Test
   void readOnlyAccessFilterStackAloneDoesNotIdentifyTheStream() {
     var result =
-        engine.detectHttpObjectStreamDeserialization(
+        DeserializationDetector.detectHttpObjectStreamDeserialization(
             "java.io.BufferedInputStream",
             request(),
             List.of("org.jboss.invocation.http.servlet.ReadOnlyAccessFilter"));
@@ -2270,7 +2270,7 @@ final class DetectorEngineTest {
   @Test
   void invokerServletStackAloneDoesNotIdentifyTheStream() {
     var result =
-        engine.detectHttpObjectStreamDeserialization(
+        DeserializationDetector.detectHttpObjectStreamDeserialization(
             "java.io.BufferedInputStream",
             request(),
             List.of("org.jboss.invocation.http.servlet.InvokerServlet"));
@@ -2281,7 +2281,7 @@ final class DetectorEngineTest {
   @Test
   void httpilStackAloneDoesNotIdentifyTheStream() {
     var result =
-        engine.detectHttpObjectStreamDeserialization(
+        DeserializationDetector.detectHttpObjectStreamDeserialization(
             "java.io.BufferedInputStream",
             request(),
             List.of("org.jboss.mq.il.http.HTTPServerILServlet"));
@@ -2292,7 +2292,7 @@ final class DetectorEngineTest {
   @Test
   void ignoresFileObjectStreamDuringHttpRequest() {
     var result =
-        engine.detectHttpObjectStreamDeserialization(
+        DeserializationDetector.detectHttpObjectStreamDeserialization(
             "java.io.FileInputStream", request(), List.of("com.example.ReportController"));
 
     assertTrue(result.isEmpty());
@@ -2301,7 +2301,7 @@ final class DetectorEngineTest {
   @Test
   void ignoresRequestObjectStreamOutsideHttpRequest() {
     var result =
-        engine.detectHttpObjectStreamDeserialization(
+        DeserializationDetector.detectHttpObjectStreamDeserialization(
             "org.apache.catalina.connector.CoyoteInputStream", RequestContext.empty(), List.of());
 
     assertTrue(result.isEmpty());
@@ -2309,10 +2309,10 @@ final class DetectorEngineTest {
 
   @Test
   void checksTheSelectedHessianAllocation() {
-    assertTrue(engine.detectHessianType("java.lang.ProcessBuilder", request()).isEmpty());
-    assertTrue(engine.detectHessianType(java.util.HashMap.class, "hessian_constructor", request()).isEmpty());
-    assertTrue(engine.detectHessianType(ProcessBuilder[].class, "hessian_constructor", request()).isEmpty());
-    var result = engine.detectHessianType(ProcessBuilder.class, "hessian_constructor", RequestContext.empty());
+    assertTrue(DeserializationDetector.detectHessianType("java.lang.ProcessBuilder", request()).isEmpty());
+    assertTrue(DeserializationDetector.detectHessianAllocation(java.util.HashMap.class, "hessian_constructor", request()).isEmpty());
+    assertTrue(DeserializationDetector.detectHessianAllocation(ProcessBuilder[].class, "hessian_constructor", request()).isEmpty());
+    var result = DeserializationDetector.detectHessianAllocation(ProcessBuilder.class, "hessian_constructor", RequestContext.empty());
     assertAlgorithm(result, "deserialization_hessian_type");
     assertEquals("hessian_constructor", result.orElseThrow().details().get("decision_basis"));
   }
@@ -2327,19 +2327,19 @@ final class DetectorEngineTest {
             Map.of(),
             Map.of("user-agent", "JUnit", "content-type", "application/xml"));
 
-    var result = engine.detectXmlRpcSerializableValue("ApacheXmlRpc", context);
+    var result = DeserializationDetector.detectXmlRpcSerializableValue("ApacheXmlRpc", context);
 
     assertAlgorithm(result, "deserialization_xmlrpc_serialized");
     assertEquals("ApacheXmlRpc", result.orElseThrow().details().get("mechanism"));
     assertEquals("xmlrpc_extension_read", result.orElseThrow().details().get("decision_basis"));
     assertTrue(result.orElseThrow().requiresExplicitRule());
-    assertTrue(engine.detectXmlRpcSerializableValue("declaration", context).isEmpty());
+    assertTrue(DeserializationDetector.detectXmlRpcSerializableValue("declaration", context).isEmpty());
   }
 
   @Test
   void xmlRpcWorkerReadRequiresExplicitTransportPolicy() {
     var result =
-        engine.detectXmlRpcSerializableValue("ApacheXmlRpc", RequestContext.empty());
+        DeserializationDetector.detectXmlRpcSerializableValue("ApacheXmlRpc", RequestContext.empty());
 
     assertTrue(result.orElseThrow().requiresExplicitRule());
   }

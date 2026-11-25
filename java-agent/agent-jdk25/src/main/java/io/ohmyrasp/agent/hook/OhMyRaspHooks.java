@@ -10,6 +10,7 @@ import io.ohmyrasp.agent.file.HostDirectory;
 import io.ohmyrasp.agent.jmx.JmxDispatch;
 import io.ohmyrasp.agent.jmx.JmxWriteScope;
 import io.ohmyrasp.agent.detect.CredentialDetector;
+import io.ohmyrasp.agent.detect.DeserializationDetector;
 import io.ohmyrasp.agent.detect.DetectorEngine;
 import io.ohmyrasp.agent.detect.HostFileMutationDetector;
 import io.ohmyrasp.agent.detect.JdbcDetector;
@@ -303,7 +304,7 @@ public final class OhMyRaspHooks {
     try {
       String remoteClassName = remote == null ? "" : remote.getClass().getName();
       emit(
-          DETECTORS.detectRmiRegistryBind(
+          DeserializationDetector.detectRmiRegistryBind(
               operation, bindingName, remoteClassName, currentRequest(), stackClassNames));
     } catch (OhMyRaspBlockException blocked) {
       throw blocked;
@@ -319,7 +320,7 @@ public final class OhMyRaspHooks {
     }
     try {
       emit(
-          DETECTORS.detectRmiRegistryBind(
+          DeserializationDetector.detectRmiRegistryBind(
               operation, bindingName, remoteClassName, currentRequest(), stackClassNames));
     } catch (OhMyRaspBlockException blocked) {
       throw blocked;
@@ -1365,7 +1366,7 @@ public final class OhMyRaspHooks {
       return;
     }
     try {
-      emit(DETECTORS.detectDeserialization(className, currentRequest(), stackTraceClassNames()));
+      emit(DeserializationDetector.detectDeserialization(className, currentRequest(), stackTraceClassNames()));
     } catch (OhMyRaspBlockException blocked) {
       throw blocked;
     } catch (Throwable throwable) {
@@ -1377,7 +1378,7 @@ public final class OhMyRaspHooks {
     if (detectionDisabled()) {
       return;
     }
-    var finding = DETECTORS.detectDeserialization(className, currentRequest(), stackTraceClassNames());
+    var finding = DeserializationDetector.detectDeserialization(className, currentRequest(), stackTraceClassNames());
     if (finding.isEmpty()) return;
     boolean xmlRpc = XmlRpcReadScope.reads(stream);
     Detection event = finding.get();
@@ -1398,7 +1399,7 @@ public final class OhMyRaspHooks {
    */
   public static boolean isDangerousDeserialization(String className) {
     try {
-      return DETECTORS.isDangerousDeserializationType(className);
+      return DeserializationDetector.isDangerousDeserializationType(className);
     } catch (Throwable throwable) {
       return false;
     }
@@ -1431,7 +1432,7 @@ public final class OhMyRaspHooks {
       return;
     }
     try {
-      emit(DETECTORS.detectDeserialization(className, currentRequest(), stackClassNames));
+      emit(DeserializationDetector.detectDeserialization(className, currentRequest(), stackClassNames));
     } catch (OhMyRaspBlockException blocked) {
       throw blocked;
     } catch (Throwable throwable) {
@@ -1448,7 +1449,7 @@ public final class OhMyRaspHooks {
   public static void beforeServletObjectRead(java.io.ObjectInputStream stream) {
     if (detectionDisabled() || !POLICY.selectsAlgorithm("deserialization_http_object_stream")) return;
     String source = ServletObjectStreams.source(stream);
-    if (source != null) emit(DETECTORS.detectHttpObjectStreamDeserialization(source, currentRequest()));
+    if (source != null) emit(DeserializationDetector.detectHttpObjectStreamDeserialization(source, currentRequest()));
   }
 
   public static void beforeSessionDeserialization(String sessionId, String mechanism) {
@@ -1456,7 +1457,7 @@ public final class OhMyRaspHooks {
       return;
     }
     try {
-      emit(DETECTORS.detectSessionDeserialization(sessionId, mechanism, currentRequest()));
+      emit(DeserializationDetector.detectSessionDeserialization(sessionId, mechanism, currentRequest()));
     } catch (OhMyRaspBlockException blocked) {
       throw blocked;
     } catch (Throwable throwable) {
@@ -1469,7 +1470,7 @@ public final class OhMyRaspHooks {
       return;
     }
     try {
-      emit(DETECTORS.detectPolymorphicType(parser, className, currentRequest()));
+      emit(DeserializationDetector.detectPolymorphicType(parser, className, currentRequest()));
     } catch (OhMyRaspBlockException blocked) {
       throw blocked;
     } catch (Throwable throwable) {
@@ -1482,7 +1483,7 @@ public final class OhMyRaspHooks {
       return;
     }
     try {
-      emit(DETECTORS.detectFastjsonClassResource(resource, currentRequest()), true);
+      emit(DeserializationDetector.detectFastjsonClassResource(resource, currentRequest()), true);
     } catch (OhMyRaspBlockException blocked) {
       throw blocked;
     } catch (Throwable throwable) {
@@ -1497,7 +1498,7 @@ public final class OhMyRaspHooks {
 
   public static void beforeOpenWireThrowable(Class<?> selected) {
     if (detectionDisabled()) return;
-    emit(DETECTORS.detectProtocolClassInstantiation(selected, currentRequest()), true);
+    emit(DeserializationDetector.detectOpenWireThrowable(selected, currentRequest()), true);
   }
 
   public static void beforeHttpInvokerDeserialization(String mechanism) {}
@@ -1507,7 +1508,7 @@ public final class OhMyRaspHooks {
     for (Class<?> c = exporter.getClass(); c != null; c = c.getSuperclass()) {
       if ("org.springframework.remoting.httpinvoker.HttpInvokerServiceExporter".equals(c.getName())
           || "org.springframework.remoting.httpinvoker.SimpleHttpInvokerServiceExporter".equals(c.getName())) {
-        emit(DETECTORS.detectHttpInvokerDeserialization("SpringHttpInvoker", currentRequest()));
+        emit(DeserializationDetector.detectHttpInvokerDeserialization("SpringHttpInvoker", currentRequest()));
         return;
       }
     }
@@ -1516,7 +1517,7 @@ public final class OhMyRaspHooks {
   public static void beforeHessianType(String type) {}
 
   public static void beforeHessianAllocation(Class<?> selected, String basis) {
-    if (!detectionDisabled()) emit(DETECTORS.detectHessianType(selected, basis, currentRequest()), true);
+    if (!detectionDisabled()) emit(DeserializationDetector.detectHessianAllocation(selected, basis, currentRequest()), true);
   }
 
   /** Compatibility entry for callers that only saw a declaration. */
@@ -1526,7 +1527,7 @@ public final class OhMyRaspHooks {
     if (detectionDisabled()) return;
     XmlRpcReadScope.reading(stream);
     if (!POLICY.selectsAlgorithm("deserialization_xmlrpc_serialized")) return;
-    emit(DETECTORS.detectXmlRpcSerializableValue("ApacheXmlRpc", currentRequest()), true);
+    emit(DeserializationDetector.detectXmlRpcSerializableValue("ApacheXmlRpc", currentRequest()), true);
   }
 
   public static void beforeJavaBeansStatement(Object statement) {

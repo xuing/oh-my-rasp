@@ -1,3 +1,4 @@
+import io.ohmyrasp.agent.detect.DeserializationDetector;
 import io.ohmyrasp.agent.detect.DetectorEngine;
 import io.ohmyrasp.agent.detect.HostFileMutationDetector;
 import io.ohmyrasp.agent.detect.JdbcDetector;
@@ -108,7 +109,7 @@ public final class FpReport {
             Case.tainted("/srv/orders/notes/report.csv", "/notes/report.csv"),
             Case.tainted("/srv/orders/drafts/../report.csv.bak", "../report.csv")),
             (c, r) -> HostFileMutationDetector.detectArchiveExtraction(c.userParam(), c.payload(), r)),
-        new Category("Deserialization classes", deserializationCorpus(), (c, r) -> ENGINE.detectDeserialization(c.payload(), r)),
+        new Category("Deserialization classes", deserializationCorpus(), (c, r) -> DeserializationDetector.detectDeserialization(c.payload(), r)),
         new Category("Expressions", expressionCorpus(), (c, r) -> ENGINE.detectExpression("spel", c.payload(), r)),
         new Category("OGNL expressions", ognlCorpus(), (c, r) -> ENGINE.detectOgnl(c.payload(), r)),
         new Category("JNDI names", jndiCorpus(), (c, r) -> RemoteResourceDetector.detectJndi(c.payload(), r)),
