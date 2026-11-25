@@ -649,7 +649,9 @@ same patch as any new Java-compatible Vulhub replay.
   `/proc/self/environ`, SSH private keys, and Windows hosts files log or block
   `java11_file_sensitive_read`; script or executable writes log or block
   `java11_file_script_write` only when the target path is webroot-like or uses
-  traversal. Ordinary temporary file access and Tomcat `WEB-INF` deployment
+  traversal. Generated plot script content writes use the same path-scoped
+  inspection as Java 8 and emit `java11_file_generated_plot_script_command`.
+  Ordinary temporary file access and Tomcat `WEB-INF` deployment
   artifacts are ignored, and the Java 11 Tomcat matrix baseline-tests and
   protected-block-tests both file behaviors. Metabase 0.40.4 provides real
   Vulhub application evidence for `java11_file_sensitive_read`: the baseline
@@ -659,9 +661,7 @@ same patch as any new Java-compatible Vulhub replay.
   `acceptance/vulhub/coldfusion/26360-java11.sh`: baseline
   CVE-2023-26360 metadata `classname` traversal returns the `cfuser`
   `/proc/self/environ` contents, while protected mode blocks the same local
-  file load at `FileInputStream.open`. Generated plot script content writes use
-  the same path-scoped inspection as Java 8 and emit
-  `java11_file_generated_plot_script_command`.
+  file load at `FileInputStream.open`.
 - The Java 11 era track now hooks `ZipEntry.getName` and SevenZipBinding
   `SimpleInArchiveItemImpl.getPath`, then correlates dangerous archive entry
   names with the next Java file-write sink on the same thread. Absolute paths,
@@ -1899,7 +1899,8 @@ How some of these rules decide:
   current Java 8 agent cannot inject into the Java 6u45 runtime. The real Java
   8 WebLogic CVE-2023-21839 Vulhub acceptance proves the baseline IIOP/JNDI
   replay reaches an outbound LDAP listener and protected mode blocks the same
-  remote lookup with `java8_jndi_remote_lookup` before the listener is reached.
+  remote lookup with `java8_jndi_remote_lookup` before the listener is reached
+  (`acceptance/vulhub/weblogic/21839-java8.sh`).
 - `deserialization_jms_object_message` covers dangerous Java deserialization
   gadget classes resolved while a JMS provider is deserializing an
   `ObjectMessage` body. This targets ActiveMQ CVE-2015-5254-style broker or web
@@ -1998,7 +1999,8 @@ How some of these rules decide:
   playground and acceptance suite include the Vulhub-shaped authenticated
   `/h2-console/query.do` SQL form post, plus the real Java 8 H2 1.4.197
   baseline/protected acceptance in `acceptance/vulhub/h2database/10054-java8.sh`.
-  The real DataEase CVE-2025-32966 OpenJDK 21 runtime acceptance verifies the
+  The real DataEase CVE-2025-32966 OpenJDK 21 runtime acceptance
+  (`acceptance/vulhub/dataease/32966-java21.sh`) verifies the
   adjacent H2 JDBC constructor sink: baseline creates a marker through a
   forged-token datasource validation request, and protected mode blocks at
   `org.h2.jdbc.JdbcConnection.<init>` with `java17_jdbc_h2_code_execution`.

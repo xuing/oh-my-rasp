@@ -375,9 +375,11 @@ coverage, separate from the Java 25 behavioral replay suite:
   agent jar carries the L2 scheme-aware JNDI fix `d867d45` and the L3
   execution-vector XSS retightening `292d9f5`) and passed across Tomcat 11, 10,
   and 9: 414 required block-event confirmations, 0 missing. The detector changes
-  hold under live HTTP — `xss_userinput`, `xss_echo`, `jndi_disable_all`, and
-  `request_jndi_lookup` each emitted `action:"block"` on all three Tomcat
-  versions while baseline/normal-traffic checks stayed clean. Evidence: 2,825
+  hold under live HTTP — the XSS user-input and echo rules, `jndi_disable_all`,
+  and `request_jndi_lookup` each emitted `action:"block"` on all three Tomcat
+  versions while baseline/normal-traffic checks stayed clean. The script no
+  longer requires the two XSS rules: markup in request parameters became an
+  explicit policy, and it checks the XSS echo policy by its response body. Evidence: 2,825
   protected events across `logs/tomcat{9,10,11}-protected/events.jsonl`; full
   run log `/tmp/acceptance-l8-1781963376.log`. The companion unit gate
   (`gradle :agent-jdk25:test`) is also green on the same HEAD.
@@ -1562,9 +1564,10 @@ coverage, separate from the Java 25 behavioral replay suite:
   Vulhub's OpenWire `poc.py` frame naming
   `org.springframework.context.support.ClassPathXmlApplicationContext`.
   Baseline creates `/tmp/ohmyrasp-activemq46604-success`; protected mode starts
-  quietly with `agent-java11`, blocks the Spring XML `ProcessBuilder.start`
-  sink with `java11_command_execution_exploit_primitive`, and the marker file
-  is absent.
+  quietly with `agent-java11`, blocks the exploit, and the marker file is
+  absent. This run recorded the block at the Spring XML `ProcessBuilder.start`
+  sink; the script now requires the earlier OpenWire constructor block,
+  `java11_deserialization_protocol_class` at `OpenWire.createThrowable`.
 - [x] Re-run the LTS Tomcat compatibility matrix after the ActiveMQ
   CVE-2023-46604 Spring bean-initialization command-hook refinement on
   2026-06-05: `acceptance/runtime/java17.sh` passed Tomcat 11 -> 10.1 -> 9,
