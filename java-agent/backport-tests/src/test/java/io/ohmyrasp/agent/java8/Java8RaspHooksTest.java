@@ -804,6 +804,46 @@ final class Java8RaspHooksTest {
   }
 
   @Test
+  void logsOpenfireUnicodeEscapedSetupTraversal() throws Exception {
+    Path log = Files.createTempFile("ohmyrasp-java8-openfire-unicode", ".jsonl");
+    Files.delete(log);
+    System.setProperty("ohmyrasp.java8.log", log.toString());
+
+    Java8RaspHooks.beforeHttpRequest(
+        new RequestStub(
+            "GET",
+            "/setup/setup-s/%u002e%u002e/%u002e%u002e/user-create.jsp",
+            "csrf=csrftoken"));
+
+    String text = new String(Files.readAllBytes(log), StandardCharsets.UTF_8);
+    assertTrue(text.contains("\"algorithm\":\"java8_request_path_confusion\""));
+    assertTrue(text.contains("\"action\":\"log\""));
+    assertTrue(text.contains("/setup/setup-s/../../user-create.jsp"));
+  }
+
+  @Test
+  void blocksOpenfireLenientHexSetupTraversalWhenBlockModeIsEnabled() throws Exception {
+    Path log = Files.createTempFile("ohmyrasp-java8-openfire-lenient", ".jsonl");
+    Files.delete(log);
+    System.setProperty("ohmyrasp.java8.log", log.toString());
+    System.setProperty("ohmyrasp.java8.block", "true");
+
+    assertThrows(
+        Java8RaspBlockException.class,
+        () ->
+            Java8RaspHooks.beforeHttpRequest(
+                new RequestStub(
+                    "GET",
+                    "/setup/setup-s/%2>%2>/%2>%2>/user-create.jsp",
+                    "csrf=csrftoken")));
+
+    String text = new String(Files.readAllBytes(log), StandardCharsets.UTF_8);
+    assertTrue(text.contains("\"algorithm\":\"java8_request_path_confusion\""));
+    assertTrue(text.contains("\"action\":\"block\""));
+    assertTrue(text.contains("/setup/setup-s/../../user-create.jsp"));
+  }
+
+  @Test
   void blocksGeoServerCqlFilterSqlInjectionWhenBlockModeIsEnabled() throws Exception {
     Path log = Files.createTempFile("ohmyrasp-java8-geoserver-cql", ".jsonl");
     Files.delete(log);
