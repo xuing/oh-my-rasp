@@ -87,6 +87,13 @@ public final class PolicyRule {
     return expression;
   }
 
+  boolean selectsAlgorithm(String name) {
+    if (algorithm.equals(normalize(name))) return true;
+    return conditions.stream().anyMatch(condition ->
+        (condition.field().equals("algorithm") || condition.field().equals("event.algorithm"))
+            && condition.operator().equals("==") && condition.value().equalsIgnoreCase(name));
+  }
+
   boolean matches(Detection detection) {
     if (!hook.isBlank() && !hook.equals(normalize(detection.hook()))) {
       return false;

@@ -13,6 +13,91 @@ import org.junit.jupiter.api.Test;
 
 final class AgentPolicyTest {
   @Test
+  void locationReflectionAndOrdinaryDirectoryInputEachRequireExactSelection() {
+    var broad = AgentPolicy.parse("""
+        {"rules":[{"hook":"directory","action":"block"}]}
+        """);
+    Map.of("directory_userinput", "requested_path_only", "directory_unwanted", "directory_location",
+        "directory_reflect", "directory_dispatch").forEach((algorithm, basis) -> {
+      var candidate = Detection.log("directory", algorithm, 65, "directory policy", RequestContext.empty(),
+          Map.of("path", "/srv/reports", "decision_basis", basis));
+      assertTrue(AgentPolicy.absent().evaluate(candidate, "").ignored());
+      assertTrue(broad.evaluate(candidate, "").ignored());
+      var selected = AgentPolicy.parse("""
+          {"rules":[{"algorithm":"%s","action":"log"}]}
+          """.formatted(algorithm));
+      assertEquals("log", selected.evaluate(candidate, "").detection().action());
+    });
+  }
+
+  @Test
+  void reflectiveProcessDispatchRequiresItsOwnRule() {
+    var candidate = Detection.log("command", "command_reflect", 70, "reflective dispatch",
+        RequestContext.empty(), Map.of("decision_basis", "process_dispatch"));
+    assertTrue(AgentPolicy.absent().evaluate(candidate, "").ignored());
+    assertTrue(AgentPolicy.parse("""
+        {"rules":[{"hook":"command","action":"block"}]}
+        """).evaluate(candidate, "").ignored());
+    assertEquals("log", AgentPolicy.parse("""
+        {"rules":[{"algorithm":"command_reflect","action":"log"}]}
+        """).evaluate(candidate, "").detection().action());
+  }
+
+  @Test
+  void systemDirectoryReadRequiresAnExplicitFileRule() {
+    var candidate = Detection.log("readFile", "readFile_outsideWebroot", 65, "system directory",
+        RequestContext.empty(), Map.of("decision_basis", "system_directory", "path", "/etc/service/config"));
+    assertTrue(AgentPolicy.absent().evaluate(candidate, "").ignored());
+    var broad = AgentPolicy.parse("""
+        {"rules":[{"hook":"readFile","action":"block"}]}
+        """);
+    assertTrue(broad.evaluate(candidate, "").ignored());
+    for (String action : List.of("log", "block")) {
+      var explicit = AgentPolicy.parse("""
+          {"rules":[{"algorithm":"readFile_outsideWebroot","action":"%s"}]}
+          """.formatted(action));
+      assertEquals(action, explicit.evaluate(candidate, "").detection().action());
+    }
+  }
+
+  @Test
+  void onlyAnExplicitInputRuleSelectsAnOrdinaryRequestedFile() {
+    var candidate = Detection.log("readFile", "readFile_userinput", 65, "requested path",
+        RequestContext.empty(), Map.of("decision_basis", "requested_path_only", "path", "/srv/reports/inventory.csv"));
+    assertTrue(AgentPolicy.absent().evaluate(candidate, "").ignored());
+    assertTrue(AgentPolicy.parse("""
+        {"rules":[{"hook":"readFile","action":"block"}]}
+        """).evaluate(candidate, "").ignored());
+    var rule = AgentPolicy.parse("""
+        {"rules":[{"algorithm":"readFile_userinput","action":"log"}]}
+        """);
+    assertEquals("log", rule.evaluate(candidate, "").detection().action());
+  }
+
+  @Test
+  void requiresExplicitPolicySelectionForArchiveMetadata() {
+    var candidate = Detection.log("fileUpload", "fileUpload_java_archive", 90, "archive",
+        RequestContext.empty(), Map.of("decision_basis", "deployment_context"));
+    assertTrue(AgentPolicy.absent().evaluate(candidate, "").ignored());
+    for (String field : List.of("algorithm", "event.algorithm")) {
+      var monitor = AgentPolicy.parse("""
+          {"status":"active","rules":[
+            {"hook":"fileUpload","action":"block"},
+            {"expression":"%s == 'fileUpload_java_archive'","action":"log"}]}
+          """.formatted(field));
+      assertEquals("log", monitor.evaluate(candidate, "").detection().action());
+    }
+    var broad = AgentPolicy.parse("""
+        {"rules":[{"hook":"fileUpload","action":"block"}]}
+        """);
+    assertTrue(broad.evaluate(candidate, "").ignored());
+    var block = AgentPolicy.parse("""
+        {"rules":[{"algorithm":"fileUpload_java_archive","action":"block"}]}
+        """);
+    assertEquals("block", block.evaluate(candidate, "").detection().action());
+  }
+
+  @Test
   void appliesMatchingBlockRule() {
     AgentPolicy policy =
         AgentPolicy.parse(

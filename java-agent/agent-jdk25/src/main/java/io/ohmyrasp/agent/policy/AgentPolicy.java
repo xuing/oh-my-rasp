@@ -65,6 +65,10 @@ public final class AgentPolicy {
     return new AgentPolicy(true, version, status, canaryPercent, rules, PolicyConfig.from(object.get("config")));
   }
 
+  public boolean selectsAlgorithm(String algorithm) {
+    return rules.stream().anyMatch(rule -> rule.selectsAlgorithm(algorithm));
+  }
+
   public boolean loaded() {
     return loaded;
   }
@@ -91,7 +95,8 @@ public final class AgentPolicy {
 
   public PolicyEvaluation evaluate(Detection detection, String stableAgentKey) {
     if (!loaded) {
-      return PolicyEvaluation.notControlled(detection);
+      return detection != null && detection.requiresExplicitRule()
+          ? PolicyEvaluation.ignore() : PolicyEvaluation.notControlled(detection);
     }
     if (detection == null || !activeStatus() || !inCanary(stableAgentKey)) {
       return PolicyEvaluation.ignore();
@@ -109,6 +114,9 @@ public final class AgentPolicy {
       if ("ignore".equals(action)) {
         return PolicyEvaluation.ignore();
       }
+      if (detection.requiresExplicitRule() && !rule.selectsAlgorithm(detection.algorithm())) {
+        continue;
+      }
       Detection candidate = detection.withAction(action);
       if ("block".equals(action)) {
         return PolicyEvaluation.emit(candidate);
@@ -120,6 +128,7 @@ public final class AgentPolicy {
     if (logMatch != null) {
       return PolicyEvaluation.emit(logMatch);
     }
+    if (detection.requiresExplicitRule()) return PolicyEvaluation.ignore();
     Detection hardening = config.hardeningDetection(detection);
     if (hardening != null) {
       return PolicyEvaluation.emit(hardening);
