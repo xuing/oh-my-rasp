@@ -10,6 +10,8 @@ import tempfile
 from urllib.request import urlopen
 import zipfile
 
+from servlet_fixture import api_jar
+
 ARTIFACTS = (
     # java-jwt API used by the audited DataEase filter.
     ("com/auth0", "java-jwt", "3.12.1", "da3b695c3be2cdbf1c9e963e0db0d4509896696b640d77d6ec702a38f8cc4a70"),
@@ -17,7 +19,6 @@ ARTIFACTS = (
     ("com/fasterxml/jackson/core", "jackson-annotations", "2.14.2", "2c6869d505cf60dc066734b7d50339f975bd3adc635e26a78abb71acb4473c0d"),
     ("com/fasterxml/jackson/core", "jackson-core", "2.14.2", "b5d37a77c88277b97e3593c8740925216c06df8e4172bbde058528df04ad3e7a"),
     ("com/fasterxml/jackson/core", "jackson-databind", "2.14.2", "501d3abce4d18dcc381058ec593c5b94477906bba6efbac14dae40a642f77424"),
-    ("jakarta/servlet", "jakarta.servlet-api", "5.0.0", "33d3a5bda82c7d2f1b898685faa954f1fc34f7b0ae5c2f6ccc6d051e8a10973b"),
 )
 
 
@@ -25,6 +26,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("agent", type=Path)
     parser.add_argument("--jar-dir", type=Path, help="use local fixture dependencies")
+    parser.add_argument("--api-dir", type=Path, help="use a separately staged Jakarta servlet API jar")
     args = parser.parse_args()
     agent = args.agent.resolve(strict=True)
     with zipfile.ZipFile(agent) as jar:
@@ -32,7 +34,7 @@ def main():
                       f"io/ohmyrasp/agent/java{v}/Java{v}RaspHooks.class" in jar.namelist()), "main")
     with tempfile.TemporaryDirectory(prefix="jwt-filter-") as tmp:
         work = Path(tmp)
-        paths = [tmp]
+        paths = [tmp, str(api_jar("jakarta", work, args.api_dir or args.jar_dir))]
         for group, name, version, digest in ARTIFACTS:
             filename = f"{name}-{version}.jar"
             path = (args.jar_dir or work) / filename

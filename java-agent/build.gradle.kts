@@ -1,3 +1,5 @@
+import java.util.Properties
+
 plugins {
     java
     id("com.gradleup.shadow") version "9.6.1" apply false
@@ -53,4 +55,17 @@ dependencies {
 tasks.register<Sync>("stageYarnProbe") {
     from(yarnProbeRuntime)
     into(layout.buildDirectory.dir("yarn-probe"))
+}
+
+// Resolve the same pinned APIs as the standalone servlet probes once per CI build.
+tasks.register<Sync>("stageServletProbe") {
+    val manifest = Properties()
+    rootProject.file("scripts/fp-harness/servlet-apis.properties").inputStream().use { manifest.load(it) }
+    val jars = manifest.stringPropertyNames().map {
+        rootProject.dependencies.create(manifest.getProperty(it).substringBefore(','))
+    }
+    val apis = rootProject.configurations.detachedConfiguration(*jars.toTypedArray())
+    apis.isTransitive = false
+    from(apis)
+    into(layout.buildDirectory.dir("servlet-probe"))
 }

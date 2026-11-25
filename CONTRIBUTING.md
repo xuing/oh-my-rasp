@@ -214,7 +214,8 @@ Pass `--jar-dir` to the probe to use local copies of the pinned fixture jars.
 
 The multipart check covers both the Javax and Jakarta Servlet APIs.
 Pass `--api-dir` to `java-agent/scripts/fp-harness/check-multipart-archive.py` to
-use local copies of its pinned API jars.
+use local copies of its pinned API jars. CI stages those jars once with
+`:stageServletProbe` and shares them across the runtime matrix.
 
 The packaged-agent job exercises MyBatis rendering and a recording JDBC receiver
 in block and monitor modes. For a local run, pass the agent JAR to

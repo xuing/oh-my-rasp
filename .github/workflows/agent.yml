@@ -41,7 +41,7 @@ jobs:
             -v "$PWD/java-agent:/workspace" \
             -w /workspace \
             "$gradle_image" \
-            gradle --no-daemon --no-problems-report clean check :stageYarnProbe \
+            gradle --no-daemon --no-problems-report clean check :stageYarnProbe :stageServletProbe \
             :agent-jdk25:jdk21Jars \
             :agent-java8:shirudoUpatchJar \
             :agent-java11:shirudoUpatchJar \
@@ -75,6 +75,7 @@ jobs:
         with:
           name: java-agents
           path: |
+            java-agent/build/servlet-probe/*.jar
             java-agent/agent-java8/build/libs/ohmyrasp-agent-java8.jar
             java-agent/agent-java11/build/libs/ohmyrasp-agent-java11.jar
             java-agent/agent-java17/build/libs/ohmyrasp-agent-java17.jar
@@ -182,7 +183,7 @@ jobs:
       - name: Verify validated process arguments and pipeline stages
         run: python3 java-agent/scripts/fp-harness/check-process-launch.py "java-agent/${{ matrix.jar }}"
       - name: Verify Javax and Jakarta multipart authorization
-        run: python3 java-agent/scripts/fp-harness/check-multipart-archive.py "java-agent/${{ matrix.jar }}"
+        run: python3 java-agent/scripts/fp-harness/check-multipart-archive.py "java-agent/${{ matrix.jar }}" --api-dir java-agent/build/servlet-probe
       - name: Check literal stream-like names on Linux
         if: startsWith(matrix.jar, 'agent-jdk25/')
         run: python3 java-agent/scripts/fp-harness/check-file-streams.py "java-agent/${{ matrix.jar }}"
@@ -206,14 +207,14 @@ jobs:
       - name: Verify YARN admission with a recording client
         run: python3 java-agent/scripts/fp-harness/check-yarn-submit.py "java-agent/${{ matrix.jar }}" --jar-dir "$RUNNER_TEMP/yarn-probe"
       - name: Verify Spark submit role at servlet dispatch
-        run: python3 java-agent/scripts/fp-harness/check-spark-submit.py "java-agent/${{ matrix.jar }}"
+        run: python3 java-agent/scripts/fp-harness/check-spark-submit.py "java-agent/${{ matrix.jar }}" --api-dir java-agent/build/servlet-probe
       - name: Verify resolved serialization classes and proxy interfaces
         run: python3 java-agent/scripts/fp-harness/check-stream-resolution.py "java-agent/${{ matrix.jar }}"
       - name: Verify JVM and per-stream deserialization filters
         if: startsWith(matrix.jar, 'agent-jdk25/')
         run: python3 java-agent/scripts/fp-harness/check-serial-filter.py "java-agent/${{ matrix.jar }}"
       - name: Verify authentication rejection and downstream filter dispatch
-        run: python3 java-agent/scripts/fp-harness/check-jwt-verification.py "java-agent/${{ matrix.jar }}"
+        run: python3 java-agent/scripts/fp-harness/check-jwt-verification.py "java-agent/${{ matrix.jar }}" --api-dir java-agent/build/servlet-probe
       - name: Verify resolved JMX dispatch
         run: python3 java-agent/scripts/fp-harness/check-jmx-dispatch.py "java-agent/${{ matrix.jar }}"
       - name: Verify XML catalogue and transport decisions
