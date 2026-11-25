@@ -68,12 +68,19 @@ public final class EvidenceProbe {
         case "beforeH2JdbcConnection":
         case "beforeJdbcConnection":
           break;
-        case "beforeObjectStreamProxyResolve":
-          // Both descriptor and proxy resolution call classifyDeserializationClass.
-          // Submit the name to that classifier without loading the recorded class.
-          parameters[0] = String[].class;
-          arguments[0] = new String[]{value};
-          break;
+        case "streamTypeName":
+          // Report only the name predicate. Never resolve a class named by a historical input.
+          boolean listed;
+          try {
+            Class<?> names = Class.forName("io.ohmyrasp.agent.serialization.StreamTypeNames");
+            listed = (Boolean) names.getMethod("listed", String.class).invoke(null, value);
+          } catch (ClassNotFoundException legacy) {
+            java.lang.reflect.Field field = hooks.getDeclaredField("DESERIALIZATION_GADGET_CLASS");
+            field.setAccessible(true);
+            listed = ((java.util.regex.Pattern) field.get(null)).matcher(value).matches();
+          }
+          System.out.println((listed ? "listed" : "unlisted") + "\t");
+          continue;
         case "beforeClassLoaderUrl":
         case "beforeRmiClassLoaderCodebase":
           if (methodName.equals("beforeClassLoaderUrl")) parameters[0] = Object.class;

@@ -161,7 +161,9 @@ For processes, a message naming an interpreter or initialization context cannot
 supply the original caller. A display string from an array API does not preserve
 argument boundaries. These records also receive an unavailable status.
 Backport class-descriptor and proxy-interface callbacks historically logged the same
-hook label. Replay of those records checks the shared class-name classifier.
+hook label. For records retaining a name, the offline probe checks the name
+predicate without loading the named class. These results stay in the unresolved
+total because the probe did not observe the resolved class or proxy interfaces.
 The comparison distinguishes changes in evidence availability from changes in tested
 detector outcomes and reports both.
 An archive filename cannot establish deployment authorization. To require every retained
@@ -181,6 +183,11 @@ It verifies argument boundaries, application list accesses, per-stage redirectio
 and explicit dispatch policy with locally executed report commands. The primary
 agent check uses curl and an in-process loopback responder to verify callback
 destination decisions and receipt of allowed transfers.
+
+The [stream resolution check](java-agent/scripts/fp-harness/check-stream-resolution.py)
+uses inert records, an application resolver and a BeanShell scalar. It checks
+the type actually read, resolver exceptions, and decisions on independent streams.
+Use `--beanshell-jar` to run the probe using a local copy of the fixture library.
 
 The primary [serial filter check](java-agent/scripts/fp-harness/check-serial-filter.py)
 verifies application filter registration, JDK rejection and ordinary data reads

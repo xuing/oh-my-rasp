@@ -202,6 +202,19 @@ class EvidenceTest(unittest.TestCase):
         decisions.record_probe_result(row, True, [finding, finding])
         self.assertEqual(row["status"], "mismatch")
 
+    def test_stream_type_policy_is_separate_from_a_replayed_decision(self):
+        for hook in ("ObjectInputStream.resolveClass", "ObjectInputStream.resolveProxyClass"):
+            spec = decisions.source_for(hook, "java17_deserialization_gadget_class", "17")
+            self.assertEqual(spec[0], "streamTypeName")
+            self.assertIsNone(decisions.source_for(hook, "java17_other_rule", "17"))
+        def report(status):
+            return {"corpus_sha256": "a", "issues": [], "historical_blocks": [
+                {"file": "a", "line": 1, "status": status}]}
+        change, = decisions.changed_decisions(report("matched"), report("name policy matched"))
+        self.assertEqual(change["kind"], "evidence availability")
+        change, = decisions.changed_decisions(report("name policy matched"), report("name policy mismatch"))
+        self.assertEqual(change["kind"], "detector outcome")
+
     def test_compare_preserves_visible_mismatches_and_checks_input_identity(self):
         record = {"file": "a", "line": 2, "status": "mismatch", "observed": []}
         before = {"corpus_sha256": "a", "historical_blocks": [record], "issues": []}

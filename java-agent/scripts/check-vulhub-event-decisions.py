@@ -28,7 +28,6 @@ SOURCES = {
     "UnixChannelFactory.open": ("beforeFileRead", "path", "/srv/orders/report.csv"),
     "FileOutputStream.open": ("beforeFileWrite", "path", "/srv/orders/report.csv"),
     "InitialContext.lookup": ("beforeJndiLookup", "lookup", "java:comp/env/jdbc/orders"),
-    "ObjectInputStream.resolveClass": ("beforeObjectStreamProxyResolve", "class", "java.util.ArrayList"),
     "MultipartUpload.filename": ("beforeFileUpload", "filename", "orders.csv"),
     "Runtime.exec(String)": ("beforeRuntimeExecString", "command", "whoami"),
     "ScriptEngine.eval": ("beforeScriptEval", "script", "quantity * price"),
@@ -45,6 +44,10 @@ SERVLET_SOURCES = {
 
 
 def source_for(hook, algorithm, track):
+    if hook in ("ObjectInputStream.resolveClass", "ObjectInputStream.resolveProxyClass"):
+        if algorithm == f"java{track}_deserialization_gadget_class":
+            return ("streamTypeName", "class", "java.util.ArrayList")
+        return None
     if hook == "HttpServlet.service":
         prefix = f"java{track}_"
         return SERVLET_SOURCES.get(algorithm[len(prefix):]) if algorithm.startswith(prefix) else None
@@ -204,9 +207,10 @@ def collect(logs):
                 if not isinstance(value, str) or not value or "[redacted]" in value or value.endswith(("...", "…")):
                     row["status"] = "argument unavailable"
                     continue
-                if method == "beforeObjectStreamProxyResolve":
-                    row["evidence_limit"] = ("class-name classifier only; historical descriptor and proxy-interface "
-                                             "callbacks share an event label")
+                if method == "streamTypeName":
+                    row["evidence_limit"] = ("name policy only; the resolved Class and hierarchy are unavailable"
+                                             if row.get("historical_decision_basis") else
+                                             "name policy only; the legacy label cannot distinguish descriptors and interfaces")
                 if method == "requestIdentity":
                     arguments = identity_arguments(value)
                     if arguments is None:
@@ -287,8 +291,16 @@ def check_batch(java, tmp, root, track, cases, controls):
     result = subprocess.run(cmd, input=data, text=True, capture_output=True, timeout=90)
     if result.returncode or len(result.stdout.splitlines()) != len(cases):
         raise ValueError(f"Java {track} probe did not return one result per input (exit {result.returncode})")
-    for (row, _, _), response in zip(cases, result.stdout.splitlines(), strict=True):
+    for (row, method, _), response in zip(cases, result.stdout.splitlines(), strict=True):
         blocked, encoded = response.split("\t")
+        if method == "streamTypeName":
+            if blocked not in ("listed", "unlisted") or encoded:
+                raise ValueError("invalid type-name policy receipt")
+            if "algorithm" in row:
+                row["status"] = "name policy matched" if blocked == "listed" else "name policy mismatch"
+            else:
+                row["status"] = "matched" if blocked == "unlisted" else "mismatch"
+            continue
         if blocked not in ("true", "false"):
             raise ValueError("Java probe returned an invalid block receipt")
         events = [json.loads(line) for line in base64.b64decode(encoded, validate=True).splitlines()]
@@ -340,8 +352,10 @@ def changed_decisions(previous, current):
         if same_receipts and outcome(prior) == outcome(row):
             continue
         tested = {"matched", "mismatch"}
+        name_only = {"name policy matched", "name policy mismatch"}
+        outcomes = {prior["status"], row["status"]}
         changes.append({"file": key[0], "line": key[1], "before": prior["status"], "after": row["status"],
-                        "kind": "detector outcome" if {prior["status"], row["status"]} <= tested else "evidence availability"})
+                        "kind": "detector outcome" if outcomes <= tested or outcomes <= name_only else "evidence availability"})
     return changes
 
 
@@ -373,8 +387,10 @@ def main():
     replayed = counts["matched"] + counts["mismatch"]
     unresolved = len(rows) - replayed
     report["replay_summary"] = {"replayed": replayed, "matched": counts["matched"],
-                                "different": counts["mismatch"], "unresolved": unresolved}
-    different = bool(counts["mismatch"])
+                                "different": counts["mismatch"], "unresolved": unresolved,
+                                "name_policy_matched": counts["name policy matched"],
+                                "name_policy_different": counts["name policy mismatch"]}
+    different = bool(counts["mismatch"] or counts["name policy mismatch"])
     if args.compare_report:
         changes = changed_decisions(json.loads(args.compare_report.read_text()), report)
         report["changes_from_reference"] = changes
@@ -384,6 +400,9 @@ def main():
     args.report.write_text(json.dumps(report, indent=2) + "\n")
     print(f"{len(files)} event files, {len(rows)} historical blocks: {dict(counts)}")
     print(f"{replayed} replayed, {unresolved} unresolved. A full historical comparison requires every block to match.")
+    if counts["name policy matched"] or counts["name policy mismatch"]:
+        print(f"Unresolved records with a name-only check: {counts['name policy matched']} agree, "
+              f"{counts['name policy mismatch']} differ.")
     print(f"Benign controls: {dict(Counter(row['status'] for row in controls))}")
     if issues or not batches:
         return 2
