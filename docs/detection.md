@@ -58,6 +58,8 @@ ASM hook at sink
 - **Daemon-managed mode:** `JsonEventLogger` queues findings asynchronously on a background daemon writer thread to a local NDJSON spool file (default `/tmp/ohmyrasp-events.jsonl`). The Rust host daemon tails the spool and forwards events to the Go control plane, keeping detection latency independent of network reachability.
 - **Standalone locked mode:** `log=stderr` and `latency_sample=0` write detection JSON lines directly to `stderr` with zero file-writer threads, no spool file, and no periodic `hook_latency` telemetry lines.
 
+The primary agent records `log` when a managed block rule matches outside its enforcement scope in block mode. In monitor mode, it records a would-be block as `monitor`.
+
 ## Coverage numbers
 
 Hook-family, detector-capability, asserted-signature, and acceptance-scenario counts, the per-JDK scenario distribution, and the tested vulnerability matrix are generated from the agent source and acceptance suite by [`gen-detection-coverage.py`](../java-agent/scripts/gen-detection-coverage.py) into [`DETECTION-COVERAGE.md`](../java-agent/docs/DETECTION-COVERAGE.md). Vulhub component roots and CVE tracking live in [`vulhub-coverage.md`](development/vulhub-coverage.md). This page does not restate those numbers.

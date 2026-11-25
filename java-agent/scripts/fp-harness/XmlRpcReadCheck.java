@@ -60,5 +60,12 @@ public final class XmlRpcReadCheck {
       blocked = true;
     }
     if (blocked != block) throw new AssertionError("incorrect extension policy decision");
+
+    HttpInvokerReadCheck.install("{\"algorithm\":\"deserialization_gadget\",\"action\":\"block\"}");
+    byte[] localData = encode(new org.apache.commons.beanutils.BeanComparator());
+    try (ObjectInputStream local = new ObjectInputStream(new ByteArrayInputStream(localData))) {
+      if (local.readObject().getClass() != org.apache.commons.beanutils.BeanComparator.class)
+        throw new AssertionError("local worker record changed");
+    }
   }
 }

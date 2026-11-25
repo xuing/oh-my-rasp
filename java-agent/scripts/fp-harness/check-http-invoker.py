@@ -42,6 +42,13 @@ def main():
                     raise SystemExit(run.stdout + run.stderr)
                 events = [e for line in log.read_text().splitlines() if (e := json.loads(line)).get("algorithm")]
                 typed = "deserialization_gadget" if track == "main" else f"java{track}_deserialization_gadget_class"
+                if track == "main" and check == "XmlRpcReadCheck":
+                    local = events.pop() if events else {}
+                    details = local.get("details", {})
+                    if (local.get("action") != ("log" if mode == "block" else "monitor")
+                            or local.get("algorithm") != typed or "stream_operation" in details
+                            or details.get("class") != "org.apache.commons.beanutils.BeanComparator"):
+                        raise SystemExit(f"unblocked local stream reported an incorrect decision: {local}")
                 typed_count = 2 if check == "XmlRpcReadCheck" else 1
                 expected = [typed] * typed_count
                 bases = []

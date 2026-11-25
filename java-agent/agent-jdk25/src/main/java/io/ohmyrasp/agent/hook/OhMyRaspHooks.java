@@ -2074,15 +2074,10 @@ public final class OhMyRaspHooks {
         runtime.blockingAllowed()
             && "block".equalsIgnoreCase(event.action())
             && (activeRequest(event) || allowNonRequestBlock);
-    // In MONITOR (record) mode a would-be block is observed, not enforced — record
-    // it truthfully so the log/console don't claim a block that never happened.
-    // Strictly gated on MONITOR, so unset/legacy (acceptance) behavior is unchanged.
     if (!willBlock && repeatedObservation != null && repeatedObservation.test(event.algorithm())) return;
     Detection recorded = event;
-    if (!willBlock
-        && runtime.mode() == DetectionMode.MONITOR
-        && "block".equalsIgnoreCase(event.action())) {
-      recorded = event.withAction("monitor");
+    if (!willBlock && "block".equalsIgnoreCase(event.action())) {
+      recorded = event.withAction(runtime.mode() == DetectionMode.MONITOR ? "monitor" : "log");
     }
     JsonEventLogger.get().record(redactHttpObservation(recorded), elapsedMicros(started), ruleEvaluationUs);
     if (willBlock) {
