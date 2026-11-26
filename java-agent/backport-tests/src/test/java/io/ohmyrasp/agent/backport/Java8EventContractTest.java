@@ -1,9 +1,13 @@
-package io.ohmyrasp.agent.java8;
+package io.ohmyrasp.agent.backport;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import io.ohmyrasp.agent.java8.Java8RaspBlockException;
+import io.ohmyrasp.agent.java8.Java8RaspHooks;
+import io.ohmyrasp.agent.java8.Java8RaspLine;
+import io.ohmyrasp.agent.java8.OhMyRaspJava8Agent;
 import java.io.File;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -15,6 +19,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.TimeUnit;
 import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -26,6 +31,18 @@ import org.junit.jupiter.api.io.TempDir;
  */
 final class Java8EventContractTest {
   @TempDir Path dir;
+
+  /**
+   * The hooks log a monitored command once per thread until another is logged, and JUnit runs every
+   * test class on one thread, so another class may have logged a scenario's command last. A
+   * different command, written nowhere, makes each scenario's event its own.
+   */
+  @BeforeEach
+  void forgetTheLastLoggedCommand() {
+    System.setProperty("ohmyrasp.java8.log", "none");
+    Java8RaspHooks.beforeProcessBuilderStart(new ProcessBuilder("sh", "-c", "cat /proc/self/environ"));
+    System.clearProperty("ohmyrasp.java8.log");
+  }
 
   @AfterEach
   void clearProperties() {
@@ -82,7 +99,8 @@ final class Java8EventContractTest {
     List<String> command = new ArrayList<String>();
     command.add(Paths.get(System.getProperty("java.home"), "bin", "java").toString());
     command.add("-cp");
-    command.add(codeLocation(RaspRuntime.class) + File.pathSeparator + codeLocation(Java8EventContractTest.class));
+    command.add(codeLocation(RaspRuntime.class) + File.pathSeparator + codeLocation(Java8RaspLine.class)
+        + File.pathSeparator + codeLocation(Java8EventContractTest.class));
     command.add("-Dohmyrasp.java8.log=" + log);
     command.add("-Dohmyrasp.latency_sample=1");
     command.add("-Dohmyrasp.log.sync=false");
@@ -97,9 +115,13 @@ final class Java8EventContractTest {
     Java8ContractFiles.assertGolden("events/backport/telemetry.json", only(log, true));
   }
 
-  /** Runs in the child JVM of the telemetry test: one sampled request latency. */
+  /**
+   * Runs in the child JVM of the telemetry test: starts the line as its entry class does, then one sampled
+   * request latency.
+   */
   public static final class TelemetryChild {
     public static void main(String[] args) {
+      Java8RaspLine.start();
       RaspRuntime.sampleLatency(321);
     }
   }

@@ -1,5 +1,6 @@
 package io.ohmyrasp.agent.java8;
 
+import io.ohmyrasp.agent.backport.OwnIoAccess;
 import io.ohmyrasp.agent.rules.general.PlotWrite;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -1401,16 +1402,16 @@ final class Java8RaspHooksTest {
     System.setProperty("ohmyrasp.java8.block", "true");
     final String spool = "/usr/local/tomcat/webapps/ROOT/events.jsp";
 
-    boolean entered = RaspRuntime.enterOwnIo();
+    boolean entered = OwnIoAccess.enterOwnIo();
     try {
       assertTrue(entered);
-      assertFalse(RaspRuntime.enterOwnIo(), "a nested mark leaves clearing to the outermost caller");
+      assertFalse(OwnIoAccess.enterOwnIo(), "a nested mark leaves clearing to the outermost caller");
       Java8RaspHooks.beforeFileWrite(spool);
       Java8RaspHooks.beforeNioFileWrite(spool);
     } finally {
-      RaspRuntime.exitOwnIo(entered);
+      OwnIoAccess.exitOwnIo(entered);
     }
-    assertFalse(RaspRuntime.inOwnIo());
+    assertFalse(OwnIoAccess.inOwnIo());
     assertFalse(Files.exists(log), "nothing reported");
 
     // The same write by the application is blocked.
@@ -1965,11 +1966,11 @@ final class Java8RaspHooksTest {
     Java8RaspHooks.afterArchiveEntryName("../notes/report.txt");
     // The agent's own control read or spool write opens a channel between the member's selection
     // and the application's own open of the destination.
-    boolean entered = RaspRuntime.enterOwnIo();
+    boolean entered = OwnIoAccess.enterOwnIo();
     try {
       Java8RaspHooks.beforeUnixChannelWrite(Paths.get("/tmp/ohmyrasp-events.jsonl"), -1, true);
     } finally {
-      RaspRuntime.exitOwnIo(entered);
+      OwnIoAccess.exitOwnIo(entered);
     }
     Java8RaspHooks.beforeFileWrite("/tmp/extract/../notes/report.txt");
 
@@ -2826,7 +2827,7 @@ final class Java8RaspHooksTest {
     return calls.get();
   }
 
-  static final class JaxRsRequestStub {
+  public static final class JaxRsRequestStub {
     private final String method;
     private final URI requestUri;
     private final Map<String, String> headers = new HashMap<String, String>();

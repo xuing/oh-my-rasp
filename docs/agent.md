@@ -83,14 +83,16 @@ Under `java-agent/agent-jdk25/src/main/java/io/ohmyrasp/agent/`:
 
 ### Backport modules (`agent-java8`, `agent-java11`, `agent-java17`)
 
-Each backport track lives under `java-agent/agent-java{8,11,17}/src/main/java/io/ohmyrasp/agent/java{8,11,17}/` and depends only on ASM and the `:shared` module:
+Each backport track lives under `java-agent/agent-java{8,11,17}/src/main/java/io/ohmyrasp/agent/java{8,11,17}/` and depends only on ASM and the `:shared` module. Its decisions and runtime are one copy for the three tracks, in the `:shared` module's `io.ohmyrasp.agent.backport` package, compiled for Java 8:
 
 - `OhMyRaspJava{8,11,17}Agent`: entry point (`premain`/`agentmain`) and transformer registration.
 - `Java{8,11,17}*Transformer` classes covering the algorithm signatures listed in [`DETECTION-COVERAGE.md`](../java-agent/docs/DETECTION-COVERAGE.md).
-- `Java{8,11,17}RaspHooks` and `Java{8,11,17}RaspBlockException`: self-contained hook and detection logic.
-- `RaspRuntime`: mirrors `AgentRuntime` + `JsonEventLogger` using only the target JDK's APIs, including `META-INF/ohmyrasp-shirudo.properties` support, async file spooling, and `control.json` polling.
+- `Java{8,11,17}RaspHooks`: the class the transformers inject calls to. Each public method is a one-line call to the method of the same name in `BackportHooks`.
+- `Java{8,11,17}RaspLine` and `Java{8,11,17}RaspBlockException`: the line descriptor (a `BackportLine`: the line's rule-id prefix, property, environment and thread names, log prefix, and how to make and recognise its block exception) and the exception a block throws.
+- `BackportHooks` (shared): the hook and detection logic, the per-thread request state and the event text.
+- `RaspRuntime` (shared): mirrors `AgentRuntime` + `JsonEventLogger` using only Java 8 APIs, including `META-INF/ohmyrasp-shirudo.properties` support, async file spooling, and `control.json` polling.
 
-Detector false-positive-suppression parity between the backport `Java{8,11,17}RaspHooks` files and `agent-jdk25`'s `detect/` package is enforced by [`check-detector-parity.sh`](../java-agent/scripts/check-detector-parity.sh).
+Detector false-positive-suppression parity between `BackportHooks` and `agent-jdk25`'s `detect/` package is enforced by [`check-detector-parity.sh`](../java-agent/scripts/check-detector-parity.sh).
 
 ## Runtime modes and configuration
 
@@ -158,10 +160,10 @@ Backport modules (`agent-java8`, `agent-java11`, `agent-java17`) read system pro
 - A queued event is written to the log target it was accepted for, even when the target changes before the writer drains it.
 - `META-INF/ohmyrasp-shirudo.properties` is read only from the agent's own JAR; a same-named resource elsewhere on the class path is ignored. A malformed one does not stop the agent: the keys before the malformed line apply and the rest are ignored.
 - With no log setting and `standalone` off, events go to `stderr`, not to `/tmp/ohmyrasp-events.jsonl`.
-- The agent entry point initialises `RaspRuntime` before it installs any hook, on the thread that runs `premain` or `agentmain`. That is when the first control-file read happens and when the poller thread (`ohmyrasp-java{8,11,17}-control`, only if polling is on) and the event-writer thread (`ohmyrasp-java{8,11,17}-writer`, only if the log target at that moment is a file) start. A target that becomes a file later is written inline on the request thread. At JVM shutdown a hook stops the writer, waits up to 2 seconds for the batch it holds, then writes what is still queued, waiting up to 1 second for the write lock; an event offered after that is written on the hook's thread. As on `agent-jdk25` these are bounded waits, and events accepted while the JVM is shutting down may be lost. A failure while an event is recorded never replaces a block.
+- The agent entry point starts the line (`Java{8,11,17}RaspLine.start()`: it installs the line descriptor, starts `RaspRuntime` and initialises the hook classes) before it installs any hook, on the thread that runs `premain` or `agentmain`. Until then the shared runtime and hooks refuse to run. That is when the first control-file read happens and when the poller thread (`ohmyrasp-java{8,11,17}-control`, only if polling is on) and the event-writer thread (`ohmyrasp-java{8,11,17}-writer`, only if the log target at that moment is a file) start. A target that becomes a file later is written inline on the request thread. At JVM shutdown a hook stops the writer, waits up to 2 seconds for the batch it holds, then writes what is still queued, waiting up to 1 second for the write lock; an event offered after that is written on the hook's thread. As on `agent-jdk25` these are bounded waits, and events accepted while the JVM is shutting down may be lost. A failure while an event is recorded never replaces a block.
 - `RaspRuntime` marks its own event writes and control-file reads on the current thread, as `AgentOwnIo` does on `agent-jdk25`, with the same exceptions: the hooks neither report nor block them, and the file hooks this I/O reaches check the mark before they inspect it. Two things still run under the mark: the `.plot` output-stream tracker records and scans an agent-written stream before its check (without reporting or blocking it), and file I/O that an installed `SecurityManager` performs from its `checkWrite` callback during an agent write is hidden as well. [`own-writes`](../java-agent/probes/own-writes/check.py) checks this on every packaged line with a `.jsp` spool in a web root.
 
-[`Java8ShirudoStandaloneTest`](../java-agent/backport-tests/src/test/java/io/ohmyrasp/agent/java8/Java8ShirudoStandaloneTest.java), [`Java8RuntimeControlTest`](../java-agent/backport-tests/src/test/java/io/ohmyrasp/agent/java8/Java8RuntimeControlTest.java) and [`Java8EventSpoolTest`](../java-agent/backport-tests/src/test/java/io/ohmyrasp/agent/java8/Java8EventSpoolTest.java) pin these rules on all three lines.
+[`Java8ShirudoStandaloneTest`](../java-agent/backport-tests/src/test/java/io/ohmyrasp/agent/backport/Java8ShirudoStandaloneTest.java), [`Java8RuntimeControlTest`](../java-agent/backport-tests/src/test/java/io/ohmyrasp/agent/backport/Java8RuntimeControlTest.java) and [`Java8EventSpoolTest`](../java-agent/backport-tests/src/test/java/io/ohmyrasp/agent/backport/Java8EventSpoolTest.java) pin these rules on all three lines.
 
 ### Hooks that read application objects
 

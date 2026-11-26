@@ -28,7 +28,8 @@ dependencies {
     testImplementation("com.github.pagehelper:pagehelper:4.2.1") { isTransitive = false }
     testImplementation("org.apache.commons:commons-jexl:2.1.1") { isTransitive = false }
     testImplementation("org.junit.jupiter:junit-jupiter:5.14.4")
-    testRuntimeOnly("org.junit.platform:junit-platform-launcher:1.14.4")
+    // The backport tests register a LauncherSessionListener, which compiles against the launcher API.
+    testImplementation("org.junit.platform:junit-platform-launcher:1.14.4")
 }
 
 java {

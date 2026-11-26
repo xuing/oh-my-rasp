@@ -8,9 +8,6 @@
    "io/ohmyrasp/agent/http/ServletQueryParameters": {
     "lambda": 1
    },
-   "io/ohmyrasp/agent/java8/Java8RaspHooks": {
-    "lambda": 2
-   },
    "io/ohmyrasp/agent/net/HttpTransportObservation$Submissions": {
     "lambda": 1
    },
@@ -76,10 +73,6 @@
    "io/ohmyrasp/agent/java11/Java11ProcessTransformer": {
     "string-concat": 1
    },
-   "io/ohmyrasp/agent/java11/Java11RaspHooks": {
-    "lambda": 2,
-    "string-concat": 50
-   },
    "io/ohmyrasp/agent/java11/Java11ScriptEngineTransformer": {
     "string-concat": 1
    },
@@ -100,12 +93,6 @@
    },
    "io/ohmyrasp/agent/java11/OhMyRaspJava11Agent": {
     "string-concat": 5
-   },
-   "io/ohmyrasp/agent/java11/RaspRuntime": {
-    "string-concat": 3
-   },
-   "io/ohmyrasp/agent/java11/RaspRuntime$EventSpool": {
-    "string-concat": 1
    },
    "io/ohmyrasp/agent/net/HttpTransportObservation$Submissions": {
     "lambda": 1
@@ -172,10 +159,6 @@
    "io/ohmyrasp/agent/java17/Java17ProcessTransformer": {
     "string-concat": 1
    },
-   "io/ohmyrasp/agent/java17/Java17RaspHooks": {
-    "lambda": 2,
-    "string-concat": 50
-   },
    "io/ohmyrasp/agent/java17/Java17ScriptEngineTransformer": {
     "string-concat": 1
    },
@@ -196,12 +179,6 @@
    },
    "io/ohmyrasp/agent/java17/OhMyRaspJava17Agent": {
     "string-concat": 5
-   },
-   "io/ohmyrasp/agent/java17/RaspRuntime": {
-    "string-concat": 3
-   },
-   "io/ohmyrasp/agent/java17/RaspRuntime$EventSpool": {
-    "string-concat": 1
    },
    "io/ohmyrasp/agent/net/HttpTransportObservation$Submissions": {
     "lambda": 1
@@ -477,7 +454,7 @@
    },
    "io/ohmyrasp/agent/log/JsonEventLogger": {
     "lambda": 2,
-    "string-concat": 2
+    "string-concat": 3
    },
    "io/ohmyrasp/agent/log/JsonEventLogger$Sample": {
     "record": 3

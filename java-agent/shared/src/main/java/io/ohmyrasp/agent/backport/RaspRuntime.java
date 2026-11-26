@@ -1,4 +1,4 @@
-package io.ohmyrasp.agent.java8;
+package io.ohmyrasp.agent.backport;
 
 import io.ohmyrasp.agent.util.ControlDocument;
 import java.io.File;
@@ -29,13 +29,15 @@ import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.locks.ReentrantLock;
 
 /**
- * Java 8 backport runtime: asynchronous event spool plus control-file-driven
+ * The backport runtime: asynchronous event spool plus control-file-driven
  * detection mode and optional shirudo upatch standalone configuration. Mirrors
  * the agent-jdk25 design using only Java 8 APIs.
  *
- * <p>Duplicated per backport module, token for token; beyond the JDK it uses only
- * shared/ sources, which every line compiles in, so each backport jar stays
- * independently buildable. When the log
+ * <p>One copy for the three backport lines. What differs between them (the line's
+ * own property names, thread names and log prefix) comes from the installed
+ * {@link BackportLine}. The line's entry class installs the line and calls
+ * {@link #start} before it registers any transformer; until then the runtime
+ * refuses to run and throws IllegalStateException. When the log
  * target resolved at start-up is a file path, events go through a background
  * daemon writer thread so the protected request never blocks on a file write;
  * a target that becomes a file later, or {@code OHMYRASP_LOG_SYNC=true}, writes
@@ -49,7 +51,6 @@ public final class RaspRuntime {
   }
 
   static final String SHIRUDO_PROPERTIES_RESOURCE = "/META-INF/ohmyrasp-shirudo.properties";
-  private static final String AGENT_ENTRY_CLASS = "io.ohmyrasp.agent.java8.OhMyRaspJava8Agent";
 
   private interface PropertyLookup {
     String get(String key);
@@ -83,8 +84,12 @@ public final class RaspRuntime {
     }
 
     static Config resolveCurrent() {
+      return resolveCurrent(started().baked);
+    }
+
+    private static Config resolveCurrent(Properties baked) {
       return resolve(
-          BAKED_PROPERTIES,
+          baked,
           new PropertyLookup() {
             public String get(String key) {
               return System.getProperty(key);
@@ -162,7 +167,7 @@ public final class RaspRuntime {
       String bakedLog = bakedProperty(baked, "log");
       String logPath =
           firstNonBlank(
-              sysProps.get("ohmyrasp.java8.log"),
+              sysProps.get(BackportLine.current().logProperty),
               sysProps.get("ohmyrasp.log"),
               env.get("OHMYRASP_LOG"),
               bakedLog);
@@ -307,11 +312,6 @@ public final class RaspRuntime {
   /** A control file larger than this many bytes is unparseable; only this many + 1 are read. */
   static final int MAX_CONTROL_BYTES = 1 << 20;
 
-  private static final Properties BAKED_PROPERTIES = loadBakedProperties();
-  private static final Config INITIAL_CONFIG = Config.resolveCurrent();
-  private static final Path CONTROL_PATH = INITIAL_CONFIG.controlPath;
-  private static final ControlState CONTROL = new ControlState(INITIAL_CONFIG.mode);
-
   // ---- asynchronous event spool -------------------------------------------
 
   // The shutdown hook waits this long for the writer to finish the batch it holds.
@@ -329,51 +329,100 @@ public final class RaspRuntime {
       };
   private static final EventSpool SPOOL = new EventSpool(FILE_SINK);
   private static final AtomicLong SAMPLE_COUNTER = new AtomicLong();
-  private static final boolean SYNC = syncFlag();
-  private static final int SAMPLE_RATE = INITIAL_CONFIG.latencySample;
-  // The writer thread exists only when the log target resolved at start-up is a file. It is never
-  // created inside a hook: a target that becomes a file later is written inline.
-  private static final boolean WRITER_ENABLED = isFileLogTarget(INITIAL_CONFIG.logPath);
 
-  static {
-    // Load and initialise, before any hook runs, the classes a hook would otherwise load first:
-    // the hooks run inside JDK classes, where loading a class can re-enter them.
-    new Event("", "");
-    if (CONTROL_PATH != null) {
-      reloadControl();
-      Thread poller =
-          new Thread(
-              new Runnable() {
-                public void run() {
-                  while (true) {
-                    try {
-                      Thread.sleep(pollMillis());
-                      reloadControl();
-                    } catch (InterruptedException e) {
-                      Thread.currentThread().interrupt();
-                      return;
-                    } catch (RuntimeException | Error ignored) {
-                      // never let control polling disturb the application or stop polling
+  /** What {@link #start} resolved, once per JVM. */
+  private static final class Started {
+    final BackportLine line;
+    final Properties baked;
+    final Config initial;
+    final Path controlPath;
+    final ControlState control;
+    final boolean sync;
+    final int sampleRate;
+    // The writer thread exists only when the log target resolved at start-up is a file. It is never
+    // created inside a hook: a target that becomes a file later is written inline.
+    final boolean writerEnabled;
+
+    Started(BackportLine line, Properties baked, Config initial, boolean sync) {
+      this.line = line;
+      this.baked = baked;
+      this.initial = initial;
+      this.controlPath = initial.controlPath;
+      this.control = new ControlState(initial.mode);
+      this.sync = sync;
+      this.sampleRate = initial.latencySample;
+      this.writerEnabled = isFileLogTarget(initial.logPath);
+    }
+  }
+
+  private static final Object START_LOCK = new Object();
+  private static volatile Started started;
+
+  /** The started runtime. Throws when {@link #start} has not run: the runtime never runs unconfigured. */
+  private static Started started() {
+    Started current = started;
+    if (current == null) {
+      throw new IllegalStateException(
+          "the backport runtime has not started: the line's entry class starts it before it installs any hook");
+    }
+    return current;
+  }
+
+  /**
+   * Resolves the configuration, reads the control file once and starts the poller and writer threads, for the
+   * installed {@link BackportLine}. The line's entry class calls it before it registers any transformer, so no
+   * hook does this work on an application thread. A second call does nothing.
+   */
+  public static void start() {
+    synchronized (START_LOCK) {
+      if (started != null) {
+        return;
+      }
+      BackportLine line = BackportLine.current();
+      Properties baked = loadBakedProperties(line);
+      final Started state = new Started(line, baked, Config.resolveCurrent(baked), syncFlag());
+      // Load and initialise, before any hook runs, the classes a hook would otherwise load first:
+      // the hooks run inside JDK classes, where loading a class can re-enter them. Mode is used by
+      // every detectionOff() and is otherwise loaded only once a mode has been read.
+      new Event("", "");
+      BackportLine.initialise(Mode.class);
+      if (state.controlPath != null) {
+        state.control.poll(state.controlPath);
+        Thread poller =
+            new Thread(
+                new Runnable() {
+                  public void run() {
+                    while (true) {
+                      try {
+                        Thread.sleep(pollMillis());
+                        state.control.poll(state.controlPath);
+                      } catch (InterruptedException e) {
+                        Thread.currentThread().interrupt();
+                        return;
+                      } catch (RuntimeException | Error ignored) {
+                        // never let control polling disturb the application or stop polling
+                      }
                     }
                   }
-                }
-              },
-              "ohmyrasp-java8-control");
-      poller.setDaemon(true);
-      poller.start();
-    }
-    if (WRITER_ENABLED) {
-      startWriter();
+                },
+                line.controlThreadName);
+        poller.setDaemon(true);
+        poller.start();
+      }
+      if (state.writerEnabled) {
+        startWriter(line);
+      }
+      started = state;
     }
   }
 
   static Mode mode() {
-    return CONTROL.mode();
+    return started().control.mode();
   }
 
   /** True when detection is explicitly OFF, and during the agent's own I/O on this thread. */
   static boolean detectionOff() {
-    return CONTROL.mode() == Mode.OFF || inOwnIo();
+    return started().control.mode() == Mode.OFF || inOwnIo();
   }
 
   /**
@@ -384,7 +433,8 @@ public final class RaspRuntime {
     if (inOwnIo()) {
       return false;
     }
-    return blockingAllowed(INITIAL_CONFIG.standalone, CONTROL.mode(), legacyEnvFlag);
+    Started state = started();
+    return blockingAllowed(state.initial.standalone, state.control.mode(), legacyEnvFlag);
   }
 
   static boolean blockingAllowed(boolean standalone, Mode currentMode, boolean legacyEnvFlag) {
@@ -398,10 +448,6 @@ public final class RaspRuntime {
       return true;
     }
     return legacyEnvFlag;
-  }
-
-  private static void reloadControl() {
-    CONTROL.poll(CONTROL_PATH);
   }
 
   static Mode parseMode(String token) {
@@ -461,7 +507,8 @@ public final class RaspRuntime {
 
   /** The legacy per-line block flag, read on every blocking decision. */
   static boolean legacyBlockFlag() {
-    return legacyBlockFlag(System.getProperty("ohmyrasp.java8.block"), System.getenv("OHMYRASP_JAVA8_BLOCK"));
+    BackportLine line = started().line;
+    return legacyBlockFlag(System.getProperty(line.blockProperty), System.getenv(line.blockEnvironment));
   }
 
   /** The first source that holds a recognised boolean decides; none means false. */
@@ -475,6 +522,11 @@ public final class RaspRuntime {
       chosen = parseBooleanObject(envValue);
     }
     return Boolean.TRUE.equals(chosen);
+  }
+
+  /** The baked shirudo properties read at start. */
+  static Properties bakedProperties() {
+    return started().baked;
   }
 
   /** Resolve the spool path the same way the detection writer does. */
@@ -498,6 +550,7 @@ public final class RaspRuntime {
 
   /** Write a startup line synchronously, honoring stderr/stdout/none special targets. */
   public static void writeStartupLine(String logPath, String line) {
+    started();
     if (emitSpecialTarget(logPath, line)) {
       return;
     }
@@ -506,11 +559,12 @@ public final class RaspRuntime {
 
   /** Off the business hot path: enqueue an already-built event line. */
   public static void writeEvent(String logPath, String line) {
+    Started state = started();
     if (emitSpecialTarget(logPath, line)) {
       return;
     }
     String fileTarget = logPath.trim();
-    if (SYNC || !WRITER_ENABLED) {
+    if (state.sync || !state.writerEnabled) {
       appendBatch(fileTarget, Collections.singletonList(line));
       return;
     }
@@ -537,8 +591,8 @@ public final class RaspRuntime {
     return true;
   }
 
-  private static void startWriter() {
-    SPOOL.start("ohmyrasp-java8-writer");
+  private static void startWriter(BackportLine line) {
+    SPOOL.start(line.writerThreadName);
     Runtime.getRuntime()
         .addShutdownHook(
             new Thread(
@@ -555,7 +609,8 @@ public final class RaspRuntime {
    * traffic. Suppressed in sync mode to keep acceptance output deterministic.
    */
   static void sampleLatency(long micros) {
-    if (!latencySampled(SYNC, detectionOff(), micros, SAMPLE_RATE, SAMPLE_COUNTER)) {
+    Started state = started();
+    if (!latencySampled(state.sync, detectionOff(), micros, state.sampleRate, SAMPLE_COUNTER)) {
       return;
     }
     String line =
@@ -673,7 +728,7 @@ public final class RaspRuntime {
           Thread.currentThread().interrupt();
           return;
         } catch (RuntimeException e) {
-          System.err.println("[OHMYRASP-JAVA8] event writer error: " + e);
+          System.err.println(started().line.logPrefix + " event writer error: " + e);
         }
       }
     }
@@ -726,7 +781,7 @@ public final class RaspRuntime {
     File target = new File(logPath);
     File parent = target.getParentFile();
     if (parent != null && !parent.exists() && !parent.mkdirs()) {
-      System.err.println("[OHMYRASP-JAVA8] could not create log directory: " + parent);
+      System.err.println(started().line.logPrefix + " could not create log directory: " + parent);
       return;
     }
     if (!lockWrites(bounded)) {
@@ -742,7 +797,7 @@ public final class RaspRuntime {
           writer.write(separator);
         }
       } catch (IOException e) {
-        System.err.println("[OHMYRASP-JAVA8] could not write detection event: " + e);
+        System.err.println(started().line.logPrefix + " could not write detection event: " + e);
       } finally {
         if (writer != null) {
           try {
@@ -771,11 +826,11 @@ public final class RaspRuntime {
     }
   }
 
-  private static Properties loadBakedProperties() {
+  private static Properties loadBakedProperties(BackportLine line) {
     Properties props = new Properties();
     InputStream in = null;
     try {
-      URL resource = ownResource(SHIRUDO_PROPERTIES_RESOURCE);
+      URL resource = ownResource(SHIRUDO_PROPERTIES_RESOURCE, line.entryClass);
       if (resource == null) {
         return props;
       }
@@ -806,14 +861,14 @@ public final class RaspRuntime {
    * system class path lookup, where an application JAR comes before the agent JAR, so a same-named
    * resource there would win.
    */
-  private static URL ownResource(String name) throws MalformedURLException {
+  private static URL ownResource(String name, String entryClass) throws MalformedURLException {
     URL location = codeLocation(RaspRuntime.class);
     if (location == null) {
       // Defined by the bootstrap loader, which records no code source. The agent JAR is the one the
       // system class loader loaded the entry class from; loadClass returns that loaded class.
       try {
         ClassLoader system = ClassLoader.getSystemClassLoader();
-        location = codeLocation(Class.forName(AGENT_ENTRY_CLASS, false, system));
+        location = codeLocation(Class.forName(entryClass, false, system));
       } catch (ClassNotFoundException | LinkageError e) {
         return null;
       }

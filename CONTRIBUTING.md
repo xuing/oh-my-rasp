@@ -377,7 +377,7 @@ Commit regenerated docs in the same PR as the code change that triggered them.
 5. Update `docs/development/algorithm-coverage.md` and, if mapped to a Vulhub scenario, `docs/development/vulhub-coverage.md` in the same patch.
 6. Regenerate `java-agent/docs/DETECTION-COVERAGE.md`, `java-agent/docs/FALSE-POSITIVE-REPORT.md`, and `deploy/shirudo/` READMEs, and verify `bash java-agent/scripts/check-detector-parity.sh`.
 
-Update backport builds (`agent-java8`, `agent-java11`, `agent-java17`) when the hook applies to earlier JDKs. Their unit tests live once in `java-agent/backport-tests/src/test/java`, written against the java8 line and generated for the java11 and java17 lines at build time (see [java-agent/README.md](java-agent/README.md)): add the test there, and one test covers all three lines. See `docs/development/algorithm-coverage.md` for per-era capabilities.
+Update backport builds (`agent-java8`, `agent-java11`, `agent-java17`) when the hook applies to earlier JDKs. Their decisions live once, in `java-agent/shared/src/main/java/io/ohmyrasp/agent/backport/BackportHooks.java`; a new hook adds its transformer to each line and, when the transformers call a new method, a one-line delegate to each line's `Java<N>RaspHooks`. Their unit tests live once in `java-agent/backport-tests/src/test/java`, written against the java8 line and generated for the java11 and java17 lines at build time (see [java-agent/README.md](java-agent/README.md)): add the test there, and one test covers all three lines. See `docs/development/algorithm-coverage.md` for per-era capabilities.
 
 ## Console i18n expectations
 

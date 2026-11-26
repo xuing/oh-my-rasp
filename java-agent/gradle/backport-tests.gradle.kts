@@ -10,6 +10,10 @@
 val canonicalTests = rootProject.file("backport-tests/src/test/java")
 val testSources = extensions.getByType<SourceSetContainer>().named("test")
 
+// The resources hold no line token (META-INF/services names the line-neutral LineStartListener, which starts the
+// line before any test runs), so every line reads them as they are.
+testSources.configure { resources.srcDir(rootProject.file("backport-tests/src/test/resources")) }
+
 val line = name.removePrefix("agent-java")
 if (line == "8") {
     testSources.configure { java.srcDir(canonicalTests) }
@@ -22,6 +26,7 @@ if (line == "8") {
         "ohmyrasp-java8-" to "ohmyrasp-java$line-",                   // temp file name prefix
         "/tmp/java8-" to "/tmp/java$line-",                           // temp path prefix
         "OHMYRASP-JAVA8" to "OHMYRASP-JAVA$line",                     // log prefix
+        "OHMYRASP_JAVA8_" to "OHMYRASP_JAVA${line}_",                 // environment-variable prefix
         "java8_" to "java${line}_",                                   // detection id prefix
         "java8SysWins" to "java${line}SysWins",                       // local variable
         "Java8" to "Java$line",                                       // class and fixture-method name prefix
