@@ -60,3 +60,9 @@ jar = "agent-jdk25/build/libs/ohmyrasp-agent.jar"
 upatch = "agent-jdk25/build/libs/ohmyrasp-jdk25.jar"
 tests = ":agent-jdk25:test"
 build = [":agent-jdk25:agentJar"]
+
+# The universal JAR: every line, and a launcher that starts the one fitting the running Java.
+# `run.py --artifact all` runs a line's probes against it instead of the line's own JAR.
+[universal]
+jar = "agent-all/build/libs/ohmyrasp-agent-all.jar"
+build = [":agent-all:agentAllJar"]

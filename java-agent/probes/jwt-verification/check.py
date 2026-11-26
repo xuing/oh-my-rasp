@@ -8,11 +8,11 @@ from pathlib import Path
 import subprocess
 import tempfile
 from urllib.request import urlopen
-import zipfile
 import sys
 
 COMMON = Path(__file__).resolve().parent.parent / "common"
 sys.path.insert(0, str(COMMON))
+import agent_track  # noqa: E402
 from servlet_fixture import api_jar
 
 ARTIFACTS = (
@@ -60,9 +60,7 @@ def main():
     if not args.agent:
         parser.error("provide an agent JAR or --stage-dir")
     agent = args.agent.resolve(strict=True)
-    with zipfile.ZipFile(agent) as jar:
-        track = next((v for v in ("8", "11", "17") if
-                      f"io/ohmyrasp/agent/java{v}/Java{v}RaspHooks.class" in jar.namelist()), "main")
+    track = agent_track.track(agent) or "main"
     with tempfile.TemporaryDirectory(prefix="jwt-filter-") as tmp:
         work = Path(tmp)
         paths = [tmp, str(api_jar("jakarta", work, args.api_dir or args.jar_dir))]

@@ -5,11 +5,11 @@ import os
 from pathlib import Path
 import subprocess
 import tempfile
-import zipfile
 import sys
 
 COMMON = Path(__file__).resolve().parent.parent / "common"
 sys.path.insert(0, str(COMMON))
+import agent_track  # noqa: E402
 from servlet_fixture import APIS, api_jar
 
 
@@ -19,9 +19,7 @@ def main():
     parser.add_argument("--api-dir", type=Path, required=True)
     args = parser.parse_args()
     agent = args.agent.resolve(strict=True)
-    with zipfile.ZipFile(agent) as archive:
-        track = next((v for v in (8, 11, 17) if
-                      f"io/ohmyrasp/agent/java{v}/Java{v}RaspHooks.class" in archive.namelist()), None)
+    track = agent_track.track(agent)
     fixture_name = "BackportServletAdmissionCheck" if track else "ServletAdmissionCheck"
     source = Path(__file__).with_name(fixture_name + ".java")
     for namespace in APIS:

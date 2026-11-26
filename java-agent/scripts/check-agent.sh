@@ -10,10 +10,12 @@ registry="$root/probes/run.py"
 
 usage() {
   cat <<USAGE
-Usage: $0 [--line LINE[,LINE...]] [--tests GRADLE-TEST-FILTER] [PROBE|all [probe options]]
+Usage: $0 [--line LINE[,LINE...]] [--tests GRADLE-TEST-FILTER] [--artifact line|all] [PROBE|all [probe options]]
 
-  --line   agent lines to check (default jdk25); see java-agent/probes/lines.toml
-  --tests  limit each line's unit tests, for example '*RaspHooksTest'
+  --line      agent lines to check (default jdk25); see java-agent/probes/lines.toml
+  --tests     limit each line's unit tests, for example '*RaspHooksTest'
+  --artifact  probe each line's own JAR (line, the default) or the universal JAR on the
+              line's JDK (all); see probes/run.py
   PROBE    one packaged probe, or "all" for every probe that applies to the line.
            Probes run on the line's own JDK. Without one, only the unit tests and
            the benign corpus run, and those run on the build JDK for every line.
@@ -25,10 +27,12 @@ USAGE
 
 lines=jdk25
 tests=""
+artifact=line
 while [[ "${1:-}" == -* ]]; do
   case "$1" in
     --line) lines=${2:?--line needs a value}; shift 2 ;;
     --tests) tests=${2:?--tests needs a value}; shift 2 ;;
+    --artifact) artifact=${2:?--artifact needs a value}; shift 2 ;;
     -h|--help) usage; exit 0 ;;
     *) usage >&2; exit 2 ;;
   esac
@@ -40,7 +44,7 @@ if [[ -n "$probe" && "$probe" != all ]]; then selection=("$probe"); fi
 # Fail on an unknown line or probe before any container starts.
 IFS=, read -r -a line_ids <<<"$lines"
 for line in "${line_ids[@]}"; do
-  python3 "$registry" plan --line "$line" "${selection[@]}" >/dev/null
+  python3 "$registry" plan --line "$line" --artifact "$artifact" "${selection[@]}" >/dev/null
 done
 
 gradle_image=$(awk '$1 == "FROM" && $2 ~ /^gradle:/ {print $2; exit}' "$root/Dockerfile")
@@ -71,7 +75,7 @@ exec 9>"$state/check.lock"
 flock 9
 container=(docker run --rm -i --read-only --tmpfs /tmp:rw,exec -u "$uid:$(id -g)"
   -e GRADLE_USER_HOME=/state/gradle -e PYTHONDONTWRITEBYTECODE=1
-  -e "CACHE_RELATIVE=$cache_relative" -e "TEST_FILTER=$tests" -e "LINES=$lines" -e "PROBE=$probe"
+  -e "CACHE_RELATIVE=$cache_relative" -e "TEST_FILTER=$tests" -e "LINES=$lines" -e "PROBE=$probe" -e "ARTIFACT=$artifact"
   -v "$root:/workspace:ro" -v "$state:/state" -w /workspace)
 
 "${container[@]}" "$image" bash -s -- "$@" <<'CONTAINER'
@@ -120,7 +124,8 @@ for line in "${backports[@]}"; do
   build_tasks+=("${line_tasks[@]}")
 done
 if [[ -n "$PROBE" ]]; then
-  read -r -a build_tasks < <("${registry[@]}" gradle-tasks --line "$LINES" "${selection[@]}")
+  read -r -a probe_tasks < <("${registry[@]}" gradle-tasks --line "$LINES" --artifact "$ARTIFACT" "${selection[@]}")
+  build_tasks+=("${probe_tasks[@]}")
 fi
 if $primary; then build_tasks+=(:agent-jdk25:agentJar :agent-jdk25:compileFpReport); fi
 gradle --no-daemon --no-problems-report --configuration-cache \
@@ -141,7 +146,7 @@ if [[ -n "$PROBE" ]]; then
   for line in "${line_ids[@]}"; do
     jdk=$(python3 -c 'import sys, tomllib; print(next(l["jdk"] for l in tomllib.load(open("probes/lines.toml", "rb"))["line"] if l["id"] == sys.argv[1]))' "$line")
     JAVA_HOME=/opt/jdk/$jdk PATH=/opt/jdk/$jdk/bin:$PATH \
-      "${registry[@]}" run --line "$line" --build-root /state/build --keep-going "${selection[@]}" -- "$@"
+      "${registry[@]}" run --line "$line" --artifact "$ARTIFACT" --build-root /state/build --keep-going "${selection[@]}" -- "$@"
   done
 fi
 CONTAINER
@@ -149,15 +154,15 @@ CONTAINER
 # Probes marked isolated run again in a container without network, as CI runs them.
 if [[ -n "$probe" ]]; then
   for line in "${line_ids[@]}"; do
-    if ! python3 "$registry" plan --line "$line" --isolated "${selection[@]}" | grep -qv '^#'; then continue; fi
+    if ! python3 "$registry" plan --line "$line" --artifact "$artifact" --isolated "${selection[@]}" | grep -qv '^#'; then continue; fi
     jdk=$(python3 -c 'import sys, tomllib; print(next(l["jdk"] for l in tomllib.load(open(sys.argv[2], "rb"))["line"] if l["id"] == sys.argv[1]))' "$line" "$root/probes/lines.toml")
     "${container[@]}" --network none --hostname localhost \
       -e "JAVA_HOME=/opt/jdk/$jdk" -e "PATH=/opt/jdk/$jdk/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin" \
-      "$image" python3 probes/run.py run --line "$line" --build-root /state/build --isolated --keep-going "${selection[@]}" -- "$@" </dev/null
+      "$image" python3 probes/run.py run --line "$line" --artifact "$artifact" --build-root /state/build --isolated --keep-going "${selection[@]}" -- "$@" </dev/null
   done
 fi
 if [[ -n "$probe" ]]; then
-  echo "Agent check passed: lines=$lines, unit tests on the build JDK, probe=$probe on each line's own JDK"
+  echo "Agent check passed: lines=$lines, unit tests on the build JDK, probe=$probe on each line's own JDK, artifact=$artifact"
 else
   echo "Agent check passed: lines=$lines, unit tests on the build JDK only. Name a probe (or all) to run the packaged JAR on each line's own JDK."
 fi

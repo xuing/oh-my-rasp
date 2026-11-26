@@ -63,6 +63,42 @@ class RegistryTest(unittest.TestCase):
                          {(line.id, line.jdk, line.jar, line.upatch) for line in self.lines.values()},
                          "the runtime-compatibility matrix in agent.yml and probes/lines.toml differ")
 
+    def test_universal_jar_is_built_and_uploaded(self):
+        jar, build = runner.load_universal()
+        for task in build:
+            module, name = task.strip(":").split(":")
+            self.assertIn(f'"{name}"', (JAVA_AGENT / module / "build.gradle.kts").read_text(), task)
+        self.assertIn(f"java-agent/{jar}", (WORKFLOWS / "agent.yml").read_text(),
+                      "the runtime matrix downloads the universal JAR from the build job's artifact")
+
+    def test_ci_runs_every_row_against_the_universal_jar(self):
+        job = (WORKFLOWS / "agent.yml").read_text()
+        job = job[job.index("  runtime-compatibility:"):]
+        self.assertIn('run.py run --line "${{ matrix.line }}" --keep-going', job)
+        self.assertIn('run.py run --line "${{ matrix.line }}" --artifact all --keep-going', job)
+
+    def test_artifact_all_runs_the_family_the_launcher_starts(self):
+        jar, build = runner.load_universal()
+        for line in self.lines.values():
+            universal = runner.for_artifact(line, "all")
+            self.assertIs(runner.for_artifact(line, "line"), line)
+            if line.id == "java17-on-21":
+                # The launcher starts the primary line on JDK 21; the jdk21 line runs those probes.
+                self.assertIsNone(universal)
+                continue
+            self.assertEqual((universal.jar, universal.build, universal.family, universal.jdk),
+                             (jar, build, line.family, line.jdk), line.id)
+        covered = {(line.jdk, line.family) for line in self.lines.values() if runner.for_artifact(line, "all")}
+        self.assertEqual(covered, {(line.jdk, runner.universal_family(line.jdk)) for line in self.lines.values()},
+                         "every JDK in lines.toml gets one universal pass, on the family its launcher starts")
+
+    def test_artifact_all_substitutes_the_universal_jar_in_commands(self):
+        args = runner.argparse.Namespace(jar=None, build_root=None, probe_args=[])
+        probe = self.probes["background-process"]
+        universal = runner.for_artifact(self.lines["java8"], "all")
+        self.assertEqual(runner.command(probe, universal, args)[2],
+                         str(JAVA_AGENT / runner.load_universal()[0]))
+
     def test_ci_runs_probes_through_the_registry(self):
         # A workflow that names a probe's check.py has a second list to forget.
         for workflow in WORKFLOWS.glob("*.yml"):

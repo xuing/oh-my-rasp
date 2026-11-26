@@ -48,6 +48,13 @@ class GatesTest(unittest.TestCase):
                 p.startswith(directory + "/") or directory + "/" == p[:len(directory) + 1] for p in g.paths)]
             self.assertTrue(covered, f"no gate lists a path under {directory}/ (for example {sample})")
 
+    def test_probe_sweep_covers_the_line_jars_and_the_universal_jar(self):
+        commands = gates.BY_ID["agent-probes"].commands
+        self.assertEqual(len(commands), 2)
+        self.assertNotIn("--artifact", commands[0])
+        self.assertIn("--artifact all", commands[1])
+        self.assertEqual(commands[0].replace("check-agent.sh ", "check-agent.sh --artifact all "), commands[1])
+
     def test_changed_paths_pick_the_expected_gates(self):
         def ids(paths, slow=False):
             return [gate.id for gate, _ in gates.select(paths, slow)]
