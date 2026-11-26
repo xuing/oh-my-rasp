@@ -268,16 +268,21 @@ public final class RaspRuntime {
 
   // ---- asynchronous event spool -------------------------------------------
 
-  private static final BlockingQueue<String> QUEUE = new ArrayBlockingQueue<String>(8192);
-  private static final AtomicLong DROPPED = new AtomicLong();
+  // The shutdown hook waits this long for the writer to finish the batch it holds.
+  private static final long SHUTDOWN_JOIN_MILLIS = 2000L;
+  private static final EventSpool SPOOL =
+      new EventSpool(
+          new Sink() {
+            public void append(String target, List<String> lines) {
+              appendBatch(target, lines);
+            }
+          });
   private static final AtomicLong SAMPLE_COUNTER = new AtomicLong();
   private static final boolean SYNC = syncFlag();
   private static final int SAMPLE_RATE = INITIAL_CONFIG.latencySample;
   // The writer thread exists only when the log target resolved at start-up is a file. It is never
   // created inside a hook: a target that becomes a file later is written inline.
   private static final boolean WRITER_ENABLED = isFileLogTarget(INITIAL_CONFIG.logPath);
-  private static volatile boolean running = true;
-  private static volatile String lastLogPath;
 
   static {
     if (CONTROL_PATH != null) {
@@ -445,14 +450,11 @@ public final class RaspRuntime {
       return;
     }
     String fileTarget = logPath.trim();
-    lastLogPath = fileTarget;
     if (SYNC || !WRITER_ENABLED) {
       appendBatch(fileTarget, Collections.singletonList(line));
       return;
     }
-    if (!QUEUE.offer(line)) {
-      DROPPED.incrementAndGet();
-    }
+    SPOOL.offer(fileTarget, line);
   }
 
   private static boolean emitSpecialTarget(String logPath, String line) {
@@ -476,23 +478,13 @@ public final class RaspRuntime {
   }
 
   private static void startWriter() {
-    Thread writer =
-        new Thread(
-            new Runnable() {
-              public void run() {
-                drain();
-              }
-            },
-            "ohmyrasp-java17-writer");
-    writer.setDaemon(true);
-    writer.start();
+    SPOOL.start("ohmyrasp-java17-writer");
     Runtime.getRuntime()
         .addShutdownHook(
             new Thread(
                 new Runnable() {
                   public void run() {
-                    running = false;
-                    flushRemaining();
+                    SPOOL.shutdown(SHUTDOWN_JOIN_MILLIS);
                   }
                 }));
   }
@@ -525,36 +517,111 @@ public final class RaspRuntime {
     return sampleRate == 1 || counter.incrementAndGet() % sampleRate == 0;
   }
 
-  private static void drain() {
-    List<String> batch = new ArrayList<String>(64);
-    while (running || !QUEUE.isEmpty()) {
-      try {
-        String first = QUEUE.poll(200, TimeUnit.MILLISECONDS);
-        if (first == null) {
-          continue;
-        }
-        batch.clear();
-        batch.add(first);
-        QUEUE.drainTo(batch, 511);
-        String target = lastLogPath;
-        if (isFileLogTarget(target)) {
-          appendBatch(target, batch);
-        }
-      } catch (InterruptedException e) {
-        Thread.currentThread().interrupt();
-        return;
-      } catch (RuntimeException e) {
-        System.err.println("[OHMYRASP-JAVA17] event writer error: " + e);
-      }
+  /** Where the spool writes a batch of event lines. */
+  interface Sink {
+    void append(String target, List<String> lines);
+  }
+
+  /** One queued event line and the file target it was accepted for. */
+  private static final class Event {
+    final String target;
+    final String line;
+
+    Event(String target, String line) {
+      this.target = target;
+      this.line = line;
     }
   }
 
-  private static void flushRemaining() {
-    List<String> rest = new ArrayList<String>();
-    QUEUE.drainTo(rest);
-    String target = lastLogPath;
-    if (isFileLogTarget(target) && !rest.isEmpty()) {
-      appendBatch(target, rest);
+  /**
+   * The bounded queue between the hooks and the writer thread. Each event keeps the target it was
+   * accepted for, so a later change of log target does not move it. {@link #drainOnce} is one
+   * writer step and {@link #shutdown} is the shutdown hook's work, so a test can drive both.
+   */
+  static final class EventSpool implements Runnable {
+    private final BlockingQueue<Event> queue = new ArrayBlockingQueue<Event>(8192);
+    private final AtomicLong dropped = new AtomicLong();
+    private final List<Event> batch = new ArrayList<Event>(64);
+    private final Sink sink;
+    private volatile boolean running = true;
+    private volatile Thread writer;
+
+    EventSpool(Sink sink) {
+      this.sink = sink;
+    }
+
+    void offer(String target, String line) {
+      if (!queue.offer(new Event(target, line))) {
+        dropped.incrementAndGet();
+      }
+    }
+
+    /** Waits up to {@code waitMillis} for an event, then writes everything queued. */
+    void drainOnce(long waitMillis) throws InterruptedException {
+      Event first = queue.poll(waitMillis, TimeUnit.MILLISECONDS);
+      if (first == null) {
+        return;
+      }
+      batch.clear();
+      batch.add(first);
+      queue.drainTo(batch, 511);
+      write(batch);
+    }
+
+    /** Writes events in order, one sink call per run of events with the same target. */
+    private void write(List<Event> events) {
+      int start = 0;
+      while (start < events.size()) {
+        String target = events.get(start).target;
+        List<String> lines = new ArrayList<String>();
+        int end = start;
+        while (end < events.size() && events.get(end).target.equals(target)) {
+          lines.add(events.get(end).line);
+          end++;
+        }
+        sink.append(target, lines);
+        start = end;
+      }
+    }
+
+    public void run() {
+      while (running) {
+        try {
+          drainOnce(200L);
+        } catch (InterruptedException e) {
+          Thread.currentThread().interrupt();
+          return;
+        } catch (RuntimeException e) {
+          System.err.println("[OHMYRASP-JAVA17] event writer error: " + e);
+        }
+      }
+    }
+
+    Thread start(String name) {
+      Thread thread = new Thread(this, name);
+      thread.setDaemon(true);
+      writer = thread;
+      thread.start();
+      return thread;
+    }
+
+    /**
+     * Stops the writer, waits up to {@code joinMillis} for it to finish the batch it holds, then
+     * writes what is still queued. Each event leaves the queue once, so none is written twice.
+     */
+    void shutdown(long joinMillis) {
+      running = false;
+      Thread current = writer;
+      if (current != null && current != Thread.currentThread()) {
+        try {
+          current.join(joinMillis);
+        } catch (InterruptedException e) {
+          Thread.currentThread().interrupt();
+        }
+      }
+      List<Event> rest = new ArrayList<Event>();
+      queue.drainTo(rest);
+      write(rest);
     }
   }
 

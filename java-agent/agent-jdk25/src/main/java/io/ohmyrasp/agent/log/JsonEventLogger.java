@@ -34,6 +34,8 @@ import java.util.concurrent.atomic.AtomicLong;
  */
 public final class JsonEventLogger {
   private static final JsonEventLogger INSTANCE = new JsonEventLogger();
+  // The shutdown hook waits this long for the writer to finish the batch it holds.
+  private static final long SHUTDOWN_JOIN_MILLIS = 2000;
   private static final Set<String> SENSITIVE_HEADER_NAMES =
       Set.of(
           "authorization",
@@ -111,6 +113,7 @@ public final class JsonEventLogger {
   private final int latencySampleRate;
   private final PrintStream customOut;
   private final PrintStream customErr;
+  private final Thread writer;
   private volatile boolean running = true;
   private volatile ControlPlaneClient controlPlaneClient;
 
@@ -190,11 +193,13 @@ public final class JsonEventLogger {
       this.queue = new ArrayBlockingQueue<>(queueCapacity());
       Thread writer = new Thread(this::drainLoop, "ohmyrasp-event-writer");
       writer.setDaemon(true);
+      this.writer = writer;
       writer.start();
       Runtime.getRuntime()
           .addShutdownHook(new Thread(this::shutdown, "ohmyrasp-event-writer-shutdown"));
     } else {
       this.queue = null;
+      this.writer = null;
     }
   }
 
@@ -302,7 +307,8 @@ public final class JsonEventLogger {
 
   private void drainLoop() {
     List<Sample> batch = new ArrayList<>(64);
-    while (running || !queue.isEmpty()) {
+    // Stops once shutdown begins; the shutdown hook writes what is still queued.
+    while (running) {
       try {
         Sample first = queue.poll(200, TimeUnit.MILLISECONDS);
         if (first == null) {
@@ -420,8 +426,24 @@ public final class JsonEventLogger {
   }
 
   private void shutdown() {
+    shutdown(SHUTDOWN_JOIN_MILLIS);
+  }
+
+  /**
+   * Stops the writer, waits up to {@code joinMillis} for it to finish the batch it holds, then
+   * writes what is still queued, so events queued at exit still reach the spool. Each event leaves
+   * the queue once, so none is written twice.
+   */
+  void shutdown(long joinMillis) {
     running = false;
-    // Best-effort final drain so events queued at exit still reach the spool.
+    Thread current = writer;
+    if (current != null && current != Thread.currentThread()) {
+      try {
+        current.join(joinMillis);
+      } catch (InterruptedException e) {
+        Thread.currentThread().interrupt();
+      }
+    }
     List<Sample> remaining = new ArrayList<>();
     queue.drainTo(remaining);
     if (!remaining.isEmpty()) {
