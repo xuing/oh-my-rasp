@@ -8,11 +8,11 @@ from pathlib import Path
 import os
 import subprocess
 import tempfile
-import zipfile
 import sys
 
 COMMON = Path(__file__).resolve().parent.parent / "common"
 sys.path.insert(0, str(COMMON))
+import agent_track  # noqa: E402
 from servlet_fixture import APIS, api_jar
 
 
@@ -26,9 +26,7 @@ def main():
         parser.error("--rounds must be positive")
     agent = args.agent.resolve(strict=True)
     source = Path(__file__).parent
-    with zipfile.ZipFile(agent) as jar:
-        track = next((v for v in ("8", "11", "17") if
-                      f"io/ohmyrasp/agent/java{v}/Java{v}RaspHooks.class" in jar.namelist()), "main")
+    track = agent_track.track(agent) or "main"
     with tempfile.TemporaryDirectory(prefix="multipart-check-") as tmp:
         for namespace in APIS:
             classes = Path(tmp) / namespace

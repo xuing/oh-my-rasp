@@ -14,6 +14,13 @@ does not apply. lines.toml lists the agent lines (JAR x JDK runtime).
                                       Gradle tasks that build the JARs and stage fixtures
   run.py lines probe..                the lines every named probe applies to, comma-separated
 
+`--artifact all` (plan, run, gradle-tasks) runs a line's probes against the universal JAR
+in place of the line's own. A row whose `no_universal` in lines.toml says why it does not
+apply (the universal JAR starts another line on its JDK) is skipped.
+
+Every probe gets the line under test in OHMYRASP_PROBE_TRACK ("8", "11", "17" or "main"),
+the same for both artifacts; probes/common/agent_track.py reads it.
+
 With no probe named, every probe that applies to the line runs. Arguments after
 `--` go to the probe (one probe only). CI and java-agent/scripts/check-agent.sh
 both call this file, so a probe added here needs no other registration.
@@ -22,6 +29,7 @@ from __future__ import annotations
 
 import argparse
 import ast
+import dataclasses
 import os
 import re
 import subprocess
@@ -35,6 +43,8 @@ HERE = Path(__file__).resolve().parent
 JAVA_AGENT = HERE.parent
 ROOT_PROJECT = "ohmyrasp"  # rootProject.name in settings.gradle.kts; names the root build dir under --build-root
 NOT_PROBES = {"common", "__pycache__"}
+sys.path.insert(0, str(HERE / "common"))
+import agent_track  # noqa: E402
 
 
 @dataclass(frozen=True)
@@ -46,6 +56,12 @@ class Line:
     tests: str
     build: tuple[str, ...]
     upatch: str | None = None
+    no_universal: str = ""      # why --artifact all does not apply to this row
+
+    @property
+    def track(self) -> str:
+        """The OHMYRASP_PROBE_TRACK value: the backport line's Java version, or main."""
+        return agent_track.PRIMARY if self.family == "primary" else self.id.removeprefix("java").split("-")[0]
 
 
 @dataclass(frozen=True)
@@ -82,6 +98,27 @@ class Probe:
 def load_lines() -> dict[str, Line]:
     rows = tomllib.loads((HERE / "lines.toml").read_text())["line"]
     return {row["id"]: Line(**{**row, "build": tuple(row["build"])}) for row in rows}
+
+
+def load_universal() -> tuple[str, tuple[str, ...]]:
+    """The universal JAR's path and the Gradle tasks that build it."""
+    table = tomllib.loads((HERE / "lines.toml").read_text())["universal"]
+    return table["jar"], tuple(table["build"])
+
+
+def for_artifact(line: Line, artifact: str) -> Line | None:
+    """The line as the run sees it: unchanged for `line`; for `all`, the universal JAR in place of the
+    line's own, or None when lines.toml marks the row not applicable."""
+    if artifact == "line":
+        return line
+    if line.no_universal:
+        return None
+    jar, build = load_universal()
+    return dataclasses.replace(line, jar=jar, build=build, upatch=None)
+
+
+def covered_elsewhere(line: Line) -> str:
+    return f"skip {line.id} with --artifact all: {line.no_universal}"
 
 
 def load_probes() -> dict[str, Probe]:
@@ -165,19 +202,25 @@ def cmd_list(probes, lines, args):
 
 
 def cmd_plan(probes, lines, args):
-    line = lines[args.line]
+    line = for_artifact(lines[args.line], args.artifact)
+    if line is None:
+        print("# " + covered_elsewhere(lines[args.line]))
+        return
     args.plan_only = True
     chosen, skipped = select(probes, line, args)
     require_runnable(probes, line, args, skipped)
     for probe in chosen:
-        print(" ".join(["python3", *(os.path.relpath(part, JAVA_AGENT) if part.startswith("/") else part
+        print(" ".join([f"{agent_track.ENVIRONMENT}={line.track}", "python3", *(os.path.relpath(part, JAVA_AGENT) if part.startswith("/") else part
                                     for part in command(probe, line, args)[1:])]))
     for probe, reason in skipped:
         print(f"# skip {probe.id}: {reason}")
 
 
 def cmd_run(probes, lines, args):
-    line = lines[args.line]
+    line = for_artifact(lines[args.line], args.artifact)
+    if line is None:
+        print(covered_elsewhere(lines[args.line]))
+        return
     if not args.any_jdk and java_major() != line.jdk:
         sys.exit(f"line {line.id} runs on JDK {line.jdk}, but `java` on PATH is JDK {java_major()}. "
                  "A pass on another runtime says nothing about this line. Use --any-jdk to override.")
@@ -196,7 +239,8 @@ def cmd_run(probes, lines, args):
         if in_actions:
             print(f"::group::{probe.id}: {probe.summary}", flush=True)
         start = time.monotonic()
-        code = subprocess.run(command(probe, line, args)).returncode
+        code = subprocess.run(command(probe, line, args),
+                              env={**os.environ, agent_track.ENVIRONMENT: line.track}).returncode
         if in_actions:
             print("::endgroup::", flush=True)
         print(f"{'ok  ' if code == 0 else 'FAIL'} {line.id} {probe.id} {time.monotonic() - start:.1f}s", flush=True)
@@ -235,7 +279,9 @@ def cmd_lines(probes, lines, args):
 def cmd_gradle_tasks(probes, lines, args):
     tasks = []
     for line_id in args.line.split(","):
-        line = lines[line_id]
+        line = for_artifact(lines[line_id], args.artifact)
+        if line is None:
+            continue
         tasks += [*line.build, *(f.gradle for p in select(probes, line, args)[0] for f in p.fixtures if f.gradle)]
     print(" ".join(dict.fromkeys(tasks)))
 
@@ -260,6 +306,8 @@ def main():
             p.add_argument("--line", required=True)
             p.add_argument("--isolated", action="store_true", help="select the probes that need a network-less run")
             p.add_argument("--windows", action="store_true", help="select only the probes that also run on Windows")
+            p.add_argument("--artifact", choices=("line", "all"), default="line",
+                           help="probe the line's own JAR (default) or the universal JAR on the line's JDK")
         if name in ("plan", "run"):
             p.add_argument("--jar", type=Path, help="agent JAR to use instead of the line's own")
         if name == "run":
@@ -275,6 +323,8 @@ def main():
             parser.error(f"unknown probe {name}; `run.py list` shows them")
     if probe_args and len(getattr(args, "probes", [])) != 1:
         parser.error("arguments after -- need exactly one probe")
+    if getattr(args, "jar", None) and args.artifact != "line":
+        parser.error("--jar names the JAR itself; it cannot be combined with --artifact all")
     if hasattr(args, "line"):
         for line_id in args.line.split(","):
             if line_id not in lines:

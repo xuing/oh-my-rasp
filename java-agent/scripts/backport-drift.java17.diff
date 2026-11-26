@@ -6,6 +6,9 @@
 @@
 +import java.io.ByteArrayInputStream
 @@
+-val otherLauncherEntries = listOf("UniversalEntry", "PrimaryEntry", "Java17Entry", "Java11Entry", "Java<N>Entry")
++val otherLauncherEntries = listOf("UniversalEntry", "PrimaryEntry", "Java<N>Entry", "Java11Entry", "Java8Entry")
+@@
 -    testImplementation("org.junit.jupiter:junit-jupiter:5.14.4")
 -    testRuntimeOnly("org.junit.platform:junit-platform-launcher:1.14.4")
 +    testImplementation("org.junit.jupiter:junit-jupiter:6.1.3")
@@ -110,13 +113,13 @@
 -            val manifestText = zip.getInputStream(manifestEntry).bufferedReader(Charsets.UTF_8).use {
 -                it.readText()
 +            val manifest = Manifest(ByteArrayInputStream(manifestBytes))
-+            require(manifest.mainAttributes.getValue("Premain-Class") == "io.ohmyrasp.agent.java<N>.OhMyRaspJava<N>Agent") {
++            require(manifest.mainAttributes.getValue("Premain-Class") == "io.ohmyrasp.agent.launch.Java<N>Entry") {
 +                "Unexpected Premain-Class in ${jarFile.name}"
 @@
 -            val mainSection = manifestText.split(Regex("\\r?\\n\\r?\\n"), limit = 2)[0]
 -            require(mainSection.contains("Premain-Class:")) {
 -                "Expected Premain-Class: in main manifest section"
-+            require(manifest.mainAttributes.getValue("Agent-Class") == "io.ohmyrasp.agent.java<N>.OhMyRaspJava<N>Agent") {
++            require(manifest.mainAttributes.getValue("Agent-Class") == "io.ohmyrasp.agent.launch.Java<N>Entry") {
 +                "Unexpected Agent-Class in ${jarFile.name}"
 @@
 -            require(!mainSection.contains("Boot-Class-Path:")) {
@@ -124,7 +127,7 @@
 -            }
 -            val parsedManifest = zip.getInputStream(manifestEntry).use { Manifest(it) }
 -            val mainAttrs = parsedManifest.mainAttributes
--            require(mainAttrs.getValue("Premain-Class") == "io.ohmyrasp.agent.java<N>.OhMyRaspJava<N>Agent") {
+-            require(mainAttrs.getValue("Premain-Class") == "io.ohmyrasp.agent.launch.Java<N>Entry") {
 -                "Unexpected Premain-Class: ${mainAttrs.getValue("Premain-Class")}"
 -            }
 -            require(mainAttrs.getValue("Boot-Class-Path") == null) {

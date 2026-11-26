@@ -82,6 +82,8 @@ jobs:
           gradle_image="$(awk '$1 == "FROM" && $2 ~ /^gradle:/ { print $2; exit }' Dockerfile)"
           docker run --rm --pull never --network none --hostname localhost -v "$PWD:/workspace:ro" -w /workspace \
             "$gradle_image" python3 probes/run.py run --line jdk25 --isolated elastic-lz4
+          docker run --rm --pull never --network none --hostname localhost -v "$PWD:/workspace:ro" -w /workspace \
+            "$gradle_image" python3 probes/run.py run --line jdk25 --artifact all --isolated elastic-lz4
       - name: Stage and validate shirudo upatch packages
         run: |
           set -euo pipefail
@@ -128,6 +130,8 @@ jobs:
             java-agent/agent-java11/build/libs/ohmyrasp-java11.jar
             java-agent/agent-java17/build/libs/ohmyrasp-java17.jar
             java-agent/agent-jdk25/build/libs/ohmyrasp-jdk25.jar
+            java-agent/agent-all/build/libs/ohmyrasp-agent-all.jar
+            java-agent/agent-all/build/libs/ohmyrasp.jar
           if-no-files-found: error
           retention-days: 1
 
@@ -217,6 +221,8 @@ jobs:
           path: java-agent/build/hook-targets
       - name: Run every probe registered for ${{ matrix.line }}
         run: python3 java-agent/probes/run.py run --line "${{ matrix.line }}" --keep-going
+      - name: Run the same probes against the universal JAR on JDK ${{ matrix.java }}
+        run: python3 java-agent/probes/run.py run --line "${{ matrix.line }}" --artifact all --keep-going
       - name: Start the standalone agent on JDK ${{ matrix.java }}
         if: matrix.upatch
         run: java -javaagent:"java-agent/${{ matrix.upatch }}" -version

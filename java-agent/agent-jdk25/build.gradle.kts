@@ -7,7 +7,14 @@ plugins {
     id("com.gradleup.shadow")
 }
 
+// Every agent JAR carries one launcher entry class, its own (shared/src/main/java/io/ohmyrasp/agent/launch/):
+// the JVM loads a Premain-Class by name, so two JARs must never share one.
+val otherLauncherEntries = listOf("UniversalEntry", "PrimaryEntry", "Java17Entry", "Java11Entry", "Java8Entry")
+    .filter { it != "PrimaryEntry" }
+    .map { "io/ohmyrasp/agent/launch/$it.class" }
+
 dependencies {
+    implementation(project(":shared"))
     // ASM 9.8 is the first release whose ClassReader can read Java 25 (class
     // file major version 69). Because this is the JDK 25 agent and it must
     // instrument genuine Java 25 application bytecode at runtime, it must stay
@@ -55,8 +62,8 @@ val agentJar = tasks.register<ShadowJar>("agentJar") {
 
     manifest {
         attributes(
-            "Premain-Class" to "io.ohmyrasp.agent.OhMyRaspAgent",
-            "Agent-Class" to "io.ohmyrasp.agent.OhMyRaspAgent",
+            "Premain-Class" to "io.ohmyrasp.agent.launch.PrimaryEntry",
+            "Agent-Class" to "io.ohmyrasp.agent.launch.PrimaryEntry",
             "Can-Redefine-Classes" to "true",
             "Can-Retransform-Classes" to "true",
             "Implementation-Title" to "OhMyRasp Java Agent (JDK 21 and 25)"
@@ -65,6 +72,7 @@ val agentJar = tasks.register<ShadowJar>("agentJar") {
 
     from(sourceSets.main.get().output)
     relocate("org.objectweb.asm", "io.ohmyrasp.agent.shaded.asm")
+    exclude(otherLauncherEntries)
     exclude("**/module-info.class")
 }
 
@@ -126,8 +134,8 @@ val shirudoUpatchJar = tasks.register<ShadowJar>("shirudoUpatchJar") {
 
     manifest {
         attributes(
-            "Premain-Class" to "io.ohmyrasp.agent.OhMyRaspAgent",
-            "Agent-Class" to "io.ohmyrasp.agent.OhMyRaspAgent",
+            "Premain-Class" to "io.ohmyrasp.agent.launch.PrimaryEntry",
+            "Agent-Class" to "io.ohmyrasp.agent.launch.PrimaryEntry",
             "Can-Redefine-Classes" to "true",
             "Can-Retransform-Classes" to "true",
             "Implementation-Title" to "OhMyRasp Java Agent (JDK 21 and 25 / shirudo upatch)",
@@ -138,6 +146,7 @@ val shirudoUpatchJar = tasks.register<ShadowJar>("shirudoUpatchJar") {
     from(sourceSets.main.get().output)
     from(shirudoGeneratedDir)
     relocate("org.objectweb.asm", "io.ohmyrasp.agent.shaded.asm")
+    exclude(otherLauncherEntries)
     exclude("**/module-info.class", "META-INF/versions/**")
 }
 

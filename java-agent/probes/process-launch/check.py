@@ -8,9 +8,11 @@ import shutil
 from pathlib import Path
 import subprocess
 import tempfile
-import zipfile
+import sys
 
 COMMON = Path(__file__).resolve().parent.parent / "common"
+sys.path.insert(0, str(COMMON))
+import agent_track  # noqa: E402
 
 
 def main():
@@ -23,9 +25,7 @@ def main():
     rounds = args.rounds
     agent = args.agent.resolve(strict=True)
     src = Path(__file__).parent
-    with zipfile.ZipFile(agent) as jar:
-        track = next((v for v in ("8", "11", "17") if
-                      f"io/ohmyrasp/agent/java{v}/Java{v}RaspHooks.class" in jar.namelist()), "main")
+    track = agent_track.track(agent) or "main"
     with tempfile.TemporaryDirectory(prefix="process-launch-") as tmp:
         if os.name == "nt":
             pwsh = shutil.which("pwsh")

@@ -6,7 +6,11 @@ import os
 from pathlib import Path
 import subprocess
 import tempfile
-import zipfile
+import sys
+
+COMMON = Path(__file__).resolve().parent.parent / "common"
+sys.path.insert(0, str(COMMON))
+import agent_track  # noqa: E402
 
 
 def main():
@@ -18,9 +22,8 @@ def main():
     jars = sorted(args.jar_dir.glob("*.jar"), key=lambda path: (not path.name.startswith("javax.servlet-api-"), path.name))
     if not jars:
         parser.error("no YARN fixture libraries found")
-    with zipfile.ZipFile(agent) as jar:
-        prefix = next((f"java{v}_" for v in ("8", "11", "17") if
-                       f"io/ohmyrasp/agent/java{v}/Java{v}RaspHooks.class" in jar.namelist()), "")
+    track = agent_track.track(agent)
+    prefix = f"java{track}_" if track else ""
     with tempfile.TemporaryDirectory(prefix="yarn-submit-") as tmp:
         cp = os.pathsep.join((tmp, *map(str, jars)))
         source = Path(__file__).with_name("YarnReleaseSubmitCheck.java")

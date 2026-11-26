@@ -5,19 +5,19 @@ import json
 from pathlib import Path
 import subprocess
 import tempfile
-import zipfile
 from urllib.parse import urlsplit
+import sys
 
 COMMON = Path(__file__).resolve().parent.parent / "common"
+sys.path.insert(0, str(COMMON))
+import agent_track  # noqa: E402
 
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("agent", type=Path)
     jar = parser.parse_args().agent.resolve(strict=True)
-    with zipfile.ZipFile(jar) as archive:
-        track = next((v for v in ("8", "11", "17") if
-                      f"io/ohmyrasp/agent/java{v}/Java{v}RaspHooks.class" in archive.namelist()), "main")
+    track = agent_track.track(jar) or "main"
     src = Path(__file__).parent
     with tempfile.TemporaryDirectory(prefix="rmi-codebase-") as tmp:
         subprocess.run(["javac", "-d", tmp, COMMON / "HttpTransportCheck.java", src / "ClassDefinitionCheck.java", src / "RmiCodebaseCheck.java"], check=True)

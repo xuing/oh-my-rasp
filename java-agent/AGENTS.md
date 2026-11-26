@@ -8,7 +8,8 @@ What lives where under `java-agent/`, which command checks a change, and the rul
 |---|---|
 | `agent-jdk25/` | The primary agent, for JDK 21 and 25. |
 | `agent-java8/`, `agent-java11/`, `agent-java17/` | The backport lines. Three separate source trees, each written for its own JDK. |
-| `shared/` | Sources compiled into every line. |
+| `shared/` | The `:shared` module, compiled once with `--release 8`: the classes every line carries, the launcher (`io.ohmyrasp.agent.launch.AgentLauncher`) and one entry class per kind of agent JAR (`UniversalEntry`, `PrimaryEntry`, `Java17Entry`, `Java11Entry`, `Java8Entry`). |
+| `agent-all/` | The universal JARs: every line, one copy of `shared/` and of shaded ASM. Nothing is compiled here. |
 | `backport-tests/` | The unit tests of the three backport lines, written once. |
 | `contracts/` | Example event lines and control documents shared with the daemon; the agent and daemon tests both read them. |
 | `probes/` | Packaged-agent probes, one directory each, and the registry that runs them. |
@@ -21,6 +22,7 @@ What lives where under `java-agent/`, which command checks a change, and the rul
 ```bash
 python3 scripts/gates.py run --changed                 # from the repo root: the checks this change triggers
 java-agent/scripts/check-agent.sh --line java17 file-read   # one line: unit tests, then one probe on that line's JDK
+java-agent/scripts/check-agent.sh --artifact all --line java17 file-read   # the same probe against the universal JAR
 java-agent/scripts/check-agent.sh --help               # lines and probes
 ```
 
@@ -34,7 +36,9 @@ java-agent/scripts/check-agent.sh --help               # lines and probes
 
 **The event and control-file formats are pinned by examples.** A change to what an agent writes to the event spool, or to how it reads the control file, fails a test against [`contracts/agent-daemon/`](contracts/agent-daemon/README.md). Regenerate the examples there as its README says, read the diff, and run the daemon tests too: the daemon parses the same files.
 
-**`shared/` stays Java 8 source.** The Java 8 line compiles it with `--release 8`.
+**`shared/` stays Java 8 source.** `:shared` compiles it once with `--release 8`, and every line's JAR carries that bytecode.
+
+**The launcher loads nothing of ours before it chooses a line and never lets a start failure stop the JVM.** `AgentLauncher` uses only `java.*`, looks for line entry classes in the entry class's own JAR file, and catches every `Throwable` from the line it starts; [docs/agent.md](../docs/agent.md#which-jar-to-attach) says what it prints. Keep it plain Java 8 without lambdas: it runs on every Java version a JAR can be attached to. Each JAR packs only its own entry class, and the root `verifyLauncherEntries` task fails when a JAR holds another one or names another in its manifest. The launcher's range table has a Python twin in `probes/common/agent_track.py`, which the `launcher` probe checks against the real launcher.
 
 **Probes are registered by directory.** A new probe is a directory under `probes/` with a `check.py`, plus a `probe.toml` when it needs staged fixtures or applies to some lines only (give the reason). Do not name a probe in a workflow or script: both call `probes/run.py`.
 

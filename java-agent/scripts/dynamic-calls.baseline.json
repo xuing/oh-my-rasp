@@ -22,12 +22,6 @@
    }
   },
   "java11": {
-   "io/ohmyrasp/agent/file/HostReadPath": {
-    "string-concat": 1
-   },
-   "io/ohmyrasp/agent/http/ArchiveUploadPolicy": {
-    "string-concat": 3
-   },
    "io/ohmyrasp/agent/http/ServletDispatchScope": {
     "lambda": 2
    },
@@ -113,71 +107,17 @@
    "io/ohmyrasp/agent/java11/RaspRuntime$EventSpool": {
     "string-concat": 1
    },
-   "io/ohmyrasp/agent/jmx/JmxAttributeDisplay": {
-    "string-concat": 1
-   },
-   "io/ohmyrasp/agent/jmx/JmxWriteScope": {
-    "string-concat": 2
-   },
-   "io/ohmyrasp/agent/loading/ClassDefinitionOrigin": {
-    "string-concat": 3
-   },
-   "io/ohmyrasp/agent/naming/JndiLookupVisitor$2": {
-    "string-concat": 1
-   },
-   "io/ohmyrasp/agent/naming/JndiLookupVisitor$4": {
-    "string-concat": 1
-   },
-   "io/ohmyrasp/agent/net/HttpTransportObservation": {
-    "string-concat": 3
-   },
    "io/ohmyrasp/agent/net/HttpTransportObservation$Submissions": {
     "lambda": 1
-   },
-   "io/ohmyrasp/agent/net/NetworkHost": {
-    "string-concat": 3
-   },
-   "io/ohmyrasp/agent/rules/general/PlotWrite": {
-    "string-concat": 1
-   },
-   "io/ohmyrasp/agent/rules/product/dataease/FilterVerificationVisitor": {
-    "string-concat": 4
-   },
-   "io/ohmyrasp/agent/rules/product/hessian/HessianAllocationVisitor$Transformer": {
-    "string-concat": 1
    },
    "io/ohmyrasp/agent/rules/product/rocketmq/RocketMqFilterServer": {
     "lambda": 4
    },
-   "io/ohmyrasp/agent/rules/product/spark/SparkSubmitVisitor": {
-    "string-concat": 4
-   },
-   "io/ohmyrasp/agent/rules/product/spark/SparkSubmitVisitor$1": {
-    "string-concat": 1
-   },
-   "io/ohmyrasp/agent/rules/product/yarn/YarnSubmitVisitor": {
-    "string-concat": 2
-   },
-   "io/ohmyrasp/agent/serialization/ObjectStreamResolutionTransformer": {
-    "string-concat": 1
-   },
    "io/ohmyrasp/agent/sql/SqlStatement": {
     "lambda": 2
-   },
-   "io/ohmyrasp/agent/xml/AttachmentFileRead": {
-    "string-concat": 1
-   },
-   "io/ohmyrasp/agent/xml/XmlCatalogResolution": {
-    "string-concat": 1
    }
   },
   "java17": {
-   "io/ohmyrasp/agent/file/HostReadPath": {
-    "string-concat": 1
-   },
-   "io/ohmyrasp/agent/http/ArchiveUploadPolicy": {
-    "string-concat": 3
-   },
    "io/ohmyrasp/agent/http/ServletDispatchScope": {
     "lambda": 2
    },
@@ -263,62 +203,14 @@
    "io/ohmyrasp/agent/java17/RaspRuntime$EventSpool": {
     "string-concat": 1
    },
-   "io/ohmyrasp/agent/jmx/JmxAttributeDisplay": {
-    "string-concat": 1
-   },
-   "io/ohmyrasp/agent/jmx/JmxWriteScope": {
-    "string-concat": 2
-   },
-   "io/ohmyrasp/agent/loading/ClassDefinitionOrigin": {
-    "string-concat": 3
-   },
-   "io/ohmyrasp/agent/naming/JndiLookupVisitor$2": {
-    "string-concat": 1
-   },
-   "io/ohmyrasp/agent/naming/JndiLookupVisitor$4": {
-    "string-concat": 1
-   },
-   "io/ohmyrasp/agent/net/HttpTransportObservation": {
-    "string-concat": 3
-   },
    "io/ohmyrasp/agent/net/HttpTransportObservation$Submissions": {
     "lambda": 1
-   },
-   "io/ohmyrasp/agent/net/NetworkHost": {
-    "string-concat": 3
-   },
-   "io/ohmyrasp/agent/rules/general/PlotWrite": {
-    "string-concat": 1
-   },
-   "io/ohmyrasp/agent/rules/product/dataease/FilterVerificationVisitor": {
-    "string-concat": 4
-   },
-   "io/ohmyrasp/agent/rules/product/hessian/HessianAllocationVisitor$Transformer": {
-    "string-concat": 1
    },
    "io/ohmyrasp/agent/rules/product/rocketmq/RocketMqFilterServer": {
     "lambda": 4
    },
-   "io/ohmyrasp/agent/rules/product/spark/SparkSubmitVisitor": {
-    "string-concat": 4
-   },
-   "io/ohmyrasp/agent/rules/product/spark/SparkSubmitVisitor$1": {
-    "string-concat": 1
-   },
-   "io/ohmyrasp/agent/rules/product/yarn/YarnSubmitVisitor": {
-    "string-concat": 2
-   },
-   "io/ohmyrasp/agent/serialization/ObjectStreamResolutionTransformer": {
-    "string-concat": 1
-   },
    "io/ohmyrasp/agent/sql/SqlStatement": {
     "lambda": 2
-   },
-   "io/ohmyrasp/agent/xml/AttachmentFileRead": {
-    "string-concat": 1
-   },
-   "io/ohmyrasp/agent/xml/XmlCatalogResolution": {
-    "string-concat": 1
    }
   },
   "jdk25": {
@@ -564,9 +456,6 @@
    "io/ohmyrasp/agent/detect/SqlRequestIndicators$SqlSortInjectionMatch": {
     "record": 3
    },
-   "io/ohmyrasp/agent/file/HostReadPath": {
-    "string-concat": 1
-   },
    "io/ohmyrasp/agent/file/WindowsDataStream": {
     "record": 3
    },
@@ -580,23 +469,11 @@
     "lambda": 22,
     "string-concat": 5
    },
-   "io/ohmyrasp/agent/http/ArchiveUploadPolicy": {
-    "string-concat": 3
-   },
    "io/ohmyrasp/agent/http/ServletDispatchScope": {
     "lambda": 2
    },
    "io/ohmyrasp/agent/http/ServletQueryParameters": {
     "lambda": 1
-   },
-   "io/ohmyrasp/agent/jmx/JmxAttributeDisplay": {
-    "string-concat": 1
-   },
-   "io/ohmyrasp/agent/jmx/JmxWriteScope": {
-    "string-concat": 2
-   },
-   "io/ohmyrasp/agent/loading/ClassDefinitionOrigin": {
-    "string-concat": 3
    },
    "io/ohmyrasp/agent/log/JsonEventLogger": {
     "lambda": 2,
@@ -611,20 +488,8 @@
    "io/ohmyrasp/agent/model/RequestContext": {
     "lambda": 2
    },
-   "io/ohmyrasp/agent/naming/JndiLookupVisitor$2": {
-    "string-concat": 1
-   },
-   "io/ohmyrasp/agent/naming/JndiLookupVisitor$4": {
-    "string-concat": 1
-   },
-   "io/ohmyrasp/agent/net/HttpTransportObservation": {
-    "string-concat": 3
-   },
    "io/ohmyrasp/agent/net/HttpTransportObservation$Submissions": {
     "lambda": 1
-   },
-   "io/ohmyrasp/agent/net/NetworkHost": {
-    "string-concat": 3
    },
    "io/ohmyrasp/agent/policy/AgentPolicy": {
     "lambda": 2
@@ -646,26 +511,8 @@
    "io/ohmyrasp/agent/policy/SimpleJson$Parser": {
     "string-concat": 2
    },
-   "io/ohmyrasp/agent/rules/general/PlotWrite": {
-    "string-concat": 1
-   },
-   "io/ohmyrasp/agent/rules/product/dataease/FilterVerificationVisitor": {
-    "string-concat": 4
-   },
-   "io/ohmyrasp/agent/rules/product/hessian/HessianAllocationVisitor$Transformer": {
-    "string-concat": 1
-   },
    "io/ohmyrasp/agent/rules/product/rocketmq/RocketMqFilterServer": {
     "lambda": 4
-   },
-   "io/ohmyrasp/agent/rules/product/spark/SparkSubmitVisitor": {
-    "string-concat": 4
-   },
-   "io/ohmyrasp/agent/rules/product/spark/SparkSubmitVisitor$1": {
-    "string-concat": 1
-   },
-   "io/ohmyrasp/agent/rules/product/yarn/YarnSubmitVisitor": {
-    "string-concat": 2
    },
    "io/ohmyrasp/agent/runtime/AgentRuntime": {
     "lambda": 5,
@@ -674,17 +521,8 @@
    "io/ohmyrasp/agent/runtime/ShirudoDefaults": {
     "string-concat": 2
    },
-   "io/ohmyrasp/agent/serialization/ObjectStreamResolutionTransformer": {
-    "string-concat": 1
-   },
    "io/ohmyrasp/agent/sql/SqlStatement": {
     "lambda": 2
-   },
-   "io/ohmyrasp/agent/xml/AttachmentFileRead": {
-    "string-concat": 1
-   },
-   "io/ohmyrasp/agent/xml/XmlCatalogResolution": {
-    "string-concat": 1
    }
   }
  }

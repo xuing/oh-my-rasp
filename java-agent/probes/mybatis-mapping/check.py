@@ -8,7 +8,11 @@ from pathlib import Path
 import subprocess
 import tempfile
 import urllib.request
-import zipfile
+import sys
+
+COMMON = Path(__file__).resolve().parent.parent / "common"
+sys.path.insert(0, str(COMMON))
+import agent_track  # noqa: E402
 
 MYBATIS_VERSION = "3.5.19"
 MYBATIS_SHA256 = "93eea616ae355751bd5fbabb57f0732713fbe79f3196f33c51a0aeeb4255862a"
@@ -48,8 +52,7 @@ def main():
             download_jar(mybatis)
         source = Path(__file__).with_name("MyBatisMappingCheck.java")
         subprocess.run(["javac", "-cp", mybatis, "-d", work, source], check=True)
-        with zipfile.ZipFile(jar) as agent:
-            primary = "io/ohmyrasp/agent/hook/OhMyRaspHooks.class" in agent.namelist()
+        primary = agent_track.track(jar) is None
         for mode in (("block", "monitor", "managed") if primary else ("block", "monitor")):
             runtime_mode = "block" if mode == "managed" else mode
             log = work / (mode + ".jsonl")

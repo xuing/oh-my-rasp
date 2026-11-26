@@ -72,6 +72,54 @@ class RegistryTest(unittest.TestCase):
                          {(line.id, line.jdk, line.jar, line.upatch) for line in self.lines.values()},
                          "the runtime-compatibility matrix in agent.yml and probes/lines.toml differ")
 
+    def test_universal_jar_is_built_and_uploaded(self):
+        jar, build = runner.load_universal()
+        for task in build:
+            module, name = task.strip(":").split(":")
+            self.assertIn(f'"{name}"', (JAVA_AGENT / module / "build.gradle.kts").read_text(), task)
+        self.assertIn(f"java-agent/{jar}", (WORKFLOWS / "agent.yml").read_text(),
+                      "the runtime matrix downloads the universal JAR from the build job's artifact")
+
+    def test_ci_runs_every_row_against_the_universal_jar(self):
+        job = (WORKFLOWS / "agent.yml").read_text()
+        job = job[job.index("  runtime-compatibility:"):]
+        self.assertIn('run.py run --line "${{ matrix.line }}" --keep-going', job)
+        self.assertIn('run.py run --line "${{ matrix.line }}" --artifact all --keep-going', job)
+
+    def test_artifact_all_applies_where_the_launcher_starts_the_rows_line(self):
+        jar, build = runner.load_universal()
+        everything = set(runner.agent_track.LINE_NAMES)
+        for line in self.lines.values():
+            self.assertIs(runner.for_artifact(line, "line"), line)
+            started = runner.agent_track.launcher_choice(everything, int(line.jdk))
+            universal = runner.for_artifact(line, "all")
+            if line.no_universal:
+                self.assertIsNone(universal)
+                self.assertNotEqual(started, line.track, f"{line.id}: no_universal, yet the universal JAR starts its line")
+            else:
+                self.assertEqual(started, line.track, f"{line.id}: the universal JAR starts another line; "
+                                 "mark the row no_universal with the reason")
+                self.assertEqual((universal.jar, universal.build, universal.track), (jar, build, line.track))
+        covered = {line.jdk for line in self.lines.values() if not line.no_universal}
+        self.assertEqual(covered, {line.jdk for line in self.lines.values()}, "every JDK gets a universal pass")
+
+    def test_every_probe_is_told_the_line_under_test(self):
+        self.assertEqual({line.id: line.track for line in self.lines.values()},
+                         {"java8": "8", "java11": "11", "java17": "17", "java17-on-21": "17",
+                          "jdk21": "main", "jdk25": "main"})
+        texts = {p.id: p.script.read_text() for p in self.probes.values()}
+        guessing = [name for name, text in texts.items()
+                    if "RaspHooks.class" in text or ("namelist()" in text and "agent_track" not in text)]
+        self.assertEqual(guessing, [], "probes must take the line from agent_track.track(), which reads "
+                         f"{runner.agent_track.ENVIRONMENT} from the registry")
+
+    def test_artifact_all_substitutes_the_universal_jar_in_commands(self):
+        args = runner.argparse.Namespace(jar=None, build_root=None, probe_args=[])
+        probe = self.probes["background-process"]
+        universal = runner.for_artifact(self.lines["java8"], "all")
+        self.assertEqual(runner.command(probe, universal, args)[2],
+                         str(JAVA_AGENT / runner.load_universal()[0]))
+
     def test_ci_runs_probes_through_the_registry(self):
         # A workflow that names a probe's check.py has a second list to forget.
         for workflow in WORKFLOWS.glob("*.yml"):

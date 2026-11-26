@@ -118,8 +118,7 @@ public final class HookMap {
    * through the agent JAR's own classes, implements ClassFileTransformer. This follows the entry
    * class, so a transformer added there is picked up and one that is never registered is not counted.
    */
-  private static List<Unit> registeredTransformers(JarFile agent) throws Exception {
-    String entry = agent.getManifest().getMainAttributes().getValue("Premain-Class").replace('.', '/');
+  private static List<Unit> registeredTransformers(JarFile agent, String entry) throws Exception {
     ClassNode entryNode = read(agent, entry);
     Set<String> registered = new LinkedHashSet<String>();
     for (MethodNode method : entryNode.methods) {
@@ -266,16 +265,19 @@ public final class HookMap {
   }
 
   public static void main(String[] args) throws Exception {
-    if (args.length != 2) throw new IllegalArgumentException("usage: HookMap <agent jar> <staged tree>");
+    if (args.length != 3) {
+      throw new IllegalArgumentException("usage: HookMap <agent jar> <staged tree> <primary | line entry class>");
+    }
     List<Unit> units;
     Unit whole = null;
     try (JarFile agent = new JarFile(args[0])) {
-      if (agent.getJarEntry("io/ohmyrasp/agent/asm/OhMyRaspTransformer.class") != null) {
+      // The JAR's manifest names the launcher, and a universal JAR holds every line: the caller says which.
+      if ("primary".equals(args[2])) {
         units = primaryModules();
         Class<?> transformerType = Class.forName("io.ohmyrasp.agent.asm.OhMyRaspTransformer");
         whole = new Transform("OhMyRaspTransformer", transformerType.getConstructor().newInstance());
       } else {
-        units = registeredTransformers(agent);
+        units = registeredTransformers(agent, args[2]);
       }
     }
     List<String> names = new ArrayList<String>();

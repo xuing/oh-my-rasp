@@ -6,10 +6,11 @@ import os
 import subprocess
 import sys
 import tempfile
-import zipfile
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "common"))
+import agent_track  # noqa: E402
 import hookmap  # noqa: E402
 
 UPDATE = {"primary": "java-agent/scripts/check-agent.sh --line jdk25 hook-targets --update",
@@ -32,7 +33,9 @@ def generate(agent: Path, libs: Path, track: str) -> str:
     here = Path(__file__).resolve().parent
     with tempfile.TemporaryDirectory(prefix="hook-targets-") as tmp:
         subprocess.run(["javac", "-cp", str(agent), "-d", tmp, str(here / "HookMap.java")], check=True)
-        run = subprocess.run(["java", "-Xmx3g", "-cp", os.pathsep.join((tmp, str(agent))), "HookMap", str(agent), str(libs)],
+        # A JAR may hold several lines; name the one under test by its entry class.
+        entry = "primary" if track == "main" else f"io/ohmyrasp/agent/java{track}/OhMyRaspJava{track}Agent"
+        run = subprocess.run(["java", "-Xmx3g", "-cp", os.pathsep.join((tmp, str(agent))), "HookMap", str(agent), str(libs), entry],
                              capture_output=True, text=True, timeout=900)
     sys.stderr.write(run.stderr)
     if run.returncode:
@@ -58,9 +61,7 @@ def main():
     parser.add_argument("--update", action="store_true", help="record the map this agent produces instead of comparing")
     args = parser.parse_args()
     agent = args.agent.resolve(strict=True)
-    with zipfile.ZipFile(agent) as jar:
-        track = next((v for v in ("8", "11", "17") if
-                      f"io/ohmyrasp/agent/java{v}/Java{v}RaspHooks.class" in jar.namelist()), "main")
+    track = agent_track.track(agent) or "main"
     family = "primary" if track == "main" else "backport"
     libraries = hookmap.load_libraries()
     problems = staged_problems(args.libs, libraries)
