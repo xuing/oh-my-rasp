@@ -407,14 +407,20 @@ public final class AgentRuntime {
    * atomically, so such a read is transient.
    */
   void reloadIfChanged() {
-    Path path = controlPath;
+    reloadIfChanged(controlPath);
+  }
+
+  /** One polling step against {@code path}; a test passes a path whose file system fails. */
+  void reloadIfChanged(Path path) {
     if (path == null) {
       return;
     }
     try {
       reload(path);
-    } catch (RuntimeException | StackOverflowError | OutOfMemoryError e) {
-      // Nothing the poll step throws escapes it: the last good state stays.
+    } catch (Throwable e) {
+      // Nothing the poll step throws escapes it, an Error from a file system provider included:
+      // the last good state stays, and the first poll, made during start, cannot abort the JVM's
+      // start-up.
     }
   }
 

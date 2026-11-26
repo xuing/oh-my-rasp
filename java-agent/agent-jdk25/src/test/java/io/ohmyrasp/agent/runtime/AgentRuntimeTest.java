@@ -189,6 +189,32 @@ final class AgentRuntimeTest {
     assertSame(AgentPolicy.absent(), runtime.policy());
   }
 
+  /**
+   * A file system that fails with an Error other than StackOverflowError or OutOfMemoryError. The
+   * poll step, which start also runs once before the application starts, keeps it inside.
+   */
+  @Test
+  void anErrorFromTheFileSystemStaysInsideThePollStep(@TempDir Path dir) throws Exception {
+    Path file = dir.resolve("control.json");
+    Files.writeString(file, "{\"mode\":\"monitor\"}");
+    AgentRuntime runtime = startPolling(file);
+    assertEquals(DetectionMode.MONITOR, runtime.mode());
+
+    runtime.reloadIfChanged(failingPath());
+    assertEquals(DetectionMode.MONITOR, runtime.mode(), "the last good state stays");
+    assertFalse(AgentOwnIo.active(), "the own-I/O mark is cleared");
+  }
+
+  /** A path whose every method, the lookup of its file system included, throws AssertionError. */
+  static Path failingPath() {
+    return (Path) java.lang.reflect.Proxy.newProxyInstance(
+        Path.class.getClassLoader(),
+        new Class<?>[] {Path.class},
+        (proxy, method, args) -> {
+          throw new AssertionError("file system provider failure in " + method.getName());
+        });
+  }
+
   private static String padded(String json, int size) {
     return json + " ".repeat(size - json.length());
   }
