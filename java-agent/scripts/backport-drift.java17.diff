@@ -599,14 +599,10 @@
 @@
 +import java.io.ObjectInputStream;
 +import java.io.RandomAccessFile;
-+import java.beans.Expression;
-+import java.beans.Statement;
 @@
 +import java.net.URLClassLoader;
-+import java.sql.DriverManager;
 @@
 +import java.util.zip.ZipEntry;
-+import javax.script.AbstractScriptEngine;
 @@
 -    RaspRuntime.writeStartupLine(logPath, startupMessage(mode, agentArgs, instrumentation));
 -  }
@@ -729,20 +725,12 @@
 @@
 -    retransform(instrumentation, java.net.URL.class);
 -    retransform(instrumentation, java.util.zip.ZipEntry.class);
--    retransform(instrumentation, java.sql.DriverManager.class);
 +    retransform(instrumentation, ZipEntry.class);
 +    retransform(instrumentation, URL.class);
 +    retransform(instrumentation, URLClassLoader.class);
-+    retransform(instrumentation, DriverManager.class);
 @@
 -    retransform(instrumentation, java.net.URLClassLoader.class);
--    retransform(instrumentation, javax.script.AbstractScriptEngine.class);
-+    retransform(instrumentation, AbstractScriptEngine.class);
 @@
--    retransform(instrumentation, java.beans.Expression.class);
--    retransform(instrumentation, java.beans.Statement.class);
-+    retransform(instrumentation, Expression.class);
-+    retransform(instrumentation, Statement.class);
 +    retransformByName(instrumentation, "com.sun.tools.javac.api.JavacTool");
 @@
 -    // The bootstrap provider can load while another transformer is running, after

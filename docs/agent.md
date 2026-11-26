@@ -50,7 +50,7 @@ Attach the universal JAR, `ohmyrasp-agent-all.jar` (or `ohmyrasp.jar` for a Shir
 
 So the universal JAR runs the primary line on Java 21 and 25, the Java 17 line on 17, the Java 11 line on 11 and the Java 8 line on 8. On a version between or after these (for example 18 or 26) it starts the line the table selects and says nothing extra; the probes cover only 8, 11, 17, 21 and 25. No line runs on Java 9 or 10. A per-track JAR still starts its own line within that line's range: the Java 17 JAR also starts on Java 21 and 25.
 
-One line starts per JVM, whether through `premain` or a later `agentmain` attach. The launcher keeps the state in the system property `ohmyrasp.agent.state`: `starting`, then `installed:<line>` or `failed:<line>`; once a line has started, `ohmyrasp.agent.line` names it. A JVM started with either property already set starts no line.
+One line starts per JVM, whether through `premain` or a later `agentmain` attach. The launcher keeps the state in a static field of `io.ohmyrasp.agent.launch.AgentLauncher`, a class every agent JAR holds under that name and the JVM defines once: unset, `starting`, then `installed:<line>` or `failed:<line>`. It publishes the state as the system property `ohmyrasp.agent.state` and, once a line has started, the line as `ohmyrasp.agent.line`, for operators and probes to read. It never reads them back, so setting them on the command line changes nothing.
 
 The launcher never stops the JVM. In each of these cases it writes one JSON line to standard error and the application starts:
 
