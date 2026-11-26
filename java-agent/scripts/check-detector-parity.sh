@@ -24,23 +24,28 @@ ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 
 fail=0
 
+# Passes when "$symbol(" is called in a .java file under "$where": on a line that is neither a comment nor
+# the helper's own declaration. A definition alone, or a mention in a comment, guards nothing.
 require_symbol() {
-  local file="$1"
+  local where="$1"
   local symbol="$2"
-  if [[ ! -e "$file" ]]; then
-    echo "PARITY FAIL: file not found: $file" >&2
+  if [[ ! -e "$where" ]]; then
+    echo "PARITY FAIL: file not found: $where" >&2
     fail=1
     return
   fi
-  if ! grep -rFq --include='*.java' "$symbol" "$file"; then
-    echo "PARITY FAIL: missing '$symbol' in $file" >&2
+  if ! grep -rhE --include='*.java' "\\b${symbol}\\(" "$where" \
+      | grep -vE '^[[:space:]]*(//|/?\*)' \
+      | grep -vE "^[[:space:]]*((public|private|protected|static|final)[[:space:]]+)+[A-Za-z0-9_<>?,. \\[\\]]+[[:space:]]${symbol}\\(" \
+      | grep -q .; then
+    echo "PARITY FAIL: no call of '$symbol' in $where (a definition or a comment is not a guard)" >&2
     fail=1
   fi
 }
 
 # ---------------------------------------------------------------------------
 # The backport decisions, one copy for the three backport lines.
-# It must contain BOTH the guard call site AND the helper definitions.
+# Each carve-out must be called, not only defined.
 # ---------------------------------------------------------------------------
 hooks="$ROOT/shared/src/main/java/io/ohmyrasp/agent/backport/BackportHooks.java"
 

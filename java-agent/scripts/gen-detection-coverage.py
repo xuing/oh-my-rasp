@@ -226,19 +226,15 @@ def rule_scope_tables() -> list[str]:
         raise ValueError(f"Primary rules missing a scope description: {sorted(missing)}")
 
     families: dict[str, list[str]] = {}
-    emitted: dict[str, set[str]] = {}
     for track, names in rule_catalogue.backport_findings().items():
         for name in sorted(names):
             family = name.removeprefix(track + "_")
-            emitted.setdefault(track, set()).add(family)
             names_of = families.setdefault(family, [])
             if name not in names_of:
                 names_of.append(name)
-    # The backport lines are separate source trees that must decide alike: a rule one line emits, all emit.
-    if gaps := {family: sorted(track for track, ids in emitted.items() if family not in ids)
-                for family in families if any(family not in ids for ids in emitted.values())}:
-        raise ValueError("Backport lines emit different rule ids. Missing: "
-                         + "; ".join(f"{family} in {', '.join(tracks)}" for family, tracks in sorted(gaps.items())))
+    # No check that the three backport lines emit the same rule ids: their decisions are one copy
+    # (shared/.../backport/BackportHooks.java) and rule_catalogue derives each line's ids from it, so the lists
+    # are equal by construction. A line's prefix is pinned by the backport tests (Java8RaspLineTest).
     documented = general["backports"].keys() | product["backports"].keys()
     if documented != families.keys():
         raise ValueError(f"Backport rule scope catalog differs from emitted families: {sorted(documented ^ families.keys())}")
