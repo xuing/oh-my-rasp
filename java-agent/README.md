@@ -98,9 +98,9 @@ java-agent/
 │   │   ├── policy/                   local AgentPolicy evaluation
 │   │   └── control/                  legacy direct-cloud client (off by default)
 │   └── src/test/                     unit tests
-├── agent-java8 / -java11 / -java17   backport builds
+├── agent-java8 / -java11 / -java17   backport builds: entry classes, transformers, per-line hooks delegates
 ├── agent-all/                        universal JARs: every line, started by the launcher
-├── shared/                           :shared, compiled once for Java 8: shared classes and the launcher
+├── shared/                           :shared, compiled once for Java 8: shared classes, the backport decisions and runtime, the launcher
 ├── backport-tests/                   the one shared unit-test tree for the three backport builds
 ├── probes/                           packaged-agent probes, one directory each; run.py runs them
 ├── rules/                            rule scope descriptions (general.json, product.json)
