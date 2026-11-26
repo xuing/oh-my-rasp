@@ -229,7 +229,7 @@ not counted, only hooks on named targets. Primary is the JDK 21 and 25 agent, ba
 | `net.sf.sevenzipjbinding:sevenzipjbinding` | 16.02-2.01 | 0 | 1 |
 | `net.sf.sevenzipjbinding:sevenzipjbinding` | 26.06-2.3 | 0 | 1 |
 | `org.apache.skywalking:storage-jdbc-hikaricp-plugin` | 8.9.1 | 0 | 1 |
-| `org.apache.skywalking:storage-jdbc-hikaricp-plugin` | 9.7.0 (no hook, see below) | 0 | 0 |
+| `org.apache.skywalking:storage-jdbc-hikaricp-plugin` | 9.7.0 | 0 | 1 |
 | `com.h2database:h2` | 1.4.197 | 39 | 38 |
 | `com.h2database:h2` | 1.4.200 | 39 | 38 |
 | `com.h2database:h2` | 2.1.214 | 28 | 27 |
@@ -243,7 +243,6 @@ is a hook that should be fixed.
 | Library | Version | Reason |
 |---|---|---|
 | `javax.el:javax.el-api` | 2.2.1 | javax.el.ELProcessor, the class the hook wants, first appears in EL 3.0; ExpressionFactory has no concrete method the hook rewrites |
-| `org.apache.skywalking:storage-jdbc-hikaricp-plugin` | 9.7.0 | FINDING: 9.x replaced H2LogQueryDAO with JDBCLogQueryDAO in a common package, so the hook's class is gone |
 
 ## Hook families with no library target
 
@@ -345,6 +344,7 @@ signature); each is a place to check that the hook still covers what it did.
 | `jakarta.activation:jakarta.activation-api` | 1.2.2 | 2.0.1 2.1.3 | `javax/activation/URLDataSource.<init>`<br>`javax/activation/URLDataSource.getInputStream` |
 | `jakarta.activation:jakarta.activation-api` | 2.0.1 2.1.3 | 1.2.2 | `jakarta/activation/URLDataSource.<init>`<br>`jakarta/activation/URLDataSource.getInputStream` |
 | `org.apache.skywalking:storage-jdbc-hikaricp-plugin` | 8.9.1 | 9.7.0 | `org/apache/skywalking/oap/server/storage/plugin/jdbc/h2/dao/H2LogQueryDAO.queryLogs` |
+| `org.apache.skywalking:storage-jdbc-hikaricp-plugin` | 9.7.0 | 8.9.1 | `org/apache/skywalking/oap/server/storage/plugin/jdbc/common/dao/JDBCLogQueryDAO.buildSQL` |
 | `org.apache.spark:spark-core_2.12` | 2.4.8 | 3.5.10 | `org/spark_project/jetty/http/MultiPartFormInputStream$MultiPart.getSubmittedFileName`<br>`org/spark_project/jetty/http/MultiPartFormInputStream.deleteParts`<br>`org/spark_project/jetty/http/MultiPartFormInputStream.getParsedParts`<br>`org/spark_project/jetty/http/MultiPartFormInputStream.getPart`<br>and 26 more |
 | `org.apache.spark:spark-core_2.12` | 3.5.10 | 2.4.8 | `org/sparkproject/jetty/http/MultiPartFormInputStream$MultiPart.getSubmittedFileName`<br>`org/sparkproject/jetty/http/MultiPartFormInputStream.deleteParts`<br>`org/sparkproject/jetty/http/MultiPartFormInputStream.getParsedParts`<br>`org/sparkproject/jetty/http/MultiPartFormInputStream.getPart`<br>and 27 more |
 | `org.apache.struts:struts2-core` | 2.5.30 6.3.0.2 6.9.0 | 7.0.3 | `com/opensymphony/xwork2/util/classloader/FileResourceStore.getFile` |

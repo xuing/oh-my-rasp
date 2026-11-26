@@ -62,6 +62,46 @@ final class Java8LibraryHookTargetsTest {
   }
 
   @Test
+  void skyWalking9LogQueryPassesTheTableNameToTheSqlIdentifierCheck() throws Exception {
+    // SkyWalking 9 replaced h2.dao.H2LogQueryDAO.queryLogs(String metricName, ...) with this common DAO,
+    // which writes the table name into the statement in buildSQL(..., String table).
+    String name = "org/apache/skywalking/oap/server/storage/plugin/jdbc/common/dao/JDBCLogQueryDAO";
+    byte[] original = classBytes(name);
+    String buildSql = "(Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;"
+        + "Lorg/apache/skywalking/oap/server/core/query/input/TraceScopeCondition;"
+        + "Lorg/apache/skywalking/oap/server/core/query/enumeration/Order;IILorg/apache/skywalking/oap/server/core/query/input/Duration;"
+        + "Ljava/util/List;Ljava/util/List;Ljava/util/List;Ljava/lang/String;)"
+        + "Lorg/apache/skywalking/oap/server/storage/plugin/jdbc/common/SQLAndParameters;";
+
+    byte[] hooked = new Java8JdbcTransformer().transform(null, name, null, null, original);
+
+    assertNotNull(hooked);
+    String hook = "io/ohmyrasp/agent/java8/Java8RaspHooks";
+    assertEquals(new ArrayList<String>(), hookCalls(original, "buildSQL", buildSql, hook));
+    // The table is the twelfth argument: local 12 of the instance method.
+    assertEquals(
+        java.util.Arrays.asList("ldc=table load=12 beforeSqlIdentifier"), hookCalls(hooked, "buildSQL", buildSql, hook));
+  }
+
+  @Test
+  void sqlIdentifierCheckNamesTheSourceAndParameterItWasGiven() throws Exception {
+    java.nio.file.Path log = java.nio.file.Files.createTempFile("ohmyrasp-java8-sql-identifier-source", ".jsonl");
+    java.nio.file.Files.delete(log);
+    System.setProperty("ohmyrasp.java8.log", log.toString());
+    try {
+      Java8RaspHooks.beforeSqlIdentifier("log;drop/**/table/**/x", "SkyWalking.JDBCLogQueryDAO.buildSQL", "table");
+
+      String text = new String(java.nio.file.Files.readAllBytes(log), StandardCharsets.UTF_8);
+      assertTrue(text.contains("\"algorithm\":\"java8_sql_identifier_injection\""));
+      assertTrue(text.contains("source=SkyWalking.JDBCLogQueryDAO.buildSQL"));
+      assertTrue(text.contains("parameter=table"));
+    } finally {
+      System.clearProperty("ohmyrasp.java8.log");
+      java.nio.file.Files.deleteIfExists(log);
+    }
+  }
+
+  @Test
   void pageHelper42DialectsAreTracedThroughTheirFourArgumentGetPageSql() throws Exception {
     // PageHelper 4.2.x takes (String, Page, RowBounds, CacheKey); 5.x takes (String, Page, CacheKey).
     String name = "com/github/pagehelper/dialect/MySqlDialect";

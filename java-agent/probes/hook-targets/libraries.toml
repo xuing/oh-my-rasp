@@ -441,8 +441,7 @@ why = "SimpleInArchiveItemImpl in the long-lived 16.02 and the newest."
 group = "org.apache.skywalking"
 artifact = "storage-jdbc-hikaricp-plugin"
 versions = ["8.9.1", "9.7.0"]
-why = "H2LogQueryDAO in the last 8.x and the last 9.x."
-none = { "9.7.0" = "FINDING: 9.x replaced H2LogQueryDAO with JDBCLogQueryDAO in a common package, so the hook's class is gone" }
+why = "H2LogQueryDAO in the last 8.x; 9.x replaced it with JDBCLogQueryDAO in a common package, shown at the last 9.x."
 
 [[library]]
 group = "com.h2database"
