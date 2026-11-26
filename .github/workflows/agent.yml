@@ -29,6 +29,11 @@ jobs:
         run: python3 -m unittest discover -s java-agent/scripts/evidence -p 'test_*.py'
       - name: Test the probe registry
         run: python3 -m unittest discover -s java-agent/probes -p 'test_*.py'
+      - name: Check that the backport lines differ only where recorded
+        run: |
+          set -euo pipefail
+          python3 -m unittest discover -s java-agent/scripts -p 'test_check_backport_drift.py'
+          python3 java-agent/scripts/check-backport-drift.py
       - name: Check detector false-positive-suppression parity
         working-directory: java-agent
         run: bash scripts/check-detector-parity.sh
