@@ -21,7 +21,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `CONTRIBUTING.md`, `SECURITY.md`, and `.github/PULL_REQUEST_TEMPLATE.md` to
   align toolchains, commands, and generated-doc checks with the current tree.
 
+- Java agent development layout. Packaged-agent probes moved from
+  `java-agent/scripts/fp-harness/` to one directory each under
+  `java-agent/probes/`, with a registry that `java-agent/scripts/check-agent.sh`
+  (replaces `check-jdk25.sh`; takes `--line`) and the CI runtime matrix both
+  read. Acceptance scripts moved from `java-agent/scripts/acceptance*.sh` to
+  `java-agent/acceptance/{runtime,vulhub/<component>}/`. The Java 8, 11 and 17
+  agents share one unit-test tree, `java-agent/backport-tests/`. Detection rules
+  of `agent-jdk25` moved from `DetectorEngine` to per-family detector classes.
+  `scripts/gates.py` lists the checks a change needs.
+- CI runs the `sqlite-identifiers` probe on every agent line, not only JDK 25.
+
 ### Fixed
+- **Java agent (all 4 tracks):** the baked `META-INF/ohmyrasp-shirudo.properties`
+  is read only from the agent's own JAR. Before, a same-named file in a JAR on
+  the application class path was read in its place and could switch a locked
+  `mode=block` agent to `off`. A baked file that is malformed part-way keeps the
+  keys read before the malformed line.
+- **Java agent (all 4 tracks):** an unrecognised `mode` or `standalone` value in
+  one source is skipped and the next source applies, so a mistyped value no
+  longer hides a valid `block` and leaves the agent not blocking.
+- **Java agent (`java8`/`java11`/`java17`):** the three lines share one runtime.
+  On `java11` and `java17`, `lock_config=true` now ignores system properties and
+  environment for `standalone`, `mode` and `control` even when a baked key is
+  missing, and standalone with no mode configured resolves to `block`. On
+  `java8`, the event writer thread starts when the agent loads (only when the
+  log target is a file), not inside a hook.
 - **Java agent (all 4 tracks):** a `lock_config=true` profile without a baked
   `control` path no longer polls `/tmp/ohmyrasp-control.json`.
 - **Java agent (all 4 tracks):** the control file is read on every poll and
