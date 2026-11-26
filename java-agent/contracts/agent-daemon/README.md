@@ -18,7 +18,7 @@ Each event file is one line. The control documents are the daemon's pretty-print
 
 ## What the examples cover
 
-- **Events, primary agent:** a blocked detection inside an HTTP request, with `request` fields and the redaction of `parameters` and `headers`; a monitored detection outside a request, whose `request` is empty; a latency telemetry line.
+- **Events, primary agent:** a blocked detection inside an HTTP request, with `request` fields and the redaction of `parameters`, `headers` and the sensitive values inside `query`; a monitored detection outside a request, whose `request` is empty; a latency telemetry line.
 - **Events, backport agents:** a blocked detection after a request was entered; a monitored detection outside a request; a latency telemetry line; the agent start line, one file per line. A backport detection carries the `event` member, a numeric `timestamp`, and no `kind`, `request` or `latency_us`; the daemon reads `kind` as `detection` when it is absent.
 - **Control:** each mode; a per-algorithm switch off and one explicitly on; a policy installed, with its string escapes; the same state after the policy is withdrawn, which drops the `policy` key. Every document carries the `revision` the daemon wrote.
 - **Rejected control documents:** `truncated`, `not-an-object`, `invalid-utf8`, `nested-too-deep`, `trailing-text` and `utf8-bom`. Each says `"mode":"off"` where it parses far enough to say anything, so an agent that applied it would change state.
@@ -64,7 +64,6 @@ These are facts about the current code, kept visible here so that a change to an
 
 - The backport agent start line has no `kind`, so the daemon ingests it as a detection with an empty hook, algorithm and action: it counts in the attack log and is uploaded as a low-severity "agent event". The primary agent writes no start line.
 - The backports write `timestamp` as a number. The daemon reads only a string, so a backport detection is uploaded with the time the daemon read it as `occurred_at`.
-- The agent redacts the values in `parameters` and `headers` but writes `query` as it came, and the daemon uploads `request.query`. A secret in the query string leaves the host.
 - The start lines of `agent-java8` and of `agent-java11` and `agent-java17` list their hooks in different orders, and the latter two carry a `startup_probe` member. The daemon reads none of them.
 - The daemon's own reader accepts only lowercase `off`, `monitor` and `block` for `mode`; the agents also accept `record`, `observe`, `log`, `protect` and the other aliases, in any case. A control file an operator edited by hand with an alias is reinitialised when the daemon starts.
 - The agents ignore a control file larger than 1 MiB. The daemon writes the cloud policy into it without a limit.

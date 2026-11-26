@@ -40,6 +40,7 @@ public final class JsonEventLogger {
   private static final long SHUTDOWN_JOIN_MILLIS = 2000;
   // Once shutdown has begun, a write waits this long for the write lock and then gives up.
   private static final long SHUTDOWN_LOCK_MILLIS = 1000;
+  private static final String REDACTED = "[redacted]";
   private static final Set<String> SENSITIVE_HEADER_NAMES =
       Set.of(
           "authorization",
@@ -411,13 +412,43 @@ public final class JsonEventLogger {
         if (sample.detection() == null) {
           continue; // telemetry stays local
         }
-        client.submit(sample.detection());
+        Detection upload = withRedactedQuery(sample.detection());
+        client.submit(upload);
         if (sample.latencyUs() >= 0) {
-          client.submitHookTelemetry(
-              sample.detection(), sample.latencyUs(), sample.ruleEvaluationUs());
+          client.submitHookTelemetry(upload, sample.latencyUs(), sample.ruleEvaluationUs());
         }
       }
     }
+  }
+
+  /**
+   * The detection as the direct-cloud client uploads it: its {@code request.query} attribute is
+   * the query string, so it gets the redaction the spool line gets.
+   */
+  private static Detection withRedactedQuery(Detection detection) {
+    RequestContext request = detection.request();
+    if (request == null) {
+      return detection;
+    }
+    String redacted = redactedQuery(request.query());
+    if (redacted == null || redacted.equals(request.query())) {
+      return detection;
+    }
+    return new Detection(
+        detection.timestamp(),
+        detection.hook(),
+        detection.algorithm(),
+        detection.action(),
+        detection.confidence(),
+        detection.message(),
+        new RequestContext(
+            request.method(),
+            request.uri(),
+            redacted,
+            request.parameters(),
+            request.headers(),
+            request.body()),
+        detection.details());
   }
 
   private PrintStream outStream() {
@@ -603,7 +634,7 @@ public final class JsonEventLogger {
     builder.append('{');
     field(builder, "method", current.method()).append(',');
     field(builder, "uri", current.uri()).append(',');
-    field(builder, "query", current.query()).append(',');
+    field(builder, "query", redactedQuery(current.query())).append(',');
     builder.append("\"parameters\":");
     parameterMap(builder, current.parameters());
     builder.append(',');
@@ -665,7 +696,7 @@ public final class JsonEventLogger {
     if (trimmed.regionMatches(true, 0, "Basic ", 0, "Basic ".length())) {
       return "Basic [redacted]";
     }
-    return "[redacted]";
+    return REDACTED;
   }
 
   private static void parameterMap(StringBuilder builder, Map<String, List<String>> map) {
@@ -697,12 +728,155 @@ public final class JsonEventLogger {
     if (value == null || value.isBlank()) {
       return value;
     }
+    return isRedactedParameterName(name) ? REDACTED : value;
+  }
+
+  /** The one name rule for {@code parameters} and for the parameters inside {@code query}. */
+  private static boolean isRedactedParameterName(String name) {
     String normalized = normalizeName(name);
-    if (SENSITIVE_PARAMETER_NAMES.contains(normalized)
-        || EXECUTABLE_SOURCE_PARAMETER_NAMES.contains(normalized)) {
-      return "[redacted]";
+    return SENSITIVE_PARAMETER_NAMES.contains(normalized)
+        || EXECUTABLE_SOURCE_PARAMETER_NAMES.contains(normalized);
+  }
+
+  /**
+   * The query string with the value of each parameter {@link #isRedactedParameterName} names
+   * replaced by the marker {@code parameters} uses. Keys, order and separators stay. A name is
+   * matched after URL-decoding. A value that carries such an assignment itself
+   * ({@code next=%2Fcb%3Ftoken%3Dabc}) and a piece that is not {@code name=value} but contains
+   * such a name ({@code {"password":"x"}}) are replaced as well, and so is a whole query that
+   * has no {@code =} when it contains one. Runs on the event-writing path: plain loops, no
+   * regular expression and no lambda.
+   */
+  static String redactedQuery(String query) {
+    if (query == null || query.isEmpty()) {
+      return query;
     }
-    return value;
+    if (query.indexOf('=') < 0) {
+      return containsRedactedName(percentDecode(query)) ? REDACTED : query;
+    }
+    var out = new StringBuilder(query.length() + 16);
+    boolean changed = false;
+    int length = query.length();
+    int start = 0;
+    while (start <= length) {
+      int end = query.indexOf('&', start);
+      if (end < 0) {
+        end = length;
+      }
+      int equals = query.indexOf('=', start);
+      if (equals < 0 || equals >= end) {
+        String piece = query.substring(start, end);
+        if (!piece.isEmpty() && containsRedactedName(percentDecode(piece))) {
+          out.append(REDACTED);
+          changed = true;
+        } else {
+          out.append(piece);
+        }
+      } else {
+        out.append(query, start, equals + 1);
+        String value = query.substring(equals + 1, end);
+        if (!value.isEmpty() && redactedValue(query.substring(start, equals), value)) {
+          out.append(REDACTED);
+          changed = true;
+        } else {
+          out.append(value);
+        }
+      }
+      if (end < length) {
+        out.append('&');
+      }
+      start = end + 1;
+    }
+    return changed ? out.toString() : query;
+  }
+
+  private static boolean redactedValue(String rawName, String rawValue) {
+    if (isRedactedParameterName(percentDecode(rawName))) {
+      return true;
+    }
+    String once = percentDecode(rawValue);
+    return embedsRedactedAssignment(once) || embedsRedactedAssignment(percentDecode(once));
+  }
+
+  /** Whether {@code text} holds {@code name=} for a redacted parameter name. */
+  private static boolean embedsRedactedAssignment(String text) {
+    for (int equals = text.indexOf('='); equals >= 0; equals = text.indexOf('=', equals + 1)) {
+      int from = equals;
+      while (from > 0 && isNameChar(text.charAt(from - 1))) {
+        from--;
+      }
+      if (from < equals && isRedactedParameterName(text.substring(from, equals))) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  /** Whether any word of {@code text} is a redacted parameter name. */
+  private static boolean containsRedactedName(String text) {
+    int length = text.length();
+    int from = 0;
+    while (from < length) {
+      while (from < length && !isNameChar(text.charAt(from))) {
+        from++;
+      }
+      int to = from;
+      while (to < length && isNameChar(text.charAt(to))) {
+        to++;
+      }
+      if (to > from && isRedactedParameterName(text.substring(from, to))) {
+        return true;
+      }
+      from = to;
+    }
+    return false;
+  }
+
+  private static boolean isNameChar(char ch) {
+    return Character.isLetterOrDigit(ch) || ch == '_' || ch == '-';
+  }
+
+  /** URL-decodes a query component: {@code %XX} as UTF-8 bytes, {@code +} as a space. */
+  private static String percentDecode(String value) {
+    if (value.indexOf('%') < 0 && value.indexOf('+') < 0) {
+      return value;
+    }
+    int length = value.length();
+    var out = new StringBuilder(length);
+    byte[] run = new byte[length];
+    int runLength = 0;
+    for (int i = 0; i < length; i++) {
+      char ch = value.charAt(i);
+      int high = ch == '%' && i + 2 < length ? hexValue(value.charAt(i + 1)) : -1;
+      int low = high < 0 ? -1 : hexValue(value.charAt(i + 2));
+      if (low >= 0) {
+        run[runLength++] = (byte) (high * 16 + low);
+        i += 2;
+        continue;
+      }
+      if (runLength > 0) {
+        out.append(new String(run, 0, runLength, StandardCharsets.UTF_8));
+        runLength = 0;
+      }
+      out.append(ch == '+' ? ' ' : ch);
+    }
+    if (runLength > 0) {
+      out.append(new String(run, 0, runLength, StandardCharsets.UTF_8));
+    }
+    return out.toString();
+  }
+
+  private static int hexValue(char ch) {
+    if (ch >= '0' && ch <= '9') {
+      return ch - '0';
+    }
+    if (ch >= 'a' && ch <= 'f') {
+      return ch - 'a' + 10;
+    }
+    if (ch >= 'A' && ch <= 'F') {
+      return ch - 'A' + 10;
+    }
+    return -1;
   }
 
   private static String normalizeName(String name) {

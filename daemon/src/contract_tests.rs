@@ -489,11 +489,15 @@ fn the_redacted_request_is_not_uploaded_with_its_secrets() {
         !uploaded.contains("JSESSIONID"),
         "the cookie is not uploaded"
     );
-    // FINDING: the agent redacts parameter values but writes the query string as it came, so the
-    // daemon uploads `request.query` with the password in it. This pins today's behaviour.
+    // The agent redacts the values of sensitive parameters inside the query string as well, so
+    // the `request.query` the daemon uploads has the marker where the password was.
+    assert_eq!(
+        event.to_cloud_attack(&identity())["attributes"]["request.query"],
+        "folder=reports&password=[redacted]"
+    );
     assert!(
-        uploaded.contains("password=hunter2"),
-        "request.query is forwarded as written"
+        !uploaded.contains("hunter2"),
+        "the password in the query string is not uploaded"
     );
 }
 

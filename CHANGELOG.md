@@ -7,6 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Security
+- The primary Java agent redacts the values of sensitive parameters inside the `request.query` string of an event line, with the name rule and the `[redacted]` marker it already used for `parameters`. Before, `password=...` in a query string was written to the spool, shown in the local console and uploaded by the daemon (and by the direct-cloud client) as written.
+
 ### Added
 - `deploy/shirudo/gen-readmes.py`: auto-generates `deploy/shirudo/README.md`
   and per-track `ohmyrasp-{java8,java11,java17,jdk25}/README.md` with
