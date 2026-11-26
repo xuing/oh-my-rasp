@@ -17,6 +17,8 @@ does not apply. lines.toml lists the agent lines (JAR x JDK runtime).
 `--artifact all` (plan, run, gradle-tasks) runs a line's probes against the universal JAR
 in place of the line's own. A row whose `no_universal` in lines.toml says why it does not
 apply (the universal JAR starts another line on its JDK) is skipped.
+`--any-jdk` with `--artifact all` is refused on a JVM where the universal JAR starts another line than the
+row's: the probes would test that other line. `run --isolated` with a named probe that is not isolated is an error.
 
 Every probe gets the line under test in OHMYRASP_PROBE_TRACK ("8", "11", "17" or "main"),
 the same for both artifacts; probes/common/agent_track.py reads it.
@@ -159,6 +161,10 @@ def select(probes: dict[str, Probe], line: Line, args) -> tuple[list[Probe], lis
     chosen, skipped = [], []
     for probe in named:
         reason = probe.skip_reason(line)
+        if args.isolated and not probe.isolated and args.probes:
+            # Naming a probe that does not run isolated and asking for the isolated run is a mistake to say, not an empty run.
+            skipped.append((probe, "not an isolated probe: its probe.toml does not set isolated = true, so --isolated has nothing to run"))
+            continue
         if (args.windows and not probe.windows) or (args.isolated and not probe.isolated):
             continue
         if args.probes and probe.manual:
@@ -174,7 +180,13 @@ def select(probes: dict[str, Probe], line: Line, args) -> tuple[list[Probe], lis
 
 def require_runnable(probes, line, args, skipped):
     """Naming a probe that cannot run on this line is a mistake, not a pass."""
-    if not args.probes or args.isolated:
+    if not args.probes:
+        return
+    if args.isolated:
+        # An isolated probe that does not apply to this line stays a skip; a named probe that is not isolated cannot run.
+        misnamed = [f"{probe.id}: {reason}" for probe, reason in skipped if not probe.isolated]
+        if misnamed and not args.plan_only:
+            sys.exit(f"cannot run --isolated on {line.id}: " + "; ".join(misnamed))
         return
     unrunnable = [f"{probe.id}: {reason}" for probe, reason in skipped if not probe.isolated]
     unrunnable += [f"{name}: not one of the probes that run on Windows" for name in args.probes
@@ -187,6 +199,17 @@ def java_major() -> str:
     text = subprocess.run(["java", "-version"], capture_output=True, text=True, check=True).stderr
     version = re.search(r'version "([^"]+)"', text)[1]
     return version.split(".")[1] if version.startswith("1.") else version.split(".")[0]
+
+
+def universal_mismatch(line: Line, major: int) -> str | None:
+    """Why the universal JAR on Java `major` would not test `line`, or None when it starts that line. The probes
+    are told to test line.track, but the launcher starts the line that fits the JVM it finds."""
+    chosen = agent_track.launcher_choice({track for track, _, _ in agent_track.LAUNCHER}, major)
+    if chosen == line.track:
+        return None
+    starts = f"the {agent_track.LINE_NAMES[chosen]} line" if chosen else "no line"
+    return (f"on Java {major} the universal JAR starts {starts}, not {agent_track.LINE_NAMES[line.track]}; "
+            f"the probes would test a different line than {line.id}")
 
 
 def cmd_list(probes, lines, args):
@@ -224,6 +247,12 @@ def cmd_run(probes, lines, args):
     if not args.any_jdk and java_major() != line.jdk:
         sys.exit(f"line {line.id} runs on JDK {line.jdk}, but `java` on PATH is JDK {java_major()}. "
                  "A pass on another runtime says nothing about this line. Use --any-jdk to override.")
+    if args.artifact == "all" and java_major() != line.jdk:
+        # --any-jdk lets a line's probes run on another JDK, where the universal JAR may start another line.
+        mismatch = universal_mismatch(line, int(java_major()))
+        if mismatch:
+            sys.exit(f"cannot run --artifact all on {line.id} with this `java`: {mismatch}. "
+                     "Use the JDK the line runs on, or --artifact line.")
     chosen, skipped = select(probes, line, args)
     require_runnable(probes, line, args, skipped)
     in_actions = os.environ.get("GITHUB_ACTIONS") == "true"
