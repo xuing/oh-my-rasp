@@ -1,18 +1,22 @@
-package io.ohmyrasp.agent.java8;
+package io.ohmyrasp.agent.backport;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import io.ohmyrasp.agent.java8.Java8RaspHooks;
+import io.ohmyrasp.agent.java8.Java8RaspLine;
+import io.ohmyrasp.agent.java8.OhMyRaspJava8Agent;
 import java.io.ByteArrayOutputStream;
 import java.io.PrintStream;
-import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 import java.net.URL;
 import java.net.URLClassLoader;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.DirectoryStream;
+import java.nio.file.FileSystem;
+import java.nio.file.FileSystems;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
@@ -798,20 +802,22 @@ final class Java8ShirudoStandaloneTest {
   }
 
   /**
-   * Loads and initialises a fresh RaspRuntime in its own class loader, with the given system
-   * properties set only while its static initialiser runs. The build sets ohmyrasp.log.sync=true
-   * for every test JVM, which the shared RaspRuntime has already read. {@code roots} are searched
-   * in order before the compiled classes: a {@link #bakedResource} root also holds the runtime
-   * classes, so its META-INF/ohmyrasp-shirudo.properties is the runtime's own; a
-   * {@link #foreignResource} root holds only the resource.
+   * Starts a fresh RaspRuntime in its own class loader, as the line's entry class starts it, with
+   * the given system properties set only while it starts, and returns that loader's RaspRuntime.
+   * The build sets ohmyrasp.log.sync=true for every test JVM, which the test JVM's RaspRuntime has
+   * already read. {@code roots} are searched in order before the compiled classes (the shared
+   * classes, then the line's): a {@link #bakedResource} root also holds the runtime classes, so
+   * its META-INF/ohmyrasp-shirudo.properties is the runtime's own; a {@link #foreignResource} root
+   * holds only the resource.
    */
   private static Class<?> loadIsolatedRuntime(Map<String, String> init, Path... roots)
       throws Exception {
-    URL[] urls = new URL[roots.length + 1];
+    URL[] urls = new URL[roots.length + 2];
     for (int i = 0; i < roots.length; i++) {
       urls[i] = roots[i].toUri().toURL();
     }
     urls[roots.length] = RaspRuntime.class.getProtectionDomain().getCodeSource().getLocation();
+    urls[roots.length + 1] = Java8RaspLine.class.getProtectionDomain().getCodeSource().getLocation();
     IsolatedLoader isolated = new IsolatedLoader(urls);
     Map<String, String> previous = new HashMap<String, String>();
     for (Map.Entry<String, String> entry : init.entrySet()) {
@@ -819,7 +825,8 @@ final class Java8ShirudoStandaloneTest {
       System.setProperty(entry.getKey(), entry.getValue());
     }
     try {
-      return Class.forName(RaspRuntime.class.getName(), true, isolated);
+      Class.forName(Java8RaspLine.class.getName(), true, isolated).getMethod("start").invoke(null);
+      return Class.forName(RaspRuntime.class.getName(), false, isolated);
     } finally {
       for (Map.Entry<String, String> entry : previous.entrySet()) {
         restore(entry.getKey(), entry.getValue());
@@ -838,24 +845,35 @@ final class Java8ShirudoStandaloneTest {
     }
   }
 
-  /** A class-path root holding the RaspRuntime classes and, beside them, this baked resource. */
+  /**
+   * A class-path root holding the RaspRuntime classes and, beside them, this baked resource. The
+   * classes come from the shared module's class directory or JAR, whichever the test runs with.
+   */
   private static Path bakedResource(String content) throws Exception {
     Path root = foreignResource(content);
     Path classes =
         Paths.get(RaspRuntime.class.getProtectionDomain().getCodeSource().getLocation().toURI());
     String packagePath = RaspRuntime.class.getPackage().getName().replace('.', '/');
     Path target = Files.createDirectories(root.resolve(packagePath));
-    DirectoryStream<Path> files =
-        Files.newDirectoryStream(classes.resolve(packagePath), "RaspRuntime*.class");
+    FileSystem jar =
+        Files.isDirectory(classes) ? null : FileSystems.newFileSystem(classes, (ClassLoader) null);
     try {
-      for (Path file : files) {
-        String name = file.getFileName().toString();
-        if (name.equals("RaspRuntime.class") || name.startsWith("RaspRuntime$")) {
-          Files.copy(file, target.resolve(name));
+      Path source = jar == null ? classes.resolve(packagePath) : jar.getPath("/" + packagePath);
+      DirectoryStream<Path> files = Files.newDirectoryStream(source, "RaspRuntime*.class");
+      try {
+        for (Path file : files) {
+          String name = file.getFileName().toString();
+          if (name.equals("RaspRuntime.class") || name.startsWith("RaspRuntime$")) {
+            Files.copy(file, target.resolve(name));
+          }
         }
+      } finally {
+        files.close();
       }
     } finally {
-      files.close();
+      if (jar != null) {
+        jar.close();
+      }
     }
     assertTrue(Files.exists(target.resolve("RaspRuntime.class")), target.toString());
     return root;
@@ -871,9 +889,9 @@ final class Java8ShirudoStandaloneTest {
   }
 
   private static Properties bakedProperties(Class<?> runtime) throws Exception {
-    Field field = runtime.getDeclaredField("BAKED_PROPERTIES");
-    field.setAccessible(true);
-    return (Properties) field.get(null);
+    Method baked = runtime.getDeclaredMethod("bakedProperties");
+    baked.setAccessible(true);
+    return (Properties) baked.invoke(null);
   }
 
   private static int threadsNamed(String name) {

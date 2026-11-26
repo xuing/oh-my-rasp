@@ -415,6 +415,11 @@
 -    StringBuilder builder = new StringBuilder(value.length() + 16);
 +    var builder = new StringBuilder(value.length() + 16);
 
+== src/main/java/io/ohmyrasp/agent/java<N>/Java<N>RaspLine.java
+@@
+-    super("8");
++    super("11");
+
 == src/main/java/io/ohmyrasp/agent/java<N>/Java<N>ScriptEngineTransformer.java
 @@
 -      ClassReader reader = new ClassReader(classfileBuffer);

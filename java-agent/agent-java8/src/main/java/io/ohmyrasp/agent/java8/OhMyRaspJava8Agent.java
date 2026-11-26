@@ -5,6 +5,7 @@ import io.ohmyrasp.agent.net.HttpTransportVisitor;
 import io.ohmyrasp.agent.sql.JdbcSqlMethod;
 import io.ohmyrasp.agent.sql.MyBatisSqlVisitor;
 import io.ohmyrasp.agent.xml.XmlEntityOpenVisitor;
+import io.ohmyrasp.agent.backport.RaspRuntime;
 import java.io.File;
 import java.io.IOException;
 import java.lang.instrument.Instrumentation;
@@ -25,7 +26,9 @@ public final class OhMyRaspJava8Agent {
 
   private static void install(String mode, String agentArgs, Instrumentation instrumentation) {
     appendSelfToBootstrap(instrumentation);
-    // Initialises RaspRuntime here, before any transformer, so no hook does it on an app thread.
+    // Installs the line and starts the shared runtime here, before any transformer, so no hook does it on an app
+    // thread.
+    Java8RaspLine.start();
     String logPath = RaspRuntime.resolveLogPath();
     io.ohmyrasp.agent.xml.SystemArchiveOrigins.initialize(instrumentation);
     installTransformer(instrumentation);

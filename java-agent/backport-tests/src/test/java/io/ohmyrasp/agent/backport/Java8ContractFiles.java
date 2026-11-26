@@ -1,8 +1,9 @@
-package io.ohmyrasp.agent.java8;
+package io.ohmyrasp.agent.backport;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import io.ohmyrasp.agent.java8.Java8RaspHooks;
 import java.io.IOException;
 import java.io.UncheckedIOException;
 import java.nio.charset.StandardCharsets;
