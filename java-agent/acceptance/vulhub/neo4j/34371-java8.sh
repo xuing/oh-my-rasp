@@ -12,7 +12,7 @@ ohmyrasp_build :agent-java8:agentJava8Jar
 image="${OHMYRASP_VULHUB_NEO4J_34371_IMAGE:-vulhub/neo4j:3.4.18}"
 baseline_name="${OHMYRASP_VULHUB_NEO4J_34371_BASELINE_NAME:-ohmyrasp-vulhub-neo4j34371-baseline}"
 protected_name="${OHMYRASP_VULHUB_NEO4J_34371_PROTECTED_NAME:-ohmyrasp-vulhub-neo4j34371-protected}"
-vulhub_root="${OHMYRASP_VULHUB_ROOT:-/tmp/vulhub-ohmyrasp-20260603}"
+vulhub_root="${OHMYRASP_VULHUB_ROOT:?set OHMYRASP_VULHUB_ROOT to a Vulhub checkout}"
 exploit_src="${OHMYRASP_VULHUB_NEO4J_34371_RHINO_SRC:-${vulhub_root}/neo4j/CVE-2021-34371/rhino_gadget}"
 exploit_dir="${OHMYRASP_VULHUB_NEO4J_34371_WORKDIR:-/tmp/ohmyrasp-neo4j-rhino}"
 maven_jdk8_image="${OHMYRASP_MAVEN_JDK8_IMAGE:-maven:3-jdk-8}"

@@ -2411,6 +2411,34 @@ final class Java8RaspHooksTest {
     assertTrue(text.contains("java.lang.Runtime.getRuntime().exec"));
   }
 
+  /**
+   * javac's own file objects (com.sun.tools.javac.file.PathFileObject, in a module that does not open its package)
+   * are the units a compilation of a file on disk hands to getTask. setAccessible on them fails on Java 17 and later,
+   * so the source is read through the public javax.tools.FileObject instead.
+   */
+  @Test
+  void readsTheSourceOfAJavacFileObject() throws Exception {
+    Path log = Files.createTempFile("ohmyrasp-java8-compile-file", ".jsonl");
+    Files.delete(log);
+    System.setProperty("ohmyrasp.java8.log", log.toString());
+    Path source = Files.createTempFile("EvilCompile", ".java");
+    Files.write(
+        source,
+        "public class EvilCompile { void run() throws Exception { java.lang.Runtime.getRuntime().exec(\"id\"); } }"
+            .getBytes(StandardCharsets.UTF_8));
+    javax.tools.JavaCompiler compiler = javax.tools.ToolProvider.getSystemJavaCompiler();
+    javax.tools.StandardJavaFileManager files = compiler.getStandardFileManager(null, null, null);
+    try {
+      Java8RaspHooks.beforeJavaCompilationUnits("javac", files.getJavaFileObjects(source.toFile()));
+    } finally {
+      files.close();
+    }
+
+    assertTrue(Files.exists(log), "the source of a javac file object was not read");
+    String text = new String(Files.readAllBytes(log), StandardCharsets.UTF_8);
+    assertTrue(text.contains("\"algorithm\":\"java8_java_compile_runtime_execution\""));
+  }
+
   @Test
   void blocksJavaCompilationProcessBuilderWhenBlockModeIsEnabled() throws Exception {
     Path log = Files.createTempFile("ohmyrasp-java8-compile-block", ".jsonl");

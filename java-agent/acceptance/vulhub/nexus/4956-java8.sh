@@ -6,7 +6,7 @@ baseline_name="${OHMYRASP_VULHUB_NEXUS_4956_BASELINE_NAME:-ohmyrasp-vulhub-nexus
 protected_name="${OHMYRASP_VULHUB_NEXUS_4956_PROTECTED_NAME:-ohmyrasp-vulhub-nexus4956-protected}"
 baseline_port="${OHMYRASP_VULHUB_NEXUS_4956_BASELINE_PORT:-18687}"
 protected_port="${OHMYRASP_VULHUB_NEXUS_4956_PROTECTED_PORT:-18688}"
-admin_password_file="${OHMYRASP_VULHUB_NEXUS_4956_ADMIN_PASSWORD_FILE:-/tmp/vulhub-ohmyrasp-20260603/nexus/CVE-2024-4956/admin.password}"
+admin_password_file="${OHMYRASP_VULHUB_NEXUS_4956_ADMIN_PASSWORD_FILE:-${OHMYRASP_VULHUB_ROOT:?set OHMYRASP_VULHUB_ROOT to a Vulhub checkout}/nexus/CVE-2024-4956/admin.password}"
 traversal_path="/%2F%2F%2F%2F%2F%2F%2F..%2F..%2F..%2F..%2F..%2F..%2F..%2Fetc%2Fpasswd"
 
 script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"

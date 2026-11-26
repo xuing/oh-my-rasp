@@ -3,7 +3,7 @@ set -euo pipefail
 
 cd "$(dirname "$0")/../../.."
 
-context="${OHMYRASP_VULHUB_STRUTS2_S2013_CONTEXT:-/tmp/vulhub-ohmyrasp-20260603/struts2/s2-013}"
+context="${OHMYRASP_VULHUB_STRUTS2_S2013_CONTEXT:-${OHMYRASP_VULHUB_ROOT:?set OHMYRASP_VULHUB_ROOT to a Vulhub checkout}/struts2/s2-013}"
 image="${OHMYRASP_VULHUB_STRUTS2_S2013_IMAGE:-ohmyrasp/vulhub-struts2:s2-013}"
 baseline_name="${OHMYRASP_VULHUB_STRUTS2_S2013_BASELINE_NAME:-ohmyrasp-vulhub-struts2-s2013-baseline}"
 protected_name="${OHMYRASP_VULHUB_STRUTS2_S2013_PROTECTED_NAME:-ohmyrasp-vulhub-struts2-s2013-protected}"

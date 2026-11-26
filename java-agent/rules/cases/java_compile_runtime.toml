@@ -77,6 +77,27 @@ effect = "block"
 rule = "java_compile_runtime_execution"
 
 [[case]]
+name = "file-object-source-in-request"
+kind = "attack"
+via = "request-sink"
+op = "java.compile"
+args = { source = "public class Generated { public void run() throws Exception { Runtime.getRuntime().exec(\"id\"); } }", api = "file-object" }
+
+[case.request]
+method = "GET"
+uri = "/app/report"
+query = "id=7"
+headers = { User-Agent = "Mozilla/5.0 (X11; Linux x86_64) Firefox/128.0", Accept = "text/html" }
+
+[case.primary]
+effect = "block"
+rule = "java_compile_runtime"
+
+[case.backport]
+effect = "block"
+rule = "java_compile_runtime_execution"
+
+[[case]]
 name = "benign-source-in-request"
 kind = "benign"
 via = "request-sink"

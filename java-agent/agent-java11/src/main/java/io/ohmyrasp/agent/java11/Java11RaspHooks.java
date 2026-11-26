@@ -37,6 +37,7 @@ import java.io.FileWriter;
 import java.io.IOException;
 import java.lang.reflect.Array;
 import java.lang.reflect.Method;
+import java.lang.reflect.Modifier;
 import java.net.URL;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
@@ -3646,9 +3647,7 @@ public final class Java11RaspHooks {
       return String.valueOf(value);
     }
     try {
-      Method method = value.getClass().getMethod("getCharContent", boolean.class);
-      method.setAccessible(true);
-      Object content = method.invoke(value, Boolean.TRUE);
+      Object content = charContent(value);
       if (content != null) {
         return String.valueOf(content);
       }
@@ -3656,6 +3655,41 @@ public final class Java11RaspHooks {
       // Fall through to String.valueOf for compiler implementations without source access.
     }
     return String.valueOf(value);
+  }
+
+  /**
+   * getCharContent(true) on a compilation unit. A public type of the unit's hierarchy that declares the method comes
+   * first (javax.tools.SimpleJavaFileObject, FileObject): setAccessible on the unit's own class fails on the modular JDKs when
+   * that class is javac's own (com.sun.tools.javac.file.PathFileObject), in a module that does not open its
+   * package. A type whose package is not exported fails the call with IllegalAccessException and the next one is tried.
+   */
+  private static Object charContent(Object value) throws Exception {
+    List<Class<?>> pending = new ArrayList<Class<?>>();
+    pending.add(value.getClass());
+    for (int i = 0; i < pending.size(); i++) {
+      Class<?> candidate = pending.get(i);
+      if (Modifier.isPublic(candidate.getModifiers())) {
+        try {
+          Method method = candidate.getMethod("getCharContent", boolean.class);
+          if (Modifier.isPublic(method.getDeclaringClass().getModifiers())) {
+            return method.invoke(value, Boolean.TRUE);
+          }
+        } catch (NoSuchMethodException | IllegalAccessException skipped) {
+          // Try what the type extends and implements.
+        }
+      }
+      if (candidate.getSuperclass() != null && !pending.contains(candidate.getSuperclass())) {
+        pending.add(candidate.getSuperclass());
+      }
+      for (Class<?> implemented : candidate.getInterfaces()) {
+        if (!pending.contains(implemented)) {
+          pending.add(implemented);
+        }
+      }
+    }
+    Method method = value.getClass().getMethod("getCharContent", boolean.class);
+    method.setAccessible(true);
+    return method.invoke(value, Boolean.TRUE);
   }
 
   private static String abbreviate(String value, int maxLength) {

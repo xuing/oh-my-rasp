@@ -9,7 +9,7 @@ host_agent_jar="$(ohmyrasp_agent_jar "$(pwd)/agent-java8/build/libs/ohmyrasp-age
 
 ohmyrasp_build :agent-java8:agentJava8Jar
 
-vulhub_dir="${OHMYRASP_VULHUB_TOMCAT_12615_DIR:-/home/ubuntu/vulhub/tomcat/CVE-2017-12615}"
+vulhub_dir="${OHMYRASP_VULHUB_TOMCAT_12615_DIR:-${OHMYRASP_VULHUB_ROOT:?set OHMYRASP_VULHUB_ROOT to a Vulhub checkout}/tomcat/CVE-2017-12615}"
 image="${OHMYRASP_VULHUB_TOMCAT_12615_IMAGE:-ohmyrasp/vulhub-tomcat:8.5.19-cve-2017-12615}"
 baseline_name="${OHMYRASP_VULHUB_TOMCAT_12615_BASELINE_NAME:-ohmyrasp-vulhub-tomcat-12615-baseline}"
 protected_name="${OHMYRASP_VULHUB_TOMCAT_12615_PROTECTED_NAME:-ohmyrasp-vulhub-tomcat-12615-protected}"

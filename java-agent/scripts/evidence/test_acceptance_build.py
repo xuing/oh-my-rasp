@@ -25,6 +25,18 @@ class AcceptanceBuildGuardTest(unittest.TestCase):
         self.assertNotIn("agent-build.sh", names)
         self.assertGreater(len(names), 100)
 
+    def test_a_path_from_one_machine_is_flagged(self):
+        for line in ('vulhub_dir="${OHMYRASP_VULHUB_X_DIR:-/home/ubuntu/vulhub/tomcat/CVE-2017-12615}"\n',
+                     'poc="${OHMYRASP_POC:-/tmp/vulhub-ohmyrasp-20260603/activemq/poc.py}"\n',
+                     'src_dir=/Users/someone/vulhub/jetty/src\n'):
+            self.assertEqual([n for n, _ in guard.violations(line)], [1], line)
+
+    def test_the_vulhub_root_variable_and_container_paths_are_accepted(self):
+        text = ('vulhub_dir="${OHMYRASP_VULHUB_X_DIR:-${OHMYRASP_VULHUB_ROOT:?set OHMYRASP_VULHUB_ROOT to a Vulhub checkout}/tomcat/x}"\n'
+                'docker exec "$name" ls /home/weblogic/Oracle\n'
+                + 'work="$(mktemp -d /tmp/ohmyrasp-shiro.XXXXXX)"\n')
+        self.assertEqual(guard.violations(text), [])
+
     def test_one_line_docker_gradle_is_flagged(self):
         text = 'docker run --rm -v "$(pwd):/workspace" -w /workspace gradle:jdk25 gradle --no-daemon :agent-java8:agentJava8Jar\n'
         self.assertEqual([n for n, _ in guard.violations(text)], [1])

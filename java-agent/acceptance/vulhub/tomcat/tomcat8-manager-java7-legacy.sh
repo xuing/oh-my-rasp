@@ -10,7 +10,7 @@ host_agent_jar="$(ohmyrasp_agent_jar "$(pwd)/agent-java8/build/libs/ohmyrasp-age
 ohmyrasp_build :agent-java8:agentJava8Jar
 
 image="${OHMYRASP_VULHUB_TOMCAT8_MANAGER_IMAGE:-vulhub/tomcat:8.0}"
-vulhub_dir="${OHMYRASP_VULHUB_TOMCAT8_MANAGER_DIR:-/home/ubuntu/vulhub/tomcat/tomcat8}"
+vulhub_dir="${OHMYRASP_VULHUB_TOMCAT8_MANAGER_DIR:-${OHMYRASP_VULHUB_ROOT:?set OHMYRASP_VULHUB_ROOT to a Vulhub checkout}/tomcat/tomcat8}"
 baseline_name="${OHMYRASP_VULHUB_TOMCAT8_MANAGER_BASELINE_NAME:-ohmyrasp-vulhub-tomcat8-manager-baseline}"
 protected_name="${OHMYRASP_VULHUB_TOMCAT8_MANAGER_PROTECTED_NAME:-ohmyrasp-vulhub-tomcat8-manager-protected}"
 baseline_port="${OHMYRASP_VULHUB_TOMCAT8_MANAGER_BASELINE_PORT:-19492}"
@@ -161,16 +161,19 @@ run_protected_boundary() {
     -v "$(pwd)/${protected_dir}:/opt/ohmyrasp/logs" \
     -e "CATALINA_OPTS=-javaagent:/opt/ohmyrasp/ohmyrasp-agent-java8.jar -Dohmyrasp.java8.log=/opt/ohmyrasp/logs/events.jsonl -Dohmyrasp.java8.block=true"
 
-  sleep 4
+  # The agent cannot protect Java 7. Its entry class (class-file version 49) loads, finds that the Java 8
+  # launcher cannot, prints one skip line and returns, so the application starts unprotected.
+  wait_for_manager "$protected_name" "$protected_port" "$protected_dir"
   copy_logs "$protected_name" "$protected_dir"
-  if ! grep -Fq 'Unsupported major.minor version 52.0' "${protected_dir}/container.log"; then
+  if ! grep -Fq '{"event":"ohmyrasp-agent-skipped","reason":"unsupported-java","java_version":"1.7","entry":"io.ohmyrasp.agent.launch.Java8Entry"' "${protected_dir}/container.log"; then
     sed -n '1,160p' "${protected_dir}/container.log" >&2 || true
-    echo "Tomcat8 Manager Java 7 protected probe did not show Java 8 agent class-version mismatch" >&2
+    echo "Tomcat8 Manager Java 7 container did not print the agent's unsupported-java skip line" >&2
     exit 1
   fi
-  if docker ps --filter "name=${protected_name}" --filter status=running --format '{{.Names}}' \
+  if ! docker ps --filter "name=${protected_name}" --filter status=running --format '{{.Names}}' \
     | grep -Fq "$protected_name"; then
-    echo "Tomcat8 Manager Java 7 container unexpectedly kept running with Java 8 agent" >&2
+    sed -n '1,160p' "${protected_dir}/container.log" >&2 || true
+    echo "Tomcat8 Manager Java 7 container stopped with the Java 8 agent attached" >&2
     exit 1
   fi
 }

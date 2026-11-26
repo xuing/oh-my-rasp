@@ -67,9 +67,22 @@ verify_java6_boundary() {
   local status="$?"
   set -e
   printf 'java8_agent_on_java6_status=%s\n' "$status" > "${protected_dir}/attempts.log"
-  if ! grep -Fq 'Unsupported major.minor version 52.0' "${protected_dir}/java8-agent-on-java6.log"; then
-    cat "${protected_dir}/java8-agent-on-java6.log" >&2 || true
-    echo "Java 6 WebLogic did not reject the Java 8 agent with the expected class-version error" >&2
+  # The agent cannot protect Java 6. Its entry class (class-file version 49) loads, finds that the Java 8
+  # launcher cannot, prints one skip line and returns, so the JVM starts unprotected.
+  local log="${protected_dir}/java8-agent-on-java6.log"
+  if [[ "$status" != 0 ]] || ! grep -Fq 'java version "1.6.0_45"' "$log"; then
+    cat "$log" >&2 || true
+    echo "Java 6 WebLogic did not start with the Java 8 agent attached (exit ${status})" >&2
+    exit 1
+  fi
+  if ! grep -Fq '{"event":"ohmyrasp-agent-skipped","reason":"unsupported-java","java_version":"1.6","entry":"io.ohmyrasp.agent.launch.Java8Entry"' "$log"; then
+    cat "$log" >&2 || true
+    echo "Java 6 WebLogic did not print the agent's unsupported-java skip line" >&2
+    exit 1
+  fi
+  if grep -Fq 'FATAL ERROR in native method' "$log"; then
+    cat "$log" >&2 || true
+    echo "Java 6 WebLogic still aborted on the Java 8 agent" >&2
     exit 1
   fi
 }
