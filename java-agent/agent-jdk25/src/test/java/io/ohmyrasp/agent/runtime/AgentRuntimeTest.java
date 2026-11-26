@@ -425,7 +425,10 @@ final class AgentRuntimeTest {
     // A hook must not load a class for the first time: the hooks run inside JDK classes.
     // BootstrapAgent initialises AgentRuntime before it installs the transformer.
     java.net.URL classes = AgentRuntime.class.getProtectionDomain().getCodeSource().getLocation();
-    try (IsolatedLoader loader = new IsolatedLoader(classes)) {
+    // The shared classes too: the runtime reads its baked settings through io.ohmyrasp.agent.util.BakedProperties.
+    java.net.URL shared =
+        io.ohmyrasp.agent.util.BakedProperties.class.getProtectionDomain().getCodeSource().getLocation();
+    try (IsolatedLoader loader = new IsolatedLoader(classes, shared)) {
       Class.forName(AgentRuntime.class.getName(), true, loader);
       assertTrue(loader.loaded(AgentOwnIo.class.getName()), "AgentOwnIo was not loaded by initialisation");
     }
@@ -433,8 +436,8 @@ final class AgentRuntimeTest {
 
   /** A class loader that answers whether it has loaded a class. */
   private static final class IsolatedLoader extends java.net.URLClassLoader {
-    IsolatedLoader(java.net.URL classes) {
-      super(new java.net.URL[] {classes}, null);
+    IsolatedLoader(java.net.URL... classes) {
+      super(classes, null);
     }
 
     boolean loaded(String name) {
