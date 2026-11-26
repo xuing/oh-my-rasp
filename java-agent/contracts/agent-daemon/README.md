@@ -35,7 +35,7 @@ The daemon classifies each line by `kind` when it has one, and by its other memb
 | `kind` is `detection`; or no `kind` and `event` is `ohmyrasp-detection`; or no `kind` and the line has an `algorithm` and an `action` | detection | Attack log, detection counters, upload |
 | `kind` is `telemetry` | telemetry | Latency panel only |
 | `kind` is `lifecycle`; or no `kind` and `event` is `ohmyrasp-<line>-agent-start` | lifecycle | The `agent` entry of `/api/stats` (agent line, Java version and vendor); nothing else |
-| Any other `kind`, including a `kind` that is present and not a string (counted as `(non-string)`, never inferred from the other members); or no `kind` and nothing above matches | ignored | Counted under `ignored_kinds` in `/api/stats` and logged at debug level; never a detection, never uploaded |
+| Any other `kind`, including a `kind` that is present and not a string (counted as `(non-string)`, never inferred from the other members); or no `kind` and nothing above matches | ignored | Counted under `ignored_kinds` in `/api/stats` (a label is cut to 64 characters, at most 32 distinct labels are kept and the kinds after them are counted under `(other)`) and logged at debug level; never a detection, never uploaded |
 
 `timestamp` is an RFC 3339 string, kept as written, or a number of epoch milliseconds, which the daemon converts to RFC 3339 UTC. A line with neither, or with a number it cannot convert (negative, or past year 9999), has no time of its own and the upload carries the time the daemon read it as `occurred_at`.
 
