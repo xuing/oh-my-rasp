@@ -325,6 +325,28 @@ final class AgentRuntimeTest {
         Instant.now(), "sql", algorithm, "log", 90, "test", RequestContext.empty(), Map.of());
   }
 
+  @Test
+  void classesTheHooksUseFirstAreLoadedWhenTheRuntimeInitialises() throws Exception {
+    // A hook must not load a class for the first time: the hooks run inside JDK classes.
+    // BootstrapAgent initialises AgentRuntime before it installs the transformer.
+    java.net.URL classes = AgentRuntime.class.getProtectionDomain().getCodeSource().getLocation();
+    try (IsolatedLoader loader = new IsolatedLoader(classes)) {
+      Class.forName(AgentRuntime.class.getName(), true, loader);
+      assertTrue(loader.loaded(AgentOwnIo.class.getName()), "AgentOwnIo was not loaded by initialisation");
+    }
+  }
+
+  /** A class loader that answers whether it has loaded a class. */
+  private static final class IsolatedLoader extends java.net.URLClassLoader {
+    IsolatedLoader(java.net.URL classes) {
+      super(new java.net.URL[] {classes}, null);
+    }
+
+    boolean loaded(String name) {
+      return findLoadedClass(name) != null;
+    }
+  }
+
   /**
    * A runtime polling {@code file}, driven by direct {@link AgentRuntime#reloadIfChanged} calls:
    * its poller thread waits a day before its first poll, so it never runs during a test.

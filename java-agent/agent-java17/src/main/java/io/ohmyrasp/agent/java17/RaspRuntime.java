@@ -333,6 +333,9 @@ public final class RaspRuntime {
   private static final boolean WRITER_ENABLED = isFileLogTarget(INITIAL_CONFIG.logPath);
 
   static {
+    // Load and initialise, before any hook runs, the classes a hook would otherwise load first:
+    // the hooks run inside JDK classes, where loading a class can re-enter them.
+    new Event("", "");
     if (CONTROL_PATH != null) {
       reloadControl();
       Thread poller =

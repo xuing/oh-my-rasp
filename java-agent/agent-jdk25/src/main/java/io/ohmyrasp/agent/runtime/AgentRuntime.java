@@ -28,6 +28,12 @@ import java.util.concurrent.atomic.AtomicBoolean;
  * be disabled altogether.
  */
 public final class AgentRuntime {
+  static {
+    // Hooks call AgentOwnIo on every file operation. BootstrapAgent initialises this class before
+    // it installs the transformer, so no hook loads or initialises AgentOwnIo for the first time.
+    AgentOwnIo.active();
+  }
+
   private static final AgentRuntime INSTANCE = new AgentRuntime(ShirudoDefaults.load());
 
   /** Default control file, matching the daemon's default. */

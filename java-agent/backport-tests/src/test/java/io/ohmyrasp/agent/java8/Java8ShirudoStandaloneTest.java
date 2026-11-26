@@ -727,6 +727,16 @@ final class Java8ShirudoStandaloneTest {
     RaspRuntime.sampleLatency(100L);
   }
 
+  @Test
+  void classesTheHooksUseFirstAreLoadedWhenTheRuntimeInitialises() throws Exception {
+    // A hook must not load a class for the first time: the hooks run inside JDK classes.
+    // Initialising RaspRuntime, before any hook runs, loads the queued-event class.
+    Class<?> runtime = loadIsolatedRuntime(asyncInit());
+    IsolatedLoader loader = (IsolatedLoader) runtime.getClassLoader();
+    String event = RaspRuntime.class.getName() + "$Event";
+    assertTrue(loader.loaded(event), event + " was not loaded by initialisation");
+  }
+
   /** System properties for an isolated runtime: async writes, no control file. */
   private static Map<String, String> asyncInit() {
     Map<String, String> init = new HashMap<String, String>();
@@ -750,7 +760,7 @@ final class Java8ShirudoStandaloneTest {
       urls[i] = roots[i].toUri().toURL();
     }
     urls[roots.length] = RaspRuntime.class.getProtectionDomain().getCodeSource().getLocation();
-    URLClassLoader isolated = new URLClassLoader(urls, null);
+    IsolatedLoader isolated = new IsolatedLoader(urls);
     Map<String, String> previous = new HashMap<String, String>();
     for (Map.Entry<String, String> entry : init.entrySet()) {
       previous.put(entry.getKey(), System.getProperty(entry.getKey()));
@@ -762,6 +772,17 @@ final class Java8ShirudoStandaloneTest {
       for (Map.Entry<String, String> entry : previous.entrySet()) {
         restore(entry.getKey(), entry.getValue());
       }
+    }
+  }
+
+  /** A class loader that answers whether it has loaded a class. */
+  private static final class IsolatedLoader extends URLClassLoader {
+    IsolatedLoader(URL[] urls) {
+      super(urls, null);
+    }
+
+    boolean loaded(String name) {
+      return findLoadedClass(name) != null;
     }
   }
 
