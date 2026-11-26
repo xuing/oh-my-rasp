@@ -9,6 +9,7 @@ LAUNCHER mirrors the launcher's range table for the launcher probe and the regis
 from __future__ import annotations
 
 import functools
+import json
 import os
 from pathlib import Path
 import re
@@ -63,3 +64,19 @@ def track(agent: Path) -> str | None:
                          "(probes/run.py does)")
     chosen = next(iter(held))
     return None if chosen == PRIMARY else chosen
+
+
+def start_track(line: str) -> str | None:
+    """The track whose own start output this line is ("main", "8", "11" or "17"), or None. The primary prints
+    "[OHMYRASP] agent started with ASM transformer"; a backport writes {"event":"ohmyrasp-java<N>-agent-start"}."""
+    if line.startswith("[OHMYRASP] agent started with ASM transformer"):
+        return PRIMARY
+    if line.startswith('{"event":"ohmyrasp-java'):
+        try:
+            event = json.loads(line)["event"]
+        except (ValueError, KeyError):
+            return None
+        for track in ("8", "11", "17"):
+            if event == f"ohmyrasp-java{track}-agent-start":
+                return track
+    return None

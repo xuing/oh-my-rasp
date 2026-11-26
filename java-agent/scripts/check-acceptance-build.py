@@ -8,7 +8,8 @@ caller's uid, and OHMYRASP_AGENT_JAR can replace the build. This check flags:
   - a `docker` command that runs `gradle` or `gradlew`, with or without a path
     (`/opt/gradle/bin/gradle`, `./gradlew`);
   - a Gradle build run on the host: `gradle`, `./gradlew` or `path/to/gradlew` in command
-    position;
+    position, including after `if`, `then`, `while`, `!`, `time`, `exec`, `env`, `sudo` or `command`
+    (`command -v gradle` only looks the command up and is not one);
   - a literal `gradle:<tag>` image (use "$(ohmyrasp_gradle_image)" when a script only
     needs a JDK container);
   - a script that calls an ohmyrasp_* helper function without sourcing exactly
@@ -35,10 +36,19 @@ HELPER_FUNCTIONS = ("ohmyrasp_build", "ohmyrasp_agent_jar", "ohmyrasp_gradle_ima
 GRADLE_IMAGE = re.compile(r"\bgradle:[\w][\w.-]*")
 GRADLE_COMMAND = re.compile(r"(?<![\w:./-])gradlew?(?![\w:./-])")
 DOCKER = re.compile(r"\bdocker\b")
-# A Gradle executable in command position: at the start of a statement (after any VAR=value
-# assignments) or after ; & | ( ` $( , with or without a path, `gradle` or `gradlew`.
+# Words that put the next word in command position without being the command: a compound command's
+# keyword (`if ./gradlew check; then`), `!`, `time`, `exec`, `nohup`, `builtin`, and a wrapper that takes
+# options (`env`, `sudo`, `nice`, `command`). `command -v gradle` and `command -V gradle` look a command up
+# and run nothing, so those two options do not continue the wrapper.
+COMMAND_PREFIX = (
+    r"(?:(?:if|then|elif|else|while|until|do|time|exec|nohup|builtin|!|\{)\s+"
+    r"|(?:env|sudo|nice|command)\s+(?:-(?!-?[vV](?:\s|$))\S*\s+)*"
+    r"|[A-Za-z_]\w*=\S*\s+)*"
+)
+# A Gradle executable in command position: at the start of a statement or after ; & | ( ` $( , through any
+# COMMAND_PREFIX, with or without a path, `gradle` or `gradlew`.
 HOST_GRADLE = re.compile(
-    r"(?:^|[;&|(`]|\$\()\s*(?:[A-Za-z_]\w*=\S*\s+)*(?:\S*/)?gradlew?(?:\.bat)?(?=\s|$|[;&|)`])"
+    r"(?:^|[;&|(`]|\$\()\s*" + COMMAND_PREFIX + r"(?:\S*/)?gradlew?(?:\.bat)?(?=\s|$|[;&|)`])"
 )
 # A value that only works on one machine: a variable set or defaulted to a home directory, or the
 # dated Vulhub snapshot. A path inside a container (`docker exec ... /home/app/...`) is not one.

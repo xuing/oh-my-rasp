@@ -66,7 +66,7 @@ class Run:
         self.code, self.out, self.err = process.returncode, process.stdout, process.stderr
         output = (self.out + self.err).splitlines()
         self.launcher = [json.loads(line) for line in output if line.startswith('{"event":"ohmyrasp-agent-')]
-        self.starts = [track for track in map(start_track, output) if track]
+        self.starts = [track for track in map(agent_track.start_track, output) if track]
         self.launcher_sources = [m[1] for m in map(LAUNCHER_LOAD.search, output) if m]
         published = [line.split("=", 1)[1] for line in output if line.startswith("launcher-check: published line=")]
         self.published = published[0] if published else None
@@ -98,18 +98,6 @@ class Run:
                   if self.launcher_sources else "")
         print(f"ok   {self.name}{source}")
         return self
-
-
-def start_track(line):
-    """The track whose own start output this line is, or None."""
-    if line.startswith("[OHMYRASP] agent started with ASM transformer"):
-        return agent_track.PRIMARY
-    if line.startswith('{"event":"ohmyrasp-java'):
-        event = json.loads(line)["event"]
-        for track in ("8", "11", "17"):
-            if event == f"ohmyrasp-java{track}-agent-start":
-                return track
-    return None
 
 
 def failing_entry_jar(universal, track, work):

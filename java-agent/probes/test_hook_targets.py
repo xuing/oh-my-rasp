@@ -94,6 +94,11 @@ class RecordedMapsTest(unittest.TestCase):
             rows = [line for line in (hookmap.RECORDED / f"{family}.txt").read_text().splitlines() if line and not line.startswith("#")]
             self.assertEqual(rows, sorted(set(rows)), f"{family}.txt is not the sorted output of the checker")
 
+    def test_no_backport_transformer_depends_on_the_ones_before_it(self):
+        # A "# chain:" line is a transformer that adds something else after its predecessors than on the original
+        # class; production chains them, so the line is a finding to look at before it is recorded.
+        self.assertEqual(self.maps["backport"].chain, ())
+
     def test_rows_only_name_listed_library_versions(self):
         listed = {(lib.id, v) for lib in self.libraries for v in lib.versions}
         for family, recorded in self.maps.items():
@@ -183,6 +188,15 @@ class ParsingTest(unittest.TestCase):
         self.assertEqual((row.library, row.version, row.cls, row.method, row.descriptor), ("g:a", "1", "pkg/C", "m", "(I)V"))
         self.assertTrue(row.callee.endswith("before (reflective)"))
         self.assertEqual(row.units, ("Java8XTransformer", "Java8YTransformer"))
+
+    def test_parse_reads_the_call_count_and_chain_findings(self):
+        text = ("# units (1): A\n# chain: lib 1 pkg/C A adds 1 methods and 1 calls after its predecessors, 0 methods and 0 calls on the original class\n"
+                "g:a 1 META-INF/versions/9/pkg/C m ()V -> io/Hooks.before x3 @ A\n"
+                "g:a 1 pkg/C m ()V -> io/Hooks.before (reflective) @ A\n")
+        parsed = hookmap.parse(text)
+        self.assertEqual([(r.cls, r.callee, r.calls) for r in parsed.rows],
+                         [("META-INF/versions/9/pkg/C", "io/Hooks.before", 3), ("pkg/C", "io/Hooks.before (reflective)", 1)])
+        self.assertEqual(len(parsed.chain), 1)
 
     def test_parse_rejects_text_that_is_not_a_map(self):
         with self.assertRaises(ValueError):

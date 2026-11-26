@@ -3,7 +3,9 @@
 Run: python3 -m unittest discover -s java-agent/probes -p 'test_*.py'
 """
 import re
+import subprocess
 import sys
+import tempfile
 import unittest
 from pathlib import Path
 
@@ -57,6 +59,51 @@ class RegistryTest(unittest.TestCase):
             for fixture in probe.fixtures:
                 if fixture.gradle:
                     self.assertIn(fixture.gradle, job, f"{probe.id}: agent.yml's build-agents job does not run {fixture.gradle}")
+
+    def test_check_agent_help_lists_the_probes(self):
+        # --help runs before Docker is touched. Its usage text is a here-document under `set -u`, so an
+        # unescaped variable in it ends the script with "unbound variable".
+        run = subprocess.run(["bash", str(JAVA_AGENT / "scripts" / "check-agent.sh"), "--help"],
+                             capture_output=True, text=True, env={"PATH": "/usr/bin:/bin"}, timeout=60)
+        self.assertEqual(run.returncode, 0, run.stderr)
+        self.assertIn("Probes:", run.stdout)
+        for name in self.probes:
+            self.assertIn(name, run.stdout)
+
+    def run_registry(self, *argv, java_version=None):
+        env = {"PATH": "/usr/bin:/bin", "PYTHONDONTWRITEBYTECODE": "1"}
+        with tempfile.TemporaryDirectory() as tmp:
+            if java_version:
+                fake = Path(tmp) / "java"
+                fake.write_text(f"#!/bin/sh\necho 'openjdk version \"{java_version}\"' >&2\n")
+                fake.chmod(0o755)
+                env["PATH"] = f"{tmp}:{env['PATH']}"
+            return subprocess.run([sys.executable, str(HERE / "run.py"), *argv], capture_output=True, text=True, env=env, timeout=60)
+
+    def test_isolated_run_of_a_probe_that_is_not_isolated_is_an_error(self):
+        run = self.run_registry("run", "--line", "jdk25", "--any-jdk", "--isolated", "launcher")
+        self.assertNotEqual(run.returncode, 0)
+        self.assertIn("launcher", run.stderr)
+        self.assertIn("not an isolated probe", run.stderr)
+        # The plan says why in a comment instead, which check-agent.sh reads as "nothing to run".
+        plan = self.run_registry("plan", "--line", "jdk25", "--isolated", "launcher")
+        self.assertEqual(plan.returncode, 0, plan.stderr)
+        self.assertTrue(all(line.startswith("#") for line in plan.stdout.splitlines()) and "not an isolated probe" in plan.stdout)
+        # An isolated probe, and no probe named, are unchanged.
+        self.assertEqual(self.run_registry("plan", "--line", "jdk25", "--isolated", "elastic-lz4").returncode, 0)
+        self.assertEqual(self.run_registry("plan", "--line", "jdk25", "--isolated").returncode, 0)
+
+    def test_universal_jar_on_another_jdk_must_start_the_requested_line(self):
+        lines = runner.load_lines()
+        self.assertIsNone(runner.universal_mismatch(lines["jdk25"], 25))
+        self.assertIsNone(runner.universal_mismatch(lines["java17"], 17))
+        self.assertIsNone(runner.universal_mismatch(lines["java8"], 8))
+        self.assertIn("starts the java17 line, not primary", runner.universal_mismatch(lines["jdk25"], 17))
+        self.assertIn("starts the primary line, not java17", runner.universal_mismatch(lines["java17"], 21))
+        self.assertIn("starts no line, not java8", runner.universal_mismatch(lines["java8"], 9) or "")  # nothing fits Java 9 and 10
+        run = self.run_registry("run", "--line", "jdk25", "--artifact", "all", "--any-jdk", "launcher", java_version="17.0.2")
+        self.assertNotEqual(run.returncode, 0)
+        self.assertIn("starts the java17 line, not primary", run.stderr)
 
     def test_line_tasks_exist_in_the_build(self):
         for line in self.lines.values():

@@ -62,6 +62,9 @@ import javax.servlet.http.HttpServletResponse;
  *
  * The case arrives on stdin as key=hex(UTF-8 value) lines written by check.py. The last stdout line
  * starting with "RULECASE" says whether the handler ran, whether the operation ran, and how each ended:
+ * Beside them it reports the line the launcher says it started (system property ohmyrasp.agent.line, which
+ * it publishes once a line is installed and nothing reads), and the length of the event file just before
+ * the operation and just after it, so that check.py attributes only the events the operation wrote.
  * "blocked" when the agent's block exception is in the cause chain (or, at request entry, the primary
  * redirected to its block page and skipped the handler), "ran" when the operation completed or ended
  * with the exception the case declares in completes_with, "error" for any other failure.
@@ -90,6 +93,7 @@ public class RuleCaseDriver extends HttpServlet {
     RESULT.put("entry", "n/a");
     RESULT.put("op", "not-run");
     RESULT.put("ending", "");
+    RESULT.put("log_start", String.valueOf(logLength()));
     if ("sink".equals(via)) {
       perform();
     } else {
@@ -104,6 +108,8 @@ public class RuleCaseDriver extends HttpServlet {
       }
       if ("no".equals(RESULT.get("handler")) && redirected) RESULT.put("entry", "blocked-redirect");
     }
+    RESULT.put("log_end", String.valueOf(logLength()));
+    RESULT.put("agent_line", System.getProperty("ohmyrasp.agent.line", ""));
     StringBuilder line = new StringBuilder("RULECASE");
     for (Map.Entry<String, String> entry : RESULT.entrySet()) {
       line.append('\t').append(entry.getKey()).append('=').append(clean(entry.getValue()));
@@ -111,6 +117,12 @@ public class RuleCaseDriver extends HttpServlet {
     System.out.println(line);
     System.out.flush();
     System.exit(0);
+  }
+
+  /** Bytes in the agent's event file now: the agent writes inline (ohmyrasp.log.sync=true), so this is a line boundary. */
+  private static long logLength() {
+    String path = System.getProperty("ohmyrasp.log");
+    return path == null ? 0 : new File(path).length();
   }
 
   // ---- the servlet ------------------------------------------------------------------------
@@ -178,6 +190,14 @@ public class RuleCaseDriver extends HttpServlet {
         boolean expected = false;
         if (SPEC.containsKey("completes_with")) {
           for (String name : SPEC.get("completes_with").split(",")) expected |= endsWith(thrown, name);
+        }
+        // An exception the case accepts that the agent itself threw is not the operation's own ending.
+        String agentFrame = thrownByAgent(thrown);
+        if (agentFrame != null) {
+          expected = false;
+          RESULT.put("op", "error");
+          RESULT.put("ending", "thrown by the agent (" + agentFrame + "): " + describe(thrown));
+          return;
         }
         RESULT.put("op", expected ? "ran" : "error");
       }
@@ -692,6 +712,15 @@ public class RuleCaseDriver extends HttpServlet {
           && System.getProperty("jdk.serialFilter") == null) return true;
     }
     return false;
+  }
+
+  /** The agent class on top of the stack of an exception in the cause chain, or null when none was thrown by agent code. */
+  private static String thrownByAgent(Throwable thrown) {
+    for (Throwable t = thrown; t != null; t = t.getCause() == t ? null : t.getCause()) {
+      StackTraceElement[] trace = t.getStackTrace();
+      if (trace.length > 0 && trace[0].getClassName().startsWith("io.ohmyrasp.agent.")) return trace[0].getClassName();
+    }
+    return null;
   }
 
   /** True when a type in the cause chain, or one of its superclasses, has the given simple name. */

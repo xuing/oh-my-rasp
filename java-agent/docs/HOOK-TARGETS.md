@@ -17,6 +17,26 @@ call-site rewriting that the primary agent applies to any class (JDBC and multip
 not counted, only hooks on named targets. Primary is the JDK 21 and 25 agent, backport the Java 8,
 11 and 17 agents, which record the same map.
 
+## What the map does not show
+
+The transformers run on class files with no class loader that resolves anything and with
+`classBeingRedefined` unset, so that the result does not depend on the checker's classpath. Two paths
+of the running agent are therefore absent from the map and no recorded row speaks for them:
+
+- The JDBC hook that recognises an already-loaded statement implementation which inherits a JDBC
+  interface keys on the loaded class, not on its bytes. A driver class matched only that way is not
+  listed here.
+- Behaviour that depends on a loader other than a plain application loader, such as an OSGi framework
+  loader.
+
+Entries under `META-INF/versions/` are scanned for multi-release JARs (`Multi-Release: true`) and
+recorded with that prefix; a JAR that is not multi-release does not load them, so they are skipped.
+
+A backport transformer counts only when its entry class constructs it and passes it to
+`Instrumentation.addTransformer`, and the backport map is the chained run in registration order, as
+production runs it. A class on which a transformer adds something else after its predecessors than on the
+original bytes is a `# chain:` line in the recorded map and is listed below.
+
 ## Hooked methods per library version
 
 | Library | Version | Primary | Backport |
@@ -282,6 +302,10 @@ Hook families that rewrite no method of any listed library, from
 | `Java{N}JndiTransformer` | JDK-only: rewrites javax.naming.InitialContext and com.sun.jndi URL contexts. |
 | `Java{N}JwtTransformer` | Not a library: its target is io.dataease.auth.filter.CommunityTokenFilter, a class of the DataEase application. |
 | `Java{N}UrlTransformer` | JDK-only: rewrites java.net.URL and the JDK's HTTP clients. |
+
+## Chained transformers
+
+None: every backport transformer adds the same rows after its predecessors as on the original class.
 
 ## Version gaps
 

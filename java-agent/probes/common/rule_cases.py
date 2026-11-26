@@ -12,6 +12,8 @@ engine does with it today:
     args = { path = "/etc/passwd" }          # the sink's arguments; see OPS
     completes_with = ["NamingException"]     # optional: exceptions (simple names, or a superclass's) that end
                                              #   the sink when it runs and the agent let it through
+                                             #   (an exception that agent code threw never counts; leave it out
+                                             #   of a benign case whose operation has no reason to fail)
     properties = { "ohmyrasp.x" = "..." }    # optional: extra system properties for the agent JVM
     setup = { files = ["{tmp}/a/b.txt"] }    # optional: files created before the JVM starts
     stubs = ["org.example.Gadget"]           # optional: empty serializable classes of these names on the class path

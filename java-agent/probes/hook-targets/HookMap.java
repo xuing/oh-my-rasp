@@ -5,6 +5,7 @@ import io.ohmyrasp.agent.shaded.asm.tree.LdcInsnNode;
 import io.ohmyrasp.agent.shaded.asm.tree.MethodInsnNode;
 import io.ohmyrasp.agent.shaded.asm.tree.MethodNode;
 import io.ohmyrasp.agent.shaded.asm.tree.TypeInsnNode;
+import io.ohmyrasp.agent.shaded.asm.tree.VarInsnNode;
 import io.ohmyrasp.agent.shaded.asm.Opcodes;
 import java.io.ByteArrayOutputStream;
 import java.io.File;
@@ -16,7 +17,6 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashMap;
-import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
@@ -29,22 +29,34 @@ import java.util.jar.JarFile;
 /**
  * Prints which methods of real library versions the packaged agent rewrites to call back into itself.
  *
- * <pre>java -cp &lt;this class&gt;:&lt;agent jar&gt; HookMap &lt;agent jar&gt; &lt;staged tree&gt;</pre>
+ * <pre>java -cp &lt;this class&gt;:&lt;agent jar&gt; HookMap &lt;agent jar&gt; &lt;staged tree&gt; &lt;primary | entry class&gt;</pre>
  *
  * The staged tree holds one folder per group/artifact/version with the library JAR in it. Every class
- * of every JAR goes through the agent's own transformer classes and a method counts as hooked when
- * its output has a call into io/ohmyrasp/agent/ (not the shaded ASM) that its input did not. A hook
- * that reaches the agent by reflection counts too: its class name is a string constant of the
- * output, and the next string constant names the method.
+ * of every JAR goes through the agent's own transformer classes. A method is hooked when its output
+ * calls into io/ohmyrasp/agent/ (not the shaded ASM) more often than its input did, and the row
+ * records how many more, per callee: losing one of two calls to the same agent method changes the
+ * map. A hook that reaches the agent by reflection counts as one call when the output holds the
+ * sequence the reflective hooks emit (getSystemClassLoader, the agent class name, loadClass, the
+ * method name, getMethod, invoke) and not when only some of those constants are present.
+ *
+ * Entries under META-INF/versions/N/ of a multi-release JAR (Multi-Release: true) go through the
+ * transformers under the class name they have at run time, and their rows carry the versions prefix.
  *
  * Nothing is loaded from the libraries: the transformers read class files with ASM, and the loader
  * handed to them is a fresh one that resolves nothing, so the result does not depend on a classpath.
  * The loader is not null because several hooks apply only to application classes (loader != null).
+ * Two paths of production are therefore not in the map: classBeingRedefined is always null, so the
+ * JDBC hook that recognises an already-loaded statement implementation inheriting a JDBC interface
+ * is absent, and a loader that resolves classes (an OSGi framework loader, say) is not modelled.
  *
  * The primary agent is one transformer over a registry of HookModules: the map comes from the whole
- * registry (first match wins, as in production) and each row is attributed to the modules that
- * produce it alone. A backport agent is one transformer class per hook family, registered by its
- * entry class: each runs on the original class bytes.
+ * registry (first match wins, as in production). Each row is attributed by running the class with
+ * no module and with each module alone and comparing call counts: what the empty registry already
+ * produces belongs to the shared visitors, the rest to the module. A backport agent is one
+ * transformer class per hook family. Only a transformer that its entry class constructs and passes
+ * to Instrumentation.addTransformer counts, in the order of those calls. The map is the chained run,
+ * as production does it: each transformer sees what the ones before it wrote. A class on which that
+ * differs from running every transformer on the original bytes is reported as a "# chain" line.
  */
 public final class HookMap {
   private static final String AGENT = "io/ohmyrasp/agent/";
@@ -52,7 +64,7 @@ public final class HookMap {
   private static final String COMMON = "(shared visitors)";
 
   /** One hook family: a HookModule of the primary agent or a transformer class of a backport. */
-  private interface Unit {
+  interface Unit {
     String name();
     byte[] apply(String owner, byte[] bytes) throws Exception;
   }
@@ -113,39 +125,115 @@ public final class HookMap {
     return units;
   }
 
+  private static final String INSTRUMENTATION = "java/lang/instrument/Instrumentation";
+
   /**
-   * The transformer classes a backport's entry class registers: every class it instantiates that,
-   * through the agent JAR's own classes, implements ClassFileTransformer. This follows the entry
-   * class, so a transformer added there is picked up and one that is never registered is not counted.
+   * The transformer classes a backport's entry class registers, in the order it registers them: the
+   * classes constructed and passed to Instrumentation.addTransformer. A class that is constructed
+   * but never reaches addTransformer is not registered and is only reported.
+   *
+   * The entry method's bytecode is read for these shapes, and anything else stops the run:
+   * <ul>
+   * <li>{@code addTransformer(new X(), flag)} and {@code addTransformer(new X())}, where flag is one
+   *     instruction (a local, a constant or a static field), and</li>
+   * <li>the same with the transformer in a local variable that is stored once, from {@code new X()}.</li>
+   * </ul>
+   * All calls must be in one method, since the class file does not say in which order methods run.
    */
-  private static List<Unit> registeredTransformers(JarFile agent, String entry) throws Exception {
+  static List<String> registeredTypes(JarFile agent, String entry) throws Exception {
     ClassNode entryNode = read(agent, entry);
-    Set<String> registered = new LinkedHashSet<String>();
+    List<String> registered = new ArrayList<String>();
+    MethodNode registering = null;
+    for (MethodNode method : entryNode.methods) {
+      for (AbstractInsnNode insn = method.instructions.getFirst(); insn != null; insn = insn.getNext()) {
+        if (!(insn instanceof MethodInsnNode)) continue;
+        MethodInsnNode call = (MethodInsnNode) insn;
+        if (!INSTRUMENTATION.equals(call.owner) || !"addTransformer".equals(call.name)) continue;
+        if (registering != null && registering != method) {
+          throw new IllegalStateException(entry + " calls addTransformer in " + registering.name + " and in " + method.name
+              + ": the class file does not give their order");
+        }
+        registering = method;
+        registered.add(transformerArgument(entry, method, call));
+      }
+    }
+    if (registered.isEmpty()) throw new IllegalStateException(entry + " never calls Instrumentation.addTransformer");
+    Set<String> constructed = new LinkedHashSet<String>();
     for (MethodNode method : entryNode.methods) {
       for (AbstractInsnNode insn = method.instructions.getFirst(); insn != null; insn = insn.getNext()) {
         if (insn.getOpcode() == Opcodes.NEW && isTransformer(agent, ((TypeInsnNode) insn).desc, new HashMap<String, Boolean>())) {
-          registered.add(((TypeInsnNode) insn).desc);
+          constructed.add(((TypeInsnNode) insn).desc);
         }
       }
     }
+    constructed.removeAll(registered);
+    if (!constructed.isEmpty()) System.err.println("transformers its entry class constructs but never passes to addTransformer: " + constructed);
     String packagePrefix = entry.substring(0, entry.lastIndexOf('/') + 1);
-    List<String> unregistered = new ArrayList<String>();
+    List<String> unreferenced = new ArrayList<String>();
     for (JarEntry jarEntry : Collections.list(agent.entries())) {
       String name = jarEntry.getName();
       if (name.startsWith(packagePrefix) && name.endsWith("Transformer.class") && name.indexOf('/', packagePrefix.length()) < 0) {
         String type = name.substring(0, name.length() - ".class".length());
-        if (!registered.contains(type) && isTransformer(agent, type, new HashMap<String, Boolean>())) unregistered.add(type);
+        if (!registered.contains(type) && !constructed.contains(type) && isTransformer(agent, type, new HashMap<String, Boolean>())) unreferenced.add(type);
       }
     }
-    if (!unregistered.isEmpty()) System.err.println("transformers in the line's package that its entry class never registers: " + unregistered);
+    if (!unreferenced.isEmpty()) System.err.println("transformers in the line's package that its entry class never references: " + unreferenced);
+    return registered;
+  }
+
+  private static List<Unit> registeredTransformers(JarFile agent, String entry) throws Exception {
     List<Unit> units = new ArrayList<Unit>();
-    for (String type : registered) {
+    for (String type : registeredTypes(agent, entry)) {
       units.add(new Transform(type.substring(type.lastIndexOf('/') + 1), Class.forName(type.replace('/', '.')).getConstructor().newInstance()));
     }
     return units;
   }
 
-  private static boolean isTransformer(JarFile agent, String type, Map<String, Boolean> seen) throws Exception {
+  private static AbstractInsnNode previous(AbstractInsnNode insn) {
+    AbstractInsnNode before = insn.getPrevious();
+    while (before != null && before.getOpcode() < 0) before = before.getPrevious();
+    return before;
+  }
+
+  /** The class constructed as the first argument of one addTransformer call. */
+  private static String transformerArgument(String entry, MethodNode method, MethodInsnNode call) {
+    String where = entry + "." + method.name + " at instruction " + method.instructions.indexOf(call);
+    AbstractInsnNode producer = previous(call);
+    if (call.desc.equals("(Ljava/lang/instrument/ClassFileTransformer;Z)V")) {
+      int op = producer == null ? -1 : producer.getOpcode();
+      boolean oneInstruction = op == Opcodes.ILOAD || (op >= Opcodes.ICONST_0 && op <= Opcodes.ICONST_1)
+          || op == Opcodes.BIPUSH || op == Opcodes.GETSTATIC;
+      if (!oneInstruction) throw new IllegalStateException(where + ": the retransform flag is not one load or constant; HookMap does not read this shape");
+      producer = previous(producer);
+    } else if (!call.desc.equals("(Ljava/lang/instrument/ClassFileTransformer;)V")) {
+      throw new IllegalStateException(where + ": addTransformer " + call.desc + " is not a shape HookMap reads");
+    }
+    if (producer != null && producer.getOpcode() == Opcodes.ALOAD) {
+      int local = ((VarInsnNode) producer).var;
+      AbstractInsnNode store = null;
+      for (AbstractInsnNode insn = method.instructions.getFirst(); insn != null; insn = insn.getNext()) {
+        if (insn.getOpcode() == Opcodes.ASTORE && ((VarInsnNode) insn).var == local) {
+          if (store != null) throw new IllegalStateException(where + ": local " + local + " is stored more than once; HookMap does not read this shape");
+          store = insn;
+        }
+      }
+      if (store == null) throw new IllegalStateException(where + ": local " + local + " is never stored in this method");
+      producer = previous(store);
+    }
+    // After new X(): NEW X, DUP, INVOKESPECIAL X.<init>()V, with the new object left on the stack.
+    if (producer instanceof MethodInsnNode && producer.getOpcode() == Opcodes.INVOKESPECIAL
+        && "<init>".equals(((MethodInsnNode) producer).name) && "()V".equals(((MethodInsnNode) producer).desc)) {
+      AbstractInsnNode dup = previous(producer);
+      AbstractInsnNode created = dup == null ? null : previous(dup);
+      if (dup != null && dup.getOpcode() == Opcodes.DUP && created != null && created.getOpcode() == Opcodes.NEW
+          && ((TypeInsnNode) created).desc.equals(((MethodInsnNode) producer).owner)) {
+        return ((TypeInsnNode) created).desc;
+      }
+    }
+    throw new IllegalStateException(where + ": the transformer argument is not `new X()` or a local stored from it; HookMap does not read this shape");
+  }
+
+  static boolean isTransformer(JarFile agent, String type, Map<String, Boolean> seen) throws Exception {
     if ("java/lang/instrument/ClassFileTransformer".equals(type)) return true;
     if (seen.containsKey(type)) return seen.get(type);
     seen.put(type, false);
@@ -166,35 +254,44 @@ public final class HookMap {
 
   // ---- comparing a class with what the agent made of it -----------------------------------------
 
-  /** Method (name and descriptor) to the agent methods it newly calls, as owner.name. */
-  private static Map<String, Set<String>> gains(byte[] before, byte[] after) {
-    Map<String, Set<String>> gained = new TreeMap<String, Set<String>>();
+  /** Method (name and descriptor) to the agent callees it calls more often in the output than in the input, with by how many. */
+  static Map<String, Map<String, Integer>> gains(byte[] before, byte[] after) {
+    Map<String, Map<String, Integer>> gained = new TreeMap<String, Map<String, Integer>>();
     if (after == null || !(contains(after, AGENT.getBytes(StandardCharsets.ISO_8859_1))
         || contains(after, AGENT.replace('/', '.').getBytes(StandardCharsets.ISO_8859_1)))) return gained;
-    Map<String, Set<String>> was = agentCalls(before);
-    for (Map.Entry<String, Set<String>> method : agentCalls(after).entrySet()) {
-      Set<String> added = new TreeSet<String>(method.getValue());
-      Set<String> had = was.get(method.getKey());
-      if (had != null) added.removeAll(had);
+    Map<String, Map<String, Integer>> was = agentCalls(before);
+    for (Map.Entry<String, Map<String, Integer>> method : agentCalls(after).entrySet()) {
+      Map<String, Integer> had = was.get(method.getKey());
+      Map<String, Integer> added = new TreeMap<String, Integer>();
+      for (Map.Entry<String, Integer> callee : method.getValue().entrySet()) {
+        int more = callee.getValue() - (had == null || !had.containsKey(callee.getKey()) ? 0 : had.get(callee.getKey()));
+        if (more > 0) added.put(callee.getKey(), more);
+      }
       if (!added.isEmpty()) gained.put(method.getKey(), added);
     }
     return gained;
   }
 
-  private static Map<String, Set<String>> agentCalls(byte[] bytes) {
+  private static void count(Map<String, Integer> calls, String callee) {
+    Integer seen = calls.get(callee);
+    calls.put(callee, seen == null ? 1 : seen + 1);
+  }
+
+  static Map<String, Map<String, Integer>> agentCalls(byte[] bytes) {
     ClassNode node = new ClassNode();
     new ClassReader(bytes).accept(node, ClassReader.SKIP_DEBUG | ClassReader.SKIP_FRAMES);
-    Map<String, Set<String>> calls = new HashMap<String, Set<String>>();
+    Map<String, Map<String, Integer>> calls = new HashMap<String, Map<String, Integer>>();
     for (MethodNode method : node.methods) {
-      Set<String> found = new TreeSet<String>();
+      Map<String, Integer> found = new TreeMap<String, Integer>();
       for (AbstractInsnNode insn = method.instructions.getFirst(); insn != null; insn = insn.getNext()) {
         if (insn instanceof MethodInsnNode) {
           MethodInsnNode call = (MethodInsnNode) insn;
-          if (call.owner.startsWith(AGENT) && !call.owner.startsWith(SHADED_ASM)) found.add(call.owner + "." + call.name);
+          if (call.owner.startsWith(AGENT) && !call.owner.startsWith(SHADED_ASM)) count(found, call.owner + "." + call.name);
         } else if (insn instanceof LdcInsnNode && ((LdcInsnNode) insn).cst instanceof String) {
           String constant = (String) ((LdcInsnNode) insn).cst;
           if (constant.startsWith(AGENT.replace('/', '.')) && !constant.startsWith(SHADED_ASM.replace('/', '.'))) {
-            found.add(constant.replace('.', '/') + "." + reflectiveMethod(insn) + " (reflective)");
+            String hook = reflectiveHook(insn);
+            if (hook != null) count(found, constant.replace('.', '/') + "." + hook + " (reflective)");
           }
         }
       }
@@ -203,16 +300,40 @@ public final class HookMap {
     return calls;
   }
 
-  /** A hook reached by reflection names its class in one string constant and the method in the next one. */
-  private static String reflectiveMethod(AbstractInsnNode classNameConstant) {
+  private static boolean isCall(AbstractInsnNode insn, int opcode, String owner, String name, String desc) {
+    if (!(insn instanceof MethodInsnNode) || insn.getOpcode() != opcode) return false;
+    MethodInsnNode call = (MethodInsnNode) insn;
+    return owner.equals(call.owner) && name.equals(call.name) && (desc == null || desc.equals(call.desc));
+  }
+
+  /**
+   * The method a reflective hook calls, when the agent class name constant starts the sequence the
+   * EL, JEXL and OSGi servlet hooks emit, or null when it does not:
+   *
+   * <pre>
+   * ClassLoader.getSystemClassLoader(); ldc "agent.Class"; ClassLoader.loadClass(String);
+   * ldc "method"; ... Class.getMethod(String, Class[]); ... Method.invoke(Object, Object[])
+   * </pre>
+   */
+  private static String reflectiveHook(AbstractInsnNode className) {
+    if (!isCall(previous(className), Opcodes.INVOKESTATIC, "java/lang/ClassLoader", "getSystemClassLoader", "()Ljava/lang/ClassLoader;")) return null;
+    AbstractInsnNode load = className.getNext();
+    while (load != null && load.getOpcode() < 0) load = load.getNext();
+    if (load == null || !isCall(load, Opcodes.INVOKEVIRTUAL, "java/lang/ClassLoader", "loadClass", "(Ljava/lang/String;)Ljava/lang/Class;")) return null;
+    AbstractInsnNode name = load.getNext();
+    while (name != null && name.getOpcode() < 0) name = name.getNext();
+    if (!(name instanceof LdcInsnNode) || !(((LdcInsnNode) name).cst instanceof String)
+        || !((String) ((LdcInsnNode) name).cst).matches("[A-Za-z_$][A-Za-z0-9_$]*")) return null;
+    boolean getMethod = false;
     int looked = 0;
-    for (AbstractInsnNode insn = classNameConstant.getNext(); insn != null && looked < 12; insn = insn.getNext(), looked++) {
-      if (insn instanceof LdcInsnNode && ((LdcInsnNode) insn).cst instanceof String
-          && ((String) ((LdcInsnNode) insn).cst).matches("[A-Za-z_$][A-Za-z0-9_$]*")) {
-        return (String) ((LdcInsnNode) insn).cst;
+    for (AbstractInsnNode insn = name.getNext(); insn != null && looked < 24; insn = insn.getNext(), looked++) {
+      if (!getMethod) {
+        getMethod = isCall(insn, Opcodes.INVOKEVIRTUAL, "java/lang/Class", "getMethod", "(Ljava/lang/String;[Ljava/lang/Class;)Ljava/lang/reflect/Method;");
+      } else if (isCall(insn, Opcodes.INVOKEVIRTUAL, "java/lang/reflect/Method", "invoke", "(Ljava/lang/Object;[Ljava/lang/Object;)Ljava/lang/Object;")) {
+        return (String) ((LdcInsnNode) name).cst;
       }
     }
-    return "?";
+    return null;
   }
 
   private static boolean contains(byte[] haystack, byte[] needle) {
@@ -264,6 +385,21 @@ public final class HookMap {
     return files;
   }
 
+  private static int shadowed;
+  private static final String VERSIONS = "META-INF/versions/";
+
+  /** The entries a run of the JVM would load as classes: base entries, and versioned ones of a multi-release JAR. */
+  private static boolean multiRelease(JarFile jar) throws Exception {
+    return jar.getManifest() != null && "true".equalsIgnoreCase(jar.getManifest().getMainAttributes().getValue("Multi-Release"));
+  }
+
+  /** The class name the JVM gives an entry: a versioned entry loses its META-INF/versions/N/ prefix. */
+  private static String runtimeName(String path) {
+    if (!path.startsWith(VERSIONS)) return path;
+    int slash = path.indexOf('/', VERSIONS.length());
+    return slash < 0 ? path : path.substring(slash + 1);
+  }
+
   public static void main(String[] args) throws Exception {
     if (args.length != 3) {
       throw new IllegalArgumentException("usage: HookMap <agent jar> <staged tree> <primary | line entry class>");
@@ -285,14 +421,23 @@ public final class HookMap {
     Collections.sort(names);
 
     TreeSet<String> rows = new TreeSet<String>();
-    int libraries = 0, classes = 0, unreadable = 0;
+    TreeSet<String> chainDiffers = new TreeSet<String>();
+    int libraries = 0, classes = 0, versioned = 0, unreadable = 0;
     for (String[] library : libraries(new File(args[1]))) {
       libraries++;
       try (JarFile jar = new JarFile(library[2])) {
+        boolean multi = multiRelease(jar);
         for (JarEntry entry : Collections.list(jar.entries())) {
           String file = entry.getName();
-          if (entry.isDirectory() || !file.endsWith(".class") || file.startsWith("META-INF/")) continue;
-          String owner = file.substring(0, file.length() - ".class".length());
+          if (entry.isDirectory() || !file.endsWith(".class")) continue;
+          if (file.startsWith(VERSIONS)) {
+            if (!multi) continue;           // a JVM does not read these from a JAR that is not multi-release
+            versioned++;
+          } else if (file.startsWith("META-INF/")) {
+            continue;
+          }
+          String path = file.substring(0, file.length() - ".class".length());
+          String owner = runtimeName(path);
           byte[] before = bytes(jar.getInputStream(entry));
           classes++;
           try {
@@ -301,44 +446,106 @@ public final class HookMap {
             unreadable++;
             continue;
           }
-          String prefix = library[0] + " " + library[1] + " " + owner + " ";
+          String prefix = library[0] + " " + library[1] + " " + path + " ";
           if (whole != null) {
-            Map<String, Set<String>> hooked = gains(before, whole.apply(owner, before));
+            Map<String, Map<String, Integer>> hooked = gains(before, whole.apply(owner, before));
             if (hooked.isEmpty()) continue;
-            Map<String, Map<String, Set<String>>> alone = new TreeMap<String, Map<String, Set<String>>>();
+            Map<String, Map<String, Map<String, Integer>>> alone = new TreeMap<String, Map<String, Map<String, Integer>>>();
             for (Unit unit : units) alone.put(unit.name(), gains(before, unit.apply(owner, before)));
-            for (Map.Entry<String, Set<String>> method : hooked.entrySet()) {
-              for (String callee : method.getValue()) {
-                rows.add(prefix + method.getKey() + " -> " + callee + " @ " + attribute(alone, method.getKey(), callee));
+            for (Map.Entry<String, Map<String, Integer>> method : hooked.entrySet()) {
+              for (Map.Entry<String, Integer> callee : method.getValue().entrySet()) {
+                attribute(rows, prefix, method.getKey(), callee.getKey(), callee.getValue(), alone);
               }
             }
           } else {
-            for (Unit unit : units) {
-              for (Map.Entry<String, Set<String>> method : gains(before, unit.apply(owner, before)).entrySet()) {
-                for (String callee : method.getValue()) rows.add(prefix + method.getKey() + " -> " + callee + " @ " + unit.name());
-              }
-            }
+            chain(rows, chainDiffers, prefix, owner, before, units);
           }
         }
       }
     }
     System.out.println("# units (" + names.size() + "): " + String.join(" ", names));
-    System.out.println("# libraries: " + libraries + ", classes: " + classes + ", unreadable by the agent's ASM: " + unreadable);
+    System.out.println("# libraries: " + libraries + ", classes: " + classes + " (multi-release entries: " + versioned
+        + "), unreadable by the agent's ASM: " + unreadable);
+    if (shadowed > 0) System.err.println("rows where modules shadow one another and the count is the registry's: " + shadowed);
+    for (String differs : chainDiffers) System.out.println(differs);
     for (String row : rows) System.out.println(row);
   }
 
-  /** The modules that hook this method alone; a row the shared visitors also make belongs to them. */
-  private static String attribute(Map<String, Map<String, Set<String>>> alone, String method, String callee) {
-    if (has(alone.get(COMMON), method, callee)) return COMMON;
-    Set<String> by = new TreeSet<String>();
-    for (Map.Entry<String, Map<String, Set<String>>> unit : alone.entrySet()) {
-      if (has(unit.getValue(), method, callee)) by.add(unit.getKey());
-    }
-    return by.isEmpty() ? "?" : String.join(",", by);
+  static String row(String prefix, String method, String callee, int calls, String by) {
+    return prefix + method + " -> " + callee + (calls > 1 ? " x" + calls : "") + " @ " + by;
   }
 
-  private static boolean has(Map<String, Set<String>> gained, String method, String callee) {
-    Set<String> callees = gained.get(method);
-    return callees != null && callees.contains(callee);
+  /**
+   * One backport class through every transformer in registration order. The rows are what each
+   * transformer adds to what it was given. The same transformers on the original bytes make the
+   * comparison: a transformer whose rows differ there is reported with the class.
+   */
+  static void chain(TreeSet<String> rows, TreeSet<String> differs, String prefix, String owner, byte[] original, List<Unit> units)
+      throws Exception {
+    byte[] current = original;
+    for (Unit unit : units) {
+      byte[] produced = unit.apply(owner, current);
+      Map<String, Map<String, Integer>> chained = gains(current, produced);
+      Map<String, Map<String, Integer>> pristine = gains(original, unit.apply(owner, original));
+      for (Map.Entry<String, Map<String, Integer>> method : chained.entrySet()) {
+        for (Map.Entry<String, Integer> callee : method.getValue().entrySet()) {
+          rows.add(row(prefix, method.getKey(), callee.getKey(), callee.getValue(), unit.name()));
+        }
+      }
+      if (!chained.equals(pristine)) {
+        differs.add("# chain: " + prefix + unit.name() + " adds " + describe(chained) + " after its predecessors, " + describe(pristine) + " on the original class");
+      }
+      if (produced != null) current = produced;
+    }
+  }
+
+  private static String describe(Map<String, Map<String, Integer>> gained) {
+    int calls = 0;
+    for (Map<String, Integer> method : gained.values()) for (int n : method.values()) calls += n;
+    return gained.size() + " methods and " + calls + " calls";
+  }
+
+  /**
+   * Rows of one method and callee in the primary agent. The registry's own count is the truth; the
+   * empty registry's count is what the shared visitors make, and each module's own part is its
+   * count when it runs alone minus that. A module-specific call with the callee of a shared one
+   * therefore stays visible under its module.
+   */
+  static void attribute(TreeSet<String> rows, String prefix, String method, String callee, int total,
+      Map<String, Map<String, Map<String, Integer>>> alone) {
+    int shared = calls(alone.get(COMMON), method, callee);
+    if (shared > 0) rows.add(row(prefix, method, callee, Math.min(shared, total), COMMON));
+    int remaining = total - shared;
+    if (remaining <= 0) return;
+    Map<Integer, TreeSet<String>> byCount = new TreeMap<Integer, TreeSet<String>>();
+    int sum = 0;
+    for (Map.Entry<String, Map<String, Map<String, Integer>>> unit : alone.entrySet()) {
+      if (COMMON.equals(unit.getKey())) continue;
+      int own = calls(unit.getValue(), method, callee) - shared;
+      if (own <= 0) continue;
+      sum += own;
+      TreeSet<String> same = byCount.get(own);
+      if (same == null) byCount.put(own, same = new TreeSet<String>());
+      same.add(unit.getKey());
+    }
+    if (byCount.isEmpty()) {
+      rows.add(row(prefix, method, callee, remaining, "?"));
+    } else if (sum != remaining) {
+      // Modules shadow one another (the first that wraps a method wins): say what production does, and which could.
+      shadowed++;
+      TreeSet<String> any = new TreeSet<String>();
+      for (TreeSet<String> same : byCount.values()) any.addAll(same);
+      rows.add(row(prefix, method, callee, remaining, String.join(",", any)));
+    } else {
+      for (Map.Entry<Integer, TreeSet<String>> same : byCount.entrySet()) {
+        rows.add(row(prefix, method, callee, same.getKey(), String.join(",", same.getValue())));
+      }
+    }
+  }
+
+  private static int calls(Map<String, Map<String, Integer>> gained, String method, String callee) {
+    Map<String, Integer> callees = gained == null ? null : gained.get(method);
+    Integer n = callees == null ? null : callees.get(callee);
+    return n == null ? 0 : n;
   }
 }

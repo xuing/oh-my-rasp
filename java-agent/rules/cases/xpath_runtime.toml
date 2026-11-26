@@ -43,7 +43,6 @@ kind = "benign"
 via = "sink"
 op = "xpath.evaluate"
 args = { expression = "count(/r/item)" }
-completes_with = ["XPathExpressionException"]
 
 [case.primary]
 effect = "none"
