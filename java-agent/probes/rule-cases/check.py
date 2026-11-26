@@ -138,9 +138,12 @@ def run_case(case, agent, classpath, classes, work, track, major) -> tuple[Actua
         classpath = os.pathsep.join((classpath, str(stub_dir)))
     log = tmp / "events.jsonl"
     props = [f"-D{k}={str(v).replace('{tmp}', str(tmp))}" for k, v in case.properties.items()]
+    # The driver's report is a file, not a line of standard output: on Java 8 the class-load log shares
+    # standard output and can split a line printed there.
+    report = tmp / "rulecase-report.txt"
     command = ["java", "-Xverify:all", f"-javaagent:{agent}", "-Dohmyrasp.standalone=true", "-Dohmyrasp.mode=block",
                "-Dohmyrasp.control=none", "-Dohmyrasp.log.sync=true", f"-Dohmyrasp.log={log}", *props,
-               *class_load_options(major, tmp),
+               *class_load_options(major, tmp), f"-Drulecase.report={report}",
                "-cp", classpath, "RuleCaseDriver"]
     try:
         run = subprocess.run(command, input=spec_lines(case, tmp, classes), capture_output=True, text=True,
@@ -148,7 +151,8 @@ def run_case(case, agent, classpath, classes, work, track, major) -> tuple[Actua
     except subprocess.TimeoutExpired:
         return Actual("broken", None, (), f"driver did not finish in {TIMEOUT}s"), ""
     output = run.stdout + run.stderr
-    result_lines = [line for line in run.stdout.splitlines() if line.startswith("RULECASE\t")]
+    reported = report.read_text() if report.exists() else ""
+    result_lines = [line for line in reported.splitlines() if line.startswith("RULECASE\t")]
     if run.returncode or not result_lines:
         return Actual("broken", None, (), f"driver exited {run.returncode}"), output
     result = dict(part.split("=", 1) for part in result_lines[-1].split("\t")[1:])

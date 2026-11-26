@@ -116,8 +116,20 @@ public class RuleCaseDriver extends HttpServlet {
     for (Map.Entry<String, String> entry : RESULT.entrySet()) {
       line.append('\t').append(entry.getKey()).append('=').append(clean(entry.getValue()));
     }
-    System.out.println(line);
-    System.out.flush();
+    // The report goes to a file when the probe names one. On Java 8, -verbose:class writes to standard
+    // output too, and a class-load line can land in the middle of a line printed here.
+    String report = System.getProperty("rulecase.report");
+    if (report == null) {
+      System.out.println(line);
+      System.out.flush();
+    } else {
+      java.io.OutputStream out = new java.io.FileOutputStream(report);
+      try {
+        out.write(line.append('\n').toString().getBytes("UTF-8"));
+      } finally {
+        out.close();
+      }
+    }
     System.exit(0);
   }
 
