@@ -26,6 +26,11 @@ dependencies {
 
     testImplementation(localGroovy())
     testImplementation("com.alibaba:fastjson:1.2.83")
+    testImplementation("org.eclipse.jetty.ee10:jetty-ee10-servlet:12.0.41") { isTransitive = false }
+    testImplementation("org.eclipse.jetty.ee9:jetty-ee9-nested:12.0.41") { isTransitive = false }
+    testImplementation("org.codehaus.janino:commons-compiler:3.1.12") { isTransitive = false }
+    testImplementation("com.github.pagehelper:pagehelper:4.2.1") { isTransitive = false }
+    testImplementation("org.apache.struts:struts2-core:7.0.3") { isTransitive = false }
     testImplementation("com.mchange:c3p0:0.15.1")
     testImplementation("org.junit.jupiter:junit-jupiter:6.1.3")
     testRuntimeOnly("org.junit.platform:junit-platform-launcher:6.1.3")

@@ -7,7 +7,7 @@ final class JavaCompilationHookModule implements HookModule {
   @Override
   public boolean matchesClass(String className) {
     return className.equals("com/sun/tools/javac/api/JavacTool")
-        || className.equals("org/codehaus/janino/Cookable")
+        || className.equals("org/codehaus/commons/compiler/Cookable")
         || className.equals("org/codehaus/janino/SimpleCompiler")
         || className.equals("org/codehaus/janino/ScriptEvaluator")
         || className.equals("org/codehaus/janino/ExpressionEvaluator")
@@ -35,6 +35,21 @@ final class JavaCompilationHookModule implements HookModule {
         };
       }
     }
+    if (className.equals("org/codehaus/commons/compiler/Cookable") && methodName.equals("cook")) {
+      // Janino 2.7 and later keep the base class in commons-compiler. Its String overloads are
+      // cook(String source) and cook(String fileName, String source); the others read a Reader or stream.
+      int sourceArg = cookableSourceArgument(descriptor);
+      if (sourceArg >= 0) {
+        return new EntryAdvice(methodVisitor, access, methodName, descriptor) {
+          @Override
+          protected void onMethodEnter() {
+            push("janino");
+            loadArg(sourceArg);
+            invokeHook("beforeJavaCompilationSource", "(Ljava/lang/String;Ljava/lang/Object;)V");
+          }
+        };
+      }
+    }
     if (isJaninoCompiler(className) && isJaninoSourceMethod(methodName)) {
       int sourceArg = firstStringArgument(descriptor);
       if (sourceArg >= 0) {
@@ -49,6 +64,13 @@ final class JavaCompilationHookModule implements HookModule {
       }
     }
     return methodVisitor;
+  }
+
+  private static int cookableSourceArgument(String descriptor) {
+    if (descriptor.equals("(Ljava/lang/String;)V")) {
+      return 0;
+    }
+    return descriptor.equals("(Ljava/lang/String;Ljava/lang/String;)V") ? 1 : -1;
   }
 
   private static boolean isJaninoCompiler(String className) {

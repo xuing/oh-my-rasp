@@ -71,13 +71,16 @@ final class HookRegistryTest {
             "com/fasterxml/jackson/databind/jsontype/impl/ClassNameIdResolver"));
     assertTrue(registry.isDirectTarget("com/thoughtworks/xstream/mapper/DefaultMapper"));
     assertTrue(registry.isDirectTarget("org/yaml/snakeyaml/constructor/Constructor"));
-    assertTrue(registry.isDirectTarget("org/snakeyaml/engine/v2/constructor/StandardConstructor"));
+    // SnakeYAML Engine (2.0 to 3.2) never turns a tag into a Java class: a tag without a registered
+    // ConstructNode is an error, so there is no class name to hand the detector.
+    assertFalse(registry.isDirectTarget("org/snakeyaml/engine/v2/constructor/StandardConstructor"));
     assertTrue(registry.isDirectTarget("java/io/ObjectInputStream"));
     assertTrue(registry.isDirectTarget("org/apache/activemq/openwire/v12/BaseDataStreamMarshaller"));
     assertTrue(registry.isDirectTarget("org/springframework/remoting/rmi/RemoteInvocationSerializingExporter"));
     assertFalse(registry.isDirectTarget("com/caucho/hessian/io/SerializerFactory"));
     assertTrue(registry.isDirectTarget("com/caucho/hessian/io/UnsafeDeserializer"));
     assertTrue(registry.isDirectTarget("com/alibaba/com/caucho/hessian/io/JavaDeserializer"));
+    assertFalse(registry.isDirectTarget("com/alibaba/com/caucho/hessian/io/UnsafeDeserializer"));
     assertTrue(registry.isDirectTarget("org/apache/xmlrpc/parser/SerializableParser"));
     assertTrue(registry.isDirectTarget("org/h2/jdbc/JdbcStatement"));
     assertTrue(registry.isDirectTarget("com/mysql/cj/jdbc/StatementImpl"));

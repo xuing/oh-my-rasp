@@ -58,7 +58,9 @@ public final class MyBatisSqlVisitor {
     final boolean sql = CONTEXT.equals(owner) && name.equals("getSql") && desc.equals("()Ljava/lang/String;");
     final boolean page = owner.startsWith(PAGE_DIALECT) && name.equals("getPageSql")
         && (desc.equals("(Ljava/lang/String;Lcom/github/pagehelper/Page;Lorg/apache/ibatis/cache/CacheKey;)Ljava/lang/String;")
-            || desc.equals("(Ljava/lang/String;Lorg/apache/ibatis/session/RowBounds;Lorg/apache/ibatis/cache/CacheKey;)Ljava/lang/String;"));
+            || desc.equals("(Ljava/lang/String;Lorg/apache/ibatis/session/RowBounds;Lorg/apache/ibatis/cache/CacheKey;)Ljava/lang/String;")
+            // PageHelper 4.2.x: the dialects are com.github.pagehelper.dialect.*Dialect and take both.
+            || desc.equals("(Ljava/lang/String;Lcom/github/pagehelper/Page;Lorg/apache/ibatis/session/RowBounds;Lorg/apache/ibatis/cache/CacheKey;)Ljava/lang/String;"));
     final boolean trim = TRIM.equals(owner) && !name.equals("<init>");
     final boolean returned = BOUND.equals(owner) && name.equals("getSql") && desc.equals("()Ljava/lang/String;");
     final boolean compiled = BOUND.equals(owner) && name.equals("<init>") && desc.equals(

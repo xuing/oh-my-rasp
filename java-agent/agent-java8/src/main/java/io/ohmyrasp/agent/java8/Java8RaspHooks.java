@@ -672,9 +672,11 @@ public final class Java8RaspHooks {
   }
 
   public static void beforeSqlIdentifier(String value) {
-    Finding finding =
-        classifySqlIdentifier(
-            value, "SkyWalking.H2LogQueryDAO.queryLogs", "metricName");
+    beforeSqlIdentifier(value, "SkyWalking.H2LogQueryDAO.queryLogs", "metricName");
+  }
+
+  public static void beforeSqlIdentifier(String value, String source, String parameter) {
+    Finding finding = classifySqlIdentifier(value, source, parameter);
     inspectSqlIdentifierFinding(finding, "SQL.identifier");
   }
 

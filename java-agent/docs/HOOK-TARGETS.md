@@ -41,9 +41,6 @@ not counted, only hooks on named targets. Primary is the JDK 21 and 25 agent, ba
 | `org.yaml:snakeyaml` | 1.33 | 1 | 0 |
 | `org.yaml:snakeyaml` | 2.0 | 1 | 0 |
 | `org.yaml:snakeyaml` | 2.7 | 1 | 0 |
-| `org.snakeyaml:snakeyaml-engine` | 2.0 (no hook, see below) | 0 | 0 |
-| `org.snakeyaml:snakeyaml-engine` | 2.10 (no hook, see below) | 0 | 0 |
-| `org.snakeyaml:snakeyaml-engine` | 3.2 (no hook, see below) | 0 | 0 |
 | `ognl:ognl` | 2.7.3 | 7 | 0 |
 | `ognl:ognl` | 3.0.21 | 7 | 0 |
 | `ognl:ognl` | 3.1.26 | 7 | 0 |
@@ -52,7 +49,7 @@ not counted, only hooks on named targets. Primary is the JDK 21 and 25 agent, ba
 | `org.apache.struts:struts2-core` | 2.5.30 | 4 | 1 |
 | `org.apache.struts:struts2-core` | 6.3.0.2 | 4 | 1 |
 | `org.apache.struts:struts2-core` | 6.9.0 | 4 | 1 |
-| `org.apache.struts:struts2-core` | 7.0.3 | 1 | 1 |
+| `org.apache.struts:struts2-core` | 7.0.3 | 4 | 1 |
 | `org.apache.struts.xwork:xwork-core` | 2.3.20 | 5 | 1 |
 | `org.apache.struts.xwork:xwork-core` | 2.3.37 | 4 | 1 |
 | `org.apache.velocity:velocity` | 1.5 | 6 | 0 |
@@ -109,6 +106,9 @@ not counted, only hooks on named targets. Primary is the JDK 21 and 25 agent, ba
 | `org.codehaus.janino:janino` | 2.7.8 | 3 | 3 |
 | `org.codehaus.janino:janino` | 3.0.16 | 2 | 2 |
 | `org.codehaus.janino:janino` | 3.1.12 | 6 | 6 |
+| `org.codehaus.janino:commons-compiler` | 2.7.8 | 2 | 2 |
+| `org.codehaus.janino:commons-compiler` | 3.0.16 | 3 | 3 |
+| `org.codehaus.janino:commons-compiler` | 3.1.12 | 3 | 3 |
 | `org.springframework:spring-core` | 3.2.18.RELEASE | 1 | 1 |
 | `org.springframework:spring-core` | 4.3.30.RELEASE | 1 | 1 |
 | `org.springframework:spring-core` | 5.3.39 | 1 | 1 |
@@ -154,7 +154,7 @@ not counted, only hooks on named targets. Primary is the JDK 21 and 25 agent, ba
 | `org.mybatis:mybatis` | 3.5.6 | 15 | 15 |
 | `org.mybatis:mybatis` | 3.5.19 | 18 | 18 |
 | `org.mybatis:mybatis` | 3.6.0 | 18 | 18 |
-| `com.github.pagehelper:pagehelper` | 4.2.1 (no hook, see below) | 0 | 0 |
+| `com.github.pagehelper:pagehelper` | 4.2.1 | 6 | 6 |
 | `com.github.pagehelper:pagehelper` | 5.1.11 | 14 | 14 |
 | `com.github.pagehelper:pagehelper` | 5.3.3 | 21 | 21 |
 | `com.github.pagehelper:pagehelper` | 6.1.1 | 23 | 23 |
@@ -215,6 +215,11 @@ not counted, only hooks on named targets. Primary is the JDK 21 and 25 agent, ba
 | `org.eclipse.jetty:jetty-server` | 10.0.26 | 14 | 30 |
 | `org.eclipse.jetty:jetty-server` | 11.0.26 | 14 | 30 |
 | `org.eclipse.jetty:jetty-server` | 12.0.41 | 0 | 1 |
+| `org.eclipse.jetty.ee10:jetty-ee10-servlet` | 12.0.41 | 11 | 16 |
+| `org.eclipse.jetty.ee10:jetty-ee10-servlet` | 12.1.15 | 11 | 16 |
+| `org.eclipse.jetty.ee11:jetty-ee11-servlet` | 12.1.15 | 11 | 16 |
+| `org.eclipse.jetty.ee9:jetty-ee9-nested` | 12.0.41 | 8 | 20 |
+| `org.eclipse.jetty.ee8:jetty-ee8-nested` | 12.0.41 | 8 | 20 |
 | `xerces:xercesImpl` | 2.9.1 | 6 | 6 |
 | `xerces:xercesImpl` | 2.11.0 | 6 | 6 |
 | `xerces:xercesImpl` | 2.12.2 | 6 | 6 |
@@ -229,7 +234,7 @@ not counted, only hooks on named targets. Primary is the JDK 21 and 25 agent, ba
 | `net.sf.sevenzipjbinding:sevenzipjbinding` | 16.02-2.01 | 0 | 1 |
 | `net.sf.sevenzipjbinding:sevenzipjbinding` | 26.06-2.3 | 0 | 1 |
 | `org.apache.skywalking:storage-jdbc-hikaricp-plugin` | 8.9.1 | 0 | 1 |
-| `org.apache.skywalking:storage-jdbc-hikaricp-plugin` | 9.7.0 (no hook, see below) | 0 | 0 |
+| `org.apache.skywalking:storage-jdbc-hikaricp-plugin` | 9.7.0 | 0 | 1 |
 | `com.h2database:h2` | 1.4.197 | 39 | 38 |
 | `com.h2database:h2` | 1.4.200 | 39 | 38 |
 | `com.h2database:h2` | 2.1.214 | 28 | 27 |
@@ -242,12 +247,7 @@ is a hook that should be fixed.
 
 | Library | Version | Reason |
 |---|---|---|
-| `org.snakeyaml:snakeyaml-engine` | 2.0 | FINDING: the hook wants getClassForName on org/snakeyaml/engine/v2/constructor/*, and the engine has no such method in any version |
-| `org.snakeyaml:snakeyaml-engine` | 2.10 | same |
-| `org.snakeyaml:snakeyaml-engine` | 3.2 | same |
 | `javax.el:javax.el-api` | 2.2.1 | javax.el.ELProcessor, the class the hook wants, first appears in EL 3.0; ExpressionFactory has no concrete method the hook rewrites |
-| `com.github.pagehelper:pagehelper` | 4.2.1 | FINDING: the dialect classes exist, but their getPageSql arguments differ from the (String, Page, CacheKey) form the hook matches |
-| `org.apache.skywalking:storage-jdbc-hikaricp-plugin` | 9.7.0 | FINDING: 9.x replaced H2LogQueryDAO with JDBCLogQueryDAO in a common package, so the hook's class is gone |
 
 ## Hook families with no library target
 
@@ -294,6 +294,7 @@ signature); each is a place to check that the hook still covers what it did.
 | Library | Hooked in | Not hooked in | Methods |
 |---|---|---|---|
 | `com.alibaba:fastjson` | 1.2.47 1.2.68 1.2.83 | 1.2.24 | `com/alibaba/fastjson/parser/ParserConfig.checkAutoType` |
+| `com.github.pagehelper:pagehelper` | 4.2.1 | 5.1.11 5.3.3 6.1.1 | `com/github/pagehelper/dialect/Db2Dialect.getPageSql`<br>`com/github/pagehelper/dialect/HsqldbDialect.getPageSql`<br>`com/github/pagehelper/dialect/InformixDialect.getPageSql`<br>`com/github/pagehelper/dialect/MySqlDialect.getPageSql`<br>and 2 more |
 | `com.github.pagehelper:pagehelper` | 5.1.11 5.3.3 6.1.1 | 4.2.1 | `com/github/pagehelper/dialect/helper/Db2Dialect.getPageSql`<br>`com/github/pagehelper/dialect/helper/HerdDBDialect.getPageSql`<br>`com/github/pagehelper/dialect/helper/HsqldbDialect.getPageSql`<br>`com/github/pagehelper/dialect/helper/InformixDialect.getPageSql`<br>and 10 more |
 | `com.github.pagehelper:pagehelper` | 5.3.3 6.1.1 | 4.2.1 5.1.11 | `com/github/pagehelper/dialect/helper/AS400Dialect.getPageSql`<br>`com/github/pagehelper/dialect/helper/CirroDataDialect.getPageSql`<br>`com/github/pagehelper/dialect/helper/FirebirdDialect.getPageSql`<br>`com/github/pagehelper/dialect/helper/Oracle9iDialect.getPageSql`<br>and 3 more |
 | `com.github.pagehelper:pagehelper` | 6.1.1 | 4.2.1 5.1.11 5.3.3 | `com/github/pagehelper/dialect/helper/XuguDialect.getPageSql`<br>`com/github/pagehelper/dialect/rowbounds/XuguRowBoundsDialect.getPageSql` |
@@ -311,9 +312,10 @@ signature); each is a place to check that the hook still covers what it did.
 | `org.apache.spark:spark-core_2.12` | 2.4.8 | 3.5.10 | `org/spark_project/jetty/http/MultiPartFormInputStream$MultiPart.getSubmittedFileName`<br>`org/spark_project/jetty/http/MultiPartFormInputStream.getPart`<br>`org/spark_project/jetty/http/MultiPartFormInputStream.getParts`<br>`org/spark_project/jetty/server/MultiParts$MultiPartsHttpParser.getPart`<br>and 10 more |
 | `org.apache.spark:spark-core_2.12` | 3.5.10 | 2.4.8 | `org/sparkproject/jetty/http/MultiPartFormInputStream$MultiPart.getSubmittedFileName`<br>`org/sparkproject/jetty/http/MultiPartFormInputStream.getPart`<br>`org/sparkproject/jetty/http/MultiPartFormInputStream.getParts`<br>`org/sparkproject/jetty/server/MultiParts$MultiPartsHttpParser.getPart`<br>and 10 more |
 | `org.apache.struts:struts2-core` | 2.5.30 6.3.0.2 6.9.0 | 7.0.3 | `com/opensymphony/xwork2/ognl/OgnlUtil.getValue`<br>`com/opensymphony/xwork2/ognl/OgnlUtil.setValue`<br>`com/opensymphony/xwork2/util/classloader/FileResourceStore.getFile` |
-| `org.apache.struts:struts2-core` | 7.0.3 | 2.5.30 6.3.0.2 6.9.0 | `org/apache/struts2/util/classloader/FileResourceStore.getFile` |
+| `org.apache.struts:struts2-core` | 7.0.3 | 2.5.30 6.3.0.2 6.9.0 | `org/apache/struts2/ognl/OgnlUtil.getValue`<br>`org/apache/struts2/ognl/OgnlUtil.setValue`<br>`org/apache/struts2/util/classloader/FileResourceStore.getFile` |
 | `org.apache.tomcat:tomcat-catalina` | 7.0.109 | 8.5.100 9.0.124 10.1.62 11.0.29 | `org/apache/catalina/websocket/WsHttpServletRequestWrapper.getPart`<br>`org/apache/catalina/websocket/WsHttpServletRequestWrapper.getParts` |
 | `org.apache.velocity:velocity` | 1.7 | 1.5 | `org/apache/velocity/runtime/RuntimeInstance.evaluate` |
+| `org.codehaus.janino:commons-compiler` | 3.0.16 3.1.12 | 2.7.8 | `org/codehaus/commons/compiler/util/resource/DirectoryResourceCreator.getFile` |
 | `org.codehaus.janino:janino` | 2.7.8 | 3.0.16 3.1.12 | `org/codehaus/janino/util/resource/DirectoryResourceCreator.getFile` |
 | `org.codehaus.janino:janino` | 2.7.8 3.0.16 | 3.1.12 | `org/codehaus/janino/Compiler$2.getFile` |
 | `org.codehaus.janino:janino` | 3.1.12 | 2.7.8 3.0.16 | `org/codehaus/janino/ClassBodyEvaluator.cook`<br>`org/codehaus/janino/Compiler$3.getFile`<br>`org/codehaus/janino/ExpressionEvaluator.cook`<br>`org/codehaus/janino/ScriptEvaluator.cook` |
@@ -337,6 +339,7 @@ signature); each is a place to check that the hook still covers what it did.
 | Library | Hooked in | Not hooked in | Methods |
 |---|---|---|---|
 | `com.alibaba:fastjson` | 1.2.68 1.2.83 | 1.2.24 1.2.47 | `com/alibaba/fastjson/parser/ParserConfig.checkAutoType` |
+| `com.github.pagehelper:pagehelper` | 4.2.1 | 5.1.11 5.3.3 6.1.1 | `com/github/pagehelper/dialect/Db2Dialect.getPageSql`<br>`com/github/pagehelper/dialect/HsqldbDialect.getPageSql`<br>`com/github/pagehelper/dialect/InformixDialect.getPageSql`<br>`com/github/pagehelper/dialect/MySqlDialect.getPageSql`<br>and 2 more |
 | `com.github.pagehelper:pagehelper` | 5.1.11 5.3.3 6.1.1 | 4.2.1 | `com/github/pagehelper/dialect/helper/Db2Dialect.getPageSql`<br>`com/github/pagehelper/dialect/helper/HerdDBDialect.getPageSql`<br>`com/github/pagehelper/dialect/helper/HsqldbDialect.getPageSql`<br>`com/github/pagehelper/dialect/helper/InformixDialect.getPageSql`<br>and 10 more |
 | `com.github.pagehelper:pagehelper` | 5.3.3 6.1.1 | 4.2.1 5.1.11 | `com/github/pagehelper/dialect/helper/AS400Dialect.getPageSql`<br>`com/github/pagehelper/dialect/helper/CirroDataDialect.getPageSql`<br>`com/github/pagehelper/dialect/helper/FirebirdDialect.getPageSql`<br>`com/github/pagehelper/dialect/helper/Oracle9iDialect.getPageSql`<br>and 3 more |
 | `com.github.pagehelper:pagehelper` | 6.1.1 | 4.2.1 5.1.11 5.3.3 | `com/github/pagehelper/dialect/helper/XuguDialect.getPageSql`<br>`com/github/pagehelper/dialect/rowbounds/XuguRowBoundsDialect.getPageSql` |
@@ -346,12 +349,14 @@ signature); each is a place to check that the hook still covers what it did.
 | `jakarta.activation:jakarta.activation-api` | 1.2.2 | 2.0.1 2.1.3 | `javax/activation/URLDataSource.<init>`<br>`javax/activation/URLDataSource.getInputStream` |
 | `jakarta.activation:jakarta.activation-api` | 2.0.1 2.1.3 | 1.2.2 | `jakarta/activation/URLDataSource.<init>`<br>`jakarta/activation/URLDataSource.getInputStream` |
 | `org.apache.skywalking:storage-jdbc-hikaricp-plugin` | 8.9.1 | 9.7.0 | `org/apache/skywalking/oap/server/storage/plugin/jdbc/h2/dao/H2LogQueryDAO.queryLogs` |
+| `org.apache.skywalking:storage-jdbc-hikaricp-plugin` | 9.7.0 | 8.9.1 | `org/apache/skywalking/oap/server/storage/plugin/jdbc/common/dao/JDBCLogQueryDAO.buildSQL` |
 | `org.apache.spark:spark-core_2.12` | 2.4.8 | 3.5.10 | `org/spark_project/jetty/http/MultiPartFormInputStream$MultiPart.getSubmittedFileName`<br>`org/spark_project/jetty/http/MultiPartFormInputStream.deleteParts`<br>`org/spark_project/jetty/http/MultiPartFormInputStream.getParsedParts`<br>`org/spark_project/jetty/http/MultiPartFormInputStream.getPart`<br>and 26 more |
 | `org.apache.spark:spark-core_2.12` | 3.5.10 | 2.4.8 | `org/sparkproject/jetty/http/MultiPartFormInputStream$MultiPart.getSubmittedFileName`<br>`org/sparkproject/jetty/http/MultiPartFormInputStream.deleteParts`<br>`org/sparkproject/jetty/http/MultiPartFormInputStream.getParsedParts`<br>`org/sparkproject/jetty/http/MultiPartFormInputStream.getPart`<br>and 27 more |
 | `org.apache.struts:struts2-core` | 2.5.30 6.3.0.2 6.9.0 | 7.0.3 | `com/opensymphony/xwork2/util/classloader/FileResourceStore.getFile` |
 | `org.apache.struts:struts2-core` | 7.0.3 | 2.5.30 6.3.0.2 6.9.0 | `org/apache/struts2/util/classloader/FileResourceStore.getFile` |
 | `org.apache.tomcat:tomcat-catalina` | 7.0.109 | 8.5.100 9.0.124 10.1.62 11.0.29 | `org/apache/catalina/connector/Request.getNoteNames`<br>`org/apache/catalina/websocket/WsHttpServletRequestWrapper.getPart`<br>`org/apache/catalina/websocket/WsHttpServletRequestWrapper.getParts` |
 | `org.apache.tomcat:tomcat-catalina` | 8.5.100 9.0.124 10.1.62 11.0.29 | 7.0.109 | `org/apache/catalina/connector/Request.getUpgradeProtocolName`<br>`org/apache/catalina/connector/Request.parseLocalesHeader` |
+| `org.codehaus.janino:commons-compiler` | 3.0.16 3.1.12 | 2.7.8 | `org/codehaus/commons/compiler/util/resource/DirectoryResourceCreator.getFile` |
 | `org.codehaus.janino:janino` | 2.7.8 | 3.0.16 3.1.12 | `org/codehaus/janino/util/resource/DirectoryResourceCreator.getFile` |
 | `org.codehaus.janino:janino` | 2.7.8 3.0.16 | 3.1.12 | `org/codehaus/janino/Compiler$2.getFile` |
 | `org.codehaus.janino:janino` | 3.1.12 | 2.7.8 3.0.16 | `org/codehaus/janino/ClassBodyEvaluator.cook`<br>`org/codehaus/janino/Compiler$3.getFile`<br>`org/codehaus/janino/ExpressionEvaluator.cook`<br>`org/codehaus/janino/ScriptEvaluator.cook` |

@@ -12,8 +12,7 @@ final class PolymorphicDeserializationHookModule implements HookModule {
         || className.equals("com/alibaba/fastjson2/reader/ObjectReaderProvider")
         || className.equals("com/fasterxml/jackson/databind/jsontype/impl/ClassNameIdResolver")
         || className.startsWith("com/thoughtworks/xstream/mapper/")
-        || className.equals("org/yaml/snakeyaml/constructor/Constructor")
-        || className.startsWith("org/snakeyaml/engine/v2/constructor/");
+        || className.equals("org/yaml/snakeyaml/constructor/Constructor");
   }
 
   @Override
@@ -85,10 +84,6 @@ final class PolymorphicDeserializationHookModule implements HookModule {
       return "xstream";
     }
     if (className.equals("org/yaml/snakeyaml/constructor/Constructor")
-        && methodName.equals("getClassForName")) {
-      return "snakeyaml";
-    }
-    if (className.startsWith("org/snakeyaml/engine/v2/constructor/")
         && methodName.equals("getClassForName")) {
       return "snakeyaml";
     }

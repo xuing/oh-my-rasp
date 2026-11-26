@@ -9,7 +9,7 @@ final class ExpressionHookModule implements HookModule {
     return className.equals("org/springframework/expression/spel/standard/SpelExpression")
         || className.equals("ognl/Ognl")
         || className.equals("org/apache/commons/ognl/Ognl")
-        || className.equals("com/opensymphony/xwork2/ognl/OgnlUtil")
+        || isStrutsOgnlUtil(className)
         || className.equals("org/apache/velocity/app/VelocityEngine")
         || className.equals("org/apache/velocity/app/Velocity")
         || className.equals("org/apache/velocity/runtime/RuntimeInstance")
@@ -21,6 +21,12 @@ final class ExpressionHookModule implements HookModule {
         || isElImplementation(className)
         || isXPathImplementation(className)
         || isScriptEngineImplementation(className);
+  }
+
+  /** Struts 2.3 to 6.x name it com.opensymphony.xwork2.ognl.OgnlUtil; Struts 7 moved it to org.apache.struts2.ognl. */
+  private static boolean isStrutsOgnlUtil(String className) {
+    return className.equals("com/opensymphony/xwork2/ognl/OgnlUtil")
+        || className.equals("org/apache/struts2/ognl/OgnlUtil");
   }
 
   @Override
@@ -58,7 +64,7 @@ final class ExpressionHookModule implements HookModule {
         }
       };
     }
-    if (className.equals("com/opensymphony/xwork2/ognl/OgnlUtil")
+    if (isStrutsOgnlUtil(className)
         && (methodName.equals("getValue") || methodName.equals("setValue"))
         && descriptor.startsWith("(Ljava/lang/String;")) {
       return new EntryAdvice(methodVisitor, access, methodName, descriptor) {

@@ -158,11 +158,13 @@ public final class OhMyRaspJava8Agent {
     retransform(instrumentation, driverManager);
     retransformByName(
         instrumentation, "org.apache.skywalking.oap.server.storage.plugin.jdbc.h2.dao.H2LogQueryDAO");
+    retransformByName(
+        instrumentation,
+        "org.apache.skywalking.oap.server.storage.plugin.jdbc.common.dao.JDBCLogQueryDAO");
     retransform(instrumentation, java.net.URLClassLoader.class);
     retransform(instrumentation, scriptEngine);
     retransformByName(instrumentation, "org.apache.commons.jexl3.internal.Script");
     retransformByName(instrumentation, "org.apache.commons.jexl2.ExpressionImpl");
-    retransformByName(instrumentation, "org.apache.commons.jexl2.ScriptImpl");
     retransformByName(instrumentation, "org.apache.commons.jexl.ExpressionImpl");
     retransformByName(instrumentation, "org.apache.commons.jexl.Script");
     retransformByName(instrumentation, "com.sun.el.ValueExpressionImpl");

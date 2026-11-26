@@ -21,6 +21,12 @@ dependencies {
     implementation("org.ow2.asm:asm-commons:9.11.1")
 
     testImplementation("com.alibaba:fastjson:1.2.83")
+    testImplementation("org.eclipse.jetty.ee10:jetty-ee10-servlet:12.0.41") { isTransitive = false }
+    testImplementation("org.eclipse.jetty.ee9:jetty-ee9-nested:12.0.41") { isTransitive = false }
+    testImplementation("org.apache.skywalking:storage-jdbc-hikaricp-plugin:9.7.0") { isTransitive = false }
+    testImplementation("org.codehaus.janino:commons-compiler:3.1.12") { isTransitive = false }
+    testImplementation("com.github.pagehelper:pagehelper:4.2.1") { isTransitive = false }
+    testImplementation("org.apache.commons:commons-jexl:2.1.1") { isTransitive = false }
     testImplementation("org.junit.jupiter:junit-jupiter:5.14.4")
     testRuntimeOnly("org.junit.platform:junit-platform-launcher:1.14.4")
 }

@@ -14,7 +14,11 @@ public final class HessianAllocationVisitor {
 
   private static String decoder(String owner) {
     if (owner.startsWith(CAUCHO)) return owner.substring(CAUCHO.length());
-    if (owner.startsWith(LITE)) return owner.substring(LITE.length());
+    if (owner.startsWith(LITE)) {
+      String name = owner.substring(LITE.length());
+      // hessian-lite has no UnsafeDeserializer in any release (2.6.2, 3.2.2 to 3.2.13 checked); only Caucho's own has.
+      return name.equals("UnsafeDeserializer") ? "" : name;
+    }
     return "";
   }
 

@@ -56,13 +56,6 @@ artifact = "snakeyaml"
 versions = ["1.17", "1.33", "2.0", "2.7"]
 why = "1.17 is old Spring Boot 1.x, 1.33 is the last 1.x, 2.0 changed Constructor to require LoaderOptions, 2.7 is the newest."
 
-[[library]]
-group = "org.snakeyaml"
-artifact = "snakeyaml-engine"
-versions = ["2.0", "2.10", "3.2"]
-why = "First 2.x, last 2.x, and the newest major."
-none = { "2.0" = "FINDING: the hook wants getClassForName on org/snakeyaml/engine/v2/constructor/*, and the engine has no such method in any version", "2.10" = "same", "3.2" = "same" }
-
 # --- Expression, script and template engines ----------------------------------------------------
 
 [[library]]
@@ -214,7 +207,13 @@ why = "1.3 is the only widely deployed release; 1.4.0 is the newest."
 group = "org.codehaus.janino"
 artifact = "janino"
 versions = ["2.7.8", "3.0.16", "3.1.12"]
-why = "In 3.0 Cookable and the evaluators moved to commons-compiler, so 2.7 and 3.x differ."
+why = "The 2.7 and 3.0 compilers, and 3.1, where the evaluators override cook themselves. Cookable is in commons-compiler, listed next."
+
+[[library]]
+group = "org.codehaus.janino"
+artifact = "commons-compiler"
+versions = ["2.7.8", "3.0.16", "3.1.12"]
+why = "Cookable, the base class the janino hook names, lives here from 2.7 on; same versions as janino."
 
 # --- Spring -------------------------------------------------------------------------------------
 
@@ -293,7 +292,6 @@ group = "com.github.pagehelper"
 artifact = "pagehelper"
 versions = ["4.2.1", "5.1.11", "5.3.3", "6.1.1"]
 why = "4.2.1 is the last 4.x, whose dialect classes take different getPageSql arguments; 5.1 and 5.3 are the widely deployed lines, 6.x is the newest."
-none = { "4.2.1" = "FINDING: the dialect classes exist, but their getPageSql arguments differ from the (String, Page, CacheKey) form the hook matches" }
 
 # --- RPC, remoting, messaging -------------------------------------------------------------------
 
@@ -399,7 +397,31 @@ why = "MultiPartInputStreamParser lives here in Jetty 9.4, the last 9.4 shown."
 group = "org.eclipse.jetty"
 artifact = "jetty-server"
 versions = ["9.4.57.v20241219", "10.0.26", "11.0.26", "12.0.41"]
-why = "MultiPartFormInputStream is in jetty-server in 10 and 11; 12 replaced it."
+why = "MultiPartFormInputStream is in jetty-server in 10 and 11; 12 moved the servlet layer out, to the jetty-ee8, ee9, ee10 and ee11 artifacts below."
+
+[[library]]
+group = "org.eclipse.jetty.ee10"
+artifact = "jetty-ee10-servlet"
+versions = ["12.0.41", "12.1.15"]
+why = "Jetty 12's Jakarta EE 10 servlet layer: ServletApiRequest and ServletMultiPartFormData, which replace the jetty-server classes above; the first 12.0 line shown and the newest 12.1."
+
+[[library]]
+group = "org.eclipse.jetty.ee11"
+artifact = "jetty-ee11-servlet"
+versions = ["12.1.15"]
+why = "Jetty 12.1's Jakarta EE 11 servlet layer, a copy of ee10's classes under org.eclipse.jetty.ee11.servlet."
+
+[[library]]
+group = "org.eclipse.jetty.ee9"
+artifact = "jetty-ee9-nested"
+versions = ["12.0.41"]
+why = "Jetty 12's EE 9 layer, which keeps the 10/11 MultiPartFormInputStream under org.eclipse.jetty.ee9.nested."
+
+[[library]]
+group = "org.eclipse.jetty.ee8"
+artifact = "jetty-ee8-nested"
+versions = ["12.0.41"]
+why = "Jetty 12's EE 8 (javax) layer, same MultiPartFormInputStream under org.eclipse.jetty.ee8.nested."
 
 # --- XML, activation, other ---------------------------------------------------------------------
 
@@ -443,8 +465,7 @@ why = "SimpleInArchiveItemImpl in the long-lived 16.02 and the newest."
 group = "org.apache.skywalking"
 artifact = "storage-jdbc-hikaricp-plugin"
 versions = ["8.9.1", "9.7.0"]
-why = "H2LogQueryDAO in the last 8.x and the last 9.x."
-none = { "9.7.0" = "FINDING: 9.x replaced H2LogQueryDAO with JDBCLogQueryDAO in a common package, so the hook's class is gone" }
+why = "H2LogQueryDAO in the last 8.x; 9.x replaced it with JDBCLogQueryDAO in a common package, shown at the last 9.x."
 
 [[library]]
 group = "com.h2database"
