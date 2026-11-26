@@ -1,0 +1,29 @@
+# Hook families that rewrite no method of any library in libraries.toml, each with the reason.
+#
+# check.py fails for a unit that hooks nothing and is not listed here. It also fails for an entry
+# that is no longer needed (the unit now hooks a library method) or names a unit that no longer
+# exists, so this list can only shrink. A backport transformer is written with {N} for the version
+# token: Java{N}FileTransformer is Java8FileTransformer, Java11FileTransformer and Java17FileTransformer.
+
+[primary]
+ArchiveHookModule = "JDK-only: rewrites java.util.zip.ZipInputStream and ZipFile."
+Base64HookModule = "JDK-only: rewrites java.util.Base64$Decoder."
+ClassLoaderHookModule = "JDK-only: rewrites java.net.URLClassLoader, sun.rmi.server.LoaderHandler and URLClassPath loaders."
+FileHookModule = "JDK-only: rewrites java.io and java.nio.file classes."
+JavaBeansHookModule = "JDK-only: rewrites java.beans.Expression and Statement and com.sun.beans.decoder.DocumentHandler."
+JmxHookModule = "JDK-only: rewrites the JDK's DefaultMBeanServerInterceptor and BadAttributeValueExpException."
+JndiHookModule = "JDK-only: rewrites javax.naming.InitialContext and com.sun.jndi URL contexts."
+JwtHookModule = "Not a library: its target is io.dataease.auth.filter.CommunityTokenFilter, a class of the DataEase application."
+NetworkHookModule = "JDK-only: rewrites java.net.URL, InetAddress and the JDK's HTTP clients."
+ObjectInputStreamHookModule = "JDK-only: rewrites java.io.ObjectInputStream."
+RmiRegistryHookModule = "JDK-only: rewrites sun.rmi.registry.RegistryImpl."
+
+[backport]
+"Java{N}Base64Transformer" = "JDK-only: rewrites java.util.Base64$Decoder."
+"Java{N}ClassLoaderTransformer" = "JDK-only: rewrites java.net.URLClassLoader, sun.rmi.server.LoaderHandler and URLClassPath loaders."
+"Java{N}FileTransformer" = "JDK-only: rewrites java.io and java.nio.file classes."
+"Java{N}JavaBeansTransformer" = "JDK-only: rewrites java.beans.Expression and Statement and com.sun.beans.decoder.DocumentHandler."
+"Java{N}JmxTransformer" = "JDK-only: rewrites the JDK's DefaultMBeanServerInterceptor and BadAttributeValueExpException."
+"Java{N}JndiTransformer" = "JDK-only: rewrites javax.naming.InitialContext and com.sun.jndi URL contexts."
+"Java{N}JwtTransformer" = "Not a library: its target is io.dataease.auth.filter.CommunityTokenFilter, a class of the DataEase application."
+"Java{N}UrlTransformer" = "JDK-only: rewrites java.net.URL and the JDK's HTTP clients."

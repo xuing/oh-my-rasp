@@ -49,6 +49,15 @@ class RegistryTest(unittest.TestCase):
                     task = fixture.gradle.rsplit(":", 1)[-1]
                     self.assertIn(f'"{task}"', self.gradle, f"{probe.id}: Gradle task {fixture.gradle} is not registered")
 
+    def test_ci_stages_every_gradle_fixture(self):
+        # The build-agents job names its staging tasks one by one; a probe whose fixture is missing there fails on every line.
+        job = (WORKFLOWS / "agent.yml").read_text()
+        job = job[:job.index("  windows-file-streams:")]
+        for probe in self.probes.values():
+            for fixture in probe.fixtures:
+                if fixture.gradle:
+                    self.assertIn(fixture.gradle, job, f"{probe.id}: agent.yml's build-agents job does not run {fixture.gradle}")
+
     def test_line_tasks_exist_in_the_build(self):
         for line in self.lines.values():
             for task in line.build:
