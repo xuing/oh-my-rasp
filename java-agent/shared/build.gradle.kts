@@ -22,3 +22,26 @@ tasks.withType<JavaCompile>().configureEach {
 tasks.jar {
     archiveBaseName.set("ohmyrasp-agent-shared")
 }
+
+// The agent JARs' entry classes (io.ohmyrasp.agent.launch.*Entry) are class-file version 49, so a Java 6
+// or 7 JVM can load them and report that no line fits instead of aborting. javac cannot emit version 49,
+// so EntryGenerator writes them with ASM and the directory it writes joins this module's main output:
+// the JAR, the test classpath and every agent JAR get them as if compiled here.
+val entryGenerator: SourceSet by sourceSets.creating
+dependencies {
+    "entryGeneratorImplementation"("org.ow2.asm:asm:9.11.1")
+}
+val launcherEntriesDir = layout.buildDirectory.dir("generated/launcher-entries")
+val generateLauncherEntries = tasks.register<JavaExec>("generateLauncherEntries") {
+    group = "build"
+    description = "Writes the version 49 launcher entry classes."
+    classpath = entryGenerator.runtimeClasspath
+    mainClass.set("io.ohmyrasp.agent.launch.EntryGenerator")
+    val output = launcherEntriesDir
+    outputs.dir(output)
+    argumentProviders.add(CommandLineArgumentProvider { listOf(output.get().asFile.absolutePath) })
+    doFirst { output.get().asFile.deleteRecursively() }
+}
+sourceSets.main {
+    output.dir(mapOf("builtBy" to generateLauncherEntries), launcherEntriesDir)
+}
