@@ -286,7 +286,6 @@ group = "com.github.pagehelper"
 artifact = "pagehelper"
 versions = ["4.2.1", "5.1.11", "5.3.3", "6.1.1"]
 why = "4.2.1 is the last 4.x, whose dialect classes take different getPageSql arguments; 5.1 and 5.3 are the widely deployed lines, 6.x is the newest."
-none = { "4.2.1" = "FINDING: the dialect classes exist, but their getPageSql arguments differ from the (String, Page, CacheKey) form the hook matches" }
 
 # --- RPC, remoting, messaging -------------------------------------------------------------------
 

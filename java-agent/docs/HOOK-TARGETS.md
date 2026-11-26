@@ -151,7 +151,7 @@ not counted, only hooks on named targets. Primary is the JDK 21 and 25 agent, ba
 | `org.mybatis:mybatis` | 3.5.6 | 15 | 15 |
 | `org.mybatis:mybatis` | 3.5.19 | 18 | 18 |
 | `org.mybatis:mybatis` | 3.6.0 | 18 | 18 |
-| `com.github.pagehelper:pagehelper` | 4.2.1 (no hook, see below) | 0 | 0 |
+| `com.github.pagehelper:pagehelper` | 4.2.1 | 6 | 6 |
 | `com.github.pagehelper:pagehelper` | 5.1.11 | 14 | 14 |
 | `com.github.pagehelper:pagehelper` | 5.3.3 | 21 | 21 |
 | `com.github.pagehelper:pagehelper` | 6.1.1 | 23 | 23 |
@@ -240,7 +240,6 @@ is a hook that should be fixed.
 | Library | Version | Reason |
 |---|---|---|
 | `javax.el:javax.el-api` | 2.2.1 | javax.el.ELProcessor, the class the hook wants, first appears in EL 3.0; ExpressionFactory has no concrete method the hook rewrites |
-| `com.github.pagehelper:pagehelper` | 4.2.1 | FINDING: the dialect classes exist, but their getPageSql arguments differ from the (String, Page, CacheKey) form the hook matches |
 | `org.apache.skywalking:storage-jdbc-hikaricp-plugin` | 9.7.0 | FINDING: 9.x replaced H2LogQueryDAO with JDBCLogQueryDAO in a common package, so the hook's class is gone |
 
 ## Hook families with no library target
@@ -288,6 +287,7 @@ signature); each is a place to check that the hook still covers what it did.
 | Library | Hooked in | Not hooked in | Methods |
 |---|---|---|---|
 | `com.alibaba:fastjson` | 1.2.47 1.2.68 1.2.83 | 1.2.24 | `com/alibaba/fastjson/parser/ParserConfig.checkAutoType` |
+| `com.github.pagehelper:pagehelper` | 4.2.1 | 5.1.11 5.3.3 6.1.1 | `com/github/pagehelper/dialect/Db2Dialect.getPageSql`<br>`com/github/pagehelper/dialect/HsqldbDialect.getPageSql`<br>`com/github/pagehelper/dialect/InformixDialect.getPageSql`<br>`com/github/pagehelper/dialect/MySqlDialect.getPageSql`<br>and 2 more |
 | `com.github.pagehelper:pagehelper` | 5.1.11 5.3.3 6.1.1 | 4.2.1 | `com/github/pagehelper/dialect/helper/Db2Dialect.getPageSql`<br>`com/github/pagehelper/dialect/helper/HerdDBDialect.getPageSql`<br>`com/github/pagehelper/dialect/helper/HsqldbDialect.getPageSql`<br>`com/github/pagehelper/dialect/helper/InformixDialect.getPageSql`<br>and 10 more |
 | `com.github.pagehelper:pagehelper` | 5.3.3 6.1.1 | 4.2.1 5.1.11 | `com/github/pagehelper/dialect/helper/AS400Dialect.getPageSql`<br>`com/github/pagehelper/dialect/helper/CirroDataDialect.getPageSql`<br>`com/github/pagehelper/dialect/helper/FirebirdDialect.getPageSql`<br>`com/github/pagehelper/dialect/helper/Oracle9iDialect.getPageSql`<br>and 3 more |
 | `com.github.pagehelper:pagehelper` | 6.1.1 | 4.2.1 5.1.11 5.3.3 | `com/github/pagehelper/dialect/helper/XuguDialect.getPageSql`<br>`com/github/pagehelper/dialect/rowbounds/XuguRowBoundsDialect.getPageSql` |
@@ -331,6 +331,7 @@ signature); each is a place to check that the hook still covers what it did.
 | Library | Hooked in | Not hooked in | Methods |
 |---|---|---|---|
 | `com.alibaba:fastjson` | 1.2.68 1.2.83 | 1.2.24 1.2.47 | `com/alibaba/fastjson/parser/ParserConfig.checkAutoType` |
+| `com.github.pagehelper:pagehelper` | 4.2.1 | 5.1.11 5.3.3 6.1.1 | `com/github/pagehelper/dialect/Db2Dialect.getPageSql`<br>`com/github/pagehelper/dialect/HsqldbDialect.getPageSql`<br>`com/github/pagehelper/dialect/InformixDialect.getPageSql`<br>`com/github/pagehelper/dialect/MySqlDialect.getPageSql`<br>and 2 more |
 | `com.github.pagehelper:pagehelper` | 5.1.11 5.3.3 6.1.1 | 4.2.1 | `com/github/pagehelper/dialect/helper/Db2Dialect.getPageSql`<br>`com/github/pagehelper/dialect/helper/HerdDBDialect.getPageSql`<br>`com/github/pagehelper/dialect/helper/HsqldbDialect.getPageSql`<br>`com/github/pagehelper/dialect/helper/InformixDialect.getPageSql`<br>and 10 more |
 | `com.github.pagehelper:pagehelper` | 5.3.3 6.1.1 | 4.2.1 5.1.11 | `com/github/pagehelper/dialect/helper/AS400Dialect.getPageSql`<br>`com/github/pagehelper/dialect/helper/CirroDataDialect.getPageSql`<br>`com/github/pagehelper/dialect/helper/FirebirdDialect.getPageSql`<br>`com/github/pagehelper/dialect/helper/Oracle9iDialect.getPageSql`<br>and 3 more |
 | `com.github.pagehelper:pagehelper` | 6.1.1 | 4.2.1 5.1.11 5.3.3 | `com/github/pagehelper/dialect/helper/XuguDialect.getPageSql`<br>`com/github/pagehelper/dialect/rowbounds/XuguRowBoundsDialect.getPageSql` |
