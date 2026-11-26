@@ -5,8 +5,12 @@ import java.io.FileWriter;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
+import java.net.MalformedURLException;
+import java.net.URL;
+import java.net.URLConnection;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
+import java.nio.file.InvalidPathException;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.ArrayList;
@@ -18,7 +22,6 @@ import java.util.Properties;
 import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.TimeUnit;
-import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -29,10 +32,11 @@ import java.util.regex.Pattern;
  * the agent-jdk25 design using only Java 8 APIs.
  *
  * <p>Deliberately self-contained and duplicated per backport module (no shared
- * module), so each backport jar stays independently buildable. Event reporting
- * runs on a background daemon thread when targeting a file path so the protected
- * request never blocks on a file write; {@code OHMYRASP_LOG_SYNC=true} reverts
- * to inline writes for deterministic acceptance/CI runs.
+ * module), so each backport jar stays independently buildable. When the log
+ * target resolved at start-up is a file path, events go through a background
+ * daemon writer thread so the protected request never blocks on a file write;
+ * a target that becomes a file later, or {@code OHMYRASP_LOG_SYNC=true}, writes
+ * inline.
  */
 public final class RaspRuntime {
   enum Mode {
@@ -42,6 +46,7 @@ public final class RaspRuntime {
   }
 
   static final String SHIRUDO_PROPERTIES_RESOURCE = "/META-INF/ohmyrasp-shirudo.properties";
+  private static final String AGENT_ENTRY_CLASS = "io.ohmyrasp.agent.java8.OhMyRaspJava8Agent";
 
   private interface PropertyLookup {
     String get(String key);
@@ -107,22 +112,26 @@ public final class RaspRuntime {
     private static Config resolve(Properties baked, PropertyLookup sysProps, PropertyLookup env) {
       boolean lockConfig = parseBoolean(bakedProperty(baked, "lock_config"));
 
-      String bakedStandalone = bakedProperty(baked, "standalone");
-      String standaloneRaw =
+      // Each source is parsed on its own: an invalid value is ignored and the next source applies.
+      // Under lock_config only the baked value counts, and a missing one takes the default.
+      Boolean bakedStandalone = parseBooleanObject(bakedProperty(baked, "standalone"));
+      Boolean chosenStandalone =
           lockConfig
               ? bakedStandalone
-              : firstNonBlank(
-                  sysProps.get("ohmyrasp.standalone"),
-                  env.get("OHMYRASP_STANDALONE"),
+              : firstNonNull(
+                  parseBooleanObject(sysProps.get("ohmyrasp.standalone")),
+                  parseBooleanObject(env.get("OHMYRASP_STANDALONE")),
                   bakedStandalone);
-      boolean standalone = parseBoolean(standaloneRaw);
+      boolean standalone = Boolean.TRUE.equals(chosenStandalone);
 
-      String bakedMode = bakedProperty(baked, "mode");
-      String modeRaw =
+      Mode bakedMode = parseMode(bakedProperty(baked, "mode"));
+      Mode resolvedMode =
           lockConfig
               ? bakedMode
-              : firstNonBlank(sysProps.get("ohmyrasp.mode"), env.get("OHMYRASP_MODE"), bakedMode);
-      Mode resolvedMode = parseMode(modeRaw);
+              : firstNonNull(
+                  parseMode(sysProps.get("ohmyrasp.mode")),
+                  parseMode(env.get("OHMYRASP_MODE")),
+                  bakedMode);
       if (resolvedMode == null && standalone) {
         resolvedMode = Mode.BLOCK;
       }
@@ -139,7 +148,7 @@ public final class RaspRuntime {
         controlRaw = controlRaw.trim();
       }
       boolean controlDisabled = isControlDisabledValue(controlRaw);
-      Path controlPath = controlDisabled ? null : Paths.get(controlRaw);
+      Path controlPath = controlDisabled ? null : toPathOrNull(controlRaw);
 
       String bakedLog = bakedProperty(baked, "log");
       String logPath =
@@ -156,20 +165,12 @@ public final class RaspRuntime {
         logPath = logPath.trim();
       }
 
-      String bakedLatencySample = bakedProperty(baked, "latency_sample");
-      String sampleRaw =
-          firstNonBlank(
-              sysProps.get("ohmyrasp.latency_sample"),
-              env.get("OHMYRASP_LATENCY_SAMPLE"),
-              bakedLatencySample);
-      int latencySample = standalone ? 0 : 10;
-      if (sampleRaw != null) {
-        try {
-          latencySample = Math.max(0, Integer.parseInt(sampleRaw.trim()));
-        } catch (NumberFormatException ignored) {
-          // keep default
-        }
-      }
+      Integer chosenSample =
+          firstNonNull(
+              parseSampleRate(sysProps.get("ohmyrasp.latency_sample")),
+              parseSampleRate(env.get("OHMYRASP_LATENCY_SAMPLE")),
+              parseSampleRate(bakedProperty(baked, "latency_sample")));
+      int latencySample = chosenSample != null ? chosenSample.intValue() : (standalone ? 0 : 10);
 
       return new Config(
           standalone,
@@ -200,12 +201,14 @@ public final class RaspRuntime {
   private static final AtomicLong SAMPLE_COUNTER = new AtomicLong();
   private static final boolean SYNC = syncFlag();
   private static final int SAMPLE_RATE = INITIAL_CONFIG.latencySample;
-  private static final AtomicBoolean WRITER_STARTED = new AtomicBoolean(false);
+  // The writer thread exists only when the log target resolved at start-up is a file. It is never
+  // created inside a hook: a target that becomes a file later is written inline.
+  private static final boolean WRITER_ENABLED = isFileLogTarget(INITIAL_CONFIG.logPath);
   private static volatile boolean running = true;
   private static volatile String lastLogPath;
 
   static {
-    if (!INITIAL_CONFIG.controlDisabled) {
+    if (CONTROL_PATH != null) {
       reloadControl();
       Thread poller =
           new Thread(
@@ -228,17 +231,13 @@ public final class RaspRuntime {
       poller.setDaemon(true);
       poller.start();
     }
-    if (isFileLogTarget(INITIAL_CONFIG.logPath)) {
-      ensureWriterStarted();
+    if (WRITER_ENABLED) {
+      startWriter();
     }
   }
 
   static Mode mode() {
     return mode;
-  }
-
-  static Config initialConfig() {
-    return INITIAL_CONFIG;
   }
 
   /** True only when detection is explicitly OFF. */
@@ -365,18 +364,13 @@ public final class RaspRuntime {
     }
     String fileTarget = logPath.trim();
     lastLogPath = fileTarget;
-    if (SYNC) {
+    if (SYNC || !WRITER_ENABLED) {
       appendBatch(fileTarget, Collections.singletonList(line));
       return;
     }
-    ensureWriterStarted();
     if (!QUEUE.offer(line)) {
       DROPPED.incrementAndGet();
     }
-  }
-
-  static void emitMessage(String line) {
-    writeEvent(resolveLogPath(), line);
   }
 
   private static boolean emitSpecialTarget(String logPath, String line) {
@@ -399,10 +393,7 @@ public final class RaspRuntime {
     return false;
   }
 
-  private static void ensureWriterStarted() {
-    if (!WRITER_STARTED.compareAndSet(false, true)) {
-      return;
-    }
+  private static void startWriter() {
     Thread writer =
         new Thread(
             new Runnable() {
@@ -430,10 +421,7 @@ public final class RaspRuntime {
    * traffic. Suppressed in sync mode to keep acceptance output deterministic.
    */
   static void sampleLatency(long micros) {
-    if (SYNC || detectionOff() || micros < 0 || SAMPLE_RATE <= 0) {
-      return;
-    }
-    if (SAMPLE_RATE > 1 && SAMPLE_COUNTER.incrementAndGet() % SAMPLE_RATE != 0) {
+    if (!latencySampled(SYNC, detectionOff(), micros, SAMPLE_RATE, SAMPLE_COUNTER)) {
       return;
     }
     String line =
@@ -444,6 +432,15 @@ public final class RaspRuntime {
             + micros
             + "}";
     writeEvent(resolveLogPath(), line);
+  }
+
+  /** Whether this request's latency is recorded: one in {@code sampleRate}, never in sync mode. */
+  static boolean latencySampled(
+      boolean sync, boolean off, long micros, int sampleRate, AtomicLong counter) {
+    if (sync || off || micros < 0 || sampleRate <= 0) {
+      return false;
+    }
+    return sampleRate == 1 || counter.incrementAndGet() % sampleRate == 0;
   }
 
   private static void drain() {
@@ -511,25 +508,67 @@ public final class RaspRuntime {
 
   private static Properties loadBakedProperties() {
     Properties props = new Properties();
-    InputStream in = RaspRuntime.class.getResourceAsStream(SHIRUDO_PROPERTIES_RESOURCE);
-    if (in == null) {
-      in = ClassLoader.getSystemResourceAsStream("META-INF/ohmyrasp-shirudo.properties");
-    }
-    if (in == null) {
-      return props;
-    }
+    InputStream in = null;
     try {
+      URL resource = ownResource(SHIRUDO_PROPERTIES_RESOURCE);
+      if (resource == null) {
+        return props;
+      }
+      URLConnection connection = resource.openConnection();
+      connection.setUseCaches(false);
+      in = connection.getInputStream();
       props.load(new InputStreamReader(in, StandardCharsets.UTF_8));
-    } catch (IOException ignored) {
-      // treat unreadable properties as absent
+    } catch (IOException | RuntimeException e) {
+      // A missing resource (FileNotFoundException) leaves no keys. An unreadable or malformed
+      // one (Properties.load throws IllegalArgumentException on a malformed unicode escape) never
+      // aborts start-up, and the keys read before the bad line stay, so a damaged later line
+      // cannot erase an already-read lock_config or mode.
     } finally {
-      try {
-        in.close();
-      } catch (IOException ignored) {
-        // nothing useful to do
+      if (in != null) {
+        try {
+          in.close();
+        } catch (IOException ignored) {
+          // nothing useful to do
+        }
       }
     }
     return props;
+  }
+
+  /**
+   * The URL of {@code name} in the agent's own JAR or class directory, or null when that location
+   * is unknown. Class-relative lookup is not used: for a class on the bootstrap search it is a
+   * system class path lookup, where an application JAR comes before the agent JAR, so a same-named
+   * resource there would win.
+   */
+  private static URL ownResource(String name) throws MalformedURLException {
+    URL location = codeLocation(RaspRuntime.class);
+    if (location == null) {
+      // Defined by the bootstrap loader, which records no code source. The agent JAR is the one the
+      // system class loader loaded the entry class from; loadClass returns that loaded class.
+      try {
+        ClassLoader system = ClassLoader.getSystemClassLoader();
+        location = codeLocation(Class.forName(AGENT_ENTRY_CLASS, false, system));
+      } catch (ClassNotFoundException | LinkageError e) {
+        return null;
+      }
+    }
+    if (location == null) {
+      return null;
+    }
+    String base = location.toString();
+    String entry = name.substring(1);
+    if (base.endsWith("/")) {
+      return new URL(base.concat(entry));
+    }
+    return new URL("jar:".concat(base).concat("!/").concat(entry));
+  }
+
+  private static URL codeLocation(Class<?> type) {
+    if (type.getProtectionDomain() == null || type.getProtectionDomain().getCodeSource() == null) {
+      return null;
+    }
+    return type.getProtectionDomain().getCodeSource().getLocation();
   }
 
   private static String bakedProperty(Properties baked, String key) {
@@ -541,14 +580,49 @@ public final class RaspRuntime {
   }
 
   private static boolean parseBoolean(String value) {
+    return Boolean.TRUE.equals(parseBooleanObject(value));
+  }
+
+  /** TRUE or FALSE for a recognised token, null for a blank or unrecognised one. */
+  private static Boolean parseBooleanObject(String value) {
     if (!hasText(value)) {
-      return false;
+      return null;
     }
     String normalized = value.trim().toLowerCase(Locale.ROOT);
-    return normalized.equals("true")
+    if (normalized.equals("true")
         || normalized.equals("1")
         || normalized.equals("yes")
-        || normalized.equals("on");
+        || normalized.equals("on")) {
+      return Boolean.TRUE;
+    }
+    if (normalized.equals("false")
+        || normalized.equals("0")
+        || normalized.equals("no")
+        || normalized.equals("off")) {
+      return Boolean.FALSE;
+    }
+    return null;
+  }
+
+  /** A non-negative rate, or null for a blank or non-numeric value. */
+  private static Integer parseSampleRate(String value) {
+    if (!hasText(value)) {
+      return null;
+    }
+    try {
+      return Integer.valueOf(Math.max(0, Integer.parseInt(value.trim())));
+    } catch (NumberFormatException ignored) {
+      return null;
+    }
+  }
+
+  /** The control path, or null when the value is not a valid path on this platform. */
+  private static Path toPathOrNull(String value) {
+    try {
+      return Paths.get(value);
+    } catch (InvalidPathException ignored) {
+      return null;
+    }
   }
 
   private static boolean syncFlag() {
@@ -559,6 +633,16 @@ public final class RaspRuntime {
 
   private static boolean hasText(String value) {
     return value != null && value.trim().length() > 0;
+  }
+
+  private static <T> T firstNonNull(T first, T second, T third) {
+    if (first != null) {
+      return first;
+    }
+    if (second != null) {
+      return second;
+    }
+    return third;
   }
 
   private static String firstNonBlank(String first, String second) {
