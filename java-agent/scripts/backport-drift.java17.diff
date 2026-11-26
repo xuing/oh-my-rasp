@@ -409,9 +409,6 @@
 @@
 +import java.util.zip.ZipEntry;
 @@
--    RaspRuntime.writeStartupLine(logPath, startupMessage(mode, agentArgs, instrumentation));
--  }
--
 -  private static String startupMessage(
 -      String mode, String agentArgs, Instrumentation instrumentation) {
 -    return "{"
@@ -446,8 +443,8 @@
 -        + "\"xxe_hook\":\"installed\","
 -        + "\"instrumentation\":\"" + (instrumentation == null ? "missing" : "available") + "\""
 -        + "}";
-+    String message = startupMessage(mode, agentArgs, instrumentation);
-+    RaspRuntime.writeStartupLine(logPath, message);
+-  }
+-
 @@
 +  private static String startupMessage(
 +      String mode, String agentArgs, Instrumentation instrumentation) {
@@ -487,12 +484,12 @@
 +  }
 +
 @@
-+    instrumentation.addTransformer(new Java<N>ArchiveTransformer(), canRetransform);
++    register(instrumentation, registered, new Java<N>ArchiveTransformer(), canRetransform);
 @@
--    instrumentation.addTransformer(new Java<N>ArchiveTransformer(), canRetransform);
-+    instrumentation.addTransformer(new Java<N>ClassLoaderTransformer(), canRetransform);
+-    register(instrumentation, registered, new Java<N>ArchiveTransformer(), canRetransform);
++    register(instrumentation, registered, new Java<N>ClassLoaderTransformer(), canRetransform);
 @@
--    instrumentation.addTransformer(new Java<N>ClassLoaderTransformer(), canRetransform);
+-    register(instrumentation, registered, new Java<N>ClassLoaderTransformer(), canRetransform);
 @@
 -    retransform(instrumentation, java.io.ObjectInputStream.class);
 +    retransform(instrumentation, ObjectInputStream.class);
@@ -514,12 +511,16 @@
 -    retransform(instrumentation, java.net.URLClassLoader.class);
 @@
 +    retransformByName(instrumentation, "com.sun.tools.javac.api.JavacTool");
++    // Janino loaded before a dynamic attach: its compiler base class is hooked like javac.
++    retransformByName(instrumentation, "org.codehaus.commons.compiler.Cookable");
 @@
 -    // The bootstrap provider can load while another transformer is running, after
 -    // the loaded-class snapshot. Revisit the platform owner outside that transform.
 -    retransformByName(instrumentation, java.io.File.separatorChar == '/'
 -        ? "sun.nio.fs.UnixFileSystemProvider" : "sun.nio.fs.WindowsFileSystemProvider");
 -    retransformByName(instrumentation, "com.sun.tools.javac.api.JavacTool");
+-    // Janino loaded before a dynamic attach: its compiler base class is hooked like javac.
+-    retransformByName(instrumentation, "org.codehaus.commons.compiler.Cookable");
 @@
 -    StringBuilder builder = new StringBuilder(value.length() + 16);
 +    var builder = new StringBuilder(value.length() + 16);

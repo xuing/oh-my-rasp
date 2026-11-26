@@ -32,7 +32,7 @@ final class Java8EntryOrderTest {
     assertTrue(install != null, "no install method: " + calls.keySet());
     String[] order = {
       "OhMyRaspJava8Agent.appendSelfToBootstrap",
-      "OhMyRaspJava8Agent.requireOnBootstrapSearch",
+      "OhMyRaspJava8Agent.requireBootstrapDefined",
       "Preload.classes",
       "Java8RaspLine.start",
       "OhMyRaspJava8Agent.installTransformer",
@@ -47,6 +47,9 @@ final class Java8EntryOrderTest {
     assertEquals(1, count(install, "Java8RaspLine.start"), install.toString());
     for (Map.Entry<String, List<String>> method : calls.entrySet()) {
       if (method.getValue().contains("Instrumentation.addTransformer")) {
+        assertEquals("register", method.getKey(), "only register adds a transformer, and records it for the undo");
+      }
+      if (method.getValue().contains("OhMyRaspJava8Agent.register")) {
         assertEquals("installTransformer", method.getKey(), "only installTransformer registers transformers");
       }
     }

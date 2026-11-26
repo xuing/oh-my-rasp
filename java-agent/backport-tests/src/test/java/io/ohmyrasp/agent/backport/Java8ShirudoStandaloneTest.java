@@ -3,6 +3,7 @@ package io.ohmyrasp.agent.backport;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import io.ohmyrasp.agent.java8.Java8RaspBlockException;
@@ -11,6 +12,7 @@ import io.ohmyrasp.agent.java8.Java8RaspLine;
 import io.ohmyrasp.agent.java8.OhMyRaspJava8Agent;
 import java.io.ByteArrayOutputStream;
 import java.io.PrintStream;
+import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 import java.net.URL;
 import java.net.URLClassLoader;
@@ -839,6 +841,198 @@ final class Java8ShirudoStandaloneTest {
       }
     }
     assertTrue(missing.isEmpty(), "not loaded by the line's start: " + missing);
+  }
+
+  /**
+   * A JAR at {@code jar} holding the RaspRuntime classes, a manifest that says it is an upatch JAR when
+   * {@code upatch}, and {@code baked} (none when null), its compressed data overwritten when {@code corrupt}.
+   */
+  private static Path runtimeJar(Path jar, String baked, boolean upatch, boolean corrupt) throws Exception {
+    Path classes = bakedResource("");
+    Files.delete(classes.resolve("META-INF/ohmyrasp-shirudo.properties"));
+    Files.createDirectories(jar.getParent());
+    java.util.jar.Manifest manifest = new java.util.jar.Manifest();
+    manifest.getMainAttributes().put(java.util.jar.Attributes.Name.MANIFEST_VERSION, "1.0");
+    if (upatch) {
+      manifest.getMainAttributes().putValue("OhMyRasp-Shirudo-Upatch", "true");
+    }
+    String packagePath = RaspRuntime.class.getPackage().getName().replace('.', '/');
+    java.util.jar.JarOutputStream out = new java.util.jar.JarOutputStream(Files.newOutputStream(jar), manifest);
+    try {
+      DirectoryStream<Path> files = Files.newDirectoryStream(classes.resolve(packagePath));
+      try {
+        for (Path file : files) {
+          out.putNextEntry(new java.util.jar.JarEntry(packagePath + "/" + file.getFileName()));
+          out.write(Files.readAllBytes(file));
+          out.closeEntry();
+        }
+      } finally {
+        files.close();
+      }
+      if (baked != null) {
+        byte[] bytes = baked.getBytes(StandardCharsets.UTF_8);
+        java.util.jar.JarEntry entry = new java.util.jar.JarEntry("META-INF/ohmyrasp-shirudo.properties");
+        out.putNextEntry(entry);
+        out.write(bytes);
+        out.closeEntry();
+      }
+    } finally {
+      out.close();
+    }
+    if (corrupt) {
+      // The compressed data of the settings, overwritten: reading them fails in the inflater.
+      byte[] all = Files.readAllBytes(jar);
+      byte[] name = "META-INF/ohmyrasp-shirudo.properties".getBytes(StandardCharsets.UTF_8);
+      int header = new String(all, StandardCharsets.ISO_8859_1).indexOf(new String(name, StandardCharsets.ISO_8859_1)) - 30;
+      assertTrue(header >= 0, "the settings are in the JAR");
+      int nameLength = (all[header + 26] & 0xff) | (all[header + 27] & 0xff) << 8;
+      int extraLength = (all[header + 28] & 0xff) | (all[header + 29] & 0xff) << 8;
+      int data = header + 30 + nameLength + extraLength;
+      for (int i = 0; i < 4; i++) {
+        all[data + i] = (byte) 0xff;
+      }
+      Files.write(jar, all);
+    }
+    return jar;
+  }
+
+  @Test
+  void bakedPropertiesAreReadFromAJarUnderADirectoryWhoseNameEndsInABang() throws Exception {
+    // A jar: URL takes the first "!/" as the end of the archive name: the settings were silently lost.
+    Path jar = runtimeJar(Files.createTempDirectory("ohmyrasp-java8-bang").resolve("odd!").resolve("ohmyrasp.jar"),
+        "standalone=true\nlock_config=true\nmode=block\n", true, false);
+    Map<String, String> init = asyncInit();
+    init.put("ohmyrasp.mode", "off");
+    Class<?> runtime = loadIsolatedRuntime(init, jar);
+    assertEquals("block", bakedProperties(runtime).getProperty("mode"), bakedProperties(runtime).toString());
+    assertEquals("BLOCK", String.valueOf(call(runtime, "mode")), "the locked baked mode wins over -Dohmyrasp.mode=off");
+  }
+
+  @Test
+  void anUpatchJarWhoseSettingsAreMissingOrUnreadableFailsTheStart() throws Exception {
+    Path dir = Files.createTempDirectory("ohmyrasp-java8-unreadable");
+    java.lang.reflect.InvocationTargetException missing = assertThrows(java.lang.reflect.InvocationTargetException.class,
+        () -> loadIsolatedRuntime(asyncInit(), runtimeJar(dir.resolve("missing.jar"), null, true, false)));
+    assertTrue(String.valueOf(missing.getCause()).contains("upatch JAR without"), String.valueOf(missing.getCause()));
+
+    java.lang.reflect.InvocationTargetException corrupt = assertThrows(java.lang.reflect.InvocationTargetException.class,
+        () -> loadIsolatedRuntime(asyncInit(),
+            runtimeJar(dir.resolve("corrupt.jar"), "standalone=true\nlock_config=true\nmode=block\n", true, true)));
+    assertTrue(String.valueOf(corrupt.getCause()).contains("cannot read"), String.valueOf(corrupt.getCause()));
+
+    // A general JAR carries no settings: none, not an error.
+    Class<?> general = loadIsolatedRuntime(asyncInit(), runtimeJar(dir.resolve("general.jar"), null, false, false));
+    assertTrue(bakedProperties(general).isEmpty());
+  }
+
+  /** An isolated runtime that polls a control file and writes through the writer thread: both threads run. */
+  private static Class<?> startIsolatedWithThreads() throws Exception {
+    Path dir = Files.createTempDirectory("ohmyrasp-java8-threads");
+    Map<String, String> init = new HashMap<String, String>();
+    init.put("ohmyrasp.log.sync", "false");
+    init.put("ohmyrasp.control", dir.resolve("control.json").toString());
+    init.put("ohmyrasp.java8.log", dir.resolve("events.jsonl").toString());
+    return loadIsolatedRuntime(init);
+  }
+
+  private static Object call(Class<?> type, String name) throws Exception {
+    Method method = type.getDeclaredMethod(name);
+    method.setAccessible(true);
+    try {
+      return method.invoke(null);
+    } catch (java.lang.reflect.InvocationTargetException e) {
+      if (e.getCause() instanceof Exception) {
+        throw (Exception) e.getCause();
+      }
+      throw e;
+    }
+  }
+
+  @Test
+  void stopEndsTheThreadsOfAStartAndAStartCanFollow() throws Exception {
+    int pollers = threadsNamed(CONTROL_THREAD);
+    int writers = threadsNamed(WRITER_THREAD);
+    Class<?> runtime = startIsolatedWithThreads();
+    assertEquals(pollers + 1, threadsNamed(CONTROL_THREAD));
+    assertEquals(writers + 1, threadsNamed(WRITER_THREAD));
+
+    call(runtime, "stop");
+    assertEquals(Boolean.FALSE, call(runtime, "isStarted"), "the hooks are inactive after a stop");
+    assertEquals(pollers, threadsNamed(CONTROL_THREAD), "the poller stopped");
+    assertEquals(writers, threadsNamed(WRITER_THREAD), "the writer stopped");
+
+    System.setProperty("ohmyrasp.control", "none");
+    try {
+      assertEquals(Boolean.TRUE, call(runtime, "start"), "a start after a stop starts again");
+    } finally {
+      System.clearProperty("ohmyrasp.control");
+    }
+    assertEquals(Boolean.TRUE, call(runtime, "isStarted"));
+    call(runtime, "stop");
+  }
+
+  @Test
+  void anInterruptedCallerStillWaitsForTheThreadsItStops() throws Exception {
+    // A worker that takes 300 ms to end once interrupted, stopped from a caller whose interrupt status is set.
+    final Thread slow = new Thread(new Runnable() {
+      public void run() {
+        long until = System.nanoTime() + 300000000L;
+        while (System.nanoTime() < until) {
+          Thread.interrupted();
+        }
+      }
+    }, "slow-to-stop");
+    slow.setDaemon(true);
+    slow.start();
+    final Method stopQuietly = RaspRuntime.class.getDeclaredMethod("stopQuietly", Thread.class, Throwable.class);
+    stopQuietly.setAccessible(true);
+    final Object[] seen = new Object[2];
+    Thread caller = new Thread(new Runnable() {
+      public void run() {
+        Thread.currentThread().interrupt();
+        try {
+          stopQuietly.invoke(null, slow, new IllegalStateException("cleanup"));
+        } catch (Exception e) {
+          seen[0] = e;
+          return;
+        }
+        seen[0] = Boolean.valueOf(slow.isAlive());
+        seen[1] = Boolean.valueOf(Thread.currentThread().isInterrupted());
+      }
+    }, "interrupted-stopper");
+    caller.start();
+    caller.join(10000L);
+    assertEquals(Boolean.FALSE, seen[0], "the worker ended before stopQuietly returned");
+    assertEquals(Boolean.TRUE, seen[1], "the caller keeps its interrupt status");
+  }
+
+  @Test
+  void theShutdownHookWaitsForAStartAndNoStartFollowsIt() throws Exception {
+    final Class<?> runtime = startIsolatedWithThreads();
+    call(runtime, "stop");
+    Field lockField = runtime.getDeclaredField("START_LOCK");
+    lockField.setAccessible(true);
+    Object startLock = lockField.get(null);
+    Thread hook = new Thread(new Runnable() {
+      public void run() {
+        try {
+          call(runtime, "closeForShutdown");
+        } catch (Exception e) {
+          throw new IllegalStateException(e);
+        }
+      }
+    }, "shutdown-hook-stand-in");
+    synchronized (startLock) {
+      hook.start();
+      for (int i = 0; i < 200 && hook.getState() != Thread.State.BLOCKED; i++) {
+        Thread.sleep(10L);
+      }
+      assertEquals(Thread.State.BLOCKED, hook.getState(), "the hook waits for a start in progress");
+    }
+    hook.join(10000L);
+    IllegalStateException refused = assertThrows(IllegalStateException.class, () -> call(runtime, "start"));
+    assertTrue(refused.getMessage().contains("shutting down"), refused.getMessage());
+    assertEquals(Boolean.FALSE, call(runtime, "isStarted"));
   }
 
   /** System properties for an isolated runtime: async writes, no control file. */

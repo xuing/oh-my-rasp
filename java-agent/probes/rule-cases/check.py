@@ -11,6 +11,12 @@ driver loads a marker class at each end of the operation. A class of the agent (
 loads between the marks loaded inside a hook or a transformer, inside the JDK call the hook instruments,
 where loading a class can re-enter the hook: on a backport line the case fails and names the class, since those
 lines load at start what their hooks use. On the primary line the classes are reported (ENFORCED_ENGINES).
+
+Known gaps of the class-load check: hooks reached while the driver sets up, before its first mark (the
+listener socket, the stub JDBC driver), are not checked; and no case exercises the completion of
+HttpClient.sendAsync, the restoration of a nested servlet dispatch, MyBatis mapper substitution or the
+RocketMQ filter-server attribution, so a class first loaded on those paths would pass. The preload list
+(every class of the module and of :shared) covers them all the same.
 """
 from __future__ import annotations
 

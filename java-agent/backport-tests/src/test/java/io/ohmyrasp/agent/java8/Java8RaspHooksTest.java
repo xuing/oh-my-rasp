@@ -141,6 +141,46 @@ final class Java8RaspHooksTest {
   }
 
   @Test
+  void outsideARequestTheSameMonitoredCommandIsLoggedAgainAfterASecond() throws Exception {
+    Path log = Files.createTempFile("ohmyrasp-java8-background", ".jsonl");
+    Files.delete(log);
+    System.setProperty("ohmyrasp.java8.log", log.toString());
+    final ProcessBuilder command = new ProcessBuilder("sh", "-c", "cat /etc/shadow");
+    final java.lang.reflect.Field loggedAt =
+        io.ohmyrasp.agent.backport.BackportHooks.class.getDeclaredField("LAST_LOGGED_AT");
+    loggedAt.setAccessible(true);
+    // A background worker of its own: it never enters a servlet request.
+    final Throwable[] failure = new Throwable[1];
+    Thread worker = new Thread(new Runnable() {
+      public void run() {
+        try {
+          Java8RaspHooks.beforeProcessBuilderStart(command);
+          Java8RaspHooks.beforeProcessBuilderStart(command); // within the second: one event
+          // Two seconds later on this thread's clock, without sleeping for them.
+          long[] at = (long[]) ((ThreadLocal<?>) loggedAt.get(null)).get();
+          at[0] -= 2000000000L;
+          Java8RaspHooks.beforeProcessBuilderStart(command);
+        } catch (Throwable thrown) {
+          failure[0] = thrown;
+        }
+      }
+    }, "background-worker");
+    worker.start();
+    worker.join(30000L);
+    if (failure[0] != null) {
+      throw new AssertionError(failure[0]);
+    }
+
+    int logged = 0;
+    for (String line : Files.readAllLines(log, StandardCharsets.UTF_8)) {
+      if (line.contains("\"hook\":\"ProcessBuilder.start\"")) {
+        logged++;
+      }
+    }
+    assertEquals(2, logged, "an immediate repeat is one event; the same command a second later is logged again");
+  }
+
+  @Test
   void backgroundShellOperatorsAloneDoNotAlert() throws Exception {
     Path log = Files.createTempFile("ohmyrasp-shell-meta", ".jsonl");
     Files.delete(log);

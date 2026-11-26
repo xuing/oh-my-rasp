@@ -25,7 +25,8 @@ ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 fail=0
 
 # Passes when "$symbol(" is called in a .java file under "$where": on a line that is neither a comment nor
-# the helper's own declaration. A definition alone, or a mention in a comment, guards nothing.
+# the helper's own declaration. A definition alone, or a mention in a comment, guards nothing. The bracket
+# expression lists "]" first and holds no backslash, so it means the same to every POSIX grep.
 require_symbol() {
   local where="$1"
   local symbol="$2"
@@ -36,7 +37,7 @@ require_symbol() {
   fi
   if ! grep -rhE --include='*.java' "\\b${symbol}\\(" "$where" \
       | grep -vE '^[[:space:]]*(//|/?\*)' \
-      | grep -vE "^[[:space:]]*((public|private|protected|static|final)[[:space:]]+)+[A-Za-z0-9_<>?,. \\[\\]]+[[:space:]]${symbol}\\(" \
+      | grep -vE "^[[:space:]]*((public|private|protected|static|final|synchronized)[[:space:]]+)+[][A-Za-z0-9_<>?,. ]+[[:space:]]${symbol}[[:space:]]*\\(" \
       | grep -q .; then
     echo "PARITY FAIL: no call of '$symbol' in $where (a definition or a comment is not a guard)" >&2
     fail=1

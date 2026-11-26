@@ -4,13 +4,7 @@ import io.ohmyrasp.agent.util.ControlDocument;
 import java.io.File;
 import java.io.FileWriter;
 import java.io.IOException;
-import java.io.InputStream;
-import java.io.InputStreamReader;
 import java.io.PrintStream;
-import java.net.MalformedURLException;
-import java.net.URL;
-import java.net.URLConnection;
-import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.InvalidPathException;
 import java.nio.file.NoSuchFileException;
@@ -356,6 +350,11 @@ public final class RaspRuntime {
   }
 
   private static final Object START_LOCK = new Object();
+  // Guarded by START_LOCK: set once the shutdown hook has run; then no start succeeds.
+  private static boolean shuttingDown;
+  // Guarded by START_LOCK: what a successful start started, for stop().
+  private static Thread pollerThread;
+  private static Thread shutdownHook;
   private static volatile Started started;
 
   /** The started runtime. Throws when {@link #start} has not run: the runtime never runs unconfigured. */
@@ -382,12 +381,19 @@ public final class RaspRuntime {
    * hook, which the JVM refuses once it has begun to shut down) comes before any thread starts. If starting a
    * thread fails, the threads already started are stopped and the shutdown hook is removed, the runtime stays
    * unstarted, and a later call starts it from the beginning. The started state is published last, through the
-   * volatile {@code started}, and all its fields are final. A second call after a successful start does nothing.
+   * volatile {@code started}, and all its fields are final. The shutdown hook takes the same lock, so a hook that
+   * runs during a start waits for it and then closes a fully started runtime, and a start after the hook has run
+   * fails.
+   *
+   * @return true when this call started the runtime, false when it had started already
    */
-  public static void start() {
+  public static boolean start() {
     synchronized (START_LOCK) {
       if (started != null) {
-        return;
+        return false;
+      }
+      if (shuttingDown) {
+        throw new IllegalStateException("the JVM is shutting down: the backport runtime does not start");
       }
       BackportLine line = BackportLine.current();
       Properties baked = loadBakedProperties(line);
@@ -406,7 +412,7 @@ public final class RaspRuntime {
             new Thread(
                 new Runnable() {
                   public void run() {
-                    SPOOL.shutdown(SHUTDOWN_JOIN_MILLIS);
+                    closeForShutdown();
                   }
                 });
         Runtime.getRuntime().addShutdownHook(shutdown);
@@ -438,32 +444,88 @@ public final class RaspRuntime {
         if (state.writerEnabled) {
           SPOOL.start(line.writerThreadName);
         }
+        pollerThread = poller;
+        shutdownHook = shutdown;
         started = state;
+        return true;
       } catch (RuntimeException | Error failure) {
-        stopQuietly(poller);
-        stopQuietly(SPOOL.abandonWriter());
-        if (shutdown != null) {
-          try {
-            Runtime.getRuntime().removeShutdownHook(shutdown);
-          } catch (IllegalStateException shuttingDown) {
-            // the hook runs, finds no writer and writes what is queued: nothing is
-          }
-        }
+        stopStarted(poller, shutdown, failure);
         throw failure;
       }
     }
   }
 
-  /** Interrupts a thread this runtime started and waits a bounded time for it to end. */
-  private static void stopQuietly(Thread thread) {
+  /**
+   * The shutdown hook's work. Under the start lock: a start in progress finishes first, so the hook closes a
+   * runtime that is fully started, and no start succeeds afterwards.
+   */
+  static void closeForShutdown() {
+    synchronized (START_LOCK) {
+      shuttingDown = true;
+      SPOOL.shutdown(SHUTDOWN_JOIN_MILLIS);
+    }
+  }
+
+  /**
+   * Stops a started runtime: the hooks are inactive from the first step, then the poller and the writer are
+   * stopped (each waited for up to SHUTDOWN_JOIN_MILLIS) and the shutdown hook is removed. Only the entry class
+   * calls it, when a step after the start fails, and tests. A runtime that has not started is left alone.
+   */
+  public static void stop() {
+    synchronized (START_LOCK) {
+      if (started == null) {
+        return;
+      }
+      started = null;
+      IllegalStateException problems = new IllegalStateException("stopping the backport runtime failed");
+      stopStarted(pollerThread, shutdownHook, problems);
+      pollerThread = null;
+      shutdownHook = null;
+      if (problems.getSuppressed().length > 0) {
+        throw problems;
+      }
+    }
+  }
+
+  /**
+   * Stops the threads a start started and removes its shutdown hook. A failure on the way is added to
+   * {@code failure} as suppressed and the remaining steps still run.
+   */
+  private static void stopStarted(Thread poller, Thread shutdown, Throwable failure) {
+    stopQuietly(poller, failure);
+    stopQuietly(SPOOL.abandonWriter(), failure);
+    if (shutdown != null) {
+      try {
+        Runtime.getRuntime().removeShutdownHook(shutdown);
+      } catch (IllegalStateException shuttingDown) {
+        // the hook runs, waits for the start lock and finds no writer: nothing is lost
+      } catch (RuntimeException | Error other) {
+        failure.addSuppressed(other);
+      }
+    }
+  }
+
+  /**
+   * Interrupts a thread this runtime started and waits up to SHUTDOWN_JOIN_MILLIS for it to end. A caller that is
+   * interrupted itself still waits, and has its interrupt status back afterwards. A thread stuck in an
+   * uninterruptible call (file-system I/O) can outlive the wait.
+   */
+  private static void stopQuietly(Thread thread, Throwable failure) {
     if (thread == null) {
       return;
     }
-    thread.interrupt();
+    boolean interrupted = Thread.interrupted();
     try {
+      thread.interrupt();
       thread.join(SHUTDOWN_JOIN_MILLIS);
     } catch (InterruptedException e) {
-      Thread.currentThread().interrupt();
+      interrupted = true;
+    } catch (RuntimeException | Error other) {
+      failure.addSuppressed(other);
+    } finally {
+      if (interrupted) {
+        Thread.currentThread().interrupt();
+      }
     }
   }
 
@@ -875,69 +937,14 @@ public final class RaspRuntime {
     }
   }
 
-  private static Properties loadBakedProperties(BackportLine line) {
-    Properties props = new Properties();
-    InputStream in = null;
-    try {
-      URL resource = ownResource(SHIRUDO_PROPERTIES_RESOURCE, line.entryClass);
-      if (resource == null) {
-        return props;
-      }
-      URLConnection connection = resource.openConnection();
-      connection.setUseCaches(false);
-      in = connection.getInputStream();
-      props.load(new InputStreamReader(in, StandardCharsets.UTF_8));
-    } catch (IOException | RuntimeException e) {
-      // A missing resource (FileNotFoundException) leaves no keys. An unreadable or malformed
-      // one (Properties.load throws IllegalArgumentException on a malformed unicode escape) never
-      // aborts start-up, and the keys read before the bad line stay, so a damaged later line
-      // cannot erase an already-read lock_config or mode.
-    } finally {
-      if (in != null) {
-        try {
-          in.close();
-        } catch (IOException ignored) {
-          // nothing useful to do
-        }
-      }
-    }
-    return props;
-  }
-
   /**
-   * The URL of {@code name} in the agent's own JAR or class directory, or null when that location
-   * is unknown. Class-relative lookup is not used: for a class on the bootstrap search it is a
-   * system class path lookup, where an application JAR comes before the agent JAR, so a same-named
-   * resource there would win.
+   * The baked shirudo settings from the agent's own JAR or class directory, read by
+   * {@link io.ohmyrasp.agent.util.BakedProperties}: none for a general JAR; a start failure for an upatch JAR
+   * whose settings are missing or cannot be read.
    */
-  private static URL ownResource(String name, String entryClass) throws MalformedURLException {
-    URL location = codeLocation(RaspRuntime.class);
-    if (location == null) {
-      // Defined by the bootstrap loader, which records no code source. The agent JAR is the one the
-      // system class loader loaded the entry class from; loadClass returns that loaded class.
-      try {
-        ClassLoader system = ClassLoader.getSystemClassLoader();
-        location = codeLocation(Class.forName(entryClass, false, system));
-      } catch (ClassNotFoundException | LinkageError e) {
-        return null;
-      }
-    }
-    if (location == null) {
-      return null;
-    }
-    String base = location.toString();
-    String entry = name.substring(1);
-    if (base.endsWith("/")) {
-      return new URL(base.concat(entry));
-    }
-    return new URL("jar:".concat(base).concat("!/").concat(entry));
-  }
-
-  private static URL codeLocation(Class<?> type) {
-    if (type.getProtectionDomain() == null || type.getProtectionDomain().getCodeSource() == null) {
-      return null;
-    }
-    return type.getProtectionDomain().getCodeSource().getLocation();
+  private static Properties loadBakedProperties(BackportLine line) {
+    Properties baked = io.ohmyrasp.agent.util.BakedProperties.read(RaspRuntime.class, line.entryClass);
+    return baked == null ? new Properties() : baked;
   }
 
   private static String bakedProperty(Properties baked, String key) {

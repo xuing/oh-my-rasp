@@ -39,6 +39,8 @@ jobs:
       - name: Check detector false-positive-suppression parity
         working-directory: java-agent
         run: bash scripts/check-detector-parity.sh
+      - name: Test the parity check's call-site filter
+        run: python3 -m unittest discover -s java-agent/scripts -p 'test_check_detector_parity.py'
       - name: Test and package every agent compatibility line
         run: |
           set -euo pipefail
