@@ -2,6 +2,7 @@ package io.ohmyrasp.agent.runtime;
 
 import io.ohmyrasp.agent.policy.AgentPolicy;
 import io.ohmyrasp.agent.policy.SimpleJson;
+import io.ohmyrasp.agent.util.ControlDocument;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.HashMap;
@@ -452,10 +453,15 @@ public final class AgentRuntime {
     }
   }
 
-  /** Applies a control document; false, changing nothing, when it is not one JSON object. */
+  /**
+   * Applies a control document; false, changing nothing, when it is not exactly one well-formed
+   * JSON object, or is one that SimpleJson cannot read (an integer outside long, for example).
+   */
   boolean apply(String json) {
     Object parsed;
     try {
+      // The strict scanner decides what is well-formed; SimpleJson is lenient about some input.
+      ControlDocument.requireObject(json);
       parsed = SimpleJson.parse(json);
     } catch (RuntimeException e) {
       return false; // ignore malformed control documents

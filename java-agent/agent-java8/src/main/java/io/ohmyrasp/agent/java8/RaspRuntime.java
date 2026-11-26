@@ -259,7 +259,9 @@ public final class RaspRuntime {
         if (!Files.isRegularFile(path)) {
           return;
         }
-        text = new String(Files.readAllBytes(path), StandardCharsets.UTF_8);
+        byte[] bytes = Files.readAllBytes(path);
+        // Strict UTF-8: malformed bytes make the content unparseable, they are not replaced.
+        text = ControlDocument.decodeUtf8(bytes, bytes.length);
       } catch (NoSuchFileException gone) {
         restoreStartup();
         return;

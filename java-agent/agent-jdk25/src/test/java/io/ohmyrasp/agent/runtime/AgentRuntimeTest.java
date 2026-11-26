@@ -120,6 +120,43 @@ final class AgentRuntimeTest {
   }
 
   @Test
+  void aDocumentThatIsNotWellFormedJsonOrThatSimpleJsonCannotReadChangesNothing(@TempDir Path dir)
+      throws Exception {
+    AgentRuntime runtime = AgentRuntime.newForTesting();
+    runtime.apply("{\"mode\":\"block\"}");
+    for (String text :
+        new String[] {
+          "{\"mode\":\"off\",\"n\":01}",
+          "{\"mode\":\"off\",\"n\":.5}",
+          "{\"mode\":\"off\",\"n\":1.}",
+          "{\"mode\":\"off\",\"s\":\"raw\ttab\"}",
+          "{\"mode\":\"off\",\"s\":\"\\u+041\"}",
+          "{\"mode\":\"\\u\uFF10\uFF10\uFF16\uFF46ff\"}",
+          "\u00A0{\"mode\":\"off\"}",
+          "{\"mode\":\"off\"}\u2003",
+          // Valid JSON that SimpleJson cannot read: an integer outside long. Unparseable, too.
+          "{\"mode\":\"off\",\"revision\":123456789012345678901234567890}",
+        }) {
+      assertFalse(runtime.apply(text), text);
+      assertEquals(DetectionMode.BLOCK, runtime.mode(), text);
+    }
+
+    // A file holding a byte that is not UTF-8 is unparseable as well.
+    Path file = dir.resolve("control.json");
+    AgentRuntime polling = startPolling(file);
+    Files.writeString(file, "{\"mode\":\"block\"}");
+    polling.reloadIfChanged();
+    byte[] head = "{\"mode\":\"off\",\"note\":\"".getBytes(java.nio.charset.StandardCharsets.UTF_8);
+    byte[] bytes = java.util.Arrays.copyOf(head, head.length + 3);
+    bytes[head.length] = (byte) 0xFF;
+    bytes[head.length + 1] = '"';
+    bytes[head.length + 2] = '}';
+    Files.write(file, bytes);
+    polling.reloadIfChanged();
+    assertEquals(DetectionMode.BLOCK, polling.mode(), "malformed UTF-8");
+  }
+
+  @Test
   void aControlFileReadHalfWrittenIsPickedUpOnceCompleteWithTheSameModificationTime(@TempDir Path dir)
       throws Exception {
     Path file = dir.resolve("control.json");

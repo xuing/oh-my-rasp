@@ -160,6 +160,9 @@ final class Java8RuntimeControlTest {
           "{\"a\":\"line\nbreak\"}",
           "{\"a\":\"\\",
           "\uFEFF{\"mode\":\"off\"}",
+          "{\"a\":\"\\u\uFF10\uFF10\uFF14\uFF11\"}",
+          "{\"a\":\"\\u+041\"}",
+          "\u00A0{\"mode\":\"off\"}",
         };
     for (String text : malformed) {
       try {
@@ -169,6 +172,30 @@ final class Java8RuntimeControlTest {
         // rejected as it should be
       }
     }
+  }
+
+  @Test
+  void aControlFileThatIsNotStrictUtf8OrUsesNonAsciiHexDigitsChangesNothing() throws Exception {
+    Path file = dir.resolve("control.json");
+    RaspRuntime.ControlState state = new RaspRuntime.ControlState(RaspRuntime.Mode.BLOCK);
+
+    // "\u006f" spelled with full-width digits, which Character.digit accepts and JSON does not.
+    write(file, "{\"mode\":\"\\u\uFF10\uFF10\uFF16\uFF46ff\"}");
+    state.poll(file);
+    assertEquals(RaspRuntime.Mode.BLOCK, state.mode(), "non-ASCII hex digits in a \\u escape");
+
+    // A byte that is not UTF-8 inside a string value: decoding must fail, not replace it.
+    writeBytes(file, "{\"mode\":\"off\",\"note\":\"", new byte[] {(byte) 0xFF}, "\"}");
+    state.poll(file);
+    assertEquals(RaspRuntime.Mode.BLOCK, state.mode(), "malformed UTF-8");
+    // An encoded surrogate (CESU-8) is not UTF-8 either.
+    writeBytes(file, "{\"mode\":\"off\",\"note\":\"", new byte[] {(byte) 0xED, (byte) 0xA0, (byte) 0x80}, "\"}");
+    state.poll(file);
+    assertEquals(RaspRuntime.Mode.BLOCK, state.mode(), "an encoded surrogate");
+
+    writeBytes(file, "{\"mode\":\"off\",\"note\":\"", "\u00e9\u4e2d".getBytes(StandardCharsets.UTF_8), "\"}");
+    state.poll(file);
+    assertEquals(RaspRuntime.Mode.OFF, state.mode(), "well-formed UTF-8 applies");
   }
 
   @Test
@@ -198,6 +225,18 @@ final class Java8RuntimeControlTest {
   private void write(Path file, String text) throws Exception {
     nextMtime += 1000L;
     writeAt(file, text, FileTime.fromMillis(nextMtime));
+  }
+
+  private void writeBytes(Path file, String head, byte[] middle, String tail) throws Exception {
+    byte[] first = head.getBytes(StandardCharsets.UTF_8);
+    byte[] last = tail.getBytes(StandardCharsets.UTF_8);
+    byte[] all = new byte[first.length + middle.length + last.length];
+    System.arraycopy(first, 0, all, 0, first.length);
+    System.arraycopy(middle, 0, all, first.length, middle.length);
+    System.arraycopy(last, 0, all, first.length + middle.length, last.length);
+    Files.write(file, all);
+    nextMtime += 1000L;
+    Files.setLastModifiedTime(file, FileTime.fromMillis(nextMtime));
   }
 
   private static void writeAt(Path file, String text, FileTime time) throws Exception {

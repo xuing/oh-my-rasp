@@ -1,8 +1,15 @@
 package io.ohmyrasp.agent.util;
 
+import java.nio.ByteBuffer;
+import java.nio.charset.CharacterCodingException;
+import java.nio.charset.CodingErrorAction;
+import java.nio.charset.StandardCharsets;
+
 /**
- * Reads one top-level string field of a control file, and only when the whole text is exactly one
- * well-formed JSON object (RFC 8259 grammar, surrounding whitespace allowed).
+ * Checks that a control file is exactly one well-formed JSON object (RFC 8259 grammar: JSON
+ * whitespace only around tokens, no control characters in strings, backslash-u escapes of four
+ * ASCII hex digits, no leading zeros or bare fractions in numbers), and reads one top-level string
+ * field of it.
  *
  * <p>A truncated document, trailing text, a key inside a nested object or array, or a key inside a
  * string value does not count. Containers deeper than {@link #MAX_DEPTH} are rejected, which bounds
@@ -38,6 +45,34 @@ public final class ControlDocument {
       throw new IllegalArgumentException("text after the control object");
     }
     return value;
+  }
+
+  /**
+   * Checks that {@code text} is exactly one well-formed JSON object.
+   *
+   * @throws IllegalArgumentException when it is not
+   */
+  public static void requireObject(String text) {
+    topLevelString(text, "");
+  }
+
+  /**
+   * The text of {@code length} bytes of strict UTF-8. Malformed or unmappable bytes are not
+   * replaced: the content is unparseable.
+   *
+   * @throws IllegalArgumentException when the bytes are not UTF-8
+   */
+  public static String decodeUtf8(byte[] bytes, int length) {
+    try {
+      return StandardCharsets.UTF_8
+          .newDecoder()
+          .onMalformedInput(CodingErrorAction.REPORT)
+          .onUnmappableCharacter(CodingErrorAction.REPORT)
+          .decode(ByteBuffer.wrap(bytes, 0, length))
+          .toString();
+    } catch (CharacterCodingException e) {
+      throw new IllegalArgumentException("control document is not UTF-8");
+    }
   }
 
   private String topLevelObject(String key) {
@@ -175,13 +210,23 @@ public final class ControlDocument {
     }
     int value = 0;
     for (int i = 0; i < 4; i++) {
-      int digit = Character.digit(text.charAt(offset++), 16);
-      if (digit < 0) {
-        throw new IllegalArgumentException("bad unicode escape in a control document");
-      }
-      value = value * 16 + digit;
+      value = value * 16 + hexDigit(text.charAt(offset++));
     }
     return (char) value;
+  }
+
+  /** The value of one ASCII hex digit; JSON allows no other digits in a backslash-u escape. */
+  private static int hexDigit(char ch) {
+    if (ch >= '0' && ch <= '9') {
+      return ch - '0';
+    }
+    if (ch >= 'a' && ch <= 'f') {
+      return ch - 'a' + 10;
+    }
+    if (ch >= 'A' && ch <= 'F') {
+      return ch - 'A' + 10;
+    }
+    throw new IllegalArgumentException("bad unicode escape in a control document");
   }
 
   private void number() {
