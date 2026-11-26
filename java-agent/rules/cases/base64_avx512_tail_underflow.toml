@@ -42,7 +42,6 @@ kind = "benign"
 via = "sink"
 op = "base64.decode"
 args = { input = "QUJDQUJDQUJDQUJDQUJDQUJDQUJDQUJDQUJDQUJDQUJDQUJDQUJDQUJDQUJDQUJDQUJD" }
-completes_with = ["IllegalArgumentException"]
 
 [case.primary]
 effect = "none"

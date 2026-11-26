@@ -1,5 +1,11 @@
 #!/usr/bin/env python3
-"""Run every rule case in java-agent/rules/cases on the packaged agent and compare each engine's effect and rule id."""
+"""Run every rule case in java-agent/rules/cases on the packaged agent and compare each engine's effect and rule id.
+
+A case counts only when the line under test started in its JVM: the driver reports the line the launcher
+published (system property ohmyrasp.agent.line) and the line's own start output must be in the JVM's
+output or event file, or the case is broken. The events a case is judged on are the ones written between
+the driver's marks around the operation, not everything in the event file.
+"""
 from __future__ import annotations
 
 import argparse
@@ -109,18 +115,38 @@ def run_case(case, agent, classpath, classes, work, track) -> tuple[Actual, str]
     if run.returncode or not result_lines:
         return Actual("broken", None, (), f"driver exited {run.returncode}"), output
     result = dict(part.split("=", 1) for part in result_lines[-1].split("\t")[1:])
+    logged = log.read_bytes() if log.exists() else b""
+    not_started = agent_not_started(track, result, output + logged.decode(errors="replace"))
+    if not_started:
+        return Actual("broken", None, (), not_started), output
     events = []
-    if log.exists():
-        for line in log.read_text().splitlines():
-            event = json.loads(line)
-            if event.get("kind") == "detection" or event.get("event") == "ohmyrasp-detection":
-                events.append(event)
+    # Only what the operation wrote: an event from before the driver marked its start (the agent's startup, a
+    # class the JVM loaded on the way) belongs to nothing the case did.
+    start, end = int(result["log_start"]), int(result["log_end"])
+    for line in logged[start:end].decode().splitlines():
+        event = json.loads(line)
+        if event.get("kind") == "detection" or event.get("event") == "ohmyrasp-detection":
+            events.append(event)
     prefix = f"java{track}_" if track else ""
 
     def family(rule: str) -> str:
         return rule[len(prefix):] if prefix and rule.startswith(prefix) else rule
 
     return classify(case, result, [(family(e["algorithm"]), e["action"]) for e in events]), output
+
+
+def agent_not_started(track: str | None, result: dict, text: str) -> str | None:
+    """Why the line under test did not start in this JVM, or None when it did. A JVM without the agent lets
+    everything through, so a case that expects "none" would otherwise pass on a launcher that skipped or failed."""
+    expected = agent_track.PRIMARY if track is None else track
+    name = agent_track.LINE_NAMES[expected]
+    if result.get("agent_line") != name:
+        return (f"the {name} line did not start: the launcher published ohmyrasp.agent.line="
+                f"'{result.get('agent_line', '')}' (no agent, or another line)")
+    started = {agent_track.start_track(line) for line in text.splitlines()}
+    if expected not in started:
+        return f"the {name} line published its name but its start line is in neither the JVM's output nor the event file"
+    return None
 
 
 def classify(case, result: dict, events: list[tuple[str, str]]) -> Actual:
