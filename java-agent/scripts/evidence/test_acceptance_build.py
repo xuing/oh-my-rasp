@@ -80,6 +80,15 @@ class AcceptanceBuildGuardTest(unittest.TestCase):
             "JAVA_HOME=/x gradle build",
             'jar="$(./gradlew -q jarPath)"',
             "true && gradle build",
+            "if ./gradlew check; then echo built; fi",
+            "command gradle check",
+            "command -p gradle check",
+            "if ! gradle build; then exit 1; fi",
+            "while gradle x; do :; done",
+            "exec ./gradlew build",
+            "env JAVA_HOME=/x gradle build",
+            "time ./gradlew build",
+            "if true; then ./gradlew check; fi",
         ):
             problems = guard.violations(command + "\n")
             self.assertEqual(len(problems), 1, command)
@@ -92,6 +101,10 @@ class AcceptanceBuildGuardTest(unittest.TestCase):
             "ls gradle/ gradle.properties",
             "cat agent-java8/build.gradle.kts",
             'GRADLE_USER_HOME="$gradle_home"',
+            "command -v gradle >/dev/null",
+            "if command -V gradle; then :; fi",
+            "if [ -x ./gradlew ]; then echo found; fi",
+            "if grep gradle build.txt; then :; fi",
         ):
             self.assertEqual(guard.violations(command + "\n"), [], command)
 
