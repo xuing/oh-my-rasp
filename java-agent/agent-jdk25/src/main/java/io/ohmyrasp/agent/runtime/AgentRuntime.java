@@ -514,9 +514,18 @@ public final class AgentRuntime {
       String nextKey = current.policyAgentKey;
       PolicySource nextSource = current.policySource;
       String nextPolicyJson = current.controlPolicyJson;
-      // A cloud policy distributed through the control file, installed once per change.
-      if (object.get("policy") instanceof String policyJson
-          && !policyJson.isBlank()
+      // A cloud policy distributed through the control file, installed once per change. The daemon
+      // withdraws it by writing the file without one: a document with no policy (absent, null or
+      // blank) drops the policy the control file installed. A direct-cloud policy stays.
+      Object policyValue = object.get("policy");
+      if (policyValue == null || policyValue instanceof String blank && blank.isBlank()) {
+        if (current.policySource == PolicySource.CONTROL_FILE) {
+          nextPolicy = AgentPolicy.absent();
+          nextKey = "";
+          nextSource = PolicySource.NONE;
+        }
+        nextPolicyJson = null;
+      } else if (policyValue instanceof String policyJson
           && !policyJson.equals(current.controlPolicyJson)) {
         nextPolicyJson = policyJson;
         AgentPolicy installed = parsePolicy(policyJson);

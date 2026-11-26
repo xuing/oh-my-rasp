@@ -320,6 +320,46 @@ final class AgentRuntimeTest {
     assertEquals(AgentRuntime.PolicySource.CONTROL_FILE, runtime.state().policySource());
   }
 
+  /**
+   * The daemon withdraws a policy by rewriting the control file without {@code policy}. A file
+   * with no policy (absent, null or blank) drops the one the file installed, not a direct-cloud one.
+   */
+  @Test
+  void aPolicyTheControlFileNoLongerCarriesStopsSuppressingDetections(@TempDir Path dir) throws Exception {
+    Path file = dir.resolve("control.json");
+    AgentRuntime runtime = AgentRuntime.newForTesting();
+    runtime.start("control=" + file + ",control_poll_ms=86400000,mode=block");
+    Detection sql = detection("sql_userinput");
+    String ignoreSql =
+        "\"policy\":\"{\\\"rules\\\":[{\\\"algorithm\\\":\\\"sql_userinput\\\",\\\"action\\\":\\\"ignore\\\"}]}\"";
+
+    String[] withdrawn = {"{\"mode\":\"monitor\",\"revision\":2}", "{\"revision\":3,\"policy\":null}",
+        "{\"revision\":4,\"policy\":\" \"}"};
+    for (String document : withdrawn) {
+      Files.writeString(file, "{\"mode\":\"monitor\",\"revision\":1," + ignoreSql + "}");
+      runtime.reloadIfChanged();
+      assertTrue(runtime.policy().evaluate(sql, "").ignored(), "the control file's ignore rule");
+
+      Files.writeString(file, document);
+      runtime.reloadIfChanged();
+      assertFalse(
+          runtime.policy().evaluate(sql, "").ignored(),
+          "a withdrawn control-file policy still suppresses detections: " + document);
+      assertSame(AgentPolicy.absent(), runtime.policy());
+      assertEquals(AgentRuntime.PolicySource.NONE, runtime.state().policySource());
+      assertEquals(DetectionMode.MONITOR, runtime.mode(), "the rest of the document applies");
+    }
+
+    // A direct-cloud policy is not the control file's to withdraw.
+    Files.writeString(file, "{\"revision\":5," + ignoreSql + "}");
+    runtime.reloadIfChanged();
+    runtime.installDirectPolicy(AgentPolicy.parse("{\"version\":9}"), "agent-key");
+    Files.writeString(file, "{\"revision\":6}");
+    runtime.reloadIfChanged();
+    assertEquals(9, runtime.policy().version());
+    assertEquals(AgentRuntime.PolicySource.DIRECT_CLOUD, runtime.state().policySource());
+  }
+
   private static Detection detection(String algorithm) {
     return new Detection(
         Instant.now(), "sql", algorithm, "log", 90, "test", RequestContext.empty(), Map.of());
