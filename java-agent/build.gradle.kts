@@ -1,3 +1,5 @@
+import java.util.jar.JarFile
+
 plugins {
     java
     id("com.gradleup.shadow") version "9.6.1" apply false
@@ -37,6 +39,49 @@ subprojects {
         // immediately after invoking a hook, so write inline during tests.
         systemProperty("ohmyrasp.log.sync", "true")
     }
+}
+
+// Each agent JAR names, as Premain-Class and Agent-Class, an entry class that only that kind of JAR holds
+// (shared/src/main/java/io/ohmyrasp/agent/launch/). Two JARs with one entry name would run one class twice.
+val launcherEntryJars = mapOf(
+    "UniversalEntry" to listOf(":agent-all:agentAllJar", ":agent-all:shirudoUpatchJar"),
+    "PrimaryEntry" to listOf(":agent-jdk25:agentJar", ":agent-jdk25:shirudoUpatchJar"),
+    "Java17Entry" to listOf(":agent-java17:agentJava17Jar", ":agent-java17:shirudoUpatchJar"),
+    "Java11Entry" to listOf(":agent-java11:agentJava11Jar", ":agent-java11:shirudoUpatchJar"),
+    "Java8Entry" to listOf(":agent-java8:agentJava8Jar", ":agent-java8:shirudoUpatchJar"),
+)
+val verifyLauncherEntries = tasks.register("verifyLauncherEntries") {
+    group = "verification"
+    description = "Verifies that each agent JAR holds exactly one launcher entry class and names it in its manifest."
+    val jars = launcherEntryJars.flatMap { (entry, paths) ->
+        paths.map { path ->
+            val (module, task) = path.removePrefix(":").split(":")
+            dependsOn(path)
+            // Resolved lazily: the agent modules are configured after this script.
+            entry to provider { project(":$module").tasks.named<Jar>(task).get().archiveFile.get().asFile }
+        }
+    }
+    jars.forEach { (_, file) -> inputs.file(file) }
+    val entries = launcherEntryJars.keys.map { "io/ohmyrasp/agent/launch/$it.class" }
+    doLast {
+        for ((entry, file) in jars) {
+            val jarFile = file.get()
+            JarFile(jarFile).use { jar ->
+                val held = entries.filter { jar.getEntry(it) != null }
+                val expected = "io/ohmyrasp/agent/launch/$entry.class"
+                require(held == listOf(expected)) { "${jarFile.name} must hold only $expected, holds $held" }
+                val attributes = jar.manifest.mainAttributes
+                for (name in listOf("Premain-Class", "Agent-Class")) {
+                    require(attributes.getValue(name) == "io.ohmyrasp.agent.launch.$entry") {
+                        "${jarFile.name}: $name is ${attributes.getValue(name)}, expected io.ohmyrasp.agent.launch.$entry"
+                    }
+                }
+            }
+        }
+    }
+}
+tasks.check {
+    dependsOn(verifyLauncherEntries)
 }
 
 // Kept separate from agent packaging: these libraries run the upstream REST admission fixture.

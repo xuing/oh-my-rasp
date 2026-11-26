@@ -1,39 +1,45 @@
 package io.ohmyrasp.agent.launch;
 
+import java.io.File;
+import java.io.IOException;
 import java.io.PrintStream;
 import java.lang.instrument.Instrumentation;
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
+import java.net.MalformedURLException;
+import java.net.URISyntaxException;
+import java.net.URL;
+import java.security.CodeSource;
+import java.security.ProtectionDomain;
 import java.util.Properties;
+import java.util.jar.JarFile;
 
 /**
- * The Premain-Class and Agent-Class of every OhMyRASP agent JAR. It picks the agent line that fits the
- * running Java version and starts it, and it never lets the JVM stop because of the agent: a JAR that
- * holds no fitting line, a second OhMyRASP JAR in the same JVM and a line that throws while starting
- * each leave one JSON line on standard error and return.
+ * Starts the agent line that fits the running Java from the JAR an entry class came from, and never
+ * lets the JVM stop because of the agent. Each kind of agent JAR has its own entry class (see
+ * {@link UniversalEntry}), which passes itself here. A JAR that holds no fitting line, a JAR that
+ * finds an agent already started or failed in this JVM, and a line that throws while starting each
+ * leave one JSON line on standard error and return.
  *
- * <p>This class uses nothing but {@code java.*} and loads no other class of ours before it has chosen a
+ * <p>This class uses nothing but {@code java.*} and loads no class of ours before it has chosen a
  * line, so it runs on every Java version from 8 on. It is compiled for Java 8 and written without
  * lambdas or method references.
- *
- * <p>The JVM loads a Premain-Class by name through the system class loader, so when two of our JARs are
- * attached, both premain calls run whichever copy of this class the system class loader found first.
- * This class therefore cannot know which JAR it was attached as. It looks the entry classes up through
- * the system class loader, which sees every attached JAR and is the loader the chosen entry class is then
- * loaded with.
  */
 public final class AgentLauncher {
   /**
-   * Set to the started line's name before the line starts. A system property is the one place two
-   * launchers in one JVM can both see without sharing a class: a second JAR's launcher may be a different
-   * copy of this class, or the same one, depending on the class path order.
+   * One start per JVM, across premain and agentmain and across our JARs: {@code starting}, then
+   * {@code installed:<line>} or {@code failed:<line>}. A system property is the one place launchers
+   * from two JARs can both see without sharing a loaded class.
    */
-  static final String ACTIVE_PROPERTY = "ohmyrasp.agent.active";
+  static final String STATE_PROPERTY = "ohmyrasp.agent.state";
+
+  /** The installed line, set once the line's entry method returned. */
+  static final String LINE_PROPERTY = "ohmyrasp.agent.line";
 
   /** Candidate lines, in the order they are preferred. */
   static final String[] LINES = {"primary", "java17", "java11", "java8"};
 
-  static final String[] ENTRY_CLASSES = {
+  static final String[] LINE_ENTRY_CLASSES = {
     "io.ohmyrasp.agent.OhMyRaspAgent",
     "io.ohmyrasp.agent.java17.OhMyRaspJava17Agent",
     "io.ohmyrasp.agent.java11.OhMyRaspJava11Agent",
@@ -48,26 +54,22 @@ public final class AgentLauncher {
 
   private AgentLauncher() {}
 
-  public static void premain(String agentArgs, Instrumentation instrumentation) {
-    launch("premain", agentArgs, instrumentation);
-  }
-
-  public static void agentmain(String agentArgs, Instrumentation instrumentation) {
-    launch("agentmain", agentArgs, instrumentation);
-  }
-
-  private static void launch(String method, String agentArgs, Instrumentation instrumentation) {
+  /** Called by an entry class with itself as {@code entry}. Never throws. */
+  public static void start(
+      String method, String agentArgs, Instrumentation instrumentation, Class<?> entry) {
     PrintStream err = System.err;
     try {
-      launch(method, agentArgs, instrumentation, ClassLoader.getSystemClassLoader(), ENTRY_CLASSES, err);
+      launch(method, agentArgs, instrumentation, entry, ClassLoader.getSystemClassLoader(),
+          LINE_ENTRY_CLASSES, err);
     } catch (Throwable failure) {
-      // Reached only when the launcher itself fails, for example when a security manager denies a property.
-      report(err, startFailed("none", failure));
+      // Reached only when the launcher itself fails, for example on an unreadable agent JAR.
+      report(err, "{\"event\":\"ohmyrasp-agent-start-failed\",\"line\":\"none\","
+          + "\"protection\":\"inactive\"," + failureFields(failure) + "}");
     }
   }
 
   /**
-   * Chooses and starts a line. Package-private so tests can pass their own loader and entry classes.
+   * Chooses and starts a line. Package-private so tests can pass their own loader and line entries.
    *
    * @return the started line's name, or null when no line was started
    */
@@ -75,60 +77,135 @@ public final class AgentLauncher {
       String method,
       String agentArgs,
       Instrumentation instrumentation,
+      Class<?> entry,
       ClassLoader loader,
-      String[] entryClasses,
-      PrintStream err) {
-    String javaVersion = System.getProperty("java.version", "unknown");
-    int feature = featureVersion(System.getProperty("java.specification.version"));
-    boolean[] available = new boolean[entryClasses.length];
-    for (int i = 0; i < entryClasses.length; i++) {
-      available[i] = loader.getResource(entryClasses[i].replace('.', '/').concat(".class")) != null;
+      String[] lineEntries,
+      PrintStream err)
+      throws IOException {
+    String javaVersion = json(System.getProperty("java.version", "unknown"));
+    String state = System.getProperty(STATE_PROPERTY);
+    if (state != null) {
+      report(err, skipped(state, javaVersion));
+      return null;
     }
-    int chosen = choose(feature, available);
+    File artifact = artifactOf(entry);
+    boolean[] available = new boolean[lineEntries.length];
+    for (int i = 0; i < lineEntries.length; i++) {
+      available[i] = artifact != null && holds(artifact, lineEntries[i]);
+    }
+    int chosen = choose(featureVersion(System.getProperty("java.specification.version")), available);
     if (chosen < 0) {
       report(err, "{\"event\":\"ohmyrasp-agent-skipped\",\"reason\":\"unsupported-java\","
-          + "\"java_version\":\"" + json(javaVersion) + "\","
-          + "\"lines\":\"" + json(lineList(available)) + "\"}");
+          + "\"java_version\":\"" + javaVersion + "\","
+          + "\"lines\":\"" + json(lineList(available)) + "\","
+          + "\"jar\":\"" + json(artifact == null ? "unknown" : artifact.getName()) + "\"}");
       return null;
     }
     String line = LINES[chosen];
-    String active = claim(line);
-    if (active != null) {
-      report(err, "{\"event\":\"ohmyrasp-agent-skipped\",\"reason\":\"already-active\","
-          + "\"java_version\":\"" + json(javaVersion) + "\","
-          + "\"active_line\":\"" + json(active) + "\"}");
+    state = claim();
+    if (state != null) {
+      report(err, skipped(state, javaVersion));
       return null;
     }
     try {
-      Class<?> entry = Class.forName(entryClasses[chosen], true, loader);
-      Method start = entry.getMethod(method, String.class, Instrumentation.class);
+      Class<?> lineEntry = Class.forName(lineEntries[chosen], true, loader);
+      Method start = lineEntry.getMethod(method, String.class, Instrumentation.class);
       start.invoke(null, agentArgs, instrumentation);
-      return line;
-    } catch (InvocationTargetException e) {
-      Throwable cause = e.getCause() == null ? e : e.getCause();
-      report(err, startFailed(line, cause));
     } catch (Throwable failure) {
-      report(err, startFailed(line, failure));
+      Throwable cause = failure;
+      if (failure instanceof InvocationTargetException && failure.getCause() != null) {
+        cause = failure.getCause();
+      }
+      System.setProperty(STATE_PROPERTY, "failed:" + line);
+      report(err, "{\"event\":\"ohmyrasp-agent-start-failed\",\"line\":\"" + json(line) + "\","
+          + "\"protection\":\"inactive or incomplete\","
+          + "\"java_version\":\"" + javaVersion + "\"," + failureFields(cause) + "}");
+      return null;
     }
-    return null;
+    System.setProperty(LINE_PROPERTY, line);
+    System.setProperty(STATE_PROPERTY, "installed:" + line);
+    return line;
   }
 
   /**
-   * Records {@code line} as the active agent unless one is recorded already.
+   * Records {@code starting} unless a state is recorded already.
    *
-   * @return the line recorded earlier, or null when this call recorded {@code line}
+   * @return the state recorded earlier, or null when this call recorded {@code starting}
    */
-  private static String claim(String line) {
+  private static String claim() {
     // The monitor makes check-and-set atomic between two launchers; it is released before the line
     // starts, so a line thread that reads a system property never waits on it.
     Properties properties = System.getProperties();
     synchronized (properties) {
-      String active = properties.getProperty(ACTIVE_PROPERTY);
-      if (active != null) {
-        return active;
+      String state = properties.getProperty(STATE_PROPERTY);
+      if (state != null) {
+        return state;
       }
-      properties.setProperty(ACTIVE_PROPERTY, line);
+      properties.setProperty(STATE_PROPERTY, "starting");
       return null;
+    }
+  }
+
+  private static String skipped(String state, String javaVersion) {
+    String reason = state.startsWith("failed:") ? "earlier-start-failed" : "already-active";
+    return "{\"event\":\"ohmyrasp-agent-skipped\",\"reason\":\"" + reason + "\","
+        + "\"java_version\":\"" + javaVersion + "\","
+        + "\"state\":\"" + json(state) + "\"}";
+  }
+
+  /**
+   * The JAR file or class directory {@code entry} was loaded from, or null when it cannot be told.
+   * A class defined by the bootstrap loader (the Java 8 JAR's Boot-Class-Path) records no code
+   * source; its class file then names the JAR, since no other kind of agent JAR holds that class.
+   */
+  static File artifactOf(Class<?> entry) throws MalformedURLException {
+    ProtectionDomain domain = entry.getProtectionDomain();
+    CodeSource source = domain == null ? null : domain.getCodeSource();
+    URL location = source == null ? null : source.getLocation();
+    if (location == null) {
+      String classFile = entry.getName().replace('.', '/').concat(".class");
+      location = containerOf(ClassLoader.getSystemResource(classFile), classFile);
+    }
+    return location == null ? null : toFile(location);
+  }
+
+  /** The JAR or directory URL that holds {@code resource}, named {@code path} inside it. */
+  static URL containerOf(URL resource, String path) throws MalformedURLException {
+    if (resource == null) {
+      return null;
+    }
+    String text = resource.toString();
+    if (text.startsWith("jar:")) {
+      int separator = text.indexOf("!/");
+      return separator < 0 ? null : new URL(text.substring(4, separator));
+    }
+    if (text.endsWith(path)) {
+      return new URL(text.substring(0, text.length() - path.length()));
+    }
+    return null;
+  }
+
+  private static File toFile(URL location) {
+    try {
+      return new File(location.toURI());
+    } catch (URISyntaxException e) {
+      return new File(location.getPath());
+    } catch (IllegalArgumentException e) {
+      return new File(location.getPath());
+    }
+  }
+
+  /** Whether the JAR file or class directory holds the class file of {@code className}. */
+  static boolean holds(File artifact, String className) throws IOException {
+    String path = className.replace('.', '/').concat(".class");
+    if (artifact.isDirectory()) {
+      return new File(artifact, path).isFile();
+    }
+    JarFile jar = new JarFile(artifact, false);
+    try {
+      return jar.getEntry(path) != null;
+    } finally {
+      jar.close();
     }
   }
 
@@ -177,12 +254,9 @@ public final class AgentLauncher {
     return names.toString();
   }
 
-  private static String startFailed(String line, Throwable failure) {
-    return "{\"event\":\"ohmyrasp-agent-start-failed\","
-        + "\"line\":\"" + json(line) + "\","
-        + "\"java_version\":\"" + json(System.getProperty("java.version", "unknown")) + "\","
-        + "\"exception\":\"" + json(failure.getClass().getName()) + "\","
-        + "\"message\":\"" + json(String.valueOf(failure.getMessage())) + "\"}";
+  private static String failureFields(Throwable failure) {
+    return "\"exception\":\"" + json(failure.getClass().getName()) + "\","
+        + "\"message\":\"" + json(String.valueOf(failure.getMessage())) + "\"";
   }
 
   private static void report(PrintStream err, String line) {

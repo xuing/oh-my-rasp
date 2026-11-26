@@ -13,7 +13,13 @@ plugins {
     id("com.gradleup.shadow")
 }
 
-val launcher = "io.ohmyrasp.agent.launch.AgentLauncher"
+// Every agent JAR carries one launcher entry class, its own (shared/src/main/java/io/ohmyrasp/agent/launch/):
+// the JVM loads a Premain-Class by name, so two JARs must never share one.
+val otherLauncherEntries = listOf("UniversalEntry", "PrimaryEntry", "Java17Entry", "Java11Entry", "Java8Entry")
+    .filter { it != "UniversalEntry" }
+    .map { "io/ohmyrasp/agent/launch/$it.class" }
+
+val launcher = "io.ohmyrasp.agent.launch.UniversalEntry"
 
 // The highest class-file major version each input may hold: a line's own classes may use its own
 // release; the launcher, the shared classes and ASM must load on Java 8.
@@ -99,6 +105,7 @@ fun ShadowJar.universalContent(title: String) {
         )
     }
     relocate("org.objectweb.asm", "io.ohmyrasp.agent.shaded.asm")
+    exclude(otherLauncherEntries)
     exclude("**/module-info.class", "META-INF/versions/**")
 }
 
@@ -173,6 +180,7 @@ val verifyAgentAllJars = tasks.register("verifyAgentAllJars") {
     val mode = shirudoMode
     val lockConfig = shirudoLockConfig
     val launcherClass = launcher
+    val excludedEntries = otherLauncherEntries
     inputs.file(general)
     inputs.file(shirudo)
     inputs.files(configurations.runtimeClasspath)
@@ -196,7 +204,7 @@ val verifyAgentAllJars = tasks.register("verifyAgentAllJars") {
                 } else {
                     name
                 }
-                limitByClass.putIfAbsent(packagedName, limit to origin)
+                if (packagedName !in excludedEntries) limitByClass.putIfAbsent(packagedName, limit to origin)
             }
         }
         val launcherEntry = launcherClass.replace('.', '/') + ".class"

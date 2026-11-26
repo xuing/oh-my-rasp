@@ -9,6 +9,12 @@ plugins {
     id("com.gradleup.shadow")
 }
 
+// Every agent JAR carries one launcher entry class, its own (shared/src/main/java/io/ohmyrasp/agent/launch/):
+// the JVM loads a Premain-Class by name, so two JARs must never share one.
+val otherLauncherEntries = listOf("UniversalEntry", "PrimaryEntry", "Java17Entry", "Java11Entry", "Java8Entry")
+    .filter { it != "Java11Entry" }
+    .map { "io/ohmyrasp/agent/launch/$it.class" }
+
 dependencies {
     implementation(project(":shared"))
     implementation("org.ow2.asm:asm:9.11.1")
@@ -45,8 +51,8 @@ val agentJava11Jar = tasks.register<ShadowJar>("agentJava11Jar") {
 
     manifest {
         attributes(
-            "Premain-Class" to "io.ohmyrasp.agent.launch.AgentLauncher",
-            "Agent-Class" to "io.ohmyrasp.agent.launch.AgentLauncher",
+            "Premain-Class" to "io.ohmyrasp.agent.launch.Java11Entry",
+            "Agent-Class" to "io.ohmyrasp.agent.launch.Java11Entry",
             "Can-Redefine-Classes" to "true",
             "Can-Retransform-Classes" to "true",
             "Implementation-Title" to "OhMyRasp Java 11 Era Agent"
@@ -55,6 +61,7 @@ val agentJava11Jar = tasks.register<ShadowJar>("agentJava11Jar") {
 
     from(sourceSets.main.get().output)
     relocate("org.objectweb.asm", "io.ohmyrasp.agent.shaded.asm")
+    exclude(otherLauncherEntries)
     exclude("**/module-info.class", "META-INF/versions/**")
 }
 
@@ -137,8 +144,8 @@ val shirudoUpatchJar = tasks.register<ShadowJar>("shirudoUpatchJar") {
 
     manifest {
         attributes(
-            "Premain-Class" to "io.ohmyrasp.agent.launch.AgentLauncher",
-            "Agent-Class" to "io.ohmyrasp.agent.launch.AgentLauncher",
+            "Premain-Class" to "io.ohmyrasp.agent.launch.Java11Entry",
+            "Agent-Class" to "io.ohmyrasp.agent.launch.Java11Entry",
             "Can-Redefine-Classes" to "true",
             "Can-Retransform-Classes" to "true",
             "Implementation-Title" to "OhMyRasp Java 11 Era Agent",
@@ -149,6 +156,7 @@ val shirudoUpatchJar = tasks.register<ShadowJar>("shirudoUpatchJar") {
     from(sourceSets.main.get().output)
     from(shirudoConfigDir)
     relocate("org.objectweb.asm", "io.ohmyrasp.agent.shaded.asm")
+    exclude(otherLauncherEntries)
     exclude("**/module-info.class", "META-INF/versions/**")
 }
 
@@ -176,10 +184,10 @@ val verifyShirudoUpatchJar = tasks.register("verifyShirudoUpatchJar") {
                 "Expected Premain-Class: in main manifest section of ${jarFile.name}"
             }
             val manifest = Manifest(ByteArrayInputStream(manifestBytes))
-            require(manifest.mainAttributes.getValue("Premain-Class") == "io.ohmyrasp.agent.launch.AgentLauncher") {
+            require(manifest.mainAttributes.getValue("Premain-Class") == "io.ohmyrasp.agent.launch.Java11Entry") {
                 "Unexpected Premain-Class in ${jarFile.name}"
             }
-            require(manifest.mainAttributes.getValue("Agent-Class") == "io.ohmyrasp.agent.launch.AgentLauncher") {
+            require(manifest.mainAttributes.getValue("Agent-Class") == "io.ohmyrasp.agent.launch.Java11Entry") {
                 "Unexpected Agent-Class in ${jarFile.name}"
             }
             require(manifest.mainAttributes.getValue("OhMyRasp-Shirudo-Upatch") == "true") {
