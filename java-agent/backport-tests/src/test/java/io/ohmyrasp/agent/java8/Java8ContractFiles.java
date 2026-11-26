@@ -93,6 +93,24 @@ final class Java8ContractFiles {
   }
 
   /**
+   * The one event line a writer put in {@code log}, without its terminator. The file must end with
+   * exactly one {@code \n}: the daemon's tailer reads only lines that end with one, and a writer
+   * that stopped terminating its records would otherwise pass here once the test added the newline
+   * back for the comparison.
+   */
+  static String onlyLine(Path log) throws IOException {
+    assertTrue(Files.exists(log), "the scenario wrote an event");
+    String text = new String(Files.readAllBytes(log), StandardCharsets.UTF_8);
+    String shown = text.replace("\n", "\\n").replace("\r", "\\r");
+    assertTrue(text.endsWith("\n"), "the writer ends the line with a newline: " + shown);
+    assertTrue(!text.endsWith("\r\n"), "the terminator is a bare newline: " + shown);
+    String line = text.substring(0, text.length() - 1);
+    assertTrue(line.length() > 0 && line.indexOf('\n') < 0 && line.indexOf('\r') < 0,
+        "the scenario writes exactly one event, ended by exactly one newline: " + shown);
+    return line;
+  }
+
+  /**
    * A backport event line with its volatile parts fixed: the timestamp (epoch milliseconds), the
    * latency, and the Java version and vendor of a start line. With {@code sharedAcrossLines} the
    * line's own token, which names it in rule ids and in message text ("Java 11 ..."), becomes a
@@ -106,12 +124,31 @@ final class Java8ContractFiles {
           .replace("\"" + token + "_", "\"" + LINE_PLACEHOLDER + "_")
           .replace("Java " + token.substring("java".length()) + " ", "Java N ");
     }
-    // A start line has no timestamp.
+    // A start line has no timestamp. Any other line has epoch milliseconds, and only that: a
+    // writer that switched to seconds would otherwise be normalised to the fixed value too.
+    if (fixed.contains("\"timestamp\":")) {
+      assertEpochMillis(fixed);
+    }
     fixed = replaceOnce(fixed, "\"timestamp\":\\d+", "\"timestamp\":" + FIXED_TIMESTAMP_MILLIS, false);
     fixed = replaceOnce(fixed, "\"latency_us\":\\d+", "\"latency_us\":" + FIXED_LATENCY_US, false);
     fixed = replaceOnce(fixed, "\"java_version\":\"[^\"]*\"", "\"java_version\":\"1.8.0_402\"", false);
     fixed = replaceOnce(fixed, "\"java_vendor\":\"[^\"]*\"", "\"java_vendor\":\"Example Vendor\"", false);
     return fixed;
+  }
+
+  /** 2020-01-01T00:00:00Z and 2100-01-01T00:00:00Z, in epoch milliseconds. */
+  private static final long EARLIEST_MILLIS = 1577836800000L;
+  private static final long LATEST_MILLIS = 4102444800000L;
+
+  /** The line's {@code timestamp} is a 13-digit epoch-millisecond number in a plausible window. */
+  static void assertEpochMillis(String line) {
+    java.util.regex.Matcher matcher = java.util.regex.Pattern.compile("\"timestamp\":(\\d+)[,}]").matcher(line);
+    assertTrue(matcher.find(), "a backport event line carries a numeric timestamp: " + line);
+    String digits = matcher.group(1);
+    assertEquals(13, digits.length(), "the timestamp is epoch milliseconds (13 digits), not seconds: " + line);
+    long millis = Long.parseLong(digits);
+    assertTrue(millis > EARLIEST_MILLIS && millis < LATEST_MILLIS,
+        "the timestamp is a plausible time (after 2020, before 2100): " + line);
   }
 
   private static String replaceOnce(String line, String regex, String replacement, boolean required) {

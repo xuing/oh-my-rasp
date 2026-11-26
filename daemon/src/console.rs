@@ -143,11 +143,13 @@ async fn events(State(state): State<Arc<AppState>>, Query(q): Query<EventsQuery>
 }
 
 async fn stats(State(state): State<Arc<AppState>>) -> Json<Value> {
+    // The document and the status of its last write in one snapshot.
+    let (control, control_status) = state.controller.view();
     Json(json!({
         "stats": state.store.stats(),
         "cloud": state.cloud_status.snapshot(),
-        "control": state.controller.snapshot(),
-        "control_status": state.controller.status(),
+        "control": control,
+        "control_status": control_status,
         "spool_path": state.spool_path,
         "control_path": state.control_path,
         "version": state.version,
@@ -230,12 +232,15 @@ mod tests {
             ..Default::default()
         };
         let refused = ControlStatus {
+            oversized_file_replaced: None,
             write_refused: Some(crate::control::WriteRefused {
                 change: "policy",
                 size_bytes: 2_000_000,
                 limit_bytes: crate::control::MAX_CONTROL_BYTES,
                 at: "t".into(),
                 message: "m".into(),
+                agents_apply_state: true,
+                identity: None,
             }),
         };
         let text = render_metrics(&status, &refused);

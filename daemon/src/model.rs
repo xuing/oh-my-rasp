@@ -86,7 +86,7 @@ impl AgentEvent {
         Some(Self {
             seq,
             received_at,
-            kind: str_field(&raw, "kind").unwrap_or_else(|| infer_kind(&raw).into()),
+            kind: kind_field(&raw),
             timestamp: timestamp_field(&raw),
             hook: str_field(&raw, "hook").unwrap_or_default(),
             algorithm: str_field(&raw, "algorithm").unwrap_or_default(),
@@ -258,6 +258,20 @@ fn infer_kind(raw: &Value) -> &'static str {
     }
 }
 
+/// The label an ignored line is counted under when its `kind` is present but not a string.
+pub const NON_STRING_KIND: &str = "(non-string)";
+
+/// The `kind` as written, or inferred when the line has none. A `kind` that is present and not a
+/// string is a writer saying something the daemon cannot read: it is never inferred from the other
+/// members, which would let a malformed line pass as a detection.
+fn kind_field(raw: &Value) -> String {
+    match raw.get("kind") {
+        Some(Value::String(kind)) => kind.clone(),
+        Some(_) => NON_STRING_KIND.to_string(),
+        None => infer_kind(raw).into(),
+    }
+}
+
 /// The `timestamp` as an RFC 3339 string: a string as written, a number as epoch milliseconds.
 /// Empty when the line has none or the value cannot be read, so the daemon's read time stands in.
 fn timestamp_field(raw: &Value) -> String {
@@ -289,6 +303,24 @@ fn int_field(value: &Value, key: &str) -> Option<i64> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// A `kind` that is not a string is not a detection, whatever else the line carries.
+    #[test]
+    fn a_kind_that_is_not_a_string_is_ignored_and_not_inferred() {
+        for kind in ["5", "null", "true", "[\"detection\"]", "{\"a\":1}"] {
+            let line = format!(
+                r#"{{"kind":{kind},"event":"ohmyrasp-detection","hook":"h","algorithm":"a","action":"block"}}"#
+            );
+            let ev = AgentEvent::parse_line(1, "t".into(), &line).expect("parsed");
+            assert_eq!(ev.class(), EventClass::Ignored, "kind {kind}");
+            assert!(!ev.is_detection(), "kind {kind}");
+            assert_eq!(ev.ignored_label(), NON_STRING_KIND, "kind {kind}");
+        }
+        // No `kind` at all is still inferred, as older agents rely on.
+        let kindless = r#"{"hook":"h","algorithm":"a","action":"block"}"#;
+        let ev = AgentEvent::parse_line(1, "t".into(), kindless).expect("parsed");
+        assert!(ev.is_detection());
+    }
 
     #[test]
     fn parses_canonical_detection() {

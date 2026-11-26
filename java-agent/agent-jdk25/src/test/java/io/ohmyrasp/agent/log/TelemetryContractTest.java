@@ -1,13 +1,10 @@
 package io.ohmyrasp.agent.log;
 
-import static org.junit.jupiter.api.Assertions.assertEquals;
 
 import io.ohmyrasp.agent.contract.ContractFiles;
 import java.io.ByteArrayOutputStream;
 import java.io.PrintStream;
-import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.List;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -27,8 +24,6 @@ final class TelemetryContractTest {
     logger.sampleHookLatency("http_request", 321);
     logger.shutdown(5000);
 
-    List<String> lines = Files.readAllLines(log);
-    assertEquals(1, lines.size(), "one sample, one line: " + lines);
-    ContractFiles.assertGolden("events/primary/telemetry.json", ContractFiles.normalizeEvent(lines.get(0)));
+    ContractFiles.assertGolden("events/primary/telemetry.json", ContractFiles.normalizeEvent(ContractFiles.onlyLine(log)));
   }
 }

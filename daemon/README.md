@@ -101,7 +101,7 @@ The stack runs the daemon with `--default-mode=block`, so a fresh volume starts 
 | `GET /healthz` | Returns `ok` |
 | `GET /metrics` | Prometheus text exposition (`ohmyrasp_cloud_enabled`, `ohmyrasp_cloud_connected`, `ohmyrasp_cloud_registered`, `ohmyrasp_cloud_policy_version`, `ohmyrasp_control_write_refused`, `ohmyrasp_events_pending`, `ohmyrasp_events_uploaded_total`, `ohmyrasp_events_failed_total`, `ohmyrasp_events_dropped_total`) |
 | `GET /api/events?limit=&hook=&action=` | Recent retained detections, newest first (`limit` clamped to `1..2000`, default `200`), preserving raw JSON in `raw` |
-| `GET /api/stats` | Event counters (`ignored_kinds` counts lines of an unknown kind), the agent's start line (`agent`), latency percentiles (`p50_us`, `p95_us`, `p99_us`, `max_us`, `avg_us` over up to 2000 samples), cloud status, control state, `control_status` (set when a control write was refused for size), paths, and daemon version |
+| `GET /api/stats` | Event counters (`ignored_kinds` counts lines of an unknown kind), the agent's start line (`agent`), latency percentiles (`p50_us`, `p95_us`, `p99_us`, `max_us`, `avg_us` over up to 2000 samples), cloud status, control state, `control_status` (set when a control write was refused for size, or the file found at start-up was larger than the agents read), paths, and daemon version. The control state and `control_status` come from one snapshot taken under the controller's lock |
 | `GET /api/control` | Current `ControlState` (`mode`, `algorithms`, `policy`, `revision`, `updated_at`) |
 | `POST /api/control` | Update `mode` (`off`, `monitor`, `block`) and/or `algorithms` toggles (`{ "mode": "block", "algorithms": { "sqli": false } }`); `409` when the resulting document would be larger than the agents read |
 
@@ -133,6 +133,12 @@ Current durability boundaries documented in `src/tailer.rs` and `src/uploader.rs
 
 - **Graceful-shutdown outbox**: pending detections are held in a bounded in-memory queue (`buffer.max_pending`, evicting oldest entries and incrementing `dropped_total` when full) and flushed to `<buffer.dir>/outbox.ndjson` on `SIGINT`/`SIGTERM`. A hard crash (`SIGKILL` or power loss) loses events still in memory.
 - **Non-persistent spool offset**: `tailer.rs` does not checkpoint its byte offset across restarts; restarting without `--from-start` resumes at current EOF, while `--from-start` replays the spool from byte 0.
+
+## Known Limits
+
+- **One daemon per control and outbox path.** Two daemon instances that share the same control file or the same `buffer.dir` are not supported. They write the control file through one temp file (`control.json.tmp`) and can collide on it, and they replay and overwrite the same `outbox.ndjson`.
+- **A replayed outbox can lose events on a kill.** At start-up the uploader reads `outbox.ndjson` into memory and removes the file at once. Events it replayed are held only in memory until they are uploaded, or written back by a graceful shutdown, so a `SIGKILL` or power loss between the removal and the upload loses them (the same boundary as the graceful-shutdown outbox above).
+- **The upload schema cannot say "assigned, but refused".** When the daemon refuses a cloud policy that would make the control file larger than the agents read, it reports the version that is installed (in `/api/stats` and in the uploaded events), not the assignment it refused. The refusal is visible locally, in `control_status.write_refused`, and not to the cloud.
 
 ## Module Map
 
