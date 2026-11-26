@@ -41,6 +41,9 @@ public final class JsonEventLogger {
   // Once shutdown has begun, a write waits this long for the write lock and then gives up.
   private static final long SHUTDOWN_LOCK_MILLIS = 1000;
   private static final String REDACTED = "[redacted]";
+  // A query longer than this is not scanned: it is replaced by the marker as a whole.
+  private static final int MAX_REDACTED_QUERY_LENGTH = 8192;
+  private static final int MAX_QUERY_DECODE_ROUNDS = 3;
   private static final Set<String> SENSITIVE_HEADER_NAMES =
       Set.of(
           "authorization",
@@ -739,92 +742,99 @@ public final class JsonEventLogger {
   }
 
   /**
-   * The query string with the value of each parameter {@link #isRedactedParameterName} names
-   * replaced by the marker {@code parameters} uses. Keys, order and separators stay. A name is
-   * matched after URL-decoding. A value that carries such an assignment itself
-   * ({@code next=%2Fcb%3Ftoken%3Dabc}) and a piece that is not {@code name=value} but contains
-   * such a name ({@code {"password":"x"}}) are replaced as well, and so is a whole query that
-   * has no {@code =} when it contains one. Runs on the event-writing path: plain loops, no
-   * regular expression and no lambda.
+   * The query string with every piece that names a sensitive parameter carrying the marker in
+   * place of its value. The query is split once, left to right, on {@code &} and {@code ;}, and
+   * the separators stay. A piece is sensitive when it, or what it decodes to (percent escapes and
+   * {@code +}, repeated until the text stops changing, at most {@value #MAX_QUERY_DECODE_ROUNDS}
+   * rounds), holds a name {@link #isRedactedParameterName} names as a token: a run of ASCII
+   * letters, digits and underscores, or of those and hyphens, so {@code amp;password},
+   * {@code user[password]}, {@code {"password":"x"}} and {@code next=/cb?token=abc} match and
+   * {@code passwordless} does not. A sensitive piece keeps its text up to and including the first
+   * {@code =} and gets the marker as its value, as long as that text is a plain parameter name;
+   * a piece with no {@code =}, or whose text before it holds punctuation that could carry the
+   * secret ({@code {"password":"a=b"}}), is replaced as a whole. A parameter with an empty value
+   * has nothing to hide and stays. A query longer than {@value #MAX_REDACTED_QUERY_LENGTH}
+   * characters is not scanned and becomes the marker. Runs on the event-writing path: plain
+   * loops over ASCII comparisons, no regular expression, no lambda and no Unicode tables.
    */
   static String redactedQuery(String query) {
     if (query == null || query.isEmpty()) {
       return query;
     }
-    if (query.indexOf('=') < 0) {
-      return containsRedactedName(percentDecode(query)) ? REDACTED : query;
-    }
-    var out = new StringBuilder(query.length() + 16);
-    boolean changed = false;
     int length = query.length();
+    if (length > MAX_REDACTED_QUERY_LENGTH) {
+      return REDACTED;
+    }
+    var out = new StringBuilder(length + 16);
+    boolean changed = false;
     int start = 0;
-    while (start <= length) {
-      int end = query.indexOf('&', start);
-      if (end < 0) {
-        end = length;
+    for (int i = 0; i <= length; i++) {
+      if (i < length && query.charAt(i) != '&' && query.charAt(i) != ';') {
+        continue;
       }
-      int equals = query.indexOf('=', start);
-      if (equals < 0 || equals >= end) {
-        String piece = query.substring(start, end);
-        if (!piece.isEmpty() && containsRedactedName(percentDecode(piece))) {
-          out.append(REDACTED);
-          changed = true;
-        } else {
-          out.append(piece);
-        }
-      } else {
-        out.append(query, start, equals + 1);
-        String value = query.substring(equals + 1, end);
-        if (!value.isEmpty() && redactedValue(query.substring(start, equals), value)) {
-          out.append(REDACTED);
-          changed = true;
-        } else {
-          out.append(value);
-        }
+      String piece = query.substring(start, i);
+      String written = redactedPiece(piece);
+      changed |= written != piece;
+      out.append(written);
+      if (i < length) {
+        out.append(query.charAt(i));
       }
-      if (end < length) {
-        out.append('&');
-      }
-      start = end + 1;
+      start = i + 1;
     }
     return changed ? out.toString() : query;
   }
 
-  private static boolean redactedValue(String rawName, String rawValue) {
-    if (isRedactedParameterName(percentDecode(rawName))) {
-      return true;
+  /** The piece itself when nothing in it is sensitive, so the caller can tell by identity. */
+  private static String redactedPiece(String piece) {
+    if (piece.isEmpty() || !holdsRedactedName(piece)) {
+      return piece;
     }
-    String once = percentDecode(rawValue);
-    return embedsRedactedAssignment(once) || embedsRedactedAssignment(percentDecode(once));
+    int equals = piece.indexOf('=');
+    if (equals < 0 || !isPlainParameterName(piece.substring(0, equals))) {
+      return REDACTED;
+    }
+    if (equals + 1 == piece.length()) {
+      return piece;
+    }
+    return piece.substring(0, equals + 1) + REDACTED;
   }
 
-  /** Whether {@code text} holds {@code name=} for a redacted parameter name. */
-  private static boolean embedsRedactedAssignment(String text) {
-    for (int equals = text.indexOf('='); equals >= 0; equals = text.indexOf('=', equals + 1)) {
-      int from = equals;
-      while (from > 0 && isNameChar(text.charAt(from - 1))) {
-        from--;
-      }
-      if (from < equals && isRedactedParameterName(text.substring(from, equals))) {
+  /** Whether the text, or any of its first decodings, holds a redacted parameter name as a token. */
+  private static boolean holdsRedactedName(String text) {
+    String current = text;
+    for (int round = 0; ; round++) {
+      String lower = asciiLowerCase(current);
+      if (holdsRedactedToken(lower, false) || holdsRedactedToken(lower, true)) {
         return true;
       }
+      if (round == MAX_QUERY_DECODE_ROUNDS) {
+        return false;
+      }
+      String next = percentDecode(current);
+      if (next.equals(current)) {
+        return false;
+      }
+      current = next;
     }
-    return false;
   }
 
-  /** Whether any word of {@code text} is a redacted parameter name. */
-  private static boolean containsRedactedName(String text) {
-    int length = text.length();
+  /**
+   * Whether a token of {@code lower} is a redacted name. A token is a maximal run of ASCII
+   * letters, digits and underscores, or, with {@code hyphenJoins}, of those and hyphens, which
+   * keeps {@code api-key} and {@code access-token} one name.
+   */
+  private static boolean holdsRedactedToken(String lower, boolean hyphenJoins) {
+    int length = lower.length();
     int from = 0;
     while (from < length) {
-      while (from < length && !isNameChar(text.charAt(from))) {
+      while (from < length && !isTokenChar(lower.charAt(from), hyphenJoins)) {
         from++;
       }
       int to = from;
-      while (to < length && isNameChar(text.charAt(to))) {
+      while (to < length && isTokenChar(lower.charAt(to), hyphenJoins)) {
         to++;
       }
-      if (to > from && isRedactedParameterName(text.substring(from, to))) {
+      if (to > from && isRedactedParameterName(lower.substring(from, to))) {
         return true;
       }
       from = to;
@@ -832,8 +842,65 @@ public final class JsonEventLogger {
     return false;
   }
 
-  private static boolean isNameChar(char ch) {
-    return Character.isLetterOrDigit(ch) || ch == '_' || ch == '-';
+  private static boolean isTokenChar(char ch, boolean hyphenJoins) {
+    return (ch >= 'a' && ch <= 'z')
+        || (ch >= 'A' && ch <= 'Z')
+        || (ch >= '0' && ch <= '9')
+        || ch == '_'
+        || (hyphenJoins && ch == '-');
+  }
+
+  /**
+   * Whether the text before the first {@code =} is only a parameter name once decoded: letters,
+   * digits, {@code _ - . [ ]}, spaces and non-ASCII characters. Quotes, braces, colons, slashes
+   * and a {@code %} left over after the decoding rounds could carry a secret.
+   */
+  private static boolean isPlainParameterName(String rawKey) {
+    String current = rawKey;
+    for (int round = 0; round < MAX_QUERY_DECODE_ROUNDS; round++) {
+      String next = percentDecode(current);
+      if (next.equals(current)) {
+        break;
+      }
+      current = next;
+    }
+    for (int i = 0; i < current.length(); i++) {
+      char ch = current.charAt(i);
+      boolean plain =
+          isTokenChar(ch, true) || ch == '.' || ch == '[' || ch == ']' || ch == ' ' || ch > 0x7f;
+      if (!plain) {
+        return false;
+      }
+    }
+    return true;
+  }
+
+  /**
+   * ASCII lower-casing, with the two characters whose Unicode lower case is ASCII ({@code U+212A}
+   * Kelvin sign, {@code U+0130} dotted capital I) mapped by hand, so a server that folds case
+   * with Unicode rules still reads {@code to\u212Aen} as {@code token}. The same string comes
+   * back when nothing changes.
+   */
+  private static String asciiLowerCase(String text) {
+    char[] chars = null;
+    for (int i = 0; i < text.length(); i++) {
+      char ch = text.charAt(i);
+      char lower = ch;
+      if (ch >= 'A' && ch <= 'Z') {
+        lower = (char) (ch + ('a' - 'A'));
+      } else if (ch == '\u212A') {
+        lower = 'k';
+      } else if (ch == '\u0130') {
+        lower = 'i';
+      }
+      if (lower != ch) {
+        if (chars == null) {
+          chars = text.toCharArray();
+        }
+        chars[i] = lower;
+      }
+    }
+    return chars == null ? text : new String(chars);
   }
 
   /** URL-decodes a query component: {@code %XX} as UTF-8 bytes, {@code +} as a space. */

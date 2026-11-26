@@ -8,7 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Security
-- The primary Java agent redacts the values of sensitive parameters inside the `request.query` string of an event line, with the name rule and the `[redacted]` marker it already used for `parameters`. Before, `password=...` in a query string was written to the spool, shown in the local console and uploaded by the daemon (and by the direct-cloud client) as written.
+- The primary Java agent redacts the values of sensitive parameters inside the `request.query` string of an event line, with the marker it already used for `parameters`. The query is split on `&` and `;`, and a piece is redacted when it, or what it decodes to (percent escapes and `+`, up to three rounds), holds a sensitive parameter name as a token: `id=1&amp;password=x`, `%2570assword=x`, `user[password]=x`, `cfg={"password":"x"}` and `next=/cb?token=x` are all redacted, and `passwordless=1` is not. A query longer than 8192 characters is not scanned and is replaced by the marker as a whole. Before, `password=...` in a query string was written to the spool, shown in the local console and uploaded by the daemon (and by the direct-cloud client) as written.
 
 ### Fixed
 - The daemon no longer reinitialises a control file whose `mode` an operator edited to a spelling the agents accept (`record`, `observe`, `log`, `disabled`, `none`, `blocking`, `protect`, or another letter case). It keeps the document and writes the canonical `off`, `monitor` or `block` the next time it writes the file. Both agent engines accept the same set of spellings.
