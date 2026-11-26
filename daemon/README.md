@@ -118,6 +118,7 @@ Example files for both formats, tested by the agents and by this daemon, are in 
 ```
 
 - `mode`: `off` (detection disabled), `monitor` (detect and record without blocking), `block` (detect, record, and block active-request attacks).
+  The daemon writes these three words. When an operator edits the file by hand it also reads every spelling both agent engines accept (`disabled`, `none`, `record`, `observe`, `log`, `blocking`, `protect`, in any letter case) and writes the canonical word the next time it writes the file; see [the fixtures' README](../java-agent/contracts/agent-daemon/README.md#spellings-of-the-mode).
 - `algorithms`: per-algorithm enable flags; absent entries default to enabled.
 - `policy`: optional raw policy JSON pulled from `/api/v1/agents/{id}/policy`.
 - `revision`: monotonic counter incremented on state changes.

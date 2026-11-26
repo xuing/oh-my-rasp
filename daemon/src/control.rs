@@ -66,7 +66,11 @@ pub struct ControlStatus {
 }
 
 /// Detection mode. Ordered from least to most intrusive.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+///
+/// Written as the canonical lowercase word, read as any spelling [`Mode::parse`] accepts: an
+/// operator who edits the control file by hand may write `Protect` or `record`, and the daemon
+/// rewrites the canonical word the next time it writes the file.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "lowercase")]
 pub enum Mode {
     /// Detection disabled entirely — the agent should short-circuit hooks for
@@ -78,9 +82,30 @@ pub enum Mode {
     Block,
 }
 
+impl<'de> Deserialize<'de> for Mode {
+    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let text = String::deserialize(deserializer)?;
+        Mode::parse(&text).ok_or_else(|| {
+            serde::de::Error::custom(format!(
+                "unknown mode {text:?}: expected off, monitor or block (or an alias)"
+            ))
+        })
+    }
+}
+
 impl Mode {
+    /// The spellings are exactly those both agent engines accept (`DetectionMode.parse` of the
+    /// primary agent and `RaspRuntime.parseMode` of the backports, which agree): `off`,
+    /// `disabled`, `none` / `monitor`, `record`, `observe`, `log` / `block`, `blocking`,
+    /// `protect`, in any letter case, with characters up to U+0020 around them ignored (Java's
+    /// `String.trim`, not Rust's wider whitespace). The contract examples in
+    /// `control/hand-edited/` pin them.
     pub fn parse(value: &str) -> Option<Self> {
-        match value.trim().to_ascii_lowercase().as_str() {
+        match value
+            .trim_matches(|c: char| c <= ' ')
+            .to_lowercase()
+            .as_str()
+        {
             "off" | "disabled" | "none" => Some(Self::Off),
             "monitor" | "record" | "observe" | "log" => Some(Self::Monitor),
             "block" | "blocking" | "protect" => Some(Self::Block),
@@ -497,5 +522,71 @@ mod tests {
         );
         assert_eq!(ctrl.snapshot().mode, Mode::Block);
         assert_eq!(ctrl.status().write_refused.unwrap().change, "existing");
+    }
+
+    #[test]
+    fn every_spelling_the_agents_accept_parses_in_any_case() {
+        let spellings = [
+            ("off", Mode::Off),
+            ("disabled", Mode::Off),
+            ("none", Mode::Off),
+            ("monitor", Mode::Monitor),
+            ("record", Mode::Monitor),
+            ("observe", Mode::Monitor),
+            ("log", Mode::Monitor),
+            ("block", Mode::Block),
+            ("blocking", Mode::Block),
+            ("protect", Mode::Block),
+        ];
+        for (word, mode) in spellings {
+            for text in [
+                word.to_string(),
+                word.to_uppercase(),
+                format!("{}{}", word[..1].to_uppercase(), &word[1..]),
+                format!(" {word}\t"),
+            ] {
+                assert_eq!(Mode::parse(&text), Some(mode), "{text:?}");
+            }
+        }
+        // Like Java's trim and toLowerCase(Locale.ROOT): control characters around the word are
+        // ignored, a no-break space is not, and the Kelvin sign is a letter `k`.
+        assert_eq!(Mode::parse("\u{1}block\u{1f}"), Some(Mode::Block));
+        assert_eq!(Mode::parse("\u{a0}block"), None);
+        assert_eq!(Mode::parse("BLOC\u{212a}"), Some(Mode::Block));
+        for text in ["", "nonsense", "blocked", "on", "mon itor"] {
+            assert_eq!(Mode::parse(text), None, "{text:?}");
+        }
+    }
+
+    #[test]
+    fn a_hand_edited_mode_is_kept_and_written_back_as_the_canonical_word() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("control.json");
+        std::fs::write(
+            &path,
+            r#"{"mode":" Protect ","algorithms":{"sqli":false},"revision":7,"updated_at":"2026-01-01T00:00:00Z"}"#,
+        )
+        .unwrap();
+
+        let ctrl = Controller::load_or_init(&path, Mode::Off).unwrap();
+
+        let state = ctrl.snapshot();
+        assert_eq!(state.mode, Mode::Block, "not reinitialised to the default");
+        assert_eq!(state.revision, 7);
+        assert_eq!(state.algorithms.get("sqli"), Some(&false));
+        let written: serde_json::Value =
+            serde_json::from_str(&std::fs::read_to_string(&path).unwrap()).unwrap();
+        assert_eq!(written["mode"], "block");
+        assert_eq!(written["revision"], 7);
+    }
+
+    #[test]
+    fn a_mode_nobody_accepts_still_reinitialises_the_file() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("control.json");
+        std::fs::write(&path, r#"{"mode":"nonsense","revision":7}"#).unwrap();
+        let ctrl = Controller::load_or_init(&path, Mode::Monitor).unwrap();
+        assert_eq!(ctrl.snapshot().mode, Mode::Monitor);
+        assert_eq!(ctrl.snapshot().revision, 1);
     }
 }

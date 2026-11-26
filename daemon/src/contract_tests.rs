@@ -280,6 +280,89 @@ fn the_daemons_control_size_limit_is_the_contract_value() {
     );
 }
 
+/// `control/hand-edited/*.json`: documents an operator edited by hand to a spelling of the mode
+/// the agents accept. The daemon must read each one as the manifest says (not reinitialise it)
+/// and write the canonical word the next time it writes the file.
+#[test]
+fn the_daemon_reads_the_hand_edited_control_documents_and_writes_the_canonical_mode() {
+    let dir = contracts().join("control/hand-edited");
+    let text = fs::read_to_string(dir.join("expected.properties")).unwrap();
+    let manifest: std::collections::BTreeMap<String, String> = text
+        .lines()
+        .filter(|l| !l.trim().is_empty() && !l.starts_with('#'))
+        .map(|l| {
+            let (k, v) = l
+                .split_once('=')
+                .unwrap_or_else(|| panic!("not key=value: {l}"));
+            (k.trim().to_string(), v.trim().to_string())
+        })
+        .collect();
+    let documents = json_names(&dir);
+    let in_manifest: BTreeSet<String> = manifest
+        .keys()
+        .filter_map(|k| k.strip_suffix(".mode").map(str::to_string))
+        .collect();
+    assert_eq!(
+        in_manifest, documents,
+        "expected.properties against hand-edited/*.json"
+    );
+    assert!(
+        documents.len() >= 10,
+        "the spellings are there: {documents:?}"
+    );
+
+    let names = |value: &str| -> Vec<String> {
+        value
+            .split(',')
+            .map(str::trim)
+            .filter(|s| !s.is_empty())
+            .map(str::to_string)
+            .collect()
+    };
+    for name in &documents {
+        let work = tempfile::tempdir().unwrap();
+        let path = work.path().join("control.json");
+        fs::copy(dir.join(format!("{name}.json")), &path).unwrap();
+        let original: Value = serde_json::from_str(&fs::read_to_string(&path).unwrap()).unwrap();
+
+        // A reinitialised file would hold the default mode and revision 1; every document here
+        // has a higher revision, so a wiped document shows.
+        let ctrl = Controller::load_or_init(&path, Mode::Off).unwrap();
+
+        let state = ctrl.snapshot();
+        assert_eq!(
+            state.mode.as_str(),
+            manifest[&format!("{name}.mode")],
+            "{name} mode"
+        );
+        assert_eq!(
+            state.revision.to_string(),
+            manifest[&format!("{name}.revision")],
+            "{name} revision"
+        );
+        for (want, field) in [(false, "disabled"), (true, "enabled")] {
+            let listed = names(&manifest[&format!("{name}.{field}")]);
+            let held: Vec<String> = state
+                .algorithms
+                .iter()
+                .filter(|(_, enabled)| **enabled == want)
+                .map(|(n, _)| n.clone())
+                .collect();
+            assert_eq!(held, listed, "{name} {field} switches");
+        }
+        // Rewritten with the canonical word and nothing else changed.
+        let written: Value = serde_json::from_str(&fs::read_to_string(&path).unwrap()).unwrap();
+        assert_eq!(
+            written["mode"],
+            manifest[&format!("{name}.mode")].as_str(),
+            "{name} rewritten mode"
+        );
+        for field in ["algorithms", "revision", "updated_at"] {
+            assert_eq!(written[field], original[field], "{name} {field} kept");
+        }
+    }
+}
+
 fn json_names(dir: &Path) -> BTreeSet<String> {
     fs::read_dir(dir)
         .unwrap_or_else(|e| panic!("{}: {e}", dir.display()))

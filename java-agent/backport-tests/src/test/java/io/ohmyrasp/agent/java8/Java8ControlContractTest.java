@@ -46,6 +46,32 @@ final class Java8ControlContractTest {
     }
   }
 
+  /**
+   * An operator edits the daemon's file by hand ({@code control/hand-edited/}): every spelling of
+   * the mode that both agent engines accept, in any letter case. The backports read the mode and
+   * nothing else; the daemon reads the same documents.
+   */
+  @Test
+  void everyHandEditedDocumentSetsTheModeItsManifestSays() throws Exception {
+    Properties expected = new Properties();
+    expected.load(new StringReader(Java8ContractFiles.read("control/hand-edited/expected.properties")));
+    List<String> documents = documents("control/hand-edited");
+    List<String> inManifest = new ArrayList<String>();
+    for (String key : expected.stringPropertyNames()) {
+      if (key.endsWith(".mode")) {
+        inManifest.add(key.substring(0, key.length() - ".mode".length()));
+      }
+    }
+    assertEquals(new TreeSet<String>(inManifest), new TreeSet<String>(documents),
+        "control/hand-edited/expected.properties and the hand-edited/*.json files list the same documents");
+    assertTrue(documents.size() >= 10, "the spellings are there: " + documents);
+    for (String document : documents) {
+      RaspRuntime.ControlState state = new RaspRuntime.ControlState(null);
+      state.poll(place("control/hand-edited/" + document + ".json"));
+      assertEquals(expected.getProperty(document + ".mode"), state.mode().name().toLowerCase(java.util.Locale.ROOT), document);
+    }
+  }
+
   /** A document that is not one well-formed JSON object changes nothing, whatever it says. */
   @Test
   void aRejectedDocumentLeavesTheModeUnchanged() throws Exception {

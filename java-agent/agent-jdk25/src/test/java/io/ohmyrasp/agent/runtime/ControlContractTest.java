@@ -40,6 +40,35 @@ final class ControlContractTest {
     }
   }
 
+  /**
+   * An operator edits the daemon's file by hand ({@code control/hand-edited/}): every spelling of
+   * the mode that both agent engines accept, in any letter case. The agent must read each as
+   * {@code control/hand-edited/expected.properties} says; the daemon reads the same documents.
+   */
+  @Test
+  void everyHandEditedDocumentAppliesAsItsManifestSays() throws Exception {
+    Properties expected = new Properties();
+    expected.load(new StringReader(ContractFiles.read("control/hand-edited/expected.properties")));
+    List<String> documents = documents("control/hand-edited");
+    assertEquals(new TreeSet<>(manifestDocuments(expected)), new TreeSet<>(documents),
+        "control/hand-edited/expected.properties and the hand-edited/*.json files list the same documents");
+    assertTrue(documents.size() >= 10, "the spellings are there: " + documents);
+    for (String document : documents) {
+      AgentRuntime runtime = AgentRuntime.newForTesting();
+      runtime.reloadIfChanged(place("control/hand-edited/" + document + ".json"));
+      AgentRuntime.ControlState state = runtime.state();
+      assertEquals(expected.getProperty(document + ".mode"), state.mode() == null ? null : state.mode().token(),
+          document + " mode");
+      assertEquals(Long.parseLong(expected.getProperty(document + ".revision")), state.revision(), document + " revision");
+      for (String algorithm : list(expected, document + ".disabled")) {
+        assertFalse(state.isAlgorithmEnabled(algorithm), document + ": " + algorithm + " is disabled");
+      }
+      for (String algorithm : list(expected, document + ".enabled")) {
+        assertTrue(state.isAlgorithmEnabled(algorithm), document + ": " + algorithm + " is enabled");
+      }
+    }
+  }
+
   /** The daemon withdraws a policy by rewriting the file without the key: the agent must drop it. */
   @Test
   void aPolicyTheDaemonWithdrawsStopsApplying() throws Exception {
