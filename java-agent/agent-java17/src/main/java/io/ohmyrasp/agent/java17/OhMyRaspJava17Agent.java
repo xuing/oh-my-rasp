@@ -276,6 +276,8 @@ public final class OhMyRaspJava17Agent {
     retransform(instrumentation, beanExpression);
     retransform(instrumentation, beanStatement);
     retransformByName(instrumentation, "com.sun.tools.javac.api.JavacTool");
+    // Janino loaded before a dynamic attach: its compiler base class is hooked like javac.
+    retransformByName(instrumentation, "org.codehaus.commons.compiler.Cookable");
     retransformByName(instrumentation, io.ohmyrasp.agent.jmx.JmxDispatchVisitor.TARGET.replace('/', '.'));
 
     retransformByName(instrumentation, "com.sun.beans.decoder.DocumentHandler");

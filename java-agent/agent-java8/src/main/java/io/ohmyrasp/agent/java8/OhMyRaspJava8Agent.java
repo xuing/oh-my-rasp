@@ -298,6 +298,8 @@ public final class OhMyRaspJava8Agent {
     retransformByName(instrumentation, java.io.File.separatorChar == '/'
         ? "sun.nio.fs.UnixFileSystemProvider" : "sun.nio.fs.WindowsFileSystemProvider");
     retransformByName(instrumentation, "com.sun.tools.javac.api.JavacTool");
+    // Janino loaded before a dynamic attach: its compiler base class is hooked like javac.
+    retransformByName(instrumentation, "org.codehaus.commons.compiler.Cookable");
     retransform(instrumentation, java.util.Base64.Decoder.class);
   }
 
