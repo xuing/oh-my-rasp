@@ -5,7 +5,11 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.attribute.FileTime;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
 
 final class AgentRuntimeTest {
 
@@ -107,6 +111,43 @@ final class AgentRuntimeTest {
     }
     runtime.apply("{\"policy\":\"{\\\"mode\\\":\\\"block\\\"}\",\"mode\":\"monitor\"}");
     assertEquals(DetectionMode.MONITOR, runtime.mode());
+  }
+
+  @Test
+  void aControlFileReadHalfWrittenIsPickedUpOnceCompleteWithTheSameModificationTime(@TempDir Path dir)
+      throws Exception {
+    Path file = dir.resolve("control.json");
+    FileTime sameTime = FileTime.fromMillis(1_500_000_000_000L);
+    writeAt(file, "{\"mode\":\"block\"}", FileTime.fromMillis(1_400_000_000_000L));
+    AgentRuntime runtime = startPolling(file);
+    assertEquals(DetectionMode.BLOCK, runtime.mode());
+
+    writeAt(file, "{\"mode\":\"off\"", sameTime);
+    runtime.reloadIfChanged();
+    assertEquals(DetectionMode.BLOCK, runtime.mode(), "a half-written document changes nothing");
+    writeAt(file, "{\"mode\":\"off\"}", sameTime);
+    runtime.reloadIfChanged();
+    assertEquals(DetectionMode.OFF, runtime.mode(), "the completed document applies");
+
+    // Content decides, not the modification time: a new document with the same time applies.
+    writeAt(file, "{\"mode\":\"monitor\"}", sameTime);
+    runtime.reloadIfChanged();
+    assertEquals(DetectionMode.MONITOR, runtime.mode());
+  }
+
+  /**
+   * A runtime polling {@code file}, driven by direct {@link AgentRuntime#reloadIfChanged} calls:
+   * its poller thread waits a day before its first poll, so it never runs during a test.
+   */
+  static AgentRuntime startPolling(Path file) {
+    AgentRuntime runtime = AgentRuntime.newForTesting();
+    runtime.start("control=" + file + ",control_poll_ms=86400000");
+    return runtime;
+  }
+
+  static void writeAt(Path file, String text, FileTime time) throws Exception {
+    Files.writeString(file, text);
+    Files.setLastModifiedTime(file, time);
   }
 
   @Test

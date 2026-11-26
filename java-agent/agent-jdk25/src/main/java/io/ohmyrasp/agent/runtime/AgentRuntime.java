@@ -42,7 +42,7 @@ public final class AgentRuntime {
   private volatile Integer argLatencySample;
 
   private Path controlPath;
-  private volatile long lastModifiedMillis = Long.MIN_VALUE;
+  private volatile String lastAppliedContent; // the control file content last applied
   private final AtomicBoolean started = new AtomicBoolean();
 
   // Cloud policy distributed via the control file: installed through this
@@ -271,35 +271,42 @@ public final class AgentRuntime {
     poller.start();
   }
 
-  private void reloadIfChanged() {
+  /** One polling step; the poller thread calls it, and so can a test. */
+  void reloadIfChanged() {
     Path path = controlPath;
     if (path == null) {
       return;
     }
+    String text;
     try {
       if (!Files.isRegularFile(path)) {
         return;
       }
-      long modified = Files.getLastModifiedTime(path).toMillis();
-      if (modified == lastModifiedMillis) {
-        return;
-      }
-      lastModifiedMillis = modified;
-      apply(Files.readString(path));
+      text = Files.readString(path);
     } catch (RuntimeException | java.io.IOException e) {
-      // Tolerate transient read/parse failures; keep the last known good state.
+      return; // a transient read failure keeps the last good state
+    }
+    // Read on every poll and applied when the content differs from what was last applied. Content
+    // that fails to parse is not recorded, so a document read half-written is applied once it is
+    // complete, whatever its modification time.
+    if (text.equals(lastAppliedContent)) {
+      return;
+    }
+    if (apply(text)) {
+      lastAppliedContent = text;
     }
   }
 
-  void apply(String json) {
+  /** Applies a control document; false, changing nothing, when it is not one JSON object. */
+  boolean apply(String json) {
     Object parsed;
     try {
       parsed = SimpleJson.parse(json);
     } catch (RuntimeException e) {
-      return; // ignore malformed control documents
+      return false; // ignore malformed control documents
     }
     if (!(parsed instanceof Map<?, ?> object)) {
-      return;
+      return false;
     }
     if (object.get("mode") instanceof String token) {
       DetectionMode parsedMode = DetectionMode.parse(token);
@@ -333,6 +340,7 @@ public final class AgentRuntime {
         }
       }
     }
+    return true;
   }
 
   /** The control file this runtime polls, or null when polling is disabled. */

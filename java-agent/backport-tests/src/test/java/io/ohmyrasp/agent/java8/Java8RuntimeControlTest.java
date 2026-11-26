@@ -59,6 +59,28 @@ final class Java8RuntimeControlTest {
   }
 
   @Test
+  void aControlFileReadHalfWrittenIsPickedUpOnceCompleteWithTheSameModificationTime()
+      throws Exception {
+    Path file = dir.resolve("control.json");
+    FileTime sameTime = FileTime.fromMillis(1_500_000_000_000L);
+    RaspRuntime.ControlState state = new RaspRuntime.ControlState(RaspRuntime.Mode.BLOCK);
+
+    writeAt(file, "{\"mode\":\"off\"", sameTime);
+    state.poll(file);
+    assertEquals(RaspRuntime.Mode.BLOCK, state.mode(), "a half-written document changes nothing");
+    writeAt(file, "{\"mode\":\"off\"}", sameTime);
+    state.poll(file);
+    assertEquals(RaspRuntime.Mode.OFF, state.mode(), "the completed document applies");
+
+    // Content decides, not the modification time: a new document with the same time applies.
+    writeAt(file, "{\"mode\":\"monitor\"}", sameTime);
+    state.poll(file);
+    assertEquals(RaspRuntime.Mode.MONITOR, state.mode());
+    state.poll(file);
+    assertEquals(RaspRuntime.Mode.MONITOR, state.mode(), "unchanged content");
+  }
+
+  @Test
   void controlDocumentReadsOnlyTheTopLevelOfOneWellFormedObject() {
     assertEquals("off", ControlDocument.topLevelString(" \r\n\t{ \"mode\" : \"off\" }\n", "mode"));
     assertEquals(
@@ -134,8 +156,12 @@ final class Java8RuntimeControlTest {
 
   /** Writes {@code text} with a modification time no earlier write in this test used. */
   private void write(Path file, String text) throws Exception {
-    Files.write(file, text.getBytes(StandardCharsets.UTF_8));
     nextMtime += 1000L;
-    Files.setLastModifiedTime(file, FileTime.fromMillis(nextMtime));
+    writeAt(file, text, FileTime.fromMillis(nextMtime));
+  }
+
+  private static void writeAt(Path file, String text, FileTime time) throws Exception {
+    Files.write(file, text.getBytes(StandardCharsets.UTF_8));
+    Files.setLastModifiedTime(file, time);
   }
 }

@@ -197,7 +197,10 @@ public final class RaspRuntime {
    */
   static final class ControlState {
     private volatile Mode mode; // null = unset -> legacy behavior
-    private volatile long controlMtime = Long.MIN_VALUE;
+    // The content last applied. The file is read on every poll and applied when its content
+    // differs; content that fails to parse is not recorded, so a document read half-written is
+    // applied once it is complete, whatever its modification time.
+    private volatile String applied;
 
     ControlState(Mode startup) {
       this.mode = startup;
@@ -208,24 +211,29 @@ public final class RaspRuntime {
     }
 
     void poll(Path path) {
+      String text;
       try {
         if (path == null || !Files.isRegularFile(path)) {
           return;
         }
-        long mtime = Files.getLastModifiedTime(path).toMillis();
-        if (mtime == controlMtime) {
-          return;
-        }
-        controlMtime = mtime;
-        String text = new String(Files.readAllBytes(path), StandardCharsets.UTF_8);
-        // Only one complete JSON object counts, and only its top-level mode; an unrecognised
-        // value changes nothing. ControlDocument throws IllegalArgumentException otherwise.
-        Mode parsed = parseMode(ControlDocument.topLevelString(text, "mode"));
-        if (parsed != null) {
-          mode = parsed;
-        }
-      } catch (IOException | RuntimeException ignored) {
-        // keep last known good state
+        text = new String(Files.readAllBytes(path), StandardCharsets.UTF_8);
+      } catch (IOException | RuntimeException unreadable) {
+        return; // keep the last good state
+      }
+      if (text.equals(applied)) {
+        return;
+      }
+      String token;
+      try {
+        // Only one complete JSON object counts, and only its top-level mode.
+        token = ControlDocument.topLevelString(text, "mode");
+      } catch (IllegalArgumentException malformed) {
+        return; // keep the last good state and record nothing
+      }
+      applied = text;
+      Mode parsed = parseMode(token);
+      if (parsed != null) {
+        mode = parsed; // an unrecognised mode changes nothing
       }
     }
   }
