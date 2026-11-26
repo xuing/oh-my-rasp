@@ -107,6 +107,8 @@ The stack runs the daemon with `--default-mode=block`, so a fresh volume starts 
 
 ## Contract with the Agent and File Permissions
 
+Example files for both formats, tested by the agents and by this daemon, are in [`../java-agent/contracts/agent-daemon/`](../java-agent/contracts/agent-daemon/README.md).
+
 **Events out (`events.jsonl`)**: one JSON object per line written by the agent's `JsonEventLogger`. The daemon reads this file without creating or modifying it, tolerates missing fields, and retains the raw JSON object. Recognized keys: `timestamp`, `kind` (`detection` or `telemetry`), `hook`, `algorithm`, `action`, `confidence`, `latency_us`, `message`, `request`, `details`.
 
 **Control in (`control.json`)**: written by `Controller` (`src/control.rs`) and polled by the agent:

@@ -67,13 +67,15 @@ When the agent and host daemon run together, they communicate solely through two
 
 1. **Event spool (`events.jsonl`, default `/tmp/ohmyrasp-events.jsonl`)**:
    - Written asynchronously (append-only NDJSON) by `JsonEventLogger`.
-   - Recognized fields: `timestamp`, `kind` (`detection` or `telemetry`), `hook`, `algorithm`, `action`, `confidence`, optional `latency_us`, `message`, `request` (`method`, `uri`, `query`, `parameters`, `headers` with sensitive headers/parameters redacted), and `details`.
+   - The fields of a line, with the redaction of sensitive headers and parameters, are shown by the example lines in [`java-agent/contracts/agent-daemon/events/`](../java-agent/contracts/agent-daemon/README.md#files), which the agents' tests produce and the daemon's tests parse. The backport agents write a smaller line than the primary one.
    - `telemetry` lines feed only the daemon's local latency percentile panel (`p50`/`p95`/`p99`/`max`/`avg`) and are never forwarded to the control plane.
    - Trade-off: `tailer.rs` does not persist its byte offset across daemon restarts; starting without `--from-start` resumes from current EOF (missing events written while the daemon was down), while `--from-start` replays the full file.
 2. **Control file (`control.json`, default `/tmp/ohmyrasp-control.json`)**:
    - Owned by the daemon (`control.rs`) and polled by `AgentRuntime` without restarting the JVM.
-   - JSON schema: `mode` (`off`, `monitor`, `block`), `algorithms` (`<name>: false` disables an algorithm; absent means enabled), optional `policy` (raw cloud-assigned policy JSON string), monotonic `revision`, and `updated_at`.
+   - The document is a JSON object: `mode`, per-algorithm switches (a switch set to `false` disables an algorithm; absent means enabled), an optional `policy` that carries the raw cloud-assigned policy as a string and is left out once the daemon withdraws it, a monotonic `revision`, and `updated_at`. The example documents in [`java-agent/contracts/agent-daemon/control/`](../java-agent/contracts/agent-daemon/README.md#files) are written by the daemon's `Controller` and read through the agents' production pollers; `control/rejected/` holds documents the agents must ignore. The backport agents read only `mode`.
    - Written atomically via `<control>.json.tmp` + `rename` with Unix permissions restricted to `0600` (`util::restrict_to_owner`).
+
+A change to either format is made by regenerating those examples and reviewing the diff, as the [fixtures' README](../java-agent/contracts/agent-daemon/README.md) describes: the other side's tests then show what else has to change.
 
 When the cloud uplink is unreachable or disabled, `uploader.rs` holds detections in a bounded in-memory queue (`buffer.max_pending`, default `10000`, evicting oldest on overflow) and writes pending raw events to `<buffer.dir>/outbox.ndjson` (also restricted to `0600`) on graceful shutdown; a hard crash (`SIGKILL` or power loss) before shutdown drops events still in memory. If the daemon is absent, the agent continues protecting the JVM and appending to its local log.
 

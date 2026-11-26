@@ -2,6 +2,7 @@
 
 Run: python3 -m unittest discover -s scripts -p 'test_gates.py'
 """
+import re
 import subprocess
 import sys
 import unittest
@@ -37,6 +38,16 @@ class GatesTest(unittest.TestCase):
                         base = gates.ROOT / "java-agent" if command.startswith("cd java-agent") else gates.ROOT
                         self.assertTrue((base / word).is_file(), f"{gate.id}: {word} does not exist")
 
+    def test_workflows_run_when_only_the_contract_examples_change(self):
+        # agent.yml filters on java-agent/**; daemon.yml needs the examples listed because they live there.
+        fixture = "java-agent/contracts/agent-daemon/control/mode-block.json"
+        for name, patterns in (("agent.yml", ("java-agent/**",)), ("daemon.yml", ("java-agent/contracts/**",))):
+            text = (WORKFLOWS / name).read_text()
+            for event in ("push", "pull_request"):
+                block = re.search(rf"^  {event}:\n((?:    .*\n)+)", text, re.M).group(1)
+                for pattern in patterns:
+                    self.assertIn(f'- "{pattern}"', block, f"{name} {event} paths must include {pattern} ({fixture})")
+
     def test_every_source_directory_has_a_gate_beyond_docs(self):
         # A new top-level component with no gate would get only the docs check.
         tracked = subprocess.run(["git", "-C", str(gates.ROOT), "ls-files"], capture_output=True, text=True, check=True)
@@ -56,6 +67,9 @@ class GatesTest(unittest.TestCase):
         self.assertEqual(ids(["java-agent/agent-java11/src/main/java/X.java"]), ["docs", "agent-parity", "agent-backports"])
         self.assertEqual(ids(["java-agent/shared/src/main/java/X.java"]), ["docs", "agent-primary", "agent-backports"])
         self.assertIn("agent-probes", ids(["java-agent/shared/src/main/java/X.java"], slow=True))
+        # The agent-daemon contract examples are read by the agent tests on every line and by the daemon tests.
+        self.assertEqual(ids(["java-agent/contracts/agent-daemon/control/mode-block.json"]),
+                         ["docs", "agent-primary", "agent-backports", "daemon"])
         self.assertEqual(ids(["java-agent/probes/file-read/check.py"]), ["docs", "probe-registry", "probe:file-read"])
 
 
