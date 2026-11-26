@@ -8,23 +8,23 @@ import static org.junit.jupiter.api.Assertions.fail;
 import io.ohmyrasp.agent.model.Detection;
 import io.ohmyrasp.agent.model.RequestContext;
 import java.io.ByteArrayOutputStream;
+import java.io.OutputStream;
 import java.io.PrintStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Instant;
-import java.util.AbstractMap;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
-import java.util.Set;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.locks.ReentrantLock;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 /** Settings and writer lifecycle of the event logger. */
 final class JsonEventLoggerTest {
-  private static final long BOUND_SECONDS = 20;
+  private static final long BOUND_SECONDS = 5;
 
   @Test
   void invalidSyncPropertyDoesNotHideAValidEnvironmentValue() {
@@ -36,54 +36,106 @@ final class JsonEventLoggerTest {
   }
 
   /**
-   * The writer takes the first event, then waits inside its own serialisation on a latch the test
-   * holds, so its progress is controlled. Every wait is bounded; none decides the outcome by timing.
+   * The writer takes the first event and waits for the production write lock, which the test
+   * holds, so it holds an undelivered batch. Shutdown must not return before that batch is on disk.
    */
   @Test
   void shutdownWaitsForTheBatchTheWriterHoldsAndThenFlushesTheRestOnce(@TempDir Path dir) throws Exception {
     Path log = dir.resolve("events.jsonl");
-    CountDownLatch taken = new CountDownLatch(1);
-    CountDownLatch release = new CountDownLatch(1);
-    JsonEventLogger logger =
-        JsonEventLogger.newForTesting(
-            null, log.toString(), 0, false, new PrintStream(new ByteArrayOutputStream()),
-            new PrintStream(new ByteArrayOutputStream()));
-
-    logger.log(detection("spool-first", new GatedDetails(taken, release)));
-    assertTrue(taken.await(BOUND_SECONDS, TimeUnit.SECONDS), "the writer took the first event");
-    logger.log(detection("spool-second", Map.of()));
-
-    // A budget far above the test's own waits, so the stopper cannot give up on the writer.
-    Thread stopper = new Thread(() -> logger.shutdown(TimeUnit.SECONDS.toMillis(60)), "ohmyrasp-test-stopper");
-    stopper.start();
-    awaitJoiningOrDone(stopper);
-    release.countDown();
+    JsonEventLogger logger = JsonEventLogger.newForTesting(null, log.toString(), 0, false, quiet(), quiet());
+    Thread stopper;
+    logger.writeLock.lock();
+    try {
+      logger.log(detection("spool-first"));
+      awaitQueuedOn(logger.writeLock);
+      logger.log(detection("spool-second"));
+      stopper = daemon("ohmyrasp-test-stopper", () -> logger.shutdown(TimeUnit.SECONDS.toMillis(BOUND_SECONDS)));
+      awaitJoiningOrDone(stopper);
+      assertTrue(stopper.isAlive(), "shutdown returned while the writer held an undelivered batch");
+    } finally {
+      logger.writeLock.unlock();
+    }
     stopper.join(TimeUnit.SECONDS.toMillis(BOUND_SECONDS));
     assertFalse(stopper.isAlive(), "shutdown returned");
-    waitForLines(log, 2);
+    // No waiting: once shutdown has returned, everything it accepted is on disk.
+    assertEquals(List.of("spool-first", "spool-second"), messages(log), "each event once, in order");
+  }
 
-    List<String> messages = new ArrayList<>();
-    for (String line : Files.readAllLines(log)) {
-      messages.add(line.contains("spool-first") ? "spool-first" : line.contains("spool-second") ? "spool-second" : line);
+  /**
+   * The writer stalls inside a console print while it holds the write lock. Shutdown waits for it
+   * only up to its bound and then gives up on the lock: it returns, and the event still queued is
+   * the one loss it allows.
+   */
+  @Test
+  void shutdownReturnsInBoundedTimeWhenTheWriterStallsHoldingTheLock(@TempDir Path dir) throws Exception {
+    Path log = dir.resolve("events.jsonl");
+    StalledOutput console = new StalledOutput();
+    JsonEventLogger logger =
+        JsonEventLogger.newForTesting(null, log.toString(), 0, false, new PrintStream(console), quiet());
+    try {
+      logger.log(detection("spool-first"));
+      assertTrue(console.entered.await(BOUND_SECONDS, TimeUnit.SECONDS), "the writer stalled printing");
+      logger.log(detection("spool-second"));
+      Thread stopper = daemon("ohmyrasp-test-stopper", () -> logger.shutdown(200));
+      stopper.join(TimeUnit.SECONDS.toMillis(BOUND_SECONDS));
+      assertFalse(stopper.isAlive(), "shutdown waited without bound for the lock a stalled writer holds");
+      assertEquals(List.of("spool-first"), messages(log));
+    } finally {
+      console.release.countDown();
     }
-    assertEquals(List.of("spool-first", "spool-second"), messages, "each event once, in order");
   }
 
-  private static Detection detection(String message, Map<String, String> details) {
-    return new Detection(Instant.now(), "test", "test_algorithm", "log", 50, message, RequestContext.empty(), details);
+  @Test
+  void anEventAfterShutdownIsWrittenOnTheCallersThread(@TempDir Path dir) throws Exception {
+    Path log = dir.resolve("events.jsonl");
+    JsonEventLogger logger = JsonEventLogger.newForTesting(null, log.toString(), 0, false, quiet(), quiet());
+    logger.shutdown(TimeUnit.SECONDS.toMillis(BOUND_SECONDS));
+    logger.log(detection("after-shutdown"));
+    assertEquals(List.of("after-shutdown"), messages(log), "the late event is on disk when log returns");
   }
 
-  /** The writer of the old code may still be appending after shutdown returns; wait for it, bounded. */
-  private static void waitForLines(Path log, int count) throws Exception {
+  private static Detection detection(String message) {
+    return new Detection(Instant.now(), "test", "test_algorithm", "log", 50, message, RequestContext.empty(), Map.of());
+  }
+
+  private static PrintStream quiet() {
+    return new PrintStream(new ByteArrayOutputStream());
+  }
+
+  /** The test messages in the log, in order; empty when there is no log. */
+  private static List<String> messages(Path log) throws Exception {
+    List<String> messages = new ArrayList<>();
+    if (!Files.exists(log)) {
+      return messages;
+    }
+    for (String line : Files.readAllLines(log)) {
+      int start = line.indexOf("\"message\":\"") + "\"message\":\"".length();
+      messages.add(line.substring(start, line.indexOf('"', start)));
+    }
+    return messages;
+  }
+
+  private static Thread daemon(String name, Runnable body) {
+    Thread thread = new Thread(body, name);
+    thread.setDaemon(true);
+    thread.start();
+    return thread;
+  }
+
+  /** Waits, bounded, until a thread waits for {@code lock}. The loop only observes. */
+  private static void awaitQueuedOn(ReentrantLock lock) throws InterruptedException {
     long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(BOUND_SECONDS);
-    while (System.nanoTime() < deadline && (!Files.exists(log) || Files.readAllLines(log).size() < count)) {
+    while (!lock.hasQueuedThreads()) {
+      if (System.nanoTime() > deadline) {
+        fail("the writer never waited for the write lock");
+      }
       Thread.sleep(1);
     }
   }
 
   /**
    * Waits until {@code stopper} has finished or is waiting in Thread.join for the writer. Either
-   * state is final for this test: the writer cannot finish while the test holds its latch. The
+   * state is final for this test: the writer cannot finish while the test holds the lock. The
    * loop only observes; it is bounded and its sleep decides nothing.
    */
   private static void awaitJoiningOrDone(Thread stopper) throws InterruptedException {
@@ -105,27 +157,28 @@ final class JsonEventLoggerTest {
     fail("the stopper neither finished nor waited for the writer");
   }
 
-  /** Details whose first serialisation signals {@code taken} and then waits for {@code release}. */
-  private static final class GatedDetails extends AbstractMap<String, String> {
-    private final CountDownLatch taken;
-    private final CountDownLatch release;
+  /** An output stream whose first write signals {@code entered} and then waits for {@code release}. */
+  private static final class StalledOutput extends OutputStream {
+    final CountDownLatch entered = new CountDownLatch(1);
+    final CountDownLatch release = new CountDownLatch(1);
 
-    GatedDetails(CountDownLatch taken, CountDownLatch release) {
-      this.taken = taken;
-      this.release = release;
+    @Override
+    public void write(int b) {
+      stall();
     }
 
     @Override
-    public Set<Map.Entry<String, String>> entrySet() {
-      if (taken.getCount() > 0) {
-        taken.countDown();
-        try {
-          release.await(BOUND_SECONDS, TimeUnit.SECONDS);
-        } catch (InterruptedException e) {
-          Thread.currentThread().interrupt();
-        }
+    public void write(byte[] bytes, int offset, int length) {
+      stall();
+    }
+
+    private void stall() {
+      entered.countDown();
+      try {
+        release.await(BOUND_SECONDS, TimeUnit.SECONDS);
+      } catch (InterruptedException e) {
+        Thread.currentThread().interrupt();
       }
-      return Set.of(Map.entry("gate", "released"));
     }
   }
 }

@@ -5,24 +5,32 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.junit.jupiter.api.Assertions.fail;
 
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Collections;
 import java.util.List;
-import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
-import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.locks.ReentrantLock;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
 
 /**
- * The backport RaspRuntime event spool: which file a queued event reaches, and what the shutdown
- * hook does with a batch the writer holds. A sink stands in for the file, so the writer's progress
- * is controlled by latches. Every wait is bounded; none decides the outcome by timing.
+ * The backport RaspRuntime event spool: which file a queued event reaches, and what shutdown does
+ * with a batch the writer holds. The shutdown tests write through the production file sink and its
+ * write lock; the test holds that lock to keep the writer from delivering. Every wait is bounded
+ * at a few seconds, helper threads are daemons, and no sleep decides an outcome.
  */
 final class Java8EventSpoolTest {
-  private static final long BOUND_SECONDS = 20L;
+  private static final long BOUND_SECONDS = 5L;
+
+  @TempDir Path dir;
 
   @Test
   void queuedEventsAreWrittenToTheTargetTheyWereAcceptedFor() throws Exception {
-    RecordingSink sink = new RecordingSink(null, null);
+    RecordingSink sink = new RecordingSink();
     RaspRuntime.EventSpool spool = new RaspRuntime.EventSpool(sink);
     spool.offer("/logs/a.jsonl", "e1");
     spool.offer("/logs/b.jsonl", "e2");
@@ -36,50 +44,60 @@ final class Java8EventSpoolTest {
 
   @Test
   void shutdownWaitsForTheBatchTheWriterHoldsAndThenFlushesTheRestOnce() throws Exception {
-    CountDownLatch taken = new CountDownLatch(1);
-    CountDownLatch release = new CountDownLatch(1);
-    RecordingSink sink = new RecordingSink(taken, release);
-    final RaspRuntime.EventSpool spool = new RaspRuntime.EventSpool(sink);
+    String log = dir.resolve("events.jsonl").toString();
+    final RaspRuntime.EventSpool spool = new RaspRuntime.EventSpool(RaspRuntime.FILE_SINK);
     Thread writer = spool.start("ohmyrasp-java8-test-writer");
-
-    spool.offer("/logs/a.jsonl", "e1");
-    assertTrue(taken.await(BOUND_SECONDS, TimeUnit.SECONDS), "the writer took e1");
-    spool.offer("/logs/a.jsonl", "e2");
-
-    // A budget far above the test's own waits, so the stopper cannot give up on the writer.
-    Thread stopper = stopper(spool, TimeUnit.SECONDS.toMillis(60L));
-    awaitJoiningOrDone(stopper);
-    release.countDown();
+    Thread stopper;
+    RaspRuntime.WRITE_LOCK.lock();
+    try {
+      spool.offer(log, "e1");
+      awaitQueuedOn(RaspRuntime.WRITE_LOCK); // the writer took e1 and waits for the lock
+      spool.offer(log, "e2");
+      stopper = stopper(spool, TimeUnit.SECONDS.toMillis(BOUND_SECONDS));
+      awaitJoiningOrDone(stopper);
+      assertTrue(stopper.isAlive(), "shutdown returned while the writer held an undelivered batch");
+    } finally {
+      RaspRuntime.WRITE_LOCK.unlock();
+    }
     stopper.join(TimeUnit.SECONDS.toMillis(BOUND_SECONDS));
     writer.join(TimeUnit.SECONDS.toMillis(BOUND_SECONDS));
     assertFalse(stopper.isAlive(), "shutdown returned");
     assertFalse(writer.isAlive(), "the writer stopped");
-
-    assertEquals("[/logs/a.jsonl [e1], /logs/a.jsonl [e2]]", sink.records(), "each event once, in order");
+    // No waiting: once shutdown has returned, everything it accepted is on disk.
+    assertEquals(Arrays.asList("e1", "e2"), lines(log), "each event once, in order");
   }
 
   @Test
-  void shutdownStopsWaitingForAStuckWriterAfterItsBound() throws Exception {
-    CountDownLatch taken = new CountDownLatch(1);
-    CountDownLatch release = new CountDownLatch(1);
-    RecordingSink sink = new RecordingSink(taken, release);
-    RaspRuntime.EventSpool spool = new RaspRuntime.EventSpool(sink);
+  void shutdownReturnsInBoundedTimeWhileTheWriteLockStaysHeld() throws Exception {
+    String log = dir.resolve("events.jsonl").toString();
+    RaspRuntime.EventSpool spool = new RaspRuntime.EventSpool(RaspRuntime.FILE_SINK);
     Thread writer = spool.start("ohmyrasp-java8-test-writer");
+    // The test holds the lock as a writer stalled in an output call would.
+    RaspRuntime.WRITE_LOCK.lock();
     try {
-      spool.offer("/logs/a.jsonl", "e1");
-      assertTrue(taken.await(BOUND_SECONDS, TimeUnit.SECONDS), "the writer took e1");
-      spool.offer("/logs/a.jsonl", "e2");
-
-      // The writer stays blocked; shutdown gives up after its bound and flushes what is queued.
-      Thread stopper = stopper(spool, 50L);
+      spool.offer(log, "e1");
+      awaitQueuedOn(RaspRuntime.WRITE_LOCK);
+      spool.offer(log, "e2");
+      Thread stopper = stopper(spool, 200L);
       stopper.join(TimeUnit.SECONDS.toMillis(BOUND_SECONDS));
-      assertFalse(stopper.isAlive(), "shutdown returned while the writer was stuck");
-      assertEquals("[/logs/a.jsonl [e2]]", sink.records());
+      assertFalse(stopper.isAlive(), "shutdown waited without bound for the write lock");
     } finally {
-      release.countDown();
-      writer.join(TimeUnit.SECONDS.toMillis(BOUND_SECONDS));
+      RaspRuntime.WRITE_LOCK.unlock();
     }
-    assertEquals("[/logs/a.jsonl [e2], /logs/a.jsonl [e1]]", sink.records(), "nothing written twice");
+    writer.join(TimeUnit.SECONDS.toMillis(BOUND_SECONDS));
+    // The writer delivers the batch it held once the lock is free; e2, which shutdown gave up on,
+    // is the one loss it allows. Nothing is written twice.
+    assertEquals(Collections.singletonList("e1"), lines(log));
+  }
+
+  @Test
+  void anEventAfterShutdownIsWrittenOnTheCallersThread() throws Exception {
+    String log = dir.resolve("events.jsonl").toString();
+    RaspRuntime.EventSpool spool = new RaspRuntime.EventSpool(RaspRuntime.FILE_SINK);
+    spool.start("ohmyrasp-java8-test-writer");
+    spool.shutdown(TimeUnit.SECONDS.toMillis(BOUND_SECONDS));
+    spool.offer(log, "late");
+    assertEquals(Collections.singletonList("late"), lines(log), "the late event is on disk when offer returns");
   }
 
   private static Thread stopper(final RaspRuntime.EventSpool spool, final long joinMillis) {
@@ -91,13 +109,33 @@ final class Java8EventSpoolTest {
               }
             },
             "ohmyrasp-java8-test-stopper");
+    stopper.setDaemon(true);
     stopper.start();
     return stopper;
   }
 
+  private static List<String> lines(String log) throws Exception {
+    Path path = java.nio.file.Paths.get(log);
+    if (!Files.exists(path)) {
+      return new ArrayList<String>();
+    }
+    return Files.readAllLines(path, StandardCharsets.UTF_8);
+  }
+
+  /** Waits, bounded, until a thread waits for {@code lock}. The loop only observes. */
+  private static void awaitQueuedOn(ReentrantLock lock) throws InterruptedException {
+    long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(BOUND_SECONDS);
+    while (!lock.hasQueuedThreads()) {
+      if (System.nanoTime() > deadline) {
+        fail("the writer never waited for the write lock");
+      }
+      Thread.sleep(1L);
+    }
+  }
+
   /**
    * Waits until {@code stopper} has finished or is waiting in Thread.join for the writer. Either
-   * state is final for this test: the writer cannot finish while the test holds its latch. The
+   * state is final for this test: the writer cannot finish while the test holds the lock. The
    * loop only observes; it is bounded and its sleep decides nothing.
    */
   private static void awaitJoiningOrDone(Thread stopper) throws InterruptedException {
@@ -119,30 +157,13 @@ final class Java8EventSpoolTest {
     fail("the stopper neither finished nor waited for the writer");
   }
 
-  /** Records each batch as "target [lines]"; the first call can wait on a latch before recording. */
+  /** Records each batch as "target [lines]". */
   private static final class RecordingSink implements RaspRuntime.Sink {
     private final List<String> records = new ArrayList<String>();
-    private final AtomicInteger calls = new AtomicInteger();
-    private final CountDownLatch taken;
-    private final CountDownLatch release;
 
-    RecordingSink(CountDownLatch taken, CountDownLatch release) {
-      this.taken = taken;
-      this.release = release;
-    }
-
-    public void append(String target, List<String> lines) {
-      String record = target + " " + lines;
-      if (calls.incrementAndGet() == 1 && taken != null) {
-        taken.countDown();
-        try {
-          release.await(BOUND_SECONDS, TimeUnit.SECONDS);
-        } catch (InterruptedException e) {
-          Thread.currentThread().interrupt();
-        }
-      }
+    public void append(String target, List<String> lines, boolean bounded) {
       synchronized (records) {
-        records.add(record);
+        records.add(target + " " + lines);
       }
     }
 

@@ -26,6 +26,7 @@ import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicLong;
+import java.util.concurrent.locks.ReentrantLock;
 
 /**
  * Java 11 backport runtime: asynchronous event spool plus control-file-driven
@@ -312,13 +313,18 @@ public final class RaspRuntime {
 
   // The shutdown hook waits this long for the writer to finish the batch it holds.
   private static final long SHUTDOWN_JOIN_MILLIS = 2000L;
-  private static final EventSpool SPOOL =
-      new EventSpool(
-          new Sink() {
-            public void append(String target, List<String> lines) {
-              appendBatch(target, lines);
-            }
-          });
+  // Once shutdown has begun, a write waits this long for the write lock and then gives up.
+  private static final long SHUTDOWN_LOCK_MILLIS = 1000L;
+  // Serialises appends to the log files, so concurrent writers never interleave a line.
+  static final ReentrantLock WRITE_LOCK = new ReentrantLock();
+  /** Appends to the log file named by the target, under {@link #WRITE_LOCK}. */
+  static final Sink FILE_SINK =
+      new Sink() {
+        public void append(String target, List<String> lines, boolean bounded) {
+          appendBatch(target, lines, bounded);
+        }
+      };
+  private static final EventSpool SPOOL = new EventSpool(FILE_SINK);
   private static final AtomicLong SAMPLE_COUNTER = new AtomicLong();
   private static final boolean SYNC = syncFlag();
   private static final int SAMPLE_RATE = INITIAL_CONFIG.latencySample;
@@ -565,9 +571,12 @@ public final class RaspRuntime {
     return sampleRate == 1 || counter.incrementAndGet() % sampleRate == 0;
   }
 
-  /** Where the spool writes a batch of event lines. */
+  /**
+   * Where the spool writes a batch of event lines. A {@code bounded} append, made once shutdown
+   * has begun, waits only a bounded time for anything it shares with other writers.
+   */
   interface Sink {
-    void append(String target, List<String> lines);
+    void append(String target, List<String> lines, boolean bounded);
   }
 
   /** One queued event line and the file target it was accepted for. */
@@ -592,6 +601,9 @@ public final class RaspRuntime {
     private final List<Event> batch = new ArrayList<Event>(64);
     private final Sink sink;
     private volatile boolean running = true;
+    // Set by shutdown once the writer is gone or given up on: from then on events are written on
+    // the caller's thread, since no writer will take them from the queue.
+    private volatile boolean closed;
     private volatile Thread writer;
 
     EventSpool(Sink sink) {
@@ -599,8 +611,16 @@ public final class RaspRuntime {
     }
 
     void offer(String target, String line) {
+      if (closed) {
+        sink.append(target, Collections.singletonList(line), true);
+        return;
+      }
       if (!queue.offer(new Event(target, line))) {
         dropped.incrementAndGet();
+      }
+      if (closed) {
+        // Shutdown may have drained the queue before this event arrived: write what is left.
+        writeRest();
       }
     }
 
@@ -613,11 +633,18 @@ public final class RaspRuntime {
       batch.clear();
       batch.add(first);
       queue.drainTo(batch, 511);
-      write(batch);
+      write(batch, closed);
+    }
+
+    /** Writes everything still queued; each event leaves the queue once, so none is written twice. */
+    private void writeRest() {
+      List<Event> rest = new ArrayList<Event>();
+      queue.drainTo(rest);
+      write(rest, true);
     }
 
     /** Writes events in order, one sink call per run of events with the same target. */
-    private void write(List<Event> events) {
+    private void write(List<Event> events, boolean bounded) {
       int start = 0;
       while (start < events.size()) {
         String target = events.get(start).target;
@@ -627,7 +654,7 @@ public final class RaspRuntime {
           lines.add(events.get(end).line);
           end++;
         }
-        sink.append(target, lines);
+        sink.append(target, lines, bounded);
         start = end;
       }
     }
@@ -655,7 +682,10 @@ public final class RaspRuntime {
 
     /**
      * Stops the writer, waits up to {@code joinMillis} for it to finish the batch it holds, then
-     * writes what is still queued. Each event leaves the queue once, so none is written twice.
+     * writes what is still queued, waiting a bounded time for the write lock. An event offered
+     * after that is written on the caller's thread. Each event leaves the queue once, so none is
+     * written twice. A batch the writer still holds when the wait ends, because it is stalled in
+     * an output call, can be lost.
      */
     void shutdown(long joinMillis) {
       running = false;
@@ -667,30 +697,36 @@ public final class RaspRuntime {
           Thread.currentThread().interrupt();
         }
       }
-      List<Event> rest = new ArrayList<Event>();
-      queue.drainTo(rest);
-      write(rest);
+      closed = true;
+      writeRest();
     }
   }
 
   /** Appends lines to a log file as the agent's own I/O, invisible to the file hooks. */
   private static void appendBatch(String logPath, List<String> lines) {
+    appendBatch(logPath, lines, false);
+  }
+
+  private static void appendBatch(String logPath, List<String> lines, boolean bounded) {
     boolean ownIo = enterOwnIo();
     try {
-      appendLines(logPath, lines);
+      appendLines(logPath, lines, bounded);
     } finally {
       exitOwnIo(ownIo);
     }
   }
 
-  private static void appendLines(String logPath, List<String> lines) {
+  private static void appendLines(String logPath, List<String> lines, boolean bounded) {
     File target = new File(logPath);
     File parent = target.getParentFile();
     if (parent != null && !parent.exists() && !parent.mkdirs()) {
       System.err.println("[OHMYRASP-JAVA11] could not create log directory: " + parent);
       return;
     }
-    synchronized (RaspRuntime.class) {
+    if (!lockWrites(bounded)) {
+      return; // shutdown gave up on a writer stalled with the lock: these lines are lost
+    }
+    try {
       FileWriter writer = null;
       try {
         writer = new FileWriter(target, true);
@@ -710,6 +746,22 @@ public final class RaspRuntime {
           }
         }
       }
+    } finally {
+      WRITE_LOCK.unlock();
+    }
+  }
+
+  /** Takes the write lock; a bounded caller waits at most SHUTDOWN_LOCK_MILLIS. */
+  private static boolean lockWrites(boolean bounded) {
+    if (!bounded) {
+      WRITE_LOCK.lock();
+      return true;
+    }
+    try {
+      return WRITE_LOCK.tryLock(SHUTDOWN_LOCK_MILLIS, TimeUnit.MILLISECONDS);
+    } catch (InterruptedException e) {
+      Thread.currentThread().interrupt();
+      return false;
     }
   }
 
