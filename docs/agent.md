@@ -12,8 +12,9 @@ Each Gradle subproject below builds a self-contained fat JAR with ASM (`asm` and
 | `agent-java17` | Java 17 and 21 (`<= 61`) | `:agent-java17:agentJava17Jar`<br>`java-agent/agent-java17/build/libs/ohmyrasp-agent-java17.jar` | `:agent-java17:shirudoUpatchJar`<br>`java-agent/agent-java17/build/libs/ohmyrasp-java17.jar` |
 | `agent-java11` | Java 11 (`<= 55`) | `:agent-java11:agentJava11Jar`<br>`java-agent/agent-java11/build/libs/ohmyrasp-agent-java11.jar` | `:agent-java11:shirudoUpatchJar`<br>`java-agent/agent-java11/build/libs/ohmyrasp-java11.jar` |
 | `agent-java8` | Java 8 (`<= 52`) | `:agent-java8:agentJava8Jar`<br>`java-agent/agent-java8/build/libs/ohmyrasp-agent-java8.jar` | `:agent-java8:shirudoUpatchJar`<br>`java-agent/agent-java8/build/libs/ohmyrasp-java8.jar` |
+| `agent-all` (universal) | Every supported Java; the launcher starts the line that fits | `:agent-all:agentAllJar`<br>`java-agent/agent-all/build/libs/ohmyrasp-agent-all.jar` | `:agent-all:shirudoUpatchJar`<br>`java-agent/agent-all/build/libs/ohmyrasp.jar` |
 
-All tracks compile with `JavaLanguageVersion.of(25)` using `options.release` set to `21` (`agent-jdk25`, which serves JDK 21 and 25), `17`, `11`, or `8` respectively. In [`agent-java8/build.gradle.kts`](../java-agent/agent-java8/build.gradle.kts), `agentJava8Jar` sets `Boot-Class-Path: ohmyrasp-agent-java8.jar`, while `shirudoUpatchJar` omits `Boot-Class-Path` so OpenJDK 8 bootstrap search works directly with the sealed `/run/shirudo-java/ohmyrasp-java8.jar` path under the 1024-byte `JAVA_TOOL_OPTIONS` limit.
+All tracks compile with `JavaLanguageVersion.of(25)` using `options.release` set to `21` (`agent-jdk25`, which serves JDK 21 and 25), `17`, `11`, or `8` respectively. The classes every track carries, and the launcher, are the `:shared` module (`java-agent/shared/`), compiled once with `--release 8`, so each JAR holds the same Java 8 bytecode for them. `agent-all` compiles nothing: it packs the four tracks with one copy of the shared classes and of the relocated ASM. In [`agent-java8/build.gradle.kts`](../java-agent/agent-java8/build.gradle.kts), `agentJava8Jar` sets `Boot-Class-Path: ohmyrasp-agent-java8.jar`, while `shirudoUpatchJar` omits `Boot-Class-Path` so OpenJDK 8 bootstrap search works directly with the sealed `/run/shirudo-java/ohmyrasp-java8.jar` path under the 1024-byte `JAVA_TOOL_OPTIONS` limit.
 
 Gradle and the JDK 25 build image (pinned in [`java-agent/Dockerfile`](../java-agent/Dockerfile)) are pinned for reproducible builds. Resolve the image from the Dockerfile the same way CI does:
 
@@ -30,10 +31,36 @@ docker run --rm -v "$PWD/java-agent":/workspace -w /workspace "$GRADLE_IMAGE" \
   :agent-java8:verifyShirudoUpatchJar \
   :agent-java11:verifyShirudoUpatchJar \
   :agent-java17:verifyShirudoUpatchJar \
-  :agent-jdk25:verifyShirudoUpatchJar
+  :agent-jdk25:verifyShirudoUpatchJar \
+  :agent-all:verifyAgentAllJars
 ```
 
-`shirudoUpatchJar` accepts optional Gradle properties `-PshirudoMode=block|monitor` (default `block`) and `-PshirudoLockConfig=true|false` (default `true`). The `verifyShirudoUpatchJar` task checks the `< 16 MiB` size limit, `Premain-Class` and `OhMyRasp-Shirudo-Upatch: true` manifest headers, baked `META-INF/ohmyrasp-shirudo.properties`, classfile major version bounds, absence of `module-info.class` and `META-INF/versions/`, and absence of `Boot-Class-Path` on `ohmyrasp-java8.jar`. Backport tracks also expose `verifyJava{8,11,17}AgentBytecode`.
+`shirudoUpatchJar` accepts optional Gradle properties `-PshirudoMode=block|monitor` (default `block`) and `-PshirudoLockConfig=true|false` (default `true`). The `verifyShirudoUpatchJar` task checks the `< 16 MiB` size limit, `Premain-Class` and `OhMyRasp-Shirudo-Upatch: true` manifest headers, baked `META-INF/ohmyrasp-shirudo.properties`, classfile major version bounds, absence of `module-info.class` and `META-INF/versions/`, and absence of `Boot-Class-Path` on `ohmyrasp-java8.jar`. Backport tracks also expose `verifyJava{8,11,17}AgentBytecode`. For the universal pair, `verifyAgentAllJars` checks each class against the class-file version of the module it comes from (the launcher, the shared classes and ASM must load on Java 8), the 16 MiB limit and a single properties file in `ohmyrasp.jar`, and `verifyAgentAllInputs` fails when two modules hold the same class name with different contents. `check` runs all of them.
+
+### Which JAR to attach
+
+Attach the universal JAR, `ohmyrasp-agent-all.jar` (or `ohmyrasp.jar` for a Shirudo standalone install), on any supported Java. Every agent JAR, universal or per track, names the same entry class, `io.ohmyrasp.agent.launch.AgentLauncher`, as `Premain-Class` and `Agent-Class`. The launcher reads `java.specification.version` and starts the first line, in this order, that the attached JARs hold and whose range contains the running version:
+
+| Line | Entry class | Runs on |
+|---|---|---|
+| primary (`agent-jdk25`) | `io.ohmyrasp.agent.OhMyRaspAgent` | Java 21 and later |
+| `agent-java17` | `io.ohmyrasp.agent.java17.OhMyRaspJava17Agent` | Java 17 and later |
+| `agent-java11` | `io.ohmyrasp.agent.java11.OhMyRaspJava11Agent` | Java 11 and later |
+| `agent-java8` | `io.ohmyrasp.agent.java8.OhMyRaspJava8Agent` | Java 8 only |
+
+So the universal JAR runs the primary line on Java 21 and 25, the Java 17 line on 17, the Java 11 line on 11 and the Java 8 line on 8. On a version between or after these (for example 18 or 26) it starts the line the table selects and says nothing extra; the probes cover only 8, 11, 17, 21 and 25. No line runs on Java 9 or 10. A per-track JAR still starts its own line within that line's range: the Java 17 JAR also starts on Java 21 and 25.
+
+The launcher never stops the JVM. In each of these cases it writes one JSON line to standard error and the application starts:
+
+- **No line fits the running Java** (a per-track JAR on an older or a newer JVM than it supports, or any JAR on Java 9 or 10). The JVM starts without the agent. Before, it aborted with exit code 134 (`UnsupportedClassVersionError`, or `NoClassDefFoundError: java/sql/DriverManager` from the Java 8 track on Java 11 and later).
+  `{"event":"ohmyrasp-agent-skipped","reason":"unsupported-java","java_version":"25.0.1","lines":"java8"}`
+- **An OhMyRASP agent already started in this JVM**, for example when Shirudo and the command line each add one of our JARs. Only the first JAR to start a line runs; each later one writes
+  `{"event":"ohmyrasp-agent-skipped","reason":"already-active","java_version":"25.0.1","active_line":"primary"}`.
+  The launcher records the started line in the system property `ohmyrasp.agent.active` just before starting it, and a JVM in which that property is already set starts no line. A property is the one place two launchers can both see: a second JAR's `premain` runs whichever copy of the launcher class the system class loader found first.
+- **The line throws while starting**, including a `LinkageError`. The line may have installed some of its hooks before it failed; the JVM keeps starting. Before, the exception aborted the JVM.
+  `{"event":"ohmyrasp-agent-start-failed","line":"java8","java_version":"1.8.0_472","exception":"java.lang.NoClassDefFoundError","message":"..."}`
+
+A JAR that does not fit, attached before one that does, does not hide it: the launcher looks entry classes up through the system class loader, which every attached agent JAR has joined by the time the fitting JAR's `premain` runs, so the fitting line starts. The `launcher` probe under `java-agent/probes/` checks each of these cases on every JDK of the runtime matrix.
 
 ## Architecture and module layout
 
@@ -53,7 +80,7 @@ Under `java-agent/agent-jdk25/src/main/java/io/ohmyrasp/agent/`:
 
 ### Backport modules (`agent-java8`, `agent-java11`, `agent-java17`)
 
-Each backport track is self-contained under `java-agent/agent-java{8,11,17}/src/main/java/io/ohmyrasp/agent/java{8,11,17}/` with no shared runtime library dependency:
+Each backport track lives under `java-agent/agent-java{8,11,17}/src/main/java/io/ohmyrasp/agent/java{8,11,17}/` and depends only on ASM and the `:shared` module:
 
 - `OhMyRaspJava{8,11,17}Agent`: entry point (`premain`/`agentmain`) and transformer registration.
 - `Java{8,11,17}*Transformer` classes covering the algorithm signatures listed in [`DETECTION-COVERAGE.md`](../java-agent/docs/DETECTION-COVERAGE.md).

@@ -13,6 +13,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   source-derived hook, transformer, algorithm, and Vulhub coverage tables;
   `deploy/shirudo/verify-shirudo-upatch.sh` enforces `--check`.
 - `docs/images/architecture.svg`: architectural overview diagram in root READMEs.
+- Universal Java agent JARs, `ohmyrasp-agent-all.jar` and the Shirudo
+  standalone `ohmyrasp.jar` (module `java-agent/agent-all`), holding every
+  agent line. Attached to any supported Java, they start the line that fits
+  it ([which JAR to attach](docs/agent.md#which-jar-to-attach)). The new
+  `launcher` probe checks them on every JDK of the runtime matrix, and
+  `probes/run.py --artifact all` (also `check-agent.sh --artifact all`, the
+  slow `agent-probes` gate and a second CI pass on each runtime row) runs every
+  probe against the universal JAR.
 
 ### Changed
 - The default Compose database is PostgreSQL 19. Existing PostgreSQL 18 deployments can follow the [volume migration and rollback procedure](docs/runbooks/upgrade-downgrade.md#postgresql-18-to-19).
@@ -31,6 +39,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   of `agent-jdk25` moved from `DetectorEngine` to per-family detector classes.
   `scripts/gates.py` lists the checks a change needs.
 - CI runs the `sqlite-identifiers` probe on every agent line, not only JDK 25.
+- **Java agent (all 4 tracks):** an agent JAR attached to a JVM it does not
+  fit is skipped with a `{"event":"ohmyrasp-agent-skipped","reason":"unsupported-java",...}`
+  line on `stderr` instead of aborting the JVM. Before, the Java 11, 17 and
+  primary JARs stopped an older JVM with `UnsupportedClassVersionError`, and
+  the Java 8 JAR stopped Java 11 and later with `NoClassDefFoundError:
+  java/sql/DriverManager` (exit code 134). This matters wherever one agent JAR
+  reaches JVMs of several versions, such as Shirudo's host-wide
+  `JAVA_TOOL_OPTIONS`.
+- **Java agent (all 4 tracks):** a failure while an agent line starts no longer
+  stops the JVM; it is reported as `"event":"ohmyrasp-agent-start-failed"` on
+  `stderr`. A second OhMyRASP JAR in the same JVM starts nothing and reports
+  `"reason":"already-active"`; before, two lines could both instrument one JVM.
+  Every agent JAR now enters through `io.ohmyrasp.agent.launch.AgentLauncher`.
+- The Java agent's shared classes are the `:shared` Gradle module, compiled
+  once with `--release 8` instead of once per line.
 
 ### Fixed
 - **Java agent (all 4 tracks):** the baked `META-INF/ohmyrasp-shirudo.properties`
