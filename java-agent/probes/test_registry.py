@@ -3,6 +3,7 @@
 Run: python3 -m unittest discover -s java-agent/probes -p 'test_*.py'
 """
 import re
+import subprocess
 import sys
 import unittest
 from pathlib import Path
@@ -57,6 +58,16 @@ class RegistryTest(unittest.TestCase):
             for fixture in probe.fixtures:
                 if fixture.gradle:
                     self.assertIn(fixture.gradle, job, f"{probe.id}: agent.yml's build-agents job does not run {fixture.gradle}")
+
+    def test_check_agent_help_lists_the_probes(self):
+        # --help runs before Docker is touched. Its usage text is a here-document under `set -u`, so an
+        # unescaped variable in it ends the script with "unbound variable".
+        run = subprocess.run(["bash", str(JAVA_AGENT / "scripts" / "check-agent.sh"), "--help"],
+                             capture_output=True, text=True, env={"PATH": "/usr/bin:/bin"}, timeout=60)
+        self.assertEqual(run.returncode, 0, run.stderr)
+        self.assertIn("Probes:", run.stdout)
+        for name in self.probes:
+            self.assertIn(name, run.stdout)
 
     def test_line_tasks_exist_in_the_build(self):
         for line in self.lines.values():

@@ -20,8 +20,8 @@ Usage: $0 [--line LINE[,LINE...]] [--tests GRADLE-TEST-FILTER] [--artifact line|
            Probes run on the line's own JDK. Without one, only the unit tests and
            the benign corpus run, and those run on the build JDK for every line.
            Options after PROBE go to the probe. A probe that records its result
-           (--update) writes under $PROBE_UPDATE_ROOT, and this script copies what
-           it wrote into java-agent/ when the run ends.
+           (--update) writes under \$PROBE_UPDATE_ROOT, and this script copies what
+           it wrote into java-agent/ only when the whole run succeeds.
 
 Probes:
 USAGE
@@ -77,16 +77,24 @@ fi
 exec 9>"$state/check.lock"
 flock 9
 # The checkout is read-only in the container. A probe that records its result writes it here,
-# under the path it has in java-agent/, and it is copied back after the run.
+# under the path it has in java-agent/, and it is copied back after a run that succeeded.
 updates="$state/probe-updates"
 rm -rf "$updates"
 mkdir -p "$updates"
 copy_probe_updates() {
-  if [[ -n "$(ls -A "$updates")" ]]; then
-    chmod -R u=rwX,go=rX "$updates"
-    (umask 022; cp -R "$updates/." "$root/")
-    (cd "$updates" && find . -type f | sed 's|^\./|Probe wrote java-agent/|')
+  local status=$?
+  [[ -n "$(ls -A "$updates")" ]] || return 0
+  if (( status != 0 )); then
+    # A failed run may be failing because it rejected the very result it staged (two lines of one
+    # family disagreeing, a guard failing): that result must not replace the recorded baseline.
+    echo "The run failed (exit $status), so nothing a probe recorded was copied into java-agent/." >&2
+    echo "Staged, not copied: $updates" >&2
+    (cd "$updates" && find . -type f | sed 's|^\./|  |') >&2
+    return 0
   fi
+  chmod -R u=rwX,go=rX "$updates"
+  (umask 022; cp -R "$updates/." "$root/")
+  (cd "$updates" && find . -type f | sed 's|^\./|Probe wrote java-agent/|')
 }
 trap copy_probe_updates EXIT
 container=(docker run --rm -i --read-only --tmpfs /tmp:rw,exec -u "$uid:$(id -g)"
