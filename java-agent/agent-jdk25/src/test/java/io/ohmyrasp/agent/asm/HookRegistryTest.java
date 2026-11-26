@@ -80,6 +80,7 @@ final class HookRegistryTest {
     assertFalse(registry.isDirectTarget("com/caucho/hessian/io/SerializerFactory"));
     assertTrue(registry.isDirectTarget("com/caucho/hessian/io/UnsafeDeserializer"));
     assertTrue(registry.isDirectTarget("com/alibaba/com/caucho/hessian/io/JavaDeserializer"));
+    assertFalse(registry.isDirectTarget("com/alibaba/com/caucho/hessian/io/UnsafeDeserializer"));
     assertTrue(registry.isDirectTarget("org/apache/xmlrpc/parser/SerializableParser"));
     assertTrue(registry.isDirectTarget("org/h2/jdbc/JdbcStatement"));
     assertTrue(registry.isDirectTarget("com/mysql/cj/jdbc/StatementImpl"));
