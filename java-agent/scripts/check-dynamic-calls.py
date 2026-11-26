@@ -194,7 +194,8 @@ def scan_jar(line: str, jar: Path) -> list[Site]:
     sites = []
     with zipfile.ZipFile(jar) as archive:
         for entry in sorted(archive.namelist()):
-            if not entry.endswith(".class") or entry.startswith(SHADED_PREFIX):
+            # Shaded classes are scanned too: ASM runs in the transformers, inside class definition.
+            if not entry.endswith(".class"):
                 continue
             try:
                 name, found = parse_class(archive.read(entry))
@@ -245,10 +246,10 @@ read files, which can re-enter a hooked JDK API or fail during early startup, an
 hook methods run inside those APIs. Instead:
   - use an anonymous class or a static nested class for a lambda or method reference;
   - write equals/hashCode/toString by hand instead of a record or pattern-matching switch;
-  - use if/else on instanceof where a pattern-matching switch was meant.
-If the code provably never runs inside a hook or on the early startup path, run
-`python3 java-agent/scripts/check-dynamic-calls.py --update` in the same change and say why in the
-commit message."""
+  - use if/else on instanceof where a pattern-matching switch was meant;
+  - compile string concatenation with -XDstringConcat=inline (the backport modules do).
+The backport lines allow no call site at all, shaded classes included: the rule is in this script, and
+--update does not record one."""
 
 
 def load_lines():
@@ -326,7 +327,16 @@ def main(argv: list[str] | None = None) -> int:
     scanned = {line: scan_jar(line, path) for line, (_, path) in jars.items()}
 
     if args.update:
-        write_baseline(args.baseline, {line: summarize(sites) for line, sites in scanned.items()})
+        recorded = {line: summarize(sites) for line, sites in scanned.items()}
+        refused = [line for line, (family, _) in jars.items() if family == "backport" and recorded[line]]
+        if refused:
+            # Zero is the rule for the backport lines, not a number of the baseline.
+            for line in refused:
+                print_summary(line, scanned[line])
+            print(f"\nnot written: {', '.join(refused)} hold invokedynamic call sites, and the backport lines "
+                  "allow none\n\n" + FIX, file=sys.stderr)
+            return 1
+        write_baseline(args.baseline, recorded)
         for line, sites in scanned.items():
             print_summary(line, sites)
         print(f"wrote {args.baseline}")
@@ -348,7 +358,7 @@ def main(argv: list[str] | None = None) -> int:
         if family != "backport":
             print(f"{line}: primary line, recorded but not gated ({sum(count.values())} sites)")
             continue
-        found = compare(baseline.get(line, {}), scanned[line])
+        found = compare({}, scanned[line])  # none allowed, whatever the baseline file says
         failures.extend(found)
         print(f"{line}: {'FAIL' if found else 'ok'}; sites "
               + ", ".join(f"{k}={count[k]}" for k in GATED_KINDS))

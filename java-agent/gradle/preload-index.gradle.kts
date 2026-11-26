@@ -93,11 +93,19 @@ val generatePreloadIndex = tasks.register("generatePreloadIndex") {
         // The ASM classes ours use, and what those use in turn.
         val asmUsed = sortedSetOf<String>()
         val pending = ArrayDeque(classes.values.flatMap { PreloadClassRefs.of(it) }.filter { it.startsWith(asmPrefix) })
+        val unresolved = sortedSetOf<String>()
         while (pending.isNotEmpty()) {
             val next = pending.removeFirst()
-            val bytes = asm[next] ?: continue
+            val bytes = asm[next]
+            if (bytes == null) {
+                unresolved += next
+                continue
+            }
             if (asmUsed.add(next)) pending += PreloadClassRefs.of(bytes).filter { it.startsWith(asmPrefix) && it !in asmUsed }
         }
+        // A class ours (or ASM's own) names that no ASM JAR on the runtime classpath holds would fail to load at the
+        // preload, or later in a hook: the build fails instead of leaving it off the list.
+        check(unresolved.isEmpty()) { "ASM classes referenced but not on the runtime classpath: $unresolved" }
         val names = sortedSetOf<String>()
         classes.keys.forEach { names += it.replace('/', '.') }
         asmUsed.forEach { names += "io.ohmyrasp.agent.shaded.asm." + it.removePrefix(asmPrefix).replace('/', '.') }
