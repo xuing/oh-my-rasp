@@ -78,13 +78,20 @@ if command -v gradle >/dev/null 2>&1; then
 			"-Pohmyrasp.mode=$mode"
 	)
 else
+	# The image is the one java-agent/Dockerfile pins, resolved the way CI does; the build runs as the caller.
+	gradle_image=$(awk '$1 == "FROM" && $2 ~ /^gradle:/ { print $2; exit }' "$java_agent_dir/Dockerfile")
+	[ -n "$gradle_image" ] || { echo "no 'FROM gradle:...' line in $java_agent_dir/Dockerfile" >&2; exit 1; }
+	gradle_home=${OHMYRASP_GRADLE_HOME:-$HOME/.cache/ohmyrasp-gradle-home}
+	mkdir -p "$gradle_home"
 	docker run --rm \
 		-u "$(id -u):$(id -g)" \
-		-e GRADLE_USER_HOME=/tmp/gradle-home \
+		-e HOME=/tmp/gradle-home \
+		-e GRADLE_USER_HOME=/gradle-home \
 		-e "OHMYRASP_SHIRUDO_MODE=$mode" \
+		-v "$gradle_home:/gradle-home" \
 		-v "$java_agent_dir:/workspace" \
 		-w /workspace \
-		gradle:9.8.1-jdk25 \
+		"$gradle_image" \
 		gradle --no-daemon --no-problems-report --project-cache-dir /tmp/gradle-proj-pkg \
 		"$gradle_task" \
 		"-PshirudoMode=$mode" \

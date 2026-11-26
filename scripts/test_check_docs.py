@@ -109,6 +109,14 @@ class ReleaseAssetsTest(unittest.TestCase):
         self.assertIn("ohmyrasp-shirudo-upatches-<version>.tar.gz", published)
         self.assertNotIn("ohmyrasp-shirudo-upatches.tar.gz", published)  # staging name, renamed in dist/
 
+    def test_asset_names_without_a_dash_are_recognized(self) -> None:
+        # The universal shirudo JAR is ohmyrasp.jar, with no dash after the product name.
+        self.assertEqual(check_docs.ASSET_NAME.findall("`ohmyrasp.jar`, `ohmyrasp-agent-all.jar`"),
+                         ["ohmyrasp.jar", "ohmyrasp-agent-all.jar"])
+        _, published, _ = check_docs.release_workflow()
+        self.assertIn("ohmyrasp.jar", published)
+        self.assertIn("ohmyrasp-agent-all.jar", published)
+
 
 class LinkTest(unittest.TestCase):
     def test_link_forms(self) -> None:

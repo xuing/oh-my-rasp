@@ -1,0 +1,13 @@
+[package]
+name = "ohmyrasp"
+description = "OhMyRASP standalone runtime application self-protection agent for every Java version, 8 to 25"
+license = "Apache-2.0"
+authors = ["OhMyRASP Contributors"]
+
+[[upatches]]
+type = "java"
+source = "ohmyrasp.jar"
+
+[upatches.tree]
+id = "ohmyrasp"
+fixes = ["CVE-2021-44228", "CVE-2022-22965", "CVE-2022-22963", "CVE-2022-22947", "CVE-2017-5638", "CVE-2020-17530", "CVE-2017-18349", "CVE-2016-4437", "CVE-2020-14882", "CVE-2023-46604", "CVE-2017-12615", "CVE-2019-17558", "CVE-2023-21839"]
