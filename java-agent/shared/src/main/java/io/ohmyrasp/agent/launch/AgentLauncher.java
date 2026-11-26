@@ -139,14 +139,15 @@ public final class AgentLauncher {
   }
 
   /**
-   * The one monitor every definition of this class shares: the Runtime instance, used only as a lock. It is a
-   * final field of a bootstrap class, so every definition of this class, in any loader, gets the same object, and
-   * no code can replace it (System.setProperties can replace the properties object between two entry calls). On
-   * Java 8 Runtime.load0 and loadLibrary0 also synchronize on it; the launcher holds it only to check and set its
-   * state and loads no library meanwhile, so the two never wait for each other in a cycle.
+   * The one monitor every definition of this class shares: the Class object of the Instrumentation interface,
+   * used only as a lock. The bootstrap loader defines it once per JVM, so every definition of this class, in any
+   * loader, gets the same object, and nothing can replace it. Nothing else locks it: in the JDK 8 rt.jar and the
+   * JDK 17 and 25 runtime images only Instrumentation and sun.instrument.InstrumentationImpl refer to it, and
+   * InstrumentationImpl loads it only as a parameter type for a method lookup. (The Runtime instance, used
+   * before, is a public monitor: Java 8 holds it while it loads a native library.)
    */
   private static Object lock() {
-    return Runtime.getRuntime();
+    return Instrumentation.class;
   }
 
   /** The state this definition or any other loaded definition of this class recorded, or null. */
