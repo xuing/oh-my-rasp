@@ -40,6 +40,7 @@ import io.ohmyrasp.agent.loading.CodebaseUrls;
 import io.ohmyrasp.agent.loading.ClassDefinitionOrigin;
 import io.ohmyrasp.agent.rules.product.spark.SparkSubmitRole;
 import io.ohmyrasp.agent.http.ServletSubmitRole;
+import io.ohmyrasp.agent.runtime.AgentOwnIo;
 import io.ohmyrasp.agent.runtime.AgentRuntime;
 import io.ohmyrasp.agent.runtime.DetectionMode;
 import io.ohmyrasp.agent.xml.XmlCatalogResolution;
@@ -2086,7 +2087,8 @@ public final class OhMyRaspHooks {
 
   private static void emit(Optional<Detection> detection,
       boolean allowNonRequestBlock, java.util.function.Predicate<String> repeatedObservation, boolean mayRedirect) {
-    if (detection.isEmpty()) {
+    // The agent's own event and control I/O is neither reported nor blocked.
+    if (detection.isEmpty() || AgentOwnIo.active()) {
       return;
     }
     long started = System.nanoTime();
@@ -2162,8 +2164,9 @@ public final class OhMyRaspHooks {
    * actually removes the hot-path cost rather than just suppressing the result.
    * Cleanup/accessor hooks intentionally do not consult this.
    */
+  /** True when detection is OFF, and during the agent's own I/O on this thread. */
   private static boolean detectionDisabled() {
-    return AgentRuntime.get().mode() == DetectionMode.OFF;
+    return AgentRuntime.get().mode() == DetectionMode.OFF || AgentOwnIo.active();
   }
 
   private static long elapsedMicros(long startedNanos) {

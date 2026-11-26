@@ -1363,6 +1363,32 @@ final class Java8RaspHooksTest {
 
 
   @Test
+  void theAgentsOwnIoIsNeitherReportedNorBlocked() throws Exception {
+    // The packaged-agent probe java-agent/probes/own-writes runs this case through the instrumented
+    // JDK file classes; here the hook is called directly while the runtime marks its own I/O.
+    Path log = Files.createTempFile("ohmyrasp-java8-own-io", ".jsonl");
+    Files.delete(log);
+    System.setProperty("ohmyrasp.java8.log", log.toString());
+    System.setProperty("ohmyrasp.java8.block", "true");
+    final String spool = "/usr/local/tomcat/webapps/ROOT/events.jsp";
+
+    boolean entered = RaspRuntime.enterOwnIo();
+    try {
+      assertTrue(entered);
+      assertFalse(RaspRuntime.enterOwnIo(), "a nested mark leaves clearing to the outermost caller");
+      Java8RaspHooks.beforeFileWrite(spool);
+      Java8RaspHooks.beforeNioFileWrite(spool);
+    } finally {
+      RaspRuntime.exitOwnIo(entered);
+    }
+    assertFalse(RaspRuntime.inOwnIo());
+    assertFalse(Files.exists(log), "nothing reported");
+
+    // The same write by the application is blocked.
+    assertThrows(Java8RaspBlockException.class, () -> Java8RaspHooks.beforeFileWrite(spool));
+  }
+
+  @Test
   void ignoresMavenRepositoryJarWrite() throws Exception {
     Path log = Files.createTempFile("ohmyrasp-java8-maven-repository", ".jsonl");
     Files.delete(log);

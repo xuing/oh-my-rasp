@@ -454,7 +454,8 @@ public final class Java17RaspHooks {
   }
 
   public static void beforeFileWrite(Object path) {
-    if (!ARCHIVE_ENTRY.hostDestination(path)) return;
+    // The agent's own spool write leaves this thread's archive-entry context for the application.
+    if (RaspRuntime.inOwnIo() || !ARCHIVE_ENTRY.hostDestination(path)) return;
     String rawPath = pathValue(path);
     String normalizedPath = normalizePath(rawPath);
     String entry = ARCHIVE_ENTRY.take();

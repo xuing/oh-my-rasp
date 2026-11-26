@@ -6,6 +6,7 @@ import java.io.FileWriter;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
+import java.io.PrintStream;
 import java.net.MalformedURLException;
 import java.net.URL;
 import java.net.URLConnection;
@@ -190,6 +191,31 @@ public final class RaspRuntime {
 
   private RaspRuntime() {}
 
+  // ---- the agent's own I/O -------------------------------------------------
+
+  // Set while this thread does the agent's own event or control-file I/O. The hooks then neither
+  // report nor block, so a log or control path that matches a file rule cannot re-enter them.
+  private static final ThreadLocal<Boolean> OWN_IO = new ThreadLocal<Boolean>();
+
+  static boolean inOwnIo() {
+    return OWN_IO.get() != null;
+  }
+
+  /** Marks this thread as doing the agent's own I/O; false when it already was. */
+  static boolean enterOwnIo() {
+    if (OWN_IO.get() != null) {
+      return false;
+    }
+    OWN_IO.set(Boolean.TRUE);
+    return true;
+  }
+
+  static void exitOwnIo(boolean entered) {
+    if (entered) {
+      OWN_IO.remove();
+    }
+  }
+
   // ---- detection mode, polled from the control file -----------------------
 
   /**
@@ -223,6 +249,7 @@ public final class RaspRuntime {
         return;
       }
       String text;
+      boolean ownIo = enterOwnIo();
       try {
         if (Files.notExists(path)) {
           restoreStartup();
@@ -237,6 +264,8 @@ public final class RaspRuntime {
         return;
       } catch (IOException | RuntimeException unreadable) {
         return;
+      } finally {
+        exitOwnIo(ownIo);
       }
       if (text.equals(applied)) {
         return;
@@ -317,13 +346,19 @@ public final class RaspRuntime {
     return CONTROL.mode();
   }
 
-  /** True only when detection is explicitly OFF. */
+  /** True when detection is explicitly OFF, and during the agent's own I/O on this thread. */
   static boolean detectionOff() {
-    return CONTROL.mode() == Mode.OFF;
+    return CONTROL.mode() == Mode.OFF || inOwnIo();
   }
 
-  /** BLOCK or standalone unset permit blocking; MONITOR/OFF do not; legacy falls back to flag. */
+  /**
+   * BLOCK or standalone unset permit blocking; MONITOR/OFF do not; legacy falls back to flag. The
+   * agent's own I/O is never blocked.
+   */
   static boolean blockingAllowed(boolean legacyEnvFlag) {
+    if (inOwnIo()) {
+      return false;
+    }
     return blockingAllowed(INITIAL_CONFIG.standalone, CONTROL.mode(), legacyEnvFlag);
   }
 
@@ -458,23 +493,23 @@ public final class RaspRuntime {
   }
 
   private static boolean emitSpecialTarget(String logPath, String line) {
-    if (logPath == null || logPath.trim().length() == 0) {
-      System.err.println(line);
-      return true;
+    PrintStream stream;
+    String normalized =
+        logPath == null ? "" : logPath.trim().toLowerCase(Locale.ROOT);
+    if (normalized.length() == 0 || normalized.equals("stderr")) {
+      stream = System.err;
+    } else if (normalized.equals("stdout")) {
+      stream = System.out;
+    } else {
+      return normalized.equals("none");
     }
-    String normalized = logPath.trim().toLowerCase(Locale.ROOT);
-    if (normalized.equals("stderr")) {
-      System.err.println(line);
-      return true;
+    boolean ownIo = enterOwnIo();
+    try {
+      stream.println(line);
+    } finally {
+      exitOwnIo(ownIo);
     }
-    if (normalized.equals("stdout")) {
-      System.out.println(line);
-      return true;
-    }
-    if (normalized.equals("none")) {
-      return true;
-    }
-    return false;
+    return true;
   }
 
   private static void startWriter() {
@@ -625,7 +660,17 @@ public final class RaspRuntime {
     }
   }
 
+  /** Appends lines to a log file as the agent's own I/O, invisible to the file hooks. */
   private static void appendBatch(String logPath, List<String> lines) {
+    boolean ownIo = enterOwnIo();
+    try {
+      appendLines(logPath, lines);
+    } finally {
+      exitOwnIo(ownIo);
+    }
+  }
+
+  private static void appendLines(String logPath, List<String> lines) {
     File target = new File(logPath);
     File parent = target.getParentFile();
     if (parent != null && !parent.exists() && !parent.mkdirs()) {

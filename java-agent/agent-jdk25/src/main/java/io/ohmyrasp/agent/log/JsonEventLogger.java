@@ -3,6 +3,7 @@ package io.ohmyrasp.agent.log;
 import io.ohmyrasp.agent.control.ControlPlaneClient;
 import io.ohmyrasp.agent.model.Detection;
 import io.ohmyrasp.agent.model.RequestContext;
+import io.ohmyrasp.agent.runtime.AgentOwnIo;
 import io.ohmyrasp.agent.runtime.AgentRuntime;
 import io.ohmyrasp.agent.runtime.ShirudoDefaults;
 import java.io.IOException;
@@ -328,7 +329,17 @@ public final class JsonEventLogger {
     }
   }
 
+  /** Writes a batch as the agent's own I/O, invisible to the hooks. */
   private void flush(List<Sample> batch) {
+    boolean ownIo = AgentOwnIo.enter();
+    try {
+      write(batch);
+    } finally {
+      AgentOwnIo.exit(ownIo);
+    }
+  }
+
+  private void write(List<Sample> batch) {
     StringBuilder fileBuffer = target == LogTarget.FILE ? new StringBuilder(batch.size() * 256) : null;
     StringBuilder consoleBuffer = target == LogTarget.NONE ? null : new StringBuilder(batch.size() * 256);
     String separator = System.lineSeparator();

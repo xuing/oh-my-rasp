@@ -285,6 +285,7 @@ public final class AgentRuntime {
       return;
     }
     String text;
+    boolean ownIo = AgentOwnIo.enter();
     try {
       if (Files.notExists(path)) {
         restoreStartUpSettings();
@@ -299,6 +300,8 @@ public final class AgentRuntime {
       return;
     } catch (RuntimeException | java.io.IOException e) {
       return;
+    } finally {
+      AgentOwnIo.exit(ownIo);
     }
     // Read on every poll and applied when the content differs from what was last applied. Content
     // that fails to parse is not recorded, so a document read half-written is applied once it is
