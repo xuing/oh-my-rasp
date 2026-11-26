@@ -103,7 +103,7 @@ def main():
     if problems:
         raise SystemExit("hook coverage guards failed:\n  " + "\n  ".join(problems))
     named = hookmap.named_rows(maps[family])
-    print(f"{family}: {len(named)} hooked methods on named targets, "
+    print(f"{family}: {len(named)} hook rows on named targets, "
           f"{len(maps[family].rows) - len(named)} call-site rewrites; {maps[family].stats}")
 
 
