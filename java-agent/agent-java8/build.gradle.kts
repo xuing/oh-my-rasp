@@ -44,8 +44,8 @@ val agentJava8Jar = tasks.register<ShadowJar>("agentJava8Jar") {
 
     manifest {
         attributes(
-            "Premain-Class" to "io.ohmyrasp.agent.java8.OhMyRaspJava8Agent",
-            "Agent-Class" to "io.ohmyrasp.agent.java8.OhMyRaspJava8Agent",
+            "Premain-Class" to "io.ohmyrasp.agent.launch.AgentLauncher",
+            "Agent-Class" to "io.ohmyrasp.agent.launch.AgentLauncher",
             "Boot-Class-Path" to "ohmyrasp-agent-java8.jar",
             "Can-Redefine-Classes" to "true",
             "Can-Retransform-Classes" to "true",
@@ -132,8 +132,8 @@ val shirudoUpatchJar = tasks.register<ShadowJar>("shirudoUpatchJar") {
 
     manifest {
         attributes(
-            "Premain-Class" to "io.ohmyrasp.agent.java8.OhMyRaspJava8Agent",
-            "Agent-Class" to "io.ohmyrasp.agent.java8.OhMyRaspJava8Agent",
+            "Premain-Class" to "io.ohmyrasp.agent.launch.AgentLauncher",
+            "Agent-Class" to "io.ohmyrasp.agent.launch.AgentLauncher",
             "Can-Redefine-Classes" to "true",
             "Can-Retransform-Classes" to "true",
             "Implementation-Title" to "OhMyRasp Java 8 Era Agent (shirudo upatch)",
@@ -179,7 +179,7 @@ val verifyShirudoUpatchJar = tasks.register("verifyShirudoUpatchJar") {
             }
             val parsedManifest = zip.getInputStream(manifestEntry).use { Manifest(it) }
             val mainAttrs = parsedManifest.mainAttributes
-            require(mainAttrs.getValue("Premain-Class") == "io.ohmyrasp.agent.java8.OhMyRaspJava8Agent") {
+            require(mainAttrs.getValue("Premain-Class") == "io.ohmyrasp.agent.launch.AgentLauncher") {
                 "Unexpected Premain-Class: ${mainAttrs.getValue("Premain-Class")}"
             }
             require(mainAttrs.getValue("Boot-Class-Path") == null) {

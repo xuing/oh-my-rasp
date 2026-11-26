@@ -45,8 +45,8 @@ val agentJava17Jar = tasks.register<ShadowJar>("agentJava17Jar") {
 
     manifest {
         attributes(
-            "Premain-Class" to "io.ohmyrasp.agent.java17.OhMyRaspJava17Agent",
-            "Agent-Class" to "io.ohmyrasp.agent.java17.OhMyRaspJava17Agent",
+            "Premain-Class" to "io.ohmyrasp.agent.launch.AgentLauncher",
+            "Agent-Class" to "io.ohmyrasp.agent.launch.AgentLauncher",
             "Can-Redefine-Classes" to "true",
             "Can-Retransform-Classes" to "true",
             "Implementation-Title" to "OhMyRasp Java 17 Era Agent"
@@ -137,8 +137,8 @@ val shirudoUpatchJar = tasks.register<ShadowJar>("shirudoUpatchJar") {
 
     manifest {
         attributes(
-            "Premain-Class" to "io.ohmyrasp.agent.java17.OhMyRaspJava17Agent",
-            "Agent-Class" to "io.ohmyrasp.agent.java17.OhMyRaspJava17Agent",
+            "Premain-Class" to "io.ohmyrasp.agent.launch.AgentLauncher",
+            "Agent-Class" to "io.ohmyrasp.agent.launch.AgentLauncher",
             "Can-Redefine-Classes" to "true",
             "Can-Retransform-Classes" to "true",
             "Implementation-Title" to "OhMyRasp Java 17 Era Agent",
@@ -176,10 +176,10 @@ val verifyShirudoUpatchJar = tasks.register("verifyShirudoUpatchJar") {
                 "Expected Premain-Class: in main manifest section of ${jarFile.name}"
             }
             val manifest = Manifest(ByteArrayInputStream(manifestBytes))
-            require(manifest.mainAttributes.getValue("Premain-Class") == "io.ohmyrasp.agent.java17.OhMyRaspJava17Agent") {
+            require(manifest.mainAttributes.getValue("Premain-Class") == "io.ohmyrasp.agent.launch.AgentLauncher") {
                 "Unexpected Premain-Class in ${jarFile.name}"
             }
-            require(manifest.mainAttributes.getValue("Agent-Class") == "io.ohmyrasp.agent.java17.OhMyRaspJava17Agent") {
+            require(manifest.mainAttributes.getValue("Agent-Class") == "io.ohmyrasp.agent.launch.AgentLauncher") {
                 "Unexpected Agent-Class in ${jarFile.name}"
             }
             require(manifest.mainAttributes.getValue("OhMyRasp-Shirudo-Upatch") == "true") {

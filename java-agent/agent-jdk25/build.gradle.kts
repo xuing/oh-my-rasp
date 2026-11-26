@@ -56,8 +56,8 @@ val agentJar = tasks.register<ShadowJar>("agentJar") {
 
     manifest {
         attributes(
-            "Premain-Class" to "io.ohmyrasp.agent.OhMyRaspAgent",
-            "Agent-Class" to "io.ohmyrasp.agent.OhMyRaspAgent",
+            "Premain-Class" to "io.ohmyrasp.agent.launch.AgentLauncher",
+            "Agent-Class" to "io.ohmyrasp.agent.launch.AgentLauncher",
             "Can-Redefine-Classes" to "true",
             "Can-Retransform-Classes" to "true",
             "Implementation-Title" to "OhMyRasp Java Agent (JDK 21 and 25)"
@@ -127,8 +127,8 @@ val shirudoUpatchJar = tasks.register<ShadowJar>("shirudoUpatchJar") {
 
     manifest {
         attributes(
-            "Premain-Class" to "io.ohmyrasp.agent.OhMyRaspAgent",
-            "Agent-Class" to "io.ohmyrasp.agent.OhMyRaspAgent",
+            "Premain-Class" to "io.ohmyrasp.agent.launch.AgentLauncher",
+            "Agent-Class" to "io.ohmyrasp.agent.launch.AgentLauncher",
             "Can-Redefine-Classes" to "true",
             "Can-Retransform-Classes" to "true",
             "Implementation-Title" to "OhMyRasp Java Agent (JDK 21 and 25 / shirudo upatch)",
