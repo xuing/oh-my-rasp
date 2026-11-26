@@ -368,10 +368,21 @@ public final class RaspRuntime {
     return current;
   }
 
+  /** Whether {@link #start} has completed. The hook entries do nothing until it has. */
+  static boolean isStarted() {
+    return started != null;
+  }
+
   /**
    * Resolves the configuration, reads the control file once and starts the poller and writer threads, for the
-   * installed {@link BackportLine}. The line's entry class calls it before it registers any transformer, so no
-   * hook does this work on an application thread. A second call does nothing.
+   * installed {@link BackportLine}. The line's start calls it before the entry class registers any transformer, so
+   * no hook does this work on an application thread.
+   *
+   * <p>All or nothing: what can fail (the configuration, the first control-file read, registering the shutdown
+   * hook, which the JVM refuses once it has begun to shut down) comes before any thread starts. If starting a
+   * thread fails, the threads already started are stopped and the shutdown hook is removed, the runtime stays
+   * unstarted, and a later call starts it from the beginning. The started state is published last, through the
+   * volatile {@code started}, and all its fields are final. A second call after a successful start does nothing.
    */
   public static void start() {
     synchronized (START_LOCK) {
@@ -388,31 +399,71 @@ public final class RaspRuntime {
       BackportLine.initialise(Mode.class);
       if (state.controlPath != null) {
         state.control.poll(state.controlPath);
-        Thread poller =
+      }
+      Thread shutdown = null;
+      if (state.writerEnabled) {
+        shutdown =
             new Thread(
                 new Runnable() {
                   public void run() {
-                    while (true) {
-                      try {
-                        Thread.sleep(pollMillis());
-                        state.control.poll(state.controlPath);
-                      } catch (InterruptedException e) {
-                        Thread.currentThread().interrupt();
-                        return;
-                      } catch (RuntimeException | Error ignored) {
-                        // never let control polling disturb the application or stop polling
+                    SPOOL.shutdown(SHUTDOWN_JOIN_MILLIS);
+                  }
+                });
+        Runtime.getRuntime().addShutdownHook(shutdown);
+      }
+      Thread poller = null;
+      try {
+        if (state.controlPath != null) {
+          poller =
+              new Thread(
+                  new Runnable() {
+                    public void run() {
+                      while (true) {
+                        try {
+                          Thread.sleep(pollMillis());
+                          state.control.poll(state.controlPath);
+                        } catch (InterruptedException e) {
+                          Thread.currentThread().interrupt();
+                          return;
+                        } catch (RuntimeException | Error ignored) {
+                          // never let control polling disturb the application or stop polling
+                        }
                       }
                     }
-                  }
-                },
-                line.controlThreadName);
-        poller.setDaemon(true);
-        poller.start();
+                  },
+                  line.controlThreadName);
+          poller.setDaemon(true);
+          poller.start();
+        }
+        if (state.writerEnabled) {
+          SPOOL.start(line.writerThreadName);
+        }
+        started = state;
+      } catch (RuntimeException | Error failure) {
+        stopQuietly(poller);
+        stopQuietly(SPOOL.abandonWriter());
+        if (shutdown != null) {
+          try {
+            Runtime.getRuntime().removeShutdownHook(shutdown);
+          } catch (IllegalStateException shuttingDown) {
+            // the hook runs, finds no writer and writes what is queued: nothing is
+          }
+        }
+        throw failure;
       }
-      if (state.writerEnabled) {
-        startWriter(line);
-      }
-      started = state;
+    }
+  }
+
+  /** Interrupts a thread this runtime started and waits a bounded time for it to end. */
+  private static void stopQuietly(Thread thread) {
+    if (thread == null) {
+      return;
+    }
+    thread.interrupt();
+    try {
+      thread.join(SHUTDOWN_JOIN_MILLIS);
+    } catch (InterruptedException e) {
+      Thread.currentThread().interrupt();
     }
   }
 
@@ -591,18 +642,6 @@ public final class RaspRuntime {
     return true;
   }
 
-  private static void startWriter(BackportLine line) {
-    SPOOL.start(line.writerThreadName);
-    Runtime.getRuntime()
-        .addShutdownHook(
-            new Thread(
-                new Runnable() {
-                  public void run() {
-                    SPOOL.shutdown(SHUTDOWN_JOIN_MILLIS);
-                  }
-                }));
-  }
-
   /**
    * Record a sampled measurement of the overhead added to a (usually benign)
    * request as a telemetry line, so the daemon's latency panel reflects real
@@ -739,6 +778,16 @@ public final class RaspRuntime {
       writer = thread;
       thread.start();
       return thread;
+    }
+
+    /**
+     * Undoes {@link #start} after a runtime start that failed later: forgets the writer and returns it for the
+     * caller to stop (it ends when interrupted), so a retried start starts a new one. Null when none was started.
+     */
+    Thread abandonWriter() {
+      Thread current = writer;
+      writer = null;
+      return current;
     }
 
     /**

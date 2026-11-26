@@ -33,9 +33,10 @@ final class Java8EventContractTest {
   @TempDir Path dir;
 
   /**
-   * The hooks log a monitored command once per thread until another is logged, and JUnit runs every
-   * test class on one thread, so another class may have logged a scenario's command last. A
-   * different command, written nowhere, makes each scenario's event its own.
+   * The hooks log a monitored command once per thread until another is logged, a memory cleared
+   * only at request entry and exit. JUnit runs every test class on one thread, and the scenario
+   * outside a request has no request around it, so another class may have logged its command last.
+   * A different command, written nowhere, makes each scenario's event its own.
    */
   @BeforeEach
   void forgetTheLastLoggedCommand() {

@@ -66,6 +66,11 @@ public final class ServletDispatchScope<R, C> {
     return false;
   }
 
+  /** Whether this thread is inside a servlet dispatch: false before the outermost entry and after its exit. */
+  public boolean inRequest() {
+    return active.get() != null;
+  }
+
   public void enter(Object servletRequest) {
     enter(servletRequest, false);
   }

@@ -7,6 +7,7 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import io.ohmyrasp.agent.java8.Java8RaspBlockException;
+import io.ohmyrasp.agent.java8.Java8RaspHooks;
 import io.ohmyrasp.agent.java8.Java8RaspLine;
 import io.ohmyrasp.agent.java8.OhMyRaspJava8Agent;
 import java.lang.reflect.InvocationTargetException;
@@ -89,6 +90,27 @@ final class Java8RaspLineTest {
           () -> runtime.getMethod("writeEvent", String.class, String.class).invoke(null, "none", "{}"));
       assertCause(IllegalStateException.class, () -> runtime.getMethod("start").invoke(null));
 
+      // A hook reached before the line starts does nothing and throws nothing, into the application or the JDK,
+      // and leaves the hook classes usable: the line still starts, and then the same hook acts.
+      Class<?> hooks = Class.forName(Java8RaspHooks.class.getName(), true, fresh);
+      Method processStart = hooks.getMethod("beforeProcessBuilderStart", ProcessBuilder.class);
+      ProcessBuilder attack = new ProcessBuilder("sh", "-c", "cat /etc/shadow");
+      System.setProperty("ohmyrasp.java8.block", "true");
+      try {
+        processStart.invoke(null, attack);
+        hooks.getMethod("beforeFileRead", Object.class).invoke(null, "/etc/shadow");
+        hooks.getMethod("beforeHttpRequest", Object.class).invoke(null, (Object) null);
+        hooks.getMethod("afterHttpRequest").invoke(null);
+        Object value = new Object();
+        assertSame(value, hooks.getMethod("jmxAttributeDisplayReceiver", Object.class).invoke(null, value));
+        assertEquals(Boolean.FALSE, hooks.getMethod("enforceElasticLz4Bounds").invoke(null));
+      } finally {
+        System.clearProperty("ohmyrasp.java8.block");
+      }
+      Method isStarted = runtime.getDeclaredMethod("isStarted");
+      isStarted.setAccessible(true);
+      assertEquals(Boolean.FALSE, isStarted.invoke(null), "a hook does not start the runtime");
+
       // Started as the entry class starts it, the same calls run. No control file: no poller thread.
       String previous = System.getProperty("ohmyrasp.control");
       System.setProperty("ohmyrasp.control", "none");
@@ -104,6 +126,17 @@ final class Java8RaspLineTest {
       assertEquals("java8_", line.getField("rulePrefix").get(line.getMethod("current").invoke(null)));
       assertFalse((Boolean) detectionOff.invoke(null));
       runtime.getMethod("writeEvent", String.class, String.class).invoke(null, "none", "{}");
+      System.setProperty("ohmyrasp.java8.block", "true");
+      System.setProperty("ohmyrasp.java8.log", "none");
+      try {
+        InvocationTargetException blocked =
+            assertThrows(InvocationTargetException.class, () -> processStart.invoke(null, attack));
+        assertEquals(Java8RaspBlockException.class.getName(), blocked.getCause().getClass().getName(),
+            String.valueOf(blocked.getCause()));
+      } finally {
+        System.clearProperty("ohmyrasp.java8.block");
+        System.clearProperty("ohmyrasp.java8.log");
+      }
     } finally {
       fresh.close();
     }

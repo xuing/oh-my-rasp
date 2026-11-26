@@ -61,7 +61,6 @@ import javax.crypto.spec.SecretKeySpec;
  * start initialises it, before any transformer is registered.
  */
 public final class BackportHooks {
-  private static final BackportLine LINE = BackportLine.current();
   private static final Pattern SHELL =
       Pattern.compile(
           "(?i)(?:^|[/\\\\])(?:sh|bash|dash|ash|zsh|ksh|cmd(?:\\.exe)?|powershell(?:\\.exe)?|pwsh(?:\\.exe)?)$");
@@ -167,15 +166,18 @@ public final class BackportHooks {
   private BackportHooks() {}
 
   public static void beforeHttpRequest(Object request) {
+    if (inactive()) return;
     beforeHttpRequest(request, false);
   }
 
   public static void beforeContainerRequest(Object request) {
+    if (inactive()) return;
     beforeHttpRequest(request, true);
   }
 
   private static void beforeHttpRequest(Object request, boolean beforeServlet) {
     long started = System.nanoTime();
+    if (!DISPATCH.inRequest()) forgetLoggedValues();
     DISPATCH.enter(beforeServlet ? null : request);
     try {
       try {
@@ -185,9 +187,41 @@ public final class BackportHooks {
         RaspRuntime.sampleLatency((System.nanoTime() - started) / 1000L);
       }
     } catch (RuntimeException | Error failure) {
-      DISPATCH.exit();
+      exitRequest();
       throw failure;
     }
+  }
+
+  /** Leaves one servlet dispatch; leaving the outermost one forgets what this thread logged during the request. */
+  private static void exitRequest() {
+    DISPATCH.exit();
+    if (!DISPATCH.inRequest()) forgetLoggedValues();
+  }
+
+  /**
+   * Forgets the last value this thread logged for each kind of finding. A monitored finding is logged once until a
+   * different value is logged, which suppresses an immediate repeat inside one request; across requests, which a
+   * worker thread serves one after another, the same attack is logged again. Called when the outermost request
+   * enters and when it exits.
+   */
+  private static void forgetLoggedValues() {
+    LAST_LOGGED_REQUEST.remove();
+    LAST_LOGGED_COMMAND.remove();
+    LAST_LOGGED_FILE_READ.remove();
+    LAST_LOGGED_FILE_WRITE.remove();
+    LAST_LOGGED_FILE_UPLOAD.remove();
+    LAST_LOGGED_URL.remove();
+    LAST_LOGGED_ARCHIVE.remove();
+    LAST_LOGGED_JDBC.remove();
+    LAST_LOGGED_SQL_IDENTIFIER.remove();
+    LAST_LOGGED_BASE64.remove();
+    LAST_LOGGED_SCRIPT.remove();
+    LAST_LOGGED_JEXL.remove();
+    LAST_LOGGED_EL.remove();
+    LAST_LOGGED_JAVA_COMPILE.remove();
+    LAST_LOGGED_JMX.remove();
+    LAST_LOGGED_XML_DECODER.remove();
+    LAST_LOGGED_XXE.remove();
   }
 
   private static void beforeHttpRequestImpl(Object request, boolean beforeServlet) {
@@ -210,29 +244,36 @@ public final class BackportHooks {
     LAST_LOGGED_REQUEST.set(finding.detailValue);
     appendEvent(finding, "HttpServlet.service", action);
     if ("block".equals(action)) {
-      throw LINE.block("OhMyRASP " + LINE.displayName + " blocked suspicious request path");
+      throw line().block("OhMyRASP " + line().displayName + " blocked suspicious request path");
     }
   }
 
   public static void afterHttpRequest() {
-    DISPATCH.exit();
+    if (inactive()) return;
+    exitRequest();
   }
 
   public static void afterMultipartAccess(Object source, Object result, boolean iterator) {
+    if (inactive()) return;
     DISPATCH.multipartAccess(source, result, iterator);
   }
 
   public static void afterMultipartLookup(Object result, Object request, int kind, boolean bulk) {
+    if (inactive()) return;
     DISPATCH.multipartResult(request, result, kind, bulk);
   }
 
   public static void inspectMultipartFilename(String filename, boolean archiveOnly) {
+    if (inactive()) return;
     if (MultipartFilename.eligible() && (!archiveOnly || DISPATCH.deliveredPart(MultipartFilename.receiver()))) {
       inspectFileUpload(filename, archiveOnly);
     }
   }
 
-  public static void beforeFileUpload(String filename) { inspectFileUpload(filename, false); }
+  public static void beforeFileUpload(String filename) {
+    if (inactive()) return;
+    inspectFileUpload(filename, false);
+  }
 
   private static void inspectFileUpload(String filename, boolean archiveOnly) {
     if (RaspRuntime.detectionOff() || DISPATCH.inspectingRequest()) return;
@@ -250,25 +291,27 @@ public final class BackportHooks {
       else request.lastUpload = finding.detailValue;
     }
     appendEvent(finding, "MultipartUpload.filename", action);
-    if ("block".equals(action)) throw LINE.block("OhMyRASP " + LINE.displayName + " blocked suspicious file upload");
+    if ("block".equals(action)) throw line().block("OhMyRASP " + line().displayName + " blocked suspicious file upload");
   }
 
   /** Previously transformed handlers supplied only descriptor text. */
   public static void beforeSparkRestSubmit(String descriptor) {}
 
   public static void beforeSparkSubmitDispatch(boolean creation, Object request, Class<?> requestApi) {
+    if (inactive()) return;
     if (RaspRuntime.detectionOff() || !SparkSubmitRole.denied(creation, request, requestApi)) return;
     Finding finding = new Finding(rule("request_remote_job_submission"), 95,
         "Spark job submission lacks the deployment's required role", "operation", "handleSubmit", "required_submit_role_denied");
     boolean block = shouldBlock();
     appendEvent(finding, "SparkRest.handleSubmit", block ? "block" : "log");
-    if (block) throw LINE.block("OhMyRASP blocked unauthorized Spark submission");
+    if (block) throw line().block("OhMyRASP blocked unauthorized Spark submission");
   }
 
   /** Earlier instrumentation supplied the command descriptor before admission checks. */
   public static void beforeYarnApplicationSubmit(Object submission) {}
 
   public static void afterYarnSubmitPrepared(Object prepared, Object request, Class<?> requestApi) {
+    if (inactive()) return;
     if (prepared == null || RaspRuntime.detectionOff()
         || !ServletSubmitRole.denied("ohmyrasp.yarn.submitRole", request, requestApi)) return;
     Finding finding = new Finding(rule("request_remote_job_submission"), 95,
@@ -276,20 +319,22 @@ public final class BackportHooks {
         "required_submit_role_denied");
     boolean block = shouldBlock();
     appendEvent(finding, "RMWebServices.submitApplication", block ? "block" : "log");
-    if (block) throw LINE.block("OhMyRASP blocked unauthorized YARN submission");
+    if (block) throw line().block("OhMyRASP blocked unauthorized YARN submission");
   }
 
   public static void beforeSpringProcessStart(ProcessBuilder builder) {
+    if (inactive()) return;
     if (RaspRuntime.detectionOff() || !io.ohmyrasp.agent.rules.product.spring.SpringProcessInit.selects(builder)) return;
     Finding finding = new Finding(rule("command_execution_exploit_primitive"), 95,
         "Spring dispatched an HTTP-defined initializer to ProcessBuilder.start",
         "method", "ProcessBuilder.start", "remote_bean_init_dispatch");
     boolean block = shouldBlock();
     appendEvent(finding, "Spring.initMethod", block ? "block" : "log");
-    if (block) throw LINE.block("OhMyRASP blocked a Spring process initializer");
+    if (block) throw line().block("OhMyRASP blocked a Spring process initializer");
   }
 
   public static void beforeProcessLaunch(String[] argv) {
+    if (inactive()) return;
     if (RaspRuntime.detectionOff()) return;
     Finding finding = classifyCommand(argv);
     if (finding == null) return;
@@ -297,10 +342,11 @@ public final class BackportHooks {
     if (api == null) return;
     boolean block = shouldBlock();
     appendEvent(finding, api, block ? "block" : "log", null, argv.length);
-    if (block) throw LINE.block("OhMyRASP blocked a process launch");
+    if (block) throw line().block("OhMyRASP blocked a process launch");
   }
 
   public static void beforeProcessBuilderStart(ProcessBuilder processBuilder) {
+    if (inactive()) return;
     if (processBuilder == null) {
       return;
     }
@@ -308,6 +354,7 @@ public final class BackportHooks {
   }
 
   public static void beforeRuntimeExecString(String command) {
+    if (inactive()) return;
     if (command == null) {
       return;
     }
@@ -315,25 +362,29 @@ public final class BackportHooks {
   }
 
   public static void beforeRuntimeExecArray(String[] command) {
+    if (inactive()) return;
     inspectCommand(command, "Runtime.exec(String[])");
   }
 
   /** Compatibility entry for callers that explicitly supply a lookup string. */
   public static void beforeJndiLookup(Object name) {
+    if (inactive()) return;
     if (name instanceof String) onJndiRoute((String) name, "declared_lookup");
   }
 
   public static void beforeJndiProviderLookup(String url, Object provider, String operation) {
+    if (inactive()) return;
     if (!LookupRoute.observedAtSelection(provider, url)) onJndiRoute(url, operation);
   }
 
   public static void onJndiRoute(String url, String operation) {
+    if (inactive()) return;
     if (url == null || operation == null || RaspRuntime.detectionOff()) return;
     Finding finding = classifyJndiLookup(url, operation);
     if (finding == null) return;
     boolean block = shouldBlock();
     appendEvent(finding, "declared_lookup".equals(operation) ? "InitialContext.lookup" : operation, block ? "block" : "log");
-    if (block) throw LINE.block("OhMyRASP blocked a remote JNDI lookup");
+    if (block) throw line().block("OhMyRASP blocked a remote JNDI lookup");
   }
 
   /** Legacy entry hooks precede class resolution and have no selected type. */
@@ -341,20 +392,23 @@ public final class BackportHooks {
   public static void beforeObjectStreamProxyResolve(String[] interfaceNames) {}
 
   public static void beforeOpenWireThrowable(Class<?> selected) {
+    if (inactive()) return;
     if (RaspRuntime.detectionOff() || selected == null || Throwable.class.isAssignableFrom(selected)) return;
     Finding finding = new Finding(rule("deserialization_protocol_class"), 100,
         "OpenWire selected a non-Throwable constructor for an exception",
         "class", selected.getName(), "non_throwable_constructor");
     boolean block = shouldBlock();
     appendEvent(finding, "OpenWire.createThrowable", block ? "block" : "log");
-    if (block) throw LINE.block("OhMyRASP blocked an invalid OpenWire exception type");
+    if (block) throw line().block("OhMyRASP blocked an invalid OpenWire exception type");
   }
 
   public static void afterObjectStreamClassResolve(Class<?> selected) {
+    if (inactive()) return;
     inspectResolvedType(selected, "ObjectInputStream.resolveClass", "resolved_class");
   }
 
   public static void afterObjectStreamProxyResolve(Class<?> selected) {
+    if (inactive()) return;
     if (selected == null || RaspRuntime.detectionOff() || !java.lang.reflect.Proxy.isProxyClass(selected)) return;
     for (Class<?> iface : selected.getInterfaces()) {
       if (inspectResolvedType(iface, "ObjectInputStream.resolveProxyClass", "resolved_proxy_interface")) return;
@@ -369,28 +423,31 @@ public final class BackportHooks {
         "Stream resolver selected a listed serialization type", "class", name, basis);
     boolean block = shouldBlock();
     appendEvent(finding, hook, block ? "block" : "log");
-    if (block) throw LINE.block("OhMyRASP blocked a listed serialization type");
+    if (block) throw line().block("OhMyRASP blocked a listed serialization type");
     return true;
   }
 
   public static void beforeHessianType(String type) {}
 
   public static void beforeHessianAllocation(Class<?> selected, String basis) {
+    if (inactive()) return;
     if (RaspRuntime.detectionOff() || !io.ohmyrasp.agent.rules.product.hessian.HessianAllocationTypes.listed(selected)) return;
     Finding finding = new Finding(rule("deserialization_hessian_type"), 95,
         "Hessian selected a listed type for allocation", "class", selected.getName(), basis);
     boolean block = shouldBlock();
     appendEvent(finding, "Hessian.allocate", block ? "block" : "log");
-    if (block) throw LINE.block("OhMyRASP blocked a listed Hessian allocation");
+    if (block) throw line().block("OhMyRASP blocked a listed Hessian allocation");
   }
 
   public static void beforeFileRead(Object path) {
+    if (inactive()) return;
     if (!HostReadPath.isHostPath(path)) return;
     Finding finding = classifyFileRead(pathValue(path), HostReadPath.OpenPolicy.PATH_ONLY);
     emitFileFinding(finding, LAST_LOGGED_FILE_READ, "FileInputStream.open");
   }
 
   public static void captureDirectoryWalk(Object walker, java.nio.file.Path path) {
+    if (inactive()) return;
     RequestSnapshot request = CURRENT_REQUEST.get();
     if (RaspRuntime.detectionOff() || request == null || path == null || !HostReadPath.isHostPath(path)) return;
     List<String> inputs = request.parameterValues == null ? java.util.Collections.<String>emptyList() : request.parameterValues;
@@ -398,17 +455,20 @@ public final class BackportHooks {
   }
 
   public static void beginDirectoryVisit(Object walker, java.nio.file.Path path) {
+    if (inactive()) return;
     HostDirectory.visiting(walker, path, CURRENT_REQUEST.get() != null);
   }
 
   public static void afterFileList(String[] entries, String path) {
+    if (inactive()) return;
     if (entries != null) inspectListedDirectory(path, null, false, null);
   }
 
   public static void afterDirectoryOpen(java.nio.file.DirectoryStream<?> opened, java.nio.file.Path path, boolean relativeApi) {
+    if (inactive()) return;
     if (opened == null) return;
     try { inspectListedDirectory(path.toString(), opened, relativeApi && !path.isAbsolute(), HostDirectory.origin(path)); }
-    catch (RuntimeException denied) { if (LINE.isBlock(denied)) HostDirectory.closeDenied(opened, denied); throw denied; }
+    catch (RuntimeException denied) { if (line().isBlock(denied)) HostDirectory.closeDenied(opened, denied); throw denied; }
   }
 
   @SuppressWarnings("unchecked")
@@ -425,15 +485,17 @@ public final class BackportHooks {
     boolean block = shouldBlock();
     String operation = opened == null ? "FileSystem.list" : relative ? "SecureDirectoryStream.open" : "DirectoryStream.open";
     appendEvent(finding, operation, block ? "block" : "log");
-    if (block) throw LINE.block("OhMyRASP blocked a directory listing");
+    if (block) throw line().block("OhMyRASP blocked a directory listing");
   }
 
   public static void beforeHostDelete(java.nio.file.Path path) {
+    if (inactive()) return;
     inspectDelete(path, null, -1, false);
   }
 
   public static void beforeSecureDelete(int directoryFd, java.nio.file.SecureDirectoryStream<java.nio.file.Path> directory,
       java.nio.file.Path path, int flags) {
+    if (inactive()) return;
     inspectDelete(path, directory, directoryFd, flags != 0);
   }
 
@@ -450,20 +512,23 @@ public final class BackportHooks {
           "path", entry.path(), "escaping_entry");
       boolean block = shouldBlock();
       appendEvent(finding, directory == null ? "host_entry_removal" : "descriptor_relative_unlink", block ? "block" : "log");
-      if (block) throw LINE.block("OhMyRASP blocked a file removal");
+      if (block) throw line().block("OhMyRASP blocked a file removal");
       return;
     }
   }
 
   public static void beforeStreamFileRead(String path, String hook) {
+    if (inactive()) return;
     if (!RaspRuntime.detectionOff()) emitFileFinding(classifyFileRead(path, HostReadPath.OpenPolicy.FOLLOW), null, hook);
   }
 
   public static void beforeRandomFileWrite(String path, int writable) {
+    if (inactive()) return;
     if (writable != 0) beforeFileWrite(path);
   }
 
   public static void beforeFileWrite(Object path) {
+    if (inactive()) return;
     if (RaspRuntime.inOwnIo()) return; // the agent's own I/O: before any application state
     if (!ARCHIVE_ENTRY.hostDestination(path)) return;
     String rawPath = pathValue(path);
@@ -483,6 +548,7 @@ public final class BackportHooks {
   @Deprecated public static void beforeFileContentWrite(byte[] bytes, int offset, int length) {}
 
   public static void inspectPlotWrite(PlotWrite attempt) {
+    if (inactive()) return;
     if (RaspRuntime.inOwnIo()) return; // the agent's own I/O: before any application state
     if (attempt == null) return;
     try {
@@ -491,7 +557,7 @@ public final class BackportHooks {
           "A plot directive reached its open output stream", "path", attempt.path(), "plot_stream_write");
       boolean block = shouldBlock();
       appendEvent(finding, "FileOutputStream.write", block ? "block" : "log");
-      if (block) throw LINE.block("OhMyRASP blocked a plot directive");
+      if (block) throw line().block("OhMyRASP blocked a plot directive");
     } catch (RuntimeException | Error failure) {
       PlotWrite.cancelled(attempt);
       throw failure;
@@ -499,6 +565,7 @@ public final class BackportHooks {
   }
 
   public static void beforeRandomAccessFileOpen(Object path, String mode) {
+    if (inactive()) return;
     if (mode != null && mode.toLowerCase(Locale.ROOT).indexOf('w') >= 0) {
       beforeFileWrite(path);
     } else {
@@ -507,11 +574,13 @@ public final class BackportHooks {
   }
 
   public static void beforeUnixFileOpen(java.nio.file.Path path, boolean read, int directoryFd) {
+    if (inactive()) return;
     beforeUnixFileOpen(path, read, directoryFd, false, false);
   }
 
   public static void beforeUnixFileOpen(java.nio.file.Path path, boolean read, int directoryFd,
       boolean noFollowFinal, boolean creatingNew) {
+    if (inactive()) return;
     if (RaspRuntime.inOwnIo()) return; // the agent's own I/O: before any application state
     if (HostReadPath.nativeRead(path, read && !creatingNew, directoryFd) && !RaspRuntime.detectionOff()) {
       HostReadPath.OpenPolicy links = noFollowFinal ? HostReadPath.OpenPolicy.NOFOLLOW_FINAL : HostReadPath.OpenPolicy.FOLLOW;
@@ -520,18 +589,21 @@ public final class BackportHooks {
   }
 
   public static void beginNioRead(Object path) {
+    if (inactive()) return;
     HostReadPath.beginFacade(path);
     try { beforeNioFileRead(path); }
     catch (RuntimeException | Error failure) { HostReadPath.endFacade(); throw failure; }
   }
 
   public static void beginNioChannel(Object path, Object options) {
+    if (inactive()) return;
     HostReadPath.beginFacade(path);
     try { beforeNioByteChannelOpen(path, options); }
     catch (RuntimeException | Error failure) { HostReadPath.endFacade(); throw failure; }
   }
 
   public static void beforeNioFileRead(Object path) {
+    if (inactive()) return;
     if (RaspRuntime.inOwnIo()) return; // the agent's own I/O: before any application state
     if (HostReadPath.needsFacadeRead(path)) {
       emitFileFinding(classifyFileRead(pathValue(path), HostReadPath.OpenPolicy.PATH_ONLY), LAST_LOGGED_FILE_READ, "FileInputStream.open");
@@ -539,10 +611,12 @@ public final class BackportHooks {
   }
 
   public static void beforeNioFileWrite(Object path) {
+    if (inactive()) return;
     beforeFileWrite(path);
   }
 
   public static void beforeNioByteChannelOpen(Object path, Object options) {
+    if (inactive()) return;
     if (RaspRuntime.inOwnIo()) return; // the agent's own I/O: before any application state
     if (nioOptionsContainWrite(options)) {
       beforeFileWrite(path);
@@ -555,6 +629,7 @@ public final class BackportHooks {
       new HttpTransportObservation.Submissions<List<String>>();
 
   public static void captureHttpSubmission(Object exchange, java.net.URI uri) {
+    if (inactive()) return;
     if (RaspRuntime.detectionOff()) return;
     List<String> urls = CURRENT_REQUEST_URLS.get();
     HTTP_SUBMISSIONS.capture(exchange, urls);
@@ -564,10 +639,12 @@ public final class BackportHooks {
   }
 
   public static void finishHttpSubmission(java.util.concurrent.CompletableFuture<?> future, Object exchange) {
+    if (inactive()) return;
     HTTP_SUBMISSIONS.finishedWhen(future, exchange);
   }
 
   public static void beforeHttpExchange(Object exchange, Object requestObject, java.net.URI uri) {
+    if (inactive()) return;
     if (RaspRuntime.detectionOff() || uri == null || !("http".equalsIgnoreCase(uri.getScheme())
         || "https".equalsIgnoreCase(uri.getScheme()))) return;
     HttpTransportObservation.bindExchange(requestObject, exchange, uri);
@@ -576,6 +653,7 @@ public final class BackportHooks {
 
   public static void beforeResolvedHttpExchange(Object requestObject, java.net.URI uri, java.net.InetSocketAddress address,
       java.net.InetSocketAddress proxy) {
+    if (inactive()) return;
     if (RaspRuntime.detectionOff()) return;
     String peer = HttpTransportObservation.directAddress(uri, address, proxy);
     if (peer != null) {
@@ -591,26 +669,31 @@ public final class BackportHooks {
   }
 
   public static void beforeUrlConnectionFactory(URL url) {
+    if (inactive()) return;
     if (!HttpTransportObservation.isHttp(url)) beforeUrlOpen(url);
   }
 
   public static void captureHttpRedirect(Object connection, URL to, URL from) {
+    if (inactive()) return;
     if (RaspRuntime.detectionOff() || !HttpTransportObservation.isHttp(from) || !HttpTransportObservation.isHttp(to)) return;
     List<String> inputs = CURRENT_REQUEST_URLS.get();
     HttpTransportObservation.selectedRedirect(connection, from, to, inputs != null && inputs.contains(urlComparisonKey(from)));
   }
 
   public static void beginHttpRoute(Object client, URL url, java.net.Proxy proxy) {
+    if (inactive()) return;
     HttpTransportObservation.beginRoute(client, RaspRuntime.detectionOff() ? null : url, proxy);
   }
 
   public static void beforeHttpDial(Object client, java.net.SocketAddress destination) {
+    if (inactive()) return;
     if (RaspRuntime.detectionOff()) return;
     URL url = HttpTransportObservation.dialTarget(client, destination);
     if (url != null) inspectHttpTransport(client, url, false, HttpTransportObservation.peer(client, url), "http_direct_connect", HttpTransportObservation.dialingRedirect(url));
   }
 
   public static void beforeHttpWrite(Object client, Object connection, URL url) {
+    if (inactive()) return;
     if (RaspRuntime.detectionOff()) return;
     String peer = HttpTransportObservation.peer(client, url);
     inspectHttpTransport(peer == null ? connection : client, url, true, peer, "http_request_write",
@@ -618,6 +701,7 @@ public final class BackportHooks {
   }
 
   public static void beforeHttpTransport(Object connection, URL url, boolean write) {
+    if (inactive()) return;
     inspectHttpTransport(connection, url, write, null, write ? "http_request_write" : "http_transport_acquire",
         HttpTransportObservation.redirected(connection, url));
   }
@@ -635,10 +719,11 @@ public final class BackportHooks {
     Finding observed = new Finding(finding.algorithm, finding.confidence, finding.message,
         finding.detailKey, HttpTransportObservation.recordedAddress(finding.detailValue), basis);
     appendEvent(observed, hook, block ? "block" : "log", peer);
-    if (block) throw LINE.block("OhMyRASP blocked an outbound HTTP destination");
+    if (block) throw line().block("OhMyRASP blocked an outbound HTTP destination");
   }
 
   public static void beforeUrlOpen(Object url) {
+    if (inactive()) return;
     Finding finding = classifyUrlOpen(url);
     if (finding == null) {
       return;
@@ -651,11 +736,12 @@ public final class BackportHooks {
     LAST_LOGGED_URL.set(finding.detailValue);
     appendEvent(finding, "URL.openConnection", action);
     if ("block".equals(action)) {
-      throw LINE.block("OhMyRASP " + LINE.displayName + " blocked suspicious URL access");
+      throw line().block("OhMyRASP " + line().displayName + " blocked suspicious URL access");
     }
   }
 
   public static void beforeFastjsonClassResource(String resource) {
+    if (inactive()) return;
     if (RaspRuntime.detectionOff()) return;
     Finding finding = classifyFastjsonClassResource(resource);
     if (finding == null) {
@@ -664,46 +750,55 @@ public final class BackportHooks {
     String action = shouldBlock() ? "block" : "log";
     appendEvent(finding, "ParserConfig.checkAutoType.getResourceAsStream", action);
     if ("block".equals(action)) {
-      throw LINE.block(
-          "OhMyRASP " + LINE.displayName + " blocked a Fastjson URL-shaped class resource");
+      throw line().block(
+          "OhMyRASP " + line().displayName + " blocked a Fastjson URL-shaped class resource");
     }
   }
 
   public static void afterArchiveEntryName(String name) {
+    if (inactive()) return;
     ARCHIVE_ENTRY.observe(name);
   }
 
   public static void beforeJdbcConnection(String url) {
+    if (inactive()) return;
     inspectJdbcConnection(url, "DriverManager.getConnection");
   }
 
   public static void beforeH2JdbcConnection(String url) {
+    if (inactive()) return;
     inspectJdbcConnection(url, "org.h2.jdbc.JdbcConnection.<init>");
   }
 
   public static void beforeSqlIdentifier(String value) {
+    if (inactive()) return;
     beforeSqlIdentifier(value, "SkyWalking.H2LogQueryDAO.queryLogs", "metricName");
   }
 
   public static void beforeSqlIdentifier(String value, String source, String parameter) {
+    if (inactive()) return;
     Finding finding = classifySqlIdentifier(value, source, parameter);
     inspectSqlIdentifierFinding(finding, "SQL.identifier");
   }
 
   /** Binary compatibility with previously transformed BoundSql constructors. */
   public static void beforeMyBatisBoundSql(String sql, Object ignored) {
+    if (inactive()) return;
     MyBatisSqlTrace.compiled(null, sql);
   }
 
   public static void observeMyBatisSubstitution(StringBuilder builder, String value, Object handler, String expression) {
+    if (inactive()) return;
     if (!RaspRuntime.detectionOff()) MyBatisSqlTrace.substitution(builder, value, handler, expression);
   }
 
   public static void beforeSqlStatement(String sql) {
+    if (inactive()) return;
     beforeSqlStatement(null, sql, "Statement.execute");
   }
 
   public static void beforeSqlStatement(Object receiver, String sql, String hook) {
+    if (inactive()) return;
     if (RaspRuntime.detectionOff()) return;
     Finding finding = classifySqlStatement(receiver, sql);
     if (finding == null) {
@@ -717,12 +812,13 @@ public final class BackportHooks {
     }
     appendEvent(finding, hook, action);
     if ("block".equals(action)) {
-      throw LINE.block("OhMyRASP " + LINE.displayName + " blocked suspicious SQL statement");
+      throw line().block("OhMyRASP " + line().displayName + " blocked suspicious SQL statement");
     }
   }
 
   public static void beforeBase64Decode(
       byte[] src, int sp, int sl, boolean isURL, boolean isMIME) {
+    if (inactive()) return;
     // Pure arithmetic fast path first so benign Base64 decoding never triggers
     // class initialization or allocates on the hot path.
     if (!isBase64TailUnderflowCandidate(src, sp, sl, isURL, isMIME)) {
@@ -757,8 +853,8 @@ public final class BackportHooks {
     LAST_LOGGED_BASE64.set(finding.detailValue);
     appendEvent(finding, "Base64.Decoder.decode0", action);
     if ("block".equals(action)) {
-      throw LINE.block(
-          "OhMyRASP " + LINE.displayName + " blocked Base64 x64 tail-underflow candidate");
+      throw line().block(
+          "OhMyRASP " + line().displayName + " blocked Base64 x64 tail-underflow candidate");
     }
   }
 
@@ -816,7 +912,7 @@ public final class BackportHooks {
     return new Finding(
         rule("sql_statement_injection"),
         structural ? 90 : 85,
-        "Suspicious SQL injection pattern reached a " + LINE.displayName + " JDBC Statement sink",
+        "Suspicious SQL injection pattern reached a " + line().displayName + " JDBC Statement sink",
         "query",
         abbreviate(sql, 1200));
   }
@@ -852,7 +948,7 @@ public final class BackportHooks {
     LAST_LOGGED_SQL_IDENTIFIER.set(finding.detailValue);
     appendEvent(finding, hook, action);
     if ("block".equals(action)) {
-      throw LINE.block("OhMyRASP " + LINE.displayName + " blocked suspicious SQL identifier");
+      throw line().block("OhMyRASP " + line().displayName + " blocked suspicious SQL identifier");
     }
   }
 
@@ -869,7 +965,7 @@ public final class BackportHooks {
     LAST_LOGGED_JDBC.set(finding.detailValue);
     appendEvent(finding, hook, action);
     if ("block".equals(action)) {
-      throw LINE.block("OhMyRASP " + LINE.displayName + " blocked suspicious JDBC URL");
+      throw line().block("OhMyRASP " + line().displayName + " blocked suspicious JDBC URL");
     }
   }
 
@@ -878,28 +974,34 @@ public final class BackportHooks {
   public static void beforeClassLoaderUrls(Object urls) {}
 
   public static void onClassResourceRead(java.net.URLConnection connection, Object resource) {
+    if (inactive()) return;
     if (!RaspRuntime.detectionOff()) ClassDefinitionOrigin.read(connection, resource);
   }
 
   public static void beforeClassDefinition(java.net.URL origin, Object handler, Object resource) {
+    if (inactive()) return;
     if (RaspRuntime.detectionOff()) return;
     String selected = ClassDefinitionOrigin.selected(resource, origin, handler);
     if (selected != null) onClassDefinitionSource(selected);
   }
 
   public static void onClassDefinitionSource(String source) {
+    if (inactive()) return;
     if (!RaspRuntime.detectionOff()) emitClassLoaderFinding(source, "URLClassLoader");
   }
 
   public static void beforeRmiClassLoaderCodebase(String codebase) {
+    if (inactive()) return;
     // An annotation alone does not select a codebase loader.
   }
 
   public static void beforeRmiCodebaseLoader(URL[] urls) {
+    if (inactive()) return;
     emitClassLoaderFindings(urls, "RMIClassLoader");
   }
 
   public static void beforeScriptEval(String script) {
+    if (inactive()) return;
     Finding finding = classifyScriptEval(script);
     if (finding == null) {
       return;
@@ -912,11 +1014,12 @@ public final class BackportHooks {
     LAST_LOGGED_SCRIPT.set(finding.detailValue);
     appendEvent(finding, "ScriptEngine.eval", action);
     if ("block".equals(action)) {
-      throw LINE.block("OhMyRASP " + LINE.displayName + " blocked suspicious script evaluation");
+      throw line().block("OhMyRASP " + line().displayName + " blocked suspicious script evaluation");
     }
   }
 
   public static void beforeJexlExpression(Object expression) {
+    if (inactive()) return;
     Finding finding = classifyJexlExpression(jexlSourceText(expression));
     if (finding == null) {
       return;
@@ -929,11 +1032,12 @@ public final class BackportHooks {
     LAST_LOGGED_JEXL.set(finding.detailValue);
     appendEvent(finding, "CommonsJEXL.evaluate", action);
     if ("block".equals(action)) {
-      throw LINE.block("OhMyRASP " + LINE.displayName + " blocked suspicious JEXL evaluation");
+      throw line().block("OhMyRASP " + line().displayName + " blocked suspicious JEXL evaluation");
     }
   }
 
   public static void beforeElExpression(Object expression) {
+    if (inactive()) return;
     Finding finding = classifyElExpression(elSourceText(expression));
     if (finding == null) {
       return;
@@ -946,15 +1050,17 @@ public final class BackportHooks {
     LAST_LOGGED_EL.set(finding.detailValue);
     appendEvent(finding, "UnifiedEL.evaluate", action);
     if ("block".equals(action)) {
-      throw LINE.block("OhMyRASP " + LINE.displayName + " blocked suspicious EL evaluation");
+      throw line().block("OhMyRASP " + line().displayName + " blocked suspicious EL evaluation");
     }
   }
 
   public static void beforeJavaCompilationSource(String compiler, Object source) {
+    if (inactive()) return;
     emitJavaCompilationFinding(classifyJavaCompilation(compiler, javaSourceText(source)));
   }
 
   public static void beforeJavaCompilationUnits(String compiler, Object units) {
+    if (inactive()) return;
     List<String> sources = javaSourceTexts(units);
     for (String source : sources) {
       emitJavaCompilationFinding(classifyJavaCompilation(compiler, source));
@@ -965,11 +1071,13 @@ public final class BackportHooks {
   public static void beforeJaasConfigEntry(Object loginModuleName, Object options) {}
 
   public static void beforeJmxStreamWrite(String path, int write) {
+    if (inactive()) return;
     if (RaspRuntime.inOwnIo()) return; // the agent's own I/O: before any application state
     if (write != 0 && JmxWriteScope.current() != null) inspectJmxFileWrite(path, "stream_open");
   }
 
   public static void beforeUnixChannelWrite(java.nio.file.Path path, int directoryFd, boolean write) {
+    if (inactive()) return;
     if (RaspRuntime.inOwnIo()) return; // the agent's own I/O: before any application state
     if (!write) return;
     ArchiveEntryContext.ChannelWrite open = ARCHIVE_ENTRY.atChannelOpen(path, directoryFd);
@@ -979,6 +1087,7 @@ public final class BackportHooks {
   }
 
   public static void beforeJmxChannelWrite(java.nio.file.Path path, int directoryFd, boolean write) {
+    if (inactive()) return;
     if (RaspRuntime.inOwnIo()) return; // the agent's own I/O: before any application state
     if (write && JmxWriteScope.current() != null && (directoryFd < 0 || path.isAbsolute()))
       inspectJmxFileWrite(path.toString(), "channel_open");
@@ -991,14 +1100,16 @@ public final class BackportHooks {
         "A managed operation opens its selected script destination for writing", "path", path, "selected_write_open");
     boolean block = shouldBlock();
     appendEvent(finding, operation, block ? "block" : "log");
-    if (block) throw LINE.block("OhMyRASP blocked a managed file write");
+    if (block) throw line().block("OhMyRASP blocked a managed file write");
   }
 
   public static void beforeResolvedJmxInvoke(Object bean, String operation, Object arguments) {
+    if (inactive()) return;
     inspectJmxInvoke(bean, operation, arguments, true);
   }
 
   public static void beforeJmxMBeanInvoke(Object bean, String operation, Object arguments) {
+    if (inactive()) return;
     inspectJmxInvoke(bean, operation, arguments, false);
   }
 
@@ -1022,7 +1133,7 @@ public final class BackportHooks {
     LAST_LOGGED_JMX.set(finding.detailValue);
     appendEvent(finding, "JmxMBeanServer.invoke", action);
     if ("block".equals(action)) {
-      throw LINE.block("OhMyRASP " + LINE.displayName + " blocked suspicious JMX MBean invocation");
+      throw line().block("OhMyRASP " + line().displayName + " blocked suspicious JMX MBean invocation");
     }
   }
 
@@ -1030,20 +1141,23 @@ public final class BackportHooks {
   public static void beforeJwtVerificationFailure(Object token, Throwable failure) {}
 
   public static void beforeDataEaseFilterContinuation(String rejection, Object request) {
+    if (inactive()) return;
     if (rejection == null || RaspRuntime.detectionOff()) return;
     Finding finding = new Finding(rule("request_jwt_verification_failure"), 95,
         "Authentication filter continued the request after rejecting its credential",
         "exception", rejection, "rejected_token_dispatch");
     boolean block = shouldBlock();
     appendEvent(finding, "FilterChain.doFilter", block ? "block" : "log");
-    if (block) throw LINE.block("OhMyRASP blocked continuation after credential rejection");
+    if (block) throw line().block("OhMyRASP blocked continuation after credential rejection");
   }
 
   public static void beforeJavaBeansStatement(Object statement) {
+    if (inactive()) return;
     beforeJavaBeansStatement(statement, stackTraceClassNames());
   }
 
   public static void beforeJavaBeansStatement(Object statement, List<String> stackClassNames) {
+    if (inactive()) return;
     try {
       Object target = invoke(statement, "getTarget");
       String methodName = invokeString(statement, "getMethodName");
@@ -1056,21 +1170,22 @@ public final class BackportHooks {
               stackClassNames);
       emitXmlDecoderFinding(finding);
     } catch (Throwable throwable) {
-      if (LINE.isBlock(throwable)) {
+      if (line().isBlock(throwable)) {
         throw (RuntimeException) throwable;
       }
       if (Boolean.getBoolean("ohmyrasp.debug")) {
-        System.err.println(LINE.logPrefix + " JavaBeans hook failed: " + throwable);
+        System.err.println(line().logPrefix + " JavaBeans hook failed: " + throwable);
       }
     }
   }
 
   /** Rethrows the line's block exception when {@code throwable} is one or has one among its first 16 causes. */
   public static void rethrowIfBlock(Object throwable) {
+    if (inactive()) return;
     Throwable current = throwable instanceof Throwable ? (Throwable) throwable : null;
     int depth = 0;
     while (current != null && depth < 16) {
-      if (LINE.isBlock(current)) {
+      if (line().isBlock(current)) {
         throw (RuntimeException) current;
       }
       current = current.getCause();
@@ -1079,14 +1194,17 @@ public final class BackportHooks {
   }
 
   public static void beginAttachmentReference(String id) {
+    if (inactive()) return;
     io.ohmyrasp.agent.xml.AttachmentFileRead.beginReference(RaspRuntime.detectionOff() ? null : id, null);
   }
 
   public static void beforeXmlEntity(String name, Object source) {
+    if (inactive()) return;
     inspectXmlEntity(name, xmlEntitySystemId(source), null);
   }
 
   public static void beforeXmlEntityOpen(URL target, String name, Object parserInput, Object document, String literal) {
+    if (inactive()) return;
     if (target != null && !"[xml]".equals(name) && !RaspRuntime.detectionOff()
         && !XmlCatalogResolution.consumesPackagedDtd(name, target, parserInput, document, literal)) {
       inspectXmlEntity(name, XmlCatalogResolution.transportId(target), "parser_url_open");
@@ -1106,7 +1224,7 @@ public final class BackportHooks {
     LAST_LOGGED_XXE.set(finding.detailValue);
     appendEvent(finding, "XMLEntityManager.setupCurrentEntity", action);
     if ("block".equals(action)) {
-      throw LINE.block("OhMyRASP " + LINE.displayName + " blocked suspicious XML external entity");
+      throw line().block("OhMyRASP " + line().displayName + " blocked suspicious XML external entity");
     }
   }
 
@@ -1123,7 +1241,7 @@ public final class BackportHooks {
     LAST_LOGGED_COMMAND.set(finding.detailValue);
     appendEvent(finding, hook, action);
     if ("block".equals(action)) {
-      throw LINE.block("OhMyRASP " + LINE.displayName + " blocked suspicious command execution");
+      throw line().block("OhMyRASP " + line().displayName + " blocked suspicious command execution");
     }
   }
 
@@ -1140,7 +1258,7 @@ public final class BackportHooks {
       return new Finding(
           rule("command_execution_exploit_primitive"),
           93,
-          "Solr RunExecutableListener reached a " + LINE.displayName + " process sink",
+          "Solr RunExecutableListener reached a " + line().displayName + " process sink",
           "command",
           joined, "configured_listener");
     }
@@ -1148,7 +1266,7 @@ public final class BackportHooks {
       return new Finding(
           rule("command_execution_exploit_primitive"),
           93,
-          "Dynamic expression evaluation reached a " + LINE.displayName + " process sink",
+          "Dynamic expression evaluation reached a " + line().displayName + " process sink",
           "command",
           joined, "expression_evaluation");
     }
@@ -1156,7 +1274,7 @@ public final class BackportHooks {
       return new Finding(
           rule("command_execution_exploit_primitive"),
           94,
-          "Jiffle runtime reached a " + LINE.displayName + " process sink",
+          "Jiffle runtime reached a " + line().displayName + " process sink",
           "command",
           joined, "expression_evaluation");
     }
@@ -1164,7 +1282,7 @@ public final class BackportHooks {
       return new Finding(
           rule("command_execution_exploit_primitive"),
           93,
-          "Database Java routine reached a " + LINE.displayName + " process sink",
+          "Database Java routine reached a " + line().displayName + " process sink",
           "command",
           joined, "database_stack");
     }
@@ -1172,7 +1290,7 @@ public final class BackportHooks {
       return new Finding(
           rule("command_execution_exploit_primitive"),
           95,
-          "Java deserialization reached a " + LINE.displayName + " process sink",
+          "Java deserialization reached a " + line().displayName + " process sink",
           "command",
           joined, "object_deserialization");
     }
@@ -1180,7 +1298,7 @@ public final class BackportHooks {
       return new Finding(
           rule("command_execution_exploit_primitive"),
           94,
-          "XML polymorphic deserialization reached a " + LINE.displayName + " process sink",
+          "XML polymorphic deserialization reached a " + line().displayName + " process sink",
           "command",
           joined, "xml_deserialization");
     }
@@ -1191,7 +1309,7 @@ public final class BackportHooks {
       return new Finding(
           rule("command_execution_shell_meta"),
           90,
-          "Scheduler script job reached a " + LINE.displayName + " shell script process sink",
+          "Scheduler script job reached a " + line().displayName + " shell script process sink",
           "command",
           joined, "scheduled_script");
     }
@@ -1202,7 +1320,7 @@ public final class BackportHooks {
       return new Finding(
           rule("command_execution_exploit_primitive"),
           95,
-          "Suspicious command execution reached a " + LINE.displayName + " process sink",
+          "Suspicious command execution reached a " + line().displayName + " process sink",
           "command",
           joined, "command_arguments");
     }
@@ -1328,7 +1446,7 @@ public final class BackportHooks {
     return new Finding(
         rule("jndi_remote_lookup"),
         confidence,
-        "Remote JNDI lookup reached a " + LINE.displayName + " naming sink",
+        "Remote JNDI lookup reached a " + line().displayName + " naming sink",
         "lookup",
         lookup, LookupRoute.basis(operation));
   }
@@ -1359,7 +1477,7 @@ public final class BackportHooks {
     boolean hosts = HostReadPath.isHostsFile(normalized);
     if (!hosts && SENSITIVE_FILE_READ.matcher(normalized).matches() && HostReadPath.confirmsLocation(path)) {
       return new Finding(rule("file_sensitive_read"), fileReadConfidence(normalized),
-          "Sensitive file read reached a " + LINE.displayName + " file sink", "path", normalized,
+          "Sensitive file read reached a " + line().displayName + " file sink", "path", normalized,
           path.equals(normalized) ? null : "normalized_read_location");
     }
     RequestSnapshot request = CURRENT_REQUEST.get();
@@ -1396,7 +1514,7 @@ public final class BackportHooks {
     return new Finding(
         rule("file_script_write"),
         90,
-        "Script or executable file write reached a " + LINE.displayName + " file sink",
+        "Script or executable file write reached a " + line().displayName + " file sink",
         "path",
         normalized);
   }
@@ -1469,7 +1587,7 @@ public final class BackportHooks {
     return new Finding(
         rule("archive_entry_traversal_write"),
         92,
-        "Archive entry traversal reached a " + LINE.displayName + " file write sink",
+        "Archive entry traversal reached a " + line().displayName + " file write sink",
         "entry",
         entry + " -> " + path, basis);
   }
@@ -1488,7 +1606,7 @@ public final class BackportHooks {
       return new Finding(
           rule("jdbc_h2_code_execution"),
           h2JdbcConfidence(relaxed),
-          "H2 JDBC URL code execution primitive reached a " + LINE.displayName + " JDBC sink",
+          "H2 JDBC URL code execution primitive reached a " + line().displayName + " JDBC sink",
           "jdbc_url",
           normalized);
     }
@@ -1496,7 +1614,7 @@ public final class BackportHooks {
       return new Finding(
           rule("jdbc_derby_code_loading"),
           90,
-          "Derby JDBC URL Java code loading primitive reached a " + LINE.displayName + " JDBC sink",
+          "Derby JDBC URL Java code loading primitive reached a " + line().displayName + " JDBC sink",
           "jdbc_url",
           normalized);
     }
@@ -1504,7 +1622,7 @@ public final class BackportHooks {
       return new Finding(
           rule("jdbc_mysql_deserialization"),
           92,
-          "MySQL JDBC deserialization primitive reached a " + LINE.displayName + " JDBC sink",
+          "MySQL JDBC deserialization primitive reached a " + line().displayName + " JDBC sink",
           "jdbc_url",
           normalized);
     }
@@ -1526,7 +1644,7 @@ public final class BackportHooks {
     return new Finding(
         rule("sql_identifier_injection"),
         90,
-        "SQL identifier argument contains control syntax before a " + LINE.displayName + " SQL sink",
+        "SQL identifier argument contains control syntax before a " + line().displayName + " SQL sink",
         "identifier",
         abbreviate(
             "source="
@@ -1623,7 +1741,7 @@ public final class BackportHooks {
     if (finding == null) return;
     boolean block = shouldBlock();
     appendEvent(finding, mechanism, block ? "block" : "log");
-    if (block) throw LINE.block("OhMyRASP blocked a remote classloader codebase");
+    if (block) throw line().block("OhMyRASP blocked a remote classloader codebase");
   }
 
   private static Finding classifyClassLoaderSource(String source, String mechanism) {
@@ -1642,7 +1760,7 @@ public final class BackportHooks {
     return new Finding(
         rule("classloader_remote_codebase"),
         confidence,
-        "Remote classloader codebase reached a " + LINE.displayName + " class loading sink",
+        "Remote classloader codebase reached a " + line().displayName + " class loading sink",
         "codebase",
         mechanism + " " + scheme + " " + normalized,
         "RMIClassLoader".equals(mechanism) ? "rmi_codebase_loader_selection" : "url_class_definition");
@@ -1680,7 +1798,7 @@ public final class BackportHooks {
     return new Finding(
         rule("script_engine_runtime_execution"),
         scriptConfidence(runtimeExec, processBuilder, reflectiveRuntimeExec, nestedScriptEval),
-        "Script engine evaluation reached a " + LINE.displayName + " runtime execution primitive",
+        "Script engine evaluation reached a " + line().displayName + " runtime execution primitive",
         "script",
         normalized);
   }
@@ -1716,7 +1834,7 @@ public final class BackportHooks {
     return new Finding(
         rule("jexl_runtime_execution"),
         runtimeExec || processBuilder || reflectiveRuntimeExec ? 90 : 86,
-        "Commons JEXL evaluation reached a " + LINE.displayName + " runtime execution primitive",
+        "Commons JEXL evaluation reached a " + line().displayName + " runtime execution primitive",
         "expression",
         "engine=jexl expressionLength=" + normalized.length());
   }
@@ -1758,7 +1876,7 @@ public final class BackportHooks {
     return new Finding(
         rule("el_runtime_execution"),
         runtimeExec || processBuilder || reflectiveRuntimeExec ? 90 : 86,
-        "Unified EL evaluation reached a " + LINE.displayName + " runtime execution primitive",
+        "Unified EL evaluation reached a " + line().displayName + " runtime execution primitive",
         "expression",
         "engine=el expressionLength=" + normalized.length());
   }
@@ -1791,7 +1909,7 @@ public final class BackportHooks {
     return new Finding(
         rule("java_compile_runtime_execution"),
         runtimeExec || processBuilder ? 94 : 88,
-        "Java source compilation reached a " + LINE.displayName + " runtime execution primitive",
+        "Java source compilation reached a " + line().displayName + " runtime execution primitive",
         "source",
         normalizedCompiler + " " + abbreviate(normalized, 1200));
   }
@@ -1808,7 +1926,7 @@ public final class BackportHooks {
     LAST_LOGGED_JAVA_COMPILE.set(finding.detailValue);
     appendEvent(finding, "JavaCompiler.getTask", action);
     if ("block".equals(action)) {
-      throw LINE.block("OhMyRASP " + LINE.displayName + " blocked suspicious Java compilation");
+      throw line().block("OhMyRASP " + line().displayName + " blocked suspicious Java compilation");
     }
   }
 
@@ -1851,7 +1969,7 @@ public final class BackportHooks {
       return new Finding(
           rule("xml_decoder_runtime_execution"),
           95,
-          "XMLDecoder object graph reached a " + LINE.displayName + " runtime execution primitive",
+          "XMLDecoder object graph reached a " + line().displayName + " runtime execution primitive",
           "expression",
           abbreviate(normalizedTarget + " " + methodName + " " + joinedArguments, 1200));
     }
@@ -1868,7 +1986,7 @@ public final class BackportHooks {
           return new Finding(
               rule("xml_decoder_script_file_write"),
               95,
-              "XMLDecoder object graph reached a " + LINE.displayName + " server-side script writer",
+              "XMLDecoder object graph reached a " + line().displayName + " server-side script writer",
               "expression",
               abbreviate(normalizedTarget + " " + methodName + " " + path, 1200));
         }
@@ -1889,7 +2007,7 @@ public final class BackportHooks {
     LAST_LOGGED_XML_DECODER.set(finding.detailValue);
     appendEvent(finding, "XMLDecoder.Statement", action);
     if ("block".equals(action)) {
-      throw LINE.block("OhMyRASP " + LINE.displayName + " blocked suspicious XMLDecoder object graph");
+      throw line().block("OhMyRASP " + line().displayName + " blocked suspicious XMLDecoder object graph");
     }
   }
 
@@ -1921,7 +2039,7 @@ public final class BackportHooks {
       return new Finding(
           rule("xxe_external_entity_protocol"),
           96,
-          "XML external entity reached a " + LINE.displayName + " parser with SMB/UNC source",
+          "XML external entity reached a " + line().displayName + " parser with SMB/UNC source",
           "entity",
           String.valueOf(name) + " " + value, basis);
     }
@@ -1932,7 +2050,7 @@ public final class BackportHooks {
     return new Finding(
         rule("xxe_external_entity_protocol"),
         xxeConfidence(scheme),
-        "XML external entity reached a " + LINE.displayName + " parser with protocol " + scheme,
+        "XML external entity reached a " + line().displayName + " parser with protocol " + scheme,
         "entity",
         String.valueOf(name) + " " + abbreviate(value, 1200), basis);
   }
@@ -2022,7 +2140,7 @@ public final class BackportHooks {
     return new Finding(
         rule("request_path_confusion"),
         90,
-        "HTTP request URI contains " + LINE.displayName + " path normalization confusion",
+        "HTTP request URI contains " + line().displayName + " path normalization confusion",
         "uri",
         abbreviate(uri + " -> " + confusingPath, 1200));
   }
@@ -2042,7 +2160,7 @@ public final class BackportHooks {
     return new Finding(
         rule("request_internal_identity"),
         90,
-        "Internal service identity reached a " + LINE.displayName + " sensitive control path",
+        "Internal service identity reached a " + line().displayName + " sensitive control path",
         "request",
         abbreviate("user-agent=" + userAgent + " uri=" + path, 1200));
   }
@@ -2063,7 +2181,7 @@ public final class BackportHooks {
         return new Finding(
             rule("request_typed_payload_deserialization"),
             92,
-            "Request parameter carries a " + LINE.displayName + " dangerous typed payload",
+            "Request parameter carries a " + line().displayName + " dangerous typed payload",
             "payload",
             abbreviate(
                 "uri="
@@ -2242,7 +2360,7 @@ public final class BackportHooks {
     return new Finding(
         rule("request_debug_process_launch"),
         88,
-        "Request invokes a " + LINE.displayName + " debug process launch endpoint",
+        "Request invokes a " + line().displayName + " debug process launch endpoint",
         "process",
         abbreviate(
             "uri="
@@ -2296,7 +2414,7 @@ public final class BackportHooks {
         return new Finding(
             rule("request_ogc_filter_sql_injection"),
             95,
-            "OGC filter parameter contains " + LINE.displayName + " SQL injection primitives",
+            "OGC filter parameter contains " + line().displayName + " SQL injection primitives",
             "filter",
             abbreviate(
                 "uri="
@@ -2419,7 +2537,7 @@ public final class BackportHooks {
         return new Finding(
             rule("request_forged_include_attribute"),
             90,
-            "Forged servlet include attributes reached a " + LINE.displayName + " request",
+            "Forged servlet include attributes reached a " + line().displayName + " request",
             "include",
             abbreviate("uri=" + uri + " namespace=" + include.namespace + " target=" + target, 1200));
       }
@@ -2444,7 +2562,7 @@ public final class BackportHooks {
           return new Finding(
               rule("request_internal_forward"),
               90,
-              "Request parameter attempts internal forwarding to a " + LINE.displayName + " sensitive control path",
+              "Request parameter attempts internal forwarding to a " + line().displayName + " sensitive control path",
               "forward",
               abbreviate("uri=" + uri + " parameter=" + name + " target=" + target, 1200));
         }
@@ -2507,7 +2625,7 @@ public final class BackportHooks {
       return new Finding(
           rule("request_session_file_deserialization"),
           90,
-          "Filesystem-shaped JSESSIONID reached a " + LINE.displayName + " request",
+          "Filesystem-shaped JSESSIONID reached a " + line().displayName + " request",
           "session",
           abbreviate("uri=" + uri + " cookie=JSESSIONID reason=" + reason, 1200));
     }
@@ -2765,7 +2883,7 @@ public final class BackportHooks {
     return new Finding(
         rule("request_default_jwt_secret"),
         95,
-        "Bearer JWT is signed with a known " + LINE.displayName + " default HMAC secret",
+        "Bearer JWT is signed with a known " + line().displayName + " default HMAC secret",
         "jwt",
         abbreviate("key=hugegraph-default-token-secret alg=" + algorithm + " uri=" + uri, 1200));
   }
@@ -2818,7 +2936,7 @@ public final class BackportHooks {
         return new Finding(
             rule("request_default_crypto_cookie"),
             94,
-            "Default-key encrypted Java serialization cookie reached a " + LINE.displayName + " request",
+            "Default-key encrypted Java serialization cookie reached a " + line().displayName + " request",
             "cookie",
             "rememberMe shiro-default-aes-cbc");
       }
@@ -3403,7 +3521,7 @@ public final class BackportHooks {
       return api.getMethod(methodName).invoke(request);
     } catch (java.lang.reflect.InvocationTargetException failure) {
       Throwable cause = failure.getCause();
-      if (LINE.isBlock(cause)) throw (RuntimeException) cause;
+      if (line().isBlock(cause)) throw (RuntimeException) cause;
       return null;
     } catch (ReflectiveOperationException | SecurityException ignored) {
       return null;
@@ -3775,7 +3893,7 @@ public final class BackportHooks {
       return new Finding(
           rule("ssrf_cloud_metadata"),
           95,
-          "Cloud metadata URL reached a " + LINE.displayName + " URL sink",
+          "Cloud metadata URL reached a " + line().displayName + " URL sink",
           "url",
           parts.fullUrl);
     }
@@ -3785,7 +3903,7 @@ public final class BackportHooks {
       return new Finding(
           rule("ssrf_loopback_admin"),
           88,
-          "Loopback administrative URL reached a " + LINE.displayName + " URL sink",
+          "Loopback administrative URL reached a " + line().displayName + " URL sink",
           "url",
           parts.fullUrl);
     }
@@ -3793,7 +3911,7 @@ public final class BackportHooks {
       return new Finding(
           rule("ssrf_request_parameter_url"),
           92,
-          "Request parameter controlled outbound URL reached a " + LINE.displayName + " URL sink",
+          "Request parameter controlled outbound URL reached a " + line().displayName + " URL sink",
           "url",
           abbreviate(parts.fullUrl, 1200));
     }
@@ -4048,7 +4166,7 @@ public final class BackportHooks {
     }
     appendEvent(finding, hook, action);
     if ("block".equals(action)) {
-      throw LINE.block("OhMyRASP " + LINE.displayName + " blocked suspicious file access");
+      throw line().block("OhMyRASP " + line().displayName + " blocked suspicious file access");
     }
   }
 
@@ -4162,14 +4280,18 @@ public final class BackportHooks {
   }
 
   public static Object jmxAttributeDisplayReceiver(Object value) {
+    if (inactive()) return value;
     return io.ohmyrasp.agent.jmx.JmxAttributeDisplay.receiver(value, shouldBlock());
   }
 
-  public static boolean enforceElasticLz4Bounds() { return shouldBlock(); }
+  public static boolean enforceElasticLz4Bounds() {
+    if (inactive()) return false;
+    return shouldBlock();
+  }
 
   /** The line's id of a rule family: {@code java8_} and the family on the Java 8 line. */
   private static String rule(String family) {
-    return LINE.rulePrefix.concat(family);
+    return line().rulePrefix.concat(family);
   }
 
   /**
@@ -4179,6 +4301,20 @@ public final class BackportHooks {
   public static void initialise() {
     BackportLine.initialise(
         Finding.class, RequestSnapshot.class, UrlParts.class, IncludeAttributes.class, TypedPayloadMatch.class);
+  }
+
+  /** The installed line. Read where used, not while this class initialises: a hook may run before the line starts. */
+  private static BackportLine line() {
+    return BackportLine.current();
+  }
+
+  /**
+   * True until the runtime has started. Every hook entry returns at once while it is true, doing nothing and
+   * throwing nothing: an instrumented class, or code that reaches these classes before the line's entry class has
+   * started them, must never see an exception from the agent.
+   */
+  private static boolean inactive() {
+    return !RaspRuntime.isStarted();
   }
 
   private static boolean shouldBlock() {
