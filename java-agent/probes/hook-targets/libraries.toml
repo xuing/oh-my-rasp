@@ -56,13 +56,6 @@ artifact = "snakeyaml"
 versions = ["1.17", "1.33", "2.0", "2.7"]
 why = "1.17 is old Spring Boot 1.x, 1.33 is the last 1.x, 2.0 changed Constructor to require LoaderOptions, 2.7 is the newest."
 
-[[library]]
-group = "org.snakeyaml"
-artifact = "snakeyaml-engine"
-versions = ["2.0", "2.10", "3.2"]
-why = "First 2.x, last 2.x, and the newest major."
-none = { "2.0" = "FINDING: the hook wants getClassForName on org/snakeyaml/engine/v2/constructor/*, and the engine has no such method in any version", "2.10" = "same", "3.2" = "same" }
-
 # --- Expression, script and template engines ----------------------------------------------------
 
 [[library]]

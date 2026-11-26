@@ -5,7 +5,7 @@
 #   library version class method descriptor -> agent owner.method @ unit[,unit]
 # The unit (shared visitors) is the call-site rewriting that applies to any class, not a hook on a named target.
 # units (24): Java{N}ArchiveTransformer Java{N}Base64Transformer Java{N}ClassLoaderTransformer Java{N}DeserializationTransformer Java{N}ElTransformer Java{N}ElasticLz4Transformer Java{N}FastjsonTransformer Java{N}FileTransformer Java{N}HessianTransformer Java{N}JavaBeansTransformer Java{N}JavaCompilationTransformer Java{N}JdbcTransformer Java{N}JexlTransformer Java{N}JmxTransformer Java{N}JndiTransformer Java{N}JwtTransformer Java{N}MultipartUploadTransformer Java{N}ProcessTransformer Java{N}ScriptEngineTransformer Java{N}ServletTransformer Java{N}SparkRestTransformer Java{N}UrlTransformer Java{N}XxeTransformer Java{N}YarnRestTransformer
-# libraries: 213, classes: 123726, unreadable by the agent's ASM: 0
+# libraries: 210, classes: 123089, unreadable by the agent's ASM: 0
 com.alibaba:fastjson 1.2.68 com/alibaba/fastjson/parser/ParserConfig checkAutoType (Ljava/lang/String;Ljava/lang/Class;I)Ljava/lang/Class; -> io/ohmyrasp/agent/java{N}/Java{N}RaspHooks.beforeFastjsonClassResource @ Java{N}FastjsonTransformer
 com.alibaba:fastjson 1.2.83 com/alibaba/fastjson/parser/ParserConfig checkAutoType (Ljava/lang/String;Ljava/lang/Class;I)Ljava/lang/Class; -> io/ohmyrasp/agent/java{N}/Java{N}RaspHooks.beforeFastjsonClassResource @ Java{N}FastjsonTransformer
 com.alibaba:hessian-lite 3.2.13 com/alibaba/com/caucho/hessian/io/BeanDeserializer instantiate ()Ljava/lang/Object; -> io/ohmyrasp/agent/java{N}/Java{N}RaspHooks.beforeHessianAllocation @ Java{N}HessianTransformer

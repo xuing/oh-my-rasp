@@ -41,9 +41,6 @@ not counted, only hooks on named targets. Primary is the JDK 21 and 25 agent, ba
 | `org.yaml:snakeyaml` | 1.33 | 1 | 0 |
 | `org.yaml:snakeyaml` | 2.0 | 1 | 0 |
 | `org.yaml:snakeyaml` | 2.7 | 1 | 0 |
-| `org.snakeyaml:snakeyaml-engine` | 2.0 (no hook, see below) | 0 | 0 |
-| `org.snakeyaml:snakeyaml-engine` | 2.10 (no hook, see below) | 0 | 0 |
-| `org.snakeyaml:snakeyaml-engine` | 3.2 (no hook, see below) | 0 | 0 |
 | `ognl:ognl` | 2.7.3 | 7 | 0 |
 | `ognl:ognl` | 3.0.21 | 7 | 0 |
 | `ognl:ognl` | 3.1.26 | 7 | 0 |
@@ -242,9 +239,6 @@ is a hook that should be fixed.
 
 | Library | Version | Reason |
 |---|---|---|
-| `org.snakeyaml:snakeyaml-engine` | 2.0 | FINDING: the hook wants getClassForName on org/snakeyaml/engine/v2/constructor/*, and the engine has no such method in any version |
-| `org.snakeyaml:snakeyaml-engine` | 2.10 | same |
-| `org.snakeyaml:snakeyaml-engine` | 3.2 | same |
 | `javax.el:javax.el-api` | 2.2.1 | javax.el.ELProcessor, the class the hook wants, first appears in EL 3.0; ExpressionFactory has no concrete method the hook rewrites |
 | `com.github.pagehelper:pagehelper` | 4.2.1 | FINDING: the dialect classes exist, but their getPageSql arguments differ from the (String, Page, CacheKey) form the hook matches |
 | `org.apache.skywalking:storage-jdbc-hikaricp-plugin` | 9.7.0 | FINDING: 9.x replaced H2LogQueryDAO with JDBCLogQueryDAO in a common package, so the hook's class is gone |
