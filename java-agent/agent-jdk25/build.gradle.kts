@@ -19,6 +19,7 @@ dependencies {
 
     testImplementation(localGroovy())
     testImplementation("com.alibaba:fastjson:1.2.83")
+    testImplementation("org.codehaus.janino:commons-compiler:3.1.12") { isTransitive = false }
     testImplementation("com.github.pagehelper:pagehelper:4.2.1") { isTransitive = false }
     testImplementation("org.apache.struts:struts2-core:7.0.3") { isTransitive = false }
     testImplementation("com.mchange:c3p0:0.15.1")

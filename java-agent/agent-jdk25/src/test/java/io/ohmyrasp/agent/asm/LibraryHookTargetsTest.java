@@ -40,6 +40,20 @@ final class LibraryHookTargetsTest {
   }
 
   @Test
+  void janinoCookableInCommonsCompilerPassesTheSourceToTheCompilationDetector() throws Exception {
+    // Cookable is org.codehaus.commons.compiler.Cookable (commons-compiler), not org.codehaus.janino.Cookable.
+    byte[] transformed = transform("org/codehaus/commons/compiler/Cookable");
+
+    String source = "ldc=janino load=%d beforeJavaCompilationSource(Ljava/lang/String;Ljava/lang/Object;)V";
+    assertEquals(List.of(String.format(source, 1)), hookCalls(transformed, "cook", "(Ljava/lang/String;)V"));
+    // cook(fileName, source): the source is the second argument, local 2.
+    assertEquals(List.of(String.format(source, 2)), hookCalls(transformed, "cook", "(Ljava/lang/String;Ljava/lang/String;)V"));
+    // The Reader and stream overloads, whose first String is a file name, are not hooked here.
+    assertEquals(List.of(), hookCalls(transformed, "cook", "(Ljava/lang/String;Ljava/io/InputStream;)V"));
+    assertEquals(List.of(), hookCalls(transformed, "cook", "(Ljava/io/Reader;)V"));
+  }
+
+  @Test
   void pageHelper42DialectsAreTracedThroughTheirFourArgumentGetPageSql() throws Exception {
     // PageHelper 4.2.x takes (String, Page, RowBounds, CacheKey); 5.x takes (String, Page, CacheKey).
     String name = "com/github/pagehelper/dialect/MySqlDialect";

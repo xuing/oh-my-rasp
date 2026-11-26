@@ -106,6 +106,9 @@ not counted, only hooks on named targets. Primary is the JDK 21 and 25 agent, ba
 | `org.codehaus.janino:janino` | 2.7.8 | 3 | 3 |
 | `org.codehaus.janino:janino` | 3.0.16 | 2 | 2 |
 | `org.codehaus.janino:janino` | 3.1.12 | 6 | 6 |
+| `org.codehaus.janino:commons-compiler` | 2.7.8 | 2 | 2 |
+| `org.codehaus.janino:commons-compiler` | 3.0.16 | 3 | 3 |
+| `org.codehaus.janino:commons-compiler` | 3.1.12 | 3 | 3 |
 | `org.springframework:spring-core` | 3.2.18.RELEASE | 1 | 1 |
 | `org.springframework:spring-core` | 4.3.30.RELEASE | 1 | 1 |
 | `org.springframework:spring-core` | 5.3.39 | 1 | 1 |
@@ -308,6 +311,7 @@ signature); each is a place to check that the hook still covers what it did.
 | `org.apache.struts:struts2-core` | 7.0.3 | 2.5.30 6.3.0.2 6.9.0 | `org/apache/struts2/ognl/OgnlUtil.getValue`<br>`org/apache/struts2/ognl/OgnlUtil.setValue`<br>`org/apache/struts2/util/classloader/FileResourceStore.getFile` |
 | `org.apache.tomcat:tomcat-catalina` | 7.0.109 | 8.5.100 9.0.124 10.1.62 11.0.29 | `org/apache/catalina/websocket/WsHttpServletRequestWrapper.getPart`<br>`org/apache/catalina/websocket/WsHttpServletRequestWrapper.getParts` |
 | `org.apache.velocity:velocity` | 1.7 | 1.5 | `org/apache/velocity/runtime/RuntimeInstance.evaluate` |
+| `org.codehaus.janino:commons-compiler` | 3.0.16 3.1.12 | 2.7.8 | `org/codehaus/commons/compiler/util/resource/DirectoryResourceCreator.getFile` |
 | `org.codehaus.janino:janino` | 2.7.8 | 3.0.16 3.1.12 | `org/codehaus/janino/util/resource/DirectoryResourceCreator.getFile` |
 | `org.codehaus.janino:janino` | 2.7.8 3.0.16 | 3.1.12 | `org/codehaus/janino/Compiler$2.getFile` |
 | `org.codehaus.janino:janino` | 3.1.12 | 2.7.8 3.0.16 | `org/codehaus/janino/ClassBodyEvaluator.cook`<br>`org/codehaus/janino/Compiler$3.getFile`<br>`org/codehaus/janino/ExpressionEvaluator.cook`<br>`org/codehaus/janino/ScriptEvaluator.cook` |
@@ -347,6 +351,7 @@ signature); each is a place to check that the hook still covers what it did.
 | `org.apache.struts:struts2-core` | 7.0.3 | 2.5.30 6.3.0.2 6.9.0 | `org/apache/struts2/util/classloader/FileResourceStore.getFile` |
 | `org.apache.tomcat:tomcat-catalina` | 7.0.109 | 8.5.100 9.0.124 10.1.62 11.0.29 | `org/apache/catalina/connector/Request.getNoteNames`<br>`org/apache/catalina/websocket/WsHttpServletRequestWrapper.getPart`<br>`org/apache/catalina/websocket/WsHttpServletRequestWrapper.getParts` |
 | `org.apache.tomcat:tomcat-catalina` | 8.5.100 9.0.124 10.1.62 11.0.29 | 7.0.109 | `org/apache/catalina/connector/Request.getUpgradeProtocolName`<br>`org/apache/catalina/connector/Request.parseLocalesHeader` |
+| `org.codehaus.janino:commons-compiler` | 3.0.16 3.1.12 | 2.7.8 | `org/codehaus/commons/compiler/util/resource/DirectoryResourceCreator.getFile` |
 | `org.codehaus.janino:janino` | 2.7.8 | 3.0.16 3.1.12 | `org/codehaus/janino/util/resource/DirectoryResourceCreator.getFile` |
 | `org.codehaus.janino:janino` | 2.7.8 3.0.16 | 3.1.12 | `org/codehaus/janino/Compiler$2.getFile` |
 | `org.codehaus.janino:janino` | 3.1.12 | 2.7.8 3.0.16 | `org/codehaus/janino/ClassBodyEvaluator.cook`<br>`org/codehaus/janino/Compiler$3.getFile`<br>`org/codehaus/janino/ExpressionEvaluator.cook`<br>`org/codehaus/janino/ScriptEvaluator.cook` |

@@ -207,7 +207,13 @@ why = "1.3 is the only widely deployed release; 1.4.0 is the newest."
 group = "org.codehaus.janino"
 artifact = "janino"
 versions = ["2.7.8", "3.0.16", "3.1.12"]
-why = "In 3.0 Cookable and the evaluators moved to commons-compiler, so 2.7 and 3.x differ."
+why = "The 2.7 and 3.0 compilers, and 3.1, where the evaluators override cook themselves. Cookable is in commons-compiler, listed next."
+
+[[library]]
+group = "org.codehaus.janino"
+artifact = "commons-compiler"
+versions = ["2.7.8", "3.0.16", "3.1.12"]
+why = "Cookable, the base class the janino hook names, lives here from 2.7 on; same versions as janino."
 
 # --- Spring -------------------------------------------------------------------------------------
 

@@ -42,6 +42,26 @@ final class Java8LibraryHookTargetsTest {
   }
 
   @Test
+  void janinoCookableInCommonsCompilerPassesTheSourceToTheCompilationDetector() throws Exception {
+    // Cookable is org.codehaus.commons.compiler.Cookable (commons-compiler), not org.codehaus.janino.Cookable.
+    String name = "org/codehaus/commons/compiler/Cookable";
+    byte[] hooked = new Java8JavaCompilationTransformer().transform(null, name, null, null, classBytes(name));
+
+    assertNotNull(hooked);
+    String hook = "io/ohmyrasp/agent/java8/Java8RaspHooks";
+    assertEquals(
+        java.util.Arrays.asList("ldc=janino load=1 beforeJavaCompilationSource"),
+        hookCalls(hooked, "cook", "(Ljava/lang/String;)V", hook));
+    // cook(fileName, source): the source is the second argument, local 2.
+    assertEquals(
+        java.util.Arrays.asList("ldc=janino load=2 beforeJavaCompilationSource"),
+        hookCalls(hooked, "cook", "(Ljava/lang/String;Ljava/lang/String;)V", hook));
+    // The Reader and stream overloads, whose first String is a file name, are not hooked here.
+    assertEquals(new ArrayList<String>(), hookCalls(hooked, "cook", "(Ljava/lang/String;Ljava/io/InputStream;)V", hook));
+    assertEquals(new ArrayList<String>(), hookCalls(hooked, "cook", "(Ljava/io/Reader;)V", hook));
+  }
+
+  @Test
   void pageHelper42DialectsAreTracedThroughTheirFourArgumentGetPageSql() throws Exception {
     // PageHelper 4.2.x takes (String, Page, RowBounds, CacheKey); 5.x takes (String, Page, CacheKey).
     String name = "com/github/pagehelper/dialect/MySqlDialect";
@@ -56,6 +76,39 @@ final class Java8LibraryHookTargetsTest {
     List<String> after = calls(hooked, "getPageSql", descriptor, "io/ohmyrasp/agent/sql/MyBatisSqlTrace");
     assertTrue(after.contains("appendPiece"), after.toString());
     assertTrue(after.contains("built"), after.toString());
+  }
+
+  /** Each static call from the method into one agent class, with the constant and local loaded just before it. */
+  private static List<String> hookCalls(byte[] classBytes, final String method, final String descriptor, final String owner) {
+    final List<String> calls = new ArrayList<String>();
+    new ClassReader(classBytes).accept(new ClassVisitor(Opcodes.ASM9) {
+      @Override public MethodVisitor visitMethod(int access, String name, String desc, String signature, String[] exceptions) {
+        if (!name.equals(method) || !desc.equals(descriptor)) {
+          return null;
+        }
+        return new MethodVisitor(Opcodes.ASM9) {
+          private Object constant;
+          private int local = -1;
+
+          @Override public void visitLdcInsn(Object value) {
+            constant = value;
+          }
+
+          @Override public void visitVarInsn(int opcode, int varIndex) {
+            if (opcode == Opcodes.ALOAD) {
+              local = varIndex;
+            }
+          }
+
+          @Override public void visitMethodInsn(int opcode, String target, String callee, String calleeDescriptor, boolean itf) {
+            if (opcode == Opcodes.INVOKESTATIC && target.equals(owner)) {
+              calls.add("ldc=" + constant + " load=" + local + " " + callee);
+            }
+          }
+        };
+      }
+    }, 0);
+    return calls;
   }
 
   /** The names of the static methods of one agent class that the method calls, in order. */

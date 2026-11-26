@@ -44,7 +44,7 @@ public final class Java11JavaCompilationTransformer implements ClassFileTransfor
 
   private static boolean isTarget(String className) {
     return "com/sun/tools/javac/api/JavacTool".equals(className)
-        || "org/codehaus/janino/Cookable".equals(className)
+        || "org/codehaus/commons/compiler/Cookable".equals(className)
         || "org/codehaus/janino/SimpleCompiler".equals(className)
         || "org/codehaus/janino/ScriptEvaluator".equals(className)
         || "org/codehaus/janino/ExpressionEvaluator".equals(className)
@@ -79,6 +79,21 @@ public final class Java11JavaCompilationTransformer implements ClassFileTransfor
           };
         }
       }
+      if ("org/codehaus/commons/compiler/Cookable".equals(className) && "cook".equals(name)) {
+        // Janino 2.7 and later keep the base class in commons-compiler. Its String overloads are
+        // cook(String source) and cook(String fileName, String source); the others read a Reader or stream.
+        int sourceArg = cookableSourceArgument(descriptor);
+        if (sourceArg >= 0) {
+          return new AdviceAdapter(Opcodes.ASM9, methodVisitor, access, name, descriptor) {
+            @Override
+            protected void onMethodEnter() {
+              push("janino");
+              loadArg(sourceArg);
+              invokeStatic(HOOKS, BEFORE_JAVA_COMPILATION_SOURCE);
+            }
+          };
+        }
+      }
       if (className.startsWith("org/codehaus/janino/") && isJaninoSourceMethod(name)) {
         int sourceArg = firstStringArgument(descriptor);
         if (sourceArg >= 0) {
@@ -93,6 +108,13 @@ public final class Java11JavaCompilationTransformer implements ClassFileTransfor
         }
       }
       return methodVisitor;
+    }
+
+    private static int cookableSourceArgument(String descriptor) {
+      if ("(Ljava/lang/String;)V".equals(descriptor)) {
+        return 0;
+      }
+      return "(Ljava/lang/String;Ljava/lang/String;)V".equals(descriptor) ? 1 : -1;
     }
 
     private static boolean isJaninoSourceMethod(String name) {
