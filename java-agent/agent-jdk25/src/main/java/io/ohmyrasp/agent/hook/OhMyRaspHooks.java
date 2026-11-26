@@ -1909,7 +1909,8 @@ public final class OhMyRaspHooks {
 
   private static Optional<String> invokeString(Class<?> api, Object target, String methodName) {
     try {
-      Object value = api.getMethod(methodName).invoke(target);
+      Method method = accessibleMethod(api, methodName);
+      Object value = method == null ? null : method.invoke(target);
       return value == null ? Optional.empty() : Optional.of(String.valueOf(value));
     } catch (ReflectiveOperationException | RuntimeException e) {
       return Optional.empty();
@@ -1921,7 +1922,8 @@ public final class OhMyRaspHooks {
       if (target == null) {
         return Optional.empty();
       }
-      return Optional.ofNullable(target.getClass().getMethod(methodName).invoke(target));
+      Method method = accessibleMethod(target.getClass(), methodName);
+      return method == null ? Optional.empty() : Optional.ofNullable(method.invoke(target));
     } catch (ReflectiveOperationException | RuntimeException e) {
       return Optional.empty();
     }
@@ -2007,7 +2009,7 @@ public final class OhMyRaspHooks {
       return text.toString();
     }
     try {
-      Method getCharContent = accessibleCharContent(unit.getClass());
+      Method getCharContent = accessibleMethod(unit.getClass(), "getCharContent", boolean.class);
       Object content = getCharContent == null ? null : getCharContent.invoke(unit, true);
       if (content != null) {
         return String.valueOf(content);
@@ -2019,22 +2021,23 @@ public final class OhMyRaspHooks {
   }
 
   /**
-   * {@code getCharContent(boolean)} as declared by a public type that this class can call into: the unit's own class
-   * when it qualifies, else the nearest superclass or interface that does (javax.tools.SimpleJavaFileObject or
-   * FileObject). Invoking the method found on the unit's own class fails when that class is not public, which is
-   * what an anonymous {@code SimpleJavaFileObject} subclass, the usual way to compile a string, is.
+   * The public method {@code name} as declared by a public type this class can call into: {@code type} itself when it
+   * qualifies, else the nearest superclass or interface that does. A method looked up on a non-public class, or one
+   * in a package its module does not export (an anonymous {@code SimpleJavaFileObject}, Tomcat's package-private
+   * {@code ApplicationHttpRequest}, a JDK proxy of a servlet request), fails to invoke when the class overrides it.
+   * Null when no such type declares it.
    *
-   * <p>No class is named here: this class is on the bootstrap path, where javax.tools (the platform loader's
-   * module) is not visible, so the types come from the unit's own hierarchy, which is already loaded.
+   * <p>No class is named here: this class is on the bootstrap path, where javax.tools and the servlet API are not
+   * visible, so the types come from the object's own hierarchy, which is already loaded.
    */
-  private static Method accessibleCharContent(Class<?> type) {
+  private static Method accessibleMethod(Class<?> type, String name, Class<?>... parameters) {
     var pending = new ArrayList<Class<?>>();
     pending.add(type);
     for (int i = 0; i < pending.size(); i++) {
       Class<?> candidate = pending.get(i);
       if (callable(candidate)) {
         try {
-          Method method = candidate.getMethod("getCharContent", boolean.class);
+          Method method = candidate.getMethod(name, parameters);
           if (callable(method.getDeclaringClass())) {
             return method;
           }
