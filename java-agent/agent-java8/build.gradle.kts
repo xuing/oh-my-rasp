@@ -40,6 +40,9 @@ java {
 tasks.withType<JavaCompile>().configureEach {
     options.encoding = "UTF-8"
     options.release.set(8)
+    // StringBuilder concatenation, not StringConcatFactory: an invokedynamic site links on first use, inside a
+    // hooked JDK call. scripts/check-dynamic-calls.py allows none on the backport lines.
+    options.compilerArgs.add("-XDstringConcat=inline")
 }
 
 tasks.jar {
