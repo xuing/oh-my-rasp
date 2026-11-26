@@ -7,7 +7,9 @@ import java.nio.file.StandardOpenOption;
 /**
  * An application for the launcher probe: {@code LauncherCheck TRACK|none [attach AGENT-JAR...]}. It always
  * prints that it ran. With "attach" it loads each AGENT-JAR into its own JVM (agentmain), all at once from
- * one thread each. It prints the
+ * one thread each. "touch-hooks-then-attach" first calls the backport line TRACK's hooks class through the
+ * system class loader (the agent JAR must be on the class path), and "start-copy-then-attach" first starts that
+ * line's runtime there; then both attach as "attach" does. It prints the
  * published ohmyrasp.agent.line property. Given a track
  * ("8", "11", "17" or "main"), it then opens the system hosts file inside a request that names that
  * file, which every line blocks in block mode (the file-read probe's "file-channel" case), and prints
@@ -16,11 +18,23 @@ import java.nio.file.StandardOpenOption;
 public class LauncherCheck {
   public static void main(String[] args) throws Exception {
     System.out.println("launcher-check: application ran");
-    if (args.length > 2 && args[1].equals("attach")) {
+    if (args.length > 2 && args[1].equals("touch-hooks-then-attach")) {
+      // A hook of the system class loader's copy of the line, before the agent starts: it does nothing, but the
+      // line's classes are now defined twice.
+      Class.forName("io.ohmyrasp.agent.java" + args[0] + ".Java" + args[0] + "RaspHooks")
+          .getMethod("beforeFileRead", Object.class).invoke(null, "/etc/hosts");
+      System.out.println("launcher-check: touched the system copy of the hooks");
+    } else if (args.length > 2 && args[1].equals("start-copy-then-attach")) {
+      Class.forName("io.ohmyrasp.agent.java" + args[0] + ".Java" + args[0] + "RaspLine").getMethod("start").invoke(null);
+      System.out.println("launcher-check: started the system copy of the line");
+    }
+    if (args.length > 2 && args[1].endsWith("attach")) {
       attachAll(java.util.Arrays.copyOfRange(args, 2, args.length));
     }
     System.out.println("launcher-check: published line=" + System.getProperty("ohmyrasp.agent.line"));
-    if (args.length == 0 || args[0].equals("none")) {
+    // The application started its own copy of the line, split across two loaders once the agent JAR is on the
+    // bootstrap search: calling it is the application's doing, so the check ends here.
+    if (args.length == 0 || args[0].equals("none") || (args.length > 1 && args[1].equals("start-copy-then-attach"))) {
       return;
     }
     boolean blocked = false;

@@ -206,6 +206,19 @@ def main():
 
         probe.run("agentmain alone starts the fitting line", AGENT_OPTIONS, [], [expected, "attach", str(universal)]) \
             .expect([expected], True, [])
+        if tested != agent_track.PRIMARY:
+            # The agent JAR is also on the application class path, and the application reaches the line's classes
+            # there before the attach. The start must not use that copy: the injected calls reach the bootstrap
+            # one. It fails, names the class and its loader, and the JVM runs unprotected.
+            for mode, what, blocked in (("touch-hooks-then-attach", "a hook of the class-path copy was called", False),
+                                        ("start-copy-then-attach", "the class-path copy of the line was started", None)):
+                run = probe.run(f"an attach after {what} fails cleanly", AGENT_OPTIONS, [],
+                                [tested, mode, str(agent)], extra_classpath=[agent])
+                run.expect([], blocked, [FAILED])
+                failure = run.launcher[0]
+                if (failure["exception"] != "java.lang.IllegalStateException"
+                        or "not the bootstrap loader" not in failure["message"]):
+                    run.fail(f"unexpected failure details {failure}")
         probe.run("two racing attaches start one line", AGENT_OPTIONS, [],
                   [expected, "attach", str(universal), str(universal)]).expect([expected], True, [ACTIVE])
         probe.run("agentmain after premain starts nothing", AGENT_OPTIONS, [universal],

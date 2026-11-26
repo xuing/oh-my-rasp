@@ -32,7 +32,7 @@ final class Java8EntryOrderTest {
     assertTrue(install != null, "no install method: " + calls.keySet());
     String[] order = {
       "OhMyRaspJava8Agent.appendSelfToBootstrap",
-      "OhMyRaspJava8Agent.requireOnBootstrapSearch",
+      "OhMyRaspJava8Agent.requireBootstrapDefined",
       "Preload.classes",
       "Java8RaspLine.start",
       "OhMyRaspJava8Agent.installTransformer",

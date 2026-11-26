@@ -35,7 +35,9 @@ public final class OhMyRaspJava11Agent {
       // The transformers inject calls that the bootstrap loader resolves: without the JAR on its search the start
       // fails here, before any transformer is registered, and the launcher reports it.
       File agentJar = appendSelfToBootstrap(instrumentation);
-      requireOnBootstrapSearch("io.ohmyrasp.agent.java11.Java11RaspHooks", "io.ohmyrasp.agent.backport.BackportHooks");
+      requireBootstrapDefined("io.ohmyrasp.agent.java11.Java11RaspLine", "io.ohmyrasp.agent.backport.BackportLine",
+          "io.ohmyrasp.agent.backport.RaspRuntime", "io.ohmyrasp.agent.backport.BackportHooks",
+          "io.ohmyrasp.agent.java11.Java11RaspHooks", "io.ohmyrasp.agent.util.Preload");
       // Every class of ours a hook or a transformer can use, loaded and initialised now, not inside a hooked call.
       try {
         io.ohmyrasp.agent.util.Preload.classes(agentJar, "agent-java11", null);
@@ -79,14 +81,25 @@ public final class OhMyRaspJava11Agent {
     return agentFile;
   }
 
-  /** Throws unless each class resolves through the bootstrap loader, where the injected calls look for it. */
-  private static void requireOnBootstrapSearch(String... classNames) {
+  /**
+   * Throws unless each class, looked up through this entry's own loader as the start is about to use it, is the
+   * one the bootstrap loader defined from the appended JAR, which the injected calls reach. A copy that another
+   * loader defined first (the agent JAR is also on the application class path and the application used it, or an
+   * earlier attach did) would start a runtime that the hooks never see.
+   */
+  private static void requireBootstrapDefined(String... classNames) {
+    ClassLoader own = OhMyRaspJava11Agent.class.getClassLoader();
     for (String className : classNames) {
+      Class<?> found;
       try {
-        Class.forName(className, false, null);
+        found = Class.forName(className, false, own);
       } catch (ClassNotFoundException e) {
         throw new IllegalStateException(
             "[OHMYRASP-JAVA11] " + className + " is not on the bootstrap search after the append", e);
+      }
+      if (found.getClassLoader() != null) {
+        throw new IllegalStateException("[OHMYRASP-JAVA11] " + className + " is already defined by "
+            + found.getClassLoader() + ", not the bootstrap loader: the start would use a runtime the hooks do not");
       }
     }
   }
