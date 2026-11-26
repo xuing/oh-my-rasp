@@ -237,6 +237,15 @@ impl Controller {
         self.state.lock().expect("control mutex").clone()
     }
 
+    /// The document and the status of the last write, as one snapshot. Writers hold the state
+    /// lock while they record a refusal or its clearing, so reading both under it never shows a
+    /// document from one write beside the refusal of another.
+    pub fn view(&self) -> (ControlState, ControlStatus) {
+        let state = self.state.lock().expect("control mutex");
+        let status = self.status.lock().expect("control status mutex").clone();
+        (state.clone(), status)
+    }
+
     /// What the daemon reports about writing the control file; see [`ControlStatus`].
     pub fn status(&self) -> ControlStatus {
         self.status.lock().expect("control status mutex").clone()
@@ -881,6 +890,26 @@ mod tests {
         assert!(ctrl.update(None, Some(toggles)).is_err());
         assert!(!ctrl.set_policy(policy).unwrap());
         assert_eq!(ctrl.status().write_refused.unwrap().change, "update");
+    }
+
+    /// The view is the document and the refusal of the same moment. (That no writer can slip in
+    /// between is by construction: writers record a refusal while they hold the state lock, which
+    /// the view takes first; a test cannot hit so small a window reliably.)
+    #[test]
+    fn the_view_holds_the_document_and_the_refusal_together() {
+        let dir = tempfile::tempdir().unwrap();
+        let ctrl =
+            Controller::load_or_init(&dir.path().join("control.json"), Mode::Monitor).unwrap();
+        assert!(ctrl.set_policy(Some("small".into())).unwrap());
+        assert!(
+            ctrl.set_policy(Some("a".repeat(MAX_CONTROL_BYTES)))
+                .is_err()
+        );
+        let (state, status) = ctrl.view();
+        assert_eq!(state.policy.as_deref(), Some("small"));
+        assert_eq!(state.revision, ctrl.snapshot().revision);
+        assert_eq!(status, ctrl.status());
+        assert_eq!(status.write_refused.unwrap().change, "policy");
     }
 
     #[test]
