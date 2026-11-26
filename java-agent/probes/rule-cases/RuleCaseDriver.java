@@ -355,6 +355,11 @@ public class RuleCaseDriver extends HttpServlet {
           java.net.URI.create("string:///Generated.java"), javax.tools.JavaFileObject.Kind.SOURCE) {
         @Override public CharSequence getCharContent(boolean ignoreEncodingErrors) { return source; }
       };
+    } else if ("file-object".equals(api)) {
+      // javac's own unit for a file on disk: a class of the jdk.compiler module, which does not open its package.
+      File file = new File(spec("tmp"), "Generated.java");
+      Files.write(file.toPath(), source.getBytes(StandardCharsets.UTF_8));
+      unit = compiler.getStandardFileManager(null, null, null).getJavaFileObjects(file).iterator().next();
     } else throw new IllegalArgumentException("compile api " + api);
     File output = new File(spec("tmp"), "compiled");
     output.mkdirs();

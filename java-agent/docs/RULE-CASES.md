@@ -30,7 +30,7 @@ One file per rule id. Effects count the file's attack cases; rules are the ids t
 | [deserialization_gadget](../rules/cases/deserialization_gadget.toml) | 2 | 1 | block 1, log 1 | `deserialization_gadget` | block 2 | `deserialization_gadget_class` |
 | [directory_userinput](../rules/cases/directory_userinput.toml) | 4 | 1 | block 2, none 2 | `directory_userinput` | block 2, none 2 | `directory_userinput` |
 | [file_generated_plot_script_command](../rules/cases/file_generated_plot_script_command.toml) | 2 | 1 | unreachable 2 | - | block 2 | `file_generated_plot_script_command` |
-| [java_compile_runtime](../rules/cases/java_compile_runtime.toml) | 4 | 1 | block 3, none 1 | `java_compile_runtime` | block 4 | `java_compile_runtime_execution` |
+| [java_compile_runtime](../rules/cases/java_compile_runtime.toml) | 5 | 1 | block 4, none 1 | `java_compile_runtime` | block 5 | `java_compile_runtime_execution` |
 | [jdbc_derby_code_loading](../rules/cases/jdbc_derby_code_loading.toml) | 2 | 1 | unreachable 2 | - | block 2 | `jdbc_derby_code_loading` |
 | [jdbc_h2_init](../rules/cases/jdbc_h2_init.toml) | 2 | 1 | block 1, log 1 | `jdbc_h2_init` | block 2 | `jdbc_h2_code_execution` |
 | [jdbc_mysql_deserialization](../rules/cases/jdbc_mysql_deserialization.toml) | 3 | 1 | block 1, none 2 | `jdbc_mysql_deserialization` | block 3 | `jdbc_mysql_deserialization` |
@@ -106,7 +106,7 @@ Each id that some case names on this engine: the attack cases that name it, the 
 | `deserialization_blacklist` | 3 | 1 | block 1, log 2 | [deserialization_blacklist](../rules/cases/deserialization_blacklist.toml) |
 | `deserialization_gadget` | 2 | 1 | block 1, log 1 | [deserialization_gadget](../rules/cases/deserialization_gadget.toml) |
 | `directory_userinput` | 2 | 1 | block 2 | [directory_userinput](../rules/cases/directory_userinput.toml) |
-| `java_compile_runtime` | 3 | 1 | block 3 | [java_compile_runtime](../rules/cases/java_compile_runtime.toml) |
+| `java_compile_runtime` | 4 | 1 | block 4 | [java_compile_runtime](../rules/cases/java_compile_runtime.toml) |
 | `jdbc_h2_init` | 2 | 1 | block 1, log 1 | [jdbc_h2_init](../rules/cases/jdbc_h2_init.toml) |
 | `jdbc_mysql_deserialization` | 1 | 1 | block 1 | [jdbc_mysql_deserialization](../rules/cases/jdbc_mysql_deserialization.toml) |
 | `jndi_disable_all` | 3 | 1 | block 1, log 2 | [jndi_disable_all](../rules/cases/jndi_disable_all.toml) |
@@ -216,7 +216,7 @@ Each id that some case names on this engine: the attack cases that name it, the 
 | `file_generated_plot_script_command` | 2 | 1 | block 2 | [file_generated_plot_script_command](../rules/cases/file_generated_plot_script_command.toml) |
 | `file_script_write` | 5 | 2 | block 5 | [writeFile_reflect](../rules/cases/writeFile_reflect.toml), [writeFile_script](../rules/cases/writeFile_script.toml) |
 | `file_sensitive_read` | 5 | 3 | block 5 | [readFile_unwanted](../rules/cases/readFile_unwanted.toml), [readFile_userinput](../rules/cases/readFile_userinput.toml) |
-| `java_compile_runtime_execution` | 4 | 1 | block 4 | [java_compile_runtime](../rules/cases/java_compile_runtime.toml) |
+| `java_compile_runtime_execution` | 5 | 1 | block 5 | [java_compile_runtime](../rules/cases/java_compile_runtime.toml) |
 | `jdbc_derby_code_loading` | 2 | 1 | block 2 | [jdbc_derby_code_loading](../rules/cases/jdbc_derby_code_loading.toml) |
 | `jdbc_h2_code_execution` | 2 | 1 | block 2 | [jdbc_h2_init](../rules/cases/jdbc_h2_init.toml) |
 | `jdbc_mysql_deserialization` | 3 | 1 | block 3 | [jdbc_mysql_deserialization](../rules/cases/jdbc_mysql_deserialization.toml) |
