@@ -91,6 +91,9 @@ jobs:
       - name: Stage and validate shirudo upatch packages
         run: |
           set -euo pipefail
+          # stage-jars.sh stages ohmyrasp.jar (the universal package) with the per-line JARs, and
+          # verify-shirudo-upatch.sh checks all six packages: the universal one for its launcher entry,
+          # all four lines, and its baked properties exactly once.
           ./deploy/shirudo/stage-jars.sh
           ./deploy/shirudo/verify-shirudo-upatch.sh
       - name: Upload YARN fixture libraries
