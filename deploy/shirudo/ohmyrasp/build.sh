@@ -103,6 +103,21 @@ src_jar="$java_agent_dir/agent-all/build/libs/$jar_name"
 [ -f "$src_jar" ] || { echo "missing built jar: $src_jar" >&2; exit 1; }
 cp "$src_jar" "$pkg/$jar_name"
 
+# The `fixes` list of the Beefile says which advisories the loaded agent blocks, which only a block build does.
+# A block build is packaged from this directory. A monitor build is packaged from a staged copy whose Beefile
+# has no `fixes` line (deploy/shirudo/stage/monitor/ohmyrasp, ignored by git), and verify-shirudo-upatch.sh
+# checks that the baked mode and the Beefile it is packaged with agree.
+stage_parent=$(CDPATH= cd -- "$pkg/.." && pwd)/stage/monitor
+rm -rf "$stage_parent"
+build_dir=$pkg
+if [ "$mode" = monitor ]; then
+	build_dir=$stage_parent/$pkg_name
+	mkdir -p "$build_dir"
+	sed '/^[[:space:]]*fixes[[:space:]]*=/d' "$pkg/Beefile" > "$build_dir/Beefile"
+	cp "$pkg/README.md" "$pkg/$jar_name" "$build_dir/"
+	echo "$pkg_name: a monitor build lists no fixes in its Beefile ($build_dir/Beefile); fixes describes the block build only."
+fi
+
 [ "$jar_only" -eq 0 ] || exit 0
 cd "$start"
-exec "${SHIRUDO_BIN:-shirudo}" bpm build "$pkg" --version "$version" "$@"
+exec "${SHIRUDO_BIN:-shirudo}" bpm build "$build_dir" --version "$version" "$@"

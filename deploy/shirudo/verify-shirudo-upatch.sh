@@ -215,8 +215,9 @@ def upatch_base(source):
     return stem
 
 
-def validate_beefile(pkg_name):
-    beefile_path = os.path.join(ROOT, pkg_name, "Beefile")
+def validate_beefile(pkg_name, base=None):
+    """Check a package's Beefile (in `base`/<pkg_name>, default the package directory); returns its fixes or None."""
+    beefile_path = os.path.join(base or ROOT, pkg_name, "Beefile")
     if not os.path.isfile(beefile_path):
         fail(f"missing Beefile: {beefile_path}")
     with open(beefile_path, "r", encoding="utf-8") as fh:
@@ -367,6 +368,7 @@ def validate_beefile(pkg_name):
 
     listed = f", fixes={len(fixes)} IDs" if fixes is not None else ""
     print(f"OK beefile: {pkg_name} (name={name}, source={source}, tree.id={tree_id}{listed})")
+    return fixes
 
 
 def zip_names(data):
@@ -568,10 +570,55 @@ def validate_jar(pkg_name, allow_boot_classpath, premain_class, required_lines):
     print(f"OK jar: {pkg_name}.jar ({size} bytes, Premain-Class {premain}{held})")
 
 
+def baked_mode(pkg_name):
+    jar_path = os.path.join(ROOT, pkg_name, f"{pkg_name}.jar")
+    with open(jar_path, "rb") as fh:
+        data = fh.read()
+    entry = zip_find_entry(data, "META-INF/ohmyrasp-shirudo.properties")
+    for raw_line in zip_read_entry(data, entry).decode("utf-8", errors="replace").splitlines():
+        key, _, value = raw_line.partition("=")
+        if key.strip() == "mode":
+            return value.strip()
+    return None
+
+
+def validate_fixes_mode_pairing(pkg_name, tracked):
+    """`fixes` says the loaded agent blocks those advisories, which only a block build does.
+
+    A block JAR is packaged with the tracked Beefile, which must carry `fixes`. A monitor JAR is packaged with
+    the Beefile build.sh staged for it (stage/monitor/<pkg>), which must exist and carry none.
+    """
+    mode = baked_mode(pkg_name)
+    stage_root = os.path.join(ROOT, "stage", "monitor")
+    if mode == "block":
+        if not tracked:
+            fail(f"{pkg_name}: the JAR bakes mode=block but its Beefile lists no fixes")
+        if os.path.exists(os.path.join(stage_root, pkg_name)):
+            fail(f"{stage_root}/{pkg_name} is left from a monitor build but the staged JAR bakes mode=block; "
+                 "build again with build.sh (a block build removes the stage) or delete stage/")
+        print(f"OK pairing: {pkg_name} bakes mode=block and its Beefile lists {len(tracked)} fixes")
+    elif mode == "monitor":
+        staged = os.path.join(stage_root, pkg_name)
+        if not os.path.isfile(os.path.join(staged, "Beefile")):
+            fail(f"{pkg_name}: the JAR bakes mode=monitor but there is no staged Beefile without fixes at {staged}; "
+                 f"build it with {pkg_name}/build.sh --mode monitor")
+        if validate_beefile(pkg_name, stage_root) is not None:
+            fail(f"{staged}/Beefile lists fixes but the JAR bakes mode=monitor: a monitor build lists no fixes")
+        with open(os.path.join(staged, f"{pkg_name}.jar"), "rb") as staged_jar, \
+                open(os.path.join(ROOT, pkg_name, f"{pkg_name}.jar"), "rb") as built_jar:
+            if staged_jar.read() != built_jar.read():
+                fail(f"{staged}/{pkg_name}.jar is not the JAR in {pkg_name}/; build again with --mode monitor")
+        print(f"OK pairing: {pkg_name} bakes mode=monitor and is packaged from a Beefile without fixes")
+    else:
+        fail(f"{pkg_name}: the JAR bakes mode={mode!r}, expected block or monitor")
+
+
 for pkg_name, allow_boot_cp, premain_class, lines in PACKAGES:
-    validate_beefile(pkg_name)
+    fixes = validate_beefile(pkg_name)
     if not BEEFILE_ONLY:
         validate_jar(pkg_name, allow_boot_cp, premain_class, lines)
+        if pkg_name == "ohmyrasp":
+            validate_fixes_mode_pairing(pkg_name, fixes)
 
 print("ALL CHECKS PASSED")
 PY
