@@ -10,6 +10,7 @@
 
 use std::collections::BTreeMap;
 use std::fmt;
+use std::hash::{DefaultHasher, Hash, Hasher};
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 
@@ -179,6 +180,19 @@ impl ControlState {
     }
 }
 
+/// What a refused policy is called in the log and the status: the assignment the cloud reports,
+/// else a hash of the policy text (a size would change with the width of the timestamp).
+fn policy_identity(text: &str, assignment: Option<&str>) -> String {
+    match assignment {
+        Some(assigned) => assigned.to_string(),
+        None => {
+            let mut hasher = DefaultHasher::new();
+            text.hash(&mut hasher);
+            format!("sha:{:016x}", hasher.finish())
+        }
+    }
+}
+
 /// Thread-safe controller wrapping the control state and its backing file.
 pub struct Controller {
     path: PathBuf,
@@ -258,18 +272,64 @@ impl Controller {
     /// policy is unchanged, so repeated heartbeat pulls don't churn the file.
     /// A policy that would make the document larger than the agents read is refused: the
     /// previous document stays in place and the error is a [`ControlTooLarge`].
+    #[cfg(test)]
     pub fn set_policy(&self, policy: Option<String>) -> Result<bool> {
+        self.set_policy_assigned(policy, None)
+    }
+
+    /// [`Controller::set_policy`] for a policy the cloud assigned under `assignment` (its id and
+    /// version, as the cloud reports them). A refusal is identified by that assignment, else by a
+    /// hash of the policy text, and logged once: the same assignment pulled again at the next
+    /// heartbeat is not logged again, even when the document comes out a byte longer or shorter.
+    ///
+    /// When the policy asked for is the one installed, the refusal of an earlier policy no
+    /// longer applies and is cleared.
+    pub fn set_policy_assigned(
+        &self,
+        policy: Option<String>,
+        assignment: Option<&str>,
+    ) -> Result<bool> {
         let mut guard = self.state.lock().expect("control mutex");
         if guard.policy == policy {
+            self.clear_policy_refusal();
             return Ok(false);
         }
+        let identity = policy
+            .as_deref()
+            .map(|text| policy_identity(text, assignment));
         let mut next = guard.clone();
         next.policy = policy;
         next.revision += 1;
         next.updated_at = now_rfc3339();
-        self.write(&next, "policy")?;
+        self.write_identified(&next, "policy", identity)?;
         *guard = next;
         Ok(true)
+    }
+
+    /// Whether the last refusal was a policy the cloud assigned.
+    pub fn policy_refused(&self) -> bool {
+        self.status
+            .lock()
+            .expect("control status mutex")
+            .write_refused
+            .as_ref()
+            .is_some_and(|r| r.change == "policy")
+    }
+
+    /// The refusal of a policy is over once the policy the cloud wants is the installed one.
+    fn clear_policy_refusal(&self) {
+        let mut status = self.status.lock().expect("control status mutex");
+        if status
+            .write_refused
+            .as_ref()
+            .is_some_and(|r| r.change == "policy")
+        {
+            status.write_refused = None;
+            tracing::info!(
+                "the cloud no longer assigns the policy that was refused; the control file holds \
+                 the policy it wants"
+            );
+        }
     }
 
     /// Write `state` as the control file, unless it is larger than the agents read. On a refusal
@@ -727,6 +787,100 @@ mod tests {
         assert_eq!(std::fs::read_to_string(&path).unwrap(), compact);
         let refused = ctrl.status().write_refused.expect("refused");
         assert!(refused.agents_apply_state);
+    }
+
+    /// The same refused assignment, pulled again at every heartbeat, is logged and recorded once
+    /// (the refusal is replaced exactly when it is logged); the size of the document does not
+    /// identify it (the timestamp's width changes it), and another assignment is recorded anew.
+    #[test]
+    fn a_refused_policy_is_logged_once_per_assignment_not_per_size() {
+        let dir = tempfile::tempdir().unwrap();
+        let ctrl =
+            Controller::load_or_init(&dir.path().join("control.json"), Mode::Monitor).unwrap();
+        let big = "a".repeat(MAX_CONTROL_BYTES);
+        let mut first = None;
+        for extra in 0..4 {
+            // A document of another size each time, for the same assignment.
+            let text = format!("{big}{}", "b".repeat(extra));
+            assert!(ctrl.set_policy_assigned(Some(text), Some("p1@3")).is_err());
+            let refused = ctrl.status().write_refused.unwrap();
+            assert_eq!(refused.identity.as_deref(), Some("p1@3"));
+            let first = first.get_or_insert_with(|| (refused.size_bytes, refused.at.clone()));
+            assert_eq!(
+                (refused.size_bytes, &refused.at),
+                (first.0, &first.1),
+                "the refusal was recorded (and logged) again for the same assignment"
+            );
+        }
+
+        // Another assignment is a new refusal.
+        assert!(
+            ctrl.set_policy_assigned(Some(big.clone()), Some("p1@4"))
+                .is_err()
+        );
+        assert_eq!(
+            ctrl.status().write_refused.unwrap().identity.as_deref(),
+            Some("p1@4")
+        );
+
+        // Without an assignment the identity is a hash of the text: the same text is one
+        // refusal, whatever size the document has, and another text is another.
+        assert!(ctrl.set_policy(Some(format!("{big}x"))).is_err());
+        let hashed = ctrl.status().write_refused.unwrap();
+        assert!(hashed.identity.as_deref().unwrap().starts_with("sha:"));
+        assert!(ctrl.set_policy(Some(format!("{big}x"))).is_err());
+        assert_eq!(ctrl.status().write_refused.unwrap().at, hashed.at);
+        assert!(ctrl.set_policy(Some(format!("{big}y"))).is_err());
+        assert_ne!(
+            ctrl.status().write_refused.unwrap().identity,
+            hashed.identity
+        );
+    }
+
+    /// When the policy the cloud wants becomes the installed one (the cloud reverts, or
+    /// withdraws an assignment when none was installed), the refusal no longer applies.
+    #[test]
+    fn a_refusal_of_a_policy_clears_when_the_desired_state_is_the_installed_one() {
+        let dir = tempfile::tempdir().unwrap();
+        let ctrl =
+            Controller::load_or_init(&dir.path().join("control.json"), Mode::Monitor).unwrap();
+        assert!(ctrl.set_policy(Some("{\"version\":1}".into())).unwrap());
+        assert!(
+            ctrl.set_policy(Some("a".repeat(MAX_CONTROL_BYTES)))
+                .is_err()
+        );
+        assert!(ctrl.policy_refused());
+
+        // The cloud goes back to the installed policy: nothing to write, the refusal is over.
+        assert!(!ctrl.set_policy(Some("{\"version\":1}".into())).unwrap());
+        assert!(ctrl.status().write_refused.is_none());
+        assert!(!ctrl.policy_refused());
+
+        // No policy installed, a too large one refused, then the assignment is withdrawn.
+        let ctrl = Controller::load_or_init(&dir.path().join("other.json"), Mode::Monitor).unwrap();
+        assert!(
+            ctrl.set_policy(Some("a".repeat(MAX_CONTROL_BYTES)))
+                .is_err()
+        );
+        assert!(ctrl.policy_refused());
+        assert!(!ctrl.set_policy(None).unwrap());
+        assert!(ctrl.status().write_refused.is_none());
+    }
+
+    /// A refused console change is not a policy refusal: the cloud agreeing with the installed
+    /// policy does not clear it.
+    #[test]
+    fn the_refusal_of_a_console_change_survives_an_unchanged_policy() {
+        let dir = tempfile::tempdir().unwrap();
+        let ctrl =
+            Controller::load_or_init(&dir.path().join("control.json"), Mode::Monitor).unwrap();
+        let policy = state_of_size(MAX_CONTROL_BYTES - 100).policy;
+        assert!(ctrl.set_policy(policy.clone()).unwrap());
+        let mut toggles = BTreeMap::new();
+        toggles.insert("s".repeat(300), false);
+        assert!(ctrl.update(None, Some(toggles)).is_err());
+        assert!(!ctrl.set_policy(policy).unwrap());
+        assert_eq!(ctrl.status().write_refused.unwrap().change, "update");
     }
 
     #[test]
