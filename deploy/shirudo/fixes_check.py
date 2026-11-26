@@ -6,6 +6,8 @@ agent stopping its exploit. gen-readmes.py writes the `fixes = [...]` line of
 deploy/shirudo/ohmyrasp/Beefile from that file and fails its --check when the Beefile differs or
 when an entry no longer holds. An entry holds when:
 
+  - `replayed` is an ISO date, not in the future, and `replayed_with` names the universal JAR
+    (`ohmyrasp-agent-all.jar` or `ohmyrasp.jar`): the date of the last replay-fixes.sh run against it;
   - the ID is one shirudo accepts (1 to 255 bytes of letters, digits, `.`, `_`, `:`, `-`), listed once,
     and there are at most 16 entries;
   - each script is tracked under java-agent/acceptance/vulhub/ and is not a `*legacy*` or `*boundar*`
@@ -25,9 +27,11 @@ when an entry no longer holds. An entry holds when:
 Usage:
   python3 deploy/shirudo/fixes_check.py              # list each entry with the line of each assertion
   python3 deploy/shirudo/fixes_check.py --check      # exit non-zero on any problem (gen-readmes.py --check does too)
+  python3 deploy/shirudo/fixes_check.py --scripts    # "<ID><TAB><script under java-agent/>" per script, for replay-fixes.sh
 """
 from __future__ import annotations
 
+import datetime
 import importlib.util
 import pathlib
 import re
@@ -37,13 +41,17 @@ from dataclasses import dataclass
 
 SHIRUDO_DIR = pathlib.Path(__file__).resolve().parent
 REPO_ROOT = SHIRUDO_DIR.parent.parent
+sys.path.insert(0, str(REPO_ROOT / "java-agent" / "scripts"))
+import acceptance_scripts  # noqa: E402
+
 FIXES_FILE = SHIRUDO_DIR / "fixes.toml"
 BEEFILE = SHIRUDO_DIR / "ohmyrasp" / "Beefile"
 PER_LINE_PACKAGES = ("ohmyrasp-java8", "ohmyrasp-java11", "ohmyrasp-java17", "ohmyrasp-jdk21", "ohmyrasp-jdk25")
 
 MAX_FIXES = 16  # shirudo's limit per upatch
 ID_FORM = re.compile(r"[A-Za-z0-9._:-]{1,255}")
-NOT_EVIDENCE = re.compile(r"legacy|boundar", re.I)
+NOT_EVIDENCE = acceptance_scripts.BOUNDARY
+REPLAY_ARTIFACTS = ("ohmyrasp-agent-all.jar", "ohmyrasp.jar")
 SCRIPT_ROOT = "acceptance/vulhub/"
 
 FATAL = re.compile(r'^\s*echo\s+"(?P<msg>[^"]*)"\s*>&2\s*$')
@@ -57,6 +65,8 @@ BLOCK_GREP = re.compile(r'grep\b.*"action":"block"')
 class Entry:
     id: str
     scripts: tuple[str, ...]  # relative to java-agent/
+    replayed: str = ""        # ISO date of the last replay-fixes.sh run
+    replayed_with: str = ""   # the JAR it ran against
 
 
 @dataclass(frozen=True)
@@ -69,7 +79,8 @@ class Evidence:
 
 def load() -> list[Entry]:
     data = tomllib.loads(FIXES_FILE.read_text(encoding="utf-8"))
-    return [Entry(item["id"], tuple(item.get("scripts", ()))) for item in data.get("fix", [])]
+    return [Entry(item["id"], tuple(item.get("scripts", ())), item.get("replayed", ""), item.get("replayed_with", ""))
+            for item in data.get("fix", [])]
 
 
 def _check_docs():
@@ -108,6 +119,16 @@ def entry_problems(entry: Entry, rows: list[str], docs) -> tuple[list[str], dict
         problems.append(f"{entry.id!r}: not a valid shirudo advisory ID (letters, digits, . _ : - ; 1 to 255 bytes)")
     if not entry.scripts:
         problems.append(f"{entry.id}: no acceptance script")
+    try:
+        replayed = datetime.date.fromisoformat(entry.replayed)
+        if replayed > datetime.date.today():
+            problems.append(f"{entry.id}: replayed = {entry.replayed!r} is in the future")
+    except ValueError:
+        problems.append(f"{entry.id}: `replayed` must be the ISO date (YYYY-MM-DD) of the last replay-fixes.sh run, "
+                        f"got {entry.replayed!r}")
+    if entry.replayed_with not in REPLAY_ARTIFACTS:
+        problems.append(f"{entry.id}: `replayed_with` must be one of {', '.join(REPLAY_ARTIFACTS)}, "
+                        f"got {entry.replayed_with!r}")
     id_pattern = re.compile(rf"(?<![A-Za-z0-9-]){re.escape(entry.id)}(?![A-Za-z0-9-])")
     for script in entry.scripts:
         where = f"{entry.id} / {script}"
@@ -187,6 +208,11 @@ def beefile_problems(compare: bool = True) -> list[str]:
 
 
 def main() -> int:
+    if "--scripts" in sys.argv[1:]:
+        for entry in load():
+            for script in entry.scripts:
+                print(f"{entry.id}\t{script}")
+        return 0
     check_only = "--check" in sys.argv[1:]
     problems, proofs = check()
     if not check_only:

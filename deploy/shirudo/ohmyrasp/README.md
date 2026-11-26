@@ -2,7 +2,7 @@
 
 > **Generated** by `deploy/shirudo/gen-readmes.py` from `java-agent/` sources.
 
-OhMyRASP runtime self-protection for every Java on the host. The `ohmyrasp` package installs one Java upatch, `ohmyrasp.jar`, a standalone, daemonless agent that holds all four OhMyRASP agent lines. Each JVM that starts with `-javaagent` on it, Java 8 to Java 25, runs the line that fits its Java version: the Java 8, 11 or 17 line, or the primary line on Java 21 and later. It hooks the JVM's own sinks (process execution, JNDI, deserialization, SQL, file writes, XXE, SSRF, expression engines) and blocks exploit-grade calls inside the JVM, backed by **136** end-to-end Vulhub acceptance scenarios.
+OhMyRASP runtime self-protection for every Java on the host. The `ohmyrasp` package installs one Java upatch, `ohmyrasp.jar`, a standalone, daemonless agent that holds all four OhMyRASP agent lines. Each JVM that starts with `-javaagent` on it, Java 8 to Java 25, runs the line that fits its Java version: the Java 8, 11 or 17 line, or the primary line on Java 21 and later. It hooks the JVM's own sinks (process execution, JNDI, deserialization, SQL, file writes, XXE, SSRF, expression engines) and blocks exploit-grade calls inside the JVM, backed by **120** end-to-end Vulhub acceptance scripts that run the exploit on a supported JVM.
 
 ## Install and uninstall
 
@@ -28,7 +28,11 @@ A protected JVM writes one line to its standard error when it starts, before the
 
 JVMs that start a Java agent with an appended bootstrap path may also print `OpenJDK 64-Bit Server VM warning: Sharing is only supported for boot loader classes because bootstrap classpath has been appended`. It is the JVM's notice that class-data sharing is limited, not an error.
 
-A JVM that was already running when the package was loaded shows none of this: it has to restart. A JVM whose line is not started says why in one JSON line instead:
+A JVM that was already running when the package was loaded shows none of this: it has to restart. A JVM that a systemd user manager starts also needs a manager that has read the change. The manager reads `/run/environment.d/shirudo.conf` when it starts and when it reloads, so a manager that started before the upatch was loaded (or unloaded) still passes the old options, and a restarted JVM starts without the agent. Run `systemctl --user daemon-reload` as the JVM's user, check with `systemctl --user show-environment | grep JAVA_TOOL_OPTIONS` that the manager now names the agent, then restart the JVM.
+
+To see whether a running JVM has the agent, look for the start line in its log, or ask the JVM: `jcmd <pid> VM.system_properties | grep ohmyrasp.agent.line` prints `ohmyrasp.agent.line=<line>`, one of `primary`, `java17`, `java11` and `java8`, when a line started, and prints nothing when none did.
+
+A JVM whose line is not started says why in one JSON line instead:
 
 - `{"event":"ohmyrasp-agent-skipped","reason":"unsupported-java", ...}`: this JAR holds no line that fits the JVM's Java version (a per-line JAR on a Java it does not cover, or any JAR on Java 9 or 10). This JAR protects nothing; the JVM and the application start.
 - `{"event":"ohmyrasp-agent-skipped","reason":"already-active", ...}`: another OhMyRASP JAR started a line first. The JVM is protected.
@@ -38,7 +42,7 @@ Detections are JSON objects, one per line, on the JVM's standard error (`"event"
 
 ## Monitor and block builds
 
-The mode is baked into the JAR when it is built, and no control file or environment variable changes it at run time. A package built with `build.sh --mode block` (the default) blocks exploit-grade calls; one built with `build.sh --mode monitor` writes the same events with `monitor` as the action and blocks nothing. Start with a monitor build to observe a host, then install the block build.
+The mode is baked into the JAR when it is built, and no control file or environment variable changes it at run time. A package built with `build.sh --mode block` (the default) blocks exploit-grade calls; one built with `build.sh --mode monitor` writes the same events with `monitor` as the action and blocks nothing. Start with a monitor build to observe a host, then install the block build. A monitor build lists no `fixes` (see below), and its `build.sh` says so when it builds.
 
 ```sh
 ./deploy/shirudo/ohmyrasp/build.sh --mode monitor "<version>" --keys-dir "<keys>"
@@ -46,22 +50,24 @@ The mode is baked into the JAR when it is built, and no control file or environm
 
 ## Advisories listed in `fixes`
 
-This package lists these advisories in the `fixes` key of its Beefile. The list means that the agent blocks the tested exploit path of that advisory inside the JVM; it does not patch the vulnerable library. Each advisory is backed by a Vulhub acceptance script that exploits an unprotected container and then sends the same request to a protected one.
+The block build of this package lists these advisories in the `fixes` key of its Beefile. The list means that the agent blocks the tested exploit path of that advisory inside the JVM; it does not patch the vulnerable library. A monitor build only observes, so it is packaged from a Beefile without `fixes`.
 
-| Advisory | Acceptance script (under `java-agent/`) |
-|---|---|
-| CVE-2021-44228 | `acceptance/vulhub/log4j/solr-java8.sh` |
-| CVE-2022-22965 | `acceptance/vulhub/spring/java11.sh` |
-| CVE-2022-22963 | `acceptance/vulhub/spring/function-java8.sh` |
-| CVE-2022-22947 | `acceptance/vulhub/spring/gateway-java8.sh` |
-| CVE-2017-5638 | `acceptance/vulhub/struts2/s2045-java8.sh`, `acceptance/vulhub/struts2/s2046-java8.sh` |
-| CVE-2020-17530 | `acceptance/vulhub/struts2/s2061-java8.sh` |
-| CVE-2017-18349 | `acceptance/vulhub/fastjson/java8.sh` |
-| CVE-2016-4437 | `acceptance/vulhub/shiro/4437-java8.sh` |
-| CVE-2020-14882 | `acceptance/vulhub/weblogic/14883-java8.sh` |
-| CVE-2017-12615 | `acceptance/vulhub/tomcat/12615-java8.sh` |
-| CVE-2019-17558 | `acceptance/vulhub/solr/velocity-java8.sh` |
-| CVE-2023-21839 | `acceptance/vulhub/weblogic/21839-java8.sh` |
+Each advisory is backed by a Vulhub acceptance script that exploits an unprotected container and then sends the same request to a protected one. `deploy/shirudo/replay-fixes.sh` runs the scripts against the universal JAR; this table gives the date of the last replay of each entry and the JAR it ran against.
+
+| Advisory | Acceptance script (under `java-agent/`) | Last replayed |
+|---|---|---|
+| CVE-2021-44228 | `acceptance/vulhub/log4j/solr-java8.sh` | 2026-11-27 with `ohmyrasp-agent-all.jar` |
+| CVE-2022-22965 | `acceptance/vulhub/spring/java11.sh` | 2026-11-27 with `ohmyrasp-agent-all.jar` |
+| CVE-2022-22963 | `acceptance/vulhub/spring/function-java8.sh` | 2026-11-27 with `ohmyrasp-agent-all.jar` |
+| CVE-2022-22947 | `acceptance/vulhub/spring/gateway-java8.sh` | 2026-11-27 with `ohmyrasp-agent-all.jar` |
+| CVE-2017-5638 | `acceptance/vulhub/struts2/s2045-java8.sh`, `acceptance/vulhub/struts2/s2046-java8.sh` | 2026-11-27 with `ohmyrasp-agent-all.jar` |
+| CVE-2020-17530 | `acceptance/vulhub/struts2/s2061-java8.sh` | 2026-11-27 with `ohmyrasp-agent-all.jar` |
+| CVE-2017-18349 | `acceptance/vulhub/fastjson/java8.sh` | 2026-11-27 with `ohmyrasp-agent-all.jar` |
+| CVE-2016-4437 | `acceptance/vulhub/shiro/4437-java8.sh` | 2026-11-27 with `ohmyrasp-agent-all.jar` |
+| CVE-2020-14882 | `acceptance/vulhub/weblogic/14883-java8.sh` | 2026-11-27 with `ohmyrasp-agent-all.jar` |
+| CVE-2017-12615 | `acceptance/vulhub/tomcat/12615-java8.sh` | 2026-11-27 with `ohmyrasp-agent-all.jar` |
+| CVE-2019-17558 | `acceptance/vulhub/solr/velocity-java8.sh` | 2026-11-27 with `ohmyrasp-agent-all.jar` |
+| CVE-2023-21839 | `acceptance/vulhub/weblogic/21839-java8.sh` | 2026-11-27 with `ohmyrasp-agent-all.jar` |
 
 ## Limits
 
