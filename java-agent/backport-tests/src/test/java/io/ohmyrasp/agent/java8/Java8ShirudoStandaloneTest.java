@@ -141,8 +141,51 @@ final class Java8ShirudoStandaloneTest {
     assertTrue(missingStandalone.lockConfig);
     assertFalse(missingStandalone.standalone);
     assertNull(missingStandalone.mode);
-    assertFalse(missingStandalone.controlDisabled);
-    assertEquals(Paths.get("/tmp/ohmyrasp-control.json"), missingStandalone.controlPath);
+  }
+
+  @Test
+  void lockedProfileWithoutABakedControlPathPollsNoControlFile() throws Exception {
+    // The default /tmp/ohmyrasp-control.json is world-writable. A locked profile that bakes no
+    // control path polls nothing, standalone or not, whatever system properties and env say.
+    Properties sysProps = new Properties();
+    sysProps.setProperty("ohmyrasp.control", "/tmp/hostile-sys-control.json");
+    Map<String, String> env = new HashMap<String, String>();
+    env.put("OHMYRASP_CONTROL", "/tmp/hostile-env-control.json");
+    String[] standaloneValues = new String[] {null, "false", "true"};
+    for (int i = 0; i < standaloneValues.length; i++) {
+      Properties baked = new Properties();
+      baked.setProperty("lock_config", "true");
+      if (standaloneValues[i] != null) {
+        baked.setProperty("standalone", standaloneValues[i]);
+      }
+      RaspRuntime.Config config = RaspRuntime.Config.resolve(baked, sysProps, env);
+      assertTrue(config.controlDisabled, "standalone=" + standaloneValues[i]);
+      assertNull(config.controlPath, "standalone=" + standaloneValues[i]);
+    }
+
+    // A baked control path under lock is polled, the default path included when it is the one
+    // baked; standalone never polls (standaloneNeverPollsAControlFileEvenWithAnExplicitPath).
+    String[] bakedPaths = new String[] {"/baked/control.json", "/tmp/ohmyrasp-control.json"};
+    for (int i = 0; i < 2; i++) {
+      for (int j = 0; j < bakedPaths.length; j++) {
+        Properties baked = new Properties();
+        baked.setProperty("lock_config", "true");
+        baked.setProperty("control", bakedPaths[j]);
+        if (standaloneValues[i] != null) {
+          baked.setProperty("standalone", standaloneValues[i]);
+        }
+        RaspRuntime.Config config = RaspRuntime.Config.resolve(baked, sysProps, env);
+        assertFalse(config.controlDisabled, "standalone=" + standaloneValues[i] + " " + bakedPaths[j]);
+        assertEquals(Paths.get(bakedPaths[j]), config.controlPath);
+      }
+    }
+
+    // The packaged form: a locked JAR without a control key starts no control poller.
+    int pollersBefore = threadsNamed(CONTROL_THREAD);
+    Map<String, String> init = asyncInit();
+    init.remove("ohmyrasp.control");
+    loadIsolatedRuntime(init, bakedResource("lock_config=true\nlog=none\n"));
+    assertEquals(pollersBefore, threadsNamed(CONTROL_THREAD), "a locked JAR without control polls nothing");
   }
 
   @Test
@@ -212,6 +255,8 @@ final class Java8ShirudoStandaloneTest {
     baked.setProperty("latency_sample", "5");
 
     Map<String, String> env = new HashMap<String, String>();
+    // Not standalone, which never polls: the control path follows the source precedence.
+    env.put("OHMYRASP_STANDALONE", "false");
     env.put("OHMYRASP_MODE", "monitor");
     env.put("OHMYRASP_CONTROL", "/tmp/env-control.json");
     env.put("OHMYRASP_LOG", "/tmp/env.jsonl");
@@ -277,7 +322,12 @@ final class Java8ShirudoStandaloneTest {
     RaspRuntime.Config fromEnv = RaspRuntime.Config.resolve(baked, new Properties(), env);
     assertTrue(fromEnv.standalone);
     assertEquals(RaspRuntime.Mode.MONITOR, fromEnv.mode);
-    assertEquals(Paths.get("/env/control.json"), fromEnv.controlPath);
+    assertNull(fromEnv.controlPath, "standalone never polls");
+    env.put("OHMYRASP_STANDALONE", "false");
+    assertEquals(
+        Paths.get("/env/control.json"),
+        RaspRuntime.Config.resolve(baked, new Properties(), env).controlPath);
+    env.put("OHMYRASP_STANDALONE", "true");
     assertEquals("/env/log.jsonl", fromEnv.logPath);
     assertEquals(25, fromEnv.latencySample);
 
@@ -547,7 +597,7 @@ final class Java8ShirudoStandaloneTest {
     sysProps.setProperty("ohmyrasp.control", invalid);
     RaspRuntime.Config config = RaspRuntime.Config.resolve(null, sysProps, null);
     assertFalse(config.controlDisabled);
-    assertNull(config.controlPath);
+    assertEquals(Paths.get("/tmp/ohmyrasp-control.json"), config.controlPath, "the default applies");
 
     // Set after initialisation: the next event still resolves its log target.
     System.setProperty("ohmyrasp.control", invalid);
@@ -557,13 +607,69 @@ final class Java8ShirudoStandaloneTest {
     System.clearProperty("ohmyrasp.control");
     System.clearProperty("ohmyrasp.java8.log");
 
-    // Set before initialisation: the runtime starts and polls nothing.
+    // Set before initialisation: the runtime starts and polls the next valid source, the default.
     int pollersBefore = threadsNamed(CONTROL_THREAD);
     Map<String, String> init = asyncInit();
     init.put("ohmyrasp.control", invalid);
     Class<?> runtime = loadIsolatedRuntime(init);
-    assertEquals(pollersBefore, threadsNamed(CONTROL_THREAD));
+    assertEquals(pollersBefore + 1, threadsNamed(CONTROL_THREAD));
     runtime.getMethod("resolveLogPath").invoke(null);
+  }
+
+  @Test
+  void invalidControlPathAndPollIntervalDoNotHideAValidLowerPriorityValue() {
+    String invalid = "bad\0control.json";
+    Properties badSys = new Properties();
+    badSys.setProperty("ohmyrasp.control", invalid);
+    Map<String, String> env = new HashMap<String, String>();
+    env.put("OHMYRASP_CONTROL", "/env/control.json");
+    assertEquals(
+        Paths.get("/env/control.json"),
+        RaspRuntime.Config.resolve(null, badSys, env).controlPath,
+        "an invalid -Dohmyrasp.control must not hide OHMYRASP_CONTROL");
+
+    Properties baked = new Properties();
+    baked.setProperty("control", "/baked/control.json");
+    Map<String, String> badEnv = new HashMap<String, String>();
+    badEnv.put("OHMYRASP_CONTROL", invalid);
+    assertEquals(
+        Paths.get("/baked/control.json"), RaspRuntime.Config.resolve(baked, badSys, badEnv).controlPath);
+    RaspRuntime.Config fallback = RaspRuntime.Config.resolve(null, badSys, badEnv);
+    assertFalse(fallback.controlDisabled);
+    assertEquals(Paths.get("/tmp/ohmyrasp-control.json"), fallback.controlPath);
+
+    // A disabling token is a valid value and wins over a lower-priority path.
+    Properties noneSys = new Properties();
+    noneSys.setProperty("ohmyrasp.control", "none");
+    assertTrue(RaspRuntime.Config.resolve(null, noneSys, env).controlDisabled);
+
+    // Under lock an invalid baked path polls nothing, and sysprop and env stay ignored.
+    Properties lockedBad = new Properties();
+    lockedBad.setProperty("lock_config", "true");
+    lockedBad.setProperty("control", invalid);
+    RaspRuntime.Config locked = RaspRuntime.Config.resolve(lockedBad, null, env);
+    assertTrue(locked.controlDisabled);
+    assertNull(locked.controlPath);
+
+    assertEquals(500L, RaspRuntime.pollMillis("soon", "500"), "an invalid poll_ms property");
+    assertEquals(300L, RaspRuntime.pollMillis("300", "900"));
+    assertEquals(200L, RaspRuntime.pollMillis(null, "50"), "the floor still applies");
+    assertEquals(2000L, RaspRuntime.pollMillis("soon", "later"));
+  }
+
+  @Test
+  void invalidSyncPropertyDoesNotHideAValidEnvironmentValue() {
+    assertTrue(RaspRuntime.syncFlag("maybe", "true"), "an invalid log.sync property");
+    assertFalse(RaspRuntime.syncFlag("false", "true"));
+    assertFalse(RaspRuntime.syncFlag("maybe", "perhaps"));
+  }
+
+  @Test
+  void invalidLegacyBlockPropertyDoesNotHideAValidEnvironmentValue() {
+    assertTrue(RaspRuntime.legacyBlockFlag("maybe", "true"), "an invalid ohmyrasp.java8.block property");
+    assertFalse(RaspRuntime.legacyBlockFlag("no", "true"));
+    assertTrue(RaspRuntime.legacyBlockFlag(null, "yes"));
+    assertFalse(RaspRuntime.legacyBlockFlag("maybe", null));
   }
 
   @Test
@@ -632,6 +738,57 @@ final class Java8ShirudoStandaloneTest {
     RaspRuntime.sampleLatency(100L);
   }
 
+  @Test
+  void standaloneNeverPollsAControlFileEvenWithAnExplicitPath() throws Exception {
+    // As on the primary agent: standalone mode is self-contained, so no control path from any
+    // source turns polling on.
+    Properties sysProps = new Properties();
+    sysProps.setProperty("ohmyrasp.standalone", "true");
+    sysProps.setProperty("ohmyrasp.control", "/sys/control.json");
+    Map<String, String> env = new HashMap<String, String>();
+    env.put("OHMYRASP_STANDALONE", "true");
+    env.put("OHMYRASP_CONTROL", "/env/control.json");
+    Properties baked = new Properties();
+    baked.setProperty("standalone", "true");
+    baked.setProperty("control", "/baked/control.json");
+
+    RaspRuntime.Config fromSys = RaspRuntime.Config.resolve(new Properties(), sysProps, env);
+    RaspRuntime.Config fromEnv = RaspRuntime.Config.resolve(new Properties(), new Properties(), env);
+    RaspRuntime.Config fromBaked =
+        RaspRuntime.Config.resolve(baked, new Properties(), Collections.<String, String>emptyMap());
+    Properties locked = new Properties();
+    locked.putAll(baked);
+    locked.setProperty("lock_config", "true");
+    RaspRuntime.Config fromLocked =
+        RaspRuntime.Config.resolve(locked, new Properties(), Collections.<String, String>emptyMap());
+    RaspRuntime.Config[] configs = new RaspRuntime.Config[] {fromSys, fromEnv, fromBaked, fromLocked};
+    String[] names = new String[] {"system property", "environment", "baked", "baked under lock"};
+    for (int i = 0; i < configs.length; i++) {
+      assertTrue(configs[i].standalone, names[i]);
+      assertTrue(configs[i].controlDisabled, "standalone with a control path from the " + names[i]);
+      assertNull(configs[i].controlPath, names[i]);
+    }
+
+    // The packaged form starts no control poller.
+    int pollersBefore = threadsNamed(CONTROL_THREAD);
+    Map<String, String> init = asyncInit();
+    init.put("ohmyrasp.standalone", "true");
+    init.put("ohmyrasp.control", "/tmp/ohmyrasp-standalone-control.json");
+    init.put("ohmyrasp.java8.log", "none");
+    loadIsolatedRuntime(init);
+    assertEquals(pollersBefore, threadsNamed(CONTROL_THREAD), "a standalone runtime polls nothing");
+  }
+
+  @Test
+  void classesTheHooksUseFirstAreLoadedWhenTheRuntimeInitialises() throws Exception {
+    // A hook must not load a class for the first time: the hooks run inside JDK classes.
+    // Initialising RaspRuntime, before any hook runs, loads the queued-event class.
+    Class<?> runtime = loadIsolatedRuntime(asyncInit());
+    IsolatedLoader loader = (IsolatedLoader) runtime.getClassLoader();
+    String event = RaspRuntime.class.getName() + "$Event";
+    assertTrue(loader.loaded(event), event + " was not loaded by initialisation");
+  }
+
   /** System properties for an isolated runtime: async writes, no control file. */
   private static Map<String, String> asyncInit() {
     Map<String, String> init = new HashMap<String, String>();
@@ -655,7 +812,7 @@ final class Java8ShirudoStandaloneTest {
       urls[i] = roots[i].toUri().toURL();
     }
     urls[roots.length] = RaspRuntime.class.getProtectionDomain().getCodeSource().getLocation();
-    URLClassLoader isolated = new URLClassLoader(urls, null);
+    IsolatedLoader isolated = new IsolatedLoader(urls);
     Map<String, String> previous = new HashMap<String, String>();
     for (Map.Entry<String, String> entry : init.entrySet()) {
       previous.put(entry.getKey(), System.getProperty(entry.getKey()));
@@ -667,6 +824,17 @@ final class Java8ShirudoStandaloneTest {
       for (Map.Entry<String, String> entry : previous.entrySet()) {
         restore(entry.getKey(), entry.getValue());
       }
+    }
+  }
+
+  /** A class loader that answers whether it has loaded a class. */
+  private static final class IsolatedLoader extends URLClassLoader {
+    IsolatedLoader(URL[] urls) {
+      super(urls, null);
+    }
+
+    boolean loaded(String name) {
+      return findLoadedClass(name) != null;
     }
   }
 

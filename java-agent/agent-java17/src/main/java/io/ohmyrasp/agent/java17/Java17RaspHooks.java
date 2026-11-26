@@ -454,6 +454,7 @@ public final class Java17RaspHooks {
   }
 
   public static void beforeFileWrite(Object path) {
+    if (RaspRuntime.inOwnIo()) return; // the agent's own I/O: before any application state
     if (!ARCHIVE_ENTRY.hostDestination(path)) return;
     String rawPath = pathValue(path);
     String normalizedPath = normalizePath(rawPath);
@@ -472,6 +473,7 @@ public final class Java17RaspHooks {
   @Deprecated public static void beforeFileContentWrite(byte[] bytes, int offset, int length) {}
 
   public static void inspectPlotWrite(PlotWrite attempt) {
+    if (RaspRuntime.inOwnIo()) return; // the agent's own I/O: before any application state
     if (attempt == null) return;
     try {
       if (!attempt.hasDirective() || RaspRuntime.detectionOff()) return;
@@ -500,6 +502,7 @@ public final class Java17RaspHooks {
 
   public static void beforeUnixFileOpen(java.nio.file.Path path, boolean read, int directoryFd,
       boolean noFollowFinal, boolean creatingNew) {
+    if (RaspRuntime.inOwnIo()) return; // the agent's own I/O: before any application state
     if (HostReadPath.nativeRead(path, read && !creatingNew, directoryFd) && !RaspRuntime.detectionOff()) {
       HostReadPath.OpenPolicy links = noFollowFinal ? HostReadPath.OpenPolicy.NOFOLLOW_FINAL : HostReadPath.OpenPolicy.FOLLOW;
       emitFileFinding(classifyFileRead(path.toString(), links), null, "UnixChannelFactory.open");
@@ -519,6 +522,7 @@ public final class Java17RaspHooks {
   }
 
   public static void beforeNioFileRead(Object path) {
+    if (RaspRuntime.inOwnIo()) return; // the agent's own I/O: before any application state
     if (HostReadPath.needsFacadeRead(path)) {
       emitFileFinding(classifyFileRead(pathValue(path), HostReadPath.OpenPolicy.PATH_ONLY), LAST_LOGGED_FILE_READ, "FileInputStream.open");
     }
@@ -529,6 +533,7 @@ public final class Java17RaspHooks {
   }
 
   public static void beforeNioByteChannelOpen(Object path, Object options) {
+    if (RaspRuntime.inOwnIo()) return; // the agent's own I/O: before any application state
     if (nioOptionsContainWrite(options)) {
       beforeFileWrite(path);
     } else {
@@ -929,10 +934,12 @@ public final class Java17RaspHooks {
   public static void beforeJaasConfigEntry(Object loginModuleName, Object options) {}
 
   public static void beforeJmxStreamWrite(String path, int write) {
+    if (RaspRuntime.inOwnIo()) return; // the agent's own I/O: before any application state
     if (write != 0 && JmxWriteScope.current() != null) inspectJmxFileWrite(path, "stream_open");
   }
 
   public static void beforeUnixChannelWrite(java.nio.file.Path path, int directoryFd, boolean write) {
+    if (RaspRuntime.inOwnIo()) return; // the agent's own I/O: before any application state
     if (!write) return;
     ArchiveEntryContext.ChannelWrite open = ARCHIVE_ENTRY.atChannelOpen(path, directoryFd);
     if (open != null && !RaspRuntime.detectionOff())
@@ -941,6 +948,7 @@ public final class Java17RaspHooks {
   }
 
   public static void beforeJmxChannelWrite(java.nio.file.Path path, int directoryFd, boolean write) {
+    if (RaspRuntime.inOwnIo()) return; // the agent's own I/O: before any application state
     if (write && JmxWriteScope.current() != null && (directoryFd < 0 || path.isAbsolute()))
       inspectJmxFileWrite(path.toString(), "channel_open");
   }
@@ -4090,15 +4098,7 @@ public final class Java17RaspHooks {
   public static boolean enforceElasticLz4Bounds() { return shouldBlock(); }
 
   private static boolean shouldBlock() {
-    String property = System.getProperty("ohmyrasp.java17.block");
-    if (property == null || property.trim().length() == 0) {
-      property = System.getenv("OHMYRASP_JAVA17_BLOCK");
-    }
-    boolean legacy =
-        "true".equalsIgnoreCase(property)
-            || "1".equals(property)
-            || "yes".equalsIgnoreCase(property);
-    return RaspRuntime.blockingAllowed(legacy);
+    return RaspRuntime.blockingAllowed(RaspRuntime.legacyBlockFlag());
   }
 
   private static void appendEvent(Finding finding, String hook, String action) {

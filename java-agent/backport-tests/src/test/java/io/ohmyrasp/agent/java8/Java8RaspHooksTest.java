@@ -17,6 +17,7 @@ import java.net.URL;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.util.Arrays;
 import java.util.Base64;
 import java.util.HashMap;
@@ -1363,6 +1364,32 @@ final class Java8RaspHooksTest {
 
 
   @Test
+  void theAgentsOwnIoIsNeitherReportedNorBlocked() throws Exception {
+    // The packaged-agent probe java-agent/probes/own-writes runs this case through the instrumented
+    // JDK file classes; here the hook is called directly while the runtime marks its own I/O.
+    Path log = Files.createTempFile("ohmyrasp-java8-own-io", ".jsonl");
+    Files.delete(log);
+    System.setProperty("ohmyrasp.java8.log", log.toString());
+    System.setProperty("ohmyrasp.java8.block", "true");
+    final String spool = "/usr/local/tomcat/webapps/ROOT/events.jsp";
+
+    boolean entered = RaspRuntime.enterOwnIo();
+    try {
+      assertTrue(entered);
+      assertFalse(RaspRuntime.enterOwnIo(), "a nested mark leaves clearing to the outermost caller");
+      Java8RaspHooks.beforeFileWrite(spool);
+      Java8RaspHooks.beforeNioFileWrite(spool);
+    } finally {
+      RaspRuntime.exitOwnIo(entered);
+    }
+    assertFalse(RaspRuntime.inOwnIo());
+    assertFalse(Files.exists(log), "nothing reported");
+
+    // The same write by the application is blocked.
+    assertThrows(Java8RaspBlockException.class, () -> Java8RaspHooks.beforeFileWrite(spool));
+  }
+
+  @Test
   void ignoresMavenRepositoryJarWrite() throws Exception {
     Path log = Files.createTempFile("ohmyrasp-java8-maven-repository", ".jsonl");
     Files.delete(log);
@@ -1899,6 +1926,29 @@ final class Java8RaspHooksTest {
     Java8RaspHooks.beforeFileWrite("/tmp/archive/../draft.txt");
 
     assertFalse(Files.exists(log));
+  }
+
+  @Test
+  void theAgentsOwnChannelOpenLeavesAPendingArchiveMemberForTheApplication() throws Exception {
+    Path log = Files.createTempFile("ohmyrasp-java8-own-io-archive", ".jsonl");
+    Files.delete(log);
+    System.setProperty("ohmyrasp.java8.log", log.toString());
+
+    Java8RaspHooks.afterArchiveEntryName("../notes/report.txt");
+    // The agent's own control read or spool write opens a channel between the member's selection
+    // and the application's own open of the destination.
+    boolean entered = RaspRuntime.enterOwnIo();
+    try {
+      Java8RaspHooks.beforeUnixChannelWrite(Paths.get("/tmp/ohmyrasp-events.jsonl"), -1, true);
+    } finally {
+      RaspRuntime.exitOwnIo(entered);
+    }
+    Java8RaspHooks.beforeFileWrite("/tmp/extract/../notes/report.txt");
+
+    String text = Files.exists(log) ? new String(Files.readAllBytes(log), StandardCharsets.UTF_8) : "";
+    assertTrue(
+        text.contains("\"algorithm\":\"java8_archive_entry_traversal_write\""),
+        "the application's write still sees the archive member: " + text);
   }
 
   @Test

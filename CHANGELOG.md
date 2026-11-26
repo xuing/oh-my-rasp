@@ -21,6 +21,40 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `CONTRIBUTING.md`, `SECURITY.md`, and `.github/PULL_REQUEST_TEMPLATE.md` to
   align toolchains, commands, and generated-doc checks with the current tree.
 
+### Fixed
+- **Java agent (all 4 tracks):** a `lock_config=true` profile without a baked
+  `control` path no longer polls `/tmp/ohmyrasp-control.json`.
+- **Java agent (all 4 tracks):** the control file is read on every poll and
+  applied when its content changes, not its modification time, so a document
+  read half-written is applied once complete. When the file is removed, the
+  mode (and on `agent-jdk25` the per-algorithm switches, the revision and a
+  policy the file installed) return to their start-up values together, so an
+  `ignore` rule from a removed control file stops suppressing detections; a
+  policy installed by the direct-cloud client stays. An unreadable file keeps
+  the last good state.
+- **Java agent (all 4 tracks):** only well-formed control-file content changes
+  anything: at most 1 MiB (a larger file is not read past that bound), strict
+  UTF-8, and exactly one JSON object, with `mode` read from its top level. A
+  truncated document, a nested `mode`, a number such as `01`, non-ASCII escape
+  digits or malformed UTF-8 no longer switch detection, and no error from the
+  poll step stops the poller.
+- **Java agent (`java8`/`java11`/`java17`):** standalone mode never polls a
+  control file, as on `agent-jdk25`; before, an explicitly set control path was
+  polled in standalone mode.
+- **Java agent (all 4 tracks):** an invalid control path, poll interval or
+  `ohmyrasp.log.sync` value no longer hides a valid lower-priority value; on the
+  backports the same holds for `ohmyrasp.java{8,11,17}.block`, and on
+  `agent-jdk25` for `ohmyrasp.latency_sample` and `ohmyrasp.log.queue`.
+- **Java agent (all 4 tracks):** the shutdown hook waits up to 2 seconds for the
+  event writer, then writes what is still queued waiting at most 1 second for
+  the write lock, and an event submitted after that is written inline; on the
+  backports a queued event is written to the log target it was accepted for.
+- **Java agent (all 4 tracks):** the agent's own event and control-file I/O is
+  no longer reported or blocked by its file hooks, so a spool path such as
+  `webapps/ROOT/events.jsp` no longer aborts or hangs the JVM in block mode,
+  and it no longer uses up a pending archive entry the application's next
+  write is checked against.
+
 ## [0.2.0-alpha.1] - 2026-11-25
 
 ### Security

@@ -28,6 +28,7 @@ final class ShirudoStandaloneTest {
           "ohmyrasp.mode",
           "ohmyrasp.standalone",
           "ohmyrasp.control",
+          "ohmyrasp.control.poll_ms",
           "ohmyrasp.log",
           "ohmyrasp.latency_sample",
           "ohmyrasp.lock_config");
@@ -161,6 +162,62 @@ final class ShirudoStandaloneTest {
     assertEquals("stdout", runtime.agentArgLogTarget());
     assertEquals(5, runtime.agentArgLatencySample());
     assertEquals(beforeThreads, countThreadsNamed("ohmyrasp-control-poller"));
+  }
+
+  @Test
+  void lockedProfileWithoutABakedControlPathPollsNoControlFile(@TempDir Path tempDir) {
+    // The default /tmp/ohmyrasp-control.json is world-writable. A locked profile that bakes no
+    // control path polls nothing, whatever agent arguments and system properties say.
+    System.setProperty("ohmyrasp.control", tempDir.resolve("sys-control.json").toString());
+    Properties props = new Properties();
+    props.setProperty("lock_config", "true");
+    props.setProperty("standalone", "false");
+    long before = countThreadsNamed("ohmyrasp-control-poller");
+    AgentRuntime runtime = AgentRuntime.newForTesting(ShirudoDefaults.fromProperties(props));
+    runtime.start("control=" + tempDir.resolve("arg-control.json"));
+    assertFalse(runtime.isStandalone());
+    assertTrue(runtime.isControlPollingDisabled(), "a locked profile without a baked control path");
+    assertEquals(before, countThreadsNamed("ohmyrasp-control-poller"));
+
+    // A baked control path under lock keeps working.
+    props.setProperty("control", tempDir.resolve("baked-control.json").toString());
+    AgentRuntime baked = AgentRuntime.newForTesting(ShirudoDefaults.fromProperties(props));
+    baked.start("control=none");
+    assertFalse(baked.isControlPollingDisabled(), "a locked profile with a baked control path");
+  }
+
+  @Test
+  void invalidControlPathAndPollIntervalDoNotHideAValidLowerPriorityValue(@TempDir Path tempDir) {
+    String invalid = "bad\0control.json";
+    Path sysControl = tempDir.resolve("sys-control.json");
+    System.setProperty("ohmyrasp.control", sysControl.toString());
+    AgentRuntime fromProperty = AgentRuntime.newForTesting(ShirudoDefaults.absent());
+    fromProperty.start("control=" + invalid);
+    assertFalse(fromProperty.isControlPollingDisabled());
+    assertEquals(sysControl, fromProperty.controlPath(), "an invalid control argument");
+    System.clearProperty("ohmyrasp.control");
+
+    Properties props = new Properties();
+    props.setProperty("control", tempDir.resolve("baked-control.json").toString());
+    AgentRuntime fromBaked = AgentRuntime.newForTesting(ShirudoDefaults.fromProperties(props));
+    fromBaked.start("control=" + invalid);
+    assertEquals(tempDir.resolve("baked-control.json"), fromBaked.controlPath());
+
+    // Under lock an invalid baked path polls nothing.
+    Properties locked = new Properties();
+    locked.setProperty("lock_config", "true");
+    locked.setProperty("control", invalid);
+    AgentRuntime lockedRuntime = AgentRuntime.newForTesting(ShirudoDefaults.fromProperties(locked));
+    lockedRuntime.start(null);
+    assertTrue(lockedRuntime.isControlPollingDisabled());
+    assertNull(lockedRuntime.controlPath());
+
+    System.setProperty("ohmyrasp.control.poll_ms", "700");
+    assertEquals(700L, AgentRuntime.pollIntervalMillis("control_poll_ms=soon"), "an invalid poll argument");
+    assertEquals(300L, AgentRuntime.pollIntervalMillis("control_poll_ms=300"));
+    assertEquals(200L, AgentRuntime.pollIntervalMillis("control_poll_ms=5"), "the floor still applies");
+    System.setProperty("ohmyrasp.control.poll_ms", "later");
+    assertEquals(2000L, AgentRuntime.pollIntervalMillis("control_poll_ms=soon"));
   }
 
   @Test

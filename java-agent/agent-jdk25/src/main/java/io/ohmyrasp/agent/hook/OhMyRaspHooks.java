@@ -40,6 +40,7 @@ import io.ohmyrasp.agent.loading.CodebaseUrls;
 import io.ohmyrasp.agent.loading.ClassDefinitionOrigin;
 import io.ohmyrasp.agent.rules.product.spark.SparkSubmitRole;
 import io.ohmyrasp.agent.http.ServletSubmitRole;
+import io.ohmyrasp.agent.runtime.AgentOwnIo;
 import io.ohmyrasp.agent.runtime.AgentRuntime;
 import io.ohmyrasp.agent.runtime.DetectionMode;
 import io.ohmyrasp.agent.xml.XmlCatalogResolution;
@@ -64,8 +65,6 @@ import java.util.zip.ZipEntry;
 
 public final class OhMyRaspHooks {
   private static final DetectorEngine DETECTORS = new DetectorEngine();
-  private static volatile AgentPolicy POLICY = AgentPolicy.absent();
-  private static volatile String POLICY_AGENT_KEY = "";
   private static final ThreadLocal<RequestContext> REQUEST =
       ThreadLocal.withInitial(RequestContext::empty);
   private static final ThreadLocal<Object> RESPONSE = new ThreadLocal<>();
@@ -78,9 +77,14 @@ public final class OhMyRaspHooks {
 
   private OhMyRaspHooks() {}
 
+  /** Installs a policy from the direct-cloud client; see {@link AgentRuntime#installDirectPolicy}. */
   public static void installPolicy(AgentPolicy policy, String agentKey) {
-    POLICY = policy == null ? AgentPolicy.empty() : policy;
-    POLICY_AGENT_KEY = agentKey == null ? "" : agentKey;
+    AgentRuntime.get().installDirectPolicy(policy, agentKey);
+  }
+
+  /** The installed policy, part of the runtime's control state. */
+  private static AgentPolicy policy() {
+    return AgentRuntime.get().policy();
   }
 
   public static void enterHttpRequest(Object request, Object response) {
@@ -138,7 +142,7 @@ public final class OhMyRaspHooks {
 
   private static void inspectRequest(RequestContext request) {
     emit(DETECTORS.detectRequest(request));
-    AgentPolicy policy = POLICY;
+    AgentPolicy policy = policy();
     if (policy.selectsAlgorithm("xss_userinput")) emit(ResponseContentDetector.detectMarkupParameter(request));
     if (policy.selectsAlgorithm("request_scanner")) emit(DETECTORS.detectScannerUserAgent(request));
     if (policy.loaded() && !request.body().isBlank()) {
@@ -287,7 +291,7 @@ public final class OhMyRaspHooks {
     }
     try {
       emit(RemoteJobDetector.detect(mechanism, descriptor, currentRequest(),
-          POLICY.selectsAlgorithm("request_remote_job_submission")));
+          policy().selectsAlgorithm("request_remote_job_submission")));
     } catch (OhMyRaspBlockException blocked) {
       throw blocked;
     } catch (Throwable throwable) {
@@ -350,7 +354,7 @@ public final class OhMyRaspHooks {
     if (detectionDisabled()) return;
     try {
       var finding = ProcessDetector.detectCommand(java.util.Arrays.asList(argv), currentRequest(), stackTraceClassNames(),
-          POLICY.selectsAlgorithm("command_reflect"));
+          policy().selectsAlgorithm("command_reflect"));
       if (finding.isEmpty()) return;
       String api = io.ohmyrasp.agent.process.ProcessLaunch.api();
       if (api == null) return;
@@ -381,7 +385,7 @@ public final class OhMyRaspHooks {
       return;
     }
     try {
-      emit(ProcessDetector.detectCommand(processBuilder.command(), currentRequest(), stackClassNames, POLICY.selectsAlgorithm("command_reflect")));
+      emit(ProcessDetector.detectCommand(processBuilder.command(), currentRequest(), stackClassNames, policy().selectsAlgorithm("command_reflect")));
     } catch (OhMyRaspBlockException blocked) {
       throw blocked;
     } catch (Throwable throwable) {
@@ -395,7 +399,7 @@ public final class OhMyRaspHooks {
     }
     try {
       List<String> items = List.of(PosixShellCommand.runtimeArguments(command));
-      emit(ProcessDetector.detectCommand(items, currentRequest(), stackTraceClassNames(), POLICY.selectsAlgorithm("command_reflect")));
+      emit(ProcessDetector.detectCommand(items, currentRequest(), stackTraceClassNames(), policy().selectsAlgorithm("command_reflect")));
     } catch (OhMyRaspBlockException blocked) {
       throw blocked;
     } catch (Throwable throwable) {
@@ -412,7 +416,7 @@ public final class OhMyRaspHooks {
       if (command != null) {
         Collections.addAll(items, command);
       }
-      emit(ProcessDetector.detectCommand(items, currentRequest(), stackTraceClassNames(), POLICY.selectsAlgorithm("command_reflect")));
+      emit(ProcessDetector.detectCommand(items, currentRequest(), stackTraceClassNames(), policy().selectsAlgorithm("command_reflect")));
     } catch (OhMyRaspBlockException blocked) {
       throw blocked;
     } catch (Throwable throwable) {
@@ -446,7 +450,7 @@ public final class OhMyRaspHooks {
             Map.of("source", "MyBatis", "reason", reason, "decision_basis", "mapper_substitution_at_jdbc"));
         emit(Optional.of(finding), true, algorithm -> MyBatisSqlTrace.repeatedObservation(query, algorithm));
         // A managed policy may independently select the existing JDBC classifier.
-        if (!POLICY.loaded()) return;
+        if (!policy().loaded()) return;
       }
       emit(JdbcDetector.detectSql(query, request, jdbcReceiver), true,
           algorithm -> MyBatisSqlTrace.repeatedObservation(query, algorithm));
@@ -578,7 +582,7 @@ public final class OhMyRaspHooks {
     try {
       RequestContext origin = HTTP_SUBMISSIONS.origin(exchange);
       RequestContext request = origin == null ? RequestContext.empty() : origin;
-      var finding = NetworkDestinationDetector.classifyHttpTransport(uri, request, POLICY.loaded(), peer, HttpTransportObservation.changedOrigin(exchange, uri));
+      var finding = NetworkDestinationDetector.classifyHttpTransport(uri, request, policy().loaded(), peer, HttpTransportObservation.changedOrigin(exchange, uri));
       if (finding.isEmpty()) return;
       var observed = transportEvidence(finding.get(), peer == null ? "http_exchange_acquire" : "http_resolved_route", peer);
       emit(Optional.of(observed), false, null, origin != null && origin == currentRequest());
@@ -635,7 +639,7 @@ public final class OhMyRaspHooks {
     if (detectionDisabled() || url == null) return;
     try {
       RequestContext request = currentRequest();
-      var finding = NetworkDestinationDetector.classifyHttpTransport(url, request, POLICY.loaded(), peer, redirected);
+      var finding = NetworkDestinationDetector.classifyHttpTransport(url, request, policy().loaded(), peer, redirected);
       if (finding.isEmpty()) return;
       Detection observed = transportEvidence(finding.get(), basis, peer);
       emit(Optional.of(observed), false,
@@ -653,7 +657,7 @@ public final class OhMyRaspHooks {
     }
     try {
       String raw = url instanceof URL typed ? typed.toExternalForm() : String.valueOf(url);
-      emit(NetworkDestinationDetector.detectUrl(raw, currentRequest(), POLICY.loaded()));
+      emit(NetworkDestinationDetector.detectUrl(raw, currentRequest(), policy().loaded()));
     } catch (OhMyRaspBlockException blocked) {
       throw blocked;
     } catch (Throwable throwable) {
@@ -690,7 +694,7 @@ public final class OhMyRaspHooks {
       if (LookupRoute.LOGIN_LOOKUP.equals(operation)) {
         if (request.active() && AgentRuntime.get().isAlgorithmEnabled("jndi_jaas_config")) {
           emit(RemoteResourceDetector.detectJndi(url, request, operation));
-          if (!POLICY.loaded()) return;
+          if (!policy().loaded()) return;
         }
         // A managed policy may enforce the general naming rule independently.
         operation = "InitialContext.lookup";
@@ -773,12 +777,14 @@ public final class OhMyRaspHooks {
   }
 
   public static void beforeJmxStreamWrite(String path, int write) {
+    if (AgentOwnIo.active()) return; // the agent's own I/O: before any application state
     JmxWriteScope scope = write != 0 ? JmxWriteScope.current() : null;
     if (scope != null && !detectionDisabled())
       emit(HostFileMutationDetector.detectJmxFileWrite(path, scope, "stream_open", currentRequest()));
   }
 
   public static void beforeUnixChannelWrite(java.nio.file.Path path, int directoryFd, boolean write) {
+    if (AgentOwnIo.active()) return; // the agent's own I/O: before any application state
     if (!write) return;
     var open = ARCHIVE_ENTRY.atChannelOpen(path, directoryFd);
     if (open != null && !detectionDisabled()) emit(HostFileMutationDetector.detectArchiveExtraction(open, currentRequest()));
@@ -786,6 +792,7 @@ public final class OhMyRaspHooks {
   }
 
   public static void beforeJmxChannelWrite(java.nio.file.Path path, int directoryFd, boolean write) {
+    if (AgentOwnIo.active()) return; // the agent's own I/O: before any application state
     JmxWriteScope scope = write ? JmxWriteScope.current() : null;
     if (scope != null && !detectionDisabled() && (directoryFd < 0 || path.isAbsolute()))
       emit(HostFileMutationDetector.detectJmxFileWrite(path.toString(), scope, "channel_open", currentRequest()));
@@ -853,7 +860,7 @@ public final class OhMyRaspHooks {
                 "decision_basis", "attachment_file_open"))), true, ignored -> io.ohmyrasp.agent.xml.AttachmentFileRead.repeated(),
             request.active() && request == currentRequest());
       } else {
-        var finding = FileAccessDetector.detectFileRead(path, currentRequest(), OhMyRaspHooks::isXmlParserStack, POLICY.loaded(), links);
+        var finding = FileAccessDetector.detectFileRead(path, currentRequest(), OhMyRaspHooks::isXmlParserStack, policy().loaded(), links);
         if (finding.isPresent()) {
           Detection observed = finding.get();
           String basis = observed.details().getOrDefault("decision_basis", "");
@@ -881,6 +888,7 @@ public final class OhMyRaspHooks {
   }
 
   public static void beforeFileWrite(String path) {
+    if (AgentOwnIo.active()) return; // the agent's own I/O: before any application state
     if (detectionDisabled()) {
       return;
     }
@@ -888,6 +896,7 @@ public final class OhMyRaspHooks {
   }
 
   public static void beforeFileWrite(String path, List<String> stackClassNames) {
+    if (AgentOwnIo.active()) return; // the agent's own I/O: before any application state
     if (detectionDisabled()) {
       return;
     }
@@ -904,12 +913,13 @@ public final class OhMyRaspHooks {
   }
 
   public static void beforeWindowsStreamWrite(String path, int writeAccess) {
+    if (AgentOwnIo.active()) return; // the agent's own I/O: before any application state
     if (writeAccess == 0 || java.io.File.separatorChar != '\\') return;
     WindowsDataStream stream = WindowsDataStream.parse(path);
     if (stream == null || detectionDisabled()) return;
     try {
       emit(HostFileMutationDetector.detectWindowsStreamWrite(stream, currentRequest(),
-          stream.name().isEmpty() ? stackTraceClassNames() : List.of(), POLICY.selectsAlgorithm("writeFile_NTFS")));
+          stream.name().isEmpty() ? stackTraceClassNames() : List.of(), policy().selectsAlgorithm("writeFile_NTFS")));
     } catch (OhMyRaspBlockException blocked) {
       throw blocked;
     } catch (Throwable failure) {
@@ -918,6 +928,7 @@ public final class OhMyRaspHooks {
   }
 
   public static void beforeFileWriteObject(Object file) {
+    if (AgentOwnIo.active()) return; // the agent's own I/O: before any application state
     if (detectionDisabled()) {
       return;
     }
@@ -985,7 +996,7 @@ public final class OhMyRaspHooks {
       RequestContext current = currentRequest();
       RequestContext origin = walk == null ? current : walk.origin instanceof RequestContext source ? source : RequestContext.empty();
       for (Detection finding : FileAccessDetector.directoryListings(path, origin, opened, relative, observed,
-          walk != null && walk.selected, POLICY::selectsAlgorithm, stack)) {
+          walk != null && walk.selected, policy()::selectsAlgorithm, stack)) {
         if (observed) {
           var details = new java.util.LinkedHashMap<>(finding.details());
           details.put("directory_operation", opened == null ? "file_list" : relative ? "descriptor_relative_open" : "stream_open");
@@ -1039,7 +1050,7 @@ public final class OhMyRaspHooks {
           ? ArchiveUploadPolicy.inspect(DISPATCH.servletRequest()) : ArchiveUploadPolicy.UNSPECIFIED;
       ArchiveUploadPolicy.Decision decision = evaluation.decision;
       var finding = archiveOnly ? FileUploadDetector.deniedArchiveUpload(filename, currentRequest(), decision)
-          : FileUploadDetector.detectFileUpload(filename, currentRequest(), decision, POLICY.loaded());
+          : FileUploadDetector.detectFileUpload(filename, currentRequest(), decision, policy().loaded());
       if (finding.isPresent()) {
         Detection event = finding.get();
         String basis = event.details().getOrDefault("decision_basis", "");
@@ -1106,6 +1117,7 @@ public final class OhMyRaspHooks {
 
   public static void beforeUnixFileOpen(java.nio.file.Path path, boolean read, int directoryFd,
       boolean noFollowFinal, boolean creatingNew) {
+    if (AgentOwnIo.active()) return; // the agent's own I/O: before any application state
     if (HostReadPath.nativeRead(path, read && !creatingNew, directoryFd)) {
       inspectFileRead(path.toString(), noFollowFinal ? HostReadPath.OpenPolicy.NOFOLLOW_FINAL : HostReadPath.OpenPolicy.FOLLOW,
           "UnixChannelFactory.open");
@@ -1130,6 +1142,7 @@ public final class OhMyRaspHooks {
   }
 
   public static void beforePathWrite(Object path) {
+    if (AgentOwnIo.active()) return; // the agent's own I/O: before any application state
     if (detectionDisabled()) {
       return;
     }
@@ -1137,6 +1150,7 @@ public final class OhMyRaspHooks {
   }
 
   public static void beforePathWrite(Object path, List<String> stackClassNames) {
+    if (AgentOwnIo.active()) return; // the agent's own I/O: before any application state
     if (detectionDisabled()) {
       return;
     }
@@ -1167,6 +1181,7 @@ public final class OhMyRaspHooks {
   }
 
   public static void beforeEncodedScriptWrite(byte[] bytes, Object target, String text, java.nio.charset.Charset charset) {
+    if (AgentOwnIo.active()) return; // the agent's own I/O: before any application state
     // The immediately following Files.write(byte[]) observes a complete small UTF-8 input itself.
     if (text == null || detectionDisabled() || (charset == StandardCharsets.UTF_8 && bytes.length <= 8192)
         || !HostFileSystem.contains(target)) return;
@@ -1185,6 +1200,7 @@ public final class OhMyRaspHooks {
   }
 
   public static void beforeGeneratedScriptFileWrite(Object path, Object content) {
+    if (AgentOwnIo.active()) return; // the agent's own I/O: before any application state
     if (detectionDisabled() || !HostFileSystem.contains(path)) {
       return;
     }
@@ -1221,7 +1237,7 @@ public final class OhMyRaspHooks {
       if (!request.active()) return;
       boolean relative = directory != null && !path.isAbsolute();
       var entry = new io.ohmyrasp.agent.file.HostDelete(path, directoryFd, relative, true);
-      var finding = HostFileMutationDetector.detectFileDelete(entry, request, POLICY.selectsAlgorithm("deleteFile_userinput"));
+      var finding = HostFileMutationDetector.detectFileDelete(entry, request, policy().selectsAlgorithm("deleteFile_userinput"));
       if (finding.isEmpty()) return;
       if (directory != null && !io.ohmyrasp.agent.file.HostDelete.hasEntry(directory, path, removeDirectory)) return;
       if ("file_api_delete".equals(operation) && !java.nio.file.Files.exists(path, java.nio.file.LinkOption.NOFOLLOW_LINKS)) return;
@@ -1340,7 +1356,7 @@ public final class OhMyRaspHooks {
       return;
     }
     try {
-      emit(FileAccessDetector.detectFileRead(path, currentRequest(), true, POLICY.loaded()));
+      emit(FileAccessDetector.detectFileRead(path, currentRequest(), true, policy().loaded()));
     } catch (OhMyRaspBlockException blocked) {
       throw blocked;
     } catch (Throwable throwable) {
@@ -1453,7 +1469,7 @@ public final class OhMyRaspHooks {
   }
 
   public static void beforeServletObjectRead(java.io.ObjectInputStream stream) {
-    if (detectionDisabled() || !POLICY.selectsAlgorithm("deserialization_http_object_stream")) return;
+    if (detectionDisabled() || !policy().selectsAlgorithm("deserialization_http_object_stream")) return;
     String source = ServletObjectStreams.source(stream);
     if (source != null) emit(DeserializationDetector.detectHttpObjectStreamDeserialization(source, currentRequest()));
   }
@@ -1510,7 +1526,7 @@ public final class OhMyRaspHooks {
   public static void beforeHttpInvokerDeserialization(String mechanism) {}
 
   public static void beforeHttpInvokerRead(Object exporter) {
-    if (detectionDisabled() || !POLICY.selectsAlgorithm("deserialization_http_invoker")) return;
+    if (detectionDisabled() || !policy().selectsAlgorithm("deserialization_http_invoker")) return;
     for (Class<?> c = exporter.getClass(); c != null; c = c.getSuperclass()) {
       if ("org.springframework.remoting.httpinvoker.HttpInvokerServiceExporter".equals(c.getName())
           || "org.springframework.remoting.httpinvoker.SimpleHttpInvokerServiceExporter".equals(c.getName())) {
@@ -1532,7 +1548,7 @@ public final class OhMyRaspHooks {
   public static void beforeXmlRpcObjectRead(java.io.ObjectInputStream stream) {
     if (detectionDisabled()) return;
     XmlRpcReadScope.reading(stream);
-    if (!POLICY.selectsAlgorithm("deserialization_xmlrpc_serialized")) return;
+    if (!policy().selectsAlgorithm("deserialization_xmlrpc_serialized")) return;
     emit(DeserializationDetector.detectXmlRpcSerializableValue("ApacheXmlRpc", currentRequest()), true);
   }
 
@@ -1656,7 +1672,7 @@ public final class OhMyRaspHooks {
   }
 
   public static void beforeResponseDataLeak(String contentType, String content) {
-    if (detectionDisabled() || !POLICY.selectsAlgorithm("response_dataLeak")) {
+    if (detectionDisabled() || !policy().selectsAlgorithm("response_dataLeak")) {
       return;
     }
     try {
@@ -1670,7 +1686,7 @@ public final class OhMyRaspHooks {
 
   public static void beforeXssEcho(String content) {
     Object response = RESPONSE.get();
-    if (detectionDisabled() || response == null || !POLICY.selectsAlgorithm("xss_echo")) return;
+    if (detectionDisabled() || response == null || !policy().selectsAlgorithm("xss_echo")) return;
     try {
       String type = invokeString(ServletContracts.of(response), response, "getContentType").orElse("");
       int separator = type.indexOf(';');
@@ -2086,19 +2102,21 @@ public final class OhMyRaspHooks {
 
   private static void emit(Optional<Detection> detection,
       boolean allowNonRequestBlock, java.util.function.Predicate<String> repeatedObservation, boolean mayRedirect) {
-    if (detection.isEmpty()) {
+    // The agent's own event and control I/O is neither reported nor blocked.
+    if (detection.isEmpty() || AgentOwnIo.active()) {
       return;
     }
     long started = System.nanoTime();
     Detection value = detection.orElseThrow();
     // Local runtime controls (mode + per-algorithm switches), hot-reloaded from
     // the daemon/operator control file. Unset mode keeps legacy behavior.
-    AgentRuntime runtime = AgentRuntime.get();
+    // One snapshot for the whole decision: mode, switches and policy always belong together.
+    AgentRuntime.ControlState runtime = AgentRuntime.get().state();
     if (!runtime.detectionEnabled() || !runtime.isAlgorithmEnabled(value.algorithm())) {
       return;
     }
     long ruleEvaluationStarted = System.nanoTime();
-    PolicyEvaluation policyEvaluation = POLICY.evaluate(value, POLICY_AGENT_KEY);
+    PolicyEvaluation policyEvaluation = runtime.policy().evaluate(value, runtime.policyAgentKey());
     long ruleEvaluationUs = elapsedMicros(ruleEvaluationStarted);
     if (policyEvaluation.ignored()) {
       return;
@@ -2162,8 +2180,9 @@ public final class OhMyRaspHooks {
    * actually removes the hot-path cost rather than just suppressing the result.
    * Cleanup/accessor hooks intentionally do not consult this.
    */
+  /** True when detection is OFF, and during the agent's own I/O on this thread. */
   private static boolean detectionDisabled() {
-    return AgentRuntime.get().mode() == DetectionMode.OFF;
+    return AgentRuntime.get().mode() == DetectionMode.OFF || AgentOwnIo.active();
   }
 
   private static long elapsedMicros(long startedNanos) {

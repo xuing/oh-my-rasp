@@ -3,6 +3,7 @@ package io.ohmyrasp.agent.log;
 import io.ohmyrasp.agent.control.ControlPlaneClient;
 import io.ohmyrasp.agent.model.Detection;
 import io.ohmyrasp.agent.model.RequestContext;
+import io.ohmyrasp.agent.runtime.AgentOwnIo;
 import io.ohmyrasp.agent.runtime.AgentRuntime;
 import io.ohmyrasp.agent.runtime.ShirudoDefaults;
 import java.io.IOException;
@@ -20,6 +21,7 @@ import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicLong;
+import java.util.concurrent.locks.ReentrantLock;
 
 /**
  * Writes security events to the local NDJSON spool the daemon tails, and to
@@ -34,6 +36,10 @@ import java.util.concurrent.atomic.AtomicLong;
  */
 public final class JsonEventLogger {
   private static final JsonEventLogger INSTANCE = new JsonEventLogger();
+  // The shutdown hook waits this long for the writer to finish the batch it holds.
+  private static final long SHUTDOWN_JOIN_MILLIS = 2000;
+  // Once shutdown has begun, a write waits this long for the write lock and then gives up.
+  private static final long SHUTDOWN_LOCK_MILLIS = 1000;
   private static final Set<String> SENSITIVE_HEADER_NAMES =
       Set.of(
           "authorization",
@@ -106,12 +112,17 @@ public final class JsonEventLogger {
   private final BlockingQueue<Sample> queue;
   private final AtomicLong dropped = new AtomicLong();
   private final AtomicLong sampleCounter = new AtomicLong();
-  private final Object writeLock = new Object();
+  // Serialises file and console output, so concurrent writers never interleave a line.
+  final ReentrantLock writeLock = new ReentrantLock();
   private final boolean syncWrites;
   private final int latencySampleRate;
   private final PrintStream customOut;
   private final PrintStream customErr;
+  private final Thread writer;
   private volatile boolean running = true;
+  // Set by shutdown once the writer is gone or given up on: from then on events are written on
+  // the caller's thread, and writes wait only a bounded time for the write lock.
+  private volatile boolean closed;
   private volatile ControlPlaneClient controlPlaneClient;
 
   private JsonEventLogger() {
@@ -190,11 +201,13 @@ public final class JsonEventLogger {
       this.queue = new ArrayBlockingQueue<>(queueCapacity());
       Thread writer = new Thread(this::drainLoop, "ohmyrasp-event-writer");
       writer.setDaemon(true);
+      this.writer = writer;
       writer.start();
       Runtime.getRuntime()
           .addShutdownHook(new Thread(this::shutdown, "ohmyrasp-event-writer-shutdown"));
     } else {
       this.queue = null;
+      this.writer = null;
     }
   }
 
@@ -276,12 +289,16 @@ public final class JsonEventLogger {
       flush(List.of(sample));
       return;
     }
-    if (syncWrites) {
+    if (syncWrites || closed) {
       flush(List.of(sample));
       return;
     }
     if (!queue.offer(sample)) {
       dropped.incrementAndGet();
+    }
+    if (closed) {
+      // Shutdown may have drained the queue before this event arrived: write what is left.
+      flushRest();
     }
   }
 
@@ -302,7 +319,8 @@ public final class JsonEventLogger {
 
   private void drainLoop() {
     List<Sample> batch = new ArrayList<>(64);
-    while (running || !queue.isEmpty()) {
+    // Stops once shutdown begins; the shutdown hook writes what is still queued.
+    while (running) {
       try {
         Sample first = queue.poll(200, TimeUnit.MILLISECONDS);
         if (first == null) {
@@ -322,7 +340,17 @@ public final class JsonEventLogger {
     }
   }
 
+  /** Writes a batch as the agent's own I/O, invisible to the hooks. */
   private void flush(List<Sample> batch) {
+    boolean ownIo = AgentOwnIo.enter();
+    try {
+      write(batch);
+    } finally {
+      AgentOwnIo.exit(ownIo);
+    }
+  }
+
+  private void write(List<Sample> batch) {
     StringBuilder fileBuffer = target == LogTarget.FILE ? new StringBuilder(batch.size() * 256) : null;
     StringBuilder consoleBuffer = target == LogTarget.NONE ? null : new StringBuilder(batch.size() * 256);
     String separator = System.lineSeparator();
@@ -342,32 +370,36 @@ public final class JsonEventLogger {
         consoleBuffer.append("[OHMYRASP] ").append(json).append(separator);
       }
     }
-    if (target == LogTarget.FILE && fileBuffer != null && fileBuffer.length() > 0) {
-      // A lock so concurrent inline (sync-mode) writers never interleave a line.
-      synchronized (writeLock) {
-        try {
-          Path parent = logPath.getParent();
-          if (parent != null) {
-            Files.createDirectories(parent);
+    boolean fileOutput = target == LogTarget.FILE && fileBuffer != null && fileBuffer.length() > 0;
+    boolean consoleOutput = consoleBuffer != null && consoleBuffer.length() > 0;
+    // One lock for both outputs, so concurrent writers never interleave a line.
+    if ((fileOutput || consoleOutput) && lockWrites()) {
+      try {
+        if (fileOutput) {
+          try {
+            Path parent = logPath.getParent();
+            if (parent != null) {
+              Files.createDirectories(parent);
+            }
+            Files.writeString(
+                logPath,
+                fileBuffer.toString(),
+                StandardCharsets.UTF_8,
+                StandardOpenOption.CREATE,
+                StandardOpenOption.APPEND);
+          } catch (IOException e) {
+            errStream().println("[OHMYRASP] failed to write event log: " + e);
           }
-          Files.writeString(
-              logPath,
-              fileBuffer.toString(),
-              StandardCharsets.UTF_8,
-              StandardOpenOption.CREATE,
-              StandardOpenOption.APPEND);
-        } catch (IOException e) {
-          errStream().println("[OHMYRASP] failed to write event log: " + e);
         }
-      }
-    }
-    if (consoleBuffer != null && consoleBuffer.length() > 0) {
-      synchronized (writeLock) {
-        if (target == LogTarget.STDERR) {
-          errStream().print(consoleBuffer);
-        } else if (target == LogTarget.STDOUT || target == LogTarget.FILE) {
-          outStream().print(consoleBuffer);
+        if (consoleOutput) {
+          if (target == LogTarget.STDERR) {
+            errStream().print(consoleBuffer);
+          } else if (target == LogTarget.STDOUT || target == LogTarget.FILE) {
+            outStream().print(consoleBuffer);
+          }
         }
+      } finally {
+        writeLock.unlock();
       }
     }
 
@@ -420,12 +452,50 @@ public final class JsonEventLogger {
   }
 
   private void shutdown() {
+    shutdown(SHUTDOWN_JOIN_MILLIS);
+  }
+
+  /**
+   * Stops the writer, waits up to {@code joinMillis} for it to finish the batch it holds, then
+   * writes what is still queued, waiting a bounded time for the write lock, so events queued at
+   * exit still reach the spool. An event submitted after that is written on the caller's thread.
+   * Each event leaves the queue once, so none is written twice. A batch the writer still holds
+   * when the wait ends, because it is stalled in an output call, can be lost.
+   */
+  void shutdown(long joinMillis) {
     running = false;
-    // Best-effort final drain so events queued at exit still reach the spool.
+    Thread current = writer;
+    if (current != null && current != Thread.currentThread()) {
+      try {
+        current.join(joinMillis);
+      } catch (InterruptedException e) {
+        Thread.currentThread().interrupt();
+      }
+    }
+    closed = true;
+    flushRest();
+  }
+
+  /** Writes everything still queued. */
+  private void flushRest() {
     List<Sample> remaining = new ArrayList<>();
     queue.drainTo(remaining);
     if (!remaining.isEmpty()) {
       flush(remaining);
+    }
+  }
+
+  /** Takes the write lock; once shutdown has begun, waits at most SHUTDOWN_LOCK_MILLIS for it. */
+  private boolean lockWrites() {
+    if (!closed) {
+      writeLock.lock();
+      return true;
+    }
+    try {
+      return writeLock.tryLock(SHUTDOWN_LOCK_MILLIS, TimeUnit.MILLISECONDS);
+    } catch (InterruptedException e) {
+      Thread.currentThread().interrupt();
+      return false;
     }
   }
 
@@ -434,30 +504,59 @@ public final class JsonEventLogger {
   }
 
   private static boolean flag(String property, String env) {
-    String value = System.getProperty(property);
-    if (value == null || value.isBlank()) {
-      value = System.getenv(env);
+    return flagValue(System.getProperty(property), System.getenv(env));
+  }
+
+  /**
+   * The flag from a system property value and an environment value: the first that holds a
+   * recognised boolean decides, so an unrecognised property does not hide a valid environment
+   * value. Neither means false.
+   */
+  static boolean flagValue(String propertyValue, String envValue) {
+    Boolean chosen = booleanOrNull(propertyValue);
+    if (chosen == null) {
+      chosen = booleanOrNull(envValue);
     }
-    return value != null
-        && switch (value.trim().toLowerCase(Locale.ROOT)) {
-          case "true", "1", "yes", "on" -> true;
-          default -> false;
-        };
+    return Boolean.TRUE.equals(chosen);
+  }
+
+  private static Boolean booleanOrNull(String value) {
+    if (value == null) {
+      return null;
+    }
+    return switch (value.trim().toLowerCase(Locale.ROOT)) {
+      case "true", "1", "yes", "on" -> Boolean.TRUE;
+      case "false", "0", "no", "off" -> Boolean.FALSE;
+      default -> null;
+    };
   }
 
   private static int intSetting(String property, String env, int fallback) {
-    String value = System.getProperty(property);
+    return intValue(System.getProperty(property), System.getenv(env), fallback);
+  }
+
+  /**
+   * The integer from a system property value and an environment value: the first that holds an
+   * integer decides, so an invalid property does not hide a valid environment value. Neither
+   * means {@code fallback}.
+   */
+  static int intValue(String propertyValue, String envValue, int fallback) {
+    Integer chosen = intOrNull(propertyValue);
+    if (chosen == null) {
+      chosen = intOrNull(envValue);
+    }
+    return chosen == null ? fallback : chosen;
+  }
+
+  private static Integer intOrNull(String value) {
     if (value == null || value.isBlank()) {
-      value = System.getenv(env);
+      return null;
     }
-    if (value != null && !value.isBlank()) {
-      try {
-        return Integer.parseInt(value.trim());
-      } catch (NumberFormatException ignored) {
-        // fall through to default
-      }
+    try {
+      return Integer.valueOf(value.trim());
+    } catch (NumberFormatException e) {
+      return null;
     }
-    return fallback;
   }
 
   /** Minimal telemetry line: a hook-overhead latency sample, not a detection. */
