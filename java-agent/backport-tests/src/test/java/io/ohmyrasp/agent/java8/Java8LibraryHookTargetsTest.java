@@ -42,23 +42,32 @@ final class Java8LibraryHookTargetsTest {
   }
 
   @Test
-  void janinoCookableInCommonsCompilerPassesTheSourceToTheCompilationDetector() throws Exception {
+  void janinoCookableHooksOnlyTheTwoStringMethodAndAtItsSourceArgument() throws Exception {
     // Cookable is org.codehaus.commons.compiler.Cookable (commons-compiler), not org.codehaus.janino.Cookable.
     String name = "org/codehaus/commons/compiler/Cookable";
     byte[] hooked = new Java8JavaCompilationTransformer().transform(null, name, null, null, classBytes(name));
 
     assertNotNull(hooked);
     String hook = "io/ohmyrasp/agent/java8/Java8RaspHooks";
-    assertEquals(
-        java.util.Arrays.asList("ldc=janino load=1 beforeJavaCompilationSource"),
-        hookCalls(hooked, "cook", "(Ljava/lang/String;)V", hook));
-    // cook(fileName, source): the source is the second argument, local 2.
+    // cook(String source) calls cook(String fileName, String source): one hook, there, so one report per
+    // compilation. The source is the second argument, local 2; the first is the file name.
+    assertEquals(new ArrayList<String>(), hookCalls(hooked, "cook", "(Ljava/lang/String;)V", hook));
     assertEquals(
         java.util.Arrays.asList("ldc=janino load=2 beforeJavaCompilationSource"),
         hookCalls(hooked, "cook", "(Ljava/lang/String;Ljava/lang/String;)V", hook));
-    // The Reader and stream overloads, whose first String is a file name, are not hooked here.
+    // The Reader and stream overloads hold no text, and their String is a file name.
     assertEquals(new ArrayList<String>(), hookCalls(hooked, "cook", "(Ljava/lang/String;Ljava/io/InputStream;)V", hook));
     assertEquals(new ArrayList<String>(), hookCalls(hooked, "cook", "(Ljava/io/Reader;)V", hook));
+    // The janino compilers' own cook(String fileName, Reader) is not hooked: it has no text either.
+    for (String compiler :
+        new String[] {
+          "org/codehaus/janino/SimpleCompiler",
+          "org/codehaus/janino/ScriptEvaluator",
+          "org/codehaus/janino/ExpressionEvaluator",
+          "org/codehaus/janino/ClassBodyEvaluator"
+        }) {
+      assertNull(new Java8JavaCompilationTransformer().transform(null, compiler, null, null, classBytes(compiler)), compiler);
+    }
   }
 
   @Test

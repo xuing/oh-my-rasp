@@ -25,6 +25,7 @@ dependencies {
     testImplementation("org.eclipse.jetty.ee9:jetty-ee9-nested:12.0.41") { isTransitive = false }
     testImplementation("org.apache.skywalking:storage-jdbc-hikaricp-plugin:9.7.0") { isTransitive = false }
     testImplementation("org.codehaus.janino:commons-compiler:3.1.12") { isTransitive = false }
+    testImplementation("org.codehaus.janino:janino:3.1.12") { isTransitive = false }
     testImplementation("com.github.pagehelper:pagehelper:4.2.1") { isTransitive = false }
     testImplementation("org.apache.commons:commons-jexl:2.1.1") { isTransitive = false }
     testImplementation("org.junit.jupiter:junit-jupiter:5.14.4")
