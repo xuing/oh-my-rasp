@@ -662,7 +662,10 @@
     "string-concat": 2
    },
    "io/ohmyrasp/agent/runtime/AgentRuntime": {
-    "lambda": 1
+    "lambda": 3
+   },
+   "io/ohmyrasp/agent/runtime/ShirudoDefaults": {
+    "string-concat": 2
    },
    "io/ohmyrasp/agent/serialization/ObjectStreamResolutionTransformer": {
     "string-concat": 1
