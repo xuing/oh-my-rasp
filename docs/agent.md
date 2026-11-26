@@ -163,6 +163,10 @@ Backport modules (`agent-java8`, `agent-java11`, `agent-java17`) read system pro
 
 [`Java8ShirudoStandaloneTest`](../java-agent/backport-tests/src/test/java/io/ohmyrasp/agent/java8/Java8ShirudoStandaloneTest.java), [`Java8RuntimeControlTest`](../java-agent/backport-tests/src/test/java/io/ohmyrasp/agent/java8/Java8RuntimeControlTest.java) and [`Java8EventSpoolTest`](../java-agent/backport-tests/src/test/java/io/ohmyrasp/agent/java8/Java8EventSpoolTest.java) pin these rules on all three lines.
 
+### Hooks that read application objects
+
+A few hooks ask an application object for text through reflection: the source of a Java compilation unit (`getCharContent(true)`), the text of an expression object, the system id of an XML source, the request URI of a wrapped servlet request. The call is made on the hook's thread, on a public type of the object's hierarchy, so it runs application code. For a compilation unit the consequence is that the agent reads the source once before javac does: a file object that fetches its source lazily blocks the hook until it has it, and a one-shot supplier is consumed before the compiler reads it. Neither the primary agent nor the backports guard against this, and none is planned: reading the text is how the rule sees the source.
+
 ## Comparative playground and acceptance verification
 
 From `java-agent/`, [`docker-compose.yml`](../java-agent/docker-compose.yml) runs baseline/protected Tomcat pairs on JDK 25 with the comparative playground WAR (`playground` for Jakarta on Tomcat 10/11, `playground-javax` for Javax on Tomcat 9):

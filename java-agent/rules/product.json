@@ -74,5 +74,8 @@
     "request_typed_payload_deserialization": "The typed request payload matches known class names or implementation-specific triggers.",
     "sql_identifier_injection": "The MyBatis branch requires mapper substitution provenance at JDBC handoff.",
     "ssrf_cloud_metadata": "The outbound destination matches known provider metadata endpoints."
+  },
+  "not_wired": {
+    "request_xml_polymorphic_gadget": "The request context the servlet entry builds has no body: no hook module reads the request input stream or reader, so a rule decided from the body alone never sees one (measured with the rule-cases probe: a body the handler reads through getInputStream() and through getReader() fires nothing on JDK 25 or Java 17)."
   }
 }

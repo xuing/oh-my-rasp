@@ -2,7 +2,7 @@
 
 > **Generated** by `deploy/shirudo/gen-readmes.py` from `java-agent/` sources.
 
-The `ohmyrasp-jdk21` package installs the `ohmyrasp-jdk21` Java upatch: a standalone, daemonless OhMyRASP runtime self-protection agent targeting **Java 21 and Java 25** JVMs (classfile version `<= 65`). It registers **30 ASM hook modules** and **45 detector capabilities**, backed by **136** end-to-end Vulhub acceptance scenarios.
+The `ohmyrasp-jdk21` package installs the `ohmyrasp-jdk21` Java upatch: a standalone, daemonless OhMyRASP runtime self-protection agent targeting **Java 21 and Java 25** JVMs (classfile version `<= 65`). It registers **30 ASM hook modules** and **42 detector capabilities**, backed by **136** end-to-end Vulhub acceptance scenarios.
 
 This package is for hosts pinned to one Java version; the universal package [`ohmyrasp`](../ohmyrasp/README.md) starts the line that fits each JVM of a mixed host. It starts its line on **Java 21 and later**; on any other Java it writes one `ohmyrasp-agent-skipped` JSON line to stderr and the JVM starts without this agent.
 
@@ -20,7 +20,7 @@ This package is for hosts pinned to one Java version; the universal package [`oh
 | **Expression Engines, Scripting, ClassLoading & JMX** | Inspects Nashorn/Rhino `ScriptEngine`, JEXL, Jakarta/JSP EL, `JavacTool`/Janino compilation, remote `URLClassLoader`/`RMIClassLoader` codebases, and mutating JMX MBean invocations. | `ClassLoaderHookModule`, `ExpressionHookModule`, `JavaCompilationHookModule`, `JmxHookModule`, `SpringConfigHookModule` |
 | **Other / Newly Added** | Additional ASM instrumentation hooks detected in agent sources. | `SparkSubmitHookModule`, `YarnSubmitHookModule` |
 
-<details><summary>All detector capabilities (45)</summary>
+<details><summary>All detector capabilities (42)</summary>
 
 - `detectArchiveExtraction`
 - `detectArgumentFileExpansion`
@@ -38,10 +38,8 @@ This package is for hosts pinned to one Java version; the universal package [`oh
 - `detectFileWrite`
 - `detectGeneratedScriptFileWrite`
 - `detectHessianAllocation`
-- `detectHessianType`
 - `detectHttpInvokerDeserialization`
 - `detectHttpObjectStreamDeserialization`
-- `detectJaasConfig`
 - `detectJavaCompilation`
 - `detectJdbcUrl`
 - `detectJmxFileWrite`
@@ -52,7 +50,6 @@ This package is for hosts pinned to one Java version; the universal package [`oh
 - `detectOgnl`
 - `detectOpenWireThrowable`
 - `detectPolymorphicType`
-- `detectProtocolClassInstantiation`
 - `detectRemoteJob`
 - `detectRequest`
 - `detectRmiRegistryBind`

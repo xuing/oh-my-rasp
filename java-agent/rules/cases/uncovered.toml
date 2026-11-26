@@ -21,14 +21,6 @@ reason = "decided from a Windows named data stream path and selected only by a l
 ids = ["writeFile_NTFS"]
 
 [[primary]]
-reason = "decided from a request body, which the packaged request path does not carry; needs a detector-level case"
-ids = ["request_json_patch_expression", "request_message_selector_expression", "request_xml_polymorphic_gadget"]
-
-[[primary]]
-reason = "decided from JSON fields of a request body and selected only by a loaded policy"
-ids = ["request_sql_identifier_injection", "request_sql_sort_injection"]
-
-[[primary]]
 reason = "needs an expression engine on the driver's class path (EL, JEXL, Jiffle, OGNL, Groovy or MVEL, Spring Expression, Velocity); the JDK ships none of them"
 ids = ["el_runtime", "jexl_runtime", "jiffle_runtime", "ognl_blacklist", "ognl_length_limit",
        "script_runtime", "spel_runtime", "template_runtime"]

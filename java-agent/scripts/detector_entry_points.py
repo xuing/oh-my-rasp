@@ -6,9 +6,11 @@ named detect<Name>, or plain detect in a <Name>Detector class, declared at class
 agent-jdk25/src/main/java/io/ohmyrasp/agent/detect/. Hooks call the class
 that owns each one.
 
-An entry point whose every rule id the catalogue marks not wired (rules/general.json, "not_wired") is not a
-capability of the agent: no hook module reaches it. by_class() and capabilities() leave it out;
-not_wired_by_class() lists it.
+Two kinds of public detect* method are not capabilities of the agent, and by_class() and capabilities() leave
+them out. One serves only rule ids the catalogue marks not wired (rules/general.json, "not_wired"): no hook
+module reaches it; not_wired_by_class() lists it. The other is a compatibility stub whose every overload is
+`return Optional.empty();` (detectHessianType, detectProtocolClassInstantiation, detectJaasConfig): it decides
+nothing, and the rule it is named for is decided by another entry point; stubs_by_class() lists it.
 """
 from __future__ import annotations
 
@@ -36,11 +38,27 @@ def _entry_points() -> dict[str, dict[str, str]]:
     return owners
 
 
+def _stub(owner: str, method: str) -> bool:
+    return (owner, method) in rule_wiring.empty_stubs()
+
+
 def by_class() -> dict[str, list[str]]:
-    """{class: sorted capability names}, for each detect-package class with a public detect* method a hook can reach."""
+    """{class: sorted capability names}, for each detect-package class with a public detect* method that decides something
+    and that a hook can reach."""
     owners: dict[str, list[str]] = {}
     for owner, found in _entry_points().items():
-        names = [name for name, method in found.items() if not rule_wiring.serves_only_not_wired(owner, method)]
+        names = [name for name, method in found.items()
+                 if not rule_wiring.serves_only_not_wired(owner, method) and not _stub(owner, method)]
+        if names:
+            owners[owner] = names
+    return owners
+
+
+def stubs_by_class() -> dict[str, list[str]]:
+    """{class: sorted capability names} of the public detect* methods that only return an empty result."""
+    owners: dict[str, list[str]] = {}
+    for owner, found in _entry_points().items():
+        names = [name for name, method in found.items() if _stub(owner, method)]
         if names:
             owners[owner] = names
     return owners
@@ -50,7 +68,7 @@ def not_wired_by_class() -> dict[str, list[str]]:
     """{class: sorted capability names} of the public detect* methods that serve only not wired rule ids."""
     owners: dict[str, list[str]] = {}
     for owner, found in _entry_points().items():
-        names = [name for name, method in found.items() if rule_wiring.serves_only_not_wired(owner, method)]
+        names = [name for name, method in found.items() if rule_wiring.serves_only_not_wired(owner, method) and not _stub(owner, method)]
         if names:
             owners[owner] = names
     return owners

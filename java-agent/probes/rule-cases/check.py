@@ -58,6 +58,8 @@ def spec_lines(case: rule_cases.Case, tmp: Path, classes: Path) -> str:
         query = r.get("query")
         if query is not None:
             pairs.append(("request.query", sub(query)))
+        if "body" in r:
+            pairs += [("request.body", sub(r["body"])), ("request.bodyApi", r.get("body_api", "stream"))]
         params = r.get("params")
         if params is None:
             params = {}
@@ -129,6 +131,8 @@ def classify(case, result: dict, events: list[tuple[str, str]]) -> Actual:
         outcome, note = op, ending
     elif handler == "yes":
         outcome, note = ("ran", "handler ran") if case.via == "request" else (op, f"in the handler: {ending}")
+        if "body" in result:
+            note += f", body {result['body']}"
     elif entry in ("blocked", "blocked-redirect"):
         outcome = "blocked"
         note = f"at request entry ({'redirected to ' + result.get('redirect', '') if entry == 'blocked-redirect' else result.get('entry_ending', '')})"

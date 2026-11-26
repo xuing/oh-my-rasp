@@ -1283,7 +1283,8 @@ How some of these rules decide:
   Metabase CVE-2023-38646 Vulhub acceptance verifies the real setup-token flow
   and lower-level `ScriptEngine.eval` block for the H2 setup-validation
   trigger.
-- `request_message_selector_expression` covers STOMP/SockJS-style message
+- `request_message_selector_expression` is defined and not wired on the primary agent
+  (its detector reads the request body, which the servlet entry does not capture). It covers STOMP/SockJS-style message
   frames where a message `selector:` header contains a runtime expression
   primitive instead of an ordinary selector predicate. This targets Spring
   Messaging CVE-2018-1270 selector SpEL injection while requiring message-frame
@@ -1398,7 +1399,8 @@ How some of these rules decide:
   Vulhub acceptance verifies the Freemarker-parsed `redirectUri` OGNL value,
   including the required trailing newline, with enforcement at the later
   `ProcessBuilder.start` sink.
-- `request_json_patch_expression` covers `application/json-patch+json` PATCH
+- `request_json_patch_expression` is defined and not wired on the primary agent
+  (its detector reads the request body, which the servlet entry does not capture). It covers `application/json-patch+json` PATCH
   request bodies whose JSON Patch `path` field carries a runtime expression
   payload. This targets Spring Data REST CVE-2017-8046 JSON Patch SpEL
   injection before the patch path is evaluated, while logging only inferred
@@ -1492,7 +1494,8 @@ How some of these rules decide:
   `acceptance/vulhub/coldfusion/29300-java11.sh`: baseline reaches a
   host LDAP listener from ColdFusion 2018.0.15, while protected mode blocks the
   same WDDX POST at `HttpServlet.service` before the outbound LDAP connection.
-- `request_xml_polymorphic_gadget` covers XML request bodies that declare
+- `request_xml_polymorphic_gadget` is defined and not wired on the primary agent
+  (its detector reads the request body, which the servlet entry does not capture). It covers XML request bodies that declare
   dangerous Java polymorphic gadget types through XML class attributes, class
   elements, or fully qualified Java tag names before an XML object mapper
   unmarshals them. This targets Struts2 S2-052-style REST/XStream payloads
@@ -1623,7 +1626,9 @@ How some of these rules decide:
   written, while requiring graph/query endpoint context and multiple plot
   markers.
 - `request_sql_sort_injection` and `request_sql_identifier_injection` are
-  selectable JSON metadata observations for report and GraphQL fields.
+  JSON metadata observations for report and GraphQL fields, defined and not wired
+  on the primary agent (they read the request body, which the servlet entry does
+  not capture).
   The [mapper and JDBC rules](../detection.md#mybatis-dynamic-sql) examine
   actual SQL. The SkyWalking DAO hook separately observes the identifier
   argument. The [Vulhub ledger](vulhub-coverage.md) records the historical

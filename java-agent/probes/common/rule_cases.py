@@ -22,6 +22,8 @@ engine does with it today:
     query = "file=%2Fetc%2Fpasswd"           # parameters come from the query unless params is given
     params = { file = ["/etc/passwd"] }
     headers = { "User-Agent" = "curl/8.0" }  # a value or a list of values
+    body = "{\"a\":1}"                       # optional: the request body, which the handler reads like an application
+    body_api = "reader"                      # stream (the default) or reader: getInputStream() or getReader()
     attributes = { "javax.servlet.include.request_uri" = "/WEB-INF/web.xml" }
 
     [case.primary]                           # and [case.backport]
@@ -69,7 +71,7 @@ OPS = {
     "xpath.evaluate": ({"expression"}, set()),
 }
 CASE_KEYS = {"name", "kind", "via", "op", "args", "completes_with", "properties", "setup", "stubs", "request", *ENGINES}
-REQUEST_KEYS = {"method", "uri", "query", "params", "headers", "attributes"}
+REQUEST_KEYS = {"method", "uri", "query", "params", "headers", "attributes", "body", "body_api"}
 EXPECT_KEYS = {"effect", "rule", "also", "why"}
 
 
@@ -187,6 +189,10 @@ def parse(file: str, text: str) -> tuple[list[Case], list[str]]:
                 errors += [f"{where}: request has no key {k}" for k in request if k not in REQUEST_KEYS]
                 if not isinstance(request.get("method"), str) or not isinstance(request.get("uri"), str):
                     errors.append(f"{where}: request needs method and uri")
+                if "body" in request and not isinstance(request["body"], str):
+                    errors.append(f"{where}: request body is a string")
+                if "body_api" in request and (request["body_api"] not in ("stream", "reader") or "body" not in request):
+                    errors.append(f"{where}: request body_api is stream or reader, and needs a body")
                 for key in ("params", "headers", "attributes"):
                     table = request.get(key, {})
                     if not isinstance(table, dict) or not all(_strings(v) for v in table.values()):
