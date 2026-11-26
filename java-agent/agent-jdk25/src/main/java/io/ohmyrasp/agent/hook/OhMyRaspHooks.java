@@ -777,12 +777,14 @@ public final class OhMyRaspHooks {
   }
 
   public static void beforeJmxStreamWrite(String path, int write) {
+    if (AgentOwnIo.active()) return; // the agent's own I/O: before any application state
     JmxWriteScope scope = write != 0 ? JmxWriteScope.current() : null;
     if (scope != null && !detectionDisabled())
       emit(HostFileMutationDetector.detectJmxFileWrite(path, scope, "stream_open", currentRequest()));
   }
 
   public static void beforeUnixChannelWrite(java.nio.file.Path path, int directoryFd, boolean write) {
+    if (AgentOwnIo.active()) return; // the agent's own I/O: before any application state
     if (!write) return;
     var open = ARCHIVE_ENTRY.atChannelOpen(path, directoryFd);
     if (open != null && !detectionDisabled()) emit(HostFileMutationDetector.detectArchiveExtraction(open, currentRequest()));
@@ -790,6 +792,7 @@ public final class OhMyRaspHooks {
   }
 
   public static void beforeJmxChannelWrite(java.nio.file.Path path, int directoryFd, boolean write) {
+    if (AgentOwnIo.active()) return; // the agent's own I/O: before any application state
     JmxWriteScope scope = write ? JmxWriteScope.current() : null;
     if (scope != null && !detectionDisabled() && (directoryFd < 0 || path.isAbsolute()))
       emit(HostFileMutationDetector.detectJmxFileWrite(path.toString(), scope, "channel_open", currentRequest()));
@@ -885,6 +888,7 @@ public final class OhMyRaspHooks {
   }
 
   public static void beforeFileWrite(String path) {
+    if (AgentOwnIo.active()) return; // the agent's own I/O: before any application state
     if (detectionDisabled()) {
       return;
     }
@@ -892,6 +896,7 @@ public final class OhMyRaspHooks {
   }
 
   public static void beforeFileWrite(String path, List<String> stackClassNames) {
+    if (AgentOwnIo.active()) return; // the agent's own I/O: before any application state
     if (detectionDisabled()) {
       return;
     }
@@ -908,6 +913,7 @@ public final class OhMyRaspHooks {
   }
 
   public static void beforeWindowsStreamWrite(String path, int writeAccess) {
+    if (AgentOwnIo.active()) return; // the agent's own I/O: before any application state
     if (writeAccess == 0 || java.io.File.separatorChar != '\\') return;
     WindowsDataStream stream = WindowsDataStream.parse(path);
     if (stream == null || detectionDisabled()) return;
@@ -922,6 +928,7 @@ public final class OhMyRaspHooks {
   }
 
   public static void beforeFileWriteObject(Object file) {
+    if (AgentOwnIo.active()) return; // the agent's own I/O: before any application state
     if (detectionDisabled()) {
       return;
     }
@@ -1110,6 +1117,7 @@ public final class OhMyRaspHooks {
 
   public static void beforeUnixFileOpen(java.nio.file.Path path, boolean read, int directoryFd,
       boolean noFollowFinal, boolean creatingNew) {
+    if (AgentOwnIo.active()) return; // the agent's own I/O: before any application state
     if (HostReadPath.nativeRead(path, read && !creatingNew, directoryFd)) {
       inspectFileRead(path.toString(), noFollowFinal ? HostReadPath.OpenPolicy.NOFOLLOW_FINAL : HostReadPath.OpenPolicy.FOLLOW,
           "UnixChannelFactory.open");
@@ -1134,6 +1142,7 @@ public final class OhMyRaspHooks {
   }
 
   public static void beforePathWrite(Object path) {
+    if (AgentOwnIo.active()) return; // the agent's own I/O: before any application state
     if (detectionDisabled()) {
       return;
     }
@@ -1141,6 +1150,7 @@ public final class OhMyRaspHooks {
   }
 
   public static void beforePathWrite(Object path, List<String> stackClassNames) {
+    if (AgentOwnIo.active()) return; // the agent's own I/O: before any application state
     if (detectionDisabled()) {
       return;
     }
@@ -1171,6 +1181,7 @@ public final class OhMyRaspHooks {
   }
 
   public static void beforeEncodedScriptWrite(byte[] bytes, Object target, String text, java.nio.charset.Charset charset) {
+    if (AgentOwnIo.active()) return; // the agent's own I/O: before any application state
     // The immediately following Files.write(byte[]) observes a complete small UTF-8 input itself.
     if (text == null || detectionDisabled() || (charset == StandardCharsets.UTF_8 && bytes.length <= 8192)
         || !HostFileSystem.contains(target)) return;
@@ -1189,6 +1200,7 @@ public final class OhMyRaspHooks {
   }
 
   public static void beforeGeneratedScriptFileWrite(Object path, Object content) {
+    if (AgentOwnIo.active()) return; // the agent's own I/O: before any application state
     if (detectionDisabled() || !HostFileSystem.contains(path)) {
       return;
     }

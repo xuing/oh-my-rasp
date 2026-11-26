@@ -6,6 +6,7 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import io.ohmyrasp.agent.runtime.AgentOwnIo;
+import java.nio.file.Path;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 
@@ -38,5 +39,27 @@ final class OhMyRaspHooksOwnIoTest {
 
     // The same write by the application is blocked.
     assertThrows(OhMyRaspBlockException.class, () -> OhMyRaspHooks.beforeFileWrite(spool));
+  }
+
+  @Test
+  void theAgentsOwnChannelOpenLeavesAPendingArchiveMemberForTheApplication() {
+    System.setProperty("ohmyrasp.block", "true");
+    OhMyRaspHooks.enterHttpRequest(new OhMyRaspHooksPolicyTest.FakeRequest(), new OhMyRaspHooksPolicyTest.FakeResponse());
+    OhMyRaspHooks.afterZipLookup(new Object(), "../notes/report.txt", null);
+
+    // An inline spool append opens its channel between the member's selection and the
+    // application's own open of the destination.
+    boolean entered = AgentOwnIo.enter();
+    try {
+      assertDoesNotThrow(
+          () -> OhMyRaspHooks.beforeUnixChannelWrite(Path.of("/tmp/ohmyrasp-events.jsonl"), -1, true));
+    } finally {
+      AgentOwnIo.exit(entered);
+    }
+
+    assertThrows(
+        OhMyRaspBlockException.class,
+        () -> OhMyRaspHooks.beforeUnixChannelWrite(Path.of("/tmp/extract/../notes/report.txt"), -1, true),
+        "the application's open still sees the archive member");
   }
 }

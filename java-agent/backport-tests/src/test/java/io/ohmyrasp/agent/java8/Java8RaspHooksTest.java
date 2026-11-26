@@ -17,6 +17,7 @@ import java.net.URL;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.util.Arrays;
 import java.util.Base64;
 import java.util.HashMap;
@@ -1925,6 +1926,29 @@ final class Java8RaspHooksTest {
     Java8RaspHooks.beforeFileWrite("/tmp/archive/../draft.txt");
 
     assertFalse(Files.exists(log));
+  }
+
+  @Test
+  void theAgentsOwnChannelOpenLeavesAPendingArchiveMemberForTheApplication() throws Exception {
+    Path log = Files.createTempFile("ohmyrasp-java8-own-io-archive", ".jsonl");
+    Files.delete(log);
+    System.setProperty("ohmyrasp.java8.log", log.toString());
+
+    Java8RaspHooks.afterArchiveEntryName("../notes/report.txt");
+    // The agent's own control read or spool write opens a channel between the member's selection
+    // and the application's own open of the destination.
+    boolean entered = RaspRuntime.enterOwnIo();
+    try {
+      Java8RaspHooks.beforeUnixChannelWrite(Paths.get("/tmp/ohmyrasp-events.jsonl"), -1, true);
+    } finally {
+      RaspRuntime.exitOwnIo(entered);
+    }
+    Java8RaspHooks.beforeFileWrite("/tmp/extract/../notes/report.txt");
+
+    String text = Files.exists(log) ? new String(Files.readAllBytes(log), StandardCharsets.UTF_8) : "";
+    assertTrue(
+        text.contains("\"algorithm\":\"java8_archive_entry_traversal_write\""),
+        "the application's write still sees the archive member: " + text);
   }
 
   @Test
