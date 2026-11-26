@@ -69,9 +69,50 @@ final class ShirudoStandaloneTest {
   }
 
   @Test
-  void shirudoDefaultsLoadReturnsAbsentWhenResourceMissingFromClasspath() {
+  void shirudoDefaultsIgnoreASameNamedResourceOutsideTheAgentsOwnLocation() {
+    // src/test/resources carries META-INF/ohmyrasp-shirudo.properties with lock_config=true and
+    // mode=off. It is on the class path but not where the agent classes are, so it must not count.
+    assertTrue(ShirudoStandaloneTest.class.getResource(ShirudoDefaults.RESOURCE_PATH) != null);
     ShirudoDefaults loaded = ShirudoDefaults.load();
     assertFalse(loaded.isPresent());
+  }
+
+  @Test
+  void shirudoDefaultsAreReadFromTheAgentsOwnLocation(@TempDir Path root) throws Exception {
+    Object loaded = loadFromIsolatedCopy(root, "standalone=true\nlock_config=true\nmode=monitor\n");
+    assertEquals(true, loaded.getClass().getMethod("isPresent").invoke(loaded));
+    assertEquals(true, loaded.getClass().getMethod("lockConfig").invoke(loaded));
+    assertEquals("MONITOR", String.valueOf(loaded.getClass().getMethod("mode").invoke(loaded)));
+  }
+
+  @Test
+  void shirudoDefaultsKeepTheKeysReadBeforeAMalformedLine(@TempDir Path root) throws Exception {
+    // Properties.load throws on the bad unicode escape. The lock and mode read before it must stay,
+    // or a damaged later line would hand the mode back to system properties and environment.
+    Object loaded =
+        loadFromIsolatedCopy(root, "standalone=true\nlock_config=true\nmode=block\nbad=\\u00zz\nlog=none\n");
+    assertEquals(true, loaded.getClass().getMethod("isPresent").invoke(loaded));
+    assertEquals(true, loaded.getClass().getMethod("lockConfig").invoke(loaded));
+    assertEquals("BLOCK", String.valueOf(loaded.getClass().getMethod("mode").invoke(loaded)));
+  }
+
+  /** Loads ShirudoDefaults from a copy of the runtime classes that has {@code baked} beside it. */
+  private static Object loadFromIsolatedCopy(Path root, String baked) throws Exception {
+    Path classes = Path.of(ShirudoDefaults.class.getProtectionDomain().getCodeSource().getLocation().toURI());
+    String packageDir = "io/ohmyrasp/agent/runtime";
+    Files.createDirectories(root.resolve(packageDir));
+    try (var files = Files.list(classes.resolve(packageDir))) {
+      for (Path file : files.toList()) {
+        Files.copy(file, root.resolve(packageDir).resolve(file.getFileName().toString()));
+      }
+    }
+    Files.createDirectories(root.resolve("META-INF"));
+    Files.writeString(root.resolve("META-INF/ohmyrasp-shirudo.properties"), baked);
+    try (var loader =
+        new java.net.URLClassLoader(new java.net.URL[] {root.toUri().toURL()}, ClassLoader.getPlatformClassLoader())) {
+      Class<?> isolated = Class.forName("io.ohmyrasp.agent.runtime.ShirudoDefaults", true, loader);
+      return isolated.getMethod("load").invoke(null);
+    }
   }
 
   @Test
