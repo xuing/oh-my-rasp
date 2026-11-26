@@ -127,15 +127,15 @@ final class JsonEventLoggerTest {
     String plain = "id=1&x=2&name=a%20b&passwordless=1&bypass=1&tokens=3";
     assertTrue(plain == JsonEventLogger.redactedQuery(plain));
     assertEquals("", JsonEventLogger.redactedQuery(""));
-    // A search for the word is a sensitive piece too: the rule reads tokens, not intent.
-    assertEquals("q=[redacted]", JsonEventLogger.redactedQuery("q=password+policy"));
   }
 
   @Test
   void theQueryRedactsAssignmentsHiddenInsideValuesAndUnsplittableText() {
     assertEquals("next=[redacted]&a=1", JsonEventLogger.redactedQuery("next=%2Fcb%3Ftoken%3Dabc&a=1"));
     assertEquals("next=[redacted]", JsonEventLogger.redactedQuery("next=%252Fcb%253Fpassword%253Dabc"));
-    assertEquals("a=1;password=[redacted]", JsonEventLogger.redactedQuery("a=1;password=hunter2"));
+    // A ';' is part of its piece (Tomcat reads it as part of the value), so the piece is redacted
+    // whole; the name `a` stays and its value goes.
+    assertEquals("a=[redacted]", JsonEventLogger.redactedQuery("a=1;password=hunter2"));
     // A piece that is not name=value but names a sensitive parameter.
     assertEquals("a=1&[redacted]", JsonEventLogger.redactedQuery("a=1&password%3Dhunter2"));
     assertEquals("a=1&[redacted]", JsonEventLogger.redactedQuery("a=1&{\"password\":\"hunter2\"}"));
@@ -152,8 +152,8 @@ final class JsonEventLoggerTest {
   /** The shapes a review got through the exact-key match: HTML-escaped separators, double encoding, JSON. */
   @Test
   void theQueryRedactsTheShapesThatSlippedPastExactKeys() {
-    assertEquals(
-        "id=1&amp;password=[redacted]", JsonEventLogger.redactedQuery("id=1&amp;password=example"));
+    // The piece is `amp;password=example`: its key holds a ';', so the whole piece goes.
+    assertEquals("id=1&[redacted]", JsonEventLogger.redactedQuery("id=1&amp;password=example"));
     assertEquals("%2570assword=[redacted]", JsonEventLogger.redactedQuery("%2570assword=example"));
     assertEquals("%252570assword=[redacted]", JsonEventLogger.redactedQuery("%252570assword=example"));
     assertEquals("cfg=[redacted]", JsonEventLogger.redactedQuery("cfg=%7B%22password%22%3A%22hunter4%22%7D"));
@@ -167,6 +167,38 @@ final class JsonEventLoggerTest {
     // Unicode case folding: Kelvin sign and dotted capital I read as k and i.
     assertEquals("to%E2%84%AAen=[redacted]", JsonEventLogger.redactedQuery("to%E2%84%AAen=abc"));
     assertEquals("author%C4%B0zation=[redacted]", JsonEventLogger.redactedQuery("author%C4%B0zation=abc"));
+  }
+
+  /** Accepted over-redaction: the rule reads tokens, not intent, so a search for the word goes too. */
+  @Test
+  void aSearchForTheWordPasswordIsRedactedAsAcceptedOverRedaction() {
+    assertEquals("q=[redacted]", JsonEventLogger.redactedQuery("q=password+policy"));
+  }
+
+  /** Tomcat reads everything up to the next '&' as the value, a ';' included. */
+  @Test
+  void aSemicolonDoesNotEndTheValueOfASensitiveParameter() {
+    assertEquals("password=[redacted]", JsonEventLogger.redactedQuery("password=alpha;omega"));
+    assertEquals(
+        "password=[redacted]&id=1", JsonEventLogger.redactedQuery("password=alpha;omega&id=1"));
+    assertEquals("id=1;x=2&b=3", JsonEventLogger.redactedQuery("id=1;x=2&b=3"));
+  }
+
+  @Test
+  void aSensitiveNameBehindFourToSevenEncodingLayersIsFoundAndLongerChainsAreRedacted() {
+    // "%" + "25" * (n - 1) + "70assword" is `password` with its first letter encoded n times.
+    for (int layers = 1; layers <= 7; layers++) {
+      String query = "id=1&%" + "25".repeat(layers - 1) + "70assword=hunter5";
+      String key = query.substring(5, query.lastIndexOf('='));
+      assertEquals("id=1&" + key + "=[redacted]", JsonEventLogger.redactedQuery(query), "layers " + layers);
+    }
+    assertEquals(
+        "%25252570assword=[redacted]", JsonEventLogger.redactedQuery("%25252570assword=hunter5"));
+    // Past the bound the text is still changing, which is treated as sensitive.
+    String deep = "x=%" + "25".repeat(12) + "41";
+    assertEquals("x=[redacted]", JsonEventLogger.redactedQuery(deep));
+    // Text that stops changing within the bound and holds no name is left alone.
+    assertTrue(JsonEventLogger.redactedQuery("x=%2541") == "x=%2541");
   }
 
   @Test

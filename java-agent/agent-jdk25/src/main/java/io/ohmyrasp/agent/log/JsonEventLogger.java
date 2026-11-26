@@ -43,7 +43,7 @@ public final class JsonEventLogger {
   private static final String REDACTED = "[redacted]";
   // A query longer than this is not scanned: it is replaced by the marker as a whole.
   private static final int MAX_REDACTED_QUERY_LENGTH = 8192;
-  private static final int MAX_QUERY_DECODE_ROUNDS = 3;
+  private static final int MAX_QUERY_DECODE_ROUNDS = 8;
   private static final Set<String> SENSITIVE_HEADER_NAMES =
       Set.of(
           "authorization",
@@ -743,10 +743,12 @@ public final class JsonEventLogger {
 
   /**
    * The query string with every piece that names a sensitive parameter carrying the marker in
-   * place of its value. The query is split once, left to right, on {@code &} and {@code ;}, and
-   * the separators stay. A piece is sensitive when it, or what it decodes to (percent escapes and
-   * {@code +}, repeated until the text stops changing, at most {@value #MAX_QUERY_DECODE_ROUNDS}
-   * rounds), holds a name {@link #isRedactedParameterName} names as a token: a run of ASCII
+   * place of its value. The query is split once, left to right, on {@code &} only, and the
+   * separators stay: a {@code ;} is part of its piece, as Tomcat reads it, so
+   * {@code password=alpha;omega} is one value. A piece is sensitive when it, or what it decodes to
+   * (percent escapes and {@code +}, repeated until the text stops changing, at most
+   * {@value #MAX_QUERY_DECODE_ROUNDS} rounds; a piece still changing after that is sensitive),
+   * holds a name {@link #isRedactedParameterName} names as a token: a run of ASCII
    * letters, digits and underscores, or of those and hyphens, so {@code amp;password},
    * {@code user[password]}, {@code {"password":"x"}} and {@code next=/cb?token=abc} match and
    * {@code passwordless} does not. A sensitive piece keeps its text up to and including the first
@@ -769,7 +771,7 @@ public final class JsonEventLogger {
     boolean changed = false;
     int start = 0;
     for (int i = 0; i <= length; i++) {
-      if (i < length && query.charAt(i) != '&' && query.charAt(i) != ';') {
+      if (i < length && query.charAt(i) != '&') {
         continue;
       }
       String piece = query.substring(start, i);
@@ -799,7 +801,11 @@ public final class JsonEventLogger {
     return piece.substring(0, equals + 1) + REDACTED;
   }
 
-  /** Whether the text, or any of its first decodings, holds a redacted parameter name as a token. */
+  /**
+   * Whether the text, or any of its decodings, holds a redacted parameter name as a token. Text
+   * that is still changing after {@link #MAX_QUERY_DECODE_ROUNDS} rounds counts as holding one: a
+   * name could be behind the next layer.
+   */
   private static boolean holdsRedactedName(String text) {
     String current = text;
     for (int round = 0; ; round++) {
@@ -807,12 +813,12 @@ public final class JsonEventLogger {
       if (holdsRedactedToken(lower, false) || holdsRedactedToken(lower, true)) {
         return true;
       }
-      if (round == MAX_QUERY_DECODE_ROUNDS) {
-        return false;
-      }
       String next = percentDecode(current);
       if (next.equals(current)) {
         return false;
+      }
+      if (round == MAX_QUERY_DECODE_ROUNDS) {
+        return true;
       }
       current = next;
     }
