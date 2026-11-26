@@ -527,9 +527,11 @@ public final class AgentRuntime {
         nextPolicyJson = null;
       } else if (policyValue instanceof String policyJson
           && !policyJson.equals(current.controlPolicyJson)) {
-        nextPolicyJson = policyJson;
+        // Recorded only once it parses: text that fails changes nothing, so it cannot make the
+        // policy text last applied look new and reinstall it over a later direct-cloud policy.
         AgentPolicy installed = parsePolicy(policyJson);
         if (installed != null) {
+          nextPolicyJson = policyJson;
           nextPolicy = installed;
           nextKey = "";
           nextSource = PolicySource.CONTROL_FILE;

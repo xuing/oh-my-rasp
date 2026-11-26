@@ -360,6 +360,35 @@ final class AgentRuntimeTest {
     assertEquals(AgentRuntime.PolicySource.DIRECT_CLOUD, runtime.state().policySource());
   }
 
+  /**
+   * Policy text that fails to parse is not recorded as applied. Sequence: control-file policy P,
+   * direct-cloud policy Q, control file with policy text that does not parse, control file with P
+   * again. The malformed step keeps Q. The last step changes nothing either: P is still the
+   * control-file policy last applied, so the file's policy has not changed since Q was installed,
+   * and Q, the last policy successfully installed, stays.
+   */
+  @Test
+  void aControlFilePolicyThatFailsToParseIsNotRecordedAsApplied() {
+    AgentRuntime runtime = AgentRuntime.newForTesting();
+    String p = "{\"policy\":\"{\\\"version\\\":4}\"}";
+    runtime.apply(p);
+    assertEquals(4, runtime.policy().version());
+    runtime.installDirectPolicy(AgentPolicy.parse("{\"version\":9}"), "agent-key");
+
+    runtime.apply("{\"revision\":2,\"policy\":\"[1]\"}");
+    assertEquals(9, runtime.policy().version(), "a policy that does not parse displaced the cloud policy");
+    assertEquals(AgentRuntime.PolicySource.DIRECT_CLOUD, runtime.state().policySource());
+
+    runtime.apply(p);
+    assertEquals(9, runtime.policy().version(), "a failed parse made the unchanged file policy look new");
+    assertEquals("agent-key", runtime.state().policyAgentKey());
+
+    // A policy the file has not carried before still replaces the cloud policy.
+    runtime.apply("{\"policy\":\"{\\\"version\\\":5}\"}");
+    assertEquals(5, runtime.policy().version());
+    assertEquals(AgentRuntime.PolicySource.CONTROL_FILE, runtime.state().policySource());
+  }
+
   private static Detection detection(String algorithm) {
     return new Detection(
         Instant.now(), "sql", algorithm, "log", 90, "test", RequestContext.empty(), Map.of());
