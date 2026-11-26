@@ -406,7 +406,7 @@ def render() -> str:
     w("## Tested vulnerability matrix")
     w("")
     w("End-to-end acceptance scenarios that run a real vulnerable application under")
-    w("the agent and assert the expected detection/block. Counts by JDK line:")
+    w("the agent. Counts by JDK line:")
     w("")
     w("| JDK | Scenarios |")
     w("|-----|----------:|")
@@ -414,6 +414,14 @@ def render() -> str:
         if jdk in by_jdk:
             w(f"| {jdk} | {len(by_jdk[jdk])} |")
     w(f"| **total** | **{len(matrix)}** |")
+    w("")
+    scripts = acceptance_scripts.vulhub_scripts(ACCEPTANCE)
+    boundary = [s for s in scripts if acceptance_scripts.is_boundary(s, ACCEPTANCE)]
+    legacy = [s for s in boundary if "legacy" in s.name.lower()]
+    w(f"{len(scripts) - len(boundary)} of the {len(matrix)} scripts run the exploit against a JVM an agent line supports.")
+    w(f"The other {len(boundary)} show a boundary and no block: the {len(legacy)} `java6-legacy` and `java7-legacy`")
+    w("scripts show an agent line skipping on an old JVM, which then runs unprotected, and the setup or licence")
+    w("scripts show a payload held behind a setup state.")
     w("")
     w("Top application families by scenario count:")
     w("")

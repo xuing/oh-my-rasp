@@ -624,7 +624,7 @@ in its check; the probe runs against the built agent JAR.
 ## Tested vulnerability matrix
 
 End-to-end acceptance scenarios that run a real vulnerable application under
-the agent and assert the expected detection/block. Counts by JDK line:
+the agent. Counts by JDK line:
 
 | JDK | Scenarios |
 |-----|----------:|
@@ -636,6 +636,11 @@ the agent and assert the expected detection/block. Counts by JDK line:
 | java6-legacy | 5 |
 | unknown | 1 |
 | **total** | **136** |
+
+120 of the 136 scripts run the exploit against a JVM an agent line supports.
+The other 16 show a boundary and no block: the 14 `java6-legacy` and `java7-legacy`
+scripts show an agent line skipping on an old JVM, which then runs unprotected, and the setup or licence
+scripts show a payload held behind a setup state.
 
 Top application families by scenario count:
 

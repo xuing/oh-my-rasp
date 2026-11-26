@@ -28,12 +28,12 @@ A second OhMyRASP package on the same host is harmless. One line starts per JVM,
 
 | Package | Starts on | Upatch / JAR | Instrumentation | Detection Scope | Vulhub Replay |
 |---|---|---|---|---|---|
-| `ohmyrasp` | Java 8 to 25, the line that fits | `ohmyrasp.jar` | every line below | every line below | 136 total scenarios across 6 JDK lines |
-| `ohmyrasp-java8` | Java 8 only (classfile `<= 52`) | `ohmyrasp-java8.jar` | 24 ASM transformers | 45 algorithms | 96 (java8) |
+| `ohmyrasp` | Java 8 to 25, the line that fits | `ohmyrasp.jar` | every line below | every line below | 120 Vulhub scripts on supported JVMs |
+| `ohmyrasp-java8` | Java 8 only (classfile `<= 52`) | `ohmyrasp-java8.jar` | 24 ASM transformers | 45 algorithms | 95 (java8) |
 | `ohmyrasp-java11` | Java 11 and later (classfile `<= 55`) | `ohmyrasp-java11.jar` | 24 ASM transformers | 45 algorithms | 10 (java11) |
 | `ohmyrasp-java17` | Java 17 and later (classfile `<= 61`) | `ohmyrasp-java17.jar` | 24 ASM transformers | 45 algorithms | 12 (java17) + 3 (java21) |
-| `ohmyrasp-jdk21` | Java 21 and later (classfile `<= 65`) | `ohmyrasp-jdk21.jar` | 30 ASM hook modules | 42 `detect*` capabilities | 136 total scenarios across 6 JDK lines |
-| `ohmyrasp-jdk25` | Java 21 and later (classfile `<= 65`) | `ohmyrasp-jdk25.jar` | 30 ASM hook modules | 42 `detect*` capabilities | 136 total scenarios across 6 JDK lines |
+| `ohmyrasp-jdk21` | Java 21 and later (classfile `<= 65`) | `ohmyrasp-jdk21.jar` | 30 ASM hook modules | 42 `detect*` capabilities | 120 Vulhub scripts on supported JVMs |
+| `ohmyrasp-jdk25` | Java 21 and later (classfile `<= 65`) | `ohmyrasp-jdk25.jar` | 30 ASM hook modules | 42 `detect*` capabilities | 120 Vulhub scripts on supported JVMs |
 
 ## Which package to install
 
@@ -58,7 +58,11 @@ A protected JVM writes one line to its standard error when it starts, before the
 
 JVMs that start a Java agent with an appended bootstrap path may also print `OpenJDK 64-Bit Server VM warning: Sharing is only supported for boot loader classes because bootstrap classpath has been appended`. It is the JVM's notice that class-data sharing is limited, not an error.
 
-A JVM that was already running when the package was loaded shows none of this: it has to restart. A JVM whose line is not started says why in one JSON line instead:
+A JVM that was already running when the package was loaded shows none of this: it has to restart. A JVM that a systemd user manager starts also needs a manager that has read the change. The manager reads `/run/environment.d/shirudo.conf` when it starts and when it reloads, so a manager that started before the upatch was loaded (or unloaded) still passes the old options, and a restarted JVM starts without the agent. Run `systemctl --user daemon-reload` as the JVM's user, check with `systemctl --user show-environment | grep JAVA_TOOL_OPTIONS` that the manager now names the agent, then restart the JVM.
+
+To see whether a running JVM has the agent, look for the start line in its log, or ask the JVM: `jcmd <pid> VM.system_properties | grep ohmyrasp.agent.line` prints `ohmyrasp.agent.line=<line>`, one of `primary`, `java17`, `java11` and `java8`, when a line started, and prints nothing when none did.
+
+A JVM whose line is not started says why in one JSON line instead:
 
 - `{"event":"ohmyrasp-agent-skipped","reason":"unsupported-java", ...}`: this JAR holds no line that fits the JVM's Java version (a per-line JAR on a Java it does not cover, or any JAR on Java 9 or 10). This JAR protects nothing; the JVM and the application start.
 - `{"event":"ohmyrasp-agent-skipped","reason":"already-active", ...}`: another OhMyRASP JAR started a line first. The JVM is protected.
@@ -68,7 +72,7 @@ Detections are JSON objects, one per line, on the JVM's standard error (`"event"
 
 ## Advisories the universal package lists
 
-`ohmyrasp/Beefile` sets `fixes` in its `[upatches.tree]` entry, which shirudo's backend reads to show which loaded upatch covers an advisory a node is exposed to. The list means that the agent blocks the tested exploit path of that advisory inside the JVM; it does not patch the vulnerable library. It is written from [fixes.toml](fixes.toml), which names for each advisory the Vulhub acceptance script that shows it, and `gen-readmes.py --check` fails when the list, the script or the evidence ledger disagree. The per-line packages list none. See [ohmyrasp/README.md](ohmyrasp/README.md) for the list.
+`ohmyrasp/Beefile` sets `fixes` in its `[upatches.tree]` entry, which shirudo's backend reads to show which loaded upatch covers an advisory a node is exposed to. The list means that the agent blocks the tested exploit path of that advisory inside the JVM; it does not patch the vulnerable library. It describes the block build: a monitor build only observes, so `build.sh --mode monitor` packages it from a Beefile without `fixes`, and `verify-shirudo-upatch.sh` checks that the baked mode and the Beefile agree. It is written from [fixes.toml](fixes.toml), which names for each advisory the Vulhub acceptance script that shows it, and `gen-readmes.py --check` fails when the list, the script or the evidence ledger disagree. `replay-fixes.sh` runs those scripts against the universal JAR; `fixes.toml` records the date of the last replay of each entry. The per-line packages list none. See [ohmyrasp/README.md](ohmyrasp/README.md) for the list.
 
 ## Security Protections Included
 
@@ -160,6 +164,7 @@ OpenJDK 8 does not honor a `JAVA_TOOL_OPTIONS` of **1024 bytes** or more, or mor
 
 - **Containers, system services, and direct logins** do not inherit user-manager `environment.d` files. Pass `-javaagent:/run/shirudo-java/<name>.jar` explicitly on the unit or container (for example via `JAVA_TOOL_OPTIONS` with the sealed JAR bind-mounted read-only).
 - **Already-running JVMs** only read `JAVA_TOOL_OPTIONS` at process start and must be restarted to pick up a newly loaded or unloaded upatch.
+- **A user manager that started before a load or unload** still passes the old options. Run `systemctl --user daemon-reload` as the JVM's user (or restart the manager) before restarting the JVM.
 
 ## Security Boundary
 

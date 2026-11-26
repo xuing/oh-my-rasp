@@ -11,6 +11,7 @@ The Vulhub inventories (generated coverage doc, README metrics, evidence report)
 rebuilds the target from the component directory and the scenario part of the file name.
 """
 
+import re
 from pathlib import Path
 
 ACCEPTANCE = Path(__file__).resolve().parent.parent / "acceptance"
@@ -57,6 +58,17 @@ def legacy_stem(script: Path) -> str:
         prefix = TARGET_PREFIX.get(component, component)
         target = f"{prefix}-{scenario}" if scenario else prefix
     return f"{target}-{jdk}" if jdk else target
+
+
+# A script whose name says it only shows a boundary: an old JVM (Java 6 or 7) on which an agent line now
+# skips and the JVM runs unprotected, or a setup or licence state that keeps a payload out of reach.
+# Neither shows the agent blocking an exploit.
+BOUNDARY = re.compile(r"legacy|boundar", re.I)
+
+
+def is_boundary(script: Path, root: Path = ACCEPTANCE) -> bool:
+    """True for a script that only shows a legacy-JVM or setup/licence boundary (by its name)."""
+    return bool(BOUNDARY.search(script.relative_to(root).as_posix()))
 
 
 def vulhub_scripts(root: Path = ACCEPTANCE) -> list[Path]:

@@ -261,9 +261,16 @@ def extract_jdk25() -> dict[str, object]:
 
 
 def extract_vulhub_counts() -> dict[str, int]:
+    """Vulhub scripts that run the exploit on a JVM an agent line supports, by JDK line.
+
+    A legacy-JVM script (Java 6 or 7, where the agent skips and the JVM runs unprotected) or a setup/licence
+    boundary script shows no block, so no count here includes one (acceptance_scripts.is_boundary).
+    """
     counts: dict[str, int] = {}
     total = 0
     for script in acceptance_scripts.vulhub_scripts():
+        if acceptance_scripts.is_boundary(script):
+            continue
         total += 1
         stem = acceptance_scripts.legacy_stem(script)
         jdk = next((j for j in JDK_ORDER if stem.endswith("-" + j)), "other")
@@ -331,7 +338,17 @@ def render_active_section(w, rows: list[tuple[str, str]], level: str) -> None:
       "classpath has been appended`. It is the JVM's notice that class-data sharing is limited, not an error.")
     w("")
     w("A JVM that was already running when the package was loaded shows none of this: it has to restart. "
-      "A JVM whose line is not started says why in one JSON line instead:")
+      "A JVM that a systemd user manager starts also needs a manager that has read the change. The manager reads "
+      "`/run/environment.d/shirudo.conf` when it starts and when it reloads, so a manager that started before the "
+      "upatch was loaded (or unloaded) still passes the old options, and a restarted JVM starts without the agent. "
+      "Run `systemctl --user daemon-reload` as the JVM's user, check with `systemctl --user show-environment | "
+      "grep JAVA_TOOL_OPTIONS` that the manager now names the agent, then restart the JVM.")
+    w("")
+    w("To see whether a running JVM has the agent, look for the start line in its log, or ask the JVM: "
+      "`jcmd <pid> VM.system_properties | grep ohmyrasp.agent.line` prints `ohmyrasp.agent.line=<line>`, one of "
+      "`primary`, `java17`, `java11` and `java8`, when a line started, and prints nothing when none did.")
+    w("")
+    w("A JVM whose line is not started says why in one JSON line instead:")
     w("")
     w("- `{\"event\":\"ohmyrasp-agent-skipped\",\"reason\":\"unsupported-java\", ...}`: this JAR holds no line that "
       "fits the JVM's Java version (a per-line JAR on a Java it does not cover, or any JAR on Java 9 or 10). "
@@ -401,7 +418,7 @@ def render_top_readme(
     w("|---|---|---|---|---|---|")
     w(
         f"| `{universal['name']}` | Java 8 to 25, the line that fits | `{universal['source']}` | "
-        f"every line below | every line below | {vulhub['total']} total scenarios across 6 JDK lines |"
+        f"every line below | every line below | {vulhub['total']} Vulhub scripts on supported JVMs |"
     )
     for b in backports:
         bf = b["beefile"]
@@ -419,7 +436,7 @@ def render_top_readme(
         w(
             f"| `{bf['name']}` | {jdk25['starts_on']} (classfile `{jdk25['classfile']}`) | "
             f"`{bf['source']}` | {len(jdk25['modules'])} ASM hook modules | "
-            f"{len(jdk25['capabilities'])} `detect*` capabilities | {vulhub['total']} total scenarios across 6 JDK lines |"
+            f"{len(jdk25['capabilities'])} `detect*` capabilities | {vulhub['total']} Vulhub scripts on supported JVMs |"
         )
     w("")
     w("## Which package to install")
@@ -448,9 +465,13 @@ def render_top_readme(
     w(f"`{UNIVERSAL_PKG}/Beefile` sets `fixes` in its `[upatches.tree]` entry, which shirudo's backend reads to show "
       "which loaded upatch covers an advisory a node is exposed to. "
       "The list means that the agent blocks the tested exploit path of that advisory inside the JVM; it does not "
-      "patch the vulnerable library. "
+      "patch the vulnerable library. It describes the block build: a monitor build only observes, so `build.sh --mode "
+      "monitor` packages it from a Beefile without `fixes`, and `verify-shirudo-upatch.sh` checks that the baked mode "
+      "and the Beefile agree. "
       "It is written from [fixes.toml](fixes.toml), which names for each advisory the Vulhub acceptance script that "
       "shows it, and `gen-readmes.py --check` fails when the list, the script or the evidence ledger disagree. "
+      "`replay-fixes.sh` runs those scripts against the universal JAR; `fixes.toml` records the date of the last "
+      "replay of each entry. "
       f"The per-line packages list none. See [{UNIVERSAL_PKG}/README.md]({UNIVERSAL_PKG}/README.md) for the list.")
     w("")
     w("## Security Protections Included")
@@ -546,6 +567,7 @@ def render_top_readme(
     w("")
     w("- **Containers, system services, and direct logins** do not inherit user-manager `environment.d` files. Pass `-javaagent:/run/shirudo-java/<name>.jar` explicitly on the unit or container (for example via `JAVA_TOOL_OPTIONS` with the sealed JAR bind-mounted read-only).")
     w("- **Already-running JVMs** only read `JAVA_TOOL_OPTIONS` at process start and must be restarted to pick up a newly loaded or unloaded upatch.")
+    w("- **A user manager that started before a load or unload** still passes the old options. Run `systemctl --user daemon-reload` as the JVM's user (or restart the manager) before restarting the JVM.")
     w("")
     w("## Security Boundary")
     w("")
@@ -590,7 +612,7 @@ def render_backport_readme(b: dict[str, object], vulhub: dict[str, int]) -> str:
         f"daemonless OhMyRASP runtime self-protection agent targeting **{b['target_jvms']}** "
         f"JVMs (classfile version `{b['classfile']}`). It covers **{len(b['transformers'])} ASM "
         f"transformer families** and **{len(b['algorithms'])} detection algorithms**, validated "
-        f"against **{vulhub.get(str(b['vulhub_jdk']), 0)}** real Vulhub scenarios on `{b['vulhub_jdk']}`"
+        f"against **{vulhub.get(str(b['vulhub_jdk']), 0)}** Vulhub scripts that run the exploit on `{b['vulhub_jdk']}`"
         + (
             f" plus **{vulhub.get('java21', 0)}** on `java21`."
             if b["track"] == "java17"
@@ -688,7 +710,7 @@ def render_primary_readme(jdk25: dict[str, object], bf: dict[str, str], vulhub: 
         f"OhMyRASP runtime self-protection agent targeting **{jdk25['target_jvms']}** JVMs "
         f"(classfile version `{jdk25['classfile']}`). It registers **{len(jdk25['modules'])} "
         f"ASM hook modules** and **{len(jdk25['capabilities'])} detector capabilities**, "
-        f"backed by **{vulhub['total']}** end-to-end Vulhub acceptance scenarios."
+        f"backed by **{vulhub['total']}** end-to-end Vulhub acceptance scripts that run the exploit on a supported JVM."
     )
     w("")
     w(
@@ -778,7 +800,7 @@ def render_universal_readme(
         "with `-javaagent` on it, Java 8 to Java 25, runs the line that fits its Java version: the Java 8, 11 or 17 "
         "line, or the primary line on Java 21 and later. It hooks the JVM's own sinks (process execution, JNDI, "
         "deserialization, SQL, file writes, XXE, SSRF, expression engines) and blocks exploit-grade calls inside the "
-        f"JVM, backed by **{vulhub['total']}** end-to-end Vulhub acceptance scenarios."
+        f"JVM, backed by **{vulhub['total']}** end-to-end Vulhub acceptance scripts that run the exploit on a supported JVM."
     )
     w("")
     w("## Install and uninstall")
@@ -804,7 +826,8 @@ def render_universal_readme(
     w("The mode is baked into the JAR when it is built, and no control file or environment variable changes it at run "
       "time. A package built with `build.sh --mode block` (the default) blocks exploit-grade calls; one built with "
       "`build.sh --mode monitor` writes the same events with `monitor` as the action and blocks nothing. Start with "
-      "a monitor build to observe a host, then install the block build.")
+      "a monitor build to observe a host, then install the block build. A monitor build lists no `fixes` (see below), "
+      "and its `build.sh` says so when it builds.")
     w("")
     w("```sh")
     w(f"./deploy/shirudo/{pkg}/build.sh --mode monitor \"<version>\" --keys-dir \"<keys>\"")
@@ -812,15 +835,18 @@ def render_universal_readme(
     w("")
     w("## Advisories listed in `fixes`")
     w("")
-    w(f"This package lists {'these advisories' if len(entries) != 1 else 'this advisory'} in the `fixes` key of its "
-      "Beefile. The list means that the agent blocks the tested exploit path of that advisory inside the JVM; it "
-      "does not patch the vulnerable library. Each advisory is backed by a Vulhub acceptance script that exploits an "
-      "unprotected container and then sends the same request to a protected one.")
+    w("The block build of this package lists these advisories in the `fixes` key of its Beefile. The list means that "
+      "the agent blocks the tested exploit path of that advisory inside the JVM; it does not patch the vulnerable "
+      "library. A monitor build only observes, so it is packaged from a Beefile without `fixes`.")
     w("")
-    w("| Advisory | Acceptance script (under `java-agent/`) |")
-    w("|---|---|")
+    w("Each advisory is backed by a Vulhub acceptance script that exploits an unprotected container and then sends the "
+      "same request to a protected one. `deploy/shirudo/replay-fixes.sh` runs the scripts against the universal JAR; "
+      "this table gives the date of the last replay of each entry and the JAR it ran against.")
+    w("")
+    w("| Advisory | Acceptance script (under `java-agent/`) | Last replayed |")
+    w("|---|---|---|")
     for entry in entries:
-        w(f"| {entry.id} | {', '.join(f'`{s}`' for s in entry.scripts)} |")
+        w(f"| {entry.id} | {', '.join(f'`{s}`' for s in entry.scripts)} | {entry.replayed} with `{entry.replayed_with}` |")
     w("")
     w("## Limits")
     w("")

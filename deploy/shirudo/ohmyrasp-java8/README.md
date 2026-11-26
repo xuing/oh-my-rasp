@@ -2,7 +2,7 @@
 
 > **Generated** by `deploy/shirudo/gen-readmes.py` from `java-agent/` sources.
 
-The `ohmyrasp-java8` package installs the `ohmyrasp-java8` Java upatch: a standalone, daemonless OhMyRASP runtime self-protection agent targeting **Java 8** JVMs (classfile version `<= 52`). It covers **24 ASM transformer families** and **45 detection algorithms**, validated against **96** real Vulhub scenarios on `java8`.
+The `ohmyrasp-java8` package installs the `ohmyrasp-java8` Java upatch: a standalone, daemonless OhMyRASP runtime self-protection agent targeting **Java 8** JVMs (classfile version `<= 52`). It covers **24 ASM transformer families** and **45 detection algorithms**, validated against **95** Vulhub scripts that run the exploit on `java8`.
 
 This package is for hosts pinned to one Java version; the universal package [`ohmyrasp`](../ohmyrasp/README.md) starts the line that fits each JVM of a mixed host. It starts its line on **Java 8 only**; on any other Java it writes one `ohmyrasp-agent-skipped` JSON line to stderr and the JVM starts without this agent.
 
