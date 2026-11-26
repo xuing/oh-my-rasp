@@ -14,6 +14,7 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
+import java.util.Locale;
 import java.util.Properties;
 import java.util.TreeSet;
 import org.junit.jupiter.api.Test;
@@ -144,7 +145,7 @@ final class ControlContractTest {
   private void assertState(String document, Properties expected, AgentRuntime runtime) {
     AgentRuntime.ControlState state = runtime.state();
     String mode = expected.getProperty(document + ".mode");
-    assertEquals(mode, state.mode() == null ? null : state.mode().name().toLowerCase(), document + " mode");
+    assertEquals(mode, state.mode() == null ? null : state.mode().name().toLowerCase(Locale.ROOT), document + " mode");
     assertEquals(Long.parseLong(expected.getProperty(document + ".revision")), state.revision(), document + " revision");
     for (String algorithm : list(expected, document + ".disabled")) {
       assertFalse(state.isAlgorithmEnabled(algorithm), document + ": " + algorithm + " is disabled");

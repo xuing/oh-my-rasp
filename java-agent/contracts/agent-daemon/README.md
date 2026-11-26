@@ -49,12 +49,12 @@ Both agent engines ignore a control file larger than `max_control_bytes` of [`co
 
 ## Normalisation of volatile fields
 
-A test normalises what the writer produced, then compares it to the file byte for byte (a file ends with one newline). The fixed values below are what the files hold.
+A test first checks that what the writer produced ends with exactly one newline (the daemon's tailer reads only lines that end with one), then normalises it and compares it to the file byte for byte (a file ends with one newline). The fixed values below are what the files hold.
 
 | Field | Rule |
 |---|---|
 | Primary `timestamp` | An ISO-8601 instant string, replaced by `2026-01-01T00:00:00Z`. The test fails if the field is not one. |
-| Backport `timestamp` | Epoch milliseconds, replaced by `1767225600000`. A start line has none. |
+| Backport `timestamp` | Epoch milliseconds, replaced by `1767225600000`. The test fails first unless the value is 13 digits and falls between 2020-01-01 and 2100-01-01, so a switch to epoch seconds fails. A start line has none. |
 | `latency_us` | Replaced by `1234`. |
 | `headers`, `details` (primary) | The agent emits the members in hash order, so the test sorts them by key before comparing. The files hold them sorted. |
 | Start line `java_version`, `java_vendor` | Replaced by `1.8.0_402` and `Example Vendor`. |

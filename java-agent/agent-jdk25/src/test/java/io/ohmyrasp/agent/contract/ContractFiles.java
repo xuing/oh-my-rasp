@@ -80,6 +80,31 @@ public final class ContractFiles {
   }
 
   /**
+   * The one event line a writer put in {@code log}, without its terminator. The file must end with
+   * exactly one {@code \n}: the daemon's tailer reads only lines that end with one, and a writer
+   * that stopped terminating its records would otherwise pass here once the test added the newline
+   * back for the comparison.
+   */
+  public static String onlyLine(Path log) {
+    String text;
+    try {
+      text = Files.readString(log, StandardCharsets.UTF_8);
+    } catch (IOException e) {
+      throw new UncheckedIOException(log.toString(), e);
+    }
+    assertTrue(text.endsWith("\n"), "the writer ends the line with a newline: " + show(text));
+    assertTrue(!text.endsWith("\r\n"), "the terminator is a bare newline: " + show(text));
+    String line = text.substring(0, text.length() - 1);
+    assertTrue(!line.isEmpty() && line.indexOf('\n') < 0 && line.indexOf('\r') < 0,
+        "the scenario writes exactly one event, ended by exactly one newline: " + show(text));
+    return line;
+  }
+
+  private static String show(String text) {
+    return text.replace("\n", "\\n").replace("\r", "\\r");
+  }
+
+  /**
    * The primary agent's event line with its volatile parts fixed: the timestamp (an ISO-8601
    * instant), the in-hook latency, and the member order of the {@code headers} and {@code details}
    * objects, which the agent emits in hash order.

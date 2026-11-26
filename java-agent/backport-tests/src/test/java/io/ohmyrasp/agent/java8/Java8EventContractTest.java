@@ -1,7 +1,6 @@
 package io.ohmyrasp.agent.java8;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -111,11 +110,7 @@ final class Java8EventContractTest {
 
   /** The one line the agent wrote, normalised; see {@link Java8ContractFiles#normalizeEvent}. */
   private static String only(Path log, boolean sharedAcrossLines) throws Exception {
-    assertTrue(Files.exists(log), "the scenario wrote an event");
-    List<String> lines = Files.readAllLines(log, StandardCharsets.UTF_8);
-    assertEquals(1, lines.size(), "the scenario writes exactly one event: " + lines);
-    assertFalse(lines.get(0).isEmpty());
-    return Java8ContractFiles.normalizeEvent(lines.get(0), sharedAcrossLines);
+    return Java8ContractFiles.normalizeEvent(Java8ContractFiles.onlyLine(log), sharedAcrossLines);
   }
 
   /** A servlet request, read by the agent through reflection like a container's. */

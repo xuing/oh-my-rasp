@@ -1,6 +1,5 @@
 package io.ohmyrasp.agent.hook;
 
-import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
 import io.ohmyrasp.agent.contract.ContractFiles;
@@ -8,7 +7,6 @@ import io.ohmyrasp.agent.log.JsonEventLogger;
 import java.io.ByteArrayOutputStream;
 import java.io.PrintStream;
 import java.net.URL;
-import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Collections;
 import java.util.Enumeration;
@@ -64,9 +62,7 @@ final class EventContractTest {
 
   /** The one line the hooks wrote, normalised. */
   private static String only(Path log) throws Exception {
-    List<String> lines = Files.readAllLines(log);
-    assertEquals(1, lines.size(), "the scenario writes exactly one event: " + lines);
-    return ContractFiles.normalizeEvent(lines.get(0));
+    return ContractFiles.normalizeEvent(ContractFiles.onlyLine(log));
   }
 
   /** A servlet request, read by the agent through reflection like a container's. */
