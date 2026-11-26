@@ -4090,15 +4090,7 @@ public final class Java17RaspHooks {
   public static boolean enforceElasticLz4Bounds() { return shouldBlock(); }
 
   private static boolean shouldBlock() {
-    String property = System.getProperty("ohmyrasp.java17.block");
-    if (property == null || property.trim().length() == 0) {
-      property = System.getenv("OHMYRASP_JAVA17_BLOCK");
-    }
-    boolean legacy =
-        "true".equalsIgnoreCase(property)
-            || "1".equals(property)
-            || "yes".equalsIgnoreCase(property);
-    return RaspRuntime.blockingAllowed(legacy);
+    return RaspRuntime.blockingAllowed(RaspRuntime.legacyBlockFlag());
   }
 
   private static void appendEvent(Finding finding, String hook, String action) {

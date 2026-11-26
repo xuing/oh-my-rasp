@@ -136,7 +136,7 @@ public final class RaspRuntime {
         resolvedMode = Mode.BLOCK;
       }
 
-      String bakedControl = bakedProperty(baked, "control");
+      String bakedControl = validControl(bakedProperty(baked, "control"));
       String controlRaw;
       if (lockConfig) {
         // Only a baked control path counts. Without one nothing is polled, standalone or not: the
@@ -144,13 +144,14 @@ public final class RaspRuntime {
         controlRaw = bakedControl != null ? bakedControl : "none";
       } else {
         controlRaw =
-            firstNonBlank(
-                sysProps.get("ohmyrasp.control"), env.get("OHMYRASP_CONTROL"), bakedControl);
+            firstNonNull(
+                validControl(sysProps.get("ohmyrasp.control")),
+                validControl(env.get("OHMYRASP_CONTROL")),
+                bakedControl);
         if (controlRaw == null) {
           controlRaw = standalone ? "none" : "/tmp/ohmyrasp-control.json";
         }
       }
-      controlRaw = controlRaw.trim();
       boolean controlDisabled = isControlDisabledValue(controlRaw);
       Path controlPath = controlDisabled ? null : toPathOrNull(controlRaw);
 
@@ -321,17 +322,46 @@ public final class RaspRuntime {
   }
 
   private static long pollMillis() {
-    String configured =
-        firstNonBlank(
-            System.getProperty("ohmyrasp.control.poll_ms"), System.getenv("OHMYRASP_CONTROL_POLL_MS"));
-    if (configured != null) {
-      try {
-        return Math.max(200L, Long.parseLong(configured.trim()));
-      } catch (NumberFormatException ignored) {
-        // fall through
-      }
+    return pollMillis(
+        System.getProperty("ohmyrasp.control.poll_ms"), System.getenv("OHMYRASP_CONTROL_POLL_MS"));
+  }
+
+  /** The poll interval: the first source that holds a number, floored at 200 ms; else 2000 ms. */
+  static long pollMillis(String sysValue, String envValue) {
+    Long configured = parseMillis(sysValue);
+    if (configured == null) {
+      configured = parseMillis(envValue);
     }
-    return 2000L;
+    return configured == null ? 2000L : Math.max(200L, configured.longValue());
+  }
+
+  private static Long parseMillis(String value) {
+    if (!hasText(value)) {
+      return null;
+    }
+    try {
+      return Long.valueOf(Long.parseLong(value.trim()));
+    } catch (NumberFormatException ignored) {
+      return null;
+    }
+  }
+
+  /** The legacy per-line block flag, read on every blocking decision. */
+  static boolean legacyBlockFlag() {
+    return legacyBlockFlag(System.getProperty("ohmyrasp.java8.block"), System.getenv("OHMYRASP_JAVA8_BLOCK"));
+  }
+
+  /** The first source that holds a recognised boolean decides; none means false. */
+  static boolean legacyBlockFlag(String sysValue, String envValue) {
+    return firstValidFlag(sysValue, envValue);
+  }
+
+  private static boolean firstValidFlag(String sysValue, String envValue) {
+    Boolean chosen = parseBooleanObject(sysValue);
+    if (chosen == null) {
+      chosen = parseBooleanObject(envValue);
+    }
+    return Boolean.TRUE.equals(chosen);
   }
 
   /** Resolve the spool path the same way the detection writer does. */
@@ -620,6 +650,21 @@ public final class RaspRuntime {
     }
   }
 
+  /**
+   * The trimmed control setting when it disables polling or names a valid path on this platform,
+   * else null, so that an unusable value leaves the next source in charge.
+   */
+  private static String validControl(String value) {
+    if (!hasText(value)) {
+      return null;
+    }
+    String trimmed = value.trim();
+    if (isControlDisabledValue(trimmed) || toPathOrNull(trimmed) != null) {
+      return trimmed;
+    }
+    return null;
+  }
+
   /** The control path, or null when the value is not a valid path on this platform. */
   private static Path toPathOrNull(String value) {
     try {
@@ -630,9 +675,12 @@ public final class RaspRuntime {
   }
 
   private static boolean syncFlag() {
-    String value =
-        firstNonBlank(System.getProperty("ohmyrasp.log.sync"), System.getenv("OHMYRASP_LOG_SYNC"));
-    return parseBoolean(value);
+    return syncFlag(System.getProperty("ohmyrasp.log.sync"), System.getenv("OHMYRASP_LOG_SYNC"));
+  }
+
+  /** The first source that holds a recognised boolean decides; none means false. */
+  static boolean syncFlag(String sysValue, String envValue) {
+    return firstValidFlag(sysValue, envValue);
   }
 
   private static boolean hasText(String value) {
@@ -647,14 +695,6 @@ public final class RaspRuntime {
       return second;
     }
     return third;
-  }
-
-  private static String firstNonBlank(String first, String second) {
-    return firstNonBlank(first, second, null, null);
-  }
-
-  private static String firstNonBlank(String first, String second, String third) {
-    return firstNonBlank(first, second, third, null);
   }
 
   private static String firstNonBlank(

@@ -28,6 +28,7 @@ final class ShirudoStandaloneTest {
           "ohmyrasp.mode",
           "ohmyrasp.standalone",
           "ohmyrasp.control",
+          "ohmyrasp.control.poll_ms",
           "ohmyrasp.log",
           "ohmyrasp.latency_sample",
           "ohmyrasp.lock_config");
@@ -183,6 +184,40 @@ final class ShirudoStandaloneTest {
     AgentRuntime baked = AgentRuntime.newForTesting(ShirudoDefaults.fromProperties(props));
     baked.start("control=none");
     assertFalse(baked.isControlPollingDisabled(), "a locked profile with a baked control path");
+  }
+
+  @Test
+  void invalidControlPathAndPollIntervalDoNotHideAValidLowerPriorityValue(@TempDir Path tempDir) {
+    String invalid = "bad\0control.json";
+    Path sysControl = tempDir.resolve("sys-control.json");
+    System.setProperty("ohmyrasp.control", sysControl.toString());
+    AgentRuntime fromProperty = AgentRuntime.newForTesting(ShirudoDefaults.absent());
+    fromProperty.start("control=" + invalid);
+    assertFalse(fromProperty.isControlPollingDisabled());
+    assertEquals(sysControl, fromProperty.controlPath(), "an invalid control argument");
+    System.clearProperty("ohmyrasp.control");
+
+    Properties props = new Properties();
+    props.setProperty("control", tempDir.resolve("baked-control.json").toString());
+    AgentRuntime fromBaked = AgentRuntime.newForTesting(ShirudoDefaults.fromProperties(props));
+    fromBaked.start("control=" + invalid);
+    assertEquals(tempDir.resolve("baked-control.json"), fromBaked.controlPath());
+
+    // Under lock an invalid baked path polls nothing.
+    Properties locked = new Properties();
+    locked.setProperty("lock_config", "true");
+    locked.setProperty("control", invalid);
+    AgentRuntime lockedRuntime = AgentRuntime.newForTesting(ShirudoDefaults.fromProperties(locked));
+    lockedRuntime.start(null);
+    assertTrue(lockedRuntime.isControlPollingDisabled());
+    assertNull(lockedRuntime.controlPath());
+
+    System.setProperty("ohmyrasp.control.poll_ms", "700");
+    assertEquals(700L, AgentRuntime.pollIntervalMillis("control_poll_ms=soon"), "an invalid poll argument");
+    assertEquals(300L, AgentRuntime.pollIntervalMillis("control_poll_ms=300"));
+    assertEquals(200L, AgentRuntime.pollIntervalMillis("control_poll_ms=5"), "the floor still applies");
+    System.setProperty("ohmyrasp.control.poll_ms", "later");
+    assertEquals(2000L, AgentRuntime.pollIntervalMillis("control_poll_ms=soon"));
   }
 
   @Test

@@ -434,15 +434,31 @@ public final class JsonEventLogger {
   }
 
   private static boolean flag(String property, String env) {
-    String value = System.getProperty(property);
-    if (value == null || value.isBlank()) {
-      value = System.getenv(env);
+    return flagValue(System.getProperty(property), System.getenv(env));
+  }
+
+  /**
+   * The flag from a system property value and an environment value: the first that holds a
+   * recognised boolean decides, so an unrecognised property does not hide a valid environment
+   * value. Neither means false.
+   */
+  static boolean flagValue(String propertyValue, String envValue) {
+    Boolean chosen = booleanOrNull(propertyValue);
+    if (chosen == null) {
+      chosen = booleanOrNull(envValue);
     }
-    return value != null
-        && switch (value.trim().toLowerCase(Locale.ROOT)) {
-          case "true", "1", "yes", "on" -> true;
-          default -> false;
-        };
+    return Boolean.TRUE.equals(chosen);
+  }
+
+  private static Boolean booleanOrNull(String value) {
+    if (value == null) {
+      return null;
+    }
+    return switch (value.trim().toLowerCase(Locale.ROOT)) {
+      case "true", "1", "yes", "on" -> Boolean.TRUE;
+      case "false", "0", "no", "off" -> Boolean.FALSE;
+      default -> null;
+    };
   }
 
   private static int intSetting(String property, String env, int fallback) {

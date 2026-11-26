@@ -123,15 +123,12 @@ public final class AgentRuntime {
     if (lockConfig) {
       // Only a baked control path counts. Without one nothing is polled: the default lives in
       // world-writable /tmp and must not steer a locked profile.
-      controlSetting = notBlank(activeDefaults.control()) ? activeDefaults.control() : "none";
+      String baked = validControl(activeDefaults.control());
+      controlSetting = baked != null ? baked : "none";
     } else {
-      controlSetting =
-          resolve(
-              agentArgs,
-              "control",
-              "ohmyrasp.control",
-              "OHMYRASP_CONTROL",
-              activeDefaults.control());
+      String explicit =
+          resolveValid(agentArgs, "control", "ohmyrasp.control", "OHMYRASP_CONTROL", AgentRuntime::validControl);
+      controlSetting = explicit != null ? explicit : validControl(activeDefaults.control());
     }
     boolean disableControl = resolvedStandalone || isControlDisabledToken(controlSetting);
     this.controlPollingDisabled = disableControl;
@@ -158,7 +155,7 @@ public final class AgentRuntime {
       return;
     }
 
-    controlPath = Path.of(notBlank(controlSetting) ? controlSetting.trim() : DEFAULT_CONTROL);
+    controlPath = Path.of(controlSetting != null ? controlSetting : DEFAULT_CONTROL);
     reloadIfChanged();
     startPoller(pollIntervalMillis(agentArgs));
   }
@@ -203,6 +200,26 @@ public final class AgentRuntime {
       case "none", "off", "disabled" -> true;
       default -> false;
     };
+  }
+
+  /**
+   * The trimmed control setting when it disables polling or names a valid path, else null, so
+   * that an unusable value leaves the next source in charge.
+   */
+  private static String validControl(String value) {
+    if (!notBlank(value)) {
+      return null;
+    }
+    String trimmed = value.trim();
+    if (isControlDisabledToken(trimmed)) {
+      return trimmed;
+    }
+    try {
+      Path.of(trimmed);
+      return trimmed;
+    } catch (java.nio.file.InvalidPathException e) {
+      return null;
+    }
   }
 
   /** False only when detection is explicitly turned OFF. */
@@ -318,12 +335,24 @@ public final class AgentRuntime {
     }
   }
 
-  private static long pollIntervalMillis(String agentArgs) {
-    String raw = resolve(agentArgs, "control_poll_ms", "ohmyrasp.control.poll_ms", "OHMYRASP_CONTROL_POLL_MS", "2000");
+  /** The control file this runtime polls, or null when polling is disabled. */
+  Path controlPath() {
+    return controlPath;
+  }
+
+  /** The first source that holds a number, floored at 200 ms; else 2000 ms. */
+  static long pollIntervalMillis(String agentArgs) {
+    Long configured =
+        resolveValid(
+            agentArgs, "control_poll_ms", "ohmyrasp.control.poll_ms", "OHMYRASP_CONTROL_POLL_MS", AgentRuntime::parseLongOrNull);
+    return configured == null ? 2000 : Math.max(200, configured);
+  }
+
+  private static Long parseLongOrNull(String value) {
     try {
-      return Math.max(200, Long.parseLong(raw.trim()));
+      return Long.valueOf(value.trim());
     } catch (NumberFormatException e) {
-      return 2000;
+      return null;
     }
   }
 
@@ -351,22 +380,6 @@ public final class AgentRuntime {
       case "false", "0", "no", "off" -> Boolean.FALSE;
       default -> null;
     };
-  }
-
-  private static String resolve(String agentArgs, String key, String property, String env, String fallback) {
-    String fromArgs = argValue(agentArgs, key);
-    if (notBlank(fromArgs)) {
-      return fromArgs.trim();
-    }
-    String fromProperty = System.getProperty(property);
-    if (notBlank(fromProperty)) {
-      return fromProperty.trim();
-    }
-    String fromEnv = System.getenv(env);
-    if (notBlank(fromEnv)) {
-      return fromEnv.trim();
-    }
-    return fallback;
   }
 
   private static String argValue(String agentArgs, String key) {
