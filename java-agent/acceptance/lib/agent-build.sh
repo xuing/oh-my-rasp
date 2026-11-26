@@ -9,7 +9,8 @@
 # Environment:
 #   OHMYRASP_AGENT_JAR=/abs/path.jar  use this JAR in place of the one the script names, and build nothing
 #   OHMYRASP_SKIP_AGENT_BUILD=1       build nothing; the caller already ran Gradle
-#   OHMYRASP_GRADLE_HOME=DIR          host directory used as GRADLE_USER_HOME
+#   OHMYRASP_GRADLE_HOME=DIR          host directory used as GRADLE_USER_HOME; a relative path is
+#                                     taken from the current directory
 #                                     (default ~/.cache/ohmyrasp-gradle-home)
 
 # The java-agent directory, found from this file, so any current directory works.
@@ -81,7 +82,11 @@ ohmyrasp_build() {
   image=$(ohmyrasp_gradle_image) || return 1
   ohmyrasp_check_build_ownership || return 1
   gradle_home=${OHMYRASP_GRADLE_HOME:-$HOME/.cache/ohmyrasp-gradle-home}
-  mkdir -p "$gradle_home"
+  # Docker reads a relative volume source as a volume name, so mount an absolute path. Every step
+  # that can fail returns: a caller that tests this function in an `if` runs with `set -e` off,
+  # and would otherwise fall through to `docker run`.
+  mkdir -p -- "$gradle_home" || return 1
+  gradle_home=$(cd -- "$gradle_home" && pwd -P) || return 1
   docker run --rm -u "$(id -u):$(id -g)" \
     -e HOME=/tmp/gradle-home -e GRADLE_USER_HOME=/gradle-home \
     -v "$gradle_home:/gradle-home" \
