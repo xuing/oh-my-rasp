@@ -2,10 +2,10 @@
 #
 # check-detector-parity.sh
 #
-# Guards against false-positive-suppression drift between the flat single-file
-# RASP hook implementations (agent-java8 is the source of truth; agent-java11 and
-# agent-java17 are its byte-identical siblings) and, where applicable, the
-# agent-jdk25 detect/ package.
+# Guards against false-positive-suppression drift between the backport decisions
+# (one copy for agent-java8, agent-java11 and agent-java17, in
+# shared/src/main/java/io/ohmyrasp/agent/backport/BackportHooks.java) and, where
+# applicable, the agent-jdk25 detect/ package.
 #
 # It asserts, purely via grep, that the three benign-path carve-outs added in
 # commit 8920474 are present in every module that must carry them:
@@ -39,21 +39,18 @@ require_symbol() {
 }
 
 # ---------------------------------------------------------------------------
-# Flat single-file variants: java8 (source of truth) + java11 + java17.
-# Each must contain BOTH the guard call site AND the helper definitions.
+# The backport decisions, one copy for the three backport lines.
+# It must contain BOTH the guard call site AND the helper definitions.
 # ---------------------------------------------------------------------------
-for variant in java8 java11 java17; do
-  Variant="$(tr '[:lower:]' '[:upper:]' <<<"${variant:0:1}")${variant:1}"
-  hooks="$ROOT/agent-$variant/src/main/java/io/ohmyrasp/agent/$variant/${Variant}RaspHooks.java"
+hooks="$ROOT/shared/src/main/java/io/ohmyrasp/agent/backport/BackportHooks.java"
 
-  # Symbol 1: Maven .m2 artifact write carve-out.
-  require_symbol "$hooks" "isMavenRepositoryArtifactWrite"
-  # Symbol 2: Nacos internal maintenance-path carve-out.
-  require_symbol "$hooks" "isBenignInternalServicePath"
-  # Symbol 3: Liferay portal internal-include carve-out (+ its companion helper).
-  require_symbol "$hooks" "isKnownLiferayPortalInclude"
-  require_symbol "$hooks" "isKnownLiferayInternalIncludePath"
-done
+# Symbol 1: Maven .m2 artifact write carve-out.
+require_symbol "$hooks" "isMavenRepositoryArtifactWrite"
+# Symbol 2: Nacos internal maintenance-path carve-out.
+require_symbol "$hooks" "isBenignInternalServicePath"
+# Symbol 3: Liferay portal internal-include carve-out (+ its companion helper).
+require_symbol "$hooks" "isKnownLiferayPortalInclude"
+require_symbol "$hooks" "isKnownLiferayInternalIncludePath"
 
 # ---------------------------------------------------------------------------
 # agent-jdk25 uses a different architecture (one class per rule family in detect/) and a
@@ -75,7 +72,7 @@ require_symbol "$jdk25_detectors" "isKnownLiferayInternalIncludePath"
 if [[ "$fail" -ne 0 ]]; then
   echo "" >&2
   echo "Detector false-positive-suppression parity check FAILED." >&2
-  echo "agent-java8 is the source of truth; port missing carve-outs to the modules above." >&2
+  echo "shared/.../backport/BackportHooks.java holds the backport decisions; port missing carve-outs to the files above." >&2
   exit 1
 fi
 

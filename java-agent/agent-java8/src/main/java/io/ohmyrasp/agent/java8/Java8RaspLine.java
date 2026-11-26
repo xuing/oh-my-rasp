@@ -1,5 +1,6 @@
 package io.ohmyrasp.agent.java8;
 
+import io.ohmyrasp.agent.backport.BackportHooks;
 import io.ohmyrasp.agent.backport.BackportLine;
 import io.ohmyrasp.agent.backport.RaspRuntime;
 
@@ -21,12 +22,15 @@ public final class Java8RaspLine extends BackportLine {
   }
 
   /**
-   * Installs this line and starts the shared runtime. The entry class calls it after it appends the agent JAR to
+   * Installs this line, starts the shared runtime and initialises the classes the hooks use first: the shared
+   * decisions, this line's hooks class and its block exception. The entry class calls it after it appends the agent JAR to
    * the bootstrap search and before it registers any transformer, so the classes here are defined by the loader
    * the hooks run in and no hook does this work on an application thread. A second call does nothing.
    */
   public static void start() {
     BackportLine.install(new Java8RaspLine());
     RaspRuntime.start();
+    BackportHooks.initialise();
+    BackportLine.initialise(Java8RaspHooks.class, Java8RaspBlockException.class);
   }
 }

@@ -76,14 +76,19 @@ def backport_families() -> set[str]:
     return _catalogue("backports")
 
 
+# The decisions of the three backport lines, one copy: the hooks body and the classes beside it.
+BACKPORT_DECISIONS = ROOT / "shared/src/main/java/io/ohmyrasp/agent/backport"
+# `new Finding(rule("<family>")` is emitted as `<line>_<family>`; `new Finding("<id>"` as written.
+FINDING = re.compile(r'new Finding\(\s*(rule\(\s*)?"(\w+)"')
+
+
 def backport_findings() -> dict[str, list[str]]:
-    """Backport line -> the rule ids its hooks emit as `new Finding("<id>"`, in source order."""
-    found: dict[str, list[str]] = {}
-    for line in BACKPORT_LINES:
-        hooks = ROOT / f"agent-{line}" / "src/main/java/io/ohmyrasp/agent" / line / f"{line.capitalize()}RaspHooks.java"
-        names = re.findall(r'new Finding\(\s*"(\w+)"', hooks.read_text(encoding="utf-8"))
-        found[line] = list(dict.fromkeys(names))
-    return found
+    """Backport line -> the rule ids the shared backport decisions emit on it, in source order."""
+    sources = sorted(BACKPORT_DECISIONS.glob("*.java"))
+    matches = [m for path in sources for m in FINDING.finditer(path.read_text(encoding="utf-8"))]
+    return {line: list(dict.fromkeys(f"{line}_{name}" if prefixed else name for prefixed, name in
+                                     ((m.group(1), m.group(2)) for m in matches)))
+            for line in BACKPORT_LINES}
 
 
 @functools.cache

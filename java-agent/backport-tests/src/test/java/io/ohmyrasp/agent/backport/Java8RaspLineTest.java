@@ -10,6 +10,7 @@ import io.ohmyrasp.agent.java8.Java8RaspBlockException;
 import io.ohmyrasp.agent.java8.Java8RaspLine;
 import io.ohmyrasp.agent.java8.OhMyRaspJava8Agent;
 import java.lang.reflect.InvocationTargetException;
+import java.lang.reflect.Method;
 import java.net.URL;
 import java.net.URLClassLoader;
 import org.junit.jupiter.api.Test;
@@ -79,7 +80,9 @@ final class Java8RaspLineTest {
       Class<?> line = Class.forName(BackportLine.class.getName(), true, fresh);
       assertCause(IllegalStateException.class, () -> line.getMethod("current").invoke(null));
       Class<?> runtime = Class.forName(RaspRuntime.class.getName(), true, fresh);
-      assertCause(IllegalStateException.class, () -> runtime.getMethod("detectionOff").invoke(null));
+      Method detectionOff = runtime.getDeclaredMethod("detectionOff");
+      detectionOff.setAccessible(true);
+      assertCause(IllegalStateException.class, () -> detectionOff.invoke(null));
       assertCause(IllegalStateException.class, () -> runtime.getMethod("resolveLogPath").invoke(null));
       assertCause(
           IllegalStateException.class,
@@ -99,7 +102,7 @@ final class Java8RaspLineTest {
         }
       }
       assertEquals("java8_", line.getField("rulePrefix").get(line.getMethod("current").invoke(null)));
-      assertFalse((Boolean) runtime.getMethod("detectionOff").invoke(null));
+      assertFalse((Boolean) detectionOff.invoke(null));
       runtime.getMethod("writeEvent", String.class, String.class).invoke(null, "none", "{}");
     } finally {
       fresh.close();

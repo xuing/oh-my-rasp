@@ -5,6 +5,7 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import io.ohmyrasp.agent.java8.Java8RaspBlockException;
 import io.ohmyrasp.agent.java8.Java8RaspHooks;
 import io.ohmyrasp.agent.java8.Java8RaspLine;
 import io.ohmyrasp.agent.java8.OhMyRaspJava8Agent;
@@ -20,8 +21,10 @@ import java.nio.file.FileSystems;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Properties;
 import java.util.concurrent.atomic.AtomicLong;
@@ -791,6 +794,51 @@ final class Java8ShirudoStandaloneTest {
     IsolatedLoader loader = (IsolatedLoader) runtime.getClassLoader();
     String event = RaspRuntime.class.getName() + "$Event";
     assertTrue(loader.loaded(event), event + " was not loaded by initialisation");
+  }
+
+  @Test
+  void theLinesStartLoadsEveryNamedClassOfTheSharedDecisionsAndTheLinesOwn() throws Exception {
+    // The entry class starts the line before it registers any transformer, so no hook loads one of
+    // these for the first time inside a JDK class. Anonymous classes are left out: the runtime makes
+    // the ones it needs (sink, poller, shutdown hook) while it starts, and tests make the others.
+    Class<?> runtime = loadIsolatedRuntime(asyncInit());
+    IsolatedLoader loader = (IsolatedLoader) runtime.getClassLoader();
+    List<String> expected = new ArrayList<String>();
+    Path classes =
+        Paths.get(RaspRuntime.class.getProtectionDomain().getCodeSource().getLocation().toURI());
+    String packagePath = RaspRuntime.class.getPackage().getName().replace('.', '/');
+    FileSystem jar =
+        Files.isDirectory(classes) ? null : FileSystems.newFileSystem(classes, (ClassLoader) null);
+    try {
+      Path source = jar == null ? classes.resolve(packagePath) : jar.getPath("/" + packagePath);
+      DirectoryStream<Path> files = Files.newDirectoryStream(source, "*.class");
+      try {
+        for (Path file : files) {
+          String name = file.getFileName().toString();
+          name = name.substring(0, name.length() - ".class".length());
+          if (!name.matches(".*\\$[0-9]+")) {
+            expected.add(packagePath.replace('/', '.') + "." + name);
+          }
+        }
+      } finally {
+        files.close();
+      }
+    } finally {
+      if (jar != null) {
+        jar.close();
+      }
+    }
+    assertTrue(expected.contains(BackportHooks.class.getName() + "$Finding"), expected.toString());
+    expected.add(Java8RaspHooks.class.getName());
+    expected.add(Java8RaspBlockException.class.getName());
+    expected.add(Java8RaspLine.class.getName());
+    List<String> missing = new ArrayList<String>();
+    for (String name : expected) {
+      if (!loader.loaded(name)) {
+        missing.add(name);
+      }
+    }
+    assertTrue(missing.isEmpty(), "not loaded by the line's start: " + missing);
   }
 
   /** System properties for an isolated runtime: async writes, no control file. */

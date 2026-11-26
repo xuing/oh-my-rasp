@@ -205,7 +205,7 @@ public final class RaspRuntime {
   // report nor block, so a log or control path that matches a file rule cannot re-enter them.
   private static final ThreadLocal<Boolean> OWN_IO = new ThreadLocal<Boolean>();
 
-  public static boolean inOwnIo() {
+  static boolean inOwnIo() {
     return OWN_IO.get() != null;
   }
 
@@ -382,8 +382,10 @@ public final class RaspRuntime {
       Properties baked = loadBakedProperties(line);
       final Started state = new Started(line, baked, Config.resolveCurrent(baked), syncFlag());
       // Load and initialise, before any hook runs, the classes a hook would otherwise load first:
-      // the hooks run inside JDK classes, where loading a class can re-enter them.
+      // the hooks run inside JDK classes, where loading a class can re-enter them. Mode is used by
+      // every detectionOff() and is otherwise loaded only once a mode has been read.
       new Event("", "");
+      BackportLine.initialise(Mode.class);
       if (state.controlPath != null) {
         state.control.poll(state.controlPath);
         Thread poller =
@@ -419,7 +421,7 @@ public final class RaspRuntime {
   }
 
   /** True when detection is explicitly OFF, and during the agent's own I/O on this thread. */
-  public static boolean detectionOff() {
+  static boolean detectionOff() {
     return started().control.mode() == Mode.OFF || inOwnIo();
   }
 
@@ -427,7 +429,7 @@ public final class RaspRuntime {
    * BLOCK or standalone unset permit blocking; MONITOR/OFF do not; legacy falls back to flag. The
    * agent's own I/O is never blocked.
    */
-  public static boolean blockingAllowed(boolean legacyEnvFlag) {
+  static boolean blockingAllowed(boolean legacyEnvFlag) {
     if (inOwnIo()) {
       return false;
     }
@@ -504,7 +506,7 @@ public final class RaspRuntime {
   }
 
   /** The legacy per-line block flag, read on every blocking decision. */
-  public static boolean legacyBlockFlag() {
+  static boolean legacyBlockFlag() {
     BackportLine line = started().line;
     return legacyBlockFlag(System.getProperty(line.blockProperty), System.getenv(line.blockEnvironment));
   }
@@ -606,7 +608,7 @@ public final class RaspRuntime {
    * request as a telemetry line, so the daemon's latency panel reflects real
    * traffic. Suppressed in sync mode to keep acceptance output deterministic.
    */
-  public static void sampleLatency(long micros) {
+  static void sampleLatency(long micros) {
     Started state = started();
     if (!latencySampled(state.sync, detectionOff(), micros, state.sampleRate, SAMPLE_COUNTER)) {
       return;

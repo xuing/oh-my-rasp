@@ -85,6 +85,20 @@ public abstract class BackportLine {
     }
   }
 
+  /**
+   * Loads and initialises {@code types} now, through their own loaders. The line's start uses it for the classes a
+   * hook would otherwise load first, inside a JDK class where loading one can re-enter the hook.
+   */
+  public static void initialise(Class<?>... types) {
+    for (Class<?> type : types) {
+      try {
+        Class.forName(type.getName(), true, type.getClassLoader());
+      } catch (ClassNotFoundException impossible) {
+        throw new IllegalStateException(impossible);
+      }
+    }
+  }
+
   /** The installed line. Throws when no line is installed: nothing here may run for a default line. */
   public static BackportLine current() {
     BackportLine line = installed;

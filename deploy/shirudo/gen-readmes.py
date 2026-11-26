@@ -32,6 +32,7 @@ FP_REPORT = JAVA_AGENT / "docs" / "FALSE-POSITIVE-REPORT.md"
 sys.path.insert(0, str(SCRIPTS_DIR))
 import acceptance_scripts  # noqa: E402
 import detector_entry_points  # noqa: E402
+import rule_catalogue  # noqa: E402
 import fixes_check  # noqa: E402  (deploy/shirudo/, which is on sys.path as this script's directory)
 
 UNIVERSAL_PKG = "ohmyrasp"
@@ -204,7 +205,6 @@ def extract_backport(track_info: dict[str, str]) -> dict[str, object]:
     num = track_info["num"]
     src_dir = JAVA_AGENT / f"agent-{track}" / "src" / "main" / "java" / "io" / "ohmyrasp" / "agent" / track
     agent_text = (src_dir / f"OhMyRaspJava{num}Agent.java").read_text(encoding="utf-8")
-    hooks_text = (src_dir / f"Java{num}RaspHooks.java").read_text(encoding="utf-8")
     gradle_text = (JAVA_AGENT / f"agent-{track}" / "build.gradle.kts").read_text(encoding="utf-8")
 
     transformers = re.findall(rf"new (Java{num}[A-Za-z0-9]+Transformer)\(", agent_text)
@@ -212,7 +212,8 @@ def extract_backport(track_info: dict[str, str]) -> dict[str, object]:
     for t in transformers:
         if t not in seen:
             seen.append(t)
-    algorithms = sorted(set(re.findall(rf'"(java{num}_[a-z0-9_]+)"', hooks_text)))
+    # The ids the shared backport decisions emit with this line's prefix (rule_catalogue reads them).
+    algorithms = sorted(n for n in rule_catalogue.backport_findings()[track] if n.startswith(f"{track}_"))
     baked_keys = sorted(set(re.findall(r"^(standalone|lock_config|mode|control|log|latency_sample)=", gradle_text, re.M)))
 
     grouped: dict[str, list[str]] = {cat: [] for cat in CATEGORY_ORDER}

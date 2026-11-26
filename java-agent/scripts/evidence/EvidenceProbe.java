@@ -27,6 +27,13 @@ public final class EvidenceProbe {
     if (!track.matches("8|11|17")) throw new IllegalArgumentException("unknown agent track");
     String prefix = "io.ohmyrasp.agent.java" + track + ".Java" + track;
     Class<?> hooks = Class.forName(prefix + "RaspHooks");
+    // A line whose decisions are the shared io.ohmyrasp.agent.backport classes runs only once its line has
+    // started, which its entry class does before any hook; an older JAR has no line class and starts on first use.
+    try {
+      Class.forName(prefix + "RaspLine").getMethod("start").invoke(null);
+    } catch (ClassNotFoundException older) {
+      // the runtime starts when the first hook runs
+    }
     Path log = Paths.get(args[1]);
     BufferedReader in = new BufferedReader(new InputStreamReader(System.in, StandardCharsets.UTF_8));
     String line;
@@ -59,9 +66,7 @@ public final class EvidenceProbe {
           break;
         case "jndiName":
           // Historical display text can be checked without instantiating a naming provider.
-          java.lang.reflect.Field pattern = hooks.getDeclaredField("REMOTE_JNDI_LOOKUP");
-          pattern.setAccessible(true);
-          boolean remote = ((java.util.regex.Pattern) pattern.get(null)).matcher(value).find();
+          boolean remote = pattern(hooks, "REMOTE_JNDI_LOOKUP").matcher(value).find();
           System.out.println((remote ? "listed" : "unlisted") + "\t");
           continue;
         case "jndiRoute":
@@ -88,9 +93,7 @@ public final class EvidenceProbe {
             Class<?> names = Class.forName("io.ohmyrasp.agent.serialization.StreamTypeNames");
             listed = (Boolean) names.getMethod("listed", String.class).invoke(null, value);
           } catch (ClassNotFoundException legacy) {
-            java.lang.reflect.Field field = hooks.getDeclaredField("DESERIALIZATION_GADGET_CLASS");
-            field.setAccessible(true);
-            listed = ((java.util.regex.Pattern) field.get(null)).matcher(value).matches();
+            listed = pattern(hooks, "DESERIALIZATION_GADGET_CLASS").matcher(value).matches();
           }
           System.out.println((listed ? "listed" : "unlisted") + "\t");
           continue;
@@ -128,5 +131,17 @@ public final class EvidenceProbe {
       byte[] events = Files.exists(log) ? Files.readAllBytes(log) : new byte[0];
       System.out.println(blocked + "\t" + Base64.getEncoder().encodeToString(events));
     }
+  }
+
+  /** A pattern of the line's hooks class, or of the shared backport decisions once they moved there. */
+  private static java.util.regex.Pattern pattern(Class<?> hooks, String name) throws Exception {
+    java.lang.reflect.Field field;
+    try {
+      field = hooks.getDeclaredField(name);
+    } catch (NoSuchFieldException moved) {
+      field = Class.forName("io.ohmyrasp.agent.backport.BackportHooks").getDeclaredField(name);
+    }
+    field.setAccessible(true);
+    return (java.util.regex.Pattern) field.get(null);
   }
 }

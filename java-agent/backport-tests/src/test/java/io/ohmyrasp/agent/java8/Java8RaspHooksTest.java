@@ -2827,7 +2827,7 @@ final class Java8RaspHooksTest {
     return calls.get();
   }
 
-  static final class JaxRsRequestStub {
+  public static final class JaxRsRequestStub {
     private final String method;
     private final URI requestUri;
     private final Map<String, String> headers = new HashMap<String, String>();
