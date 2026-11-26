@@ -12,6 +12,7 @@ import java.io.IOException;
 import java.io.PrintStream;
 import java.io.UnsupportedEncodingException;
 import java.lang.instrument.Instrumentation;
+import java.lang.reflect.Field;
 import java.net.URL;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipOutputStream;
@@ -38,8 +39,20 @@ class AgentLauncherTest {
 
   @AfterEach
   void clearState() {
+    setState(null);
     System.clearProperty(AgentLauncher.STATE_PROPERTY);
     System.clearProperty(AgentLauncher.LINE_PROPERTY);
+  }
+
+  /** The launcher's own state; tests reset it, nothing in the agent writes it from outside. */
+  private static void setState(String value) {
+    try {
+      Field field = AgentLauncher.class.getDeclaredField("state");
+      field.setAccessible(true);
+      field.set(null, value);
+    } catch (ReflectiveOperationException e) {
+      throw new AssertionError(e);
+    }
   }
 
   @Test
@@ -114,10 +127,22 @@ class AgentLauncherTest {
 
   @Test
   void aLaunchDuringAnotherStartStartsNothing() throws IOException {
-    System.setProperty(AgentLauncher.STATE_PROPERTY, "starting");
+    setState("starting");
     assertNull(launch(Starting.class.getName()));
     assertEquals(0, Starting.calls);
     assertTrue(output().contains("\"reason\":\"already-active\",\"java_version\""), output());
+  }
+
+  @Test
+  void statePropertiesSetFromOutsideDoNotStopTheStart() throws IOException {
+    // As if the command line carried -Dohmyrasp.agent.state=installed:primary -Dohmyrasp.agent.line=x.
+    System.setProperty(AgentLauncher.STATE_PROPERTY, "installed:primary");
+    System.setProperty(AgentLauncher.LINE_PROPERTY, "x");
+    assertEquals("primary", launch(Starting.class.getName()));
+    assertEquals(1, Starting.calls);
+    assertEquals("", output());
+    assertEquals("installed:primary", System.getProperty(AgentLauncher.STATE_PROPERTY));
+    assertEquals("primary", System.getProperty(AgentLauncher.LINE_PROPERTY));
   }
 
   @Test

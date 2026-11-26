@@ -11,7 +11,6 @@ import java.net.URISyntaxException;
 import java.net.URL;
 import java.security.CodeSource;
 import java.security.ProtectionDomain;
-import java.util.Properties;
 import java.util.jar.JarFile;
 
 /**
@@ -27,14 +26,22 @@ import java.util.jar.JarFile;
  */
 public final class AgentLauncher {
   /**
-   * One start per JVM, across premain and agentmain and across our JARs: {@code starting}, then
-   * {@code installed:<line>} or {@code failed:<line>}. A system property is the one place launchers
-   * from two JARs can both see without sharing a loaded class.
+   * Published copy of {@link #state} for operators and probes. Written after each decision and never
+   * read: the command line can set any system property, and must not be able to stop the agent.
    */
   static final String STATE_PROPERTY = "ohmyrasp.agent.state";
 
-  /** The installed line, set once the line's entry method returned. */
+  /** Published name of the installed line, set once the line's entry method returned. Never read. */
   static final String LINE_PROPERTY = "ohmyrasp.agent.line";
+
+  /**
+   * One start per JVM, across premain and agentmain and across our JARs: null, then {@code starting},
+   * then {@code installed:<line>} or {@code failed:<line>}. Every agent JAR holds this class under the
+   * same name and every entry class resolves it through the system class loader, which defines it once
+   * (or finds the copy the Java 8 JAR's Boot-Class-Path gave the bootstrap loader), so all launches in
+   * a JVM share this field. Guarded by the class monitor.
+   */
+  private static String state;
 
   /** Candidate lines, in the order they are preferred. */
   static final String[] LINES = {"primary", "java17", "java11", "java8"};
@@ -83,9 +90,9 @@ public final class AgentLauncher {
       PrintStream err)
       throws IOException {
     String javaVersion = json(System.getProperty("java.version", "unknown"));
-    String state = System.getProperty(STATE_PROPERTY);
-    if (state != null) {
-      report(err, skipped(state, javaVersion));
+    String earlier = currentState();
+    if (earlier != null) {
+      report(err, skipped(earlier, javaVersion));
       return null;
     }
     File artifact = artifactOf(entry);
@@ -102,9 +109,9 @@ public final class AgentLauncher {
       return null;
     }
     String line = LINES[chosen];
-    state = claim();
-    if (state != null) {
-      report(err, skipped(state, javaVersion));
+    earlier = claim();
+    if (earlier != null) {
+      report(err, skipped(earlier, javaVersion));
       return null;
     }
     try {
@@ -116,33 +123,51 @@ public final class AgentLauncher {
       if (failure instanceof InvocationTargetException && failure.getCause() != null) {
         cause = failure.getCause();
       }
-      System.setProperty(STATE_PROPERTY, "failed:" + line);
+      settle("failed:" + line);
       report(err, "{\"event\":\"ohmyrasp-agent-start-failed\",\"line\":\"" + json(line) + "\","
           + "\"protection\":\"inactive or incomplete\","
           + "\"java_version\":\"" + javaVersion + "\"," + failureFields(cause) + "}");
       return null;
     }
-    System.setProperty(LINE_PROPERTY, line);
-    System.setProperty(STATE_PROPERTY, "installed:" + line);
+    settle("installed:" + line);
+    publish(LINE_PROPERTY, line);
     return line;
   }
 
+  private static synchronized String currentState() {
+    return state;
+  }
+
   /**
-   * Records {@code starting} unless a state is recorded already.
+   * Records {@code starting} unless a state is recorded already. The monitor is held only for the
+   * check and set, never while a line starts.
    *
    * @return the state recorded earlier, or null when this call recorded {@code starting}
    */
   private static String claim() {
-    // The monitor makes check-and-set atomic between two launchers; it is released before the line
-    // starts, so a line thread that reads a system property never waits on it.
-    Properties properties = System.getProperties();
-    synchronized (properties) {
-      String state = properties.getProperty(STATE_PROPERTY);
+    synchronized (AgentLauncher.class) {
       if (state != null) {
         return state;
       }
-      properties.setProperty(STATE_PROPERTY, "starting");
-      return null;
+      state = "starting";
+    }
+    publish(STATE_PROPERTY, "starting");
+    return null;
+  }
+
+  private static void settle(String outcome) {
+    synchronized (AgentLauncher.class) {
+      state = outcome;
+    }
+    publish(STATE_PROPERTY, outcome);
+  }
+
+  /** Writes a published copy; a failure to write it changes nothing the launcher decided. */
+  private static void publish(String key, String value) {
+    try {
+      System.setProperty(key, value);
+    } catch (Throwable ignored) {
+      // A security manager may refuse; the state field is what counts.
     }
   }
 
