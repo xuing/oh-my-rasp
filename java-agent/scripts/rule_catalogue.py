@@ -5,6 +5,11 @@ backport rule family. A backport line emits a family as `<line>_<family>` (java8
 except for the few families its hooks emit unprefixed. Those are read from the hooks, so the set of
 ids is exactly what the agents can log.
 
+A primary id the agent can never report, because nothing the packaged agent runs reaches the code that
+would, is listed under "not_wired" beside "primary" and "backports", with the reason, in the file where its
+description lives. Counts of what the agent detects leave those ids out. test_rule_cases.py (WiringTest)
+checks the list against the sources, in both directions.
+
 A script asserts an id when the id appears in it as a whole token: not as part of a longer word, a
 file name, a path or a `key:value` pair.
 gen-detection-coverage.py builds its acceptance lists with this definition and scripts/check-docs.py
@@ -28,6 +33,39 @@ TOKEN = re.compile(r"(?<![\w./-])\w+(?![\w/-]|[.:][\w/])")
 def _catalogue(section: str) -> set[str]:
     return {key for name in ("general.json", "product.json")
             for key in json.loads((RULES / name).read_text(encoding="utf-8"))[section]}
+
+
+def not_wired() -> dict[str, str]:
+    """Primary rule id -> why no hook can report it. An id is described in one file and marked in the same one."""
+    found: dict[str, str] = {}
+    for name in ("general.json", "product.json"):
+        data = json.loads((RULES / name).read_text(encoding="utf-8"))
+        for rule, reason in data.get("not_wired", {}).items():
+            if rule not in data["primary"]:
+                raise ValueError(f"{name}: not_wired names {rule}, which is not one of its primary ids")
+            if not reason.strip():
+                raise ValueError(f"{name}: not_wired {rule} needs a reason")
+            found[rule] = reason
+    return found
+
+
+def wired_primary_ids() -> set[str]:
+    """Primary ids a hook can report: the catalogue's primary ids less the not wired ones."""
+    return primary_ids() - not_wired().keys()
+
+
+def with_not_wired(uncovered: dict[str, dict[str, str]]) -> dict[str, dict[str, str]]:
+    """rules/cases/uncovered.toml's lists plus the not wired primary ids, each with the catalogue's reason.
+
+    The reason of a not wired id has one home, the catalogue; listing the id in uncovered.toml too is an error.
+    """
+    merged = {engine: dict(ids) for engine, ids in uncovered.items()}
+    for rule, reason in not_wired().items():
+        if rule in merged["primary"]:
+            raise ValueError(f"uncovered.toml lists {rule}, which the catalogue marks not wired: "
+                             "take it off uncovered.toml, its reason is in rules/general.json")
+        merged["primary"][rule] = f"not wired: {reason.rstrip('.')}"
+    return merged
 
 
 def primary_ids() -> set[str]:

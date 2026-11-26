@@ -4,7 +4,7 @@
   python3 java-agent/scripts/gen-rule-cases.py           rewrite the summary
   python3 java-agent/scripts/gen-rule-cases.py --check   exit non-zero when the summary is stale
 
-It reads the case files and uncovered.toml only, so it needs no agent build and no Docker. The
+It reads the case files, uncovered.toml and the catalogue's not_wired ids only, so it needs no agent build and no Docker. The
 rule-cases probe (java-agent/probes/rule-cases) is what checks that the engines still do what the
 files declare.
 """
@@ -16,7 +16,9 @@ from pathlib import Path
 
 JAVA_AGENT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(JAVA_AGENT / "probes" / "common"))
+sys.path.insert(0, str(Path(__file__).resolve().parent))
 import rule_cases  # noqa: E402
+import rule_catalogue  # noqa: E402
 
 OUTPUT = JAVA_AGENT / "docs" / "RULE-CASES.md"
 EFFECT_ORDER = ("block", "log", "none", "unreachable")
@@ -108,7 +110,8 @@ def render(cases: list[rule_cases.Case], uncovered: dict[str, dict[str, str]]) -
                        f"{declared or '-'} | {files} |")
         out.append("")
         if uncovered[engine]:
-            out += [f"Not covered on this engine, from [uncovered.toml](../rules/cases/uncovered.toml):", ""]
+            out += ["Not covered on this engine, from [uncovered.toml](../rules/cases/uncovered.toml) and, for the ids marked "
+                    "`not wired`, from the `not_wired` object of the [catalogue](../rules/general.json):", ""]
             groups: dict[str, list[str]] = defaultdict(list)
             for rule, reason in uncovered[engine].items():
                 groups[reason].append(rule)
@@ -137,7 +140,7 @@ def render(cases: list[rule_cases.Case], uncovered: dict[str, dict[str, str]]) -
 
 
 def main() -> int:
-    text = render(rule_cases.load(), rule_cases.load_uncovered())
+    text = render(rule_cases.load(), rule_catalogue.with_not_wired(rule_cases.load_uncovered()))
     if "--check" in sys.argv[1:]:
         if not OUTPUT.exists() or OUTPUT.read_text(encoding="utf-8") != text:
             print(f"{OUTPUT.relative_to(JAVA_AGENT.parent)} is stale; run python3 java-agent/scripts/gen-rule-cases.py",

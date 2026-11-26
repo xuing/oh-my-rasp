@@ -163,15 +163,13 @@ Each id that some case names on this engine: the attack cases that name it, the 
 | `xxe_file` | 1 | 1 | log 1 | [xxe_file](../rules/cases/xxe_file.toml) |
 | `xxe_protocol` | 5 | 2 | block 2, log 2, log (also) 1 | [xxe_file](../rules/cases/xxe_file.toml), [xxe_protocol](../rules/cases/xxe_protocol.toml) |
 
-Not covered on this engine, from [uncovered.toml](../rules/cases/uncovered.toml):
+Not covered on this engine, from [uncovered.toml](../rules/cases/uncovered.toml) and, for the ids marked `not wired`, from the `not_wired` object of the [catalogue](../rules/general.json):
 
-- no hook module injects its entry: OhMyRaspHooks defines the method, and nothing under asm/ calls it: `eval_regex`, `fileUpload_webdav`, `include_protocol`, `include_userinput`, `link_webshell`, `loadLibrary_unc`, `rename_webshell`, `response_dataLeak`, `sql_exception`, `sql_regex`, `webshell_callable`, `webshell_command`, `webshell_eval`, `webshell_file_put_contents`, `webshell_ld_preload`, `xss_echo`
-- no module reaches it: it is the fallback for an engine name outside the known list, and every engine ExpressionHookModule instruments passes a name that has its own id: `expression_runtime`
 - selected only by a loaded policy; the cases run with no policy: `command_reflect`, `deserialization_http_object_stream`, `directory_reflect`, `directory_unwanted`, `readFile_outsideWebroot`, `request_scanner`, `xss_userinput`
 - decided from a Windows named data stream path and selected only by a loaded policy; the probes run on Linux with no policy: `writeFile_NTFS`
 - decided from a request body, which the packaged request path does not carry; needs a detector-level case: `request_json_patch_expression`, `request_message_selector_expression`, `request_xml_polymorphic_gadget`
 - decided from JSON fields of a request body and selected only by a loaded policy: `request_sql_identifier_injection`, `request_sql_sort_injection`
-- needs an expression engine on the driver's class path (EL, JEXL, Jiffle, OGNL, Groovy or MVEL, Spring Expression, Velocity); the JDK ships none of them: `el_runtime`, `jexl_runtime`, `jiffle_runtime`, `ognl_blacklist`, `ognl_length_limit`, `ognl_runtime`, `script_runtime`, `spel_runtime`, `template_runtime`
+- needs an expression engine on the driver's class path (EL, JEXL, Jiffle, OGNL, Groovy or MVEL, Spring Expression, Velocity); the JDK ships none of them: `el_runtime`, `jexl_runtime`, `jiffle_runtime`, `ognl_blacklist`, `ognl_length_limit`, `script_runtime`, `spel_runtime`, `template_runtime`
 - needs Rhino or a standalone Nashorn on the driver's class path; JDK 21 and 25 ship no JavaScript engine: `javascript_runtime`
 - decided from the frames of a specific product on the stack (RocketMQ filter server, Solr RunExecutableListener, Spring bean init, RocketMQ configuration persistence); needs that product's classes: `command_config_injection`, `command_config_listener`, `command_spring_remote_init`, `writeFile_config_path`
 - decided from the frames of a deserializing transport on the stack (cluster messaging, JMS ObjectMessage, logging socket server, WebLogic-style remoting, signed-object remoting, Spring Web Flow state); needs that transport: `deserialization_cluster_message`, `deserialization_jms_object_message`, `deserialization_logging_message`, `deserialization_remoting_transport`, `deserialization_signed_object`, `deserialization_webflow_state`
@@ -183,6 +181,23 @@ Not covered on this engine, from [uncovered.toml](../rules/cases/uncovered.toml)
 - reachable with JDK classes, no case yet: needs an MBean whose operation the rule lists, invoked through the platform MBean server inside a request: `jmx_file_write`, `jmx_remote_config`
 - a host lookup the agent lets through outside a request would query DNS off the machine, and the probes send nothing off the machine: `dns_blacklist`
 - not triggered by a protocol-shaped path (file:/etc/passwd, http:/host/x) that a request parameter selects and FileInputStream opens (measured: no event on either engine); the read API that carries the protocol to this rule was not identified: `readFile_userinput_http`, `readFile_userinput_unwanted`
+- not wired: No hook module injects a call to OhMyRaspHooks.beforeEval; only the playground servlet calls it: `eval_regex`
+- not wired: OhMyRaspHooks.beforeExpressionEvaluation reports it only for an engine name that has no id of its own, and every engine name ExpressionHookModule passes has one: `expression_runtime`
+- not wired: No hook module injects a call to OhMyRaspHooks.beforeWebdavUpload; only the playground servlet calls it: `fileUpload_webdav`
+- not wired: No hook module injects a call to OhMyRaspHooks.beforeInclude; only the playground servlet calls it: `include_protocol`, `include_userinput`
+- not wired: No hook module injects a call to OhMyRaspHooks.beforeLink; only the playground servlet calls it: `link_webshell`
+- not wired: No hook module injects a call to OhMyRaspHooks.beforeLoadLibrary; only the playground servlet calls it: `loadLibrary_unc`
+- not wired: No code emits it: the OGNL path (CodeExecutionDetector.detectOgnl) reports ognl_blacklist or ognl_length_limit: `ognl_runtime`
+- not wired: No hook module injects a call to OhMyRaspHooks.beforeRename; only the playground servlet calls it: `rename_webshell`
+- not wired: No hook module injects a call to OhMyRaspHooks.beforeResponseDataLeak; only the playground servlet and the servlet-admission probe's stub servlet call it: `response_dataLeak`
+- not wired: No hook module injects a call to OhMyRaspHooks.beforeSqlException; only the playground servlet calls it: `sql_exception`
+- not wired: No hook module injects a call to OhMyRaspHooks.beforeSqlRegex; only the playground servlet calls it: `sql_regex`
+- not wired: No hook module injects a call to OhMyRaspHooks.beforeWebshellCallable; only the playground servlet calls it: `webshell_callable`
+- not wired: No hook module injects a call to OhMyRaspHooks.beforeWebshellCommand; only the playground servlet calls it: `webshell_command`
+- not wired: No hook module injects a call to OhMyRaspHooks.beforeWebshellEval; only the playground servlet calls it: `webshell_eval`
+- not wired: No hook module injects a call to OhMyRaspHooks.beforeWebshellFileWrite; only the playground servlet calls it: `webshell_file_put_contents`
+- not wired: No hook module injects a call to OhMyRaspHooks.beforeWebshellLdPreload; only the playground servlet calls it: `webshell_ld_preload`
+- not wired: No hook module injects a call to OhMyRaspHooks.beforeXssEcho; only the playground servlet and the servlet-admission probe's stub servlet call it: `xss_echo`
 
 ## Backport rule families (without the line prefix)
 
@@ -225,7 +240,7 @@ Each id that some case names on this engine: the attack cases that name it, the 
 | `xml_decoder_script_file_write` | 2 | 1 | block 2 | [xml_decoder_webshell](../rules/cases/xml_decoder_webshell.toml) |
 | `xxe_external_entity_protocol` | 5 | 2 | block 5 | [xxe_file](../rules/cases/xxe_file.toml), [xxe_protocol](../rules/cases/xxe_protocol.toml) |
 
-Not covered on this engine, from [uncovered.toml](../rules/cases/uncovered.toml):
+Not covered on this engine, from [uncovered.toml](../rules/cases/uncovered.toml) and, for the ids marked `not wired`, from the `not_wired` object of the [catalogue](../rules/general.json):
 
 - decided from a multipart part's file name; the driver's stub request carries no multipart parts yet: `fileUpload_java_archive`, `fileUpload_multipart_exe`, `fileUpload_multipart_expression`, `fileUpload_multipart_html`, `fileUpload_multipart_script`, `fileUpload_path_traversal`
 - needs an expression engine on the driver's class path (a Unified EL implementation, Commons JEXL); the JDK ships neither: `el_runtime_execution`, `jexl_runtime_execution`

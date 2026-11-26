@@ -992,6 +992,7 @@ How some of these rules decide:
   rejects [form parsing](../detection.md#request-parameter-substring-correlation).
 - `xss_userinput`, `response_dataLeak` and `xss_echo`:
   [response-side data-leak detection](../detection.md#response-side-data-leak-detection).
+  `response_dataLeak` and `xss_echo` are defined and not wired: no hook module reaches them.
 - `command_reflect`: [process launches](../detection.md#process-launches).
 - `deleteFile_userinput`: [host file deletion](../detection.md#host-file-deletion).
 - `directory_userinput`: [host directory listings](../detection.md#host-directory-listings).
@@ -2091,7 +2092,10 @@ How some of these rules decide:
   at the multipart filename hook. The playground declares a deployment freeze
   for its upload control. Historical MeterSphere and Flink results and their
   validation boundaries are recorded in the [Vulhub ledger](vulhub-coverage.md).
-- `fileUpload_webdav` covers WebDAV-style `MOVE`/`COPY` operations that produce
+- `fileUpload_webdav` is defined and not wired: no hook module reaches its entry
+  method, so the primary agent does not report it on a protected application
+  ([the list of such rules](../../java-agent/docs/DETECTION-COVERAGE.md#defined-not-wired)).
+  Its detector covers WebDAV-style `MOVE`/`COPY` operations that produce
   server-side script files or write to unsafe absolute filesystem destinations.
   This targets ActiveMQ fileserver CVE-2016-3088 shapes such as moving an
   uploaded file from `/fileserver/2.txt` to

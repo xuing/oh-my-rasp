@@ -73,6 +73,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `io.ohmyrasp.agent.launch` as `Premain-Class` and `Agent-Class`.
 - The Java agent's shared classes are the `:shared` Gradle module, compiled
   once with `--release 8` instead of once per line.
+- The detection counts no longer include primary rule ids that no hook can report. Eighteen ids are marked `not_wired` in `java-agent/rules/general.json`: sixteen have a `OhMyRaspHooks` entry method that no hook module injects (only the playground servlet and one probe's stub servlet call it), `expression_runtime` is the fallback for an engine name no module passes, and `ognl_runtime` is emitted by no code. The README "By the numbers" table, `DETECTION-COVERAGE.md` and the Shirudo READMEs now count 45 detector capabilities (were 60) and 176 algorithm signatures asserted in acceptance scripts (were 190), and `DETECTION-COVERAGE.md` lists the 18 ids in a "Defined, not wired" section with the reason. `docs/detection.md` and `docs/development/algorithm-coverage.md` say so, `uncovered.toml` takes their reason from the catalogue, and `scripts/test_rule_cases.py` fails when the marking and the sources disagree.
 
 ### Fixed
 - **Java agent (all 4 tracks):** the baked `META-INF/ohmyrasp-shirudo.properties`
