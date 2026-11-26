@@ -10,6 +10,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Security
 - The primary Java agent redacts the values of sensitive parameters inside the `request.query` string of an event line, with the name rule and the `[redacted]` marker it already used for `parameters`. Before, `password=...` in a query string was written to the spool, shown in the local console and uploaded by the daemon (and by the direct-cloud client) as written.
 
+### Fixed
+- The daemon no longer reads the backport agents' start line as a detection: it is not counted in the attack log and not uploaded (it was shown as a low-severity "agent event"). It fills the `agent` entry of `/api/stats` instead. A line with a `kind` the daemon does not know is not a detection either; it is counted under `ignored_kinds`.
+- The daemon reads the backport agents' numeric epoch-millisecond `timestamp`, so an uploaded detection carries the time it happened and not the time the daemon read it.
+
 ### Added
 - `deploy/shirudo/gen-readmes.py`: auto-generates `deploy/shirudo/README.md`
   and per-track `ohmyrasp-{java8,java11,java17,jdk25}/README.md` with

@@ -15,7 +15,8 @@ use std::path::{Path, PathBuf};
 use serde_json::Value;
 
 use crate::control::{ControlState, Controller, Mode};
-use crate::model::{AgentEvent, CloudIdentity};
+use crate::model::{AgentEvent, CloudIdentity, EventClass};
+use crate::store::EventStore;
 
 /// What `updated_at` is replaced with in a golden control document.
 const FIXED_UPDATED_AT: &str = "2026-01-01T00:00:00Z";
@@ -272,39 +273,42 @@ const RECEIVED_AT: &str = "2026-06-06T12:00:01Z";
 /// What the daemon reads from one golden event line.
 struct Expect {
     file: &'static str,
+    /// The `kind` the line has or the daemon infers from its `event` member.
     kind: &'static str,
     hook: &'static str,
     algorithm: &'static str,
     action: &'static str,
     confidence: i64,
     latency_us: Option<i64>,
-    /// The `timestamp` the daemon parsed. The backports write it as a number, which the daemon
-    /// does not read as text, so it is empty there.
+    /// The `timestamp` the daemon parsed, as RFC 3339: a string as written, the backports'
+    /// epoch milliseconds converted. Empty for a line with none, such as a start line.
     timestamp: &'static str,
     severity: &'static str,
-    /// Whether the daemon counts the line as a detection (the attack log and the upload).
-    detection: bool,
+    /// What the daemon does with the line: only a detection is counted, logged and uploaded.
+    class: EventClass,
 }
 
 #[rustfmt::skip]
 fn expectations() -> Vec<Expect> {
-    let e = |file, kind, hook, algorithm, action, confidence, latency_us, timestamp, severity, detection| Expect {
-        file, kind, hook, algorithm, action, confidence, latency_us, timestamp, severity, detection,
+    use EventClass::{Detection, Lifecycle, Telemetry};
+    let e = |file, kind, hook, algorithm, action, confidence, latency_us, timestamp, severity, class| Expect {
+        file, kind, hook, algorithm, action, confidence, latency_us, timestamp, severity, class,
     };
     let at = "2026-01-01T00:00:00Z";
     vec![
-        e("primary/detection-block-request.json", "detection", "writeFile", "writeFile_script", "block", 90, Some(1234), at, "critical", true),
-        e("primary/detection-monitor-no-request.json", "detection", "ssrf", "ssrf_aws", "log", 100, Some(1234), at, "critical", true),
-        e("primary/telemetry.json", "telemetry", "http_request", "hook_latency", "observe", 0, Some(1234), at, "low", false),
-        e("backport/detection-block-request.json", "detection", "ProcessBuilder.start", "javaN_command_execution_shell_meta", "block", 85, None, "", "high", true),
-        e("backport/detection-monitor-no-request.json", "detection", "ProcessBuilder.start", "javaN_command_execution_exploit_primitive", "log", 95, None, "", "critical", true),
-        e("backport/telemetry.json", "telemetry", "http_request", "hook_latency", "observe", 0, Some(1234), "", "low", false),
-        // FINDING: the start line has no `kind`, so the daemon reads it as a detection with no
-        // hook, algorithm or action. It is counted in the attack log and uploaded as a low
-        // severity "agent event". See the README of the fixtures.
-        e("backport/agent-start-java8.json", "detection", "", "", "", 0, None, "", "low", true),
-        e("backport/agent-start-java11.json", "detection", "", "", "", 0, None, "", "low", true),
-        e("backport/agent-start-java17.json", "detection", "", "", "", 0, None, "", "low", true),
+        e("primary/detection-block-request.json", "detection", "writeFile", "writeFile_script", "block", 90, Some(1234), at, "critical", Detection),
+        e("primary/detection-monitor-no-request.json", "detection", "ssrf", "ssrf_aws", "log", 100, Some(1234), at, "critical", Detection),
+        e("primary/telemetry.json", "telemetry", "http_request", "hook_latency", "observe", 0, Some(1234), at, "low", Telemetry),
+        // The backports write `"event":"ohmyrasp-detection"` and no `kind`, and the time as epoch
+        // milliseconds.
+        e("backport/detection-block-request.json", "detection", "ProcessBuilder.start", "javaN_command_execution_shell_meta", "block", 85, None, at, "high", Detection),
+        e("backport/detection-monitor-no-request.json", "detection", "ProcessBuilder.start", "javaN_command_execution_exploit_primitive", "log", 95, None, at, "critical", Detection),
+        e("backport/telemetry.json", "telemetry", "http_request", "hook_latency", "observe", 0, Some(1234), at, "low", Telemetry),
+        // The start line has no `kind` and no `timestamp`: the daemon reads it from its `event`
+        // member as a lifecycle line, which is not a detection.
+        e("backport/agent-start-java8.json", "lifecycle", "", "", "", 0, None, "", "low", Lifecycle),
+        e("backport/agent-start-java11.json", "lifecycle", "", "", "", 0, None, "", "low", Lifecycle),
+        e("backport/agent-start-java17.json", "lifecycle", "", "", "", 0, None, "", "low", Lifecycle),
     ]
 }
 
@@ -361,7 +365,12 @@ fn every_golden_event_line_parses_to_what_the_daemon_reads() {
         assert_eq!(event.latency_us, want.latency_us, "{name} latency_us");
         assert_eq!(event.timestamp, want.timestamp, "{name} timestamp");
         assert_eq!(event.severity(), want.severity, "{name} severity");
-        assert_eq!(event.is_detection(), want.detection, "{name} is_detection");
+        assert_eq!(event.class(), want.class, "{name} class");
+        assert_eq!(
+            event.is_detection(),
+            want.class == EventClass::Detection,
+            "{name} is_detection"
+        );
         assert_eq!(event.is_block(), want.action == "block", "{name} is_block");
         assert_eq!(
             event.raw,
@@ -376,11 +385,13 @@ fn every_golden_event_line_parses_to_what_the_daemon_reads() {
 #[test]
 fn every_golden_detection_uploads_the_body_the_daemon_builds() {
     let (properties, required) = security_event_input_schema();
+    let expectations = expectations();
     for (name, line) in golden_events() {
         let event = AgentEvent::parse_line(7, RECEIVED_AT.into(), &line).unwrap();
         if !event.is_detection() {
             continue;
         }
+        let want = expectations.iter().find(|e| e.file == name).unwrap();
         let body = event.to_cloud_attack(&identity());
         let raw: Value = serde_json::from_str(&line).unwrap();
 
@@ -410,8 +421,10 @@ fn every_golden_detection_uploads_the_body_the_daemon_builds() {
             .filter(|m| !m.is_empty())
             .unwrap_or("agent event");
         assert_eq!(body["message"], message, "{name} message");
-        let occurred = raw["timestamp"].as_str().unwrap_or(RECEIVED_AT);
-        assert_eq!(body["occurred_at"], occurred, "{name} occurred_at");
+        // Every detection line has a time, so `occurred_at` is the time the agent wrote and not
+        // the time the daemon read the line.
+        assert_eq!(body["occurred_at"], want.timestamp, "{name} occurred_at");
+        assert_ne!(body["occurred_at"], RECEIVED_AT, "{name} occurred_at");
 
         let attributes = body["attributes"].as_object().unwrap();
         assert_eq!(
@@ -459,6 +472,64 @@ fn every_golden_detection_uploads_the_body_the_daemon_builds() {
                 .all(|k| ["request.method", "request.uri", "request.query"].contains(&k.as_str())),
             "{name}: {members:?}"
         );
+    }
+}
+
+/// What the pipeline does with each golden line: a detection is recorded and offered to the
+/// uploader once; telemetry feeds the latency panel; a start line only describes the agent. A
+/// start line is never a detection, so it is not counted and not uploaded.
+#[test]
+fn only_golden_detections_are_recorded_and_offered_to_the_uploader() {
+    let expectations = expectations();
+    for (name, line) in golden_events() {
+        let want = expectations.iter().find(|e| e.file == name).unwrap();
+        let store = EventStore::new(10);
+        let mut offered = Vec::new();
+        let event = AgentEvent::parse_line(7, RECEIVED_AT.into(), &line).unwrap();
+        crate::route(event, &store, |event| offered.push(event));
+
+        let stats = store.stats();
+        let is_detection = want.class == EventClass::Detection;
+        assert_eq!(offered.len(), usize::from(is_detection), "{name} offered");
+        assert_eq!(
+            stats.detections,
+            u64::from(is_detection),
+            "{name} detections"
+        );
+        assert_eq!(stats.total, u64::from(is_detection), "{name} total");
+        assert_eq!(
+            stats.retained,
+            usize::from(is_detection),
+            "{name} attack log"
+        );
+        assert_eq!(
+            stats.blocks,
+            u64::from(is_detection && want.action == "block"),
+            "{name} blocks"
+        );
+        assert_eq!(
+            stats.telemetry,
+            u64::from(want.class == EventClass::Telemetry),
+            "{name} telemetry"
+        );
+        assert!(stats.ignored_kinds.is_empty(), "{name} is a known kind");
+        if want.class == EventClass::Lifecycle {
+            let agent = stats
+                .agent
+                .unwrap_or_else(|| panic!("{name}: no agent entry"));
+            assert_eq!(
+                agent.line,
+                name.trim_start_matches("backport/agent-start-")
+                    .trim_end_matches(".json")
+            );
+            assert_eq!(agent.java_version, "1.8.0_402", "{name} java_version");
+            assert_eq!(agent.seen_at, RECEIVED_AT, "{name} seen_at");
+        } else {
+            assert!(
+                stats.agent.is_none(),
+                "{name}: only a start line describes the agent"
+            );
+        }
     }
 }
 

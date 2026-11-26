@@ -309,7 +309,11 @@ impl Uploader {
         };
         let mut restored = 0usize;
         for line in text.lines() {
-            if let Some(event) = AgentEvent::parse_line(0, now_rfc3339(), line) {
+            // An outbox an earlier daemon wrote can hold lines it should not have queued, such as
+            // an agent start line: only detections are uploaded.
+            if let Some(event) = AgentEvent::parse_line(0, now_rfc3339(), line)
+                && event.is_detection()
+            {
                 self.enqueue(event);
                 restored += 1;
             }
@@ -390,6 +394,27 @@ mod tests {
         // The survivors are the two most recent (3 and 4).
         assert_eq!(up.pending.front().unwrap().seq, 3);
         assert_eq!(up.pending.back().unwrap().seq, 4);
+    }
+
+    /// An outbox written by a daemon that queued start lines as detections: only detections
+    /// come back.
+    #[test]
+    fn load_outbox_skips_lines_that_are_not_detections() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("outbox.ndjson");
+        std::fs::write(
+            &path,
+            concat!(
+                "{\"event\":\"ohmyrasp-java8-agent-start\",\"java_version\":\"1.8.0_402\"}\n",
+                "{\"event\":\"ohmyrasp-detection\",\"timestamp\":1767225600000,\"hook\":\"h\",\"algorithm\":\"a\",\"action\":\"log\"}\n",
+                "{\"kind\":\"diagnostic\",\"hook\":\"h\"}\n",
+            ),
+        )
+        .unwrap();
+        let mut up = uploader(path, 10);
+        up.load_outbox();
+        assert_eq!(up.pending.len(), 1);
+        assert_eq!(up.pending[0].timestamp, "2026-01-01T00:00:00Z");
     }
 
     #[test]

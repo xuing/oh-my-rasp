@@ -6,7 +6,7 @@ use std::sync::Mutex;
 
 use serde::Serialize;
 
-use crate::model::AgentEvent;
+use crate::model::{AgentEvent, AgentInfo};
 use crate::util::now_rfc3339;
 
 const LATENCY_SAMPLES: usize = 2000;
@@ -25,6 +25,8 @@ struct Inner {
     by_hook: HashMap<String, u64>,
     by_algorithm: HashMap<String, u64>,
     by_action: HashMap<String, u64>,
+    ignored_kinds: HashMap<String, u64>,
+    agent: Option<AgentInfo>,
     latencies: VecDeque<i64>,
     started_at: String,
     last_event_at: Option<String>,
@@ -59,6 +61,11 @@ pub struct StatsSnapshot {
     pub by_hook: Vec<Counter>,
     pub by_algorithm: Vec<Counter>,
     pub by_action: Vec<Counter>,
+    /// Lines of a `kind` the daemon does not know, by kind (or by `event:<event>` when the line
+    /// has no kind). Never counted as detections and never uploaded.
+    pub ignored_kinds: Vec<Counter>,
+    /// The agent as its last start line described it; absent until one was read.
+    pub agent: Option<AgentInfo>,
 }
 
 impl EventStore {
@@ -74,6 +81,8 @@ impl EventStore {
                 by_hook: HashMap::new(),
                 by_algorithm: HashMap::new(),
                 by_action: HashMap::new(),
+                ignored_kinds: HashMap::new(),
+                agent: None,
                 latencies: VecDeque::new(),
                 started_at: now_rfc3339(),
                 last_event_at: None,
@@ -134,6 +143,22 @@ impl EventStore {
         }
     }
 
+    /// Record an agent lifecycle (start) line: it updates the agent entry of the status view and
+    /// is otherwise invisible. It is not a detection, so it counts nowhere else.
+    pub fn record_lifecycle(&self, event: &AgentEvent) {
+        let mut inner = self.inner.lock().expect("store mutex");
+        inner.agent = Some(event.agent_info());
+    }
+
+    /// Count a line of a kind the daemon does not know. It is not retained, not counted as a
+    /// detection and not uploaded.
+    pub fn record_ignored(&self, event: &AgentEvent) {
+        let label = event.ignored_label();
+        tracing::debug!(%label, "ignoring an agent line of an unknown kind");
+        let mut inner = self.inner.lock().expect("store mutex");
+        *inner.ignored_kinds.entry(label).or_default() += 1;
+    }
+
     /// Most-recent-first slice of retained events, optionally filtered.
     pub fn recent(
         &self,
@@ -167,6 +192,8 @@ impl EventStore {
             by_hook: top_counters(&inner.by_hook, 20),
             by_algorithm: top_counters(&inner.by_algorithm, 20),
             by_action: top_counters(&inner.by_action, 20),
+            ignored_kinds: top_counters(&inner.ignored_kinds, 20),
+            agent: inner.agent.clone(),
         }
     }
 }

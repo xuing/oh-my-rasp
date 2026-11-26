@@ -31,7 +31,7 @@ use crate::cloud::CloudClient;
 use crate::config::Config;
 use crate::console::AppState;
 use crate::control::Controller;
-use crate::model::AgentEvent;
+use crate::model::{AgentEvent, EventClass};
 use crate::store::EventStore;
 use crate::util::now_rfc3339;
 
@@ -91,13 +91,7 @@ async fn main() -> Result<()> {
         tailer::run(spool_cfg, tail_shutdown, move |line| {
             if let Some(event) = AgentEvent::parse_line(next_seq, now_rfc3339(), line) {
                 next_seq += 1;
-                if event.is_detection() {
-                    store_for_tail.record(&event);
-                    uploader.offer(event);
-                } else {
-                    // Telemetry: latency panel only — never the attack log or the cloud.
-                    store_for_tail.record_latency(&event);
-                }
+                route(event, &store_for_tail, |event| uploader.offer(event));
             }
         })
         .await;
@@ -147,6 +141,22 @@ async fn main() -> Result<()> {
     Ok(())
 }
 
+/// Send one parsed line where its class says: only a detection reaches the attack log, the
+/// detection counters and `offer` (the uploader).
+fn route(event: AgentEvent, store: &EventStore, offer: impl FnOnce(AgentEvent)) {
+    match event.class() {
+        EventClass::Detection => {
+            store.record(&event);
+            offer(event);
+        }
+        // Telemetry: latency panel only, never the attack log or the cloud.
+        EventClass::Telemetry => store.record_latency(&event),
+        // The start line: the agent entry of the status view only.
+        EventClass::Lifecycle => store.record_lifecycle(&event),
+        EventClass::Ignored => store.record_ignored(&event),
+    }
+}
+
 fn init_tracing(level: &str) {
     use tracing_subscriber::EnvFilter;
     let filter = EnvFilter::try_from_default_env()
@@ -178,4 +188,28 @@ async fn wait_for_signal() {
 #[cfg(not(unix))]
 async fn wait_for_signal() {
     let _ = tokio::signal::ctrl_c().await;
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_line_of_an_unknown_kind_is_counted_and_never_uploaded() {
+        let store = EventStore::new(10);
+        let mut offered = 0;
+        let line =
+            r#"{"kind":"diagnostic","hook":"h","algorithm":"a","action":"block","confidence":99}"#;
+        for seq in 1..=2 {
+            let event = AgentEvent::parse_line(seq, "t".into(), line).unwrap();
+            route(event, &store, |_| offered += 1);
+        }
+        let stats = store.stats();
+        assert_eq!(offered, 0, "not offered to the uploader");
+        assert_eq!((stats.total, stats.detections, stats.blocks), (0, 0, 0));
+        assert_eq!(stats.retained, 0, "not in the attack log");
+        assert_eq!(stats.ignored_kinds.len(), 1);
+        assert_eq!(stats.ignored_kinds[0].key, "diagnostic");
+        assert_eq!(stats.ignored_kinds[0].count, 2);
+    }
 }

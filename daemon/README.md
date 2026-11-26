@@ -101,7 +101,7 @@ The stack runs the daemon with `--default-mode=block`, so a fresh volume starts 
 | `GET /healthz` | Returns `ok` |
 | `GET /metrics` | Prometheus text exposition (`ohmyrasp_cloud_enabled`, `ohmyrasp_cloud_connected`, `ohmyrasp_cloud_registered`, `ohmyrasp_cloud_policy_version`, `ohmyrasp_events_pending`, `ohmyrasp_events_uploaded_total`, `ohmyrasp_events_failed_total`, `ohmyrasp_events_dropped_total`) |
 | `GET /api/events?limit=&hook=&action=` | Recent retained detections, newest first (`limit` clamped to `1..2000`, default `200`), preserving raw JSON in `raw` |
-| `GET /api/stats` | Event counters, latency percentiles (`p50_us`, `p95_us`, `p99_us`, `max_us`, `avg_us` over up to 2000 samples), cloud status, control state, paths, and daemon version |
+| `GET /api/stats` | Event counters (`ignored_kinds` counts lines of an unknown kind), the agent's start line (`agent`), latency percentiles (`p50_us`, `p95_us`, `p99_us`, `max_us`, `avg_us` over up to 2000 samples), cloud status, control state, paths, and daemon version |
 | `GET /api/control` | Current `ControlState` (`mode`, `algorithms`, `policy`, `revision`, `updated_at`) |
 | `POST /api/control` | Update `mode` (`off`, `monitor`, `block`) and/or `algorithms` toggles (`{ "mode": "block", "algorithms": { "sqli": false } }`) |
 
@@ -109,7 +109,7 @@ The stack runs the daemon with `--default-mode=block`, so a fresh volume starts 
 
 Example files for both formats, tested by the agents and by this daemon, are in [`../java-agent/contracts/agent-daemon/`](../java-agent/contracts/agent-daemon/README.md).
 
-**Events out (`events.jsonl`)**: one JSON object per line written by the agent's `JsonEventLogger`. The daemon reads this file without creating or modifying it, tolerates missing fields, and retains the raw JSON object. Recognized keys: `timestamp`, `kind` (`detection` or `telemetry`), `hook`, `algorithm`, `action`, `confidence`, `latency_us`, `message`, `request`, `details`.
+**Events out (`events.jsonl`)**: one JSON object per line written by the agent's `JsonEventLogger`. The daemon reads this file without creating or modifying it, tolerates missing fields, and retains the raw JSON object. Recognized keys: `timestamp` (an RFC 3339 string, or epoch milliseconds as the backport agents write it), `kind` (`detection`, `telemetry` or `lifecycle`), `event` (read when there is no `kind`), `hook`, `algorithm`, `action`, `confidence`, `latency_us`, `message`, `request`, `details`. Only a detection is logged, counted and uploaded; how the daemon tells a detection from a start line or an unknown kind is in the [fixtures' README](../java-agent/contracts/agent-daemon/README.md#how-the-daemon-reads-a-line).
 
 **Control in (`control.json`)**: written by `Controller` (`src/control.rs`) and polled by the agent:
 
