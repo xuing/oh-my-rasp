@@ -49,7 +49,7 @@ not counted, only hooks on named targets. Primary is the JDK 21 and 25 agent, ba
 | `org.apache.struts:struts2-core` | 2.5.30 | 4 | 1 |
 | `org.apache.struts:struts2-core` | 6.3.0.2 | 4 | 1 |
 | `org.apache.struts:struts2-core` | 6.9.0 | 4 | 1 |
-| `org.apache.struts:struts2-core` | 7.0.3 | 1 | 1 |
+| `org.apache.struts:struts2-core` | 7.0.3 | 4 | 1 |
 | `org.apache.struts.xwork:xwork-core` | 2.3.20 | 5 | 1 |
 | `org.apache.struts.xwork:xwork-core` | 2.3.37 | 4 | 1 |
 | `org.apache.velocity:velocity` | 1.5 | 6 | 0 |
@@ -305,7 +305,7 @@ signature); each is a place to check that the hook still covers what it did.
 | `org.apache.spark:spark-core_2.12` | 2.4.8 | 3.5.10 | `org/spark_project/jetty/http/MultiPartFormInputStream$MultiPart.getSubmittedFileName`<br>`org/spark_project/jetty/http/MultiPartFormInputStream.getPart`<br>`org/spark_project/jetty/http/MultiPartFormInputStream.getParts`<br>`org/spark_project/jetty/server/MultiParts$MultiPartsHttpParser.getPart`<br>and 10 more |
 | `org.apache.spark:spark-core_2.12` | 3.5.10 | 2.4.8 | `org/sparkproject/jetty/http/MultiPartFormInputStream$MultiPart.getSubmittedFileName`<br>`org/sparkproject/jetty/http/MultiPartFormInputStream.getPart`<br>`org/sparkproject/jetty/http/MultiPartFormInputStream.getParts`<br>`org/sparkproject/jetty/server/MultiParts$MultiPartsHttpParser.getPart`<br>and 10 more |
 | `org.apache.struts:struts2-core` | 2.5.30 6.3.0.2 6.9.0 | 7.0.3 | `com/opensymphony/xwork2/ognl/OgnlUtil.getValue`<br>`com/opensymphony/xwork2/ognl/OgnlUtil.setValue`<br>`com/opensymphony/xwork2/util/classloader/FileResourceStore.getFile` |
-| `org.apache.struts:struts2-core` | 7.0.3 | 2.5.30 6.3.0.2 6.9.0 | `org/apache/struts2/util/classloader/FileResourceStore.getFile` |
+| `org.apache.struts:struts2-core` | 7.0.3 | 2.5.30 6.3.0.2 6.9.0 | `org/apache/struts2/ognl/OgnlUtil.getValue`<br>`org/apache/struts2/ognl/OgnlUtil.setValue`<br>`org/apache/struts2/util/classloader/FileResourceStore.getFile` |
 | `org.apache.tomcat:tomcat-catalina` | 7.0.109 | 8.5.100 9.0.124 10.1.62 11.0.29 | `org/apache/catalina/websocket/WsHttpServletRequestWrapper.getPart`<br>`org/apache/catalina/websocket/WsHttpServletRequestWrapper.getParts` |
 | `org.apache.velocity:velocity` | 1.7 | 1.5 | `org/apache/velocity/runtime/RuntimeInstance.evaluate` |
 | `org.codehaus.janino:janino` | 2.7.8 | 3.0.16 3.1.12 | `org/codehaus/janino/util/resource/DirectoryResourceCreator.getFile` |

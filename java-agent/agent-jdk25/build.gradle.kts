@@ -19,6 +19,7 @@ dependencies {
 
     testImplementation(localGroovy())
     testImplementation("com.alibaba:fastjson:1.2.83")
+    testImplementation("org.apache.struts:struts2-core:7.0.3") { isTransitive = false }
     testImplementation("com.mchange:c3p0:0.15.1")
     testImplementation("org.junit.jupiter:junit-jupiter:6.1.3")
     testRuntimeOnly("org.junit.platform:junit-platform-launcher:6.1.3")
