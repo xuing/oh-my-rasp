@@ -11,6 +11,8 @@ mod cli;
 mod cloud;
 mod config;
 mod console;
+#[cfg(test)]
+mod contract_tests;
 mod control;
 mod model;
 mod store;
