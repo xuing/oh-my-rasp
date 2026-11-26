@@ -110,6 +110,11 @@ class RecordedMapsTest(unittest.TestCase):
     def test_every_hook_family_hooks_a_library_or_is_allowlisted(self):
         self.assertEqual(hookmap.check_units(self.maps, self.allowlist), [])
 
+    def test_generated_summary_is_current(self):
+        run = subprocess.run([sys.executable, str(JAVA_AGENT / "scripts" / "gen-hook-targets.py"), "--check"],
+                             capture_output=True, text=True)
+        self.assertEqual(run.returncode, 0, run.stderr)
+
 
 class GuardTest(unittest.TestCase):
     """The guards on small maps, so that a failure message and the floor on the allowlist are pinned."""
