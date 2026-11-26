@@ -6,9 +6,9 @@ java-agent/probes/test_hook_targets.py. Nothing here runs Java or touches the ne
 A recorded map (recorded/primary.txt, recorded/backport.txt) is the output of HookMap.java under a
 banner: comment lines, then one row per hooked method,
 
-    group:artifact version class method descriptor -> agent owner.method @ unit[,unit]
+    group:artifact version class method descriptor -> agent owner.method [xN] @ unit[,unit]
 
-where a unit is a primary HookModule or a backport Java{N}...Transformer. A row that the agent's
+where xN is the number of calls to that agent method the unit adds (absent for one) and a unit is a primary HookModule or a backport Java{N}...Transformer. A row that the agent's
 shared call-site visitors make in any class carries the unit COMMON instead of a module.
 """
 from __future__ import annotations
@@ -54,6 +54,7 @@ class Row:
     descriptor: str
     callee: str
     units: tuple[str, ...]
+    calls: int = 1
 
 
 @dataclass(frozen=True)
@@ -61,6 +62,7 @@ class HookMap:
     units: tuple[str, ...]
     stats: str
     rows: tuple[Row, ...]
+    chain: tuple[str, ...] = ()
 
 
 def load_libraries(path: Path = LIBRARIES) -> list[Library]:
@@ -79,7 +81,10 @@ def banner(family: str, update_command: str) -> str:
             "# The libraries and versions are those of libraries.toml.\n"
             f"# Generated; never edit by hand. Regenerate with `{update_command}` and review the diff.\n"
             "# One row per method that an agent unit rewrites to call back into the agent:\n"
-            "#   library version class method descriptor -> agent owner.method @ unit[,unit]\n"
+            "#   library version class method descriptor -> agent owner.method [xN] @ unit[,unit]\n"
+            "# xN is how many calls to that agent method the unit adds to the method (absent for one). A class under\n"
+            "# META-INF/versions/N/ of a multi-release JAR carries that prefix. A `# chain:` line is a backport\n"
+            "# transformer that adds something different after the transformers before it than on the original class.\n"
             f"# The unit {COMMON} is the call-site rewriting that applies to any class, not a hook on a named target.\n")
 
 
@@ -95,8 +100,11 @@ def parse(text: str) -> HookMap:
     units: tuple[str, ...] = ()
     stats = ""
     rows = []
+    chain = []
     for line in text.splitlines():
-        if line.startswith("# units"):
+        if line.startswith("# chain:"):
+            chain.append(line[2:])
+        elif line.startswith("# units"):
             units = tuple(line.split(":", 1)[1].split())
         elif line.startswith("# libraries:"):
             stats = line[2:]
@@ -104,10 +112,14 @@ def parse(text: str) -> HookMap:
             hook, units_text = line.rsplit(" @ ", 1)
             target, callee = hook.split(" -> ", 1)
             library, version, cls, method, descriptor = target.split(" ")
-            rows.append(Row(library, version, cls, method, descriptor, callee, tuple(units_text.split(","))))
+            calls = re.search(r" x(\d+)$", callee)
+            if calls:
+                callee = callee[:calls.start()]
+            rows.append(Row(library, version, cls, method, descriptor, callee, tuple(units_text.split(",")),
+                            int(calls[1]) if calls else 1))
     if not units:
         raise ValueError("no '# units' line: this is not a hook map")
-    return HookMap(units, stats, tuple(rows))
+    return HookMap(units, stats, tuple(rows), tuple(chain))
 
 
 def named_rows(hook_map: HookMap) -> list[Row]:

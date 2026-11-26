@@ -1,5 +1,14 @@
 #!/usr/bin/env python3
-"""Compare the library methods the packaged agent hooks, on real library versions, with the recorded hook map."""
+"""Compare the library methods the packaged agent hooks, on real library versions, with the recorded hook map.
+
+Every class of every staged library JAR goes through the line's own transformers and the methods that
+come out calling the agent are compared with recorded/<family>.txt (see HookMap.java for what counts).
+What the map cannot show, because the transformers run without a class loader that resolves anything
+and without classBeingRedefined: the JDBC hook for an already-loaded statement implementation that
+inherits a JDBC interface (the hook that keys on the loaded class, not its bytes), and any behaviour
+that depends on a loader other than a plain application one, such as an OSGi framework loader.
+Faking either would put the checker's classpath into the result, so the map says nothing about them.
+"""
 import argparse
 import difflib
 import os
@@ -32,7 +41,9 @@ def staged_problems(libs: Path, libraries) -> list[str]:
 def generate(agent: Path, libs: Path, track: str) -> str:
     here = Path(__file__).resolve().parent
     with tempfile.TemporaryDirectory(prefix="hook-targets-") as tmp:
-        subprocess.run(["javac", "-cp", str(agent), "-d", tmp, str(here / "HookMap.java")], check=True)
+        subprocess.run(["javac", "-cp", str(agent), "-d", tmp, str(here / "HookMap.java"), str(here / "HookMapSelfCheck.java")], check=True)
+        # The rules the map is counted by, on classes made for the purpose, before they are applied to real ones.
+        subprocess.run(["java", "-cp", os.pathsep.join((tmp, str(agent))), "HookMapSelfCheck"], check=True, timeout=120)
         # A JAR may hold several lines; name the one under test by its entry class.
         entry = "primary" if track == "main" else f"io/ohmyrasp/agent/java{track}/OhMyRaspJava{track}Agent"
         run = subprocess.run(["java", "-Xmx3g", "-cp", os.pathsep.join((tmp, str(agent))), "HookMap", str(agent), str(libs), entry],
