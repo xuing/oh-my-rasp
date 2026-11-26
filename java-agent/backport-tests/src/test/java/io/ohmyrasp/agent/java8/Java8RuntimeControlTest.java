@@ -233,6 +233,33 @@ final class Java8RuntimeControlTest {
     return builder.toString();
   }
 
+  /**
+   * A file system that fails with an Error other than StackOverflowError or OutOfMemoryError. The
+   * poll step, which RaspRuntime's initialisation also runs once before any hook is installed,
+   * keeps it inside.
+   */
+  @Test
+  void anErrorFromTheFileSystemStaysInsideThePollStep() throws Exception {
+    Path file = dir.resolve("control.json");
+    write(file, "{\"mode\":\"monitor\"}");
+    RaspRuntime.ControlState state = new RaspRuntime.ControlState(RaspRuntime.Mode.BLOCK);
+    state.poll(file);
+    assertEquals(RaspRuntime.Mode.MONITOR, state.mode());
+
+    Path failing =
+        (Path)
+            java.lang.reflect.Proxy.newProxyInstance(
+                Path.class.getClassLoader(),
+                new Class<?>[] {Path.class},
+                new java.lang.reflect.InvocationHandler() {
+                  public Object invoke(Object proxy, java.lang.reflect.Method method, Object[] args) {
+                    throw new AssertionError("file system provider failure in " + method.getName());
+                  }
+                });
+    state.poll(failing);
+    assertEquals(RaspRuntime.Mode.MONITOR, state.mode(), "the last good mode stays");
+  }
+
   @Test
   void controlDocumentBoundsItsNestingDepth() {
     assertNull(ControlDocument.topLevelString(nested(ControlDocument.MAX_DEPTH - 1), "mode"));

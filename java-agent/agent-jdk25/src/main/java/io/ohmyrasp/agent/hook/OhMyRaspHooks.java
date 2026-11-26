@@ -75,7 +75,20 @@ public final class OhMyRaspHooks {
       StackWalker.getInstance(
           Set.of(StackWalker.Option.RETAIN_CLASS_REFERENCE, StackWalker.Option.SHOW_REFLECT_FRAMES));
 
+  // The logger emit reports to in place of the shared one; only tests set it.
+  private static volatile JsonEventLogger reporter;
+
   private OhMyRaspHooks() {}
+
+  /** Makes emit report to {@code logger}, or to the shared logger again when it is null. Tests only. */
+  static void reportTo(JsonEventLogger logger) {
+    reporter = logger;
+  }
+
+  private static JsonEventLogger events() {
+    JsonEventLogger replaced = reporter;
+    return replaced != null ? replaced : JsonEventLogger.get();
+  }
 
   /** Installs a policy from the direct-cloud client; see {@link AgentRuntime#installDirectPolicy}. */
   public static void installPolicy(AgentPolicy policy, String agentKey) {
@@ -2145,16 +2158,39 @@ public final class OhMyRaspHooks {
       if (DISPATCH.repeatedAdmission(List.of(recorded.algorithm(), recorded.action(), recorded.details(),
           r.method(), r.uri(), r.query(), r.headers(), r.parameters(), r.body()))) return;
     }
+    if (!willBlock) {
+      report(recorded, started, ruleEvaluationUs);
+      return;
+    }
+    // Blocking is decided. Nothing that fails while the event is built, redacted or recorded, or
+    // while the response is redirected, stops the block: the event is lost, or the block is not
+    // redirected.
+    Detection blocked = recorded;
+    try {
+      blocked = report(recorded, started, ruleEvaluationUs);
+    } catch (Throwable reportingFailure) {
+      // The block below stands.
+    }
+    boolean redirected = false;
+    try {
+      redirected = mayRedirect && redirectToBlockPage(blocked);
+    } catch (Throwable redirectFailure) {
+      // Block without the redirect.
+    }
+    throw new OhMyRaspBlockException(blocked, redirected);
+  }
+
+  /** Records {@code event} without the evidence a response finding must not carry; returns what was recorded. */
+  private static Detection report(Detection event, long started, long ruleEvaluationUs) {
+    Detection recorded = event;
     if ("response_dataLeak".equals(recorded.algorithm()) || "xss_echo".equals(recorded.algorithm())) {
       Map<String, String> evidence = "response_dataLeak".equals(recorded.algorithm())
           ? Map.of("kind", recorded.details().get("kind")) : Map.of("decision_basis", "verbatim_request_markup");
       recorded = new Detection(recorded.timestamp(), recorded.hook(), recorded.algorithm(), recorded.action(),
           recorded.confidence(), recorded.message(), RequestContext.empty(), evidence);
     }
-    JsonEventLogger.get().record(redactHttpObservation(recorded), elapsedMicros(started), ruleEvaluationUs);
-    if (willBlock) {
-      throw new OhMyRaspBlockException(recorded, mayRedirect && redirectToBlockPage(recorded));
-    }
+    events().record(redactHttpObservation(recorded), elapsedMicros(started), ruleEvaluationUs);
+    return recorded;
   }
 
   private static Detection redactHttpObservation(Detection event) {

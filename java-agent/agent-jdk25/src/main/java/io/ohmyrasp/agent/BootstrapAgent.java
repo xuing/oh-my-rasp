@@ -7,6 +7,7 @@ import io.ohmyrasp.agent.control.ControlPlaneClient;
 import io.ohmyrasp.agent.control.ControlPlaneConfig;
 import io.ohmyrasp.agent.hook.OhMyRaspHooks;
 import io.ohmyrasp.agent.log.JsonEventLogger;
+import io.ohmyrasp.agent.model.RequestContext;
 import io.ohmyrasp.agent.runtime.AgentRuntime;
 import io.ohmyrasp.agent.runtime.DetectionMode;
 import java.lang.instrument.Instrumentation;
@@ -38,6 +39,15 @@ public final class BootstrapAgent {
       }
     }
 
+    // Hooks run, on any thread, from the moment the transformer is added. Initialise what they use
+    // first, so that no hook does: the event logger, which loads its settings, starts its writer
+    // thread and registers a shutdown hook, the hooks' static state (DetectorEngine and the request
+    // scopes, whose initial value is an empty RequestContext) and the DetectionMode every hook
+    // compares against. AgentRuntime was initialised and started above.
+    JsonEventLogger.get();
+    initialize(OhMyRaspHooks.class);
+    initialize(RequestContext.class);
+    initialize(DetectionMode.class);
     instrumentation.addTransformer(new OhMyRaspTransformer(hookRegistry), true);
     retransformAlreadyLoadedTargets(instrumentation, hookRegistry);
     String startupMessage =
@@ -52,6 +62,14 @@ public final class BootstrapAgent {
       System.err.println(startupMessage);
     } else if (!"none".equals(logTarget)) {
       System.out.println(startupMessage);
+    }
+  }
+
+  private static void initialize(Class<?> type) {
+    try {
+      Class.forName(type.getName(), true, type.getClassLoader());
+    } catch (ClassNotFoundException e) {
+      throw new IllegalStateException("Unable to initialise " + type.getName(), e);
     }
   }
 

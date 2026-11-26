@@ -407,14 +407,20 @@ public final class AgentRuntime {
    * atomically, so such a read is transient.
    */
   void reloadIfChanged() {
-    Path path = controlPath;
+    reloadIfChanged(controlPath);
+  }
+
+  /** One polling step against {@code path}; a test passes a path whose file system fails. */
+  void reloadIfChanged(Path path) {
     if (path == null) {
       return;
     }
     try {
       reload(path);
-    } catch (RuntimeException | StackOverflowError | OutOfMemoryError e) {
-      // Nothing the poll step throws escapes it: the last good state stays.
+    } catch (Throwable e) {
+      // Nothing the poll step throws escapes it, an Error from a file system provider included:
+      // the last good state stays, and the first poll, made during start, cannot abort the JVM's
+      // start-up.
     }
   }
 
@@ -514,13 +520,24 @@ public final class AgentRuntime {
       String nextKey = current.policyAgentKey;
       PolicySource nextSource = current.policySource;
       String nextPolicyJson = current.controlPolicyJson;
-      // A cloud policy distributed through the control file, installed once per change.
-      if (object.get("policy") instanceof String policyJson
-          && !policyJson.isBlank()
+      // A cloud policy distributed through the control file, installed once per change. The daemon
+      // withdraws it by writing the file without one: a document with no policy (absent, null or
+      // blank) drops the policy the control file installed. A direct-cloud policy stays.
+      Object policyValue = object.get("policy");
+      if (policyValue == null || policyValue instanceof String blank && blank.isBlank()) {
+        if (current.policySource == PolicySource.CONTROL_FILE) {
+          nextPolicy = AgentPolicy.absent();
+          nextKey = "";
+          nextSource = PolicySource.NONE;
+        }
+        nextPolicyJson = null;
+      } else if (policyValue instanceof String policyJson
           && !policyJson.equals(current.controlPolicyJson)) {
-        nextPolicyJson = policyJson;
+        // Recorded only once it parses: text that fails changes nothing, so it cannot make the
+        // policy text last applied look new and reinstall it over a later direct-cloud policy.
         AgentPolicy installed = parsePolicy(policyJson);
         if (installed != null) {
+          nextPolicyJson = policyJson;
           nextPolicy = installed;
           nextKey = "";
           nextSource = PolicySource.CONTROL_FILE;

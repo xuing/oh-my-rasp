@@ -253,8 +253,10 @@ public final class RaspRuntime {
       }
       try {
         pollOnce(path);
-      } catch (RuntimeException | StackOverflowError | OutOfMemoryError e) {
-        // Nothing the poll step throws escapes it: the last good mode stays.
+      } catch (Throwable e) {
+        // Nothing the poll step throws escapes it, an Error from a file system provider included:
+        // the last good mode stays, and the first poll, made while RaspRuntime initialises before
+        // any hook is installed, cannot abort the JVM's start-up.
       }
     }
 

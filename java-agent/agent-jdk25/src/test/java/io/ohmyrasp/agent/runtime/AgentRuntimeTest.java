@@ -189,6 +189,32 @@ final class AgentRuntimeTest {
     assertSame(AgentPolicy.absent(), runtime.policy());
   }
 
+  /**
+   * A file system that fails with an Error other than StackOverflowError or OutOfMemoryError. The
+   * poll step, which start also runs once before the application starts, keeps it inside.
+   */
+  @Test
+  void anErrorFromTheFileSystemStaysInsideThePollStep(@TempDir Path dir) throws Exception {
+    Path file = dir.resolve("control.json");
+    Files.writeString(file, "{\"mode\":\"monitor\"}");
+    AgentRuntime runtime = startPolling(file);
+    assertEquals(DetectionMode.MONITOR, runtime.mode());
+
+    runtime.reloadIfChanged(failingPath());
+    assertEquals(DetectionMode.MONITOR, runtime.mode(), "the last good state stays");
+    assertFalse(AgentOwnIo.active(), "the own-I/O mark is cleared");
+  }
+
+  /** A path whose every method, the lookup of its file system included, throws AssertionError. */
+  static Path failingPath() {
+    return (Path) java.lang.reflect.Proxy.newProxyInstance(
+        Path.class.getClassLoader(),
+        new Class<?>[] {Path.class},
+        (proxy, method, args) -> {
+          throw new AssertionError("file system provider failure in " + method.getName());
+        });
+  }
+
   private static String padded(String json, int size) {
     return json + " ".repeat(size - json.length());
   }
@@ -317,6 +343,75 @@ final class AgentRuntimeTest {
     Files.writeString(file, document);
     runtime.reloadIfChanged();
     assertEquals(4, runtime.policy().version());
+    assertEquals(AgentRuntime.PolicySource.CONTROL_FILE, runtime.state().policySource());
+  }
+
+  /**
+   * The daemon withdraws a policy by rewriting the control file without {@code policy}. A file
+   * with no policy (absent, null or blank) drops the one the file installed, not a direct-cloud one.
+   */
+  @Test
+  void aPolicyTheControlFileNoLongerCarriesStopsSuppressingDetections(@TempDir Path dir) throws Exception {
+    Path file = dir.resolve("control.json");
+    AgentRuntime runtime = AgentRuntime.newForTesting();
+    runtime.start("control=" + file + ",control_poll_ms=86400000,mode=block");
+    Detection sql = detection("sql_userinput");
+    String ignoreSql =
+        "\"policy\":\"{\\\"rules\\\":[{\\\"algorithm\\\":\\\"sql_userinput\\\",\\\"action\\\":\\\"ignore\\\"}]}\"";
+
+    String[] withdrawn = {"{\"mode\":\"monitor\",\"revision\":2}", "{\"revision\":3,\"policy\":null}",
+        "{\"revision\":4,\"policy\":\" \"}"};
+    for (String document : withdrawn) {
+      Files.writeString(file, "{\"mode\":\"monitor\",\"revision\":1," + ignoreSql + "}");
+      runtime.reloadIfChanged();
+      assertTrue(runtime.policy().evaluate(sql, "").ignored(), "the control file's ignore rule");
+
+      Files.writeString(file, document);
+      runtime.reloadIfChanged();
+      assertFalse(
+          runtime.policy().evaluate(sql, "").ignored(),
+          "a withdrawn control-file policy still suppresses detections: " + document);
+      assertSame(AgentPolicy.absent(), runtime.policy());
+      assertEquals(AgentRuntime.PolicySource.NONE, runtime.state().policySource());
+      assertEquals(DetectionMode.MONITOR, runtime.mode(), "the rest of the document applies");
+    }
+
+    // A direct-cloud policy is not the control file's to withdraw.
+    Files.writeString(file, "{\"revision\":5," + ignoreSql + "}");
+    runtime.reloadIfChanged();
+    runtime.installDirectPolicy(AgentPolicy.parse("{\"version\":9}"), "agent-key");
+    Files.writeString(file, "{\"revision\":6}");
+    runtime.reloadIfChanged();
+    assertEquals(9, runtime.policy().version());
+    assertEquals(AgentRuntime.PolicySource.DIRECT_CLOUD, runtime.state().policySource());
+  }
+
+  /**
+   * Policy text that fails to parse is not recorded as applied. Sequence: control-file policy P,
+   * direct-cloud policy Q, control file with policy text that does not parse, control file with P
+   * again. The malformed step keeps Q. The last step changes nothing either: P is still the
+   * control-file policy last applied, so the file's policy has not changed since Q was installed,
+   * and Q, the last policy successfully installed, stays.
+   */
+  @Test
+  void aControlFilePolicyThatFailsToParseIsNotRecordedAsApplied() {
+    AgentRuntime runtime = AgentRuntime.newForTesting();
+    String p = "{\"policy\":\"{\\\"version\\\":4}\"}";
+    runtime.apply(p);
+    assertEquals(4, runtime.policy().version());
+    runtime.installDirectPolicy(AgentPolicy.parse("{\"version\":9}"), "agent-key");
+
+    runtime.apply("{\"revision\":2,\"policy\":\"[1]\"}");
+    assertEquals(9, runtime.policy().version(), "a policy that does not parse displaced the cloud policy");
+    assertEquals(AgentRuntime.PolicySource.DIRECT_CLOUD, runtime.state().policySource());
+
+    runtime.apply(p);
+    assertEquals(9, runtime.policy().version(), "a failed parse made the unchanged file policy look new");
+    assertEquals("agent-key", runtime.state().policyAgentKey());
+
+    // A policy the file has not carried before still replaces the cloud policy.
+    runtime.apply("{\"policy\":\"{\\\"version\\\":5}\"}");
+    assertEquals(5, runtime.policy().version());
     assertEquals(AgentRuntime.PolicySource.CONTROL_FILE, runtime.state().policySource());
   }
 

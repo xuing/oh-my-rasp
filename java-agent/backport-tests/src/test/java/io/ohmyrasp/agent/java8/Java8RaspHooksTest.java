@@ -134,6 +134,34 @@ final class Java8RaspHooksTest {
     Java8RaspHooks.beforeProcessBuilderStart(renderer);
   }
 
+  /**
+   * The event goes to a console the application replaced with one that throws. The command was
+   * decided as a block, so it is blocked; only the event is lost.
+   */
+  @Test
+  void aBlockingDetectionBlocksWhenItsEventCannotBeRecorded() {
+    java.io.PrintStream original = System.err;
+    System.setProperty("ohmyrasp.java8.log", "stderr");
+    System.setProperty("ohmyrasp.java8.block", "true");
+    System.setErr(
+        new java.io.PrintStream(
+            new java.io.OutputStream() {
+              public void write(int b) {
+                throw new IllegalStateException("console closed by the application");
+              }
+            }));
+    try {
+      Java8RaspHooks.beforeHttpRequest(new RequestStub("GET", "/format", "").withParameter("script", "ok; printf"));
+      assertThrows(
+          Java8RaspBlockException.class,
+          () -> Java8RaspHooks.beforeProcessBuilderStart(new ProcessBuilder("/bin/sh", "-c", "printf ok; printf done")),
+          "a failure while recording the event replaced the block");
+    } finally {
+      System.setErr(original);
+      Java8RaspHooks.afterHttpRequest();
+    }
+  }
+
   @Test
   void ignoresBenignTtyProbeShellCommand() throws Exception {
     Path log = Files.createTempFile("ohmyrasp-java8-tty-probe", ".jsonl");

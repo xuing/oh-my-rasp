@@ -145,12 +145,9 @@ public final class JsonEventLogger {
       PrintStream customOut,
       PrintStream customErr) {
     ShirudoDefaults activeDefaults = defaults == null ? ShirudoDefaults.load() : defaults;
-    boolean standalone =
-        activeDefaults.lockConfig()
-            ? activeDefaults.standalone()
-            : (flag("ohmyrasp.standalone", "OHMYRASP_STANDALONE")
-                || activeDefaults.standalone()
-                || (runtime != null && runtime.isStandalone()));
+    // AgentRuntime owns the standalone decision (lock_config, then the first valid source); a
+    // logger without a runtime, which only tests create, takes the baked value.
+    boolean standalone = runtime != null ? runtime.isStandalone() : activeDefaults.standalone();
 
     String configured = resolveTarget(activeDefaults, runtime, targetOverride, standalone);
     String normalized = configured.trim().toLowerCase(Locale.ROOT);
@@ -225,6 +222,11 @@ public final class JsonEventLogger {
       PrintStream err) {
     return new JsonEventLogger(
         defaults, null, targetOverride, latencySampleOverride, syncWrites, out, err);
+  }
+
+  /** Creates an isolated logger for unit tests from a started {@code runtime}'s settings. */
+  public static JsonEventLogger newForTesting(AgentRuntime runtime, PrintStream out, PrintStream err) {
+    return new JsonEventLogger(runtime.shirudoDefaults(), runtime, null, null, false, out, err);
   }
 
   public String logTarget() {

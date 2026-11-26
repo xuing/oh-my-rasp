@@ -91,8 +91,10 @@ final class JsonEventLoggerTest {
       assertFalse(stopper.isAlive(), "shutdown waited without bound for the lock a stalled writer holds");
       assertEquals(List.of("spool-first"), messages(log));
     } finally {
+      // Only the test ends the stall, after its assertions, so no timing can change the outcome.
       console.release.countDown();
     }
+    assertTrue(console.left.await(BOUND_SECONDS, TimeUnit.SECONDS), "the writer left the stalled print");
   }
 
   @Test
@@ -167,10 +169,14 @@ final class JsonEventLoggerTest {
     fail("the stopper neither finished nor waited for the writer");
   }
 
-  /** An output stream whose first write signals {@code entered} and then waits for {@code release}. */
+  /**
+   * An output stream whose writes signal {@code entered} and then wait until the test counts down
+   * {@code release}; nothing else ends the wait. {@code left} is counted down once a write returns.
+   */
   private static final class StalledOutput extends OutputStream {
     final CountDownLatch entered = new CountDownLatch(1);
     final CountDownLatch release = new CountDownLatch(1);
+    final CountDownLatch left = new CountDownLatch(1);
 
     @Override
     public void write(int b) {
@@ -185,9 +191,11 @@ final class JsonEventLoggerTest {
     private void stall() {
       entered.countDown();
       try {
-        release.await(BOUND_SECONDS, TimeUnit.SECONDS);
+        release.await();
       } catch (InterruptedException e) {
         Thread.currentThread().interrupt();
+      } finally {
+        left.countDown();
       }
     }
   }

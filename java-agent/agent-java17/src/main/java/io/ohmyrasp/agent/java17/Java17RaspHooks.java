@@ -4109,7 +4109,19 @@ public final class Java17RaspHooks {
     appendEvent(finding, hook, action, resolvedAddress, -1);
   }
 
+  /**
+   * Records a detection. Nothing that fails while the event is built or written leaves this method,
+   * so a caller that has decided to block always reaches its throw; only the event is lost.
+   */
   private static void appendEvent(Finding finding, String hook, String action, String resolvedAddress, int argc) {
+    try {
+      writeDetection(finding, hook, action, resolvedAddress, argc);
+    } catch (Throwable reportingFailure) {
+      // The caller's decision stands.
+    }
+  }
+
+  private static void writeDetection(Finding finding, String hook, String action, String resolvedAddress, int argc) {
     if (RaspRuntime.detectionOff()) {
       return;
     }
