@@ -4,11 +4,11 @@ OhMyRASP is a Java-native Runtime Application Self-Protection agent. It uses ASM
 
 The runtime tracks below ship from this directory with ASM relocated to `io.ohmyrasp.agent.shaded.asm`:
 
+- `agent-all`: the universal JARs (`ohmyrasp-agent-all.jar`, `ohmyrasp.jar`), every track in one file; start here
 - `agent-jdk25`: primary JDK 21 and 25 track, compiled with `--release 21` (`ohmyrasp-agent.jar`, `ohmyrasp-jdk25.jar`; `:agent-jdk25:jdk21Jars` copies them to `build/jdk21/ohmyrasp-agent-jdk21.jar` and `build/jdk21/ohmyrasp-jdk21.jar`)
 - `agent-java17`: Java 17 track (`ohmyrasp-agent-java17.jar`, `ohmyrasp-java17.jar`)
 - `agent-java11`: Java 11 track (`ohmyrasp-agent-java11.jar`, `ohmyrasp-java11.jar`)
 - `agent-java8`: Java 8 track (`ohmyrasp-agent-java8.jar`, `ohmyrasp-java8.jar`)
-- `agent-all`: the universal JARs (`ohmyrasp-agent-all.jar`, `ohmyrasp.jar`), every track in one file
 
 Use the universal JAR on any supported Java: its launcher starts the track that fits the running JVM. Any agent JAR on a JVM it does not fit, a second OhMyRASP JAR in the same JVM, and a track that fails while starting each print one JSON line to `stderr` and let the application start; [`../docs/agent.md`](../docs/agent.md#which-jar-to-attach) lists the lines and the version ranges.
 

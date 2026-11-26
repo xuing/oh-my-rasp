@@ -11,12 +11,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - The primary Java agent redacts the values of sensitive parameters inside the `request.query` string of an event line, with the name rule and the `[redacted]` marker it already used for `parameters`. Before, `password=...` in a query string was written to the spool, shown in the local console and uploaded by the daemon (and by the direct-cloud client) as written.
 
 ### Fixed
+- The per-line `deploy/shirudo/*/build.sh` scripts ran Gradle in `gradle:9.8.1-jdk25`, a copy of the pin that had moved on. They resolve the image from `java-agent/Dockerfile` like CI, as the caller's UID.
 - The daemon no longer reinitialises a control file whose `mode` an operator edited to a spelling the agents accept (`record`, `observe`, `log`, `disabled`, `none`, `blocking`, `protect`, or another letter case). It keeps the document and writes the canonical `off`, `monitor` or `block` the next time it writes the file. Both agent engines accept the same set of spellings.
 - The daemon refuses to write a control document larger than the agents read (a large cloud policy used to be written, and the agents then ignored the whole file, mode changes included). It keeps the previous document, logs an error that names the size and the limit, and reports the refusal in `/api/stats`, `/metrics` and the local console. The limit is one value in `java-agent/contracts/agent-daemon/control/limits.properties`, which the daemon and both agent engines test their own constant against.
 - The daemon no longer reads the backport agents' start line as a detection: it is not counted in the attack log and not uploaded (it was shown as a low-severity "agent event"). It fills the `agent` entry of `/api/stats` instead. A line with a `kind` the daemon does not know is not a detection either; it is counted under `ignored_kinds`.
 - The daemon reads the backport agents' numeric epoch-millisecond `timestamp`, so an uploaded detection carries the time it happened and not the time the daemon read it.
 
 ### Added
+- Shirudo package `ohmyrasp` (`deploy/shirudo/ohmyrasp/`): the universal `ohmyrasp.jar` as one upatch for
+  every JVM on a host, Java 8 to 25. It is the default a shirudo operator installs; the per-line packages stay
+  for hosts pinned to one Java version, and a second OhMyRASP package on the same host is harmless. Its
+  `[upatches.tree]` lists in `fixes` the advisories whose tested exploit path the agent blocks, read from
+  `deploy/shirudo/fixes.toml`. `gen-readmes.py --check` fails when an ID has no tracked Vulhub script, is not on
+  a checked row of the Vulhub ledger that names the script, or the script lacks a baseline-exploited, a
+  protected-not-exploited and a block-event assertion (legacy and setup-boundary scripts are refused).
+  `smoke-test.sh` runs the universal JAR on every JDK and on a mixed host that loads every package;
+  `verify-shirudo-upatch.sh` checks the launcher entry, all four lines and the baked properties. `ohmyrasp.jar`
+  and `ohmyrasp-agent-all.jar` are release assets, and the Beefile bundle carries the new package.
 - `deploy/shirudo/gen-readmes.py`: auto-generates `deploy/shirudo/README.md`
   and per-track `ohmyrasp-{java8,java11,java17,jdk25}/README.md` with
   source-derived hook, transformer, algorithm, and Vulhub coverage tables;

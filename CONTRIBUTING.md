@@ -354,7 +354,7 @@ python3 scripts/gen-detection-coverage.py --check  # fails if stale
 **3. Shirudo upatch READMEs** (derived from `java-agent/` sources, `Beefile`s, and `FALSE-POSITIVE-REPORT.md`):
 
 ```bash
-python3 deploy/shirudo/gen-readmes.py              # writes deploy/shirudo/README.md and the per-package READMEs
+python3 deploy/shirudo/gen-readmes.py              # writes deploy/shirudo/README.md, the per-package READMEs and the fixes line of ohmyrasp/Beefile
 python3 deploy/shirudo/gen-readmes.py --check      # fails if stale (also run by verify-shirudo-upatch.sh)
 ```
 

@@ -6,9 +6,9 @@ This guide covers two ways to run OhMyRASP: downloading pre-built release artifa
 
 ### Option A: Pre-built releases
 
-Download immutable release artifacts from [GitHub Releases](https://github.com/xuing/oh-my-rasp/releases). Each release ships the artifacts listed in the [Release Runbook](runbooks/release.md) (standard Java agent JARs, standalone shirudo upatch JARs and bundle, the Rust host daemon tarball, the Helm chart archive, and checksums) plus GHCR container images (`ghcr.io/<namespace>/control-api:<version>`, `ghcr.io/<namespace>/control-web:<version>`) and an OCI Helm chart (`oci://ghcr.io/<namespace>/charts/ohmyrasp-control`).
+Download immutable release artifacts from [GitHub Releases](https://github.com/xuing/oh-my-rasp/releases). Each release ships the artifacts listed in the [Release Runbook](runbooks/release.md) (the universal and per-line standard Java agent JARs, the universal and per-line standalone shirudo upatch JARs and the bundle, the Rust host daemon tarball, the Helm chart archive, and checksums) plus GHCR container images (`ghcr.io/<namespace>/control-api:<version>`, `ghcr.io/<namespace>/control-web:<version>`) and an OCI Helm chart (`oci://ghcr.io/<namespace>/charts/ohmyrasp-control`).
 
-Pick the standard agent JAR that matches your JDK: `ohmyrasp-agent.jar` (JDK 25), `ohmyrasp-agent-jdk21.jar` (JDK 21), `ohmyrasp-agent-java17.jar` (JDK 17), `ohmyrasp-agent-java11.jar` (JDK 11), `ohmyrasp-agent-java8.jar` (JDK 8). The shirudo upatch JARs follow the same pattern (`ohmyrasp-{jdk25,jdk21,java17,java11,java8}.jar`). Releases cut before the JDK 21 builds existed have no `jdk21` JARs; on JDK 21 use their `java17` JARs instead.
+Start with the universal agent JAR, `ohmyrasp-agent-all.jar`: it runs on Java 8 to 25 and starts the agent line that fits the JVM. To pin one line instead, pick the standard agent JAR that matches your JDK: `ohmyrasp-agent.jar` (JDK 25), `ohmyrasp-agent-jdk21.jar` (JDK 21), `ohmyrasp-agent-java17.jar` (JDK 17), `ohmyrasp-agent-java11.jar` (JDK 11), `ohmyrasp-agent-java8.jar` (JDK 8). For shirudo, install the universal upatch `ohmyrasp` (`ohmyrasp.jar`); the per-line shirudo upatch JARs follow the same pattern (`ohmyrasp-{jdk25,jdk21,java17,java11,java8}.jar`). Releases cut before the JDK 21 builds existed have no `jdk21` JARs; on JDK 21 use their `java17` JARs instead.
 
 Verify checksums and GitHub provenance attestations after downloading:
 
@@ -168,12 +168,12 @@ cd java-agent
 GRADLE_IMAGE="$(awk '$1 == "FROM" && $2 ~ /^gradle:/ { print $2; exit }' Dockerfile)"
 docker run --rm -u "$(id -u):$(id -g)" -e GRADLE_USER_HOME=/tmp/gradle-home \
   -v "$PWD":/workspace -w /workspace "$GRADLE_IMAGE" \
-  gradle --no-daemon :agent-jdk25:agentJar
+  gradle --no-daemon :agent-all:agentAllJar
 ```
 
-Output: `java-agent/agent-jdk25/build/libs/ohmyrasp-agent.jar`.
+Output: `java-agent/agent-all/build/libs/ohmyrasp-agent-all.jar`, the universal JAR for any supported Java. For a JAR that holds only the Java 21 and later line, build `:agent-jdk25:agentJar` instead (`java-agent/agent-jdk25/build/libs/ohmyrasp-agent.jar`).
 
-> **Note:** Always use the shaded fat JAR produced by `agentJar` (or `agentJava{8,11,17}Jar`). The thin JAR (`ohmyrasp-agent-thin.jar`) produced by the plain `jar` task lacks relocated ASM dependencies.
+> **Note:** Always use the shaded fat JAR produced by `agentAllJar`, `agentJar` or `agentJava{8,11,17}Jar`. The thin JAR (`ohmyrasp-agent-thin.jar`) produced by the plain `jar` task lacks relocated ASM dependencies.
 
 #### Backport agents (Java 8 / 11 / 17) and the JDK 21 JAR
 
@@ -210,7 +210,7 @@ docker run --rm -u "$(id -u):$(id -g)" -e GRADLE_USER_HOME=/tmp/gradle-home \
 Standalone mode requires no control plane. The agent runs in `monitor` or `block` mode and writes NDJSON events locally:
 
 ```bash
-java -javaagent:/opt/ohmyrasp/ohmyrasp-agent.jar=mode=monitor \
+java -javaagent:/opt/ohmyrasp/ohmyrasp-agent-all.jar=mode=monitor \
      -Dohmyrasp.log=/var/log/ohmyrasp/events.jsonl \
      -jar your-app.jar
 ```
@@ -223,7 +223,7 @@ echo '{"mode":"block"}' > /tmp/ohmyrasp-control.json
 
 ### Attach the agent: daemonless shirudo mode
 
-For immutable, daemonless deployments without `/tmp/ohmyrasp-control.json` or `/tmp/ohmyrasp-events.jsonl`, use the shirudo upatch JARs (`ohmyrasp-{java8,java11,java17,jdk21,jdk25}.jar`) built via `:agent-*:shirudoUpatchJar` (the `jdk21` copy comes from `:agent-jdk25:jdk21Jars`). They embed signed `META-INF/ohmyrasp-shirudo.properties` (`standalone=true`, `lock_config=true`, `mode=block`, `control=none`, `log=stderr`, `latency_sample=0`), start zero background threads, and install via `shirudo bpm install` or `-javaagent:/run/shirudo-java/<name>.jar`. See [Shirudo Java Upatches](../deploy/shirudo/README.md).
+For immutable, daemonless deployments without `/tmp/ohmyrasp-control.json` or `/tmp/ohmyrasp-events.jsonl`, install the universal shirudo upatch `ohmyrasp` (`ohmyrasp.jar`, built by `:agent-all:shirudoUpatchJar`): every JVM on the host gets the line that fits its Java version. Hosts pinned to one Java version can use the per-line upatch JARs (`ohmyrasp-{java8,java11,java17,jdk21,jdk25}.jar`) built via `:agent-*:shirudoUpatchJar` (the `jdk21` copy comes from `:agent-jdk25:jdk21Jars`). They embed signed `META-INF/ohmyrasp-shirudo.properties` (`standalone=true`, `lock_config=true`, `mode=block`, `control=none`, `log=stderr`, `latency_sample=0`), start zero background threads, and install via `shirudo bpm install` or `-javaagent:/run/shirudo-java/<name>.jar`. See [Shirudo Java Upatches](../deploy/shirudo/README.md).
 
 ### Attach the agent: connected to the control plane
 

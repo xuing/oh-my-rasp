@@ -21,7 +21,7 @@ These files are generated from source and must not be edited by hand:
 | [`java-agent/docs/DETECTION-COVERAGE.md`](../../java-agent/docs/DETECTION-COVERAGE.md) | `java-agent/scripts/gen-detection-coverage.py` | `python3 java-agent/scripts/gen-detection-coverage.py --check` |
 | [`java-agent/docs/HOOK-TARGETS.md`](../../java-agent/docs/HOOK-TARGETS.md) | `java-agent/scripts/gen-hook-targets.py` | `python3 java-agent/scripts/gen-hook-targets.py --check` |
 | [`java-agent/docs/FALSE-POSITIVE-REPORT.md`](../../java-agent/docs/FALSE-POSITIVE-REPORT.md) | `java-agent/scripts/run-fp-report.sh` | Re-run after detector changes |
-| [`deploy/shirudo/README.md`](../../deploy/shirudo/README.md) and `deploy/shirudo/ohmyrasp-*/README.md` | `deploy/shirudo/gen-readmes.py` | `python3 deploy/shirudo/gen-readmes.py --check` (run by `deploy/shirudo/verify-shirudo-upatch.sh`) |
+| [`deploy/shirudo/README.md`](../../deploy/shirudo/README.md) and `deploy/shirudo/ohmyrasp*/README.md`, and the `fixes` line of `deploy/shirudo/ohmyrasp/Beefile` (from `deploy/shirudo/fixes.toml`) | `deploy/shirudo/gen-readmes.py` | `python3 deploy/shirudo/gen-readmes.py --check` (run by `deploy/shirudo/verify-shirudo-upatch.sh`) |
 
 Regenerate affected files in the same pull request whenever hooks, detectors, transformers, or acceptance scripts change:
 

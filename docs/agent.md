@@ -8,11 +8,11 @@ Each Gradle subproject below builds a self-contained fat JAR with ASM (`asm` and
 
 | Track | Target JVMs | Standard agent task & JAR | Shirudo standalone task & JAR |
 |---|---|---|---|
+| `agent-all` (universal) | Every supported Java; the launcher starts the line that fits | `:agent-all:agentAllJar`<br>`java-agent/agent-all/build/libs/ohmyrasp-agent-all.jar` | `:agent-all:shirudoUpatchJar`<br>`java-agent/agent-all/build/libs/ohmyrasp.jar` |
 | `agent-jdk25` (primary) | Java 21 and 25 (`<= 65`) | `:agent-jdk25:agentJar`<br>`java-agent/agent-jdk25/build/libs/ohmyrasp-agent.jar` | `:agent-jdk25:shirudoUpatchJar`<br>`java-agent/agent-jdk25/build/libs/ohmyrasp-jdk25.jar` |
 | `agent-java17` | Java 17 and 21 (`<= 61`) | `:agent-java17:agentJava17Jar`<br>`java-agent/agent-java17/build/libs/ohmyrasp-agent-java17.jar` | `:agent-java17:shirudoUpatchJar`<br>`java-agent/agent-java17/build/libs/ohmyrasp-java17.jar` |
 | `agent-java11` | Java 11 (`<= 55`) | `:agent-java11:agentJava11Jar`<br>`java-agent/agent-java11/build/libs/ohmyrasp-agent-java11.jar` | `:agent-java11:shirudoUpatchJar`<br>`java-agent/agent-java11/build/libs/ohmyrasp-java11.jar` |
 | `agent-java8` | Java 8 (`<= 52`) | `:agent-java8:agentJava8Jar`<br>`java-agent/agent-java8/build/libs/ohmyrasp-agent-java8.jar` | `:agent-java8:shirudoUpatchJar`<br>`java-agent/agent-java8/build/libs/ohmyrasp-java8.jar` |
-| `agent-all` (universal) | Every supported Java; the launcher starts the line that fits | `:agent-all:agentAllJar`<br>`java-agent/agent-all/build/libs/ohmyrasp-agent-all.jar` | `:agent-all:shirudoUpatchJar`<br>`java-agent/agent-all/build/libs/ohmyrasp.jar` |
 
 All tracks compile with `JavaLanguageVersion.of(25)` using `options.release` set to `21` (`agent-jdk25`, which serves JDK 21 and 25), `17`, `11`, or `8` respectively. The classes every track carries, and the launcher, are the `:shared` module (`java-agent/shared/`), compiled once with `--release 8`, so each JAR holds the same Java 8 bytecode for them. `agent-all` compiles nothing: it packs the four tracks with one copy of the shared classes and of the relocated ASM. In [`agent-java8/build.gradle.kts`](../java-agent/agent-java8/build.gradle.kts), `agentJava8Jar` sets `Boot-Class-Path: ohmyrasp-agent-java8.jar`, while `shirudoUpatchJar` omits `Boot-Class-Path` so OpenJDK 8 bootstrap search works directly with the sealed `/run/shirudo-java/ohmyrasp-java8.jar` path under the 1024-byte `JAVA_TOOL_OPTIONS` limit.
 
@@ -39,7 +39,7 @@ docker run --rm -v "$PWD/java-agent":/workspace -w /workspace "$GRADLE_IMAGE" \
 
 ### Which JAR to attach
 
-Attach the universal JAR, `ohmyrasp-agent-all.jar` (or `ohmyrasp.jar` for a Shirudo standalone install), on any supported Java. Each kind of agent JAR has an entry class of its own, its `Premain-Class` and `Agent-Class`, that no other kind of JAR holds: `io.ohmyrasp.agent.launch.UniversalEntry` in the universal pair, and `PrimaryEntry`, `Java17Entry`, `Java11Entry` and `Java8Entry` in the same package for the per-track pairs. The JVM loads a `Premain-Class` by name, so a name shared by two JARs would make the second JAR run the first one's class. The entry hands itself to the launcher, which opens the JAR that class came from, reads `java.specification.version`, and starts the first line, in this order, that this JAR holds and whose range contains the running version:
+Attach the universal JAR, `ohmyrasp-agent-all.jar` (or `ohmyrasp.jar`, the `ohmyrasp` package of [`deploy/shirudo/`](../deploy/shirudo/README.md), for a Shirudo standalone install), on any supported Java. Each kind of agent JAR has an entry class of its own, its `Premain-Class` and `Agent-Class`, that no other kind of JAR holds: `io.ohmyrasp.agent.launch.UniversalEntry` in the universal pair, and `PrimaryEntry`, `Java17Entry`, `Java11Entry` and `Java8Entry` in the same package for the per-track pairs. The JVM loads a `Premain-Class` by name, so a name shared by two JARs would make the second JAR run the first one's class. The entry hands itself to the launcher, which opens the JAR that class came from, reads `java.specification.version`, and starts the first line, in this order, that this JAR holds and whose range contains the running version:
 
 | Line | Line entry class | Runs on |
 |---|---|---|

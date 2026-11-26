@@ -82,13 +82,18 @@ OhMyRASP 不在网络边界对 HTTP 报文做正则猜谜，而是直接把检�
 
 对于使用 **[shirudo](https://github.com/shirudo-dev/shirudo)** 拉取式、ML-DSA-87 签名、TPM2 度量体系的 Linux 目标机，OhMyRASP 在 [`deploy/shirudo/`](deploy/shirudo/README.md) 提供了开箱可签的 **Shirudo Java Upatch 打包方案**：
 
-| 包名 | 目标 JVM | Upatch / JAR 文件名 | Gradle 模块 |
+只需安装一个包：**`ohmyrasp`**。它包含全部 Agent 线路，主机上每个 JVM（Java 8 到 Java 25）都会启动与自身 Java 版本匹配的那一条。没有匹配线路的 JVM 只会向 `stderr` 写一行 JSON 并在无保护下启动，启动器从不中止 JVM。同一台主机上再装其他 OhMyRASP 包也无妨：每个 JVM 只会启动一条线路。
+
+| 包名 | 启动于 | Upatch / JAR 文件名 | Gradle 模块 |
 |---|---|---|---|
-| `ohmyrasp-java8` | Java 8（classfile `<= 52`） | `ohmyrasp-java8.jar` | `:agent-java8` |
-| `ohmyrasp-java11` | Java 11（classfile `<= 55`） | `ohmyrasp-java11.jar` | `:agent-java11` |
-| `ohmyrasp-java17` | Java 17 与 Java 21（classfile `<= 61`） | `ohmyrasp-java17.jar` | `:agent-java17` |
-| `ohmyrasp-jdk21` | Java 21（classfile `<= 65`） | `ohmyrasp-jdk21.jar` | `:agent-jdk25` |
-| `ohmyrasp-jdk25` | Java 21 与 Java 25（classfile `<= 65`） | `ohmyrasp-jdk25.jar` | `:agent-jdk25` |
+| **`ohmyrasp`**（默认） | Java 8 到 25，按版本选线路 | `ohmyrasp.jar` | `:agent-all` |
+| `ohmyrasp-java8` | 仅 Java 8 | `ohmyrasp-java8.jar` | `:agent-java8` |
+| `ohmyrasp-java11` | Java 11 及更高 | `ohmyrasp-java11.jar` | `:agent-java11` |
+| `ohmyrasp-java17` | Java 17 及更高 | `ohmyrasp-java17.jar` | `:agent-java17` |
+| `ohmyrasp-jdk21` | Java 21 及更高 | `ohmyrasp-jdk21.jar` | `:agent-jdk25` |
+| `ohmyrasp-jdk25` | Java 21 及更高 | `ohmyrasp-jdk25.jar` | `:agent-jdk25` |
+
+按 Java 版本拆分的包适用于只运行单一 Java 版本的主机。通用包还在其 Beefile 的 `fixes` 字段中列出了 Agent 已能阻断其测试过的利用路径的漏洞公告（由 shirudo 后端读取），清单见 [deploy/shirudo/ohmyrasp/README.md](deploy/shirudo/ohmyrasp/README.md)。
 
 JDK 21 的标准 Agent 下载名为 `ohmyrasp-agent-jdk21.jar`，Shirudo 包使用 `ohmyrasp-jdk21.jar`。两者分别与对应的 JDK 25 产物逐字节一致。
 
@@ -116,7 +121,7 @@ JDK 21 的标准 Agent 下载名为 `ohmyrasp-agent-jdk21.jar`，Shirudo 包使�
 
 ### 方式 A：下载预构建 Release 制品
 
-每个 [GitHub Releases](https://github.com/xuing/oh-my-rasp/releases) 版本会发布标准 Java Agent JAR、Shirudo 独立 Java upatch JAR 与 Shirudo 打包制品、Rust 守护进程压缩包、Helm Chart 压缩包以及 `SHA256SUMS.txt`；完整资产清单见[发布手册](docs/runbooks/release.md)。
+每个 [GitHub Releases](https://github.com/xuing/oh-my-rasp/releases) 版本会发布通用 Agent JAR `ohmyrasp-agent-all.jar`（首选）与按线路拆分的标准 Java Agent JAR、通用 Shirudo upatch JAR `ohmyrasp.jar` 与按线路拆分的 Shirudo 独立 Java upatch JAR 及 Shirudo 打包制品、Rust 守护进程压缩包、Helm Chart 压缩包以及 `SHA256SUMS.txt`；完整资产清单见[发布手册](docs/runbooks/release.md)。
 
 同时发布 GHCR 容器镜像（`ghcr.io/xuing/control-api`、`ghcr.io/xuing/control-web`）与 OCI Helm Chart（`oci://ghcr.io/xuing/charts/ohmyrasp-control`）。部署前请校验哈希与 GitHub 构建证明：
 
@@ -134,18 +139,18 @@ cd java-agent
 GRADLE_IMAGE="$(awk '$1 == "FROM" && $2 ~ /^gradle:/ { print $2; exit }' Dockerfile)"
 docker run --rm -u "$(id -u):$(id -g)" -e GRADLE_USER_HOME=/tmp/gradle-home \
   -v "$PWD":/workspace -w /workspace "$GRADLE_IMAGE" \
-  gradle --no-daemon :agent-jdk25:agentJar
-# -> agent-jdk25/build/libs/ohmyrasp-agent.jar
+  gradle --no-daemon :agent-all:agentAllJar
+# -> agent-all/build/libs/ohmyrasp-agent-all.jar
 ```
 
-旧版 JDK 请构建 `:agent-java8:agentJava8Jar`、`:agent-java11:agentJava11Jar` 或 `:agent-java17:agentJava17Jar`（Java 21 和 25 共用上面的主 Agent）；无守护进程 shirudo 构建使用 `:agent-*:shirudoUpatchJar`。
+`ohmyrasp-agent-all.jar` 可在 Java 8 到 25 上运行。只需 Java 21 及更高线路的 JAR 请构建 `:agent-jdk25:agentJar`；只需某一条旧线路请构建 `:agent-java8:agentJava8Jar`、`:agent-java11:agentJava11Jar` 或 `:agent-java17:agentJava17Jar`；通用的无守护进程 shirudo JAR（`ohmyrasp.jar`）使用 `:agent-all:shirudoUpatchJar`，按线路拆分的使用 `:agent-*:shirudoUpatchJar`。
 
 ### 挂载到目标应用
 
 独立运行（无需控制平面）：
 
 ```bash
-java -javaagent:/opt/ohmyrasp/ohmyrasp-agent.jar=mode=monitor \
+java -javaagent:/opt/ohmyrasp/ohmyrasp-agent-all.jar=mode=monitor \
      -Dohmyrasp.log=/var/log/ohmyrasp/events.jsonl \
      -jar your-app.jar
 ```
@@ -168,7 +173,7 @@ docker compose --env-file .env -f docker-compose.yml up -d --build
 使用 `admin@ohmyrasp.local` 与 `OHMYRASP_BOOTSTRAP_ADMIN_PASSWORD` 登录控制台创建应用获取 `app_id` 与 `app_secret`，然后启动目标 JVM：
 
 ```bash
-java -javaagent:/opt/ohmyrasp/ohmyrasp-agent.jar=backend_url=http://<host>:18090,app_id=<app-id>,app_secret=<secret>,environment_id=<env-id>,mode=block \
+java -javaagent:/opt/ohmyrasp/ohmyrasp-agent-all.jar=backend_url=http://<host>:18090,app_id=<app-id>,app_secret=<secret>,environment_id=<env-id>,mode=block \
      -jar your-app.jar
 ```
 
