@@ -402,6 +402,43 @@ final class ShirudoStandaloneTest {
     assertEquals(25, overriddenLogger.latencySampleRate());
   }
 
+  /**
+   * The logger's standalone defaults (log target stderr, latency sample 0) follow the standalone
+   * value the runtime resolved, not any source that says true.
+   */
+  @Test
+  void loggerTakesItsStandaloneDefaultsFromTheRuntimesResolvedValue() {
+    Properties props = new Properties();
+    props.setProperty("standalone", "true");
+    props.setProperty("log", "none"); // no file writer; the sample rate shows the defaults chosen
+    PrintStream quiet = new PrintStream(new ByteArrayOutputStream(), true, StandardCharsets.UTF_8);
+
+    AgentRuntime argumentSaysNo = AgentRuntime.newForTesting(ShirudoDefaults.fromProperties(props));
+    argumentSaysNo.start("standalone=false,control=none");
+    assertFalse(argumentSaysNo.isStandalone());
+    assertEquals(
+        10,
+        JsonEventLogger.newForTesting(argumentSaysNo, quiet, quiet).latencySampleRate(),
+        "a baked standalone=true overrode the agent argument standalone=false");
+
+    System.setProperty("ohmyrasp.standalone", "true");
+    try {
+      AgentRuntime propertyLoses = AgentRuntime.newForTesting(ShirudoDefaults.fromProperties(props));
+      propertyLoses.start("standalone=false,control=none");
+      assertEquals(
+          10,
+          JsonEventLogger.newForTesting(propertyLoses, quiet, quiet).latencySampleRate(),
+          "a lower-priority ohmyrasp.standalone=true overrode the agent argument");
+    } finally {
+      System.clearProperty("ohmyrasp.standalone");
+    }
+
+    AgentRuntime standalone = AgentRuntime.newForTesting(ShirudoDefaults.fromProperties(props));
+    standalone.start("control=none");
+    assertTrue(standalone.isStandalone());
+    assertEquals(0, JsonEventLogger.newForTesting(standalone, quiet, quiet).latencySampleRate());
+  }
+
   private static Detection sampleDetection() {
     return new Detection(
         Instant.now(),
