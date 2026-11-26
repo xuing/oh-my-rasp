@@ -30,7 +30,7 @@ One file per rule id. Effects count the file's attack cases; rules are the ids t
 | [deserialization_gadget](../rules/cases/deserialization_gadget.toml) | 2 | 1 | block 1, log 1 | `deserialization_gadget` | block 2 | `deserialization_gadget_class` |
 | [directory_userinput](../rules/cases/directory_userinput.toml) | 4 | 1 | block 2, none 2 | `directory_userinput` | block 2, none 2 | `directory_userinput` |
 | [file_generated_plot_script_command](../rules/cases/file_generated_plot_script_command.toml) | 2 | 1 | unreachable 2 | - | block 2 | `file_generated_plot_script_command` |
-| [java_compile_runtime](../rules/cases/java_compile_runtime.toml) | 4 | 1 | block 2, none 2 | `java_compile_runtime` | block 4 | `java_compile_runtime_execution` |
+| [java_compile_runtime](../rules/cases/java_compile_runtime.toml) | 4 | 1 | block 3, none 1 | `java_compile_runtime` | block 4 | `java_compile_runtime_execution` |
 | [jdbc_derby_code_loading](../rules/cases/jdbc_derby_code_loading.toml) | 2 | 1 | unreachable 2 | - | block 2 | `jdbc_derby_code_loading` |
 | [jdbc_h2_init](../rules/cases/jdbc_h2_init.toml) | 2 | 1 | block 1, log 1 | `jdbc_h2_init` | block 2 | `jdbc_h2_code_execution` |
 | [jdbc_mysql_deserialization](../rules/cases/jdbc_mysql_deserialization.toml) | 3 | 1 | block 1, none 2 | `jdbc_mysql_deserialization` | block 3 | `jdbc_mysql_deserialization` |
@@ -106,7 +106,7 @@ Each id that some case names on this engine: the attack cases that name it, the 
 | `deserialization_blacklist` | 3 | 1 | block 1, log 2 | [deserialization_blacklist](../rules/cases/deserialization_blacklist.toml) |
 | `deserialization_gadget` | 2 | 1 | block 1, log 1 | [deserialization_gadget](../rules/cases/deserialization_gadget.toml) |
 | `directory_userinput` | 2 | 1 | block 2 | [directory_userinput](../rules/cases/directory_userinput.toml) |
-| `java_compile_runtime` | 2 | 1 | block 2 | [java_compile_runtime](../rules/cases/java_compile_runtime.toml) |
+| `java_compile_runtime` | 3 | 1 | block 3 | [java_compile_runtime](../rules/cases/java_compile_runtime.toml) |
 | `jdbc_h2_init` | 2 | 1 | block 1, log 1 | [jdbc_h2_init](../rules/cases/jdbc_h2_init.toml) |
 | `jdbc_mysql_deserialization` | 1 | 1 | block 1 | [jdbc_mysql_deserialization](../rules/cases/jdbc_mysql_deserialization.toml) |
 | `jndi_disable_all` | 3 | 1 | block 1, log 2 | [jndi_disable_all](../rules/cases/jndi_disable_all.toml) |
@@ -335,7 +335,6 @@ Attack cases whose effect differs between the primary and the backports, grouped
 
 | Case | Path | Input | Primary | Backports | Why |
 |---|---|---|---|---|---|
-| [java_compile_runtime](../rules/cases/java_compile_runtime.toml) `anonymous-source-class-in-request` | request-sink | `GET /app/report?id=7; java.compile (anonymous-class) public class Generated { public void run() throws Exception { Runtime.getRuntime().exec("id"); } }` | none | block `java_compile_runtime_execution` | primary: the primary reads the source by reflection on the unit's own class, which fails for a non-public class, so it sees no source |
 | [java_compile_runtime](../rules/cases/java_compile_runtime.toml) `runtime-exec-source-outside-request` | sink | `java.compile public class Generated { public void run() throws Exception { Runtime.getRuntime().exec("id"); } }` | none | block `java_compile_runtime_execution` | primary: the primary decides compilation only inside an HTTP request |
 | [jdbc_mysql_deserialization](../rules/cases/jdbc_mysql_deserialization.toml) `mysql-autodeserialize-in-request` | request-sink | `GET /app/report?id=7; jdbc.connect jdbc:mysql://127.0.0.1:3306/test?autoDeserialize=true&queryInterceptors=com.mysql.cj.jdbc.interceptors.ServerStatusDiffInt...` | none | block `jdbc_mysql_deserialization` | primary: the primary flags this URL only when a request parameter carries it; this request does not |
 | [jdbc_mysql_deserialization](../rules/cases/jdbc_mysql_deserialization.toml) `mysql-autodeserialize-outside-request` | sink | `jdbc.connect jdbc:mysql://127.0.0.1:3306/test?autoDeserialize=true&queryInterceptors=com.mysql.cj.jdbc.interceptors.ServerStatusDiffInterceptor` | none | block `jdbc_mysql_deserialization` | primary: the primary flags this URL only when a request parameter carries it; outside a request there is none |

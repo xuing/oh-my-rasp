@@ -48,6 +48,7 @@ import java.io.File;
 import java.lang.StackWalker.StackFrame;
 import java.lang.reflect.Array;
 import java.lang.reflect.Method;
+import java.lang.reflect.Modifier;
 import java.net.URL;
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
@@ -2006,7 +2007,8 @@ public final class OhMyRaspHooks {
       return text.toString();
     }
     try {
-      Object content = unit.getClass().getMethod("getCharContent", boolean.class).invoke(unit, true);
+      Method getCharContent = accessibleCharContent(unit.getClass());
+      Object content = getCharContent == null ? null : getCharContent.invoke(unit, true);
       if (content != null) {
         return String.valueOf(content);
       }
@@ -2014,6 +2016,46 @@ public final class OhMyRaspHooks {
       // Fall through to a conservative string representation.
     }
     return String.valueOf(unit);
+  }
+
+  /**
+   * {@code getCharContent(boolean)} as declared by a public type that this class can call into: the unit's own class
+   * when it qualifies, else the nearest superclass or interface that does (javax.tools.SimpleJavaFileObject or
+   * FileObject). Invoking the method found on the unit's own class fails when that class is not public, which is
+   * what an anonymous {@code SimpleJavaFileObject} subclass, the usual way to compile a string, is.
+   *
+   * <p>No class is named here: this class is on the bootstrap path, where javax.tools (the platform loader's
+   * module) is not visible, so the types come from the unit's own hierarchy, which is already loaded.
+   */
+  private static Method accessibleCharContent(Class<?> type) {
+    var pending = new ArrayList<Class<?>>();
+    pending.add(type);
+    for (int i = 0; i < pending.size(); i++) {
+      Class<?> candidate = pending.get(i);
+      if (callable(candidate)) {
+        try {
+          Method method = candidate.getMethod("getCharContent", boolean.class);
+          if (callable(method.getDeclaringClass())) {
+            return method;
+          }
+        } catch (NoSuchMethodException e) {
+          // A type that does not declare it: try what it extends.
+        }
+      }
+      if (candidate.getSuperclass() != null && !pending.contains(candidate.getSuperclass())) {
+        pending.add(candidate.getSuperclass());
+      }
+      for (Class<?> implemented : candidate.getInterfaces()) {
+        if (!pending.contains(implemented)) {
+          pending.add(implemented);
+        }
+      }
+    }
+    return null;
+  }
+
+  private static boolean callable(Class<?> type) {
+    return Modifier.isPublic(type.getModifiers()) && type.getModule().isExported(type.getPackageName());
   }
 
   private static String pathFrom(Object value) {
