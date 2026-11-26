@@ -249,6 +249,14 @@ public final class RaspRuntime {
       if (path == null) {
         return;
       }
+      try {
+        pollOnce(path);
+      } catch (RuntimeException | StackOverflowError | OutOfMemoryError e) {
+        // Nothing the poll step throws escapes it: the last good mode stays.
+      }
+    }
+
+    private void pollOnce(Path path) {
       String text;
       boolean ownIo = enterOwnIo();
       try {
@@ -259,9 +267,8 @@ public final class RaspRuntime {
         if (!Files.isRegularFile(path)) {
           return;
         }
-        byte[] bytes = Files.readAllBytes(path);
-        // Strict UTF-8: malformed bytes make the content unparseable, they are not replaced.
-        text = ControlDocument.decodeUtf8(bytes, bytes.length);
+        // Bounded, strict UTF-8: an oversized or malformed file is unparseable.
+        text = ControlDocument.read(path, MAX_CONTROL_BYTES);
       } catch (NoSuchFileException gone) {
         restoreStartup();
         return;
@@ -292,6 +299,9 @@ public final class RaspRuntime {
       mode = startup;
     }
   }
+
+  /** A control file larger than this many bytes is unparseable; only this many + 1 are read. */
+  static final int MAX_CONTROL_BYTES = 1 << 20;
 
   private static final Properties BAKED_PROPERTIES = loadBakedProperties();
   private static final Config INITIAL_CONFIG = Config.resolveCurrent();
@@ -330,8 +340,8 @@ public final class RaspRuntime {
                     } catch (InterruptedException e) {
                       Thread.currentThread().interrupt();
                       return;
-                    } catch (RuntimeException ignored) {
-                      // never let control polling disturb the application
+                    } catch (RuntimeException | Error ignored) {
+                      // never let control polling disturb the application or stop polling
                     }
                   }
                 }

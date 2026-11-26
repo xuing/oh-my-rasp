@@ -33,6 +33,9 @@ public final class AgentRuntime {
   /** Default control file, matching the daemon's default. */
   private static final String DEFAULT_CONTROL = "/tmp/ohmyrasp-control.json";
 
+  /** A control file larger than this many bytes is unparseable; only this many + 1 are read. */
+  static final int MAX_CONTROL_BYTES = 1 << 20;
+
   /** Which source installed the policy in the current {@link ControlState}. */
   public enum PolicySource {
     /** No policy was installed: the start-up state. */
@@ -381,8 +384,8 @@ public final class AgentRuntime {
                 } catch (InterruptedException e) {
                   Thread.currentThread().interrupt();
                   return;
-                } catch (RuntimeException e) {
-                  // Never let control polling disturb the protected application.
+                } catch (RuntimeException | Error e) {
+                  // Never let control polling disturb the protected application or stop polling.
                 }
               }
             },
@@ -402,6 +405,14 @@ public final class AgentRuntime {
     if (path == null) {
       return;
     }
+    try {
+      reload(path);
+    } catch (RuntimeException | StackOverflowError | OutOfMemoryError e) {
+      // Nothing the poll step throws escapes it: the last good state stays.
+    }
+  }
+
+  private void reload(Path path) {
     String text;
     boolean ownIo = AgentOwnIo.enter();
     try {
@@ -412,7 +423,8 @@ public final class AgentRuntime {
       if (!Files.isRegularFile(path)) {
         return;
       }
-      text = Files.readString(path);
+      // Bounded, strict UTF-8: an oversized or malformed file is unparseable.
+      text = ControlDocument.read(path, MAX_CONTROL_BYTES);
     } catch (java.nio.file.NoSuchFileException gone) {
       restoreStartUpSettings();
       return;
@@ -519,7 +531,8 @@ public final class AgentRuntime {
   private static AgentPolicy parsePolicy(String json) {
     try {
       return AgentPolicy.parse(json);
-    } catch (RuntimeException e) {
+    } catch (RuntimeException | StackOverflowError e) {
+      // SimpleJson recurses per nesting level; a deeply nested policy overflows the stack.
       if (Boolean.getBoolean("ohmyrasp.debug")) {
         System.err.println("[OHMYRASP] distributed policy parse failed: " + e);
       }

@@ -157,6 +157,43 @@ final class AgentRuntimeTest {
   }
 
   @Test
+  void aControlFileLargerThanTheBoundIsUnparseableAndNoErrorEscapesThePoll(@TempDir Path dir)
+      throws Exception {
+    Path file = dir.resolve("control.json");
+    int bound = 1 << 20;
+    Files.writeString(file, "{\"mode\":\"block\"}");
+    AgentRuntime runtime = startPolling(file);
+
+    Files.writeString(file, padded("{\"mode\":\"off\"}", bound + 1));
+    runtime.reloadIfChanged();
+    assertEquals(DetectionMode.BLOCK, runtime.mode(), "one byte over the bound");
+    Files.writeString(file, padded("{\"mode\":\"monitor\"}", bound));
+    runtime.reloadIfChanged();
+    assertEquals(DetectionMode.MONITOR, runtime.mode(), "exactly the bound applies");
+
+    // A sparse 3 GiB file: reading it whole fails with OutOfMemoryError. Only bound + 1 bytes are
+    // read, and nothing escapes the poll step.
+    try (java.io.RandomAccessFile huge = new java.io.RandomAccessFile(file.toFile(), "rw")) {
+      huge.setLength(3L << 30);
+    }
+    runtime.reloadIfChanged();
+    assertEquals(DetectionMode.MONITOR, runtime.mode(), "a 3 GiB file");
+
+    // A policy nested deeply enough to overflow SimpleJson's recursion: the policy is not
+    // installed, the rest of the document applies, and the StackOverflowError stays inside.
+    int depth = 400_000;
+    String policy = "[".repeat(depth) + "]".repeat(depth);
+    Files.writeString(file, "{\"mode\":\"off\",\"policy\":\"" + policy + "\"}");
+    runtime.reloadIfChanged();
+    assertEquals(DetectionMode.OFF, runtime.mode());
+    assertSame(AgentPolicy.absent(), runtime.policy());
+  }
+
+  private static String padded(String json, int size) {
+    return json + " ".repeat(size - json.length());
+  }
+
+  @Test
   void aControlFileReadHalfWrittenIsPickedUpOnceCompleteWithTheSameModificationTime(@TempDir Path dir)
       throws Exception {
     Path file = dir.resolve("control.json");

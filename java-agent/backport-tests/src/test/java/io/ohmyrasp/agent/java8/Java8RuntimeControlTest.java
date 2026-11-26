@@ -5,6 +5,7 @@ import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.fail;
 
 import io.ohmyrasp.agent.util.ControlDocument;
+import java.io.RandomAccessFile;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -196,6 +197,40 @@ final class Java8RuntimeControlTest {
     writeBytes(file, "{\"mode\":\"off\",\"note\":\"", "\u00e9\u4e2d".getBytes(StandardCharsets.UTF_8), "\"}");
     state.poll(file);
     assertEquals(RaspRuntime.Mode.OFF, state.mode(), "well-formed UTF-8 applies");
+  }
+
+  @Test
+  void aControlFileLargerThanTheBoundIsUnparseableAndNoErrorEscapesThePoll() throws Exception {
+    Path file = dir.resolve("control.json");
+    RaspRuntime.ControlState state = new RaspRuntime.ControlState(RaspRuntime.Mode.BLOCK);
+    int bound = 1 << 20;
+
+    write(file, padded("{\"mode\":\"off\"}", bound + 1));
+    state.poll(file);
+    assertEquals(RaspRuntime.Mode.BLOCK, state.mode(), "one byte over the bound");
+    write(file, padded("{\"mode\":\"monitor\"}", bound));
+    state.poll(file);
+    assertEquals(RaspRuntime.Mode.MONITOR, state.mode(), "exactly the bound applies");
+
+    // A sparse 3 GiB file: reading it whole fails with OutOfMemoryError. Only bound + 1 bytes are
+    // read, and nothing escapes the poll step.
+    RandomAccessFile huge = new RandomAccessFile(file.toFile(), "rw");
+    try {
+      huge.setLength(3L << 30);
+    } finally {
+      huge.close();
+    }
+    state.poll(file);
+    assertEquals(RaspRuntime.Mode.MONITOR, state.mode(), "a 3 GiB file");
+  }
+
+  /** {@code json} followed by spaces up to {@code size} bytes. */
+  static String padded(String json, int size) {
+    StringBuilder builder = new StringBuilder(size).append(json);
+    while (builder.length() < size) {
+      builder.append(' ');
+    }
+    return builder.toString();
   }
 
   @Test

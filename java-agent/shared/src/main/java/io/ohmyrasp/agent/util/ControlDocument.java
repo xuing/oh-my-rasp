@@ -1,9 +1,14 @@
 package io.ohmyrasp.agent.util;
 
+import java.io.IOException;
 import java.nio.ByteBuffer;
+import java.nio.channels.FileChannel;
 import java.nio.charset.CharacterCodingException;
 import java.nio.charset.CodingErrorAction;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Path;
+import java.nio.file.StandardOpenOption;
+import java.util.Arrays;
 
 /**
  * Checks that a control file is exactly one well-formed JSON object (RFC 8259 grammar: JSON
@@ -54,6 +59,40 @@ public final class ControlDocument {
    */
   public static void requireObject(String text) {
     topLevelString(text, "");
+  }
+
+  /**
+   * The text of the control file at {@code path}, read as strict UTF-8. At most {@code maxBytes}
+   * + 1 bytes are read: a longer file is not read to its end.
+   *
+   * <p>The file is opened with {@link FileChannel#open}, which the agents do not wrap as a file
+   * read facade, so the only hooks it reaches are the native channel-open ones.
+   *
+   * @throws IllegalArgumentException when the file holds more than {@code maxBytes} bytes or is
+   *     not UTF-8
+   * @throws IOException when it cannot be opened or read
+   */
+  public static String read(Path path, int maxBytes) throws IOException {
+    FileChannel channel = FileChannel.open(path, StandardOpenOption.READ);
+    try {
+      byte[] data = new byte[Math.min(8192, maxBytes + 1)];
+      int length = 0;
+      while (true) {
+        if (length == data.length) {
+          if (length > maxBytes) {
+            throw new IllegalArgumentException("control document larger than its bound");
+          }
+          data = Arrays.copyOf(data, (int) Math.min(2L * data.length, maxBytes + 1L));
+        }
+        int read = channel.read(ByteBuffer.wrap(data, length, data.length - length));
+        if (read < 0) {
+          return decodeUtf8(data, length);
+        }
+        length += read;
+      }
+    } finally {
+      channel.close();
+    }
   }
 
   /**
