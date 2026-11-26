@@ -102,7 +102,7 @@ tasks.register<Sync>("stageOpenWireProbe") {
 // Local DTO round trips only; these codecs are not agent runtime dependencies.
 tasks.register<Sync>("stageHessianProbe") {
     val dubbo = "2.7.3"
-    val libraries = listOf("com.caucho:hessian:4.0.66@jar", "com.alibaba:hessian-lite:3.2.5@jar",
+    val libraries = listOf("com.caucho:hessian:4.0.66@jar", "com.alibaba:hessian-lite:3.2.13@jar",
         "org.apache.dubbo:dubbo-common:$dubbo@jar", "org.apache.dubbo:dubbo-serialization-api:$dubbo@jar",
         "org.apache.dubbo:dubbo-serialization-hessian2:$dubbo@jar").map { rootProject.dependencies.create(it) }
     from(rootProject.configurations.detachedConfiguration(*libraries.toTypedArray()).apply { isTransitive = false })
@@ -121,7 +121,7 @@ tasks.register<Sync>("stageXmlRpcProbe") {
 // Fixed library versions exercise ordinary functor values on both API lines.
 tasks.register<Sync>("stageCollectionsProbe") {
     val modules = listOf("commons-collections:commons-collections:3.2.2@jar",
-        "org.apache.commons:commons-collections4:4.4@jar").map { rootProject.dependencies.create(it) }
+        "org.apache.commons:commons-collections4:4.6.0@jar").map { rootProject.dependencies.create(it) }
     from(rootProject.configurations.detachedConfiguration(*modules.toTypedArray()).apply { isTransitive = false })
     into(layout.buildDirectory.dir("collections-probe"))
 }
