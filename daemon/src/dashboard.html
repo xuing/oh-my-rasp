@@ -269,10 +269,13 @@ async function tick(force){
     $('lat-samples').textContent = fmt(L.samples) + ' samples';
     renderCloud(s.cloud, s.spool_path, s.control);
     const refused = (s.control_status || {}).write_refused;
-    $('ctl-refused').style.display = refused ? '' : 'none';
+    const replaced = (s.control_status || {}).oversized_file_replaced;
+    $('ctl-refused').style.display = (refused || replaced) ? '' : 'none';
     $('ctl-refused').textContent = refused
-      ? 'The control file was not updated: ' + refused.message + '. The agent keeps following the previous document.'
-      : '';
+      ? 'The control file was not updated: ' + refused.message + (refused.agents_apply_state
+          ? '. The agent keeps following the previous document.'
+          : '. The agent is not applying the daemon state shown here.')
+      : (replaced ? 'Note: ' + replaced.message + '.' : '');
     renderAlgos(st.by_algorithm);
 
     const hook = $('fHook').value.trim();

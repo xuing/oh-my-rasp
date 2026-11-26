@@ -55,6 +55,26 @@ pub struct WriteRefused {
     pub limit_bytes: usize,
     pub at: String,
     pub message: String,
+    /// Whether the agents are applying the document the daemon holds in memory. True for a
+    /// refused change: the file still holds that document and the agents read it. False for an
+    /// `existing` file found larger than the agents read: they ignore it, so they apply neither
+    /// it nor the daemon's in-memory state, and keep the mode they had.
+    pub agents_apply_state: bool,
+    /// What the refusal is about, so that the same one is logged once: the policy assignment
+    /// (its id and version, else a hash of its text). `None` for a change that has no repeat.
+    #[serde(skip)]
+    pub identity: Option<String>,
+}
+
+/// A control file found at start-up that was larger than the agents read, which the daemon
+/// rewrote smaller. The agents had been ignoring it; they apply it from this write on.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct OversizedFileReplaced {
+    pub found_bytes: usize,
+    pub written_bytes: usize,
+    pub limit_bytes: usize,
+    pub at: String,
+    pub message: String,
 }
 
 /// What the daemon reports about writing the control file, next to the document itself.
@@ -63,6 +83,9 @@ pub struct ControlStatus {
     /// Set while the last attempt to write the control file was refused; the file still holds
     /// the previous document, and the agents are not following the change that was refused.
     pub write_refused: Option<WriteRefused>,
+    /// Set when the control file found at start-up was larger than the agents read and the
+    /// daemon wrote it again within the limit.
+    pub oversized_file_replaced: Option<OversizedFileReplaced>,
 }
 
 /// Detection mode. Ordered from least to most intrusive.
@@ -167,9 +190,13 @@ impl Controller {
     /// Load an existing control file or initialise one with `default_mode`,
     /// writing it to disk so the agent immediately has a known state.
     pub fn load_or_init(path: &Path, default_mode: Mode) -> Result<Self> {
+        // The size of the file as found: the agents measure that, not the document the daemon
+        // would write from it.
+        let mut found_bytes = None;
         let state = match std::fs::read_to_string(path) {
             Ok(text) => serde_json::from_str::<ControlState>(&text)
                 .with_context(|| format!("parsing control file {}", path.display()))
+                .inspect(|_| found_bytes = Some(text.len()))
                 .unwrap_or_else(|err| {
                     tracing::warn!(%err, "control file unreadable; reinitialising");
                     ControlState::initial(default_mode)
@@ -181,9 +208,10 @@ impl Controller {
             state: Mutex::new(state.clone()),
             status: Mutex::new(ControlStatus::default()),
         };
-        // A file left larger than the agents read (edited by hand) is kept as it is, and
-        // reported; refusing to start over it would take the console down with it.
-        match controller.write(&state, "existing") {
+        // A file left larger than the agents read (edited by hand) is kept as it is when the
+        // document does not fit either, and reported; refusing to start over it would take the
+        // console down with it.
+        match controller.write_existing(&state, found_bytes) {
             Ok(()) => {}
             Err(err) if err.downcast_ref::<ControlTooLarge>().is_some() => {}
             Err(err) => return Err(err),
@@ -248,11 +276,87 @@ impl Controller {
     /// the file is untouched, the refusal is logged and kept for [`Controller::status`], and the
     /// error is a [`ControlTooLarge`].
     fn write(&self, state: &ControlState, change: &'static str) -> Result<()> {
+        self.write_identified(state, change, None)
+    }
+
+    /// [`Controller::write`], where `identity` names what is refused (a policy assignment), so
+    /// that a refusal that comes back at every heartbeat is logged once.
+    fn write_identified(
+        &self,
+        state: &ControlState,
+        change: &'static str,
+        identity: Option<String>,
+    ) -> Result<()> {
         let json = serde_json::to_string_pretty(state)?;
         if json.len() > MAX_CONTROL_BYTES {
-            return Err(self.refuse(change, json.len()).into());
+            return Err(self.refuse(change, json.len(), None, true, identity).into());
         }
         self.persist(&json)?;
+        self.clear_refusal();
+        Ok(())
+    }
+
+    /// The write of the document found at start-up. `found_bytes` is the size of the file as it
+    /// lay on disk (`None` when there was none, or it could not be read as a document).
+    ///
+    /// A file larger than the limit as found is one the agents were ignoring. When the document
+    /// fits once the daemon writes it, it is written, and the log and the status say that the
+    /// agents apply it from now on. When it does not fit, the file is kept, and the refusal
+    /// says that the agents are not applying the daemon's in-memory state.
+    fn write_existing(&self, state: &ControlState, found_bytes: Option<usize>) -> Result<()> {
+        let found_oversized = found_bytes.filter(|bytes| *bytes > MAX_CONTROL_BYTES);
+        let json = serde_json::to_string_pretty(state)?;
+        if json.len() > MAX_CONTROL_BYTES {
+            let message = found_oversized.map(|found| {
+                format!(
+                    "the control file found at start-up is {found} bytes (the daemon's document \
+                     would be {} bytes), more than the {MAX_CONTROL_BYTES} bytes the agents read: \
+                     they ignore the file, keep the mode they had, and are not applying the \
+                     daemon's in-memory state",
+                    json.len()
+                )
+            });
+            return Err(self
+                .refuse(
+                    "existing",
+                    json.len(),
+                    message,
+                    found_oversized.is_none(),
+                    None,
+                )
+                .into());
+        }
+        self.persist(&json)?;
+        self.clear_refusal();
+        if let Some(found) = found_oversized {
+            let message = format!(
+                "the control file found at start-up was {found} bytes, more than the \
+                 {MAX_CONTROL_BYTES} bytes the agents read, so they had been ignoring it; the \
+                 daemon wrote it again as {} bytes and the agents will now apply it",
+                json.len()
+            );
+            tracing::warn!(
+                found_bytes = found,
+                written_bytes = json.len(),
+                limit_bytes = MAX_CONTROL_BYTES,
+                path = %self.path.display(),
+                "{message}"
+            );
+            self.status
+                .lock()
+                .expect("control status mutex")
+                .oversized_file_replaced = Some(OversizedFileReplaced {
+                found_bytes: found,
+                written_bytes: json.len(),
+                limit_bytes: MAX_CONTROL_BYTES,
+                at: now_rfc3339(),
+                message,
+            });
+        }
+        Ok(())
+    }
+
+    fn clear_refusal(&self) {
         let previous = self
             .status
             .lock()
@@ -262,20 +366,29 @@ impl Controller {
         if previous.is_some() {
             tracing::info!("control file written again; the refused change no longer applies");
         }
-        Ok(())
     }
 
-    fn refuse(&self, change: &'static str, size_bytes: usize) -> ControlTooLarge {
+    fn refuse(
+        &self,
+        change: &'static str,
+        size_bytes: usize,
+        message: Option<String>,
+        agents_apply_state: bool,
+        identity: Option<String>,
+    ) -> ControlTooLarge {
         let refusal = ControlTooLarge {
             size_bytes,
             limit_bytes: MAX_CONTROL_BYTES,
         };
+        let message = message.unwrap_or_else(|| refusal.to_string());
         let mut status = self.status.lock().expect("control status mutex");
-        // The cloud policy is pulled again at every heartbeat: say it loudly once, not each time.
-        let repeated = status
-            .write_refused
-            .as_ref()
-            .is_some_and(|r| r.change == change && r.size_bytes == size_bytes);
+        // The cloud policy is pulled again at every heartbeat: say it loudly once per
+        // assignment, not each time, and not again because the same text came out a byte longer.
+        let repeated = identity.is_some()
+            && status
+                .write_refused
+                .as_ref()
+                .is_some_and(|r| r.change == change && r.identity == identity);
         if repeated {
             tracing::debug!(change, size_bytes, "control file write still refused");
         } else {
@@ -283,16 +396,18 @@ impl Controller {
                 change,
                 size_bytes,
                 limit_bytes = MAX_CONTROL_BYTES,
+                agents_apply_state,
                 path = %self.path.display(),
-                "refusing to write the control file: the document would be larger than the agents \
-                 read, which ignore such a file; keeping the previous document"
+                "refusing to write the control file: {message}"
             );
             status.write_refused = Some(WriteRefused {
                 change,
                 size_bytes,
                 limit_bytes: MAX_CONTROL_BYTES,
                 at: now_rfc3339(),
-                message: refusal.to_string(),
+                message,
+                agents_apply_state,
+                identity,
             });
         }
         refusal
@@ -522,6 +637,96 @@ mod tests {
         );
         assert_eq!(ctrl.snapshot().mode, Mode::Block);
         assert_eq!(ctrl.status().write_refused.unwrap().change, "existing");
+    }
+
+    /// A hand-edited file padded with blanks is over the limit as found, though the document is
+    /// small: the agents were ignoring it (a mode change in it included). The daemon writes it
+    /// again, and says in the log and the status that the agents apply it from now on.
+    #[test]
+    fn a_file_over_the_limit_as_found_that_fits_once_written_is_rewritten_and_reported() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("control.json");
+        let padded = format!(
+            "{{\"mode\":\"off\",\"revision\":4}}{}",
+            " ".repeat(MAX_CONTROL_BYTES)
+        );
+        std::fs::write(&path, &padded).unwrap();
+
+        let ctrl = Controller::load_or_init(&path, Mode::Monitor).unwrap();
+
+        let written = std::fs::read_to_string(&path).unwrap();
+        assert!(written.len() < 1000, "rewritten small: {}", written.len());
+        assert_eq!(ctrl.snapshot().mode, Mode::Off);
+        let status = ctrl.status();
+        assert!(status.write_refused.is_none(), "{status:?}");
+        let replaced = status.oversized_file_replaced.expect("the status says so");
+        assert_eq!(replaced.found_bytes, padded.len());
+        assert_eq!(replaced.written_bytes, written.len());
+        assert_eq!(replaced.limit_bytes, MAX_CONTROL_BYTES);
+        assert!(
+            replaced.message.contains(&padded.len().to_string())
+                && replaced.message.contains("1048576")
+                && replaced.message.contains("will now apply it"),
+            "{}",
+            replaced.message
+        );
+        // A file of exactly the limit is one the agents read: nothing to report.
+        let exact = format!(
+            "{{\"mode\":\"block\"}}{}",
+            " ".repeat(MAX_CONTROL_BYTES - 16)
+        );
+        assert_eq!(exact.len(), MAX_CONTROL_BYTES);
+        std::fs::write(&path, &exact).unwrap();
+        let ctrl = Controller::load_or_init(&path, Mode::Monitor).unwrap();
+        assert!(ctrl.status().oversized_file_replaced.is_none());
+    }
+
+    /// The file is over the limit and so is the document: it stays, and the refusal says the agents
+    /// are not applying what the daemon holds in memory.
+    #[test]
+    fn a_file_over_the_limit_that_stays_over_says_the_agents_ignore_the_daemons_state() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("control.json");
+        let big = format!(
+            "{{\"mode\":\"block\",\"policy\":\"{}\"}}",
+            "a".repeat(MAX_CONTROL_BYTES)
+        );
+        std::fs::write(&path, &big).unwrap();
+
+        let ctrl = Controller::load_or_init(&path, Mode::Monitor).unwrap();
+
+        let refused = ctrl.status().write_refused.expect("refused");
+        assert_eq!(refused.change, "existing");
+        assert!(!refused.agents_apply_state);
+        assert!(
+            refused.message.contains(&big.len().to_string())
+                && refused
+                    .message
+                    .contains("not applying the daemon's in-memory state"),
+            "{}",
+            refused.message
+        );
+        assert!(ctrl.status().oversized_file_replaced.is_none());
+    }
+
+    /// A file the agents read (within the limit) whose pretty-printed document is over it stays
+    /// as it is, and the agents are still applying it.
+    #[test]
+    fn a_file_within_the_limit_that_grows_over_it_when_written_is_kept_and_still_applied() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("control.json");
+        let compact = format!(
+            "{{\"mode\":\"block\",\"policy\":\"{}\"}}",
+            "a".repeat(MAX_CONTROL_BYTES - 40)
+        );
+        assert!(compact.len() <= MAX_CONTROL_BYTES);
+        std::fs::write(&path, &compact).unwrap();
+
+        let ctrl = Controller::load_or_init(&path, Mode::Monitor).unwrap();
+
+        assert_eq!(std::fs::read_to_string(&path).unwrap(), compact);
+        let refused = ctrl.status().write_refused.expect("refused");
+        assert!(refused.agents_apply_state);
     }
 
     #[test]

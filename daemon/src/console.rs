@@ -230,12 +230,15 @@ mod tests {
             ..Default::default()
         };
         let refused = ControlStatus {
+            oversized_file_replaced: None,
             write_refused: Some(crate::control::WriteRefused {
                 change: "policy",
                 size_bytes: 2_000_000,
                 limit_bytes: crate::control::MAX_CONTROL_BYTES,
                 at: "t".into(),
                 message: "m".into(),
+                agents_apply_state: true,
+                identity: None,
             }),
         };
         let text = render_metrics(&status, &refused);
