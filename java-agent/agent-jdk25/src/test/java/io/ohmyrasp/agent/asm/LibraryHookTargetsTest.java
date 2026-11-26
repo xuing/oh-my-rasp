@@ -54,6 +54,20 @@ final class LibraryHookTargetsTest {
   }
 
   @Test
+  void jetty12PartsGetTheFullFilenameCheckNotOnlyTheArchiveCheck() throws Exception {
+    // Jetty 12 has no MultiPartFormInputStream in jetty-server; its servlet layers carry the part classes.
+    for (String name :
+        List.of(
+            "org/eclipse/jetty/ee10/servlet/ServletMultiPartFormData$ServletPart",
+            "org/eclipse/jetty/ee9/nested/MultiPartFormInputStream$MultiPart")) {
+      List<String> flags = archiveOnlyFlags(transform(name), "getSubmittedFileName", "()Ljava/lang/String;");
+
+      // One call, with archiveOnly false (ICONST_0): the same inspection Jetty 10 and 11 parts get.
+      assertEquals(List.of(Opcodes.ICONST_0), flags.stream().map(Integer::valueOf).toList(), name);
+    }
+  }
+
+  @Test
   void pageHelper42DialectsAreTracedThroughTheirFourArgumentGetPageSql() throws Exception {
     // PageHelper 4.2.x takes (String, Page, RowBounds, CacheKey); 5.x takes (String, Page, CacheKey).
     String name = "com/github/pagehelper/dialect/MySqlDialect";
@@ -122,6 +136,39 @@ final class LibraryHookTargetsTest {
             },
             0);
     return calls;
+  }
+
+  /** For each call to inspectMultipartFilename in the method, the ICONST just before it (its archiveOnly argument). */
+  private static List<String> archiveOnlyFlags(byte[] classBytes, String method, String descriptor) {
+    List<String> flags = new ArrayList<>();
+    new ClassReader(classBytes)
+        .accept(
+            new ClassVisitor(Opcodes.ASM9) {
+              @Override
+              public MethodVisitor visitMethod(int access, String name, String desc, String signature, String[] exceptions) {
+                if (!name.equals(method) || !desc.equals(descriptor)) {
+                  return null;
+                }
+                return new MethodVisitor(Opcodes.ASM9) {
+                  private int constant = -1;
+
+                  @Override
+                  public void visitInsn(int opcode) {
+                    constant = opcode;
+                  }
+
+                  @Override
+                  public void visitMethodInsn(int opcode, String owner, String callee, String calleeDescriptor, boolean itf) {
+                    if (owner.equals(HOOKS) && callee.equals("inspectMultipartFilename")) {
+                      flags.add(String.valueOf(constant));
+                    }
+                    constant = -1;
+                  }
+                };
+              }
+            },
+            0);
+    return flags;
   }
 
   private static byte[] classBytes(String internalName) throws IOException {

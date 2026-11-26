@@ -397,7 +397,31 @@ why = "MultiPartInputStreamParser lives here in Jetty 9.4, the last 9.4 shown."
 group = "org.eclipse.jetty"
 artifact = "jetty-server"
 versions = ["9.4.57.v20241219", "10.0.26", "11.0.26", "12.0.41"]
-why = "MultiPartFormInputStream is in jetty-server in 10 and 11; 12 replaced it."
+why = "MultiPartFormInputStream is in jetty-server in 10 and 11; 12 moved the servlet layer out, to the jetty-ee8, ee9, ee10 and ee11 artifacts below."
+
+[[library]]
+group = "org.eclipse.jetty.ee10"
+artifact = "jetty-ee10-servlet"
+versions = ["12.0.41", "12.1.15"]
+why = "Jetty 12's Jakarta EE 10 servlet layer: ServletApiRequest and ServletMultiPartFormData, which replace the jetty-server classes above; the first 12.0 line shown and the newest 12.1."
+
+[[library]]
+group = "org.eclipse.jetty.ee11"
+artifact = "jetty-ee11-servlet"
+versions = ["12.1.15"]
+why = "Jetty 12.1's Jakarta EE 11 servlet layer, a copy of ee10's classes under org.eclipse.jetty.ee11.servlet."
+
+[[library]]
+group = "org.eclipse.jetty.ee9"
+artifact = "jetty-ee9-nested"
+versions = ["12.0.41"]
+why = "Jetty 12's EE 9 layer, which keeps the 10/11 MultiPartFormInputStream under org.eclipse.jetty.ee9.nested."
+
+[[library]]
+group = "org.eclipse.jetty.ee8"
+artifact = "jetty-ee8-nested"
+versions = ["12.0.41"]
+why = "Jetty 12's EE 8 (javax) layer, same MultiPartFormInputStream under org.eclipse.jetty.ee8.nested."
 
 # --- XML, activation, other ---------------------------------------------------------------------
 

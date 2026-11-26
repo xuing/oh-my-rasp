@@ -215,6 +215,11 @@ not counted, only hooks on named targets. Primary is the JDK 21 and 25 agent, ba
 | `org.eclipse.jetty:jetty-server` | 10.0.26 | 14 | 30 |
 | `org.eclipse.jetty:jetty-server` | 11.0.26 | 14 | 30 |
 | `org.eclipse.jetty:jetty-server` | 12.0.41 | 0 | 1 |
+| `org.eclipse.jetty.ee10:jetty-ee10-servlet` | 12.0.41 | 11 | 16 |
+| `org.eclipse.jetty.ee10:jetty-ee10-servlet` | 12.1.15 | 11 | 16 |
+| `org.eclipse.jetty.ee11:jetty-ee11-servlet` | 12.1.15 | 11 | 16 |
+| `org.eclipse.jetty.ee9:jetty-ee9-nested` | 12.0.41 | 8 | 20 |
+| `org.eclipse.jetty.ee8:jetty-ee8-nested` | 12.0.41 | 8 | 20 |
 | `xerces:xercesImpl` | 2.9.1 | 6 | 6 |
 | `xerces:xercesImpl` | 2.11.0 | 6 | 6 |
 | `xerces:xercesImpl` | 2.12.2 | 6 | 6 |
