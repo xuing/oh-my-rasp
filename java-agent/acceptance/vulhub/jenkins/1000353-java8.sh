@@ -9,7 +9,9 @@ protected_name="${OHMYRASP_VULHUB_JENKINS_1000353_PROTECTED_NAME:-ohmyrasp-vulhu
 baseline_port="${OHMYRASP_VULHUB_JENKINS_1000353_BASELINE_PORT:-19144}"
 protected_port="${OHMYRASP_VULHUB_JENKINS_1000353_PROTECTED_PORT:-19145}"
 marker="${OHMYRASP_VULHUB_JENKINS_1000353_MARKER:-/tmp/ohmyrasp-jenkins-1000353-success}"
-host_agent_jar="$(pwd)/agent-java8/build/libs/ohmyrasp-agent-java8.jar"
+# shellcheck source=acceptance/lib/agent-build.sh
+source acceptance/lib/agent-build.sh
+host_agent_jar="$(ohmyrasp_agent_jar "$(pwd)/agent-java8/build/libs/ohmyrasp-agent-java8.jar")"
 payload_tool_url="${OHMYRASP_JENKINS_1000353_TOOL_URL:-https://github.com/vulhub/CVE-2017-1000353/releases/download/1.1/CVE-2017-1000353-1.1-SNAPSHOT-all.jar}"
 payload_tool_dir="${OHMYRASP_JENKINS_1000353_TOOL_DIR:-/tmp/ohmyrasp-jenkins-1000353}"
 openjdk8u292_image="${OHMYRASP_OPENJDK_8U292_IMAGE:-openjdk:8u292}"
@@ -281,8 +283,7 @@ run_protected() {
   fi
 }
 
-docker run --rm -v "$(pwd):/workspace" -w /workspace gradle:jdk25 \
-  gradle --no-daemon :agent-java8:agentJava8Jar >/dev/null
+ohmyrasp_build :agent-java8:agentJava8Jar >/dev/null
 
 rm -rf "$baseline_dir" "$protected_dir" "$payload_dir"
 mkdir -p "$baseline_dir" "$protected_dir" "$payload_dir"

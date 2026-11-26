@@ -3,8 +3,9 @@ set -euo pipefail
 
 cd "$(dirname "$0")/../../.."
 
-docker run --rm -v "$(pwd):/workspace" -w /workspace gradle:jdk25 \
-  gradle --no-daemon :agent-java8:agentJava8Jar
+# shellcheck source=acceptance/lib/agent-build.sh
+source acceptance/lib/agent-build.sh
+ohmyrasp_build :agent-java8:agentJava8Jar
 
 image="${OHMYRASP_VULHUB_METERSPHERE_45788_IMAGE:-vulhub/metersphere:1.15.4}"
 mysql_image="${OHMYRASP_VULHUB_METERSPHERE_45788_MYSQL_IMAGE:-mysql:5.7}"
@@ -16,7 +17,7 @@ baseline_name="${OHMYRASP_VULHUB_METERSPHERE_45788_BASELINE_NAME:-ohmyrasp-vulhu
 protected_name="${OHMYRASP_VULHUB_METERSPHERE_45788_PROTECTED_NAME:-ohmyrasp-vulhub-metersphere45788-protected}"
 baseline_port="${OHMYRASP_VULHUB_METERSPHERE_45788_BASELINE_PORT:-19282}"
 protected_port="${OHMYRASP_VULHUB_METERSPHERE_45788_PROTECTED_PORT:-19283}"
-host_agent_jar="$(pwd)/agent-java8/build/libs/ohmyrasp-agent-java8.jar"
+host_agent_jar="$(ohmyrasp_agent_jar "$(pwd)/agent-java8/build/libs/ohmyrasp-agent-java8.jar")"
 baseline_dir="logs/vulhub-metersphere-1.15.4-45788-java8-baseline"
 protected_dir="logs/vulhub-metersphere-1.15.4-45788-java8-protected"
 payload_dir="logs/vulhub-metersphere-1.15.4-45788-java8-payload"

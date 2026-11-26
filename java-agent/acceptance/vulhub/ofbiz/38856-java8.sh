@@ -8,7 +8,9 @@ baseline_name="${OHMYRASP_VULHUB_OFBIZ_38856_BASELINE_NAME:-ohmyrasp-vulhub-ofbi
 protected_name="${OHMYRASP_VULHUB_OFBIZ_38856_PROTECTED_NAME:-ohmyrasp-vulhub-ofbiz38856-protected}"
 baseline_port="${OHMYRASP_VULHUB_OFBIZ_38856_BASELINE_PORT:-18452}"
 protected_port="${OHMYRASP_VULHUB_OFBIZ_38856_PROTECTED_PORT:-18453}"
-host_agent_jar="$(pwd)/agent-java8/build/libs/ohmyrasp-agent-java8.jar"
+# shellcheck source=acceptance/lib/agent-build.sh
+source acceptance/lib/agent-build.sh
+host_agent_jar="$(ohmyrasp_agent_jar "$(pwd)/agent-java8/build/libs/ohmyrasp-agent-java8.jar")"
 baseline_dir="logs/vulhub-ofbiz-18.12.14-38856-java8-baseline"
 protected_dir="logs/vulhub-ofbiz-18.12.14-38856-java8-protected"
 protected_log="${protected_dir}/events.jsonl"
@@ -16,8 +18,7 @@ boundary="----WebKitFormBoundaryDbR7sY3IIwQX7kcJ"
 exploit_path="/webtools/control/main/ProgramExport"
 payload_file="${baseline_dir}/programexport-multipart.body"
 
-docker run --rm -v "$(pwd):/workspace" -w /workspace gradle:jdk25 \
-  gradle --no-daemon :agent-java8:agentJava8Jar
+ohmyrasp_build :agent-java8:agentJava8Jar
 
 rm -rf "$baseline_dir" "$protected_dir"
 mkdir -p "$baseline_dir" "$protected_dir"

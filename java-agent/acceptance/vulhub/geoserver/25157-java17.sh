@@ -14,15 +14,16 @@ baseline_postgres="${OHMYRASP_VULHUB_GEOSERVER_25157_BASELINE_POSTGRES:-ohmyrasp
 protected_postgres="${OHMYRASP_VULHUB_GEOSERVER_25157_PROTECTED_POSTGRES:-ohmyrasp-vulhub-geoserver-25157-protected-postgres}"
 baseline_port="${OHMYRASP_VULHUB_GEOSERVER_25157_BASELINE_PORT:-18630}"
 protected_port="${OHMYRASP_VULHUB_GEOSERVER_25157_PROTECTED_PORT:-18631}"
-host_agent_jar="$(pwd)/agent-java17/build/libs/ohmyrasp-agent-java17.jar"
+# shellcheck source=acceptance/lib/agent-build.sh
+source acceptance/lib/agent-build.sh
+host_agent_jar="$(ohmyrasp_agent_jar "$(pwd)/agent-java17/build/libs/ohmyrasp-agent-java17.jar")"
 baseline_dir="logs/vulhub-geoserver-25157-java17-baseline"
 protected_dir="logs/vulhub-geoserver-25157-java17-protected"
 protected_log="${protected_dir}/events.jsonl"
 normal_query="service=wfs&version=1.0.0&request=GetFeature&typeName=vulhub:example&CQL_FILTER=strStartsWith%28name%2C%27x%27%29+%3D+true"
 malicious_query="service=wfs&version=1.0.0&request=GetFeature&typeName=vulhub:example&CQL_FILTER=strStartsWith%28name%2C%27x%27%27%29+%3D+true+and+1%3D%28SELECT+CAST+%28%28SELECT+version%28%29%29+AS+integer%29%29+--+%27%29+%3D+true"
 
-docker run --rm -v "$(pwd):/workspace" -w /workspace gradle:jdk25 \
-  gradle --no-daemon :agent-java17:agentJava17Jar
+ohmyrasp_build :agent-java17:agentJava17Jar
 
 rm -rf "$baseline_dir" "$protected_dir"
 mkdir -p "$baseline_dir" "$protected_dir"

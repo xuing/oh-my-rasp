@@ -9,7 +9,9 @@ baseline_name="${OHMYRASP_VULHUB_TOMCAT_24813_BASELINE_NAME:-ohmyrasp-vulhub-tom
 protected_name="${OHMYRASP_VULHUB_TOMCAT_24813_PROTECTED_NAME:-ohmyrasp-vulhub-tomcat24813-protected}"
 baseline_port="${OHMYRASP_VULHUB_TOMCAT_24813_BASELINE_PORT:-19146}"
 protected_port="${OHMYRASP_VULHUB_TOMCAT_24813_PROTECTED_PORT:-19147}"
-host_agent_jar="$(pwd)/agent-java8/build/libs/ohmyrasp-agent-java8.jar"
+# shellcheck source=acceptance/lib/agent-build.sh
+source acceptance/lib/agent-build.sh
+host_agent_jar="$(ohmyrasp_agent_jar "$(pwd)/agent-java8/build/libs/ohmyrasp-agent-java8.jar")"
 ysoserial_dir="${OHMYRASP_YSOSERIAL_DIR:-/tmp/ohmyrasp-ysoserial}"
 maven_jdk8_image="${OHMYRASP_MAVEN_JDK8_IMAGE:-maven:3.8.1-jdk-8}"
 openjdk8u292_image="${OHMYRASP_OPENJDK_8U292_IMAGE:-openjdk:8u292}"
@@ -293,8 +295,7 @@ run_protected() {
   assert_no_dns_query "$protected_domain"
 }
 
-docker run --rm -v "$(pwd):/workspace" -w /workspace gradle:jdk25 \
-  gradle --no-daemon :agent-java8:agentJava8Jar >/dev/null
+ohmyrasp_build :agent-java8:agentJava8Jar >/dev/null
 
 rm -rf "$baseline_dir" "$protected_dir" "$payload_dir"
 mkdir -p "$baseline_dir" "$protected_dir" "$payload_dir"

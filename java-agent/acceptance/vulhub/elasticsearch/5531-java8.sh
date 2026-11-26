@@ -11,14 +11,15 @@ baseline_port="${OHMYRASP_VULHUB_ELASTICSEARCH_5531_BASELINE_PORT:-18584}"
 protected_port="${OHMYRASP_VULHUB_ELASTICSEARCH_5531_PROTECTED_PORT:-18585}"
 baseline_cluster="${OHMYRASP_VULHUB_ELASTICSEARCH_5531_BASELINE_CLUSTER:-ohmyrasp-es5531-baseline}"
 protected_cluster="${OHMYRASP_VULHUB_ELASTICSEARCH_5531_PROTECTED_CLUSTER:-ohmyrasp-es5531-protected}"
-host_agent_jar="$(pwd)/agent-java8/build/libs/ohmyrasp-agent-java8.jar"
+# shellcheck source=acceptance/lib/agent-build.sh
+source acceptance/lib/agent-build.sh
+host_agent_jar="$(ohmyrasp_agent_jar "$(pwd)/agent-java8/build/libs/ohmyrasp-agent-java8.jar")"
 baseline_dir="logs/vulhub-elasticsearch-5531-java8-baseline"
 protected_dir="logs/vulhub-elasticsearch-5531-java8-protected"
 protected_log="${protected_dir}/events.jsonl"
 traversal_path="/_snapshot/test/backdata%2f..%2f..%2f..%2f..%2f..%2f..%2f..%2fetc%2fpasswd"
 
-docker run --rm -v "$(pwd):/workspace" -w /workspace gradle:jdk25 \
-  gradle --no-daemon :agent-java8:agentJava8Jar
+ohmyrasp_build :agent-java8:agentJava8Jar
 
 if [[ ! -d "$vulhub_context" ]]; then
   echo "missing Vulhub Elasticsearch CVE-2015-5531 context: ${vulhub_context}" >&2

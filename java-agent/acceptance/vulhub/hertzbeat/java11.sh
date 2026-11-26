@@ -8,14 +8,15 @@ baseline_name="${OHMYRASP_VULHUB_HERTZBEAT_BASELINE_NAME:-ohmyrasp-vulhub-hertzb
 protected_name="${OHMYRASP_VULHUB_HERTZBEAT_PROTECTED_NAME:-ohmyrasp-vulhub-hertzbeat1423-protected}"
 baseline_port="${OHMYRASP_VULHUB_HERTZBEAT_BASELINE_PORT:-18320}"
 protected_port="${OHMYRASP_VULHUB_HERTZBEAT_PROTECTED_PORT:-18321}"
-host_agent_jar="$(pwd)/agent-java11/build/libs/ohmyrasp-agent-java11.jar"
+# shellcheck source=acceptance/lib/agent-build.sh
+source acceptance/lib/agent-build.sh
+host_agent_jar="$(ohmyrasp_agent_jar "$(pwd)/agent-java11/build/libs/ohmyrasp-agent-java11.jar")"
 baseline_dir="logs/vulhub-hertzbeat-1.4.4-java11-baseline"
 protected_dir="logs/vulhub-hertzbeat-1.4.4-java11-protected"
 protected_log="${protected_dir}/events.jsonl"
 success_file="/tmp/ohmyrasp-hertzbeat-success"
 
-docker run --rm -v "$(pwd):/workspace" -w /workspace gradle:jdk25 \
-  gradle --no-daemon :agent-java11:agentJava11Jar
+ohmyrasp_build :agent-java11:agentJava11Jar
 
 rm -rf "$baseline_dir" "$protected_dir"
 mkdir -p "$baseline_dir" "$protected_dir"

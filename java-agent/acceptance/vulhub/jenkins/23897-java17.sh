@@ -3,10 +3,11 @@ set -euo pipefail
 
 cd "$(dirname "$0")/../../.."
 
-host_agent_jar="$(pwd)/agent-java17/build/libs/ohmyrasp-agent-java17.jar"
+# shellcheck source=acceptance/lib/agent-build.sh
+source acceptance/lib/agent-build.sh
+host_agent_jar="$(ohmyrasp_agent_jar "$(pwd)/agent-java17/build/libs/ohmyrasp-agent-java17.jar")"
 
-docker run --rm -v "$(pwd):/workspace" -w /workspace gradle:jdk25 \
-  gradle --no-daemon :agent-java17:agentJava17Jar
+ohmyrasp_build :agent-java17:agentJava17Jar
 
 image="${OHMYRASP_VULHUB_JENKINS_23897_IMAGE:-vulhub/jenkins:2.441}"
 baseline_name="${OHMYRASP_VULHUB_JENKINS_23897_BASELINE_NAME:-ohmyrasp-vulhub-jenkins-23897-baseline}"
@@ -63,7 +64,7 @@ run_cli_file_read() {
   local status
   set +e
   docker run --rm --network host -v "$(pwd)/${cli_dir}:/work" -w /work \
-    gradle:jdk25 \
+    "$(ohmyrasp_gradle_image)" \
     java -jar jenkins-cli.jar -s "http://127.0.0.1:${port}/" -http \
       connect-node '@/etc/passwd' > "$output" 2>&1
   status=$?
