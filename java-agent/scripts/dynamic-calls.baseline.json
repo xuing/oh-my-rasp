@@ -324,7 +324,7 @@
   "jdk25": {
    "io/ohmyrasp/agent/BootstrapAgent": {
     "lambda": 2,
-    "string-concat": 2
+    "string-concat": 3
    },
    "io/ohmyrasp/agent/OhMyRaspAgent": {
     "string-concat": 1
