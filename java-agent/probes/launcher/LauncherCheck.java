@@ -6,7 +6,8 @@ import java.nio.file.StandardOpenOption;
 
 /**
  * An application for the launcher probe: {@code LauncherCheck TRACK|none [attach AGENT-JAR]}. It always
- * prints that it ran. With "attach" it loads AGENT-JAR into its own JVM (agentmain). Given a track
+ * prints that it ran. With "attach" it loads AGENT-JAR into its own JVM (agentmain). It prints the
+ * published ohmyrasp.agent.line property. Given a track
  * ("8", "11", "17" or "main"), it then opens the system hosts file inside a request that names that
  * file, which every line blocks in block mode (the file-read probe's "file-channel" case), and prints
  * whether it was.
@@ -17,6 +18,7 @@ public class LauncherCheck {
     if (args.length > 2 && args[1].equals("attach")) {
       attach(args[2]);
     }
+    System.out.println("launcher-check: published line=" + System.getProperty("ohmyrasp.agent.line"));
     if (args.length == 0 || args[0].equals("none")) {
       return;
     }

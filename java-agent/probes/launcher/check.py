@@ -4,6 +4,7 @@ import argparse
 import json
 import os
 from pathlib import Path
+import re
 import shutil
 import subprocess
 import sys
@@ -29,6 +30,8 @@ SKIPPED = ("ohmyrasp-agent-skipped", "unsupported-java")
 ACTIVE = ("ohmyrasp-agent-skipped", "already-active")
 EARLIER_FAILED = ("ohmyrasp-agent-skipped", "earlier-start-failed")
 FAILED = ("ohmyrasp-agent-start-failed", None)
+# One line of -verbose:class per class definition: "[Loaded X from Y]" on Java 8, "... X source: Y" later.
+LAUNCHER_LOAD = re.compile(r"(?:\[Loaded |\] )io\.ohmyrasp\.agent\.launch\.AgentLauncher(?: from | source: )(.*?)\]?$")
 
 
 class Probe:
@@ -42,10 +45,12 @@ class Probe:
         self.classpath = [str(self.classes), *([str(tools)] if tools.is_file() else [])]
 
     def run(self, name, options, agents, app_args, extra_classpath=()):
-        command = ["java", "-Djdk.attach.allowAttachSelf=true", *options,
+        # With more than one of our JARs in the JVM, show where the shared launcher class was defined.
+        several = len(agents) + ("attach" in app_args) > 1
+        command = ["java", "-Djdk.attach.allowAttachSelf=true", *(["-verbose:class"] if several else []), *options,
                    *(f"-javaagent:{agent}" for agent in agents),
                    "-cp", os.pathsep.join([*self.classpath, *map(str, extra_classpath)]), "LauncherCheck", *app_args]
-        return Run(self, name, subprocess.run(command, capture_output=True, text=True, timeout=120))
+        return Run(self, name, command, subprocess.run(command, capture_output=True, text=True, timeout=120))
 
     def fits(self, jar):
         return agent_track.launcher_choice(agent_track.tracks_in(jar), self.major)
@@ -56,15 +61,21 @@ class Probe:
 
 
 class Run:
-    def __init__(self, probe, name, process):
-        self.probe, self.name = probe, name
+    def __init__(self, probe, name, command, process):
+        self.probe, self.name, self.command = probe, name, command
         self.code, self.out, self.err = process.returncode, process.stdout, process.stderr
         output = (self.out + self.err).splitlines()
         self.launcher = [json.loads(line) for line in output if line.startswith('{"event":"ohmyrasp-agent-')]
         self.starts = [track for track in map(start_track, output) if track]
+        self.launcher_sources = [m[1] for m in map(LAUNCHER_LOAD.search, output) if m]
+        published = [line.split("=", 1)[1] for line in output if line.startswith("launcher-check: published line=")]
+        self.published = published[0] if published else None
 
     def fail(self, why):
-        raise SystemExit(f"{self.name}: {why}\nexit {self.code}\n--- stdout\n{self.out}--- stderr\n{self.err}")
+        out = "\n".join(line for line in self.out.splitlines()
+                        if "[class,load]" not in line and not line.startswith("[Loaded "))
+        raise SystemExit(f"{self.name}: {why}\nexit {self.code}\n--- stdout (class loading omitted)\n{out}\n"
+                         f"--- stderr\n{self.err}")
 
     def expect(self, started, blocked, launcher_lines):
         if self.code != 0:
@@ -78,8 +89,14 @@ class Run:
         reasons = [(line["event"], line.get("reason")) for line in self.launcher]
         if reasons != launcher_lines:
             self.fail(f"expected launcher lines {launcher_lines}, saw {reasons}")
+        if "-verbose:class" in self.command and len(self.launcher_sources) != 1:
+            # The one-start state is a static field of AgentLauncher: two definitions would mean two states.
+            self.fail(f"AgentLauncher was defined {len(self.launcher_sources)} times: {self.launcher_sources}")
+        if started and self.published != agent_track.LINE_NAMES[started[0]]:
+            self.fail(f"ohmyrasp.agent.line is {self.published}, expected {agent_track.LINE_NAMES[started[0]]}")
         self.probe.passed += 1
-        print(f"ok   {self.name}")
+        source = f" (AgentLauncher from {Path(self.launcher_sources[0]).name})" if self.launcher_sources else ""
+        print(f"ok   {self.name}{source}")
         return self
 
 
@@ -162,12 +179,40 @@ def main():
                 probe.run(f"{jar.name} first, {second.name} second: the second starts", AGENT_OPTIONS,
                           [jar, second], [probe.fits(second)]).expect([probe.fits(second)], True, [SKIPPED])
 
-        for order in ([agent, universal], [universal, agent], [agent, agent], [universal, universal]):
+        preset = ["-Dohmyrasp.agent.state=installed:primary", "-Dohmyrasp.agent.line=primary"]
+        for jar in dict.fromkeys([agent, universal]):
+            probe.run(f"{jar.name} starts although the command line presets the state properties",
+                      [*AGENT_OPTIONS, *preset], [jar], [probe.fits(jar)]).expect([probe.fits(jar)], True, [])
+
+        fitting = [jar for jar in line_jars if jar not in unfit]
+        orders = [[agent, agent], [universal, universal]]
+        orders += [order for jar in dict.fromkeys([agent, *fitting]) for order in ([jar, universal], [universal, jar])]
+        for order in dict.fromkeys(tuple(order) for order in orders):
             started = probe.first_fit(order)
             run = probe.run(f"{order[0].name} + {order[1].name}: one line starts", AGENT_OPTIONS, order, [started])
             run.expect([started], True, [ACTIVE])
             if run.launcher[0]["state"] != f"installed:{agent_track.LINE_NAMES[started]}":
                 run.fail(f"unexpected state {run.launcher[0]}")
+
+        java8 = next(jar for jar in line_jars if agent_track.tracks_in(jar) == {"8"})
+        if major > 8:
+            # The Java 8 JAR's Boot-Class-Path puts the Java 8 line on the bootstrap loader even when the
+            # launcher skips it. Started by hand there, the line cannot see java.sql: it must fail before it
+            # registers a transformer, so no transformer class of the line is ever loaded.
+            linker = work / "link-failure.jar"
+            subprocess.run(["javac", "-d", str(work / "link-classes"), str(Path(__file__).with_name("LinkFailureAgent.java"))],
+                           check=True)
+            with zipfile.ZipFile(linker, "w") as fixture:
+                fixture.writestr("META-INF/MANIFEST.MF", "Manifest-Version: 1.0\nPremain-Class: LinkFailureAgent\n"
+                                 "Can-Retransform-Classes: true\n\n")  # as every agent JAR declares
+                fixture.write(work / "link-classes" / "LinkFailureAgent.class", "LinkFailureAgent.class")
+            run = probe.run("a backport line that cannot link a type fails before installing a transformer",
+                            AGENT_OPTIONS, [java8, linker], ["none"])
+            for wanted in ("link-check: line loader=null", "link-check: failed java.lang.NoClassDefFoundError: java/sql/",
+                           "link-check: transformer classes loaded=0"):
+                if wanted not in run.out:
+                    run.fail(f"expected '{wanted}'")
+            run.expect([], None, [SKIPPED])
 
         failing = failing_entry_jar(universal, expected, work)
         run = probe.run("a line whose premain throws does not stop the JVM", AGENT_OPTIONS, [failing], [])
