@@ -138,6 +138,16 @@ public final class BackportHooks {
   private static final Pattern SCRIPT_LITERAL_EXECUTE =
       Pattern.compile("(?is)[\"'][^\"'\\r\\n]{1,200}[\"']\\s*\\.\\s*execute\\s*\\(");
   private static final ThreadLocal<String> LAST_LOGGED_REQUEST = new ThreadLocal<String>();
+  // When this thread last logged a finding (System.nanoTime), in slot 0: outside a request a repeat is
+  // suppressed only within REPEAT_WINDOW_NANOS of it. One array per thread, so the hot path allocates nothing.
+  private static final ThreadLocal<long[]> LAST_LOGGED_AT =
+      new ThreadLocal<long[]>() {
+        @Override
+        protected long[] initialValue() {
+          return new long[1];
+        }
+      };
+  private static final long REPEAT_WINDOW_NANOS = 1000000000L;
   private static final ThreadLocal<String> LAST_LOGGED_COMMAND = new ThreadLocal<String>();
   private static final ThreadLocal<String> LAST_LOGGED_FILE_READ = new ThreadLocal<String>();
   private static final ThreadLocal<String> LAST_LOGGED_FILE_WRITE = new ThreadLocal<String>();
@@ -199,6 +209,18 @@ public final class BackportHooks {
   }
 
   /**
+   * Whether a monitored finding repeats the last value its kind logged on this thread and is not written again.
+   * Inside a request it does until the request ends. Outside a request, where nothing ever clears the values (a
+   * background worker), it does only within a second of the thread's last logged finding.
+   */
+  private static boolean repeats(String value, String previous) {
+    if (!value.equals(previous)) {
+      return false;
+    }
+    return DISPATCH.inRequest() || System.nanoTime() - LAST_LOGGED_AT.get()[0] < REPEAT_WINDOW_NANOS;
+  }
+
+  /**
    * Forgets the last value this thread logged for each kind of finding. A monitored finding is logged once until a
    * different value is logged, which suppresses an immediate repeat inside one request; across requests, which a
    * worker thread serves one after another, the same attack is logged again. Called when the outermost request
@@ -238,7 +260,7 @@ public final class BackportHooks {
     }
     String action = shouldBlock() ? "block" : "log";
     String previous = LAST_LOGGED_REQUEST.get();
-    if (!"block".equals(action) && finding.detailValue.equals(previous)) {
+    if (!"block".equals(action) && repeats(finding.detailValue, previous)) {
       return;
     }
     LAST_LOGGED_REQUEST.set(finding.detailValue);
@@ -286,7 +308,7 @@ public final class BackportHooks {
     } else {
       RequestSnapshot request = CURRENT_REQUEST.get();
       String previous = request == null ? LAST_LOGGED_FILE_UPLOAD.get() : request.lastUpload;
-      if (!"block".equals(action) && finding.detailValue.equals(previous)) return;
+      if (!"block".equals(action) && repeats(finding.detailValue, previous)) return;
       if (request == null) LAST_LOGGED_FILE_UPLOAD.set(finding.detailValue);
       else request.lastUpload = finding.detailValue;
     }
@@ -730,7 +752,7 @@ public final class BackportHooks {
     }
     String action = shouldBlock() ? "block" : "log";
     String previous = LAST_LOGGED_URL.get();
-    if (!"block".equals(action) && finding.detailValue.equals(previous)) {
+    if (!"block".equals(action) && repeats(finding.detailValue, previous)) {
       return;
     }
     LAST_LOGGED_URL.set(finding.detailValue);
@@ -847,7 +869,7 @@ public final class BackportHooks {
                 + ",cve=CVE-2026-114938");
     String action = shouldBlock() ? "block" : "log";
     String previous = LAST_LOGGED_BASE64.get();
-    if (!"block".equals(action) && finding.detailValue.equals(previous)) {
+    if (!"block".equals(action) && repeats(finding.detailValue, previous)) {
       return;
     }
     LAST_LOGGED_BASE64.set(finding.detailValue);
@@ -942,7 +964,7 @@ public final class BackportHooks {
     }
     String action = shouldBlock() ? "block" : "log";
     String previous = LAST_LOGGED_SQL_IDENTIFIER.get();
-    if (!"block".equals(action) && finding.detailValue.equals(previous)) {
+    if (!"block".equals(action) && repeats(finding.detailValue, previous)) {
       return;
     }
     LAST_LOGGED_SQL_IDENTIFIER.set(finding.detailValue);
@@ -959,7 +981,7 @@ public final class BackportHooks {
     }
     String action = shouldBlock() ? "block" : "log";
     String previous = LAST_LOGGED_JDBC.get();
-    if (!"block".equals(action) && finding.detailValue.equals(previous)) {
+    if (!"block".equals(action) && repeats(finding.detailValue, previous)) {
       return;
     }
     LAST_LOGGED_JDBC.set(finding.detailValue);
@@ -1008,7 +1030,7 @@ public final class BackportHooks {
     }
     String action = shouldBlock() ? "block" : "log";
     String previous = LAST_LOGGED_SCRIPT.get();
-    if (!"block".equals(action) && finding.detailValue.equals(previous)) {
+    if (!"block".equals(action) && repeats(finding.detailValue, previous)) {
       return;
     }
     LAST_LOGGED_SCRIPT.set(finding.detailValue);
@@ -1026,7 +1048,7 @@ public final class BackportHooks {
     }
     String action = shouldBlock() ? "block" : "log";
     String previous = LAST_LOGGED_JEXL.get();
-    if (!"block".equals(action) && finding.detailValue.equals(previous)) {
+    if (!"block".equals(action) && repeats(finding.detailValue, previous)) {
       return;
     }
     LAST_LOGGED_JEXL.set(finding.detailValue);
@@ -1044,7 +1066,7 @@ public final class BackportHooks {
     }
     String action = shouldBlock() ? "block" : "log";
     String previous = LAST_LOGGED_EL.get();
-    if (!"block".equals(action) && finding.detailValue.equals(previous)) {
+    if (!"block".equals(action) && repeats(finding.detailValue, previous)) {
       return;
     }
     LAST_LOGGED_EL.set(finding.detailValue);
@@ -1127,7 +1149,7 @@ public final class BackportHooks {
     }
     String action = shouldBlock() ? "block" : "log";
     String previous = LAST_LOGGED_JMX.get();
-    if (!"block".equals(action) && finding.detailValue.equals(previous)) {
+    if (!"block".equals(action) && repeats(finding.detailValue, previous)) {
       return;
     }
     LAST_LOGGED_JMX.set(finding.detailValue);
@@ -1218,7 +1240,7 @@ public final class BackportHooks {
     }
     String action = shouldBlock() ? "block" : "log";
     String previous = LAST_LOGGED_XXE.get();
-    if (!"block".equals(action) && finding.detailValue.equals(previous)) {
+    if (!"block".equals(action) && repeats(finding.detailValue, previous)) {
       return;
     }
     LAST_LOGGED_XXE.set(finding.detailValue);
@@ -1235,7 +1257,7 @@ public final class BackportHooks {
     }
     String action = shouldBlock() ? "block" : "log";
     String previous = LAST_LOGGED_COMMAND.get();
-    if (!"block".equals(action) && finding.detailValue.equals(previous)) {
+    if (!"block".equals(action) && repeats(finding.detailValue, previous)) {
       return;
     }
     LAST_LOGGED_COMMAND.set(finding.detailValue);
@@ -1920,7 +1942,7 @@ public final class BackportHooks {
     }
     String action = shouldBlock() ? "block" : "log";
     String previous = LAST_LOGGED_JAVA_COMPILE.get();
-    if (!"block".equals(action) && finding.detailValue.equals(previous)) {
+    if (!"block".equals(action) && repeats(finding.detailValue, previous)) {
       return;
     }
     LAST_LOGGED_JAVA_COMPILE.set(finding.detailValue);
@@ -2001,7 +2023,7 @@ public final class BackportHooks {
     }
     String action = shouldBlock() ? "block" : "log";
     String previous = LAST_LOGGED_XML_DECODER.get();
-    if (!"block".equals(action) && finding.detailValue.equals(previous)) {
+    if (!"block".equals(action) && repeats(finding.detailValue, previous)) {
       return;
     }
     LAST_LOGGED_XML_DECODER.set(finding.detailValue);
@@ -4161,7 +4183,7 @@ public final class BackportHooks {
         && !"block".equals(action) && HostReadPath.repeated(finding.detailValue, finding.algorithm)) {
       return;
     } else if (lastLoggedPath != null) {
-      if (!"block".equals(action) && finding.detailValue.equals(lastLoggedPath.get())) return;
+      if (!"block".equals(action) && repeats(finding.detailValue, lastLoggedPath.get())) return;
       lastLoggedPath.set(finding.detailValue);
     }
     appendEvent(finding, hook, action);
@@ -4334,6 +4356,7 @@ public final class BackportHooks {
    * so a caller that has decided to block always reaches its throw; only the event is lost.
    */
   private static void appendEvent(Finding finding, String hook, String action, String resolvedAddress, int argc) {
+    LAST_LOGGED_AT.get()[0] = System.nanoTime();
     try {
       writeDetection(finding, hook, action, resolvedAddress, argc);
     } catch (Throwable reportingFailure) {
