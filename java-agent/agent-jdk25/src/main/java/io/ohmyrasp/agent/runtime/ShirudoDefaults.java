@@ -1,15 +1,5 @@
 package io.ohmyrasp.agent.runtime;
 
-import java.io.IOException;
-import java.io.InputStream;
-import java.io.InputStreamReader;
-import java.net.MalformedURLException;
-import java.net.URI;
-import java.net.URL;
-import java.net.URLConnection;
-import java.nio.charset.StandardCharsets;
-import java.security.CodeSource;
-import java.security.ProtectionDomain;
 import java.util.Locale;
 import java.util.Properties;
 
@@ -49,57 +39,14 @@ public final class ShirudoDefaults {
     this.latencySample = latencySample;
   }
 
-  public static ShirudoDefaults load() {
-    Properties props = new Properties();
-    boolean found = false;
-    try {
-      URL resource = ownResource();
-      if (resource == null) {
-        return ABSENT;
-      }
-      URLConnection connection = resource.openConnection();
-      connection.setUseCaches(false);
-      try (InputStream in = connection.getInputStream()) {
-        found = true;
-        props.load(new InputStreamReader(in, StandardCharsets.UTF_8));
-      }
-    } catch (IOException | RuntimeException e) {
-      // A missing resource leaves the defaults absent. A malformed one (Properties.load throws on a
-      // bad unicode escape) keeps the keys read before the bad line, so a damaged later line cannot
-      // erase an already-read lock_config or mode.
-    }
-    return found ? fromProperties(props) : ABSENT;
-  }
-
   /**
-   * The baked resource in the agent's own JAR or class directory, or null when that location is
-   * unknown. A class-relative lookup is not used: the agent classes are on the bootstrap search,
-   * where such a lookup searches the system class path and an application JAR that carries a
-   * same-named file would win.
+   * The baked settings from the agent's own JAR or class directory, read by
+   * {@link io.ohmyrasp.agent.util.BakedProperties}: absent for a general JAR; an IllegalStateException, which
+   * fails the start, for an upatch JAR whose settings are missing or cannot be read.
    */
-  private static URL ownResource() throws MalformedURLException {
-    URL location = codeLocation(ShirudoDefaults.class);
-    if (location == null) {
-      // Defined by the bootstrap loader, which records no code source. The agent JAR is the one the
-      // system class loader loaded the entry class from.
-      try {
-        location = codeLocation(Class.forName(AGENT_ENTRY_CLASS, false, ClassLoader.getSystemClassLoader()));
-      } catch (ClassNotFoundException | LinkageError e) {
-        return null;
-      }
-    }
-    if (location == null) {
-      return null;
-    }
-    String base = location.toString();
-    String entry = RESOURCE_PATH.substring(1);
-    return URI.create(base.endsWith("/") ? base + entry : "jar:" + base + "!/" + entry).toURL();
-  }
-
-  private static URL codeLocation(Class<?> type) {
-    ProtectionDomain domain = type.getProtectionDomain();
-    CodeSource source = domain == null ? null : domain.getCodeSource();
-    return source == null ? null : source.getLocation();
+  public static ShirudoDefaults load() {
+    Properties props = io.ohmyrasp.agent.util.BakedProperties.read(ShirudoDefaults.class, AGENT_ENTRY_CLASS);
+    return props == null ? ABSENT : fromProperties(props);
   }
 
   static ShirudoDefaults absent() {
