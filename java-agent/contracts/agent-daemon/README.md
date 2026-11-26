@@ -12,6 +12,7 @@ The directory is under `java-agent/` because the Gradle container the project us
 | `events/backport/*.json` | `Java8EventContractTest` in `backport-tests`: the real hooks, `OhMyRaspJava8Agent.premain` and `RaspRuntime`, on all three backport lines | The same test (equality, on each line); `daemon/src/contract_tests.rs` |
 | `control/*.json` | `daemon/src/contract_tests.rs`: the real `Controller`, driven through the desired states | The same test (equality, and a reload by the daemon); `ControlContractTest` in `agent-jdk25` and `Java8ControlContractTest` in `backport-tests` |
 | `control/expected.properties` | By hand | The three control tests: what each control document means |
+| `control/limits.properties` | By hand | The size limit of a control document: `daemon/src/control.rs`, and the control tests of both agent engines, compare their own constant with it |
 | `control/rejected/*.json` | By hand | `ControlContractTest` and `Java8ControlContractTest`: each must leave the agent's state unchanged |
 
 Each event file is one line. The control documents are the daemon's pretty-printed output.
@@ -35,6 +36,10 @@ The daemon classifies each line by `kind` when it has one, and by its other memb
 | Any other `kind`; or no `kind` and nothing above matches | ignored | Counted under `ignored_kinds` in `/api/stats` and logged at debug level; never a detection, never uploaded |
 
 `timestamp` is an RFC 3339 string, kept as written, or a number of epoch milliseconds, which the daemon converts to RFC 3339 UTC. A line with neither, or with a number it cannot convert (negative, or past year 9999), has no time of its own and the upload carries the time the daemon read it as `occurred_at`.
+
+## The size limit of the control file
+
+Both agent engines ignore a control file larger than `max_control_bytes` of [`control/limits.properties`](control/limits.properties) (a file of exactly that size is read), which also stops mode changes from reaching them. The daemon therefore refuses to write a larger document, whether the change is a cloud policy or a console update: it keeps the previous document, logs an error that names the size and the limit, and reports the refusal until a write succeeds, as `control_status.write_refused` in `/api/stats`, as the `ohmyrasp_control_write_refused` gauge of `/metrics`, as a line in the local console, and as a `409` answer to `POST /api/control`. A file it finds already larger than the limit at start-up is left as it is and reported the same way.
 
 ## Normalisation of volatile fields
 
@@ -77,5 +82,4 @@ These are facts about the current code, kept visible here so that a change to an
 
 - The start lines of `agent-java8` and of `agent-java11` and `agent-java17` list their hooks in different orders, and the latter two carry a `startup_probe` member. The daemon reads none of them.
 - The daemon's own reader accepts only lowercase `off`, `monitor` and `block` for `mode`; the agents also accept `record`, `observe`, `log`, `protect` and the other aliases, in any case. A control file an operator edited by hand with an alias is reinitialised when the daemon starts.
-- The agents ignore a control file larger than 1 MiB. The daemon writes the cloud policy into it without a limit.
 - The backport agents read only `mode` from the control file. The per-algorithm switches, the revision and the policy apply on the primary agent only.

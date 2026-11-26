@@ -2,12 +2,14 @@ package io.ohmyrasp.agent.runtime;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import io.ohmyrasp.agent.contract.ContractFiles;
 import java.io.IOException;
 import java.io.StringReader;
 import java.nio.file.Files;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -69,6 +71,41 @@ final class ControlContractTest {
       assertSame(name, before, runtime.state());
       assertState("policy-installed", expected, runtime);
     }
+  }
+
+  /**
+   * The daemon refuses to write a control document larger than {@code control/limits.properties}
+   * says, because the agent ignores one: this side's constant is that value, and the agent reads
+   * a document of exactly that size and not one byte more.
+   */
+  @Test
+  void theControlSizeLimitIsTheContractValue() throws Exception {
+    int limit = contractLimit();
+    assertEquals(limit, AgentRuntime.MAX_CONTROL_BYTES,
+        "AgentRuntime.MAX_CONTROL_BYTES against control/limits.properties max_control_bytes");
+
+    AgentRuntime atLimit = AgentRuntime.newForTesting();
+    atLimit.reloadIfChanged(placePadded(limit));
+    assertEquals(DetectionMode.BLOCK, atLimit.mode(), "a document of exactly the limit is read");
+
+    AgentRuntime overLimit = AgentRuntime.newForTesting();
+    overLimit.reloadIfChanged(placePadded(limit + 1));
+    assertNull(overLimit.mode(), "a document one byte over the limit is ignored");
+  }
+
+  /** {@code {"mode":"block"}} followed by spaces, {@code bytes} long in all. */
+  private Path placePadded(int bytes) throws IOException {
+    String json = "{\"mode\":\"block\"}";
+    byte[] content = (json + " ".repeat(bytes - json.length())).getBytes(StandardCharsets.UTF_8);
+    Path file = dir.resolve("padded-" + bytes + ".json");
+    Files.write(file, content);
+    return file;
+  }
+
+  private static int contractLimit() throws IOException {
+    Properties limits = new Properties();
+    limits.load(new StringReader(ContractFiles.read("control/limits.properties")));
+    return Integer.parseInt(limits.getProperty("max_control_bytes"));
   }
 
   private static void assertSame(String name, AgentRuntime.ControlState before, AgentRuntime.ControlState after) {

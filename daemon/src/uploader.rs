@@ -254,6 +254,11 @@ impl Uploader {
             Ok(policy) => match controller.set_policy(policy) {
                 Ok(true) => tracing::info!("distributed updated policy to the control file"),
                 Ok(false) => {}
+                // The controller has already logged the refusal and kept it for the status views.
+                Err(err)
+                    if err
+                        .downcast_ref::<crate::control::ControlTooLarge>()
+                        .is_some() => {}
                 Err(err) => tracing::warn!(%err, "failed to write policy to control file"),
             },
             Err(err) => tracing::debug!(%err, "policy pull failed; keeping last policy"),

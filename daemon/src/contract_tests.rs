@@ -255,6 +255,31 @@ fn the_daemon_reloads_its_own_golden_documents_unchanged() {
     }
 }
 
+/// `control/limits.properties`: the values both sides of the control file share.
+fn limits() -> std::collections::BTreeMap<String, String> {
+    let text = fs::read_to_string(contracts().join("control/limits.properties")).unwrap();
+    text.lines()
+        .filter(|l| !l.trim().is_empty() && !l.starts_with('#'))
+        .map(|l| {
+            let (k, v) = l
+                .split_once('=')
+                .unwrap_or_else(|| panic!("not key=value: {l}"));
+            (k.trim().to_string(), v.trim().to_string())
+        })
+        .collect()
+}
+
+/// The agents ignore a control file larger than the contract's limit, so the daemon must not
+/// write one: its constant is the contract value.
+#[test]
+fn the_daemons_control_size_limit_is_the_contract_value() {
+    assert_eq!(
+        limits()["max_control_bytes"],
+        crate::control::MAX_CONTROL_BYTES.to_string(),
+        "MAX_CONTROL_BYTES in control.rs against control/limits.properties"
+    );
+}
+
 fn json_names(dir: &Path) -> BTreeSet<String> {
     fs::read_dir(dir)
         .unwrap_or_else(|e| panic!("{}: {e}", dir.display()))

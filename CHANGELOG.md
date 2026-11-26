@@ -11,6 +11,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - The primary Java agent redacts the values of sensitive parameters inside the `request.query` string of an event line, with the name rule and the `[redacted]` marker it already used for `parameters`. Before, `password=...` in a query string was written to the spool, shown in the local console and uploaded by the daemon (and by the direct-cloud client) as written.
 
 ### Fixed
+- The daemon refuses to write a control document larger than the agents read (a large cloud policy used to be written, and the agents then ignored the whole file, mode changes included). It keeps the previous document, logs an error that names the size and the limit, and reports the refusal in `/api/stats`, `/metrics` and the local console. The limit is one value in `java-agent/contracts/agent-daemon/control/limits.properties`, which the daemon and both agent engines test their own constant against.
 - The daemon no longer reads the backport agents' start line as a detection: it is not counted in the attack log and not uploaded (it was shown as a low-severity "agent event"). It fills the `agent` entry of `/api/stats` instead. A line with a `kind` the daemon does not know is not a detection either; it is counted under `ignored_kinds`.
 - The daemon reads the backport agents' numeric epoch-millisecond `timestamp`, so an uploaded detection carries the time it happened and not the time the daemon read it.
 

@@ -129,6 +129,7 @@
     <div class="card span4">
       <h3>Detection algorithms</h3>
       <div class="algos" id="algos"><div class="empty">No algorithms observed yet.</div></div>
+      <div class="hint" id="ctl-refused" style="display:none; color:var(--bad)"></div>
       <div class="hint">Toggle an algorithm off to suppress it on this host. Changes are written to the control file and picked up by the agent within its poll interval.</div>
     </div>
 
@@ -267,6 +268,11 @@ async function tick(force){
     $('lat-avg').textContent = fmt(L.avg_us);
     $('lat-samples').textContent = fmt(L.samples) + ' samples';
     renderCloud(s.cloud, s.spool_path, s.control);
+    const refused = (s.control_status || {}).write_refused;
+    $('ctl-refused').style.display = refused ? '' : 'none';
+    $('ctl-refused').textContent = refused
+      ? 'The control file was not updated: ' + refused.message + '. The agent keeps following the previous document.'
+      : '';
     renderAlgos(st.by_algorithm);
 
     const hook = $('fHook').value.trim();
