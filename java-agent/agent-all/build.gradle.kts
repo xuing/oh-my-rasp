@@ -84,13 +84,17 @@ val verifyAgentAllInputs = tasks.register("verifyAgentAllInputs") {
             }
         }
         require(clashes.isEmpty()) {
-            "These classes come from two inputs with different contents; the universal JAR would keep one " +
-                "at random:\n  " + clashes.joinToString("\n  ")
+            "These classes come from two inputs with different contents; the universal JAR would keep only the " +
+                "first:\n  " + clashes.joinToString("\n  ")
         }
     }
 }
 
 fun ShadowJar.universalContent(title: String) {
+    // DuplicatesStrategy.EXCLUDE keeps the first of two same-named entries. Check that no two inputs
+    // differ before every build of these JARs, not only under `check`: build scripts call the JAR tasks
+    // directly.
+    dependsOn(verifyAgentAllInputs)
     archiveClassifier.set("")
     archiveVersion.set("")
     duplicatesStrategy = DuplicatesStrategy.EXCLUDE
