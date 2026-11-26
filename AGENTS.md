@@ -34,12 +34,13 @@ Fixed facts can be written out: CVE IDs, versions of vulnerable third-party targ
 
 ```bash
 python3 java-agent/scripts/gen-detection-coverage.py   # DETECTION-COVERAGE.md + README metrics regions
+python3 java-agent/scripts/gen-hook-targets.py         # HOOK-TARGETS.md, from the recorded maps of probes/hook-targets
 python3 deploy/shirudo/gen-readmes.py                  # deploy/shirudo READMEs
 ```
 
 **Check before you push.** `python3 scripts/check-docs.py` runs in CI (`.github/workflows/docs.yml`). It fails when:
 
-- `gen-detection-coverage.py --check` or `gen-readmes.py --check` fails (a doc they write is stale). The false-positive report needs Docker and is not re-run;
+- `gen-detection-coverage.py --check`, `gen-hook-targets.py --check` or `gen-readmes.py --check` fails (a doc they write is stale). The false-positive report needs Docker and is not re-run;
 - a released tag or a pinned version is copied into a doc;
 - a hand-written count appears outside a generated region;
 - the release asset list drifts from the workflow;
