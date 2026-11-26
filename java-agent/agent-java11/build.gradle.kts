@@ -10,6 +10,7 @@ plugins {
 }
 
 dependencies {
+    implementation(project(":shared"))
     implementation("org.ow2.asm:asm:9.11.1")
     implementation("org.ow2.asm:asm-commons:9.11.1")
 

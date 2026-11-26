@@ -16,10 +16,6 @@ subprojects {
         }
     }
 
-    if (name.startsWith("agent-")) {
-        sourceSets.main { java.srcDir(rootProject.file("shared/src/main/java")) }
-    }
-
     if (name in setOf("agent-java8", "agent-java11", "agent-java17")) {
         apply(from = rootProject.file("gradle/backport-tests.gradle.kts"))
     }

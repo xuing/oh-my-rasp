@@ -8,6 +8,7 @@ plugins {
 }
 
 dependencies {
+    implementation(project(":shared"))
     // ASM 9.8 is the first release whose ClassReader can read Java 25 (class
     // file major version 69). Because this is the JDK 25 agent and it must
     // instrument genuine Java 25 application bytecode at runtime, it must stay

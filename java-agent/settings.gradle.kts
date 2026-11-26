@@ -14,6 +14,7 @@ dependencyResolutionManagement {
 
 rootProject.name = "ohmyrasp"
 
+include("shared")
 include("agent-jdk25")
 include("agent-java8")
 include("agent-java11")
