@@ -9,13 +9,14 @@ protected_name="${OHMYRASP_VULHUB_COLDFUSION_29300_PROTECTED_NAME:-ohmyrasp-cold
 baseline_port="${OHMYRASP_VULHUB_COLDFUSION_29300_BASELINE_PORT:-19630}"
 protected_port="${OHMYRASP_VULHUB_COLDFUSION_29300_PROTECTED_PORT:-19631}"
 ldap_port="${OHMYRASP_VULHUB_COLDFUSION_29300_LDAP_PORT:-20393}"
-host_agent_jar="$(pwd)/agent-java11/build/libs/ohmyrasp-agent-java11.jar"
+# shellcheck source=acceptance/lib/agent-build.sh
+source acceptance/lib/agent-build.sh
+host_agent_jar="$(ohmyrasp_agent_jar "$(pwd)/agent-java11/build/libs/ohmyrasp-agent-java11.jar")"
 baseline_dir="logs/vulhub-coldfusion-2018.0.15-29300-java11-baseline"
 protected_dir="logs/vulhub-coldfusion-2018.0.15-29300-java11-protected"
 payload_dir="logs/vulhub-coldfusion-2018.0.15-29300-java11-payload"
 protected_log="${protected_dir}/events.jsonl"
 listener_pid=""
-gradle_cache_dir=""
 
 copy_artifacts() {
   local name="$1"
@@ -42,9 +43,6 @@ cleanup() {
   copy_artifacts "$baseline_name" "$baseline_dir"
   copy_artifacts "$protected_name" "$protected_dir"
   docker rm -f -v "$baseline_name" "$protected_name" >/dev/null 2>&1 || true
-  if [[ -n "${gradle_cache_dir:-}" ]]; then
-    rm -rf "${gradle_cache_dir}" >/dev/null 2>&1 || true
-  fi
 }
 trap cleanup EXIT
 
@@ -201,9 +199,6 @@ run_baseline() {
   fi
   copy_artifacts "$baseline_name" "$baseline_dir"
   docker rm -f -v "$baseline_name" >/dev/null 2>&1 || true
-  if [[ -n "${gradle_cache_dir:-}" ]]; then
-    rm -rf "${gradle_cache_dir}" >/dev/null 2>&1 || true
-  fi
 }
 
 run_protected() {
@@ -232,14 +227,7 @@ run_protected() {
   fi
 }
 
-gradle_cache_dir="$(mktemp -d "${TMPDIR:-/tmp}/ohmyrasp-gradle-cache-coldfusion29300.XXXXXX")"
-docker run --rm -u "$(id -u):$(id -g)"   -e HOME=/tmp/gradle-home \
-  -e GRADLE_USER_HOME=/tmp/gradle-cache \
-  -v "${gradle_cache_dir}:/tmp/gradle-cache" \
-  -v "$(pwd):/workspace" \
-  -w /workspace \
-  gradle:jdk25 \
-  gradle --no-daemon :agent-java11:agentJava11Jar >/dev/null
+ohmyrasp_build :agent-java11:agentJava11Jar >/dev/null
 
 if ! command -v nc >/dev/null 2>&1; then
   echo "ColdFusion CVE-2023-29300 acceptance requires nc for the LDAP listener" >&2

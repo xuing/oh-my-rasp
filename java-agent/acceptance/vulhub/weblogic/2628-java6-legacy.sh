@@ -10,7 +10,9 @@ listener_name="${OHMYRASP_VULHUB_WEBLOGIC_2628_LISTENER_NAME:-ohmyrasp-weblogic2
 weblogic_port=7001
 jrmp_port="${OHMYRASP_VULHUB_WEBLOGIC_2628_JRMP_PORT:-21998}"
 marker="${OHMYRASP_VULHUB_WEBLOGIC_2628_MARKER:-/tmp/ohmyrasp-weblogic-2628-success}"
-host_agent_jar="$(pwd)/agent-java8/build/libs/ohmyrasp-agent-java8.jar"
+# shellcheck source=acceptance/lib/agent-build.sh
+source acceptance/lib/agent-build.sh
+host_agent_jar="$(ohmyrasp_agent_jar "$(pwd)/agent-java8/build/libs/ohmyrasp-agent-java8.jar")"
 baseline_dir="logs/vulhub-weblogic-10.3.6.0-2628-java6-baseline"
 protected_dir="logs/vulhub-weblogic-10.3.6.0-2628-java6-protected"
 payload_dir="logs/vulhub-weblogic-10.3.6.0-2628-java6-payload"
@@ -27,7 +29,6 @@ if [[ "$poc_source" != /* ]]; then
   poc_source="$(pwd)/${poc_source}"
 fi
 baseline_host=""
-gradle_cache_dir=""
 
 copy_artifacts() {
   mkdir -p "$baseline_dir" "$payload_dir"
@@ -45,9 +46,6 @@ copy_artifacts() {
 cleanup() {
   copy_artifacts
   docker rm -f -v "$baseline_name" "$listener_name" >/dev/null 2>&1 || true
-  if [[ -n "${gradle_cache_dir:-}" ]]; then
-    rm -rf "${gradle_cache_dir}" >/dev/null 2>&1 || true
-  fi
 }
 trap cleanup EXIT
 
@@ -63,14 +61,7 @@ curl_status() {
 }
 
 build_java8_agent() {
-  gradle_cache_dir="$(mktemp -d "${TMPDIR:-/tmp}/ohmyrasp-gradle-cache-weblogic2628.XXXXXX")"
-  docker run --rm -u "$(id -u):$(id -g)" \
-    -e GRADLE_USER_HOME=/tmp/gradle-cache \
-    -v "${gradle_cache_dir}:/tmp/gradle-cache" \
-    -v "$(pwd):/workspace" \
-    -w /workspace \
-    gradle:jdk25 \
-    gradle --no-daemon :agent-java8:agentJava8Jar >/dev/null
+  ohmyrasp_build :agent-java8:agentJava8Jar >/dev/null
 }
 
 verify_java6_boundary() {

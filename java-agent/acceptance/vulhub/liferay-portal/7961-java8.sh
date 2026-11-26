@@ -10,7 +10,9 @@ baseline_port="${OHMYRASP_VULHUB_LIFERAY_7961_BASELINE_PORT:-18538}"
 protected_port="${OHMYRASP_VULHUB_LIFERAY_7961_PROTECTED_PORT:-18539}"
 http_port="${OHMYRASP_VULHUB_LIFERAY_7961_HTTP_PORT:-8000}"
 readme="${OHMYRASP_VULHUB_LIFERAY_7961_README:-/tmp/vulhub-ohmyrasp-20260603/liferay-portal/CVE-2020-7961/README.md}"
-host_agent_jar="$(pwd)/agent-java8/build/libs/ohmyrasp-agent-java8.jar"
+# shellcheck source=acceptance/lib/agent-build.sh
+source acceptance/lib/agent-build.sh
+host_agent_jar="$(ohmyrasp_agent_jar "$(pwd)/agent-java8/build/libs/ohmyrasp-agent-java8.jar")"
 baseline_dir="logs/vulhub-liferay-7961-java8-baseline"
 protected_dir="logs/vulhub-liferay-7961-java8-protected"
 payload_dir="logs/vulhub-liferay-7961-java8-payload"
@@ -26,8 +28,7 @@ if ss -ltn "sport = :${http_port}" | grep -q LISTEN; then
   exit 1
 fi
 
-docker run --rm -v "$(pwd):/workspace" -w /workspace gradle:jdk25 \
-  gradle --no-daemon :agent-java8:agentJava8Jar
+ohmyrasp_build :agent-java8:agentJava8Jar
 
 rm -rf "$baseline_dir" "$protected_dir" "$payload_dir"
 mkdir -p "$baseline_dir" "$protected_dir" "$payload_dir"
@@ -47,7 +48,7 @@ public class LifExp {
 }
 JAVA
 
-docker run --rm -v "$(pwd)/${payload_dir}:/work" -w /work gradle:jdk25 \
+docker run --rm -v "$(pwd)/${payload_dir}:/work" -w /work "$(ohmyrasp_gradle_image)" \
   javac --release 8 LifExp.java
 
 python3 -m http.server "$http_port" --bind 0.0.0.0 \

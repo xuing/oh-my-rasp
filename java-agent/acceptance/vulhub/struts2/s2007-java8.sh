@@ -9,7 +9,9 @@ baseline_name="${OHMYRASP_VULHUB_STRUTS2_S2007_BASELINE_NAME:-ohmyrasp-vulhub-st
 protected_name="${OHMYRASP_VULHUB_STRUTS2_S2007_PROTECTED_NAME:-ohmyrasp-vulhub-struts2-s2007-protected}"
 baseline_port="${OHMYRASP_VULHUB_STRUTS2_S2007_BASELINE_PORT:-18562}"
 protected_port="${OHMYRASP_VULHUB_STRUTS2_S2007_PROTECTED_PORT:-18563}"
-host_agent_jar="$(pwd)/agent-java8/build/libs/ohmyrasp-agent-java8.jar"
+# shellcheck source=acceptance/lib/agent-build.sh
+source acceptance/lib/agent-build.sh
+host_agent_jar="$(ohmyrasp_agent_jar "$(pwd)/agent-java8/build/libs/ohmyrasp-agent-java8.jar")"
 baseline_dir="logs/vulhub-struts2-s2-007-java8-baseline"
 protected_dir="logs/vulhub-struts2-s2-007-java8-protected"
 protected_log="${protected_dir}/events.jsonl"
@@ -22,8 +24,7 @@ fi
 
 docker build -t "$image" "$context" >/dev/null
 
-docker run --rm -v "$(pwd):/workspace" -w /workspace gradle:jdk25 \
-  gradle --no-daemon :agent-java8:agentJava8Jar
+ohmyrasp_build :agent-java8:agentJava8Jar
 
 rm -rf "$baseline_dir" "$protected_dir"
 mkdir -p "$baseline_dir" "$protected_dir"

@@ -5,11 +5,12 @@ cd "$(dirname "$0")/../../.."
 
 image_35476="${OHMYRASP_VULHUB_OPENTSDB_35476_IMAGE:-vulhub/opentsdb:2.4.0}"
 image_25826="${OHMYRASP_VULHUB_OPENTSDB_25826_IMAGE:-vulhub/opentsdb:2.4.1}"
-host_agent_jar="$(pwd)/agent-java8/build/libs/ohmyrasp-agent-java8.jar"
+# shellcheck source=acceptance/lib/agent-build.sh
+source acceptance/lib/agent-build.sh
+host_agent_jar="$(ohmyrasp_agent_jar "$(pwd)/agent-java8/build/libs/ohmyrasp-agent-java8.jar")"
 base_dir="logs/vulhub-opentsdb-java8"
 
-docker run --rm -v "$(pwd):/workspace" -w /workspace gradle:jdk25 \
-  gradle --no-daemon :agent-java8:agentJava8Jar
+ohmyrasp_build :agent-java8:agentJava8Jar
 
 rm -rf "$base_dir"
 mkdir -p "$base_dir"

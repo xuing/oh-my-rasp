@@ -12,7 +12,9 @@ protected_ldap_port="${OHMYRASP_VULHUB_DRUID_25194_PROTECTED_LDAP_PORT:-15095}"
 script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 repo_root="$(cd -- "${script_dir}/../../../.." && pwd)"
 agent_root="${repo_root}/java-agent"
-agent_jar="${agent_root}/agent-java8/build/libs/ohmyrasp-agent-java8.jar"
+# shellcheck source=acceptance/lib/agent-build.sh
+source "${agent_root}/acceptance/lib/agent-build.sh"
+agent_jar="$(ohmyrasp_agent_jar "${agent_root}/agent-java8/build/libs/ohmyrasp-agent-java8.jar")"
 work_dir="${OHMYRASP_VULHUB_DRUID_25194_WORK_DIR:-/tmp/ohmyrasp-druid25194}"
 baseline_response="${work_dir}/baseline-response.txt"
 protected_response="${work_dir}/protected-response.txt"
@@ -164,11 +166,7 @@ jaas_block_count() {
   grep -Ec '"algorithm":"java8_jaas_jndi_remote_provider".*"action":"block"' "${protected_log}" 2>/dev/null || true
 }
 
-docker run --rm \
-  -v "${agent_root}:/workspace" \
-  -w /workspace \
-  gradle:jdk25 \
-  gradle --no-daemon :agent-java8:agentJava8Jar >/dev/null
+ohmyrasp_build :agent-java8:agentJava8Jar >/dev/null
 
 rm -rf "${work_dir}"
 mkdir -p "${protected_logs}"

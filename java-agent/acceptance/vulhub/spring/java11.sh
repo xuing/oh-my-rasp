@@ -8,14 +8,15 @@ baseline_name="${OHMYRASP_VULHUB_SPRING_WEBMVC_BASELINE_NAME:-ohmyrasp-vulhub-sp
 protected_name="${OHMYRASP_VULHUB_SPRING_WEBMVC_PROTECTED_NAME:-ohmyrasp-vulhub-spring22965-protected}"
 baseline_port="${OHMYRASP_VULHUB_SPRING_WEBMVC_BASELINE_PORT:-18290}"
 protected_port="${OHMYRASP_VULHUB_SPRING_WEBMVC_PROTECTED_PORT:-18291}"
-host_agent_jar="$(pwd)/agent-java11/build/libs/ohmyrasp-agent-java11.jar"
+# shellcheck source=acceptance/lib/agent-build.sh
+source acceptance/lib/agent-build.sh
+host_agent_jar="$(ohmyrasp_agent_jar "$(pwd)/agent-java11/build/libs/ohmyrasp-agent-java11.jar")"
 baseline_dir="logs/vulhub-spring-webmvc-5.3.17-java11-baseline"
 protected_dir="logs/vulhub-spring-webmvc-5.3.17-java11-protected"
 protected_log="${protected_dir}/events.jsonl"
 exploit_path='/?class.module.classLoader.resources.context.parent.pipeline.first.pattern=%25%7Bc2%7Di%20if(%22j%22.equals(request.getParameter(%22pwd%22)))%7B%20java.io.InputStream%20in%20%3D%20%25%7Bc1%7Di.getRuntime().exec(request.getParameter(%22cmd%22)).getInputStream()%3B%20int%20a%20%3D%20-1%3B%20byte%5B%5D%20b%20%3D%20new%20byte%5B2048%5D%3B%20while((a%3Din.read(b))%21%3D-1)%7B%20out.println(new%20String(b))%3B%20%7D%20%7D%20%25%7Bsuffix%7Di&class.module.classLoader.resources.context.parent.pipeline.first.suffix=.jsp&class.module.classLoader.resources.context.parent.pipeline.first.directory=webapps/ROOT&class.module.classLoader.resources.context.parent.pipeline.first.prefix=tomcatwar&class.module.classLoader.resources.context.parent.pipeline.first.fileDateFormat='
 
-docker run --rm -v "$(pwd):/workspace" -w /workspace gradle:jdk25 \
-  gradle --no-daemon :agent-java11:agentJava11Jar
+ohmyrasp_build :agent-java11:agentJava11Jar
 
 rm -rf "$baseline_dir" "$protected_dir"
 mkdir -p "$baseline_dir" "$protected_dir"

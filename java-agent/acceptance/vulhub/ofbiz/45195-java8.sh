@@ -10,7 +10,9 @@ baseline_port="${OHMYRASP_VULHUB_OFBIZ_45195_BASELINE_PORT:-18460}"
 protected_port="${OHMYRASP_VULHUB_OFBIZ_45195_PROTECTED_PORT:-18461}"
 attacker_port="${OHMYRASP_VULHUB_OFBIZ_45195_ATTACKER_PORT:-18494}"
 attacker_host="${OHMYRASP_VULHUB_OFBIZ_45195_ATTACKER_HOST:-attacker.com}"
-host_agent_jar="$(pwd)/agent-java8/build/libs/ohmyrasp-agent-java8.jar"
+# shellcheck source=acceptance/lib/agent-build.sh
+source acceptance/lib/agent-build.sh
+host_agent_jar="$(ohmyrasp_agent_jar "$(pwd)/agent-java8/build/libs/ohmyrasp-agent-java8.jar")"
 baseline_dir="logs/vulhub-ofbiz-18.12.15-45195-java8-baseline"
 protected_dir="logs/vulhub-ofbiz-18.12.15-45195-java8-protected"
 payload_dir="${baseline_dir}/http"
@@ -19,8 +21,7 @@ exploit_path="/webtools/control/forgotPassword/viewdatafile"
 webshell_path="./applications/accounting/webapp/accounting/index.jsp"
 http_pid=""
 
-docker run --rm -v "$(pwd):/workspace" -w /workspace gradle:jdk25 \
-  gradle --no-daemon :agent-java8:agentJava8Jar
+ohmyrasp_build :agent-java8:agentJava8Jar
 
 rm -rf "$baseline_dir" "$protected_dir"
 mkdir -p "$payload_dir" "$protected_dir"

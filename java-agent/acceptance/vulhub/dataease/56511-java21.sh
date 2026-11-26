@@ -12,15 +12,16 @@ baseline_name="${OHMYRASP_VULHUB_DATAEASE_56511_BASELINE_NAME:-ohmyrasp-vulhub-d
 protected_name="${OHMYRASP_VULHUB_DATAEASE_56511_PROTECTED_NAME:-ohmyrasp-vulhub-dataease56511-protected}"
 baseline_port="${OHMYRASP_VULHUB_DATAEASE_56511_BASELINE_PORT:-18722}"
 protected_port="${OHMYRASP_VULHUB_DATAEASE_56511_PROTECTED_PORT:-18723}"
-host_agent_jar="$(pwd)/agent-java17/build/libs/ohmyrasp-agent-java17.jar"
+# shellcheck source=acceptance/lib/agent-build.sh
+source acceptance/lib/agent-build.sh
+host_agent_jar="$(ohmyrasp_agent_jar "$(pwd)/agent-java17/build/libs/ohmyrasp-agent-java17.jar")"
 baseline_dir="logs/vulhub-dataease-2.10.3-cve-2024-56511-java21-baseline"
 protected_dir="logs/vulhub-dataease-2.10.3-cve-2024-56511-java21-protected"
 protected_log="${protected_dir}/events.jsonl"
 direct_path="/dataease/de2api/datasource/types"
 bypass_path="/geo/../dataease/de2api/datasource/types"
 
-docker run --rm -v "$(pwd):/workspace" -w /workspace gradle:jdk25 \
-  gradle --no-daemon :agent-java17:agentJava17Jar
+ohmyrasp_build :agent-java17:agentJava17Jar
 
 rm -rf "$baseline_dir" "$protected_dir"
 mkdir -p "$baseline_dir" "$protected_dir"

@@ -3,14 +3,13 @@ set -euo pipefail
 
 cd "$(dirname "$0")/../../.."
 
-host_agent_jar="$(pwd)/agent-java8/build/libs/ohmyrasp-agent-java8.jar"
-gradle_cache_dir=""
+# shellcheck source=acceptance/lib/agent-build.sh
+source acceptance/lib/agent-build.sh
+host_agent_jar="$(ohmyrasp_agent_jar "$(pwd)/agent-java8/build/libs/ohmyrasp-agent-java8.jar")"
 
 source acceptance/lib/ysoserial.sh
 
-gradle_cache_dir="$(mktemp -d "${TMPDIR:-/tmp}/ohmyrasp-gradle-cache-log4j5645.XXXXXX")"
-docker run --rm -u "$(id -u):$(id -g)" -e HOME=/tmp/gradle-home -e GRADLE_USER_HOME=/tmp/gradle-cache -v "${gradle_cache_dir}:/tmp/gradle-cache" -v "$(pwd):/workspace" -w /workspace gradle:jdk25 \
-  gradle --no-daemon :agent-java8:agentJava8Jar
+ohmyrasp_build :agent-java8:agentJava8Jar
 
 image="${OHMYRASP_VULHUB_LOG4J_5645_IMAGE:-vulhub/log4j:2.8.1}"
 baseline_name="${OHMYRASP_VULHUB_LOG4J_5645_BASELINE_NAME:-ohmyrasp-vulhub-log4j5645-baseline}"
@@ -43,9 +42,6 @@ cleanup() {
   copy_artifacts "$baseline_name" "$baseline_dir"
   copy_artifacts "$protected_name" "$protected_dir"
   docker rm -f "$baseline_name" "$protected_name" >/dev/null 2>&1 || true
-  if [[ -n "${gradle_cache_dir:-}" ]]; then
-    rm -rf "${gradle_cache_dir}" >/dev/null 2>&1 || true
-  fi
 }
 trap cleanup EXIT
 

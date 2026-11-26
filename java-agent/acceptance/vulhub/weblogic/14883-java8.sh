@@ -8,7 +8,9 @@ baseline_name="${OHMYRASP_VULHUB_WEBLOGIC_14883_BASELINE_NAME:-ohmyrasp-weblogic
 protected_name="${OHMYRASP_VULHUB_WEBLOGIC_14883_PROTECTED_NAME:-ohmyrasp-weblogic14883-protected}"
 baseline_port="${OHMYRASP_VULHUB_WEBLOGIC_14883_BASELINE_PORT:-19601}"
 protected_port="${OHMYRASP_VULHUB_WEBLOGIC_14883_PROTECTED_PORT:-19602}"
-host_agent_jar="$(pwd)/agent-java8/build/libs/ohmyrasp-agent-java8.jar"
+# shellcheck source=acceptance/lib/agent-build.sh
+source acceptance/lib/agent-build.sh
+host_agent_jar="$(ohmyrasp_agent_jar "$(pwd)/agent-java8/build/libs/ohmyrasp-agent-java8.jar")"
 baseline_dir="logs/vulhub-weblogic-12.2.1.3-14883-java8-baseline"
 protected_dir="logs/vulhub-weblogic-12.2.1.3-14883-java8-protected"
 payload_dir="logs/vulhub-weblogic-12.2.1.3-14883-java8-payload"
@@ -210,8 +212,7 @@ run_protected() {
   fi
 }
 
-docker run --rm -v "$(pwd):/workspace" -w /workspace gradle:jdk25 \
-  gradle --no-daemon :agent-java8:agentJava8Jar >/dev/null
+ohmyrasp_build :agent-java8:agentJava8Jar >/dev/null
 
 rm -rf "$baseline_dir" "$protected_dir" "$payload_dir"
 mkdir -p "$baseline_dir" "$protected_dir" "$payload_dir"
