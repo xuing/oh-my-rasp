@@ -100,6 +100,14 @@ public final class OhMyRaspJava8Agent {
     if (instrumentation == null) {
       return;
     }
+    // The types below outside java.base, resolved before the first transformer is registered. A type this
+    // JVM cannot link (java.sql is not visible to the bootstrap loader on Java 9 and later) then fails the
+    // start with no hook installed, instead of after every transformer is in place.
+    Class<?> initialContext = javax.naming.InitialContext.class;
+    Class<?> driverManager = java.sql.DriverManager.class;
+    Class<?> scriptEngine = javax.script.AbstractScriptEngine.class;
+    Class<?> beanExpression = java.beans.Expression.class;
+    Class<?> beanStatement = java.beans.Statement.class;
     boolean canRetransform = instrumentation.isRetransformClassesSupported();
     instrumentation.addTransformer(new Java8ServletTransformer(), canRetransform);
     instrumentation.addTransformer(new Java8SparkRestTransformer(), canRetransform);
@@ -137,7 +145,7 @@ public final class OhMyRaspJava8Agent {
     if (io.ohmyrasp.agent.process.ProcessLaunchVisitor.platformHandoff()) retransformByName(instrumentation, "java.lang.ProcessImpl");
     retransform(instrumentation, ProcessBuilder.class);
     retransform(instrumentation, Runtime.class);
-    retransform(instrumentation, javax.naming.InitialContext.class);
+    retransform(instrumentation, initialContext);
     retransform(instrumentation, java.io.ObjectInputStream.class);
     retransformByName(instrumentation, "com.alibaba.fastjson.parser.ParserConfig");
     retransform(instrumentation, java.io.FileInputStream.class);
@@ -147,11 +155,11 @@ public final class OhMyRaspJava8Agent {
     retransformByName(instrumentation, "sun.nio.fs.UnixChannelFactory");
     retransform(instrumentation, java.net.URL.class);
     retransform(instrumentation, java.util.zip.ZipEntry.class);
-    retransform(instrumentation, java.sql.DriverManager.class);
+    retransform(instrumentation, driverManager);
     retransformByName(
         instrumentation, "org.apache.skywalking.oap.server.storage.plugin.jdbc.h2.dao.H2LogQueryDAO");
     retransform(instrumentation, java.net.URLClassLoader.class);
-    retransform(instrumentation, javax.script.AbstractScriptEngine.class);
+    retransform(instrumentation, scriptEngine);
     retransformByName(instrumentation, "org.apache.commons.jexl3.internal.Script");
     retransformByName(instrumentation, "org.apache.commons.jexl2.ExpressionImpl");
     retransformByName(instrumentation, "org.apache.commons.jexl2.ScriptImpl");
@@ -165,8 +173,8 @@ public final class OhMyRaspJava8Agent {
     retransformByName(instrumentation, "de.odysseus.el.TreeMethodExpression");
     retransformByName(instrumentation, "org.jboss.el.ValueExpressionImpl");
     retransformByName(instrumentation, "org.jboss.el.MethodExpressionImpl");
-    retransform(instrumentation, java.beans.Expression.class);
-    retransform(instrumentation, java.beans.Statement.class);
+    retransform(instrumentation, beanExpression);
+    retransform(instrumentation, beanStatement);
     retransformByName(instrumentation, io.ohmyrasp.agent.jmx.JmxDispatchVisitor.TARGET.replace('/', '.'));
 
     retransformByName(instrumentation, "com.sun.beans.decoder.DocumentHandler");
