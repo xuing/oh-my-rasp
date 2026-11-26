@@ -66,6 +66,11 @@ public final class ServletDispatchScope<R, C> {
     return false;
   }
 
+  /** Whether this thread is inside a servlet dispatch: false before the outermost entry and after its exit. */
+  public boolean inRequest() {
+    return active.get() != null;
+  }
+
   public void enter(Object servletRequest) {
     enter(servletRequest, false);
   }
@@ -95,9 +100,21 @@ public final class ServletDispatchScope<R, C> {
     saved.restoreArchive.run();
   }
 
-  private static <T> Runnable restoreLater(ThreadLocal<T> slot) {
-    T previous = slot.get();
-    return previous == null ? slot::remove : () -> slot.set(previous);
+  // Anonymous classes, not lambdas: backport hooks run this, and a lambda links at run time.
+  private static <T> Runnable restoreLater(final ThreadLocal<T> slot) {
+    final T previous = slot.get();
+    if (previous == null) {
+      return new Runnable() {
+        public void run() {
+          slot.remove();
+        }
+      };
+    }
+    return new Runnable() {
+      public void run() {
+        slot.set(previous);
+      }
+    };
   }
 
   private static final class Saved<R, C> {

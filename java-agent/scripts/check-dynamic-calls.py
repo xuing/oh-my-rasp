@@ -11,7 +11,7 @@ expressions over strings or enums and instanceof patterns compile without invoke
 
   check-dynamic-calls.py                 every call site: line, class, method, bootstrap method
   check-dynamic-calls.py --summary       counts per line and bootstrap kind, top classes
-  check-dynamic-calls.py --check         fail when a backport line gained a gated site
+  check-dynamic-calls.py --check         fail when a backport line has a site its baseline does not record
   check-dynamic-calls.py --update        rewrite dynamic-calls.baseline.json from the JARs
 
 The JARs are the ones java-agent/probes/lines.toml names; build them first (see
@@ -36,7 +36,9 @@ LINES = ("java8", "java11", "java17", "jdk25")  # lines.toml ids recorded in the
 
 LAMBDA, CONCAT, RECORD, SWITCH, OTHER = "lambda", "string-concat", "record", "switch", "other"
 KINDS = (LAMBDA, CONCAT, RECORD, SWITCH, OTHER)
-GATED_KINDS = (LAMBDA, RECORD, SWITCH, OTHER)  # string-concat is reported, not gated
+# Every kind is gated on the backport lines, string concatenation too: their own sources compile with
+# -XDstringConcat=inline, and their baseline records no site at all.
+GATED_KINDS = KINDS
 BOOTSTRAP_KIND = {
     "java/lang/invoke/LambdaMetafactory": LAMBDA,
     "java/lang/invoke/StringConcatFactory": CONCAT,
@@ -348,9 +350,8 @@ def main(argv: list[str] | None = None) -> int:
             continue
         found = compare(baseline.get(line, {}), scanned[line])
         failures.extend(found)
-        print(f"{line}: {'FAIL' if found else 'ok'}; gated sites "
-              + ", ".join(f"{k}={count[k]}" for k in GATED_KINDS)
-              + f"; string-concat={count[CONCAT]} (reported, not gated)")
+        print(f"{line}: {'FAIL' if found else 'ok'}; sites "
+              + ", ".join(f"{k}={count[k]}" for k in GATED_KINDS))
     if failures:
         print("\ninvokedynamic check failed:\n", file=sys.stderr)
         print("\n".join(failures), file=sys.stderr)

@@ -41,6 +41,9 @@ java {
 tasks.withType<JavaCompile>().configureEach {
     options.encoding = "UTF-8"
     options.release.set(8)
+    // StringBuilder concatenation, not StringConcatFactory: an invokedynamic site links on first use, inside a
+    // hooked JDK call. scripts/check-dynamic-calls.py allows none on the backport lines.
+    options.compilerArgs.add("-XDstringConcat=inline")
 }
 
 tasks.jar {
@@ -60,7 +63,6 @@ val agentJava8Jar = tasks.register<ShadowJar>("agentJava8Jar") {
         attributes(
             "Premain-Class" to "io.ohmyrasp.agent.launch.Java8Entry",
             "Agent-Class" to "io.ohmyrasp.agent.launch.Java8Entry",
-            "Boot-Class-Path" to "ohmyrasp-agent-java8.jar",
             "Can-Redefine-Classes" to "true",
             "Can-Retransform-Classes" to "true",
             "Implementation-Title" to "OhMyRasp Java 8 Era Agent"

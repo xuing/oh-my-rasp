@@ -25,7 +25,18 @@ public final class OhMyRaspJava8Agent {
   }
 
   private static void install(String mode, String agentArgs, Instrumentation instrumentation) {
-    appendSelfToBootstrap(instrumentation);
+    if (instrumentation != null) {
+      // The transformers inject calls that the bootstrap loader resolves: without the JAR on its search the start
+      // fails here, before any transformer is registered, and the launcher reports it.
+      File agentJar = appendSelfToBootstrap(instrumentation);
+      requireOnBootstrapSearch("io.ohmyrasp.agent.java8.Java8RaspHooks", "io.ohmyrasp.agent.backport.BackportHooks");
+      // Every class of ours a hook or a transformer can use, loaded and initialised now, not inside a hooked call.
+      try {
+        io.ohmyrasp.agent.util.Preload.classes(agentJar, "agent-java8", null);
+      } catch (IOException e) {
+        throw new IllegalStateException("cannot read the preload list of " + agentJar, e);
+      }
+    }
     // Installs the line and starts the shared runtime here, before any transformer, so no hook does it on an app
     // thread.
     Java8RaspLine.start();
@@ -71,31 +82,41 @@ public final class OhMyRaspJava8Agent {
         + "}";
   }
 
-  private static void appendSelfToBootstrap(Instrumentation instrumentation) {
-    if (instrumentation == null) {
-      return;
+  /** Appends the agent JAR to the bootstrap search and returns it. Throws when it cannot: the start must fail. */
+  private static File appendSelfToBootstrap(Instrumentation instrumentation) {
+    if (OhMyRaspJava8Agent.class.getProtectionDomain() == null
+        || OhMyRaspJava8Agent.class.getProtectionDomain().getCodeSource() == null
+        || OhMyRaspJava8Agent.class.getProtectionDomain().getCodeSource().getLocation() == null) {
+      throw new IllegalStateException("[OHMYRASP-JAVA8] cannot find the agent JAR to append to the bootstrap search");
+    }
+    URL location =
+        OhMyRaspJava8Agent.class.getProtectionDomain().getCodeSource().getLocation();
+    File agentFile;
+    try {
+      agentFile = new File(location.toURI());
+    } catch (URISyntaxException e) {
+      agentFile = new File(location.getPath());
+    } catch (IllegalArgumentException e) {
+      agentFile = new File(location.getPath());
     }
     try {
-      if (OhMyRaspJava8Agent.class.getProtectionDomain() == null
-          || OhMyRaspJava8Agent.class.getProtectionDomain().getCodeSource() == null
-          || OhMyRaspJava8Agent.class.getProtectionDomain().getCodeSource().getLocation() == null) {
-        return;
-      }
-      URL location =
-          OhMyRaspJava8Agent.class.getProtectionDomain().getCodeSource().getLocation();
-      File agentFile;
-      try {
-        agentFile = new File(location.toURI());
-      } catch (URISyntaxException e) {
-        agentFile = new File(location.getPath());
-      } catch (IllegalArgumentException e) {
-        agentFile = new File(location.getPath());
-      }
       instrumentation.appendToBootstrapClassLoaderSearch(new JarFile(agentFile));
-    } catch (IOException e) {
-      System.err.println("[OHMYRASP-JAVA8] unable to append agent jar to bootstrap search: " + e);
-    } catch (RuntimeException e) {
-      System.err.println("[OHMYRASP-JAVA8] unable to append agent jar to bootstrap search: " + e);
+    } catch (IOException | RuntimeException e) {
+      throw new IllegalStateException(
+          "[OHMYRASP-JAVA8] unable to append agent jar to bootstrap search: " + e, e);
+    }
+    return agentFile;
+  }
+
+  /** Throws unless each class resolves through the bootstrap loader, where the injected calls look for it. */
+  private static void requireOnBootstrapSearch(String... classNames) {
+    for (String className : classNames) {
+      try {
+        Class.forName(className, false, null);
+      } catch (ClassNotFoundException e) {
+        throw new IllegalStateException(
+            "[OHMYRASP-JAVA8] " + className + " is not on the bootstrap search after the append", e);
+      }
     }
   }
 

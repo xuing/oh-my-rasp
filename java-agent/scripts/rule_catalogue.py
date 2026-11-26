@@ -83,7 +83,11 @@ FINDING = re.compile(r'new Finding\(\s*(rule\(\s*)?"(\w+)"')
 
 
 def backport_findings() -> dict[str, list[str]]:
-    """Backport line -> the rule ids the shared backport decisions emit on it, in source order."""
+    """Backport line -> the rule ids the shared backport decisions emit on it, in source order.
+
+    The three lists come from one copy of the decisions, so they hold the same families by construction; what
+    differs is the prefix, which BackportLine derives and the backport tests pin per line.
+    """
     sources = sorted(BACKPORT_DECISIONS.glob("*.java"))
     matches = [m for path in sources for m in FINDING.finditer(path.read_text(encoding="utf-8"))]
     return {line: list(dict.fromkeys(f"{line}_{name}" if prefixed else name for prefixed, name in

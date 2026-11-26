@@ -193,8 +193,9 @@ class CompareTest(unittest.TestCase):
         self.assertEqual(len(cdc.compare({}, [site("a/S", SWITCH)])), 1)
         self.assertEqual(len(cdc.compare({}, [site("a/O", CONDY)])), 1)
 
-    def test_string_concat_is_never_a_failure(self):
-        self.assertEqual(cdc.compare({}, [site("a/Concat", CONCAT)] * 5), [])
+    def test_string_concat_is_gated_too(self):
+        # The backport lines compile their own sources with -XDstringConcat=inline: none is allowed.
+        self.assertEqual(len(cdc.compare({}, [site("a/Concat", CONCAT)] * 5)), 1)
 
     def test_one_kind_cannot_borrow_another_kinds_allowance(self):
         self.assertEqual(len(cdc.compare(self.base, [site("a/Foo", LAMBDA), site("a/Foo", RECORD)])), 1)
@@ -252,7 +253,7 @@ class CommandTest(unittest.TestCase):
                    jdk25={"a/P": class_with("a/P", RECORD, RECORD, LAMBDA)})  # primary line grew: still fine
         code, out, _ = self.run_cli("--check")
         self.assertEqual(code, 0, out)
-        self.assertIn("string-concat=1 (reported, not gated)", out)
+        self.assertIn("java17: ok; sites lambda=1, string-concat=1", out)
         self.assertIn("jdk25: primary line, recorded but not gated", out)
 
     def test_check_fails_for_a_new_lambda_with_actionable_message(self):

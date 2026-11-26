@@ -1616,9 +1616,9 @@ coverage, separate from the Java 25 behavioral replay suite:
   classloaders: Felix, Eclipse OSGi, and Knopflerfish servlet classes now use a
   reflection-only JDK bytecode path with computed stack frames instead of a
   direct constant-pool reference to the agent hook class; the Java 8 agent jar
-  declares `Boot-Class-Path` for bootstrap sinks, while Java 11/17 continue to
-  append themselves from the system-loaded agent path to avoid premature module
-  resolution of optional JDK modules.
+  then declared `Boot-Class-Path` for bootstrap sinks (it now appends itself, as
+  the Java 11/17 JARs always did, from the system-loaded agent path to avoid
+  premature module resolution of optional JDK modules).
 - [x] Re-run the LTS Tomcat compatibility matrix after the Unomi
   expression-stack command refinement, OSGi servlet hook compatibility path, and
   Java 11/17 manifest correction on 2026-06-04: `acceptance/runtime/java17.sh`

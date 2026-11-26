@@ -101,6 +101,46 @@ final class Java8RaspHooksTest {
   }
 
   @Test
+  void aMonitoredCommandIsLoggedOncePerRequestAndAgainInTheNextRequestOnTheSameThread() throws Exception {
+    Path log = Files.createTempFile("ohmyrasp-java8-per-request", ".jsonl");
+    Files.delete(log);
+    System.setProperty("ohmyrasp.java8.log", log.toString());
+    final ProcessBuilder command = new ProcessBuilder("sh", "-c", "cat /etc/shadow");
+    // A worker thread of its own: the request state is per thread, and other tests leave theirs on this one.
+    final Throwable[] failure = new Throwable[1];
+    Thread worker = new Thread(new Runnable() {
+      public void run() {
+        try {
+          for (int request = 0; request < 2; request++) {
+            Java8RaspHooks.beforeHttpRequest(new RequestStub("GET", "/app/report", ""));
+            try {
+              Java8RaspHooks.beforeProcessBuilderStart(command);
+              Java8RaspHooks.beforeProcessBuilderStart(command); // an immediate repeat inside the request
+            } finally {
+              Java8RaspHooks.afterHttpRequest();
+            }
+          }
+        } catch (Throwable thrown) {
+          failure[0] = thrown;
+        }
+      }
+    }, "per-request-dedup");
+    worker.start();
+    worker.join(30000L);
+    if (failure[0] != null) {
+      throw new AssertionError(failure[0]);
+    }
+
+    int logged = 0;
+    for (String line : Files.readAllLines(log, StandardCharsets.UTF_8)) {
+      if (line.contains("\"hook\":\"ProcessBuilder.start\"")) {
+        logged++;
+      }
+    }
+    assertEquals(2, logged, "one event per request: the repeat inside a request is suppressed, the next request logs");
+  }
+
+  @Test
   void backgroundShellOperatorsAloneDoNotAlert() throws Exception {
     Path log = Files.createTempFile("ohmyrasp-shell-meta", ".jsonl");
     Files.delete(log);

@@ -40,8 +40,8 @@ public final class AgentLauncher {
    * One start per JVM, across premain and agentmain and across our JARs: null, then {@code starting},
    * then {@code installed:<line>} or {@code failed:<line>}. This is the state of this definition of the
    * class. A JVM can hold more than one: a line appends its JAR to the bootstrap search while it starts,
-   * and an entry the bootstrap loader defines later (the Java 8 JAR's Boot-Class-Path puts its entry
-   * there) resolves a second AgentLauncher from that search. So the launcher decides from every loaded
+   * and the entry of a JAR attached later resolves AgentLauncher through the system class loader, whose
+   * parent then finds a second definition on that search. So the launcher decides from every loaded
    * definition's state ({@link #recorded}), read under {@link #lock()}, and never from anything the
    * command line can set.
    */
@@ -139,11 +139,14 @@ public final class AgentLauncher {
   }
 
   /**
-   * The one monitor every definition of this class shares: the system properties object, used only as a
-   * lock. Nothing is stored in it.
+   * The one monitor every definition of this class shares: the Runtime instance, used only as a lock. It is a
+   * final field of a bootstrap class, so every definition of this class, in any loader, gets the same object, and
+   * no code can replace it (System.setProperties can replace the properties object between two entry calls). On
+   * Java 8 Runtime.load0 and loadLibrary0 also synchronize on it; the launcher holds it only to check and set its
+   * state and loads no library meanwhile, so the two never wait for each other in a cycle.
    */
   private static Object lock() {
-    return System.getProperties();
+    return Runtime.getRuntime();
   }
 
   /** The state this definition or any other loaded definition of this class recorded, or null. */
@@ -221,8 +224,9 @@ public final class AgentLauncher {
 
   /**
    * The JAR file or class directory {@code entry} was loaded from, or null when it cannot be told.
-   * A class defined by the bootstrap loader (the Java 8 JAR's Boot-Class-Path) records no code
-   * source; its class file then names the JAR, since no other kind of agent JAR holds that class.
+   * A class defined by the bootstrap loader (the entry of a JAR attached again after its line appended it to
+   * the bootstrap search) records no code source; its class file then names the JAR, since no other kind of
+   * agent JAR holds that class.
    */
   static File artifactOf(Class<?> entry) throws MalformedURLException {
     ProtectionDomain domain = entry.getProtectionDomain();

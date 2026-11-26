@@ -31,7 +31,18 @@ public final class OhMyRaspJava17Agent {
   }
 
   private static void install(String mode, String agentArgs, Instrumentation instrumentation) {
-    appendSelfToBootstrap(instrumentation);
+    if (instrumentation != null) {
+      // The transformers inject calls that the bootstrap loader resolves: without the JAR on its search the start
+      // fails here, before any transformer is registered, and the launcher reports it.
+      File agentJar = appendSelfToBootstrap(instrumentation);
+      requireOnBootstrapSearch("io.ohmyrasp.agent.java17.Java17RaspHooks", "io.ohmyrasp.agent.backport.BackportHooks");
+      // Every class of ours a hook or a transformer can use, loaded and initialised now, not inside a hooked call.
+      try {
+        io.ohmyrasp.agent.util.Preload.classes(agentJar, "agent-java17", null);
+      } catch (IOException e) {
+        throw new IllegalStateException("cannot read the preload list of " + agentJar, e);
+      }
+    }
     // Installs the line and starts the shared runtime here, before any transformer, so no hook does it on an app
     // thread.
     Java17RaspLine.start();
@@ -42,29 +53,41 @@ public final class OhMyRaspJava17Agent {
     RaspRuntime.writeStartupLine(logPath, message);
   }
 
-  private static void appendSelfToBootstrap(Instrumentation instrumentation) {
-    if (instrumentation == null) {
-      return;
+  /** Appends the agent JAR to the bootstrap search and returns it. Throws when it cannot: the start must fail. */
+  private static File appendSelfToBootstrap(Instrumentation instrumentation) {
+    if (OhMyRaspJava17Agent.class.getProtectionDomain() == null
+        || OhMyRaspJava17Agent.class.getProtectionDomain().getCodeSource() == null
+        || OhMyRaspJava17Agent.class.getProtectionDomain().getCodeSource().getLocation() == null) {
+      throw new IllegalStateException("[OHMYRASP-JAVA17] cannot find the agent JAR to append to the bootstrap search");
+    }
+    URL location =
+        OhMyRaspJava17Agent.class.getProtectionDomain().getCodeSource().getLocation();
+    File agentFile;
+    try {
+      agentFile = new File(location.toURI());
+    } catch (URISyntaxException e) {
+      agentFile = new File(location.getPath());
+    } catch (IllegalArgumentException e) {
+      agentFile = new File(location.getPath());
     }
     try {
-      if (OhMyRaspJava17Agent.class.getProtectionDomain() == null
-          || OhMyRaspJava17Agent.class.getProtectionDomain().getCodeSource() == null
-          || OhMyRaspJava17Agent.class.getProtectionDomain().getCodeSource().getLocation() == null) {
-        return;
-      }
-      URL location =
-          OhMyRaspJava17Agent.class.getProtectionDomain().getCodeSource().getLocation();
-      File jarFile;
+      instrumentation.appendToBootstrapClassLoaderSearch(new JarFile(agentFile));
+    } catch (IOException | RuntimeException e) {
+      throw new IllegalStateException(
+          "[OHMYRASP-JAVA17] unable to append agent jar to bootstrap search: " + e, e);
+    }
+    return agentFile;
+  }
+
+  /** Throws unless each class resolves through the bootstrap loader, where the injected calls look for it. */
+  private static void requireOnBootstrapSearch(String... classNames) {
+    for (String className : classNames) {
       try {
-        jarFile = new File(location.toURI());
-      } catch (URISyntaxException exception) {
-        jarFile = new File(location.getPath());
+        Class.forName(className, false, null);
+      } catch (ClassNotFoundException e) {
+        throw new IllegalStateException(
+            "[OHMYRASP-JAVA17] " + className + " is not on the bootstrap search after the append", e);
       }
-      instrumentation.appendToBootstrapClassLoaderSearch(new JarFile(jarFile));
-    } catch (IOException exception) {
-      System.err.println("[OHMYRASP-JAVA17] unable to append agent jar to bootstrap search: " + exception);
-    } catch (RuntimeException exception) {
-      System.err.println("[OHMYRASP-JAVA17] unable to append agent jar to bootstrap search: " + exception);
     }
   }
 

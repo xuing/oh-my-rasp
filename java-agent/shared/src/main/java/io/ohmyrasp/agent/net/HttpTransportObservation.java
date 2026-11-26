@@ -25,7 +25,12 @@ public final class HttpTransportObservation {
     public T origin(Object exchange) { return origins.get(exchange); }
     public void finishedWhen(CompletableFuture<?> future, final Object exchange) {
       if (future != null && origins.get(exchange) != null) {
-        future.whenComplete((result, failure) -> origins.remove(exchange));
+        // An anonymous class, not a lambda: a backport hook runs this, and a lambda links at run time.
+        future.whenComplete(new java.util.function.BiConsumer<Object, Throwable>() {
+          public void accept(Object result, Throwable failure) {
+            origins.remove(exchange);
+          }
+        });
       }
     }
   }

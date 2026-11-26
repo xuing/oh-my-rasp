@@ -12,8 +12,6 @@
 -    options.release.set(8)
 +    options.release.set(11)
 @@
--            "Boot-Class-Path" to "ohmyrasp-agent-java<N>.jar",
-@@
 -    description = "Verifies the Java <N> era agent jar emits Java <N> class files."
 +    description = "Verifies the Java <N> era agent jar emits Java <N>-compatible class files."
 @@
@@ -445,31 +443,6 @@
 +    String message = startupMessage(mode, agentArgs, instrumentation);
 +    RaspRuntime.writeStartupLine(logPath, message);
 @@
--      File agentFile;
-+      File jarFile;
-@@
--        agentFile = new File(location.toURI());
--      } catch (URISyntaxException e) {
--        agentFile = new File(location.getPath());
--      } catch (IllegalArgumentException e) {
--        agentFile = new File(location.getPath());
-+        jarFile = new File(location.toURI());
-+      } catch (URISyntaxException exception) {
-+        jarFile = new File(location.getPath());
-@@
--      instrumentation.appendToBootstrapClassLoaderSearch(new JarFile(agentFile));
--    } catch (IOException e) {
--      System.err.println("[OHMYRASP-JAVA<N>] unable to append agent jar to bootstrap search: " + e);
--    } catch (RuntimeException e) {
--      System.err.println("[OHMYRASP-JAVA<N>] unable to append agent jar to bootstrap search: " + e);
-+      instrumentation.appendToBootstrapClassLoaderSearch(new JarFile(jarFile));
-+    } catch (IOException exception) {
-+      System.err.println("[OHMYRASP-JAVA<N>] unable to append agent jar to bootstrap search: " + exception);
-+    } catch (RuntimeException exception) {
-+      System.err.println("[OHMYRASP-JAVA<N>] unable to append agent jar to bootstrap search: " + exception);
-@@
-+  }
-+
 +  private static String startupMessage(
 +      String mode, String agentArgs, Instrumentation instrumentation) {
 +    return "{"
@@ -505,6 +478,8 @@
 +        + "\"xxe_hook\":\"installed\","
 +        + "\"instrumentation\":\"" + (instrumentation == null ? "missing" : "available") + "\""
 +        + "}";
++  }
++
 @@
 +    instrumentation.addTransformer(new Java<N>ArchiveTransformer(), canRetransform);
 @@

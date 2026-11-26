@@ -22,15 +22,17 @@ public final class Java17RaspLine extends BackportLine {
   }
 
   /**
-   * Installs this line, starts the shared runtime and initialises the classes the hooks use first: the shared
-   * decisions, this line's hooks class and its block exception. The entry class calls it after it appends the agent JAR to
+   * Installs this line, initialises the classes the hooks use first (the shared decisions, this line's hooks class
+   * and its block exception) and starts the shared runtime. The entry class calls it after it appends the agent JAR to
    * the bootstrap search and before it registers any transformer, so the classes here are defined by the loader
    * the hooks run in and no hook does this work on an application thread. A second call does nothing.
    */
   public static void start() {
     BackportLine.install(new Java17RaspLine());
-    RaspRuntime.start();
+    // What can fail comes first; the runtime starts its threads last and publishes that it has started only when
+    // all of this has succeeded. A failed start leaves no thread and can be retried.
     BackportHooks.initialise();
     BackportLine.initialise(Java17RaspHooks.class, Java17RaspBlockException.class);
+    RaspRuntime.start();
   }
 }
