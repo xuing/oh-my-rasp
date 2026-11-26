@@ -1,5 +1,6 @@
 package io.ohmyrasp.agent.runtime;
 
+import io.ohmyrasp.agent.policy.AgentPolicy;
 import io.ohmyrasp.agent.policy.SimpleJson;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -9,8 +10,9 @@ import java.util.Map;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
- * Live, hot-reloadable agent control state: the detection mode and per-algorithm
- * enable switches.
+ * Live, hot-reloadable agent control state: the detection mode, per-algorithm
+ * enable switches and the installed policy, published together as one
+ * {@link ControlState}.
  *
  * <p>This is the agent side of the one-way control channel
  * {@code console/operator → daemon → control file → agent}. The daemon (or a
@@ -30,10 +32,101 @@ public final class AgentRuntime {
   /** Default control file, matching the daemon's default. */
   private static final String DEFAULT_CONTROL = "/tmp/ohmyrasp-control.json";
 
-  private volatile DetectionMode mode; // null = unset → legacy behavior
-  private volatile DetectionMode startUpMode; // the mode resolved by start, before any control file
-  private volatile Map<String, Boolean> algorithms = Map.of();
-  private volatile long revision;
+  /** Which source installed the policy in the current {@link ControlState}. */
+  public enum PolicySource {
+    /** No policy was installed: the start-up state. */
+    NONE,
+    /** The {@code policy} member of the control file. */
+    CONTROL_FILE,
+    /** The direct-cloud {@code ControlPlaneClient} (cloud_direct=true). */
+    DIRECT_CLOUD
+  }
+
+  /**
+   * Everything the control file and the policy sources set, as one immutable value. It is
+   * published through a single volatile reference, so a hook that reads it once never sees a
+   * restored mode next to a stale switch or policy.
+   */
+  public static final class ControlState {
+    private final DetectionMode mode; // null = unset → legacy behavior
+    private final Map<String, Boolean> algorithms;
+    private final long revision;
+    private final AgentPolicy policy;
+    private final String policyAgentKey;
+    private final PolicySource policySource;
+    // Poller bookkeeping: the control file content last applied, and the policy text the control
+    // file last carried, so an unchanged policy is not parsed and installed again.
+    private final String appliedContent;
+    private final String controlPolicyJson;
+
+    private ControlState(
+        DetectionMode mode,
+        Map<String, Boolean> algorithms,
+        long revision,
+        AgentPolicy policy,
+        String policyAgentKey,
+        PolicySource policySource,
+        String appliedContent,
+        String controlPolicyJson) {
+      this.mode = mode;
+      this.algorithms = algorithms;
+      this.revision = revision;
+      this.policy = policy;
+      this.policyAgentKey = policyAgentKey;
+      this.policySource = policySource;
+      this.appliedContent = appliedContent;
+      this.controlPolicyJson = controlPolicyJson;
+    }
+
+    static ControlState startUp(DetectionMode mode) {
+      return new ControlState(mode, Map.of(), 0, AgentPolicy.absent(), "", PolicySource.NONE, null, null);
+    }
+
+    public DetectionMode mode() {
+      return mode;
+    }
+
+    /** False only when detection is explicitly turned OFF. */
+    public boolean detectionEnabled() {
+      return mode != DetectionMode.OFF;
+    }
+
+    /** Whether blocking is permitted. Unset (legacy) and BLOCK permit it; MONITOR/OFF do not. */
+    public boolean blockingAllowed() {
+      return mode == null || mode == DetectionMode.BLOCK;
+    }
+
+    /** An algorithm is enabled unless the control file explicitly disables it. */
+    public boolean isAlgorithmEnabled(String algorithm) {
+      if (algorithm == null || algorithm.isEmpty()) {
+        return true;
+      }
+      Boolean enabled = algorithms.get(algorithm);
+      return enabled == null || enabled;
+    }
+
+    public long revision() {
+      return revision;
+    }
+
+    public AgentPolicy policy() {
+      return policy;
+    }
+
+    public String policyAgentKey() {
+      return policyAgentKey;
+    }
+
+    public PolicySource policySource() {
+      return policySource;
+    }
+  }
+
+  private volatile ControlState state = ControlState.startUp(null);
+  // The mode resolved by start, before any control file. Written once, before polling starts.
+  private volatile DetectionMode startUpMode;
+  // Serialises the writers of {@link #state}: the poller, start-up and the direct-cloud client.
+  private final Object stateLock = new Object();
 
   private volatile ShirudoDefaults defaults;
   private volatile boolean standalone;
@@ -43,13 +136,7 @@ public final class AgentRuntime {
   private volatile Integer argLatencySample;
 
   private Path controlPath;
-  private volatile String lastAppliedContent; // the control file content last applied
   private final AtomicBoolean started = new AtomicBoolean();
-
-  // Cloud policy distributed via the control file: installed through this
-  // callback (set by BootstrapAgent), de-duplicated on the raw JSON.
-  private volatile java.util.function.Consumer<String> policyInstaller;
-  private volatile String lastPolicyJson;
 
   private AgentRuntime(ShirudoDefaults defaults) {
     ShirudoDefaults active = defaults == null ? ShirudoDefaults.absent() : defaults;
@@ -75,11 +162,24 @@ public final class AgentRuntime {
   }
 
   /**
-   * Register the callback that installs a cloud policy carried in the control
-   * file. Set this before {@link #start} so the initial load applies any policy.
+   * Installs a policy from the direct-cloud client. The last source to install a policy owns it:
+   * a later control-file policy replaces this one, and removing the control file leaves it in
+   * place, because the control file did not install it.
    */
-  public void setPolicyInstaller(java.util.function.Consumer<String> installer) {
-    this.policyInstaller = installer;
+  public void installDirectPolicy(AgentPolicy policy, String agentKey) {
+    synchronized (stateLock) {
+      ControlState current = state;
+      state =
+          new ControlState(
+              current.mode,
+              current.algorithms,
+              current.revision,
+              policy == null ? AgentPolicy.empty() : policy,
+              agentKey == null ? "" : agentKey,
+              PolicySource.DIRECT_CLOUD,
+              current.appliedContent,
+              current.controlPolicyJson);
+    }
   }
 
   /** Initialise from configuration and start the control-file poller (idempotent). */
@@ -147,10 +247,20 @@ public final class AgentRuntime {
     if (resolvedMode == null && resolvedStandalone) {
       resolvedMode = DetectionMode.BLOCK;
     }
-    if (resolvedMode != null) {
-      mode = resolvedMode;
+    synchronized (stateLock) {
+      startUpMode = resolvedMode;
+      ControlState current = state;
+      state =
+          new ControlState(
+              resolvedMode,
+              current.algorithms,
+              current.revision,
+              current.policy,
+              current.policyAgentKey,
+              current.policySource,
+              current.appliedContent,
+              current.controlPolicyJson);
     }
-    startUpMode = mode;
 
     if (disableControl) {
       controlPath = null;
@@ -224,32 +334,39 @@ public final class AgentRuntime {
     }
   }
 
+  /**
+   * The current control state. A caller that needs several of its values reads it once and uses
+   * that one snapshot.
+   */
+  public ControlState state() {
+    return state;
+  }
+
   /** False only when detection is explicitly turned OFF. */
   public boolean detectionEnabled() {
-    return mode != DetectionMode.OFF;
+    return state.detectionEnabled();
   }
 
   /** Whether blocking is permitted. Unset (legacy) and BLOCK permit it; MONITOR/OFF do not. */
   public boolean blockingAllowed() {
-    DetectionMode current = mode;
-    return current == null || current == DetectionMode.BLOCK;
+    return state.blockingAllowed();
   }
 
   /** An algorithm is enabled unless the control file explicitly disables it. */
   public boolean isAlgorithmEnabled(String algorithm) {
-    if (algorithm == null || algorithm.isEmpty()) {
-      return true;
-    }
-    Boolean enabled = algorithms.get(algorithm);
-    return enabled == null || enabled;
+    return state.isAlgorithmEnabled(algorithm);
   }
 
   public DetectionMode mode() {
-    return mode;
+    return state.mode();
   }
 
   public long revision() {
-    return revision;
+    return state.revision();
+  }
+
+  public AgentPolicy policy() {
+    return state.policy();
   }
 
   private void startPoller(long intervalMillis) {
@@ -306,26 +423,33 @@ public final class AgentRuntime {
     // Read on every poll and applied when the content differs from what was last applied. Content
     // that fails to parse is not recorded, so a document read half-written is applied once it is
     // complete, whatever its modification time.
-    if (text.equals(lastAppliedContent)) {
+    if (text.equals(state.appliedContent)) {
       return;
     }
-    if (apply(text)) {
-      lastAppliedContent = text;
-    }
+    apply(text);
   }
 
   /**
-   * Returns every setting the control file can change to its start-up value: the mode, the
-   * per-algorithm switches and the revision. An installed policy stays. The start-up policy is
-   * absent, which the installer cannot express (it installs a parsed policy, or an empty one for
-   * null), and with cloud_direct the ControlPlaneClient installs policies into the same slot, so
-   * the runtime cannot tell that the active policy still came from this file.
+   * Returns everything the control file set to its start-up value in one step: the mode, the
+   * per-algorithm switches, the revision and, when the control file installed the current policy,
+   * the policy (start-up has none). A policy the direct-cloud client installed stays: the control
+   * file did not install it.
    */
   private void restoreStartUpSettings() {
-    lastAppliedContent = null;
-    mode = startUpMode;
-    algorithms = Map.of();
-    revision = 0;
+    synchronized (stateLock) {
+      ControlState current = state;
+      boolean ownsPolicy = current.policySource == PolicySource.CONTROL_FILE;
+      state =
+          new ControlState(
+              startUpMode,
+              Map.of(),
+              0,
+              ownsPolicy ? AgentPolicy.absent() : current.policy,
+              ownsPolicy ? "" : current.policyAgentKey,
+              ownsPolicy ? PolicySource.NONE : current.policySource,
+              null,
+              null);
+    }
   }
 
   /** Applies a control document; false, changing nothing, when it is not one JSON object. */
@@ -339,39 +463,62 @@ public final class AgentRuntime {
     if (!(parsed instanceof Map<?, ?> object)) {
       return false;
     }
-    if (object.get("mode") instanceof String token) {
-      DetectionMode parsedMode = DetectionMode.parse(token);
-      if (parsedMode != null) {
-        mode = parsedMode;
-      }
-    }
-    if (object.get("algorithms") instanceof Map<?, ?> map) {
-      Map<String, Boolean> next = new HashMap<>();
-      for (Map.Entry<?, ?> entry : map.entrySet()) {
-        if (entry.getValue() instanceof Boolean enabled) {
-          next.put(String.valueOf(entry.getKey()), enabled);
+    synchronized (stateLock) {
+      ControlState current = state;
+      DetectionMode nextMode = current.mode;
+      if (object.get("mode") instanceof String token) {
+        DetectionMode parsedMode = DetectionMode.parse(token);
+        if (parsedMode != null) {
+          nextMode = parsedMode;
         }
       }
-      algorithms = Map.copyOf(next);
-    }
-    if (object.get("revision") instanceof Number number) {
-      revision = number.longValue();
-    }
-    // Install a cloud policy distributed through the control file, once per change.
-    if (object.get("policy") instanceof String policyJson && !policyJson.isBlank()) {
-      if (!policyJson.equals(lastPolicyJson)) {
-        lastPolicyJson = policyJson;
-        java.util.function.Consumer<String> installer = policyInstaller;
-        if (installer != null) {
-          try {
-            installer.accept(policyJson);
-          } catch (RuntimeException e) {
-            // A bad policy document must never disturb the protected application.
+      Map<String, Boolean> nextAlgorithms = current.algorithms;
+      if (object.get("algorithms") instanceof Map<?, ?> map) {
+        Map<String, Boolean> next = new HashMap<>();
+        for (Map.Entry<?, ?> entry : map.entrySet()) {
+          if (entry.getValue() instanceof Boolean enabled) {
+            next.put(String.valueOf(entry.getKey()), enabled);
           }
         }
+        nextAlgorithms = Map.copyOf(next);
       }
+      long nextRevision = current.revision;
+      if (object.get("revision") instanceof Number number) {
+        nextRevision = number.longValue();
+      }
+      AgentPolicy nextPolicy = current.policy;
+      String nextKey = current.policyAgentKey;
+      PolicySource nextSource = current.policySource;
+      String nextPolicyJson = current.controlPolicyJson;
+      // A cloud policy distributed through the control file, installed once per change.
+      if (object.get("policy") instanceof String policyJson
+          && !policyJson.isBlank()
+          && !policyJson.equals(current.controlPolicyJson)) {
+        nextPolicyJson = policyJson;
+        AgentPolicy installed = parsePolicy(policyJson);
+        if (installed != null) {
+          nextPolicy = installed;
+          nextKey = "";
+          nextSource = PolicySource.CONTROL_FILE;
+        }
+      }
+      state =
+          new ControlState(
+              nextMode, nextAlgorithms, nextRevision, nextPolicy, nextKey, nextSource, json, nextPolicyJson);
     }
     return true;
+  }
+
+  /** The policy in {@code json}, or null when it does not parse; a bad policy changes nothing. */
+  private static AgentPolicy parsePolicy(String json) {
+    try {
+      return AgentPolicy.parse(json);
+    } catch (RuntimeException e) {
+      if (Boolean.getBoolean("ohmyrasp.debug")) {
+        System.err.println("[OHMYRASP] distributed policy parse failed: " + e);
+      }
+      return null;
+    }
   }
 
   /** The control file this runtime polls, or null when polling is disabled. */
