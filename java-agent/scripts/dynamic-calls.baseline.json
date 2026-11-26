@@ -108,7 +108,10 @@
     "string-concat": 5
    },
    "io/ohmyrasp/agent/java11/RaspRuntime": {
-    "string-concat": 4
+    "string-concat": 3
+   },
+   "io/ohmyrasp/agent/java11/RaspRuntime$EventSpool": {
+    "string-concat": 1
    },
    "io/ohmyrasp/agent/jmx/JmxAttributeDisplay": {
     "string-concat": 1
@@ -255,7 +258,10 @@
     "string-concat": 5
    },
    "io/ohmyrasp/agent/java17/RaspRuntime": {
-    "string-concat": 4
+    "string-concat": 3
+   },
+   "io/ohmyrasp/agent/java17/RaspRuntime$EventSpool": {
+    "string-concat": 1
    },
    "io/ohmyrasp/agent/jmx/JmxAttributeDisplay": {
     "string-concat": 1
@@ -662,7 +668,7 @@
     "string-concat": 2
    },
    "io/ohmyrasp/agent/runtime/AgentRuntime": {
-    "lambda": 3
+    "lambda": 5
    },
    "io/ohmyrasp/agent/runtime/ShirudoDefaults": {
     "string-concat": 2
