@@ -193,6 +193,28 @@ def main():
                 raise SystemExit(f"{jar.name} names a Boot-Class-Path in its manifest")
         print("ok   no agent JAR names a Boot-Class-Path")
 
+        if tested != agent_track.PRIMARY:
+            # A failure after the line has started (the fifth transformer is refused) undoes the start: the
+            # transformers added are removed, the runtime's threads stop and it counts as not started.
+            classes = work / "flaky-classes"
+            classes.mkdir()
+            subprocess.run(["javac", "-d", str(classes), str(Path(__file__).with_name("FlakyInstrumentationAgent.java"))],
+                           check=True)
+            flaky = work / "flaky.jar"
+            with zipfile.ZipFile(flaky, "w") as fixture:
+                fixture.writestr("META-INF/MANIFEST.MF", "Manifest-Version: 1.0\nPremain-Class: FlakyInstrumentationAgent\n"
+                                 "Can-Retransform-Classes: true\n\n")
+                for compiled in classes.glob("*.class"):
+                    fixture.write(compiled, compiled.name)
+            control = work / "flaky-control.json"
+            options = ["-Dohmyrasp.mode=block", f"-Dohmyrasp.control={control}", f"-Dohmyrasp.log={work / 'flaky.jsonl'}"]
+            run = probe.run("a failure after the line started undoes the start", options, [f"{flaky}={agent}"],
+                            [tested], extra_classpath=[agent])
+            run.expect([], False, [FAILED])
+            report = next((line for line in run.out.splitlines() if line.startswith("flaky: ")), "")
+            if report != "flaky: added=4 removed=4 threads=0 runtime started=false":
+                run.fail(f"expected the start undone, saw '{report}'")
+
         failing = failing_entry_jar(universal, expected, work)
         run = probe.run("a line whose premain throws does not stop the JVM", AGENT_OPTIONS, [failing], [])
         run.expect([], None, [FAILED])

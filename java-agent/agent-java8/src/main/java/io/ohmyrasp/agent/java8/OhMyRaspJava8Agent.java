@@ -12,6 +12,9 @@ import java.lang.instrument.Instrumentation;
 import java.net.URISyntaxException;
 import java.net.URL;
 import java.util.jar.JarFile;
+import java.lang.instrument.ClassFileTransformer;
+import java.util.ArrayList;
+import java.util.List;
 
 public final class OhMyRaspJava8Agent {
   private OhMyRaspJava8Agent() {}
@@ -25,6 +28,7 @@ public final class OhMyRaspJava8Agent {
   }
 
   private static void install(String mode, String agentArgs, Instrumentation instrumentation) {
+    Class<?>[] outsideJavaBase = null;
     if (instrumentation != null) {
       // The transformers inject calls that the bootstrap loader resolves: without the JAR on its search the start
       // fails here, before any transformer is registered, and the launcher reports it.
@@ -38,14 +42,65 @@ public final class OhMyRaspJava8Agent {
       } catch (IOException e) {
         throw new IllegalStateException("cannot read the preload list of " + agentJar, e);
       }
+      outsideJavaBase = typesOutsideJavaBase();
     }
     // Installs the line and starts the shared runtime here, before any transformer, so no hook does it on an app
-    // thread.
-    Java8RaspLine.start();
-    String logPath = RaspRuntime.resolveLogPath();
-    io.ohmyrasp.agent.xml.SystemArchiveOrigins.initialize(instrumentation);
-    installTransformer(instrumentation);
-    RaspRuntime.writeStartupLine(logPath, startupMessage(mode, agentArgs, instrumentation));
+    // thread. What can fail without a trace is done above; a failure from here on undoes the start.
+    boolean startedHere = Java8RaspLine.start();
+    List<ClassFileTransformer> registered = new ArrayList<ClassFileTransformer>();
+    try {
+      String logPath = RaspRuntime.resolveLogPath();
+      io.ohmyrasp.agent.xml.SystemArchiveOrigins.initialize(instrumentation);
+      installTransformer(instrumentation, outsideJavaBase, registered);
+      RaspRuntime.writeStartupLine(logPath, startupMessage(mode, agentArgs, instrumentation));
+    } catch (RuntimeException | Error failure) {
+      undo(instrumentation, registered, startedHere, failure);
+      throw failure;
+    }
+  }
+
+  /**
+   * After a failure that follows the line's start: removes the transformers this start registered and, when this
+   * call started the runtime, stops it, so the launcher's start-failed holds (no thread, no transformer, hooks
+   * inactive). A failure on the way is added to {@code failure} as suppressed.
+   */
+  private static void undo(Instrumentation instrumentation, List<ClassFileTransformer> registered, boolean startedHere,
+      Throwable failure) {
+    for (int i = registered.size() - 1; i >= 0; i--) {
+      try {
+        instrumentation.removeTransformer(registered.get(i));
+      } catch (RuntimeException | Error other) {
+        failure.addSuppressed(other);
+      }
+    }
+    if (startedHere) {
+      try {
+        RaspRuntime.stop();
+      } catch (RuntimeException | Error other) {
+        failure.addSuppressed(other);
+      }
+    }
+  }
+
+  /**
+   * The types outside java.base that the transformers or the retransform list use, resolved before the line starts.
+   * A type this JVM cannot link (java.sql is not visible to the bootstrap loader on Java 9 and later) then fails the
+   * start before anything is started or registered.
+   */
+  private static Class<?>[] typesOutsideJavaBase() {
+    return new Class<?>[] {
+      javax.naming.InitialContext.class,
+      java.sql.DriverManager.class,
+      javax.script.AbstractScriptEngine.class,
+      java.beans.Expression.class,
+      java.beans.Statement.class,
+    };
+  }
+
+  private static void register(Instrumentation instrumentation, List<ClassFileTransformer> registered,
+      ClassFileTransformer transformer, boolean canRetransform) {
+    instrumentation.addTransformer(transformer, canRetransform);
+    registered.add(transformer);
   }
 
   private static String startupMessage(
@@ -133,43 +188,41 @@ public final class OhMyRaspJava8Agent {
     }
   }
 
-  private static void installTransformer(Instrumentation instrumentation) {
+  private static void installTransformer(Instrumentation instrumentation, Class<?>[] outsideJavaBase,
+      List<ClassFileTransformer> registered) {
     if (instrumentation == null) {
       return;
     }
-    // The types below outside java.base, resolved before the first transformer is registered. A type this
-    // JVM cannot link (java.sql is not visible to the bootstrap loader on Java 9 and later) then fails the
-    // start with no hook installed, instead of after every transformer is in place.
-    Class<?> initialContext = javax.naming.InitialContext.class;
-    Class<?> driverManager = java.sql.DriverManager.class;
-    Class<?> scriptEngine = javax.script.AbstractScriptEngine.class;
-    Class<?> beanExpression = java.beans.Expression.class;
-    Class<?> beanStatement = java.beans.Statement.class;
+    Class<?> initialContext = outsideJavaBase[0];
+    Class<?> driverManager = outsideJavaBase[1];
+    Class<?> scriptEngine = outsideJavaBase[2];
+    Class<?> beanExpression = outsideJavaBase[3];
+    Class<?> beanStatement = outsideJavaBase[4];
     boolean canRetransform = instrumentation.isRetransformClassesSupported();
-    instrumentation.addTransformer(new Java8ServletTransformer(), canRetransform);
-    instrumentation.addTransformer(new Java8SparkRestTransformer(), canRetransform);
-    instrumentation.addTransformer(new Java8YarnRestTransformer(), canRetransform);
-    instrumentation.addTransformer(new Java8ProcessTransformer(), canRetransform);
-    instrumentation.addTransformer(new Java8JndiTransformer(), canRetransform);
-    instrumentation.addTransformer(new Java8DeserializationTransformer(), canRetransform);
-    instrumentation.addTransformer(new Java8FastjsonTransformer(), canRetransform);
-    instrumentation.addTransformer(new Java8HessianTransformer(), canRetransform);
-    instrumentation.addTransformer(new Java8FileTransformer(), canRetransform);
-    instrumentation.addTransformer(new Java8MultipartUploadTransformer(), canRetransform);
-    instrumentation.addTransformer(new Java8UrlTransformer(), canRetransform);
-    instrumentation.addTransformer(new Java8ArchiveTransformer(), canRetransform);
-    instrumentation.addTransformer(new Java8JdbcTransformer(), canRetransform);
-    instrumentation.addTransformer(new Java8ClassLoaderTransformer(), canRetransform);
-    instrumentation.addTransformer(new Java8ScriptEngineTransformer(), canRetransform);
-    instrumentation.addTransformer(new Java8JexlTransformer(), canRetransform);
-    instrumentation.addTransformer(new Java8ElTransformer(), canRetransform);
-    instrumentation.addTransformer(new Java8JavaCompilationTransformer(), canRetransform);
-    instrumentation.addTransformer(new Java8JmxTransformer(), canRetransform);
-    instrumentation.addTransformer(new Java8JwtTransformer(), canRetransform);
-    instrumentation.addTransformer(new Java8JavaBeansTransformer(), canRetransform);
-    instrumentation.addTransformer(new Java8XxeTransformer(), canRetransform);
-    instrumentation.addTransformer(new Java8ElasticLz4Transformer(), canRetransform);
-    instrumentation.addTransformer(new Java8Base64Transformer(), canRetransform);
+    register(instrumentation, registered, new Java8ServletTransformer(), canRetransform);
+    register(instrumentation, registered, new Java8SparkRestTransformer(), canRetransform);
+    register(instrumentation, registered, new Java8YarnRestTransformer(), canRetransform);
+    register(instrumentation, registered, new Java8ProcessTransformer(), canRetransform);
+    register(instrumentation, registered, new Java8JndiTransformer(), canRetransform);
+    register(instrumentation, registered, new Java8DeserializationTransformer(), canRetransform);
+    register(instrumentation, registered, new Java8FastjsonTransformer(), canRetransform);
+    register(instrumentation, registered, new Java8HessianTransformer(), canRetransform);
+    register(instrumentation, registered, new Java8FileTransformer(), canRetransform);
+    register(instrumentation, registered, new Java8MultipartUploadTransformer(), canRetransform);
+    register(instrumentation, registered, new Java8UrlTransformer(), canRetransform);
+    register(instrumentation, registered, new Java8ArchiveTransformer(), canRetransform);
+    register(instrumentation, registered, new Java8JdbcTransformer(), canRetransform);
+    register(instrumentation, registered, new Java8ClassLoaderTransformer(), canRetransform);
+    register(instrumentation, registered, new Java8ScriptEngineTransformer(), canRetransform);
+    register(instrumentation, registered, new Java8JexlTransformer(), canRetransform);
+    register(instrumentation, registered, new Java8ElTransformer(), canRetransform);
+    register(instrumentation, registered, new Java8JavaCompilationTransformer(), canRetransform);
+    register(instrumentation, registered, new Java8JmxTransformer(), canRetransform);
+    register(instrumentation, registered, new Java8JwtTransformer(), canRetransform);
+    register(instrumentation, registered, new Java8JavaBeansTransformer(), canRetransform);
+    register(instrumentation, registered, new Java8XxeTransformer(), canRetransform);
+    register(instrumentation, registered, new Java8ElasticLz4Transformer(), canRetransform);
+    register(instrumentation, registered, new Java8Base64Transformer(), canRetransform);
     if (!canRetransform) {
       return;
     }
