@@ -59,7 +59,6 @@ This package lists these advisories in the `fixes` key of its Beefile. The list 
 | CVE-2017-18349 | `acceptance/vulhub/fastjson/java8.sh` |
 | CVE-2016-4437 | `acceptance/vulhub/shiro/4437-java8.sh` |
 | CVE-2020-14882 | `acceptance/vulhub/weblogic/14883-java8.sh` |
-| CVE-2023-46604 | `acceptance/vulhub/activemq/46604-java11.sh` |
 | CVE-2017-12615 | `acceptance/vulhub/tomcat/12615-java8.sh` |
 | CVE-2019-17558 | `acceptance/vulhub/solr/velocity-java8.sh` |
 | CVE-2023-21839 | `acceptance/vulhub/weblogic/21839-java8.sh` |

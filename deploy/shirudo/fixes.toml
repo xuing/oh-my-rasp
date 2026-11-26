@@ -49,10 +49,6 @@ id = "CVE-2020-14882"
 scripts = ["acceptance/vulhub/weblogic/14883-java8.sh"]
 
 [[fix]]
-id = "CVE-2023-46604"
-scripts = ["acceptance/vulhub/activemq/46604-java11.sh"]
-
-[[fix]]
 id = "CVE-2017-12615"
 scripts = ["acceptance/vulhub/tomcat/12615-java8.sh"]
 
