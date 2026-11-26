@@ -132,3 +132,35 @@ tasks.register<Sync>("stageCollectionsProbe") {
     from(rootProject.configurations.detachedConfiguration(*modules.toTypedArray()).apply { isTransitive = false })
     into(layout.buildDirectory.dir("collections-probe"))
 }
+
+// Real library versions the agents hook. probes/hook-targets reads them as ZIP entries and loads none of them.
+// The list is probes/hook-targets/libraries.toml: one [[library]] per module, its group, artifact and
+// versions each on one line. Parsed here at configuration time, so the file is a configuration-cache input.
+val hookTargetModules = providers.fileContents(layout.projectDirectory.file("probes/hook-targets/libraries.toml"))
+    .asText.map { text ->
+        val modules = mutableListOf<Triple<String, String, String>>()
+        var group = ""
+        var artifact = ""
+        for (line in text.lines()) {
+            fun quoted(from: String) = line.removePrefix(from).substringAfter('"').substringBefore('"')
+            when {
+                line.startsWith("[[library]]") -> { group = ""; artifact = "" }
+                line.startsWith("group = ") -> group = quoted("group = ")
+                line.startsWith("artifact = ") -> artifact = quoted("artifact = ")
+                line.startsWith("versions = ") ->
+                    Regex("\"([^\"]+)\"").findAll(line.substringAfter('=')).forEach { modules += Triple(group, artifact, it.groupValues[1]) }
+            }
+        }
+        require(modules.isNotEmpty()) { "no libraries found in probes/hook-targets/libraries.toml" }
+        modules
+    }
+tasks.register<Sync>("stageHookTargets") {
+    // One detached configuration per version: a single one would resolve each module to its newest version.
+    for ((group, artifact, version) in hookTargetModules.get()) {
+        val library = rootProject.dependencies.create("$group:$artifact:$version@jar")
+        into("$group/$artifact/$version") {
+            from(rootProject.configurations.detachedConfiguration(library).apply { isTransitive = false })
+        }
+    }
+    into(layout.buildDirectory.dir("hook-targets"))
+}

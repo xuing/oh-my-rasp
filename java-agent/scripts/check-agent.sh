@@ -17,6 +17,9 @@ Usage: $0 [--line LINE[,LINE...]] [--tests GRADLE-TEST-FILTER] [PROBE|all [probe
   PROBE    one packaged probe, or "all" for every probe that applies to the line.
            Probes run on the line's own JDK. Without one, only the unit tests and
            the benign corpus run, and those run on the build JDK for every line.
+           Options after PROBE go to the probe. A probe that records its result
+           (--update) writes under $PROBE_UPDATE_ROOT, and this script copies what
+           it wrote into java-agent/ when the run ends.
 
 Probes:
 USAGE
@@ -69,10 +72,23 @@ fi
 # Keep this checkout's published jars stable while a probe is reading them.
 exec 9>"$state/check.lock"
 flock 9
+# The checkout is read-only in the container. A probe that records its result writes it here,
+# under the path it has in java-agent/, and it is copied back after the run.
+updates="$state/probe-updates"
+rm -rf "$updates"
+mkdir -p "$updates"
+copy_probe_updates() {
+  if [[ -n "$(ls -A "$updates")" ]]; then
+    chmod -R u=rwX,go=rX "$updates"
+    (umask 022; cp -R "$updates/." "$root/")
+    (cd "$updates" && find . -type f | sed 's|^\./|Probe wrote java-agent/|')
+  fi
+}
+trap copy_probe_updates EXIT
 container=(docker run --rm -i --read-only --tmpfs /tmp:rw,exec -u "$uid:$(id -g)"
-  -e GRADLE_USER_HOME=/state/gradle -e PYTHONDONTWRITEBYTECODE=1
+  -e GRADLE_USER_HOME=/state/gradle -e PYTHONDONTWRITEBYTECODE=1 -e PROBE_UPDATE_ROOT=/probe-updates
   -e "CACHE_RELATIVE=$cache_relative" -e "TEST_FILTER=$tests" -e "LINES=$lines" -e "PROBE=$probe"
-  -v "$root:/workspace:ro" -v "$state:/state" -w /workspace)
+  -v "$root:/workspace:ro" -v "$state:/state" -v "$updates:/probe-updates" -w /workspace)
 
 "${container[@]}" "$image" bash -s -- "$@" <<'CONTAINER'
 set -euo pipefail

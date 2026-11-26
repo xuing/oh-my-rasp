@@ -68,10 +68,12 @@ RELEASE_RUNBOOK = "docs/runbooks/release.md"
 # listed here, so a stray banner or marker cannot exempt hand-written text.
 GENERATORS = {
     "java-agent/scripts/gen-detection-coverage.py": ["python3", "java-agent/scripts/gen-detection-coverage.py", "--check"],
+    "java-agent/scripts/gen-hook-targets.py": ["python3", "java-agent/scripts/gen-hook-targets.py", "--check"],
     "deploy/shirudo/gen-readmes.py": ["python3", "deploy/shirudo/gen-readmes.py", "--check"],
 }
 GENERATED_FILES = {
     "java-agent/docs/DETECTION-COVERAGE.md",  # gen-detection-coverage.py
+    "java-agent/docs/HOOK-TARGETS.md",  # gen-hook-targets.py
     "java-agent/docs/FALSE-POSITIVE-REPORT.md",  # run-fp-report.sh (needs Docker; not re-run here)
     "deploy/shirudo/README.md",  # gen-readmes.py
 }

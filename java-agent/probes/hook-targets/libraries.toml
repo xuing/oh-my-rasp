@@ -1,0 +1,453 @@
+# Third-party libraries the agents hook, and the versions the hook map is recorded against.
+#
+# One [[library]] per Maven coordinate. `versions` should span what is deployed: the oldest still
+# common, one where the API changed, the newest. `why` says why those versions.
+# `none` lists versions that carry no hook, each with its reason: the library removed or renamed what
+# the hook matches. Every other version must have at least one hooked method on some agent line. A
+# reason that starts with FINDING is a hook that should be fixed, recorded here so the probe passes
+# until it is.
+#
+# Keep `group`, `artifact` and `versions` on one line each: java-agent/build.gradle.kts reads them
+# with a line parser to stage the JARs (task stageHookTargets). check.py and test_hook_targets.py
+# read the whole file with tomllib.
+#
+# Left out on purpose, because the agents match them by interface or by name prefix and no hook names
+# one of their classes: JDBC drivers and pools (mysql-connector, postgresql, mariadb, sqlite-jdbc,
+# hsqldb, derby, ojdbc, mssql-jdbc, HikariCP, dbcp, tomcat-jdbc), JSR-223 engines (*ScriptEngineImpl),
+# and servlet containers beyond the classes named below. H2 is here because the backport JDBC
+# transformer names org.h2.jdbc.JdbcConnection.
+#
+# Coordinates that could not be staged from Maven Central:
+#   org.apache.commons:commons-ognl     no release on Maven Central.
+#   it.geosolutions.jaiext.jiffle:jt-jiffle-language   not on Maven Central (GeoSolutions repository only).
+#   org.jboss.el:jboss-el               not on Maven Central; the albfernandez fork below stands in for it.
+#   io.dataease CommunityTokenFilter    an application class of DataEase, not a library.
+#   jdk.nashorn.api.scripting.NashornScriptEngine   part of JDK 8-14.
+
+# --- JSON, YAML, XML object mappers -------------------------------------------------------------
+
+[[library]]
+group = "com.alibaba"
+artifact = "fastjson"
+versions = ["1.2.24", "1.2.47", "1.2.68", "1.2.83"]
+why = "1.2.24 and 1.2.47 are the autoType bypass eras still deployed; 1.2.68 added the safeMode-era checks; 1.2.83 is the last 1.x."
+
+[[library]]
+group = "com.alibaba.fastjson2"
+artifact = "fastjson2"
+versions = ["2.0.10", "2.0.40", "2.0.66"]
+why = "First widely used 2.0.x, the middle where ObjectReaderProvider changed, and the newest."
+
+[[library]]
+group = "com.fasterxml.jackson.core"
+artifact = "jackson-databind"
+versions = ["2.6.7", "2.9.10", "2.13.5", "2.17.2", "2.23.0"]
+why = "2.6.7 ships inside Spark and Hadoop, 2.9.10 is the default-typing CVE era, 2.13 and 2.17 are the long-lived lines, 2.23 is the newest."
+
+[[library]]
+group = "com.thoughtworks.xstream"
+artifact = "xstream"
+versions = ["1.4.5", "1.4.10", "1.4.17", "1.4.21"]
+why = "1.4.5 and 1.4.10 predate the security framework, 1.4.17 is the blacklist-to-allowlist change, 1.4.21 is the newest."
+
+[[library]]
+group = "org.yaml"
+artifact = "snakeyaml"
+versions = ["1.17", "1.33", "2.0", "2.7"]
+why = "1.17 is old Spring Boot 1.x, 1.33 is the last 1.x, 2.0 changed Constructor to require LoaderOptions, 2.7 is the newest."
+
+[[library]]
+group = "org.snakeyaml"
+artifact = "snakeyaml-engine"
+versions = ["2.0", "2.10", "3.2"]
+why = "First 2.x, last 2.x, and the newest major."
+none = { "2.0" = "FINDING: the hook wants getClassForName on org/snakeyaml/engine/v2/constructor/*, and the engine has no such method in any version", "2.10" = "same", "3.2" = "same" }
+
+# --- Expression, script and template engines ----------------------------------------------------
+
+[[library]]
+group = "ognl"
+artifact = "ognl"
+versions = ["2.7.3", "3.0.21", "3.1.26", "3.3.4", "3.4.17"]
+why = "2.7.3 is the Struts 2.0-2.1 era, 3.0.x and 3.1.x are Struts 2.3 and 2.5, 3.3 and 3.4 are the newest lines."
+
+[[library]]
+group = "org.apache.struts"
+artifact = "struts2-core"
+versions = ["2.5.30", "6.3.0.2", "6.9.0", "7.0.3"]
+why = "OgnlUtil moved packages in 7.0, so 2.5 and 6.x are the com.opensymphony.xwork2 names and 7.x the new ones."
+
+[[library]]
+group = "org.apache.struts.xwork"
+artifact = "xwork-core"
+versions = ["2.3.20", "2.3.37"]
+why = "Struts 2.3 keeps OgnlUtil in xwork-core: an old 2.3 and the last."
+
+[[library]]
+group = "org.apache.velocity"
+artifact = "velocity"
+versions = ["1.5", "1.7"]
+why = "Velocity 1.x under its old coordinate: the 1.5 era and the last 1.7."
+
+[[library]]
+group = "org.apache.velocity"
+artifact = "velocity-engine-core"
+versions = ["2.0", "2.3", "2.4.1"]
+why = "2.0 introduced the new coordinate, 2.3 is the widely deployed one, 2.4.1 is the newest."
+
+[[library]]
+group = "org.mvel"
+artifact = "mvel2"
+versions = ["2.1.3.Final", "2.4.15.Final", "2.6.0.Final"]
+why = "2.1.3 is the Drools 5 era, 2.4.x the long-lived line, 2.6.0 the newest."
+
+[[library]]
+group = "org.codehaus.groovy"
+artifact = "groovy"
+versions = ["2.4.21", "3.0.25"]
+why = "Groovy under org.codehaus: the last 2.4 and the last 3.0."
+
+[[library]]
+group = "org.apache.groovy"
+artifact = "groovy"
+versions = ["4.0.31", "5.0.8"]
+why = "Groovy under org.apache.groovy: the 4.x line and the 5.x line."
+
+[[library]]
+group = "org.codehaus.groovy"
+artifact = "groovy-jsr223"
+versions = ["2.5.23", "3.0.25"]
+why = "GroovyScriptEngineImpl is hooked by name: the last 2.5 and the last 3.0 under org.codehaus."
+
+[[library]]
+group = "org.apache.groovy"
+artifact = "groovy-jsr223"
+versions = ["4.0.31", "5.0.8"]
+why = "GroovyScriptEngineImpl under org.apache.groovy."
+
+[[library]]
+group = "org.mozilla"
+artifact = "rhino"
+versions = ["1.7.7.2", "1.7.14", "1.8.1", "1.9.2"]
+why = "1.7.7.2 is the Java 6 era, 1.7.14 the last 1.7, 1.8 and 1.9 changed Context and scope internals."
+
+[[library]]
+group = "commons-jexl"
+artifact = "commons-jexl"
+versions = ["1.1"]
+why = "JEXL 1.x has one real release line."
+
+[[library]]
+group = "org.apache.commons"
+artifact = "commons-jexl"
+versions = ["2.0.1", "2.1.1"]
+why = "JEXL 2 first stable and last."
+
+[[library]]
+group = "org.apache.commons"
+artifact = "commons-jexl3"
+versions = ["3.0", "3.2.1", "3.5.0", "3.7.1"]
+why = "3.0 first, 3.2.1 widely deployed, 3.5 added restricted permissions by default, 3.7.1 newest."
+
+[[library]]
+group = "javax.el"
+artifact = "javax.el-api"
+versions = ["2.2.1", "3.0.0"]
+why = "EL 2.2 has no ELProcessor, EL 3.0 does."
+none = { "2.2.1" = "javax.el.ELProcessor, the class the hook wants, first appears in EL 3.0; ExpressionFactory has no concrete method the hook rewrites" }
+
+[[library]]
+group = "jakarta.el"
+artifact = "jakarta.el-api"
+versions = ["3.0.3", "4.0.0", "5.0.1", "6.0.1"]
+why = "One per Jakarta EL major, including the old 3.0.x that still uses the javax package."
+
+[[library]]
+group = "org.apache.tomcat"
+artifact = "tomcat-jasper-el"
+versions = ["8.5.100", "9.0.124", "10.1.62", "11.0.29"]
+why = "Tomcat's own EL implementation (org.apache.el), one per Tomcat line."
+
+[[library]]
+group = "org.glassfish"
+artifact = "jakarta.el"
+versions = ["3.0.4", "4.0.2"]
+why = "GlassFish EL implementation (com.sun.el) in its two Jakarta lines."
+
+[[library]]
+group = "org.glassfish"
+artifact = "javax.el"
+versions = ["3.0.0", "3.0.1-b12"]
+why = "GlassFish EL implementation before the Jakarta rename: the 3.0 release and the last 3.0.1 build."
+
+[[library]]
+group = "de.odysseus.juel"
+artifact = "juel-impl"
+versions = ["2.2.7"]
+why = "JUEL has one maintained line; 2.2.7 is the last release."
+
+[[library]]
+group = "com.github.albfernandez"
+artifact = "jboss-el"
+versions = ["1.1.0", "1.1.1"]
+why = "A maintained fork of org.jboss.el, which is not on Central; it keeps the org.jboss.el package the hook names."
+
+[[library]]
+group = "xalan"
+artifact = "xalan"
+versions = ["2.7.1", "2.7.3"]
+why = "XPathImpl comes from Xalan; 2.7.1 is the long-lived release and 2.7.3 the newest."
+
+[[library]]
+group = "jaxen"
+artifact = "jaxen"
+versions = ["1.1.6", "1.2.0", "2.0.6"]
+why = "1.1.6 is the old default, 1.2.0 the last 1.x, 2.0 the new major."
+
+[[library]]
+group = "commons-jxpath"
+artifact = "commons-jxpath"
+versions = ["1.3", "1.4.0"]
+why = "1.3 is the only widely deployed release; 1.4.0 is the newest."
+
+[[library]]
+group = "org.codehaus.janino"
+artifact = "janino"
+versions = ["2.7.8", "3.0.16", "3.1.12"]
+why = "In 3.0 Cookable and the evaluators moved to commons-compiler, so 2.7 and 3.x differ."
+
+# --- Spring -------------------------------------------------------------------------------------
+
+[[library]]
+group = "org.springframework"
+artifact = "spring-core"
+versions = ["3.2.18.RELEASE", "4.3.30.RELEASE", "5.3.39", "6.2.19", "7.1.0"]
+why = "The last of each Spring generation still deployed: 3.2, 4.3, 5.3, 6.2 and 7.1."
+
+[[library]]
+group = "org.springframework"
+artifact = "spring-beans"
+versions = ["3.2.18.RELEASE", "4.3.30.RELEASE", "5.3.39", "6.2.19", "7.1.0"]
+why = "Same generations as spring-core."
+
+[[library]]
+group = "org.springframework"
+artifact = "spring-context"
+versions = ["3.2.18.RELEASE", "4.3.30.RELEASE", "5.3.39", "6.2.19", "7.1.0"]
+why = "Same generations as spring-core; RemoteInvocationSerializingExporter, one of the hooked classes, was removed in 6.0."
+
+[[library]]
+group = "org.springframework"
+artifact = "spring-expression"
+versions = ["3.2.18.RELEASE", "4.3.30.RELEASE", "5.3.39", "6.2.19", "7.1.0"]
+why = "Same generations as spring-core."
+
+[[library]]
+group = "org.springframework"
+artifact = "spring-web"
+versions = ["3.2.18.RELEASE", "4.3.30.RELEASE", "5.3.39", "6.2.19", "7.1.0"]
+why = "Same generations as spring-core; CommonsMultipartFile was removed in 6.0."
+
+[[library]]
+group = "org.springframework"
+artifact = "spring-test"
+versions = ["4.3.30.RELEASE", "5.3.39", "6.2.19"]
+why = "MockMultipartFile, hooked by the backports; same generations as spring-core."
+
+[[library]]
+group = "org.apache.xbean"
+artifact = "xbean-spring"
+versions = ["3.18", "4.19"]
+why = "ResourceXmlApplicationContext in the last 3.x and a late 4.x."
+
+# --- Hessian, args4j ----------------------------------------------------------------------------
+
+[[library]]
+group = "com.caucho"
+artifact = "hessian"
+versions = ["4.0.51", "4.0.63", "4.0.66"]
+why = "Oldest and newest on Maven Central, and one between."
+
+[[library]]
+group = "com.alibaba"
+artifact = "hessian-lite"
+versions = ["3.2.2", "3.2.5", "3.2.8", "3.2.13"]
+why = "Dubbo's fork: its first 3.2, the version Dubbo 2.7.3 pins, a middle release and the newest."
+
+[[library]]
+group = "args4j"
+artifact = "args4j"
+versions = ["2.0.31", "2.33", "2.37"]
+why = "2.0.31 is the last 2.0, 2.33 the long-lived release, 2.37 the newest."
+
+# --- MyBatis, PageHelper ------------------------------------------------------------------------
+
+[[library]]
+group = "org.mybatis"
+artifact = "mybatis"
+versions = ["3.2.8", "3.4.6", "3.5.6", "3.5.19", "3.6.0"]
+why = "3.2.8 is the old default, 3.4.6 the long-lived 3.4, 3.5 is the current line (3.5.6 before and 3.5.19 after the DynamicContext changes), 3.6.0 the newest."
+
+[[library]]
+group = "com.github.pagehelper"
+artifact = "pagehelper"
+versions = ["4.2.1", "5.1.11", "5.3.3", "6.1.1"]
+why = "4.2.1 is the last 4.x, whose dialect classes take different getPageSql arguments; 5.1 and 5.3 are the widely deployed lines, 6.x is the newest."
+none = { "4.2.1" = "FINDING: the dialect classes exist, but their getPageSql arguments differ from the (String, Page, CacheKey) form the hook matches" }
+
+# --- RPC, remoting, messaging -------------------------------------------------------------------
+
+[[library]]
+group = "org.apache.xmlrpc"
+artifact = "xmlrpc-common"
+versions = ["3.0", "3.1.3"]
+why = "The first 3.0 release and the last."
+
+[[library]]
+group = "org.apache.activemq"
+artifact = "activemq-client"
+versions = ["5.15.16", "5.17.3", "5.19.12", "6.1.8"]
+why = "5.15.16 is the vendor-fixed 5.15 the runtime probe uses, 5.17.3 the layout the OpenWire probe audits, 5.19 the last 5.x, 6.1 the new major."
+
+[[library]]
+group = "org.apache.activemq"
+artifact = "activemq-openwire-legacy"
+versions = ["5.15.16", "5.17.3", "5.19.12", "6.1.8"]
+why = "Holds the versioned marshallers from 5.17 on; same versions as activemq-client."
+
+[[library]]
+group = "org.elasticsearch"
+artifact = "elasticsearch"
+versions = ["7.17.29", "8.19.23"]
+why = "Lz4TransportDecompressor: the last 7.x and the 8.x the runtime probe uses."
+
+[[library]]
+group = "org.apache.spark"
+artifact = "spark-core_2.12"
+versions = ["2.4.8", "3.5.10"]
+why = "SubmitRequestServlet: the last 2.4 and the last 3.5 built for Scala 2.12."
+
+[[library]]
+group = "org.apache.hadoop"
+artifact = "hadoop-yarn-server-resourcemanager"
+versions = ["2.7.7", "2.8.1", "3.3.6", "3.4.3"]
+why = "2.8.1 is the vulnerable ResourceManager the probe uses, 2.7.7 the older 2.7, 3.3 and 3.4 are the Hadoop 3 lines."
+
+# --- Web containers, servlet API, multipart ----------------------------------------------------
+
+[[library]]
+group = "javax.servlet"
+artifact = "javax.servlet-api"
+versions = ["3.0.1", "3.1.0", "4.0.1"]
+why = "One per javax servlet spec: 3.0, 3.1 and 4.0."
+
+[[library]]
+group = "jakarta.servlet"
+artifact = "jakarta.servlet-api"
+versions = ["5.0.0", "6.0.0", "6.1.0"]
+why = "One per Jakarta servlet spec."
+
+[[library]]
+group = "org.apache.tomcat"
+artifact = "tomcat-catalina"
+versions = ["7.0.109", "8.5.100", "9.0.124", "10.1.62", "11.0.29"]
+why = "One per Tomcat line; 7.0.109 is the last 7.0."
+
+[[library]]
+group = "org.apache.shiro"
+artifact = "shiro-web"
+versions = ["1.2.4", "1.13.0", "2.0.6", "3.0.2"]
+why = "1.2.4 is the rememberMe deserialization era, 1.13 the last 1.x, 2.0 and 3.0 the new majors."
+
+[[library]]
+group = "org.glassfish.jersey.core"
+artifact = "jersey-server"
+versions = ["2.25.1", "2.46", "3.0.18", "3.1.12", "4.0.3"]
+why = "ServerRuntime in the javax lines 2.25 and 2.46, the jakarta lines 3.0 and 3.1, and 4.0."
+
+[[library]]
+group = "org.glassfish.jersey.media"
+artifact = "jersey-media-multipart"
+versions = ["2.25.1", "2.46", "3.0.18", "3.1.12", "4.0.3"]
+why = "Same lines as jersey-server."
+
+[[library]]
+group = "commons-fileupload"
+artifact = "commons-fileupload"
+versions = ["1.2.2", "1.3.3", "1.4", "1.6.0"]
+why = "1.2.2 is old, 1.3.3 and 1.4 are the long-lived releases, 1.6.0 is the last."
+
+[[library]]
+group = "io.undertow"
+artifact = "undertow-servlet"
+versions = ["1.4.28.Final", "2.0.42.Final", "2.2.39.Final", "2.3.27.Final"]
+why = "PartImpl across the javax lines 1.4, 2.0, 2.2 and the 2.3 line."
+
+[[library]]
+group = "io.undertow"
+artifact = "undertow-servlet-jakarta"
+versions = ["2.2.20.Final"]
+why = "The jakarta flavour of Undertow's servlet module; 2.2.20 is the last release."
+
+[[library]]
+group = "org.eclipse.jetty"
+artifact = "jetty-util"
+versions = ["9.4.57.v20241219"]
+why = "MultiPartInputStreamParser lives here in Jetty 9.4, the last 9.4 shown."
+
+[[library]]
+group = "org.eclipse.jetty"
+artifact = "jetty-server"
+versions = ["9.4.57.v20241219", "10.0.26", "11.0.26", "12.0.41"]
+why = "MultiPartFormInputStream is in jetty-server in 10 and 11; 12 replaced it."
+
+# --- XML, activation, other ---------------------------------------------------------------------
+
+[[library]]
+group = "xerces"
+artifact = "xercesImpl"
+versions = ["2.9.1", "2.11.0", "2.12.2"]
+why = "2.9.1 is the old XMLEntityManager, 2.11.0 the long-lived release, 2.12.2 the newest."
+
+[[library]]
+group = "javax.activation"
+artifact = "activation"
+versions = ["1.1.1"]
+why = "The standalone JavaBeans Activation Framework before 1.2."
+
+[[library]]
+group = "com.sun.activation"
+artifact = "javax.activation"
+versions = ["1.2.0"]
+why = "JAF 1.2, the last javax.activation line, the only release under this coordinate."
+
+[[library]]
+group = "jakarta.activation"
+artifact = "jakarta.activation-api"
+versions = ["1.2.2", "2.0.1", "2.1.3"]
+why = "1.2 still uses javax.activation, 2.0 renamed the package, 2.1 is the newest line."
+
+[[library]]
+group = "org.apache.cxf"
+artifact = "cxf-rt-databinding-aegis"
+versions = ["2.7.18", "3.6.9", "4.0.11"]
+why = "AttachmentUtil across CXF 2.7, 3.x and 4.x."
+
+[[library]]
+group = "net.sf.sevenzipjbinding"
+artifact = "sevenzipjbinding"
+versions = ["16.02-2.01", "26.06-2.3"]
+why = "SimpleInArchiveItemImpl in the long-lived 16.02 and the newest."
+
+[[library]]
+group = "org.apache.skywalking"
+artifact = "storage-jdbc-hikaricp-plugin"
+versions = ["8.9.1", "9.7.0"]
+why = "H2LogQueryDAO in the last 8.x and the last 9.x."
+none = { "9.7.0" = "FINDING: 9.x replaced H2LogQueryDAO with JDBCLogQueryDAO in a common package, so the hook's class is gone" }
+
+[[library]]
+group = "com.h2database"
+artifact = "h2"
+versions = ["1.4.197", "1.4.200", "2.1.214", "2.3.232"]
+why = "1.4.x is the long-lived line (Hibernate and Spring Boot 1/2 defaults), 2.1 changed the JDBC classes, 2.3 is a late line."

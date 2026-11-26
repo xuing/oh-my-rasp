@@ -71,6 +71,9 @@ class GatesTest(unittest.TestCase):
         self.assertEqual(ids(["java-agent/contracts/agent-daemon/control/mode-block.json"]),
                          ["docs", "agent-primary", "agent-backports", "daemon"])
         self.assertEqual(ids(["java-agent/probes/file-read/check.py"]), ["docs", "probe-registry", "probe:file-read"])
+        # The library list and the recorded hook maps are inputs of the hook-targets probe and of a generated doc.
+        for path in ("java-agent/probes/hook-targets/libraries.toml", "java-agent/probes/hook-targets/recorded/primary.txt"):
+            self.assertEqual(ids([path]), ["docs", "probe-registry", "probe:hook-targets"])
 
 
 if __name__ == "__main__":

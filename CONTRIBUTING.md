@@ -397,7 +397,7 @@ Contributions that add detection rules or hook families should include runnable 
 - **Small and focused:** One logical change per PR. Avoid unrelated formatting or refactoring outside the PR scope.
 - **Tests pass:** Run the test suite for every component you touch (`go test ./...`, `npm test`, `gradle :agent-jdk25:check`, `cargo test --locked`, `verify-shirudo-upatch.sh`).
 - **Single source of truth & doc sync:** Keep each fact in one owning reference under `docs/` and link to source files and symbols rather than duplicating volatile lists. Update the owning doc in the same PR whenever behavior, flags, endpoints, or contracts change. Keep `docs/internal/` frozen as historical archive.
-- **Generated files committed:** Commit fresh outputs from `gen-detection-coverage.py`, `run-fp-report.sh`, and `deploy/shirudo/gen-readmes.py` whenever affected.
+- **Generated files committed:** Commit fresh outputs from `gen-detection-coverage.py`, `gen-hook-targets.py`, `run-fp-report.sh`, and `deploy/shirudo/gen-readmes.py` whenever affected.
 
 ## License
 

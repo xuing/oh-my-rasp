@@ -48,7 +48,7 @@ jobs:
             -v "$PWD/java-agent:/workspace" \
             -w /workspace \
             "$gradle_image" \
-            gradle --no-daemon --no-problems-report clean check :stageYarnProbe :stageServletProbe :stageElasticLz4Probe :stageSpringProcessProbe :stageOpenWireProbe :stageHessianProbe :stageXmlRpcProbe :stageCollectionsProbe \
+            gradle --no-daemon --no-problems-report clean check :stageYarnProbe :stageServletProbe :stageElasticLz4Probe :stageSpringProcessProbe :stageOpenWireProbe :stageHessianProbe :stageXmlRpcProbe :stageCollectionsProbe :stageHookTargets \
             :agent-jdk25:jdk21Jars :agent-jdk25:stageC3p0Probe \
             :agent-java8:shirudoUpatchJar \
             :agent-java11:shirudoUpatchJar \
@@ -92,6 +92,14 @@ jobs:
         with:
           name: yarn-probe-libs
           path: java-agent/build/yarn-probe/*.jar
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 1
+      - name: Upload hook-target library JARs
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: hook-target-libs
+          path: java-agent/build/hook-targets
           if-no-files-found: error
           compression-level: 0
           retention-days: 1
@@ -202,6 +210,11 @@ jobs:
         with:
           name: yarn-probe-libs
           path: java-agent/build/yarn-probe
+      - name: Download hook-target library JARs
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: hook-target-libs
+          path: java-agent/build/hook-targets
       - name: Run every probe registered for ${{ matrix.line }}
         run: python3 java-agent/probes/run.py run --line "${{ matrix.line }}" --keep-going
       - name: Start the standalone agent on JDK ${{ matrix.java }}
