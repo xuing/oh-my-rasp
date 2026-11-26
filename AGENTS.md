@@ -39,11 +39,15 @@ python3 deploy/shirudo/gen-readmes.py                  # deploy/shirudo READMEs
 
 **Check before you push.** `python3 scripts/check-docs.py` runs in CI (`.github/workflows/docs.yml`). It fails when:
 
-- a generated doc is stale;
+- `gen-detection-coverage.py --check` or `gen-readmes.py --check` fails (a doc they write is stale). The false-positive report needs Docker and is not re-run;
 - a released tag or a pinned version is copied into a doc;
 - a hand-written count appears outside a generated region;
 - the release asset list drifts from the workflow;
-- a relative link does not resolve.
+- a relative link in a hand-written doc does not resolve to a tracked file, or its `#anchor` is not exactly the GitHub slug of an ATX (`#`) heading or an `<a id>` of the target. A setext or image heading is reported once, and links into its file are then not checked. Links inside generated files and regions are left to their generator;
+- a row of an evidence ledger ([vulhub-coverage.md](docs/development/vulhub-coverage.md), [algorithm-coverage.md](docs/development/algorithm-coverage.md)) names an acceptance script that is not tracked, or names scripts and, after the first of them, a backticked rule id from `java-agent/rules/*.json` (a primary id, or a backport family bare or with a `java8_`, `java11_` or `java17_` prefix) that none of the row's scripts contains as a whole word. A row is a list item with its continuation lines; a script is named by its path in backticks or as a link destination. Rule ids before the first script name the row's subject and are not checked. Other backticked words are not checked, except that one starting with `java8_`, `java11_` or `java17_` must be in the catalogue;
+- a script under `java-agent/acceptance/vulhub/` is not named on a `- [x]` row of the Vulhub ledger's Covered Targets.
+
+The ledger checks read only the ledgers and the scripts' text: they do not show that a script passes or that a rule id it contains is asserted rather than mentioned.
 
 When it flags something, link to the fact's home. Do not reword the text just to get past the pattern.
 

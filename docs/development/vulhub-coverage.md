@@ -375,9 +375,11 @@ coverage, separate from the Java 25 behavioral replay suite:
   agent jar carries the L2 scheme-aware JNDI fix `d867d45` and the L3
   execution-vector XSS retightening `292d9f5`) and passed across Tomcat 11, 10,
   and 9: 414 required block-event confirmations, 0 missing. The detector changes
-  hold under live HTTP — `xss_userinput`, `xss_echo`, `jndi_disable_all`, and
-  `request_jndi_lookup` each emitted `action:"block"` on all three Tomcat
-  versions while baseline/normal-traffic checks stayed clean. Evidence: 2,825
+  hold under live HTTP — the XSS user-input and echo rules, `jndi_disable_all`,
+  and `request_jndi_lookup` each emitted `action:"block"` on all three Tomcat
+  versions while baseline/normal-traffic checks stayed clean. The script no
+  longer requires the two XSS rules: markup in request parameters became an
+  explicit policy, and it checks the XSS echo policy by its response body. Evidence: 2,825
   protected events across `logs/tomcat{9,10,11}-protected/events.jsonl`; full
   run log `/tmp/acceptance-l8-1781963376.log`. The companion unit gate
   (`gradle :agent-jdk25:test`) is also green on the same HEAD.
@@ -1562,9 +1564,10 @@ coverage, separate from the Java 25 behavioral replay suite:
   Vulhub's OpenWire `poc.py` frame naming
   `org.springframework.context.support.ClassPathXmlApplicationContext`.
   Baseline creates `/tmp/ohmyrasp-activemq46604-success`; protected mode starts
-  quietly with `agent-java11`, blocks the Spring XML `ProcessBuilder.start`
-  sink with `java11_command_execution_exploit_primitive`, and the marker file
-  is absent.
+  quietly with `agent-java11`, blocks the exploit, and the marker file is
+  absent. This run recorded the block at the Spring XML `ProcessBuilder.start`
+  sink; the script now requires the earlier OpenWire constructor block,
+  `java11_deserialization_protocol_class` at `OpenWire.createThrowable`.
 - [x] Re-run the LTS Tomcat compatibility matrix after the ActiveMQ
   CVE-2023-46604 Spring bean-initialization command-hook refinement on
   2026-06-05: `acceptance/runtime/java17.sh` passed Tomcat 11 -> 10.1 -> 9,
@@ -2041,8 +2044,8 @@ coverage, separate from the Java 25 behavioral replay suite:
   containers for S2-066/CVE-2023-50164 and S2-067/CVE-2024-53677. The
   baseline multipart uploads use `fileFileName=../shell.jsp` and
   `top.fileFileName=../shell.jsp` to write and execute `/shell.jsp`; the
-  protected Java 17 agent blocks both server-side JSP writes with
-  `java17_file_script_write`.
+  protected Java 17 agent blocks both uploads at the multipart filename with
+  `fileUpload_multipart_script`, and no `shell.jsp` is written.
 - [x] Run the first real Java 17 JimuReport Vulhub application acceptance:
   `acceptance/vulhub/jimureport/java17.sh` starts
   `vulhub/jimureport:1.6.0` plus MySQL baseline/protected containers for
@@ -2477,7 +2480,7 @@ The matrix indexes upstream README paths. Checked entries have a ledger or alias
 ### ActiveMQ
 
 - [x] ActiveMQ - CVE-2015-5254 object message browse deserialization (`deserialization_activemq_cve_2015_5254_object_message_browse`; real Java7 legacy boundary: `acceptance/vulhub/activemq/5254-java7-legacy.sh`)
-- [x] ActiveMQ - CVE-2023-46604 OpenWire protocol class loading (`deserialization_activemq_cve_2023_46604_openwire_protocol_class`; historical Java11 acceptance: `acceptance/vulhub/activemq/46604-java11.sh` recorded `java11_command_execution_exploit_primitive` from initialization frames). The [offline layout check](../../java-agent/probes/openwire-throwable/OpenWireLayoutCheck.java) verifies the Java 11 guard at the reflective constructor sites in the 5.17.3 client and legacy protocol JARs. The constructor guard and [Spring process guard](../detection.md#spring-process-initialization) have separate local runtime checks. End-to-end verification in this environment is pending.
+- [x] ActiveMQ - CVE-2023-46604 OpenWire protocol class loading (`deserialization_activemq_cve_2023_46604_openwire_protocol_class`; Java11 acceptance: `acceptance/vulhub/activemq/46604-java11.sh` expects `java11_deserialization_protocol_class` from `OpenWire.createThrowable` for a non-Throwable constructor; a historical run recorded the Java 11 command-execution rule from Spring initialization frames). The [offline layout check](../../java-agent/probes/openwire-throwable/OpenWireLayoutCheck.java) verifies the Java 11 guard at the reflective constructor sites in the 5.17.3 client and legacy protocol JARs. The constructor guard and [Spring process guard](../detection.md#spring-process-initialization) have separate local runtime checks. End-to-end verification in this environment is pending.
 - [x] ActiveMQ - CVE-2016-3088 fileserver PUT/MOVE webroot write (`fileUpload_activemq_fileserver_move`; real Java7 legacy boundary: `acceptance/vulhub/activemq/3088-java7-legacy.sh`)
 - [x] ActiveMQ - CVE-2022-41678 Jolokia Log4j2 `setConfigText` webroot write (`jmx_activemq_jolokia_file_write`; real Java11 acceptance: `acceptance/vulhub/activemq/java11.sh` blocks `java11_jmx_script_file_write`)
 - [x] ActiveMQ - CVE-2022-41678 Jolokia JFR `FlightRecorder.copyTo` webroot write (`jmx_activemq_cve_2022_41678_jfr_copyto_webshell`; real Java11 acceptance: `acceptance/vulhub/activemq/java11.sh` blocks `java11_jmx_script_file_write`)
@@ -2528,8 +2531,8 @@ The matrix indexes upstream README paths. Checked entries have a ledger or alias
 - [x] Apache Struts2 - S2-057 / CVE-2018-11776 namespace path OGNL (`request_struts2_cve_2018_11776_s2057_namespace_path`; real Java8 acceptance: `acceptance/vulhub/struts2/s2057-java8.sh` blocks `java8_command_execution_exploit_primitive`)
 - [x] Apache Struts2 - S2-059 / CVE-2019-0230 forced OGNL request expression (`request_struts2_cve_2019_0230_s2059_forced_ognl`; real Java8 acceptance: `acceptance/vulhub/struts2/s2059-java8.sh` blocks `java8_command_execution_exploit_primitive`)
 - [x] Apache Struts2 - S2-061 / CVE-2020-17530 FreeMarker Execute multipart payload (`request_struts2_cve_2020_17530_s2061_freemarker_execute`; real Java8 acceptance: `acceptance/vulhub/struts2/s2061-java8.sh` blocks `java8_command_execution_exploit_primitive`)
-- [x] Apache Struts2 - S2-066 / CVE-2023-50164 upload filename override (`request_struts2_cve_2023_50164_s2066_upload_filename_override`; real Java17 acceptance: `acceptance/vulhub/struts2/upload-java17.sh` blocks `java17_file_script_write`)
-- [x] Apache Struts2 - S2-067 / CVE-2024-53677 upload filename override (`request_struts2_cve_2024_53677_s2067_upload_filename_override`; real Java17 acceptance: `acceptance/vulhub/struts2/upload-java17.sh` blocks `java17_file_script_write`)
+- [x] Apache Struts2 - S2-066 / CVE-2023-50164 upload filename override (`request_struts2_cve_2023_50164_s2066_upload_filename_override`; real Java17 acceptance: `acceptance/vulhub/struts2/upload-java17.sh` blocks `fileUpload_multipart_script`)
+- [x] Apache Struts2 - S2-067 / CVE-2024-53677 upload filename override (`request_struts2_cve_2024_53677_s2067_upload_filename_override`; real Java17 acceptance: `acceptance/vulhub/struts2/upload-java17.sh` blocks `fileUpload_multipart_script`)
 - [x] Apache Tomcat - CVE-2017-12615 DefaultServlet JSP PUT shape (`request_tomcat_cve_2017_12615_server_side_script_put`; real Java8 acceptance: `acceptance/vulhub/tomcat/12615-java8.sh` blocks `java8_file_script_write`)
 - [x] Apache Tomcat - CVE-2020-1938 / CNVD-2020-10487 Ghostcat AJP include replay (`request_tomcat_cnvd_2020_10487_ghostcat_include`; real Java8 acceptance: `acceptance/vulhub/tomcat/1938-java8.sh` blocks `java8_request_forged_include_attribute`)
 - [x] Apache Tomcat - CVE-2025-24813 session file deserialization (`deserialization_tomcat_cve_2025_24813_session_file`; real Java8 acceptance: `acceptance/vulhub/tomcat/24813-java8.sh` blocks `java8_request_session_file_deserialization`)
@@ -2614,7 +2617,7 @@ The matrix indexes upstream README paths. Checked entries have a ledger or alias
 - [x] Nacos - CVE-2021-29441 `Nacos-Server` identity bypass (`request_nacos_cve_2021_29441_list_users`, `request_nacos_cve_2021_29441_create_user`; real Java8 acceptance: `acceptance/vulhub/nacos/29441-java8.sh` blocks `java8_request_internal_identity`)
 - [x] Nacos - CVE-2021-29442 Derby ops SQL execution (`sql_nacos_cve_2021_29442_derby_ops_code_execution`; real Java8 acceptance: `acceptance/vulhub/nacos/java8.sh` blocks `java8_command_execution_exploit_primitive`)
 - [x] Nexus Repository - CVE-2019-7238 ExtDirect JEXL filter (`request_nexus_cve_2019_7238_extdirect_jexl_filter`; real Java8 acceptance: `acceptance/vulhub/nexus/7238-java8.sh` blocks `java8_jexl_runtime_execution`)
-- [x] Nexus Repository - CVE-2018-16621 ExtDirect role EL predecessor (`request_nexus_cve_2018_16621_extdirect_role_el`; covered by the same real Java8 acceptance as CVE-2020-10204 because `acceptance/vulhub/nexus/10204-java8.sh` proves the shared ExtDirect `coreui_User` `updateRole` `memberNames` EL payload reaches marker-creating command execution and blocks `java8_el_runtime_execution` before marker creation)
+- [x] Nexus Repository - CVE-2018-16621 ExtDirect role EL predecessor (`request_nexus_cve_2018_16621_extdirect_role_el`; covered by the same real Java8 acceptance as CVE-2020-10204 because `acceptance/vulhub/nexus/10204-java8.sh` proves the shared ExtDirect `coreui_User.update` `roles` EL payload reaches marker-creating command execution and blocks `java8_el_runtime_execution` before marker creation)
 - [x] Nexus Repository - CVE-2020-10199 Go group EL (`request_nexus_cve_2020_10199_go_group_el`; real Java8 acceptance: `acceptance/vulhub/nexus/10199-java8.sh` blocks `java8_el_runtime_execution`)
 - [x] Nexus Repository - CVE-2020-10204 ExtDirect role EL (`request_nexus_cve_2020_10204_extdirect_role_el`; real Java8 acceptance: `acceptance/vulhub/nexus/10204-java8.sh` blocks `java8_el_runtime_execution`)
 - [x] Nexus Repository - CVE-2024-4956 encoded slash traversal (`request_nexus_cve_2024_4956_encoded_slash_traversal`; real Java8 acceptance: `acceptance/vulhub/nexus/4956-java8.sh` blocks `java8_file_sensitive_read`)

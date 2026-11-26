@@ -84,15 +84,23 @@ java-agent/
 │   │   ├── asm/                      HookRegistry + HookModule classes
 │   │   ├── detect/                   one detector class per rule family; DetectorEngine runs the request chain
 │   │   ├── hook/                     OhMyRaspHooks, DeserializationGuard, OhMyRaspBlockException
+│   │   ├── model/                    Detection, RequestContext
+│   │   ├── file/                     Windows data-stream names
 │   │   ├── runtime/                  AgentRuntime, DetectionMode, ShirudoDefaults
 │   │   ├── log/JsonEventLogger.java  async NDJSON spool + redaction + telemetry
 │   │   ├── policy/                   local AgentPolicy evaluation
 │   │   └── control/                  legacy direct-cloud client (off by default)
-│   └── src/test/                     JUnit 6 unit tests
+│   └── src/test/                     unit tests
 ├── agent-java8 / -java11 / -java17   self-contained backport builds
+├── shared/                           Java 8 sources compiled into every agent line
 ├── backport-tests/                   the one shared unit-test tree for the three backport builds
+├── probes/                           packaged-agent probes, one directory each; run.py runs them
+├── rules/                            rule scope descriptions (general.json, product.json)
 ├── playground* /                     comparative servlet test apps (Jakarta & Javax)
 ├── acceptance/                       runtime/ JDK suites, vulhub/<component>/ scenarios, lib/
+├── verification/                     TLA+ model of serialization-filter composition
 ├── scripts/                          coverage/FP generators and ledger checks
 └── docs/                             generated DETECTION-COVERAGE.md + FALSE-POSITIVE-REPORT.md
 ```
+
+[AGENTS.md](AGENTS.md#layout) says which command checks a change in each directory and the rules for changing it. [docs/detection.md](../docs/detection.md#primary-agent-detector-layout) maps each kind of evidence to its class in `detect/`.

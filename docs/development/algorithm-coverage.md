@@ -649,7 +649,9 @@ same patch as any new Java-compatible Vulhub replay.
   `/proc/self/environ`, SSH private keys, and Windows hosts files log or block
   `java11_file_sensitive_read`; script or executable writes log or block
   `java11_file_script_write` only when the target path is webroot-like or uses
-  traversal. Ordinary temporary file access and Tomcat `WEB-INF` deployment
+  traversal. Generated plot script content writes use the same path-scoped
+  inspection as Java 8 and emit `java11_file_generated_plot_script_command`.
+  Ordinary temporary file access and Tomcat `WEB-INF` deployment
   artifacts are ignored, and the Java 11 Tomcat matrix baseline-tests and
   protected-block-tests both file behaviors. Metabase 0.40.4 provides real
   Vulhub application evidence for `java11_file_sensitive_read`: the baseline
@@ -659,9 +661,7 @@ same patch as any new Java-compatible Vulhub replay.
   `acceptance/vulhub/coldfusion/26360-java11.sh`: baseline
   CVE-2023-26360 metadata `classname` traversal returns the `cfuser`
   `/proc/self/environ` contents, while protected mode blocks the same local
-  file load at `FileInputStream.open`. Generated plot script content writes use
-  the same path-scoped inspection as Java 8 and emit
-  `java11_file_generated_plot_script_command`.
+  file load at `FileInputStream.open`.
 - The Java 11 era track now hooks `ZipEntry.getName` and SevenZipBinding
   `SimpleInArchiveItemImpl.getPath`, then correlates dangerous archive entry
   names with the next Java file-write sink on the same thread. Absolute paths,
@@ -925,7 +925,8 @@ same patch as any new Java-compatible Vulhub replay.
   `fileFileName=../shell.jsp` and `top.fileFileName=../shell.jsp` multipart
   fields to write `/usr/local/tomcat/webapps/ROOT/shell.jsp` and verifies the
   JSP executes; protected mode injects `agent-java17`, keeps Tomcat WAR
-  deployment quiet, and blocks both writes with `java17_file_script_write`.
+  deployment quiet, and blocks both uploads at the multipart filename with
+  `fileUpload_multipart_script`, so no `shell.jsp` is written.
 - `acceptance/vulhub/jimureport/java17.sh` runs the first real
   JimuReport Java 17 Vulhub application acceptance. It starts
   `vulhub/jimureport:1.6.0` plus MySQL baseline/protected pairs for
@@ -976,146 +977,24 @@ same patch as any new Java-compatible Vulhub replay.
 
 ## Accepted Algorithms
 
-`acceptance/runtime/jdk25.sh` currently requires these algorithms to appear in
-`logs/protected/events.jsonl`:
+`acceptance/runtime/jdk25.sh` requires a block event in the protected log of
+every Tomcat line it runs for each rule in its `required_algorithms` array.
+The list is generated in
+[DETECTION-COVERAGE.md](../../java-agent/docs/DETECTION-COVERAGE.md#rules-the-jdk-25-runtime-suite-requires),
+followed by the primary rules that a packaged-agent probe checks instead. The
+[rule scope tables](../../java-agent/docs/DETECTION-COVERAGE.md#rule-scope) say
+what each rule covers, including the rules that fire only under an explicit
+policy.
 
-- `request_scanner` (explicit header policy at servlet admission, including when [form parsing fails](../detection.md#request-parameter-substring-correlation))
-- `xss_userinput` (explicit request-parameter policy, see [XSS detection](../detection.md#response-side-data-leak-detection))
-- `request_internal_identity`
-- `request_default_jwt_secret`
-- `request_jwt_verification_failure`
-- `request_default_crypto_cookie`
-- `request_serialized_client_state`
-- `request_default_credential`
-- `request_empty_credential_bypass`
-- `request_setup_state_reset`
-- `request_server_side_script_put`
-- `request_upload_filename_override`
-- `request_scheduler_shell_job`
-- `request_debug_process_launch`
-- `request_dynamic_script_config`
-- `request_message_selector_expression`
-- `request_expression_header`
-- `request_jndi_lookup`
-- `request_expression_parameter`
-- `request_json_patch_expression`
-- `request_expression_parameter_name`
-- `request_expression_path`
-- `request_xxe_payload`
-- `request_typed_parameter_deserialization`
-- `request_typed_payload_deserialization`
-- `request_xml_polymorphic_gadget`
-- `request_template_parameter`
-- `request_template_loader_enable`
-- `request_template_source`
-- `request_remote_content_stream`
-- `request_remote_import_script_write`
-- `request_repository_webroot_write`
-- `request_plot_command_injection`
-- `request_sql_sort_injection`
-- `request_sql_identifier_injection`
-- `request_ogc_filter_sql_injection`
-- `request_remote_job_submission`
-- `request_internal_forward`
-- `request_java_bean_pollution`
-- `request_path_confusion`
-- `request_internal_resource`
-- `request_forged_include_attribute`
-- [`command_reflect`](../detection.md#process-launches)
-- `command_userinput`
-- `command_common`
-- `command_error`
-- `command_dnslog`
-- `command_config_listener`
-- `command_config_injection`
-- `readFile_userinput`
-- `readFile_userinput_http`
-- `readFile_userinput_unwanted`
-- `readFile_unwanted`
-- `readFile_outsideWebroot`
-- `readFile_argument_expansion`
-- `writeFile_NTFS`
-- `writeFile_script`
-- `writeFile_reflect`
-- `writeFile_config_path`
-- `writeFile_generated_script`
-- [`deleteFile_userinput`](../detection.md#host-file-deletion)
-- `directory_reflect`
-- [`directory_userinput`](../detection.md#host-directory-listings)
-- `directory_unwanted`
-- `ssrf_userinput`
-- `ssrf_aws`
-- `ssrf_common`
-- `ssrf_obfuscate`
-- `ssrf_protocol`
-- `dns_blacklist`
-- `jndi_disable_all`
-- `jndi_jaas_config`
-- `classloader_remote`
-- `spring_remote_config`
-- `jmx_remote_config`
-- `jmx_file_write`
-- `sql_userinput`
-- `sql_policy`
-- `sql_regex`
-- `sql_exception`
-- `sql_h2_code_execution`
-- `jdbc_h2_init`
-- `sql_derby_code_execution`
-- `jdbc_mysql_deserialization`
-- `deserialization_blacklist`
-- `deserialization_gadget`
-- `deserialization_cluster_message`
-- `deserialization_logging_message`
-- `deserialization_webflow_state`
-- `deserialization_rmi_transport`
-- `deserialization_remoting_transport`
-- `deserialization_jms_object_message`
-- `deserialization_signed_object`
-- `deserialization_session_file`
-- `deserialization_protocol_class`
-- `deserialization_http_invoker`
-- `deserialization_http_object_stream`
-- `deserialization_hessian_type`
-- `deserialization_xmlrpc_serialized`
-- `deserialization_rmi_registry_bind`
-- `deserialization_polymorphic_type`
-- `xml_decoder_runtime`
-- `xml_decoder_webshell`
-- `xxe_protocol`
-- `xxe_file`
-- `include_userinput`
-- `include_protocol`
-- `fileUpload_multipart_script`
-- `fileUpload_multipart_expression`
-- `fileUpload_path_traversal`
-- `fileUpload_multipart_html`
-- `fileUpload_multipart_exe`
-- `fileUpload_java_archive`
-- `fileUpload_webdav`
-- `rename_webshell`
-- `link_webshell`
-- `archive_traversal`
-- `ognl_blacklist`
-- `ognl_length_limit`
-- `spel_runtime`
-- `jexl_runtime`
-- `el_runtime`
-- `javascript_runtime`
-- `jiffle_runtime`
-- `script_runtime`
-- `xpath_runtime`
-- `java_compile_runtime`
-- `template_runtime`
-- `eval_regex`
-- `loadLibrary_unc`
-- `response_dataLeak` (explicit [response data policy](../detection.md#response-side-data-leak-detection))
-- `xss_echo` (explicit [HTML response hook](../detection.md#response-side-data-leak-detection))
-- `webshell_eval`
-- `webshell_command`
-- `webshell_file_put_contents`
-- `webshell_callable`
-- `webshell_ld_preload`
+How some of these rules decide:
+
+- `request_scanner` applies at servlet admission, including when the container
+  rejects [form parsing](../detection.md#request-parameter-substring-correlation).
+- `xss_userinput`, `response_dataLeak` and `xss_echo`:
+  [response-side data-leak detection](../detection.md#response-side-data-leak-detection).
+- `command_reflect`: [process launches](../detection.md#process-launches).
+- `deleteFile_userinput`: [host file deletion](../detection.md#host-file-deletion).
+- `directory_userinput`: [host directory listings](../detection.md#host-directory-listings).
 
 ## Hook Architecture Notes
 
@@ -2020,7 +1899,8 @@ same patch as any new Java-compatible Vulhub replay.
   current Java 8 agent cannot inject into the Java 6u45 runtime. The real Java
   8 WebLogic CVE-2023-21839 Vulhub acceptance proves the baseline IIOP/JNDI
   replay reaches an outbound LDAP listener and protected mode blocks the same
-  remote lookup with `java8_jndi_remote_lookup` before the listener is reached.
+  remote lookup with `java8_jndi_remote_lookup` before the listener is reached
+  (`acceptance/vulhub/weblogic/21839-java8.sh`).
 - `deserialization_jms_object_message` covers dangerous Java deserialization
   gadget classes resolved while a JMS provider is deserializing an
   `ObjectMessage` body. This targets ActiveMQ CVE-2015-5254-style broker or web
@@ -2119,7 +1999,8 @@ same patch as any new Java-compatible Vulhub replay.
   playground and acceptance suite include the Vulhub-shaped authenticated
   `/h2-console/query.do` SQL form post, plus the real Java 8 H2 1.4.197
   baseline/protected acceptance in `acceptance/vulhub/h2database/10054-java8.sh`.
-  The real DataEase CVE-2025-32966 OpenJDK 21 runtime acceptance verifies the
+  The real DataEase CVE-2025-32966 OpenJDK 21 runtime acceptance
+  (`acceptance/vulhub/dataease/32966-java21.sh`) verifies the
   adjacent H2 JDBC constructor sink: baseline creates a marker through a
   forged-token datasource validation request, and protected mode blocks at
   `org.h2.jdbc.JdbcConnection.<init>` with `java17_jdbc_h2_code_execution`.

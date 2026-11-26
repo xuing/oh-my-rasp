@@ -10,7 +10,7 @@
 |--------|------:|
 | Hook families (instrumentation points) | 30 |
 | Detector capabilities (public `detect*` entry points) | 60 |
-| Algorithm signatures asserted in acceptance scripts | 44 |
+| Algorithm signatures asserted in acceptance scripts | 190 |
 | End-to-end vulnerability acceptance scenarios | 136 |
 | JDK lines exercised | 6 |
 
@@ -288,27 +288,85 @@ The descriptions live in the [general catalog](../rules/general.json) and [produ
 
 ## Algorithm signatures asserted in acceptance scripts
 
-The acceptance scripts contain literal event assertions for these algorithm identifiers. Runtime evidence for individual environments is tracked in the [Vulhub coverage ledger](../../docs/development/vulhub-coverage.md).
+Each rule id of the [catalog](../rules/) that a runtime or Vulhub acceptance script writes as a whole token:
+as the algorithm of an expected event, as the argument of a helper that checks one, or in a list the script
+loops over, such as the JDK 25 suite's `required_algorithms`. Runtime evidence for individual environments is
+tracked in the [Vulhub coverage ledger](../../docs/development/vulhub-coverage.md).
 
+- `archive_traversal`
+- `command_config_injection`
+- `command_config_listener`
+- `command_error`
+- `command_userinput`
+- `deserialization_blacklist`
+- `deserialization_cluster_message`
+- `deserialization_gadget`
+- `deserialization_jms_object_message`
+- `deserialization_logging_message`
+- `deserialization_polymorphic_type`
+- `deserialization_remoting_transport`
+- `deserialization_rmi_registry_bind`
+- `deserialization_rmi_transport`
+- `deserialization_session_file`
+- `deserialization_signed_object`
+- `deserialization_webflow_state`
+- `directory_userinput`
+- `dns_blacklist`
+- `el_runtime`
+- `eval_regex`
+- `fileUpload_java_archive`
+- `fileUpload_multipart_exe`
+- `fileUpload_multipart_expression`
+- `fileUpload_multipart_html`
+- `fileUpload_multipart_script`
+- `fileUpload_path_traversal`
+- `fileUpload_webdav`
+- `include_protocol`
+- `include_userinput`
+- `java11_archive_entry_traversal_write`
 - `java11_command_execution_exploit_primitive`
+- `java11_command_execution_shell_meta`
+- `java11_deserialization_gadget_class`
 - `java11_deserialization_protocol_class`
 - `java11_file_script_write`
 - `java11_file_sensitive_read`
+- `java11_java_compile_runtime_execution`
+- `java11_jdbc_derby_code_loading`
 - `java11_jdbc_h2_code_execution`
+- `java11_jdbc_mysql_deserialization`
+- `java11_jmx_remote_config_source`
 - `java11_jmx_script_file_write`
+- `java11_jndi_remote_lookup`
 - `java11_request_default_jwt_secret`
 - `java11_request_typed_payload_deserialization`
 - `java11_script_engine_runtime_execution`
+- `java11_ssrf_loopback_admin`
+- `java11_xml_decoder_runtime_execution`
+- `java11_xml_decoder_script_file_write`
+- `java11_xxe_external_entity_protocol`
+- `java17_archive_entry_traversal_write`
 - `java17_command_execution_exploit_primitive`
+- `java17_command_execution_shell_meta`
+- `java17_deserialization_gadget_class`
+- `java17_file_script_write`
 - `java17_file_sensitive_read`
+- `java17_java_compile_runtime_execution`
+- `java17_jdbc_derby_code_loading`
 - `java17_jdbc_h2_code_execution`
+- `java17_jdbc_mysql_deserialization`
 - `java17_jmx_remote_config_source`
+- `java17_jndi_remote_lookup`
 - `java17_request_debug_process_launch`
 - `java17_request_internal_forward`
 - `java17_request_jwt_verification_failure`
 - `java17_request_ogc_filter_sql_injection`
 - `java17_request_path_confusion`
+- `java17_request_typed_payload_deserialization`
+- `java17_script_engine_runtime_execution`
+- `java17_ssrf_loopback_admin`
 - `java17_ssrf_request_parameter_url`
+- `java17_xml_decoder_runtime_execution`
+- `java17_xml_decoder_script_file_write`
 - `java17_xxe_external_entity_protocol`
 - `java8_archive_entry_traversal_write`
 - `java8_classloader_remote_codebase`
@@ -320,9 +378,12 @@ The acceptance scripts contain literal event assertions for these algorithm iden
 - `java8_file_script_write`
 - `java8_file_sensitive_read`
 - `java8_jaas_jndi_remote_provider`
+- `java8_java_compile_runtime_execution`
+- `java8_jdbc_derby_code_loading`
 - `java8_jdbc_h2_code_execution`
 - `java8_jdbc_mysql_deserialization`
 - `java8_jexl_runtime_execution`
+- `java8_jmx_remote_config_source`
 - `java8_jndi_remote_lookup`
 - `java8_request_default_crypto_cookie`
 - `java8_request_forged_include_attribute`
@@ -331,9 +392,247 @@ The acceptance scripts contain literal event assertions for these algorithm iden
 - `java8_request_remote_job_submission`
 - `java8_request_session_file_deserialization`
 - `java8_request_template_source`
+- `java8_request_typed_payload_deserialization`
 - `java8_script_engine_runtime_execution`
 - `java8_sql_identifier_injection`
+- `java8_ssrf_loopback_admin`
+- `java8_xml_decoder_runtime_execution`
+- `java8_xml_decoder_script_file_write`
 - `java8_xxe_external_entity_protocol`
+- `java_compile_runtime`
+- `javascript_runtime`
+- `jdbc_h2_init`
+- `jdbc_mysql_deserialization`
+- `jexl_runtime`
+- `jiffle_runtime`
+- `jmx_remote_config`
+- `jndi_disable_all`
+- `link_webshell`
+- `loadLibrary_unc`
+- `ognl_blacklist`
+- `ognl_length_limit`
+- `readFile_argument_expansion`
+- `readFile_unwanted`
+- `readFile_userinput`
+- `readFile_userinput_http`
+- `readFile_userinput_unwanted`
+- `rename_webshell`
+- `request_debug_process_launch`
+- `request_default_credential`
+- `request_default_crypto_cookie`
+- `request_default_jwt_secret`
+- `request_dynamic_script_config`
+- `request_empty_credential_bypass`
+- `request_expression_header`
+- `request_expression_parameter`
+- `request_expression_parameter_name`
+- `request_expression_path`
+- `request_forged_include_attribute`
+- `request_internal_forward`
+- `request_internal_identity`
+- `request_internal_resource`
+- `request_java_bean_pollution`
+- `request_jndi_lookup`
+- `request_json_patch_expression`
+- `request_jwt_verification_failure`
+- `request_message_selector_expression`
+- `request_ogc_filter_sql_injection`
+- `request_path_confusion`
+- `request_plot_command_injection`
+- `request_remote_content_stream`
+- `request_remote_import_script_write`
+- `request_repository_webroot_write`
+- `request_scheduler_shell_job`
+- `request_serialized_client_state`
+- `request_server_side_script_put`
+- `request_setup_state_reset`
+- `request_template_loader_enable`
+- `request_template_parameter`
+- `request_template_source`
+- `request_typed_parameter_deserialization`
+- `request_typed_payload_deserialization`
+- `request_upload_filename_override`
+- `request_xml_polymorphic_gadget`
+- `request_xxe_payload`
+- `script_runtime`
+- `spel_runtime`
+- `spring_remote_config`
+- `sql_derby_code_execution`
+- `sql_exception`
+- `sql_h2_code_execution`
+- `sql_policy`
+- `sql_regex`
+- `sql_userinput`
+- `ssrf_aws`
+- `ssrf_common`
+- `ssrf_obfuscate`
+- `ssrf_protocol`
+- `ssrf_userinput`
+- `template_runtime`
+- `webshell_callable`
+- `webshell_command`
+- `webshell_eval`
+- `webshell_file_put_contents`
+- `webshell_ld_preload`
+- `writeFile_config_path`
+- `writeFile_generated_script`
+- `writeFile_reflect`
+- `writeFile_script`
+- `xml_decoder_runtime`
+- `xml_decoder_webshell`
+- `xpath_runtime`
+- `xxe_file`
+- `xxe_protocol`
+
+## Rules the JDK 25 runtime suite requires
+
+[`acceptance/runtime/jdk25.sh`](../acceptance/runtime/jdk25.sh) fails unless the protected log of every Tomcat
+line it runs holds a block event for each identifier in its `required_algorithms` array:
+
+- `request_internal_identity`
+- `request_default_jwt_secret`
+- `request_jwt_verification_failure`
+- `request_default_crypto_cookie`
+- `request_serialized_client_state`
+- `request_default_credential`
+- `request_empty_credential_bypass`
+- `request_setup_state_reset`
+- `request_server_side_script_put`
+- `request_upload_filename_override`
+- `request_scheduler_shell_job`
+- `request_debug_process_launch`
+- `request_dynamic_script_config`
+- `request_message_selector_expression`
+- `request_expression_header`
+- `request_jndi_lookup`
+- `request_expression_parameter`
+- `request_ogc_filter_sql_injection`
+- `request_json_patch_expression`
+- `request_expression_parameter_name`
+- `request_expression_path`
+- `request_xxe_payload`
+- `request_typed_parameter_deserialization`
+- `request_typed_payload_deserialization`
+- `request_xml_polymorphic_gadget`
+- `request_template_parameter`
+- `request_template_loader_enable`
+- `request_template_source`
+- `request_remote_content_stream`
+- `request_remote_import_script_write`
+- `request_repository_webroot_write`
+- `request_plot_command_injection`
+- `request_internal_forward`
+- `request_java_bean_pollution`
+- `request_path_confusion`
+- `request_internal_resource`
+- `request_forged_include_attribute`
+- `command_userinput`
+- `command_error`
+- `command_config_listener`
+- `command_config_injection`
+- `readFile_userinput`
+- `readFile_userinput_http`
+- `readFile_userinput_unwanted`
+- `readFile_unwanted`
+- `readFile_argument_expansion`
+- `writeFile_script`
+- `writeFile_reflect`
+- `writeFile_config_path`
+- `writeFile_generated_script`
+- `directory_userinput`
+- `ssrf_userinput`
+- `ssrf_aws`
+- `ssrf_common`
+- `ssrf_obfuscate`
+- `ssrf_protocol`
+- `dns_blacklist`
+- `jndi_disable_all`
+- `spring_remote_config`
+- `jmx_remote_config`
+- `sql_userinput`
+- `sql_policy`
+- `sql_regex`
+- `sql_exception`
+- `sql_h2_code_execution`
+- `jdbc_h2_init`
+- `sql_derby_code_execution`
+- `jdbc_mysql_deserialization`
+- `deserialization_blacklist`
+- `deserialization_gadget`
+- `deserialization_cluster_message`
+- `deserialization_logging_message`
+- `deserialization_webflow_state`
+- `deserialization_rmi_transport`
+- `deserialization_remoting_transport`
+- `deserialization_jms_object_message`
+- `deserialization_signed_object`
+- `deserialization_session_file`
+- `deserialization_rmi_registry_bind`
+- `deserialization_polymorphic_type`
+- `xml_decoder_runtime`
+- `xml_decoder_webshell`
+- `xxe_protocol`
+- `xxe_file`
+- `include_userinput`
+- `include_protocol`
+- `fileUpload_multipart_script`
+- `fileUpload_multipart_expression`
+- `fileUpload_path_traversal`
+- `fileUpload_multipart_html`
+- `fileUpload_multipart_exe`
+- `fileUpload_java_archive`
+- `fileUpload_webdav`
+- `rename_webshell`
+- `link_webshell`
+- `archive_traversal`
+- `ognl_blacklist`
+- `ognl_length_limit`
+- `spel_runtime`
+- `jexl_runtime`
+- `el_runtime`
+- `javascript_runtime`
+- `jiffle_runtime`
+- `script_runtime`
+- `xpath_runtime`
+- `java_compile_runtime`
+- `template_runtime`
+- `eval_regex`
+- `loadLibrary_unc`
+- `webshell_eval`
+- `webshell_command`
+- `webshell_file_put_contents`
+- `webshell_callable`
+- `webshell_ld_preload`
+
+### Other primary rules a probe checks
+
+These primary-agent rules are not in that array. A [packaged-agent probe](../probes/run.py) names each one
+in its check; the probe runs against the built agent JAR.
+
+| Rule | Probes |
+|------|--------|
+| `classloader_remote` | [rmi-codebase](../probes/rmi-codebase/) |
+| `command_common` | [process-launch](../probes/process-launch/) |
+| `command_dnslog` | [process-launch](../probes/process-launch/) |
+| `command_reflect` | [process-launch](../probes/process-launch/) |
+| `command_spring_remote_init` | [spring-process](../probes/spring-process/) |
+| `deleteFile_userinput` | [file-read](../probes/file-read/) |
+| `deserialization_hessian_type` | [hessian-allocation](../probes/hessian-allocation/) |
+| `deserialization_http_invoker` | [http-invoker](../probes/http-invoker/) |
+| `deserialization_http_object_stream` | [http-invoker](../probes/http-invoker/) |
+| `deserialization_protocol_class` | [openwire-throwable](../probes/openwire-throwable/) |
+| `deserialization_xmlrpc_serialized` | [http-invoker](../probes/http-invoker/) |
+| `directory_reflect` | [file-read](../probes/file-read/) |
+| `directory_unwanted` | [file-read](../probes/file-read/) |
+| `jmx_file_write` | [jmx-dispatch](../probes/jmx-dispatch/) |
+| `jndi_jaas_config` | [jndi-route](../probes/jndi-route/) |
+| `request_remote_job_submission` | [spark-submit](../probes/spark-submit/), [yarn-submit](../probes/yarn-submit/) |
+| `request_scanner` | [servlet-admission](../probes/servlet-admission/) |
+| `response_dataLeak` | [servlet-admission](../probes/servlet-admission/) |
+| `sql_identifier_injection` | [mybatis-mapping](../probes/mybatis-mapping/) |
+| `writeFile_NTFS` | [file-streams](../probes/file-streams/) |
+| `xss_echo` | [servlet-admission](../probes/servlet-admission/) |
+| `xss_userinput` | [servlet-admission](../probes/servlet-admission/) |
 
 ## Tested vulnerability matrix
 
