@@ -142,8 +142,8 @@ public final class RaspRuntime {
       String bakedControl = validControl(bakedProperty(baked, "control"));
       String controlRaw;
       if (lockConfig) {
-        // Only a baked control path counts. Without one nothing is polled, standalone or not: the
-        // default lives in world-writable /tmp and must not steer a locked profile.
+        // Only a baked control path counts. Without one nothing is polled: the default lives in
+        // world-writable /tmp and must not steer a locked profile.
         controlRaw = bakedControl != null ? bakedControl : "none";
       } else {
         controlRaw =
@@ -152,10 +152,11 @@ public final class RaspRuntime {
                 validControl(env.get("OHMYRASP_CONTROL")),
                 bakedControl);
         if (controlRaw == null) {
-          controlRaw = standalone ? "none" : "/tmp/ohmyrasp-control.json";
+          controlRaw = "/tmp/ohmyrasp-control.json";
         }
       }
-      boolean controlDisabled = isControlDisabledValue(controlRaw);
+      // Standalone mode is self-contained and never polls, whatever control path is set.
+      boolean controlDisabled = standalone || isControlDisabledValue(controlRaw);
       Path controlPath = controlDisabled ? null : toPathOrNull(controlRaw);
 
       String bakedLog = bakedProperty(baked, "log");
