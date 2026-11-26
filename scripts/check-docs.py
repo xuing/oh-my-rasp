@@ -79,7 +79,7 @@ GENERATED_FILES = {
     "java-agent/docs/RULE-CASES.md",  # gen-rule-cases.py (from the case files; the rule-cases probe runs them)
     "deploy/shirudo/README.md",  # gen-readmes.py
 }
-GENERATED_FILE_PATTERNS = [re.compile(r"deploy/shirudo/ohmyrasp-[a-z0-9]+/README\.md")]  # gen-readmes.py
+GENERATED_FILE_PATTERNS = [re.compile(r"deploy/shirudo/ohmyrasp(-[a-z0-9]+)?/README\.md")]  # gen-readmes.py
 GENERATED_REGIONS = {"metrics": ("README.md", "README.zh-CN.md")}  # gen-detection-coverage.py
 
 VULHUB_LEDGER = "docs/development/vulhub-coverage.md"
