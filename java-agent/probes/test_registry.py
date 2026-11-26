@@ -60,6 +60,16 @@ class RegistryTest(unittest.TestCase):
                 if fixture.gradle:
                     self.assertIn(fixture.gradle, job, f"{probe.id}: agent.yml's build-agents job does not run {fixture.gradle}")
 
+    def test_a_probe_that_downloads_stages_its_downloads(self):
+        # A runtime row must not fetch from the network: twelve rows fetching the same JAR were
+        # rate-limited by Maven Central. A probe that can download declares a `stage` fixture, so
+        # the build job fetches once and the rows read from disk.
+        for probe in self.probes.values():
+            text = (JAVA_AGENT / "probes" / probe.id / "check.py").read_text()
+            if "urlopen" in text:
+                self.assertTrue(any(fixture.stage for fixture in probe.fixtures),
+                                f"{probe.id}: check.py downloads but probe.toml has no fixture with `stage`")
+
     def test_check_agent_help_lists_the_probes(self):
         # --help runs before Docker is touched. Its usage text is a here-document under `set -u`, so an
         # unescaped variable in it ends the script with "unbound variable".
