@@ -35,6 +35,16 @@ final class JsonEventLoggerTest {
     assertFalse(JsonEventLogger.flagValue(null, null));
   }
 
+  @Test
+  void invalidIntegerPropertyDoesNotHideAValidEnvironmentValue() {
+    // ohmyrasp.latency_sample / OHMYRASP_LATENCY_SAMPLE and ohmyrasp.log.queue / OHMYRASP_LOG_QUEUE.
+    assertEquals(25, JsonEventLogger.intValue("often", "25", 10), "an invalid property");
+    assertEquals(4096, JsonEventLogger.intValue(" ", "4096", 8192), "a blank property");
+    assertEquals(0, JsonEventLogger.intValue("0", "25", 10), "a valid property still wins");
+    assertEquals(10, JsonEventLogger.intValue("often", "sometimes", 10));
+    assertEquals(10, JsonEventLogger.intValue(null, null, 10));
+  }
+
   /**
    * The writer takes the first event and waits for the production write lock, which the test
    * holds, so it holds an undelivered batch. Shutdown must not return before that batch is on disk.

@@ -532,18 +532,31 @@ public final class JsonEventLogger {
   }
 
   private static int intSetting(String property, String env, int fallback) {
-    String value = System.getProperty(property);
+    return intValue(System.getProperty(property), System.getenv(env), fallback);
+  }
+
+  /**
+   * The integer from a system property value and an environment value: the first that holds an
+   * integer decides, so an invalid property does not hide a valid environment value. Neither
+   * means {@code fallback}.
+   */
+  static int intValue(String propertyValue, String envValue, int fallback) {
+    Integer chosen = intOrNull(propertyValue);
+    if (chosen == null) {
+      chosen = intOrNull(envValue);
+    }
+    return chosen == null ? fallback : chosen;
+  }
+
+  private static Integer intOrNull(String value) {
     if (value == null || value.isBlank()) {
-      value = System.getenv(env);
+      return null;
     }
-    if (value != null && !value.isBlank()) {
-      try {
-        return Integer.parseInt(value.trim());
-      } catch (NumberFormatException ignored) {
-        // fall through to default
-      }
+    try {
+      return Integer.valueOf(value.trim());
+    } catch (NumberFormatException e) {
+      return null;
     }
-    return fallback;
   }
 
   /** Minimal telemetry line: a hook-overhead latency sample, not a detection. */
