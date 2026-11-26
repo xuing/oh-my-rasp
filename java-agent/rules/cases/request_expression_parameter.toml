@@ -1,0 +1,35 @@
+[[case]]
+name = "wfs-value-reference-exec"
+kind = "attack"
+via = "request"
+
+[case.request]
+method = "GET"
+uri = "/geoserver/wfs"
+query = "service=WFS&version=2.0.0&request=GetPropertyValue&typeNames=sf:archsites&valueReference=exec(java.lang.Runtime.getRuntime()%2C%27touch%20%2Ftmp%2Fsuccess1%27)"
+headers = { User-Agent = "Mozilla/5.0 (X11; Linux x86_64) Firefox/128.0", Accept = "text/html" }
+
+[case.primary]
+effect = "block"
+rule = "request_expression_parameter"
+
+[case.backport]
+effect = "unreachable"
+why = "the backports have no request-entry rule for this input"
+
+[[case]]
+name = "benign-wfs-value-reference"
+kind = "benign"
+via = "request"
+
+[case.request]
+method = "GET"
+uri = "/geoserver/wfs"
+query = "service=WFS&version=2.0.0&request=GetPropertyValue&typeNames=sf:archsites&valueReference=name"
+headers = { User-Agent = "Mozilla/5.0 (X11; Linux x86_64) Firefox/128.0", Accept = "text/html" }
+
+[case.primary]
+effect = "none"
+
+[case.backport]
+effect = "none"

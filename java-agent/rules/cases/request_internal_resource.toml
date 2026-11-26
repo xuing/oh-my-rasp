@@ -1,0 +1,53 @@
+[[case]]
+name = "encoded-dot-web-inf"
+kind = "attack"
+via = "request"
+
+[case.request]
+method = "GET"
+uri = "/%2e/WEB-INF/web.xml"
+headers = { User-Agent = "Mozilla/5.0 (X11; Linux x86_64) Firefox/128.0", Accept = "text/html" }
+
+[case.primary]
+effect = "block"
+rule = "request_internal_resource"
+
+[case.backport]
+effect = "block"
+rule = "request_path_confusion"
+
+[[case]]
+name = "double-encoded-web-inf-query"
+kind = "attack"
+via = "request"
+
+[case.request]
+method = "GET"
+uri = "/static"
+query = "/%2557EB-INF/web.xml"
+headers = { User-Agent = "Mozilla/5.0 (X11; Linux x86_64) Firefox/128.0", Accept = "text/html" }
+
+[case.primary]
+effect = "block"
+rule = "request_internal_resource"
+
+[case.backport]
+effect = "none"
+why = "the backports' path-confusion check reads the request path, not a resource named in the query string"
+
+[[case]]
+name = "benign-double-encoded-asset"
+kind = "benign"
+via = "request"
+
+[case.request]
+method = "GET"
+uri = "/static"
+query = "/css/%2562ase.css"
+headers = { User-Agent = "Mozilla/5.0 (X11; Linux x86_64) Firefox/128.0", Accept = "text/html" }
+
+[case.primary]
+effect = "none"
+
+[case.backport]
+effect = "none"

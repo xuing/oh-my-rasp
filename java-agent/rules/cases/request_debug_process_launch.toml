@@ -1,0 +1,35 @@
+[[case]]
+name = "debug-process-exe-path"
+kind = "attack"
+via = "request"
+
+[case.request]
+method = "POST"
+uri = "/app/rest/debug/processes"
+query = "exePath=id"
+headers = { User-Agent = "Mozilla/5.0 (X11; Linux x86_64) Firefox/128.0", Accept = "text/html" }
+
+[case.primary]
+effect = "block"
+rule = "request_debug_process_launch"
+
+[case.backport]
+effect = "block"
+rule = "request_debug_process_launch"
+
+[[case]]
+name = "benign-debug-process-locator"
+kind = "benign"
+via = "request"
+
+[case.request]
+method = "POST"
+uri = "/app/rest/debug/processes"
+query = "locator=all"
+headers = { User-Agent = "Mozilla/5.0 (X11; Linux x86_64) Firefox/128.0", Accept = "text/html" }
+
+[case.primary]
+effect = "none"
+
+[case.backport]
+effect = "none"

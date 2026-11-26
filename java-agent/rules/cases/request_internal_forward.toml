@@ -1,0 +1,35 @@
+[[case]]
+name = "jsp-suffix-forward"
+kind = "attack"
+via = "request"
+
+[case.request]
+method = "GET"
+uri = "/hax"
+query = "jsp=%2Fapp%2Frest%2Fusers%3B.jsp"
+headers = { User-Agent = "Mozilla/5.0 (X11; Linux x86_64) Firefox/128.0", Accept = "text/html" }
+
+[case.primary]
+effect = "block"
+rule = "request_internal_forward"
+
+[case.backport]
+effect = "block"
+rule = "request_internal_forward"
+
+[[case]]
+name = "benign-plain-forward"
+kind = "benign"
+via = "request"
+
+[case.request]
+method = "GET"
+uri = "/hax"
+query = "jsp=%2Fapp%2Frest%2Fusers"
+headers = { User-Agent = "Mozilla/5.0 (X11; Linux x86_64) Firefox/128.0", Accept = "text/html" }
+
+[case.primary]
+effect = "none"
+
+[case.backport]
+effect = "none"

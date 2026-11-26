@@ -1,0 +1,54 @@
+[[case]]
+name = "constant-disjunction-in-request"
+kind = "attack"
+via = "request-sink"
+op = "sql.execute"
+args = { sql = "SELECT * FROM users WHERE id = 7 OR 1=1" }
+
+[case.request]
+method = "GET"
+uri = "/app/report"
+query = "id=7"
+headers = { User-Agent = "Mozilla/5.0 (X11; Linux x86_64) Firefox/128.0", Accept = "text/html" }
+
+[case.primary]
+effect = "block"
+rule = "sql_policy"
+
+[case.backport]
+effect = "block"
+rule = "sql_statement_injection"
+
+[[case]]
+name = "constant-disjunction-outside-request"
+kind = "attack"
+via = "sink"
+op = "sql.execute"
+args = { sql = "SELECT * FROM users WHERE id = 7 OR 1=1" }
+
+[case.primary]
+effect = "block"
+rule = "sql_policy"
+
+[case.backport]
+effect = "block"
+rule = "sql_statement_injection"
+
+[[case]]
+name = "benign-in-request"
+kind = "benign"
+via = "request-sink"
+op = "sql.execute"
+args = { sql = "SELECT * FROM users WHERE id = 7" }
+
+[case.request]
+method = "GET"
+uri = "/app/report"
+query = "id=7"
+headers = { User-Agent = "Mozilla/5.0 (X11; Linux x86_64) Firefox/128.0", Accept = "text/html" }
+
+[case.primary]
+effect = "none"
+
+[case.backport]
+effect = "none"

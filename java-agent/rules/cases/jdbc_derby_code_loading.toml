@@ -1,0 +1,48 @@
+[[case]]
+name = "derby-classpath-outside-request"
+kind = "attack"
+via = "sink"
+op = "jdbc.connect"
+args = { url = "jdbc:derby:memory:db;create=true;derby.database.classpath=APP.EXPLOIT" }
+
+[case.primary]
+effect = "unreachable"
+why = "the primary decides Derby code loading from SQL text, not from the JDBC URL"
+
+[case.backport]
+effect = "block"
+rule = "jdbc_derby_code_loading"
+
+[[case]]
+name = "derby-classpath-in-request"
+kind = "attack"
+via = "request-sink"
+op = "jdbc.connect"
+args = { url = "jdbc:derby:memory:db;create=true;derby.database.classpath=APP.EXPLOIT" }
+
+[case.request]
+method = "GET"
+uri = "/app/report"
+query = "id=7"
+headers = { User-Agent = "Mozilla/5.0 (X11; Linux x86_64) Firefox/128.0", Accept = "text/html" }
+
+[case.primary]
+effect = "unreachable"
+why = "the primary decides Derby code loading from SQL text, not from the JDBC URL"
+
+[case.backport]
+effect = "block"
+rule = "jdbc_derby_code_loading"
+
+[[case]]
+name = "benign-derby-memory-url"
+kind = "benign"
+via = "sink"
+op = "jdbc.connect"
+args = { url = "jdbc:derby:memory:reports;create=true" }
+
+[case.primary]
+effect = "none"
+
+[case.backport]
+effect = "none"

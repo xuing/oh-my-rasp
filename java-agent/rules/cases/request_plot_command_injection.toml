@@ -1,0 +1,35 @@
+[[case]]
+name = "yrange-system"
+kind = "attack"
+via = "request"
+
+[case.request]
+method = "GET"
+uri = "/q"
+query = "start=2000/10/21-00:00:00&m=sum:sys.cpu.nice&yrange=[0:system(%27touch%20/tmp/success%27)]&wxh=1516x644&style=linespoint&grid=t&json"
+headers = { User-Agent = "Mozilla/5.0 (X11; Linux x86_64) Firefox/128.0", Accept = "text/html" }
+
+[case.primary]
+effect = "block"
+rule = "request_plot_command_injection"
+
+[case.backport]
+effect = "unreachable"
+why = "the backports have no request-entry rule for this input"
+
+[[case]]
+name = "benign-yrange"
+kind = "benign"
+via = "request"
+
+[case.request]
+method = "GET"
+uri = "/q"
+query = "start=2000/10/21-00:00:00&m=sum:sys.cpu.nice&yrange=[0:100]&key=out%20right%20top&wxh=1516x644&style=linespoint&grid=t&json"
+headers = { User-Agent = "Mozilla/5.0 (X11; Linux x86_64) Firefox/128.0", Accept = "text/html" }
+
+[case.primary]
+effect = "none"
+
+[case.backport]
+effect = "none"

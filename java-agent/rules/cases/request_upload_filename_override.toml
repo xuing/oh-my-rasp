@@ -1,0 +1,35 @@
+[[case]]
+name = "multipart-filename-traversal"
+kind = "attack"
+via = "request"
+
+[case.request]
+method = "POST"
+uri = "/index.action"
+query = "fileFileName=..%2Fshell.jsp"
+headers = { User-Agent = "Mozilla/5.0 (X11; Linux x86_64) Firefox/128.0", Accept = "text/html", Content-Type = "multipart/form-data; boundary=----RuleCase" }
+
+[case.primary]
+effect = "block"
+rule = "request_upload_filename_override"
+
+[case.backport]
+effect = "unreachable"
+why = "the backports have no request-entry rule for this input"
+
+[[case]]
+name = "benign-multipart-filename"
+kind = "benign"
+via = "request"
+
+[case.request]
+method = "POST"
+uri = "/index.action"
+query = "fileFileName=reports%2Fsummary.txt"
+headers = { User-Agent = "Mozilla/5.0 (X11; Linux x86_64) Firefox/128.0", Accept = "text/html", Content-Type = "multipart/form-data; boundary=----RuleCase" }
+
+[case.primary]
+effect = "none"
+
+[case.backport]
+effect = "none"

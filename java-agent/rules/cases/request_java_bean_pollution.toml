@@ -1,0 +1,35 @@
+[[case]]
+name = "class-loader-pipeline"
+kind = "attack"
+via = "request"
+
+[case.request]
+method = "GET"
+uri = "/"
+query = "class.module.classLoader.resources.context.parent.pipeline.first.pattern=%25%7Bc2%7Di"
+headers = { User-Agent = "Mozilla/5.0 (X11; Linux x86_64) Firefox/128.0", Accept = "text/html" }
+
+[case.primary]
+effect = "block"
+rule = "request_java_bean_pollution"
+
+[case.backport]
+effect = "unreachable"
+why = "the backports have no request-entry rule for this input"
+
+[[case]]
+name = "benign-class-named-parameters"
+kind = "benign"
+via = "request"
+
+[case.request]
+method = "GET"
+uri = "/"
+query = "className=com.example.Widget&module=catalog&classLoaderName=app"
+headers = { User-Agent = "Mozilla/5.0 (X11; Linux x86_64) Firefox/128.0", Accept = "text/html" }
+
+[case.primary]
+effect = "none"
+
+[case.backport]
+effect = "none"

