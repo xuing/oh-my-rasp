@@ -323,8 +323,8 @@
   },
   "jdk25": {
    "io/ohmyrasp/agent/BootstrapAgent": {
-    "lambda": 3,
-    "string-concat": 3
+    "lambda": 2,
+    "string-concat": 2
    },
    "io/ohmyrasp/agent/OhMyRaspAgent": {
     "string-concat": 1
@@ -668,7 +668,8 @@
     "string-concat": 2
    },
    "io/ohmyrasp/agent/runtime/AgentRuntime": {
-    "lambda": 5
+    "lambda": 5,
+    "string-concat": 1
    },
    "io/ohmyrasp/agent/runtime/ShirudoDefaults": {
     "string-concat": 2
