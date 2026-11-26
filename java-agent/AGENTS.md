@@ -14,6 +14,7 @@ What lives where under `java-agent/`, which command checks a change, and the rul
 | `probes/` | Packaged-agent probes, one directory each, and the registry that runs them. |
 | `acceptance/` | End-to-end suites: `runtime/` per JDK, `vulhub/<component>/` per Vulhub target. |
 | `rules/` | Rule descriptions. The detection coverage doc is generated from them. |
+| `rules/cases/` | Rule cases: per rule id, inputs and what each engine does with them today, run on every line by the `rule-cases` probe. |
 | `scripts/` | Generators and checkers. |
 
 ## After a change
@@ -45,3 +46,13 @@ java-agent/scripts/check-agent.sh --help               # lines and probes
 **A primary-agent rule lives in its family's detector class.** Hooks in `agent-jdk25` call the class in `agent-jdk25/src/main/java/io/ohmyrasp/agent/detect/` that owns the decision, and its tests are in `<Detector>Test` beside the other detector tests; [docs/detection.md](../docs/detection.md#primary-agent-detector-layout) maps each kind of evidence to its class. `DetectorEngine` holds only the HTTP request chain, whose first-match order `DetectorEngineDispatchTest` pins. Put a helper that a second family needs in a shared utility of the package (`DetectorStrings`, `FilePaths`, `RequestDecoding`, `RequestValues`, `RequestJson`), not in one of the families. To check one family, run `java-agent/scripts/check-agent.sh --tests '*FileAccessDetectorTest'`, with that family's test class in place of `FileAccessDetectorTest`.
 
 **A new rule id needs a description.** Add it to `rules/general.json` or `rules/product.json`, then regenerate the docs as [../AGENTS.md](../AGENTS.md) describes.
+
+**A rule has cases.** `rules/cases/<rule id>.toml` holds inputs for one rule id (the primary id, or the backport family when the primary has no counterpart) and what each engine does with each input today: `block`, `log`, `none` or `unreachable`, with a one-sentence `why` on every attack that is not blocked. The schema is the docstring of [`probes/common/rule_cases.py`](probes/common/rule_cases.py). The `rule-cases` probe starts one JVM per case with the packaged agent in block mode and fails when an engine does something else:
+
+```bash
+java-agent/scripts/check-agent.sh --line java8 rule-cases --file readFile_unwanted     # one file on one line
+java-agent/scripts/check-agent.sh --line jdk25 rule-cases --case passwd-read-in-request  # one case by name
+java-agent/scripts/check-agent.sh --line jdk25 rule-cases --file readFile_unwanted --print-actual
+```
+
+To add a case, write the input with any expectation, run its file with `--print-actual` on one primary and one backport line, paste the `[case.primary]` and `[case.backport]` tables it prints, and write the `why` of each attack that is not blocked. Record what the engines do, not what they should do: a difference between them is data, listed in [docs/RULE-CASES.md](docs/RULE-CASES.md#where-the-engines-differ). Every rule id in the catalogue is covered (an attack case that blocks or logs it, and a benign case in the same file) or listed with its reason in [`rules/cases/uncovered.toml`](rules/cases/uncovered.toml); `scripts/test_rule_cases.py` fails otherwise, and fails for a listed id that cases now cover. Regenerate the summary with `python3 java-agent/scripts/gen-rule-cases.py`.

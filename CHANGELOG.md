@@ -13,6 +13,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   source-derived hook, transformer, algorithm, and Vulhub coverage tables;
   `deploy/shirudo/verify-shirudo-upatch.sh` enforces `--check`.
 - `docs/images/architecture.svg`: architectural overview diagram in root READMEs.
+- Rule cases: `java-agent/rules/cases/<rule id>.toml` records inputs per rule id and what the primary and backport engines do with each today; the `rule-cases` probe runs them on every agent line, `java-agent/rules/cases/uncovered.toml` lists the ids without cases and why, and `java-agent/docs/RULE-CASES.md` summarises them and the cases where the engines differ.
 
 ### Changed
 - The default Compose database is PostgreSQL 19. Existing PostgreSQL 18 deployments can follow the [volume migration and rollback procedure](docs/runbooks/upgrade-downgrade.md#postgresql-18-to-19).
