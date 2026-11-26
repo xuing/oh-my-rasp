@@ -118,6 +118,6 @@ done
 
 echo "$((total - failed)) of $total advisories passed against $(basename "$jar") on $(date +%F) (sha256 $jar_sha)"
 if [ "$failed" -eq 0 ] && [ "${#only[@]}" -eq 0 ]; then
-	echo "all passed: set replayed = \"$(date +%F)\" and replayed_with = \"$(basename "$jar")\" on every entry in deploy/shirudo/fixes.toml, then run gen-readmes.py"
+	echo "all passed: set replayed = \"$(date -u +%F)\" (a UTC date) and replayed_with = \"$(basename "$jar")\" on every entry in deploy/shirudo/fixes.toml, then run gen-readmes.py"
 fi
 [ "$failed" -eq 0 ]

@@ -11,7 +11,7 @@
 # ohmyrasp/Beefile from this file and checks each entry against the evidence ledger and the script.
 # A script that only shows a legacy-JDK or setup/license boundary is not evidence and is refused.
 #
-# `replayed` is the date, and `replayed_with` the JAR, of the last run of the entry's scripts by
+# `replayed` is the UTC date, and `replayed_with` the JAR, of the last run of the entry's scripts by
 # deploy/shirudo/replay-fixes.sh against the universal JAR. The scripts' wording shows what they assert;
 # only a replay shows that the universal JAR passes them. Update both after each replay.
 #
@@ -20,71 +20,71 @@
 [[fix]]
 id = "CVE-2021-44228"
 scripts = ["acceptance/vulhub/log4j/solr-java8.sh"]
-replayed = "2026-11-27"
+replayed = "2026-11-26"
 replayed_with = "ohmyrasp-agent-all.jar"
 
 [[fix]]
 id = "CVE-2022-22965"
 scripts = ["acceptance/vulhub/spring/java11.sh"]
-replayed = "2026-11-27"
+replayed = "2026-11-26"
 replayed_with = "ohmyrasp-agent-all.jar"
 
 [[fix]]
 id = "CVE-2022-22963"
 scripts = ["acceptance/vulhub/spring/function-java8.sh"]
-replayed = "2026-11-27"
+replayed = "2026-11-26"
 replayed_with = "ohmyrasp-agent-all.jar"
 
 [[fix]]
 id = "CVE-2022-22947"
 scripts = ["acceptance/vulhub/spring/gateway-java8.sh"]
-replayed = "2026-11-27"
+replayed = "2026-11-26"
 replayed_with = "ohmyrasp-agent-all.jar"
 
 [[fix]]
 id = "CVE-2017-5638"
 scripts = ["acceptance/vulhub/struts2/s2045-java8.sh", "acceptance/vulhub/struts2/s2046-java8.sh"]
-replayed = "2026-11-27"
+replayed = "2026-11-26"
 replayed_with = "ohmyrasp-agent-all.jar"
 
 [[fix]]
 id = "CVE-2020-17530"
 scripts = ["acceptance/vulhub/struts2/s2061-java8.sh"]
-replayed = "2026-11-27"
+replayed = "2026-11-26"
 replayed_with = "ohmyrasp-agent-all.jar"
 
 [[fix]]
 id = "CVE-2017-18349"
 scripts = ["acceptance/vulhub/fastjson/java8.sh"]
-replayed = "2026-11-27"
+replayed = "2026-11-26"
 replayed_with = "ohmyrasp-agent-all.jar"
 
 [[fix]]
 id = "CVE-2016-4437"
 scripts = ["acceptance/vulhub/shiro/4437-java8.sh"]
-replayed = "2026-11-27"
+replayed = "2026-11-26"
 replayed_with = "ohmyrasp-agent-all.jar"
 
 [[fix]]
 id = "CVE-2020-14882"
 scripts = ["acceptance/vulhub/weblogic/14883-java8.sh"]
-replayed = "2026-11-27"
+replayed = "2026-11-26"
 replayed_with = "ohmyrasp-agent-all.jar"
 
 [[fix]]
 id = "CVE-2017-12615"
 scripts = ["acceptance/vulhub/tomcat/12615-java8.sh"]
-replayed = "2026-11-27"
+replayed = "2026-11-26"
 replayed_with = "ohmyrasp-agent-all.jar"
 
 [[fix]]
 id = "CVE-2019-17558"
 scripts = ["acceptance/vulhub/solr/velocity-java8.sh"]
-replayed = "2026-11-27"
+replayed = "2026-11-26"
 replayed_with = "ohmyrasp-agent-all.jar"
 
 [[fix]]
 id = "CVE-2023-21839"
 scripts = ["acceptance/vulhub/weblogic/21839-java8.sh"]
-replayed = "2026-11-27"
+replayed = "2026-11-26"
 replayed_with = "ohmyrasp-agent-all.jar"

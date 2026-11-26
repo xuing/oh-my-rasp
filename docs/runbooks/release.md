@@ -70,7 +70,7 @@ Before a release that changes agent code, replay the advisories the `ohmyrasp` p
 OHMYRASP_VULHUB_ROOT=<vulhub-checkout> deploy/shirudo/replay-fixes.sh
 ```
 
-When every advisory passes, set `replayed` to the date of the run on each entry of `deploy/shirudo/fixes.toml`, run `python3 deploy/shirudo/gen-readmes.py`, and commit the result. An advisory that fails stays out of `fixes.toml` until it passes. Only a block build lists `fixes`: `deploy/shirudo/ohmyrasp/build.sh --mode monitor` builds from a Beefile without it.
+When every advisory passes, set `replayed` to the UTC date of the run on each entry of `deploy/shirudo/fixes.toml`, run `python3 deploy/shirudo/gen-readmes.py`, and commit the result. An advisory that fails stays out of `fixes.toml` until it passes. Only a block build lists `fixes`: `deploy/shirudo/ohmyrasp/build.sh --mode monitor` builds from a Beefile without it.
 
 If you have already staged the `ohmyrasp-<track>.jar` files under `deploy/shirudo/ohmyrasp-<track>/`, omit `--beefile-only` on `./deploy/shirudo/verify-shirudo-upatch.sh` (pass `--version <version>` if checking non-default Beefile versions) to validate the JAR manifests and `META-INF/ohmyrasp-shirudo.properties` as well.
 

@@ -6,7 +6,7 @@ agent stopping its exploit. gen-readmes.py writes the `fixes = [...]` line of
 deploy/shirudo/ohmyrasp/Beefile from that file and fails its --check when the Beefile differs or
 when an entry no longer holds. An entry holds when:
 
-  - `replayed` is an ISO date, not in the future, and `replayed_with` names the universal JAR
+  - `replayed` is an ISO date in UTC, not in the future, and `replayed_with` names the universal JAR
     (`ohmyrasp-agent-all.jar` or `ohmyrasp.jar`): the date of the last replay-fixes.sh run against it;
   - the ID is one shirudo accepts (1 to 255 bytes of letters, digits, `.`, `_`, `:`, `-`), listed once,
     and there are at most 16 entries;
@@ -121,7 +121,10 @@ def entry_problems(entry: Entry, rows: list[str], docs) -> tuple[list[str], dict
         problems.append(f"{entry.id}: no acceptance script")
     try:
         replayed = datetime.date.fromisoformat(entry.replayed)
-        if replayed > datetime.date.today():
+        # The date is a UTC date. One day of slack: the check must not depend on the time zone
+        # of the machine that runs it, or on a clock that is a few hours off.
+        latest = datetime.datetime.now(datetime.timezone.utc).date() + datetime.timedelta(days=1)
+        if replayed > latest:
             problems.append(f"{entry.id}: replayed = {entry.replayed!r} is in the future")
     except ValueError:
         problems.append(f"{entry.id}: `replayed` must be the ISO date (YYYY-MM-DD) of the last replay-fixes.sh run, "
