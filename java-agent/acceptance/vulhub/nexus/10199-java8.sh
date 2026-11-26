@@ -7,7 +7,7 @@ protected_name="${OHMYRASP_VULHUB_NEXUS_10199_PROTECTED_NAME:-ohmyrasp-vulhub-ne
 baseline_port="${OHMYRASP_VULHUB_NEXUS_10199_BASELINE_PORT:-18685}"
 protected_port="${OHMYRASP_VULHUB_NEXUS_10199_PROTECTED_PORT:-18686}"
 marker="${OHMYRASP_VULHUB_NEXUS_10199_MARKER:-/tmp/ohmyrasp-nexus10199-success}"
-admin_password_file="${OHMYRASP_VULHUB_NEXUS_10199_ADMIN_PASSWORD_FILE:-/tmp/vulhub-ohmyrasp-20260603/nexus/CVE-2020-10199/admin.password}"
+admin_password_file="${OHMYRASP_VULHUB_NEXUS_10199_ADMIN_PASSWORD_FILE:-${OHMYRASP_VULHUB_ROOT:?set OHMYRASP_VULHUB_ROOT to a Vulhub checkout}/nexus/CVE-2020-10199/admin.password}"
 
 script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 repo_root="$(cd -- "${script_dir}/../../../.." && pwd)"

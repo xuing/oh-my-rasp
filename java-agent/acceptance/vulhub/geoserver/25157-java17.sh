@@ -5,7 +5,7 @@ cd "$(dirname "$0")/../../.."
 
 image="${OHMYRASP_VULHUB_GEOSERVER_25157_IMAGE:-vulhub/geoserver:2.22.1}"
 postgres_image="${OHMYRASP_VULHUB_GEOSERVER_25157_POSTGRES_IMAGE:-postgis/postgis:14-3.3-alpine}"
-startup_script="${OHMYRASP_VULHUB_GEOSERVER_25157_STARTUP:-/home/ubuntu/vulhub/geoserver/CVE-2023-25157/startup.sh}"
+startup_script="${OHMYRASP_VULHUB_GEOSERVER_25157_STARTUP:-${OHMYRASP_VULHUB_ROOT:?set OHMYRASP_VULHUB_ROOT to a Vulhub checkout}/geoserver/CVE-2023-25157/startup.sh}"
 baseline_network="${OHMYRASP_VULHUB_GEOSERVER_25157_BASELINE_NETWORK:-ohmyrasp-geoserver-25157-baseline-net}"
 protected_network="${OHMYRASP_VULHUB_GEOSERVER_25157_PROTECTED_NETWORK:-ohmyrasp-geoserver-25157-protected-net}"
 baseline_name="${OHMYRASP_VULHUB_GEOSERVER_25157_BASELINE_NAME:-ohmyrasp-vulhub-geoserver-25157-baseline}"

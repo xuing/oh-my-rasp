@@ -6,7 +6,7 @@ cd "$(dirname "$0")/../../.."
 # shellcheck source=acceptance/lib/agent-build.sh
 source acceptance/lib/agent-build.sh
 host_agent_jar="$(ohmyrasp_agent_jar "$(pwd)/agent-java8/build/libs/ohmyrasp-agent-java8.jar")"
-vulhub_dir="${OHMYRASP_VULHUB_WEBLOGIC_WEAK_PASSWORD_DIR:-/tmp/vulhub-ohmyrasp-20260603/weblogic/weak_password}"
+vulhub_dir="${OHMYRASP_VULHUB_WEBLOGIC_WEAK_PASSWORD_DIR:-${OHMYRASP_VULHUB_ROOT:?set OHMYRASP_VULHUB_ROOT to a Vulhub checkout}/weblogic/weak_password}"
 image="${OHMYRASP_VULHUB_WEBLOGIC_WEAK_PASSWORD_IMAGE:-vulhub/weblogic:10.3.6.0-2017}"
 baseline_name="${OHMYRASP_VULHUB_WEBLOGIC_WEAK_PASSWORD_BASELINE_NAME:-ohmyrasp-weblogic-weak-password-baseline}"
 baseline_port="${OHMYRASP_VULHUB_WEBLOGIC_WEAK_PASSWORD_BASELINE_PORT:-19650}"

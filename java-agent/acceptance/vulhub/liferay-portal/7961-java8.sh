@@ -9,7 +9,7 @@ protected_name="${OHMYRASP_VULHUB_LIFERAY_7961_PROTECTED_NAME:-ohmyrasp-vulhub-l
 baseline_port="${OHMYRASP_VULHUB_LIFERAY_7961_BASELINE_PORT:-18538}"
 protected_port="${OHMYRASP_VULHUB_LIFERAY_7961_PROTECTED_PORT:-18539}"
 http_port="${OHMYRASP_VULHUB_LIFERAY_7961_HTTP_PORT:-8000}"
-readme="${OHMYRASP_VULHUB_LIFERAY_7961_README:-/tmp/vulhub-ohmyrasp-20260603/liferay-portal/CVE-2020-7961/README.md}"
+readme="${OHMYRASP_VULHUB_LIFERAY_7961_README:-${OHMYRASP_VULHUB_ROOT:?set OHMYRASP_VULHUB_ROOT to a Vulhub checkout}/liferay-portal/CVE-2020-7961/README.md}"
 # shellcheck source=acceptance/lib/agent-build.sh
 source acceptance/lib/agent-build.sh
 host_agent_jar="$(ohmyrasp_agent_jar "$(pwd)/agent-java8/build/libs/ohmyrasp-agent-java8.jar")"

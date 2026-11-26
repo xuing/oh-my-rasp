@@ -3,7 +3,7 @@ set -euo pipefail
 
 cd "$(dirname "$0")/../../.."
 
-vulhub_context="${OHMYRASP_VULHUB_ELASTICSEARCH_5531_CONTEXT:-/tmp/vulhub-ohmyrasp-20260603/elasticsearch/CVE-2015-5531}"
+vulhub_context="${OHMYRASP_VULHUB_ELASTICSEARCH_5531_CONTEXT:-${OHMYRASP_VULHUB_ROOT:?set OHMYRASP_VULHUB_ROOT to a Vulhub checkout}/elasticsearch/CVE-2015-5531}"
 image="${OHMYRASP_VULHUB_ELASTICSEARCH_5531_IMAGE:-ohmyrasp/vulhub-elasticsearch:5531}"
 baseline_name="${OHMYRASP_VULHUB_ELASTICSEARCH_5531_BASELINE_NAME:-ohmyrasp-vulhub-elasticsearch-5531-baseline}"
 protected_name="${OHMYRASP_VULHUB_ELASTICSEARCH_5531_PROTECTED_NAME:-ohmyrasp-vulhub-elasticsearch-5531-protected}"

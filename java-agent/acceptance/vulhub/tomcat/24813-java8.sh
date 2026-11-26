@@ -3,7 +3,7 @@ set -euo pipefail
 
 cd "$(dirname "$0")/../../.."
 
-vulhub_dir="${OHMYRASP_VULHUB_TOMCAT_24813_DIR:-/tmp/vulhub-ohmyrasp-20260603/tomcat/CVE-2025-24813}"
+vulhub_dir="${OHMYRASP_VULHUB_TOMCAT_24813_DIR:-${OHMYRASP_VULHUB_ROOT:?set OHMYRASP_VULHUB_ROOT to a Vulhub checkout}/tomcat/CVE-2025-24813}"
 image="${OHMYRASP_VULHUB_TOMCAT_24813_IMAGE:-ohmyrasp/vulhub-tomcat:9.0.97-cve-2025-24813}"
 baseline_name="${OHMYRASP_VULHUB_TOMCAT_24813_BASELINE_NAME:-ohmyrasp-vulhub-tomcat24813-baseline}"
 protected_name="${OHMYRASP_VULHUB_TOMCAT_24813_PROTECTED_NAME:-ohmyrasp-vulhub-tomcat24813-protected}"

@@ -4,7 +4,7 @@ set -euo pipefail
 cd "$(dirname "$0")/../../.."
 
 image="${OHMYRASP_VULHUB_KKFILEVIEW_IMAGE:-vulhub/kkfileview:4.3.0}"
-vulhub_dir="${OHMYRASP_VULHUB_KKFILEVIEW_DIR:-/home/ubuntu/vulhub/kkfileview/4.3-zipslip-rce}"
+vulhub_dir="${OHMYRASP_VULHUB_KKFILEVIEW_DIR:-${OHMYRASP_VULHUB_ROOT:?set OHMYRASP_VULHUB_ROOT to a Vulhub checkout}/kkfileview/4.3-zipslip-rce}"
 sample_odt="${OHMYRASP_VULHUB_KKFILEVIEW_SAMPLE_ODT:-${vulhub_dir}/sample.odt}"
 baseline_name="${OHMYRASP_VULHUB_KKFILEVIEW_BASELINE_NAME:-ohmyrasp-vulhub-kkfileview-baseline}"
 protected_name="${OHMYRASP_VULHUB_KKFILEVIEW_PROTECTED_NAME:-ohmyrasp-vulhub-kkfileview-protected}"

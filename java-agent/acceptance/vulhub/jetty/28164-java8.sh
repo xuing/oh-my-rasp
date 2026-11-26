@@ -4,7 +4,7 @@ set -euo pipefail
 cd "$(dirname "$0")/../../.."
 
 image="${OHMYRASP_VULHUB_JETTY_28164_IMAGE:-vulhub/jetty:9.4.37}"
-src_dir="${OHMYRASP_VULHUB_JETTY_28164_SRC:-/home/ubuntu/vulhub/jetty/CVE-2021-28164/src}"
+src_dir="${OHMYRASP_VULHUB_JETTY_28164_SRC:-${OHMYRASP_VULHUB_ROOT:?set OHMYRASP_VULHUB_ROOT to a Vulhub checkout}/jetty/CVE-2021-28164/src}"
 baseline_name="${OHMYRASP_VULHUB_JETTY_28164_BASELINE_NAME:-ohmyrasp-vulhub-jetty-28164-baseline}"
 protected_name="${OHMYRASP_VULHUB_JETTY_28164_PROTECTED_NAME:-ohmyrasp-vulhub-jetty-28164-protected}"
 baseline_port="${OHMYRASP_VULHUB_JETTY_28164_BASELINE_PORT:-19131}"

@@ -15,6 +15,10 @@ caller's uid, and OHMYRASP_AGENT_JAR can replace the build. This check flags:
     acceptance/lib/agent-build.sh (a `source` of `agent-build.sh.bak` or of another
     directory's `agent-build.sh` does not count, and is flagged).
 
+  - a variable set or defaulted to someone's home directory or to a dated Vulhub snapshot under /tmp: a file
+    from the Vulhub checkout is found through "${OHMYRASP_VULHUB_ROOT:?...}", which a
+    per-script variable may still override.
+
 A comment, whole-line or at the end of a line, is not scanned. Other libraries
 (acceptance/lib/ysoserial.sh) may be sourced.
 
@@ -36,6 +40,9 @@ DOCKER = re.compile(r"\bdocker\b")
 HOST_GRADLE = re.compile(
     r"(?:^|[;&|(`]|\$\()\s*(?:[A-Za-z_]\w*=\S*\s+)*(?:\S*/)?gradlew?(?:\.bat)?(?=\s|$|[;&|)`])"
 )
+# A value that only works on one machine: a variable set or defaulted to a home directory, or the
+# dated Vulhub snapshot. A path inside a container (`docker exec ... /home/app/...`) is not one.
+MACHINE_PATH = re.compile(r"(?::-|=\"?)/(?:home|Users)/[\w.-]+/|/tmp/vulhub-[\w.-]*")
 SOURCE_STATEMENT = re.compile(r"^\s*(?:source|\.)\s+(\S+)")
 # Exactly the helper: `acceptance/lib/agent-build.sh`, optionally after one variable
 # (`"${agent_root}/acceptance/lib/agent-build.sh"`), optionally quoted.
@@ -110,6 +117,9 @@ def violations(text: str) -> list[tuple[int, str]]:
                 sources_helper = True
             else:
                 found.append((number, "sources " + source.group(1) + ", not exactly " + HELPER))
+        if MACHINE_PATH.search(statement):
+            found.append((number, "names a path that exists on one machine; a Vulhub file is "
+                                  '"${OHMYRASP_VULHUB_ROOT:?set OHMYRASP_VULHUB_ROOT to a Vulhub checkout}/<path>"'))
         if GRADLE_IMAGE.search(statement):
             found.append((number, 'names a gradle: image; use "$(ohmyrasp_gradle_image)" from ' + HELPER))
         elif DOCKER.search(statement):

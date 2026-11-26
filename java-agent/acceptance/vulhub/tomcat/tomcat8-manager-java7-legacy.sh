@@ -10,7 +10,7 @@ host_agent_jar="$(ohmyrasp_agent_jar "$(pwd)/agent-java8/build/libs/ohmyrasp-age
 ohmyrasp_build :agent-java8:agentJava8Jar
 
 image="${OHMYRASP_VULHUB_TOMCAT8_MANAGER_IMAGE:-vulhub/tomcat:8.0}"
-vulhub_dir="${OHMYRASP_VULHUB_TOMCAT8_MANAGER_DIR:-/home/ubuntu/vulhub/tomcat/tomcat8}"
+vulhub_dir="${OHMYRASP_VULHUB_TOMCAT8_MANAGER_DIR:-${OHMYRASP_VULHUB_ROOT:?set OHMYRASP_VULHUB_ROOT to a Vulhub checkout}/tomcat/tomcat8}"
 baseline_name="${OHMYRASP_VULHUB_TOMCAT8_MANAGER_BASELINE_NAME:-ohmyrasp-vulhub-tomcat8-manager-baseline}"
 protected_name="${OHMYRASP_VULHUB_TOMCAT8_MANAGER_PROTECTED_NAME:-ohmyrasp-vulhub-tomcat8-manager-protected}"
 baseline_port="${OHMYRASP_VULHUB_TOMCAT8_MANAGER_BASELINE_PORT:-19492}"
