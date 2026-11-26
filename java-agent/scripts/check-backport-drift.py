@@ -19,7 +19,11 @@ and say why in the commit. The recorded files are the list of places where a lin
 syntax, so read their diff in review.
 
 Compared: `build.gradle.kts` and everything under `src/main` of each line. A line's own `src/test`
-is not compared: tests that all three lines share live in `backport-tests/`.
+is not compared: tests that all three lines share live in `backport-tests/`. Build logic outside the
+three modules (the root build file, `gradle/`) is not compared either.
+
+A recorded difference has no position. Moving it between two statements that are otherwise the same
+is not seen, and is harmless: the lines still differ only in that syntax.
 """
 from __future__ import annotations
 
@@ -33,11 +37,18 @@ BASE = "8"
 SIBLINGS = ("11", "17")
 COMPARED = ("build.gradle.kts", "src/main")
 
-# Version tokens, most specific first. `(?!\d)` keeps "java8" from matching inside "java80".
-TOKENS = (
-    (re.compile(r"Opcodes\.V(?:1_8|11|17)(?!\d)"), "Opcodes.V<N>"),
-    (re.compile(r"((?:java|Java|JAVA)[ _-]?)(?:8|11|17)(?!\d)"), r"\1<N>"),
-)
+# A line's own version token, most specific first. Only the token of the line being read is
+# replaced: `Java17` or `Opcodes.V17` inside agent-java11 is left alone and shows up as a difference.
+# `(?!\d)` keeps "java8" from matching inside "java80".
+def tokens(line: str) -> tuple[tuple[re.Pattern[str], str], ...]:
+    opcode = "1_8" if line == "8" else line
+    return (
+        (re.compile(rf"Opcodes\.V{opcode}(?!\d)"), "Opcodes.V<N>"),
+        (re.compile(rf"((?:java|Java|JAVA)[ _-]?){line}(?!\d)"), r"\1<N>"),
+    )
+
+
+TOKENS = {line: tokens(line) for line in (BASE, *SIBLINGS)}
 
 HEADER = """\
 # Differences between agent-java{base} and agent-java{line}, after replacing the version token with <N>.
@@ -46,8 +57,8 @@ HEADER = """\
 """
 
 
-def normalise(text: str) -> str:
-    for pattern, replacement in TOKENS:
+def normalise(text: str, line: str) -> str:
+    for pattern, replacement in TOKENS[line]:
         text = pattern.sub(replacement, text)
     return text
 
@@ -60,7 +71,11 @@ def line_files(root: Path, line: str) -> dict[str, Path]:
         start = module / entry
         paths = [start] if start.is_file() else sorted(p for p in start.rglob("*") if p.is_file())
         for path in paths:
-            found[normalise(path.relative_to(module).as_posix())] = path
+            key = normalise(path.relative_to(module).as_posix(), line)
+            if key in found:
+                raise SystemExit(f"agent-java{line}: {found[key].relative_to(module)} and "
+                                 f"{path.relative_to(module)} have the same name once the version token is replaced")
+            found[key] = path
     return found
 
 
@@ -75,9 +90,9 @@ def hunks(base: list[str], other: list[str]) -> list[str]:
     return out
 
 
-def read_lines(path: Path) -> list[str] | None:
+def read_lines(path: Path, line: str) -> list[str] | None:
     try:
-        return normalise(path.read_text(encoding="utf-8")).splitlines()
+        return normalise(path.read_text(encoding="utf-8"), line).splitlines()
     except UnicodeDecodeError:
         return None
 
@@ -94,7 +109,7 @@ def drift(root: Path, line: str) -> str:
         if key not in base_files:
             out.append(f"== {key}\nonly in agent-java{line}\n")
             continue
-        base, other = read_lines(base_files[key]), read_lines(other_files[key])
+        base, other = read_lines(base_files[key], BASE), read_lines(other_files[key], line)
         if base is None or other is None:
             if base_files[key].read_bytes() != other_files[key].read_bytes():
                 out.append(f"== {key}\nbinary files differ\n")

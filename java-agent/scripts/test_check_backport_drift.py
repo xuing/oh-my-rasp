@@ -50,11 +50,35 @@ class DriftTest(unittest.TestCase):
         text = 'Opcodes.V1_8 "java8_command" Java8RaspHooks "Java 8" JAVA8 ohmyrasp-java8-x io/ohmyrasp/agent/java8'
         for line, opcode in (("11", "V11"), ("17", "V17")):
             other = text.replace("V1_8", opcode).replace("8", line)
-            self.assertEqual(drift.normalise(text), drift.normalise(other))
+            self.assertEqual(drift.normalise(text, "8"), drift.normalise(other, line))
 
     def test_a_longer_number_is_not_a_version_token(self):
-        self.assertNotEqual(drift.normalise("java80"), drift.normalise("java110"))
-        self.assertEqual("release.set(8)", drift.normalise("release.set(8)"))
+        self.assertNotEqual(drift.normalise("java80", "8"), drift.normalise("java110", "11"))
+        self.assertEqual("release.set(8)", drift.normalise("release.set(8)", "8"))
+
+    def test_another_lines_token_is_a_difference(self):
+        # agent-java11 must not carry the java17 class-file constant or a java17 name.
+        self.assertNotEqual(drift.normalise("Opcodes.V1_8", "8"), drift.normalise("Opcodes.V17", "11"))
+        self.assertNotEqual(drift.normalise("java8_command", "8"), drift.normalise("java17_command", "11"))
+        self.tree.same_everywhere("")
+        for line, opcode in (("8", "V1_8"), ("11", "V11"), ("17", "V17")):
+            self.tree.write(line, "src/main/java/io/ohmyrasp/agent/java<N>/Java<N>RaspHooks.java",
+                            hooks(line, f"  int v = Opcodes.{opcode};\n"))
+        self.assertEqual(0, self.tree.run("--update")[0])
+        self.assertNotIn("Opcodes", (self.tree.root / "scripts/backport-drift.java11.diff").read_text())
+        self.tree.write("11", "src/main/java/io/ohmyrasp/agent/java<N>/Java<N>RaspHooks.java",
+                        hooks("11", "  int v = Opcodes.V17;\n"))
+        code, err = self.tree.run()
+        self.assertEqual(1, code)
+        self.assertIn("Opcodes.V17", err)
+
+    def test_two_files_with_the_same_normalised_name_are_refused(self):
+        self.tree.same_everywhere("")
+        self.tree.write("11", "src/main/java/io/ohmyrasp/agent/java<N>/Java<N>Extra.java", "class A {}\n")
+        (self.tree.root / "agent-java11/src/main/java/io/ohmyrasp/agent/java11/Java<N>Extra.java").write_text("class B {}\n")
+        with self.assertRaises(SystemExit) as raised:
+            self.tree.run("--update")
+        self.assertIn("same name", str(raised.exception))
 
     def test_recorded_syntax_difference_passes(self):
         self.tree.same_everywhere("  String a = f();\n")
