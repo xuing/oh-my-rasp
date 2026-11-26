@@ -13,7 +13,12 @@ import java.io.PrintStream;
 import java.io.UnsupportedEncodingException;
 import java.lang.instrument.Instrumentation;
 import java.lang.reflect.Field;
+import java.lang.reflect.InvocationHandler;
+import java.lang.reflect.Method;
+import java.lang.reflect.Proxy;
 import java.net.URL;
+import java.net.URLClassLoader;
+import java.util.concurrent.CountDownLatch;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipOutputStream;
 import org.junit.jupiter.api.AfterEach;
@@ -34,6 +39,7 @@ class AgentLauncherTest {
   void prepare() throws UnsupportedEncodingException {
     clearState();
     Starting.calls = 0;
+    Slow.calls = 0;
     err = new PrintStream(captured, true, "UTF-8");
   }
 
@@ -131,6 +137,75 @@ class AgentLauncherTest {
     assertNull(launch(Starting.class.getName()));
     assertEquals(0, Starting.calls);
     assertTrue(output().contains("\"reason\":\"already-active\",\"java_version\""), output());
+  }
+
+  @Test
+  void anotherDefinitionsStateStopsThisLaunch() throws Exception {
+    // A second definition of AgentLauncher, as the bootstrap loader makes once a line appended its JAR.
+    URL classes = AgentLauncher.class.getProtectionDomain().getCodeSource().getLocation();
+    URLClassLoader loader = new URLClassLoader(new URL[] {classes}, null);
+    try {
+      Class<?> other = loader.loadClass(AgentLauncher.class.getName());
+      Field field = other.getDeclaredField("state");
+      field.setAccessible(true);
+      field.set(null, "installed:java8");
+      assertNull(AgentLauncher.launch("agentmain", "", loadedClasses(AgentLauncher.class, other), getClass(),
+          getClass().getClassLoader(), new String[] {Starting.class.getName(), MISSING, MISSING, MISSING}, err));
+      assertEquals(0, Starting.calls);
+      assertTrue(output().endsWith("\"state\":\"installed:java8\"}"), output());
+      // And the other way round: this definition's state is what the other one reads.
+      field.set(null, null);
+      captured.reset();
+      assertEquals("primary", launch(Starting.class.getName()));
+      Method recorded = other.getDeclaredMethod("recorded", Instrumentation.class);
+      recorded.setAccessible(true);
+      assertEquals("installed:primary", recorded.invoke(null, loadedClasses(other, AgentLauncher.class)));
+    } finally {
+      loader.close();
+    }
+  }
+
+  @Test
+  void racingLaunchesStartOneLine() throws Exception {
+    final CountDownLatch ready = new CountDownLatch(2);
+    final String[] results = new String[2];
+    Thread[] threads = new Thread[2];
+    for (int i = 0; i < 2; i++) {
+      final int index = i;
+      threads[i] = new Thread(new Runnable() {
+        @Override
+        public void run() {
+          ready.countDown();
+          try {
+            ready.await();
+            results[index] = launch(Slow.class.getName());
+          } catch (Exception e) {
+            results[index] = e.toString();
+          }
+        }
+      });
+      threads[i].start();
+    }
+    for (Thread thread : threads) {
+      thread.join(10000);
+    }
+    assertEquals(1, Slow.calls);
+    assertTrue("primary".equals(results[0]) != "primary".equals(results[1]), results[0] + " " + results[1]);
+    assertTrue(output().contains("\"reason\":\"already-active\""), output());
+  }
+
+  /** An Instrumentation whose getAllLoadedClasses returns {@code classes}; nothing else is called. */
+  private static Instrumentation loadedClasses(final Class<?>... classes) {
+    return (Instrumentation) Proxy.newProxyInstance(Instrumentation.class.getClassLoader(),
+        new Class<?>[] {Instrumentation.class}, new InvocationHandler() {
+          @Override
+          public Object invoke(Object proxy, Method method, Object[] args) {
+            if (method.getName().equals("getAllLoadedClasses")) {
+              return classes;
+            }
+            throw new UnsupportedOperationException(method.getName());
+          }
+        });
   }
 
   @Test
@@ -242,6 +317,15 @@ class AgentLauncherTest {
 
     public static void premain(String agentArgs, Instrumentation instrumentation) {
       calls++;
+    }
+  }
+
+  public static final class Slow {
+    static volatile int calls;
+
+    public static void premain(String agentArgs, Instrumentation instrumentation) throws InterruptedException {
+      calls++;
+      Thread.sleep(300);
     }
   }
 

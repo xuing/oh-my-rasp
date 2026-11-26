@@ -4,6 +4,7 @@ import java.io.File;
 import java.io.IOException;
 import java.io.PrintStream;
 import java.lang.instrument.Instrumentation;
+import java.lang.reflect.Field;
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
 import java.net.MalformedURLException;
@@ -37,10 +38,12 @@ public final class AgentLauncher {
 
   /**
    * One start per JVM, across premain and agentmain and across our JARs: null, then {@code starting},
-   * then {@code installed:<line>} or {@code failed:<line>}. Every agent JAR holds this class under the
-   * same name and every entry class resolves it through the system class loader, which defines it once
-   * (or finds the copy the Java 8 JAR's Boot-Class-Path gave the bootstrap loader), so all launches in
-   * a JVM share this field. Guarded by the class monitor.
+   * then {@code installed:<line>} or {@code failed:<line>}. This is the state of this definition of the
+   * class. A JVM can hold more than one: a line appends its JAR to the bootstrap search while it starts,
+   * and an entry the bootstrap loader defines later (the Java 8 JAR's Boot-Class-Path puts its entry
+   * there) resolves a second AgentLauncher from that search. So the launcher decides from every loaded
+   * definition's state ({@link #recorded}), read under {@link #lock()}, and never from anything the
+   * command line can set.
    */
   private static String state;
 
@@ -91,7 +94,7 @@ public final class AgentLauncher {
       PrintStream err)
       throws IOException {
     String javaVersion = json(System.getProperty("java.version", "unknown"));
-    String earlier = currentState();
+    String earlier = recorded(instrumentation);
     if (earlier != null) {
       report(err, skipped(earlier, javaVersion));
       return null;
@@ -110,7 +113,7 @@ public final class AgentLauncher {
       return null;
     }
     String line = LINES[chosen];
-    earlier = claim();
+    earlier = claim(instrumentation);
     if (earlier != null) {
       report(err, skipped(earlier, javaVersion));
       return null;
@@ -135,20 +138,57 @@ public final class AgentLauncher {
     return line;
   }
 
-  private static synchronized String currentState() {
-    return state;
+  /**
+   * The one monitor every definition of this class shares: the system properties object, used only as a
+   * lock. Nothing is stored in it.
+   */
+  private static Object lock() {
+    return System.getProperties();
+  }
+
+  /** The state this definition or any other loaded definition of this class recorded, or null. */
+  private static String recorded(Instrumentation instrumentation) {
+    synchronized (lock()) {
+      return recordedLocked(instrumentation);
+    }
+  }
+
+  private static String recordedLocked(Instrumentation instrumentation) {
+    if (state != null || instrumentation == null) {
+      return state;
+    }
+    String name = AgentLauncher.class.getName();
+    Class<?>[] loaded = instrumentation.getAllLoadedClasses();
+    for (int i = 0; i < loaded.length; i++) {
+      Class<?> other = loaded[i];
+      if (other == null || other == AgentLauncher.class || !name.equals(other.getName())) {
+        continue;
+      }
+      try {
+        Field field = other.getDeclaredField("state");
+        field.setAccessible(true);
+        Object value = field.get(null);
+        if (value instanceof String) {
+          return (String) value;
+        }
+      } catch (Throwable unreadable) {
+        // Not one of our launchers after all; it records nothing we can use.
+      }
+    }
+    return null;
   }
 
   /**
-   * Records {@code starting} unless a state is recorded already. The monitor is held only for the
-   * check and set, never while a line starts.
+   * Records {@code starting} unless this or another definition recorded a state already. The lock is
+   * held only for the check and set, never while a line starts.
    *
    * @return the state recorded earlier, or null when this call recorded {@code starting}
    */
-  private static String claim() {
-    synchronized (AgentLauncher.class) {
-      if (state != null) {
-        return state;
+  private static String claim(Instrumentation instrumentation) {
+    synchronized (lock()) {
+      String earlier = recordedLocked(instrumentation);
+      if (earlier != null) {
+        return earlier;
       }
       state = "starting";
     }
@@ -157,7 +197,7 @@ public final class AgentLauncher {
   }
 
   private static void settle(String outcome) {
-    synchronized (AgentLauncher.class) {
+    synchronized (lock()) {
       state = outcome;
     }
     publish(STATE_PROPERTY, outcome);

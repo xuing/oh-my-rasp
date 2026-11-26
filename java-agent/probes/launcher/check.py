@@ -46,7 +46,7 @@ class Probe:
 
     def run(self, name, options, agents, app_args, extra_classpath=()):
         # With more than one of our JARs in the JVM, show where the shared launcher class was defined.
-        several = len(agents) + ("attach" in app_args) > 1
+        several = len(agents) + (len(app_args) - 2 if "attach" in app_args else 0) > 1
         command = ["java", "-Djdk.attach.allowAttachSelf=true", *(["-verbose:class"] if several else []), *options,
                    *(f"-javaagent:{agent}" for agent in agents),
                    "-cp", os.pathsep.join([*self.classpath, *map(str, extra_classpath)]), "LauncherCheck", *app_args]
@@ -89,13 +89,13 @@ class Run:
         reasons = [(line["event"], line.get("reason")) for line in self.launcher]
         if reasons != launcher_lines:
             self.fail(f"expected launcher lines {launcher_lines}, saw {reasons}")
-        if "-verbose:class" in self.command and len(self.launcher_sources) != 1:
-            # The one-start state is a static field of AgentLauncher: two definitions would mean two states.
-            self.fail(f"AgentLauncher was defined {len(self.launcher_sources)} times: {self.launcher_sources}")
         if started and self.published != agent_track.LINE_NAMES[started[0]]:
             self.fail(f"ohmyrasp.agent.line is {self.published}, expected {agent_track.LINE_NAMES[started[0]]}")
         self.probe.passed += 1
-        source = f" (AgentLauncher from {Path(self.launcher_sources[0]).name})" if self.launcher_sources else ""
+        # Informational: a JVM can define AgentLauncher more than once (a line appends its JAR to the
+        # bootstrap search); the launcher reads every definition's state, so one line still starts.
+        source = (f" (AgentLauncher from {', '.join(Path(s).name for s in self.launcher_sources)})"
+                  if self.launcher_sources else "")
         print(f"ok   {self.name}{source}")
         return self
 
@@ -227,8 +227,15 @@ def main():
 
         probe.run("agentmain alone starts the fitting line", AGENT_OPTIONS, [], [expected, "attach", str(universal)]) \
             .expect([expected], True, [])
+        probe.run("two racing attaches start one line", AGENT_OPTIONS, [],
+                  [expected, "attach", str(universal), str(universal)]).expect([expected], True, [ACTIVE])
         probe.run("agentmain after premain starts nothing", AGENT_OPTIONS, [universal],
                   [expected, "attach", str(universal)]).expect([expected], True, [ACTIVE])
+        # A line appends its JAR to the bootstrap search, and the Java 8 JAR's Boot-Class-Path puts its
+        # entry there too, so this attach reaches a second, bootstrap definition of AgentLauncher. The
+        # one-start state must be the same object for both definitions.
+        probe.run("the Java 8 JAR attached after the universal JAR's premain starts nothing", AGENT_OPTIONS,
+                  [universal], [expected, "attach", str(java8)]).expect([expected], True, [ACTIVE])
 
         # Baked properties (standalone, log=stderr, mode=block, lock_config=true) are read from the JAR the
         # started line's entry class came from. With lock_config the monitor flag is ignored, so the read
