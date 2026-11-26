@@ -58,7 +58,9 @@ final class HookRegistryTest {
     assertTrue(registry.isDirectTarget("it/geosolutions/jaiext/jiffle/Jiffle"));
     assertTrue(registry.isDirectTarget("it/geosolutions/jaiext/jiffle/JiffleBuilder"));
     assertTrue(registry.isDirectTarget("com/sun/tools/javac/api/JavacTool"));
-    assertTrue(registry.isDirectTarget("org/codehaus/janino/SimpleCompiler"));
+    assertTrue(registry.isDirectTarget("org/codehaus/commons/compiler/Cookable"));
+    // janino's compilers carry no source text in cook(String fileName, Reader); Cookable does.
+    assertFalse(registry.isDirectTarget("org/codehaus/janino/SimpleCompiler"));
     assertTrue(registry.isDirectTarget("sun/rmi/registry/RegistryImpl"));
     assertTrue(registry.isDirectTarget("java/beans/Expression"));
     assertTrue(registry.isDirectTarget("java/beans/Statement"));

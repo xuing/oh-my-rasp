@@ -40,17 +40,34 @@ final class LibraryHookTargetsTest {
   }
 
   @Test
-  void janinoCookableInCommonsCompilerPassesTheSourceToTheCompilationDetector() throws Exception {
+  void janinoCookableHooksOnlyTheTwoStringMethodAndAtItsSourceArgument() throws Exception {
     // Cookable is org.codehaus.commons.compiler.Cookable (commons-compiler), not org.codehaus.janino.Cookable.
     byte[] transformed = transform("org/codehaus/commons/compiler/Cookable");
 
-    String source = "ldc=janino load=%d beforeJavaCompilationSource(Ljava/lang/String;Ljava/lang/Object;)V";
-    assertEquals(List.of(String.format(source, 1)), hookCalls(transformed, "cook", "(Ljava/lang/String;)V"));
-    // cook(fileName, source): the source is the second argument, local 2.
-    assertEquals(List.of(String.format(source, 2)), hookCalls(transformed, "cook", "(Ljava/lang/String;Ljava/lang/String;)V"));
-    // The Reader and stream overloads, whose first String is a file name, are not hooked here.
+    // cook(String source) calls cook(String fileName, String source): one hook, there, so one report per
+    // compilation. The source is the second argument, local 2; the first is the file name.
+    assertEquals(List.of(), hookCalls(transformed, "cook", "(Ljava/lang/String;)V"));
+    assertEquals(
+        List.of("ldc=janino load=2 beforeJavaCompilationSource(Ljava/lang/String;Ljava/lang/Object;)V"),
+        hookCalls(transformed, "cook", "(Ljava/lang/String;Ljava/lang/String;)V"));
+    // The Reader and stream overloads hold no text, and their String is a file name.
     assertEquals(List.of(), hookCalls(transformed, "cook", "(Ljava/lang/String;Ljava/io/InputStream;)V"));
     assertEquals(List.of(), hookCalls(transformed, "cook", "(Ljava/io/Reader;)V"));
+    // The janino compilers' own cook(String fileName, Reader) is not hooked: it has no text either.
+    // (The agent still rewrites these classes for its other hooks, so the test looks at the calls.)
+    for (String name :
+        List.of(
+            "org/codehaus/janino/SimpleCompiler",
+            "org/codehaus/janino/ScriptEvaluator",
+            "org/codehaus/janino/ExpressionEvaluator",
+            "org/codehaus/janino/ClassBodyEvaluator")) {
+      byte[] compiler = transform(name);
+      assertEquals(List.of(), hookCalls(compiler, "cook", "(Ljava/lang/String;Ljava/io/Reader;)V"), name);
+    }
+    String scriptCook =
+        "(Ljava/lang/String;[Lorg/codehaus/janino/Java$AbstractCompilationUnit$ImportDeclaration;"
+            + "[[Lorg/codehaus/janino/Java$BlockStatement;[[Lorg/codehaus/janino/Java$MethodDeclarator;)V";
+    assertEquals(List.of(), hookCalls(transform("org/codehaus/janino/ScriptEvaluator"), "cook", scriptCook));
   }
 
   @Test

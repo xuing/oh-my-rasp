@@ -29,6 +29,7 @@ dependencies {
     testImplementation("org.eclipse.jetty.ee10:jetty-ee10-servlet:12.0.41") { isTransitive = false }
     testImplementation("org.eclipse.jetty.ee9:jetty-ee9-nested:12.0.41") { isTransitive = false }
     testImplementation("org.codehaus.janino:commons-compiler:3.1.12") { isTransitive = false }
+    testImplementation("org.codehaus.janino:janino:3.1.12") { isTransitive = false }
     testImplementation("com.github.pagehelper:pagehelper:4.2.1") { isTransitive = false }
     testImplementation("org.apache.struts:struts2-core:7.0.3") { isTransitive = false }
     testImplementation("com.mchange:c3p0:0.15.1")

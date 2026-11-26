@@ -123,12 +123,12 @@ original bytes is a `# chain:` line in the recorded map and is listed below.
 | `jaxen:jaxen` | 2.0.6 | 2 | 0 |
 | `commons-jxpath:commons-jxpath` | 1.3 | 19 | 0 |
 | `commons-jxpath:commons-jxpath` | 1.4.0 | 19 | 0 |
-| `org.codehaus.janino:janino` | 2.7.8 | 3 | 3 |
-| `org.codehaus.janino:janino` | 3.0.16 | 2 | 2 |
-| `org.codehaus.janino:janino` | 3.1.12 | 6 | 6 |
-| `org.codehaus.janino:commons-compiler` | 2.7.8 | 2 | 2 |
-| `org.codehaus.janino:commons-compiler` | 3.0.16 | 3 | 3 |
-| `org.codehaus.janino:commons-compiler` | 3.1.12 | 3 | 3 |
+| `org.codehaus.janino:janino` | 2.7.8 | 2 | 2 |
+| `org.codehaus.janino:janino` | 3.0.16 | 1 | 1 |
+| `org.codehaus.janino:janino` | 3.1.12 | 1 | 1 |
+| `org.codehaus.janino:commons-compiler` | 2.7.8 | 1 | 1 |
+| `org.codehaus.janino:commons-compiler` | 3.0.16 | 2 | 2 |
+| `org.codehaus.janino:commons-compiler` | 3.1.12 | 2 | 2 |
 | `org.springframework:spring-core` | 3.2.18.RELEASE | 1 | 1 |
 | `org.springframework:spring-core` | 4.3.30.RELEASE | 1 | 1 |
 | `org.springframework:spring-core` | 5.3.39 | 1 | 1 |
@@ -342,7 +342,7 @@ signature); each is a place to check that the hook still covers what it did.
 | `org.codehaus.janino:commons-compiler` | 3.0.16 3.1.12 | 2.7.8 | `org/codehaus/commons/compiler/util/resource/DirectoryResourceCreator.getFile` |
 | `org.codehaus.janino:janino` | 2.7.8 | 3.0.16 3.1.12 | `org/codehaus/janino/util/resource/DirectoryResourceCreator.getFile` |
 | `org.codehaus.janino:janino` | 2.7.8 3.0.16 | 3.1.12 | `org/codehaus/janino/Compiler$2.getFile` |
-| `org.codehaus.janino:janino` | 3.1.12 | 2.7.8 3.0.16 | `org/codehaus/janino/ClassBodyEvaluator.cook`<br>`org/codehaus/janino/Compiler$3.getFile`<br>`org/codehaus/janino/ExpressionEvaluator.cook`<br>`org/codehaus/janino/ScriptEvaluator.cook` |
+| `org.codehaus.janino:janino` | 3.1.12 | 2.7.8 3.0.16 | `org/codehaus/janino/Compiler$3.getFile` |
 | `org.eclipse.jetty:jetty-server` | 10.0.26 11.0.26 | 9.4.57.v20241219 12.0.41 | `org/eclipse/jetty/server/MultiPartFormInputStream$MultiPart.getSubmittedFileName`<br>`org/eclipse/jetty/server/MultiPartFormInputStream.getPart`<br>`org/eclipse/jetty/server/MultiPartFormInputStream.getParts`<br>`org/eclipse/jetty/server/MultiPartInputStreamParser$MultiPart.getSubmittedFileName`<br>and 2 more |
 | `org.eclipse.jetty:jetty-server` | 9.4.57.v20241219 10.0.26 11.0.26 | 12.0.41 | `org/eclipse/jetty/server/MultiParts$MultiPartsHttpParser.getPart`<br>`org/eclipse/jetty/server/MultiParts$MultiPartsHttpParser.getParts`<br>`org/eclipse/jetty/server/MultiParts$MultiPartsUtilParser.getPart`<br>`org/eclipse/jetty/server/MultiParts$MultiPartsUtilParser.getParts`<br>and 4 more |
 | `org.elasticsearch:elasticsearch` | 8.19.23 | 7.17.29 | `org/elasticsearch/common/settings/LocallyMountedSecrets.getFile` |
@@ -383,7 +383,7 @@ signature); each is a place to check that the hook still covers what it did.
 | `org.codehaus.janino:commons-compiler` | 3.0.16 3.1.12 | 2.7.8 | `org/codehaus/commons/compiler/util/resource/DirectoryResourceCreator.getFile` |
 | `org.codehaus.janino:janino` | 2.7.8 | 3.0.16 3.1.12 | `org/codehaus/janino/util/resource/DirectoryResourceCreator.getFile` |
 | `org.codehaus.janino:janino` | 2.7.8 3.0.16 | 3.1.12 | `org/codehaus/janino/Compiler$2.getFile` |
-| `org.codehaus.janino:janino` | 3.1.12 | 2.7.8 3.0.16 | `org/codehaus/janino/ClassBodyEvaluator.cook`<br>`org/codehaus/janino/Compiler$3.getFile`<br>`org/codehaus/janino/ExpressionEvaluator.cook`<br>`org/codehaus/janino/ScriptEvaluator.cook` |
+| `org.codehaus.janino:janino` | 3.1.12 | 2.7.8 3.0.16 | `org/codehaus/janino/Compiler$3.getFile` |
 | `org.eclipse.jetty:jetty-server` | 10.0.26 11.0.26 | 9.4.57.v20241219 12.0.41 | `org/eclipse/jetty/server/MultiPartFormInputStream$MultiPart.getSubmittedFileName`<br>`org/eclipse/jetty/server/MultiPartFormInputStream.delete`<br>`org/eclipse/jetty/server/MultiPartFormInputStream.getPart`<br>`org/eclipse/jetty/server/MultiPartFormInputStream.getParts`<br>and 8 more |
 | `org.eclipse.jetty:jetty-server` | 12.0.41 | 9.4.57.v20241219 10.0.26 11.0.26 | `org/eclipse/jetty/server/internal/HttpChannelState.initialize` |
 | `org.eclipse.jetty:jetty-server` | 9.4.57.v20241219 | 10.0.26 11.0.26 12.0.41 | `org/eclipse/jetty/server/Request.getPushBuilder`<br>`org/eclipse/jetty/server/Request.mergeQueryParameters` |

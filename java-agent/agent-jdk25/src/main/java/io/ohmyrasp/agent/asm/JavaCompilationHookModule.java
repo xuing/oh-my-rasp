@@ -7,11 +7,7 @@ final class JavaCompilationHookModule implements HookModule {
   @Override
   public boolean matchesClass(String className) {
     return className.equals("com/sun/tools/javac/api/JavacTool")
-        || className.equals("org/codehaus/commons/compiler/Cookable")
-        || className.equals("org/codehaus/janino/SimpleCompiler")
-        || className.equals("org/codehaus/janino/ScriptEvaluator")
-        || className.equals("org/codehaus/janino/ExpressionEvaluator")
-        || className.equals("org/codehaus/janino/ClassBodyEvaluator");
+        || className.equals("org/codehaus/commons/compiler/Cookable");
   }
 
   @Override
@@ -35,51 +31,26 @@ final class JavaCompilationHookModule implements HookModule {
         };
       }
     }
-    if (className.equals("org/codehaus/commons/compiler/Cookable") && methodName.equals("cook")) {
-      // Janino 2.7 and later keep the base class in commons-compiler. Its String overloads are
-      // cook(String source) and cook(String fileName, String source); the others read a Reader or stream.
-      int sourceArg = cookableSourceArgument(descriptor);
-      if (sourceArg >= 0) {
-        return new EntryAdvice(methodVisitor, access, methodName, descriptor) {
-          @Override
-          protected void onMethodEnter() {
-            push("janino");
-            loadArg(sourceArg);
-            invokeHook("beforeJavaCompilationSource", "(Ljava/lang/String;Ljava/lang/Object;)V");
-          }
-        };
-      }
-    }
-    if (isJaninoCompiler(className) && isJaninoSourceMethod(methodName)) {
-      int sourceArg = firstStringArgument(descriptor);
-      if (sourceArg >= 0) {
-        return new EntryAdvice(methodVisitor, access, methodName, descriptor) {
-          @Override
-          protected void onMethodEnter() {
-            push("janino");
-            loadArg(sourceArg);
-            invokeHook("beforeJavaCompilationSource", "(Ljava/lang/String;Ljava/lang/Object;)V");
-          }
-        };
-      }
+    if (className.equals("org/codehaus/commons/compiler/Cookable")
+        && methodName.equals("cook")
+        && descriptor.equals("(Ljava/lang/String;Ljava/lang/String;)V")) {
+      // Janino 2.7 and later keep the base class in commons-compiler (2.7.8, 3.0.16 and 3.1.12 checked).
+      // cook(String source) calls cook(String fileName, String source), which wraps the text in a
+      // StringReader for cook(String fileName, Reader). That is the one level every String source
+      // passes through and still holds as text, so it is the only one hooked: one compilation, one
+      // report, and no file name read as source. The Reader and InputStream overloads, cookFile and
+      // the evaluators' own cook(String fileName, Reader) are not hooked; a source that exists only
+      // as a Reader or stream is not inspected (docs/detection.md, Runtime Java compilation).
+      return new EntryAdvice(methodVisitor, access, methodName, descriptor) {
+        @Override
+        protected void onMethodEnter() {
+          push("janino");
+          loadArg(1);
+          invokeHook("beforeJavaCompilationSource", "(Ljava/lang/String;Ljava/lang/Object;)V");
+        }
+      };
     }
     return methodVisitor;
-  }
-
-  private static int cookableSourceArgument(String descriptor) {
-    if (descriptor.equals("(Ljava/lang/String;)V")) {
-      return 0;
-    }
-    return descriptor.equals("(Ljava/lang/String;Ljava/lang/String;)V") ? 1 : -1;
-  }
-
-  private static boolean isJaninoCompiler(String className) {
-    return className.startsWith("org/codehaus/janino/");
-  }
-
-  private static boolean isJaninoSourceMethod(String methodName) {
-    String normalized = methodName.toLowerCase(java.util.Locale.ROOT);
-    return normalized.equals("cook") || normalized.startsWith("compile");
   }
 
   private static int javacCompilationUnitsArgument(String descriptor) {
@@ -97,22 +68,5 @@ final class JavaCompilationHookModule implements HookModule {
             && argument.getInternalName().equals("java/lang/Iterable")
         ? 5
         : -1;
-  }
-
-  private static int firstStringArgument(String descriptor) {
-    Type[] arguments;
-    try {
-      arguments = Type.getArgumentTypes(descriptor);
-    } catch (RuntimeException e) {
-      return -1;
-    }
-    for (int index = 0; index < arguments.length; index++) {
-      Type argument = arguments[index];
-      if (argument.getSort() == Type.OBJECT
-          && argument.getInternalName().equals("java/lang/String")) {
-        return index;
-      }
-    }
-    return -1;
   }
 }
