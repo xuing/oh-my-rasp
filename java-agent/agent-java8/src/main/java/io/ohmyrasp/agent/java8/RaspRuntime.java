@@ -1,5 +1,6 @@
 package io.ohmyrasp.agent.java8;
 
+import io.ohmyrasp.agent.util.ControlDocument;
 import java.io.File;
 import java.io.FileWriter;
 import java.io.IOException;
@@ -23,8 +24,6 @@ import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicLong;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
 
 /**
  * Java 8 backport runtime: asynchronous event spool plus control-file-driven
@@ -192,12 +191,49 @@ public final class RaspRuntime {
 
   // ---- detection mode, polled from the control file -----------------------
 
-  private static final Pattern MODE_PATTERN = Pattern.compile("\"mode\"\\s*:\\s*\"([a-zA-Z]+)\"");
+  /**
+   * The detection mode and the control file that steers it. {@link #poll} is one polling step:
+   * the poller thread calls it, and so can a test, without the thread.
+   */
+  static final class ControlState {
+    private volatile Mode mode; // null = unset -> legacy behavior
+    private volatile long controlMtime = Long.MIN_VALUE;
+
+    ControlState(Mode startup) {
+      this.mode = startup;
+    }
+
+    Mode mode() {
+      return mode;
+    }
+
+    void poll(Path path) {
+      try {
+        if (path == null || !Files.isRegularFile(path)) {
+          return;
+        }
+        long mtime = Files.getLastModifiedTime(path).toMillis();
+        if (mtime == controlMtime) {
+          return;
+        }
+        controlMtime = mtime;
+        String text = new String(Files.readAllBytes(path), StandardCharsets.UTF_8);
+        // Only one complete JSON object counts, and only its top-level mode; an unrecognised
+        // value changes nothing. ControlDocument throws IllegalArgumentException otherwise.
+        Mode parsed = parseMode(ControlDocument.topLevelString(text, "mode"));
+        if (parsed != null) {
+          mode = parsed;
+        }
+      } catch (IOException | RuntimeException ignored) {
+        // keep last known good state
+      }
+    }
+  }
+
   private static final Properties BAKED_PROPERTIES = loadBakedProperties();
   private static final Config INITIAL_CONFIG = Config.resolveCurrent();
   private static final Path CONTROL_PATH = INITIAL_CONFIG.controlPath;
-  private static volatile Mode mode = INITIAL_CONFIG.mode; // null = unset -> legacy behavior
-  private static volatile long controlMtime = Long.MIN_VALUE;
+  private static final ControlState CONTROL = new ControlState(INITIAL_CONFIG.mode);
 
   // ---- asynchronous event spool -------------------------------------------
 
@@ -242,17 +278,17 @@ public final class RaspRuntime {
   }
 
   static Mode mode() {
-    return mode;
+    return CONTROL.mode();
   }
 
   /** True only when detection is explicitly OFF. */
   static boolean detectionOff() {
-    return mode == Mode.OFF;
+    return CONTROL.mode() == Mode.OFF;
   }
 
   /** BLOCK or standalone unset permit blocking; MONITOR/OFF do not; legacy falls back to flag. */
   static boolean blockingAllowed(boolean legacyEnvFlag) {
-    return blockingAllowed(INITIAL_CONFIG.standalone, mode, legacyEnvFlag);
+    return blockingAllowed(INITIAL_CONFIG.standalone, CONTROL.mode(), legacyEnvFlag);
   }
 
   static boolean blockingAllowed(boolean standalone, Mode currentMode, boolean legacyEnvFlag) {
@@ -269,26 +305,7 @@ public final class RaspRuntime {
   }
 
   private static void reloadControl() {
-    try {
-      if (CONTROL_PATH == null || !Files.isRegularFile(CONTROL_PATH)) {
-        return;
-      }
-      long mtime = Files.getLastModifiedTime(CONTROL_PATH).toMillis();
-      if (mtime == controlMtime) {
-        return;
-      }
-      controlMtime = mtime;
-      String text = new String(Files.readAllBytes(CONTROL_PATH), StandardCharsets.UTF_8);
-      Matcher matcher = MODE_PATTERN.matcher(text);
-      if (matcher.find()) {
-        Mode parsed = parseMode(matcher.group(1));
-        if (parsed != null) {
-          mode = parsed;
-        }
-      }
-    } catch (IOException | RuntimeException ignored) {
-      // keep last known good state
-    }
+    CONTROL.poll(CONTROL_PATH);
   }
 
   static Mode parseMode(String token) {

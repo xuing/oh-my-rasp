@@ -82,6 +82,34 @@ final class AgentRuntimeTest {
   }
 
   @Test
+  void onlyACompleteControlObjectWithATopLevelModeChangesTheMode() {
+    AgentRuntime runtime = AgentRuntime.newForTesting();
+    runtime.apply("{\"mode\":\"block\"}");
+    for (String text :
+        new String[] {
+          "{\"mode\":\"off\"",
+          "{\"mode\":\"of",
+          "{\"mode\":\"off\",",
+          "{\"policy\":{\"mode\":\"off\"}}",
+          "{\"algorithms\":[{\"mode\":\"off\"}]}",
+          "{\"note\":\"\\\"mode\\\":\\\"off\\\"\"}",
+          "{\"mode\":\"sleep\"}",
+          "{\"mode\":\"off\"} trailing",
+          "{\"mode\":\"off\"}{}",
+          "[{\"mode\":\"off\"}]",
+          "{\"mode\":\"off\",}",
+          "{\"mode\":off}",
+          "{'mode':'off'}",
+          "",
+        }) {
+      runtime.apply(text);
+      assertEquals(DetectionMode.BLOCK, runtime.mode(), text);
+    }
+    runtime.apply("{\"policy\":\"{\\\"mode\\\":\\\"block\\\"}\",\"mode\":\"monitor\"}");
+    assertEquals(DetectionMode.MONITOR, runtime.mode());
+  }
+
+  @Test
   void distributedPolicyIsInstalledOncePerChange() {
     AgentRuntime runtime = AgentRuntime.newForTesting();
     java.util.List<String> installed = new java.util.ArrayList<>();
