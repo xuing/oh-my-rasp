@@ -1,0 +1,52 @@
+[[case]]
+name = "runtime-exec-extension-outside-request"
+kind = "attack"
+via = "sink"
+op = "xpath.evaluate"
+args = { expression = "rt:exec(rt:getRuntime(), 'id')" }
+completes_with = ["XPathExpressionException"]
+
+[case.primary]
+effect = "log"
+rule = "xpath_runtime"
+why = "the primary blocks this only inside an HTTP request; outside one it logs"
+
+[case.backport]
+effect = "unreachable"
+why = "the backports have no XPath expression rule"
+
+[[case]]
+name = "runtime-exec-extension-in-request"
+kind = "attack"
+via = "request-sink"
+op = "xpath.evaluate"
+args = { expression = "rt:exec(rt:getRuntime(), 'id')" }
+completes_with = ["XPathExpressionException"]
+
+[case.request]
+method = "GET"
+uri = "/app/report"
+query = "id=7"
+headers = { User-Agent = "Mozilla/5.0 (X11; Linux x86_64) Firefox/128.0", Accept = "text/html" }
+
+[case.primary]
+effect = "block"
+rule = "xpath_runtime"
+
+[case.backport]
+effect = "unreachable"
+why = "the backports have no XPath expression rule"
+
+[[case]]
+name = "benign-count-items"
+kind = "benign"
+via = "sink"
+op = "xpath.evaluate"
+args = { expression = "count(/r/item)" }
+completes_with = ["XPathExpressionException"]
+
+[case.primary]
+effect = "none"
+
+[case.backport]
+effect = "none"

@@ -1,0 +1,49 @@
+[[case]]
+name = "jsp-through-reflection"
+kind = "attack"
+via = "sink"
+op = "file.write"
+args = { path = "{tmp}/webapps/ROOT/r.jsp", content = "<%= 1 %>", api = "reflection" }
+
+[case.primary]
+effect = "log"
+rule = "writeFile_reflect"
+why = "the primary blocks this only inside an HTTP request; outside one it logs"
+
+[case.backport]
+effect = "block"
+rule = "file_script_write"
+
+[[case]]
+name = "jsp-through-reflection-in-request"
+kind = "attack"
+via = "request-sink"
+op = "file.write"
+args = { path = "{tmp}/webapps/ROOT/r.jsp", content = "<%= 1 %>", api = "reflection" }
+
+[case.request]
+method = "GET"
+uri = "/app/report"
+query = "id=7"
+headers = { User-Agent = "Mozilla/5.0 (X11; Linux x86_64) Firefox/128.0", Accept = "text/html" }
+
+[case.primary]
+effect = "block"
+rule = "writeFile_reflect"
+
+[case.backport]
+effect = "block"
+rule = "file_script_write"
+
+[[case]]
+name = "benign-text-through-reflection"
+kind = "benign"
+via = "sink"
+op = "file.write"
+args = { path = "{tmp}/webapps/ROOT/r.txt", content = "weekly", api = "reflection" }
+
+[case.primary]
+effect = "none"
+
+[case.backport]
+effect = "none"

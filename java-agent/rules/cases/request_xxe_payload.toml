@@ -1,0 +1,35 @@
+[[case]]
+name = "external-entity-parameter"
+kind = "attack"
+via = "request"
+
+[case.request]
+method = "GET"
+uri = "/solr/demo/select"
+query = "wt=xml&defType=xmlparser&q=%3C%3Fxml%20version%3D%221.0%22%3F%3E%3C!DOCTYPE%20message%20%5B%3C!ENTITY%20xxe%20SYSTEM%20%22file%3A%2F%2F%2Fetc%2Fpasswd%22%3E%5D%3E%3Cmessage%3E%26xxe%3B%3C%2Fmessage%3E"
+headers = { User-Agent = "Mozilla/5.0 (X11; Linux x86_64) Firefox/128.0", Accept = "text/html" }
+
+[case.primary]
+effect = "block"
+rule = "request_xxe_payload"
+
+[case.backport]
+effect = "unreachable"
+why = "the backports have no request-entry rule for this input"
+
+[[case]]
+name = "benign-internal-entity-parameter"
+kind = "benign"
+via = "request"
+
+[case.request]
+method = "POST"
+uri = "/xml/preview"
+query = "xml=%3C!DOCTYPE%20note%20%5B%3C!ENTITY%20writer%20%22Alice%22%3E%5D%3E%3Cnote%3E%26writer%3B%3C/note%3E"
+headers = { User-Agent = "Mozilla/5.0 (X11; Linux x86_64) Firefox/128.0", Accept = "text/html" }
+
+[case.primary]
+effect = "none"
+
+[case.backport]
+effect = "none"

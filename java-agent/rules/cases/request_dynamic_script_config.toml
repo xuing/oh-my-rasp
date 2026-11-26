@@ -1,0 +1,35 @@
+[[case]]
+name = "jenkins-check-script-execute"
+kind = "attack"
+via = "request"
+
+[case.request]
+method = "GET"
+uri = "/securityRealm/user/admin/descriptorByName/org.jenkinsci.plugins.scriptsecurity.sandbox.groovy.SecureGroovyScript/checkScript"
+query = "sandbox=true&value=public%20class%20x%20%7B%20public%20x()%7B%20%22touch%20%2Ftmp%2Fsuccess%22.execute()%20%7D%20%7D"
+headers = { User-Agent = "Mozilla/5.0 (X11; Linux x86_64) Firefox/128.0", Accept = "text/html" }
+
+[case.primary]
+effect = "block"
+rule = "request_dynamic_script_config"
+
+[case.backport]
+effect = "unreachable"
+why = "the backports have no request-entry rule for this input"
+
+[[case]]
+name = "benign-jenkins-check-script"
+kind = "benign"
+via = "request"
+
+[case.request]
+method = "GET"
+uri = "/securityRealm/user/admin/descriptorByName/org.jenkinsci.plugins.scriptsecurity.sandbox.groovy.SecureGroovyScript/checkScript"
+query = "sandbox=true&value=public%20class%20x%20%7B%20String%20ok()%7B%20return%20%22hello%22.toUpperCase()%20%7D%20%7D"
+headers = { User-Agent = "Mozilla/5.0 (X11; Linux x86_64) Firefox/128.0", Accept = "text/html" }
+
+[case.primary]
+effect = "none"
+
+[case.backport]
+effect = "none"

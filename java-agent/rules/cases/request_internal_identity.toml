@@ -1,0 +1,35 @@
+[[case]]
+name = "nacos-identity-on-auth-path"
+kind = "attack"
+via = "request"
+
+[case.request]
+method = "GET"
+uri = "/nacos/v1/auth/users"
+query = "pageNo=1&pageSize=9"
+headers = { User-Agent = "Nacos-Server", Accept = "text/html" }
+
+[case.primary]
+effect = "block"
+rule = "request_internal_identity"
+
+[case.backport]
+effect = "block"
+rule = "request_internal_identity"
+
+[[case]]
+name = "benign-browser-on-auth-path"
+kind = "benign"
+via = "request"
+
+[case.request]
+method = "GET"
+uri = "/nacos/v1/auth/users"
+query = "pageNo=1&pageSize=9"
+headers = { User-Agent = "Mozilla/5.0 (X11; Linux x86_64) Firefox/128.0", Accept = "text/html" }
+
+[case.primary]
+effect = "none"
+
+[case.backport]
+effect = "none"

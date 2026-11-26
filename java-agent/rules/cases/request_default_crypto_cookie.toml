@@ -1,0 +1,33 @@
+[[case]]
+name = "shiro-default-key-cookie"
+kind = "attack"
+via = "request"
+
+[case.request]
+method = "GET"
+uri = "/"
+headers = { User-Agent = "Mozilla/5.0 (X11; Linux x86_64) Firefox/128.0", Accept = "text/html", Cookie = "rememberMe=AAECAwQFBgcICQoLDA0OD99XrYvceC/RUMm6dUki3C8=" }
+
+[case.primary]
+effect = "block"
+rule = "request_default_crypto_cookie"
+
+[case.backport]
+effect = "block"
+rule = "request_default_crypto_cookie"
+
+[[case]]
+name = "benign-remember-me-token"
+kind = "benign"
+via = "request"
+
+[case.request]
+method = "GET"
+uri = "/"
+headers = { User-Agent = "Mozilla/5.0 (X11; Linux x86_64) Firefox/128.0", Accept = "text/html", Cookie = "rememberMe=ordinary-user-token" }
+
+[case.primary]
+effect = "none"
+
+[case.backport]
+effect = "none"

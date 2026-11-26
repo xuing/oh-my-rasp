@@ -1,0 +1,83 @@
+[[case]]
+name = "templates-impl-outside-request"
+kind = "attack"
+via = "sink"
+op = "deserialize"
+args = { class = "com.sun.org.apache.xalan.internal.xsltc.trax.TemplatesImpl" }
+completes_with = ["UnsupportedOperationException", "EOFException"]
+
+[case.primary]
+effect = "log"
+rule = "deserialization_blacklist"
+why = "the primary blocks this only inside an HTTP request; outside one it logs"
+
+[case.backport]
+effect = "block"
+rule = "deserialization_gadget_class"
+
+[[case]]
+name = "templates-impl-in-request"
+kind = "attack"
+via = "request-sink"
+op = "deserialize"
+args = { class = "com.sun.org.apache.xalan.internal.xsltc.trax.TemplatesImpl" }
+completes_with = ["UnsupportedOperationException", "EOFException"]
+
+[case.request]
+method = "GET"
+uri = "/app/report"
+query = "id=7"
+headers = { User-Agent = "Mozilla/5.0 (X11; Linux x86_64) Firefox/128.0", Accept = "text/html" }
+
+[case.primary]
+effect = "block"
+rule = "deserialization_blacklist"
+
+[case.backport]
+effect = "block"
+rule = "deserialization_gadget_class"
+
+[[case]]
+name = "benign-integer"
+kind = "benign"
+via = "sink"
+op = "deserialize"
+args = { class = "java.lang.Integer" }
+completes_with = ["UnsupportedOperationException", "EOFException"]
+
+[case.primary]
+effect = "none"
+
+[case.backport]
+effect = "none"
+
+[[case]]
+name = "jdbc-rowset"
+kind = "attack"
+via = "sink"
+op = "deserialize"
+args = { class = "com.sun.rowset.JdbcRowSetImpl" }
+
+[case.primary]
+effect = "log"
+rule = "deserialization_blacklist"
+why = "the primary blocks this only inside an HTTP request; outside one it logs"
+
+[case.backport]
+effect = "block"
+rule = "deserialization_gadget_class"
+
+[[case]]
+name = "bad-attribute-value-alone"
+kind = "attack"
+via = "sink"
+op = "deserialize"
+args = { class = "javax.management.BadAttributeValueExpException" }
+
+[case.primary]
+effect = "none"
+why = "neither engine lists BadAttributeValueExpException by itself; they list the classes a gadget chain wraps in it"
+
+[case.backport]
+effect = "none"
+why = "neither engine lists BadAttributeValueExpException by itself; they list the classes a gadget chain wraps in it"

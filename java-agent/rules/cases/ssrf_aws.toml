@@ -1,0 +1,49 @@
+[[case]]
+name = "metadata-address-outside-request"
+kind = "attack"
+via = "sink"
+op = "net.open"
+args = { url = "http://169.254.169.254/latest/meta-data/" }
+
+[case.primary]
+effect = "log"
+rule = "ssrf_aws"
+why = "the primary blocks this only inside an HTTP request; outside one it logs"
+
+[case.backport]
+effect = "block"
+rule = "ssrf_cloud_metadata"
+
+[[case]]
+name = "metadata-address-in-request"
+kind = "attack"
+via = "request-sink"
+op = "net.open"
+args = { url = "http://169.254.169.254/latest/meta-data/" }
+
+[case.request]
+method = "GET"
+uri = "/app/report"
+query = "id=7"
+headers = { User-Agent = "Mozilla/5.0 (X11; Linux x86_64) Firefox/128.0", Accept = "text/html" }
+
+[case.primary]
+effect = "block"
+rule = "ssrf_aws"
+
+[case.backport]
+effect = "block"
+rule = "ssrf_cloud_metadata"
+
+[[case]]
+name = "benign-loopback-health"
+kind = "benign"
+via = "sink"
+op = "net.open"
+args = { url = "http://127.0.0.1:{port}/health" }
+
+[case.primary]
+effect = "none"
+
+[case.backport]
+effect = "none"

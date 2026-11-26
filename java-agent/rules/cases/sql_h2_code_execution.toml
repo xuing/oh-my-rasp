@@ -1,0 +1,48 @@
+[[case]]
+name = "h2-remote-runscript-outside-request"
+kind = "attack"
+via = "sink"
+op = "sql.execute"
+args = { sql = "RUNSCRIPT FROM 'http://127.0.0.1:1/init.sql'" }
+
+[case.primary]
+effect = "block"
+rule = "sql_h2_code_execution"
+
+[case.backport]
+effect = "unreachable"
+why = "the backports check H2 code execution in the JDBC URL, not in SQL text"
+
+[[case]]
+name = "h2-remote-runscript-in-request"
+kind = "attack"
+via = "request-sink"
+op = "sql.execute"
+args = { sql = "RUNSCRIPT FROM 'http://127.0.0.1:1/init.sql'" }
+
+[case.request]
+method = "GET"
+uri = "/app/report"
+query = "id=7"
+headers = { User-Agent = "Mozilla/5.0 (X11; Linux x86_64) Firefox/128.0", Accept = "text/html" }
+
+[case.primary]
+effect = "block"
+rule = "sql_h2_code_execution"
+
+[case.backport]
+effect = "unreachable"
+why = "the backports check H2 code execution in the JDBC URL, not in SQL text"
+
+[[case]]
+name = "benign-create-table"
+kind = "benign"
+via = "sink"
+op = "sql.execute"
+args = { sql = "CREATE TABLE reports (id INT PRIMARY KEY, title VARCHAR(80))" }
+
+[case.primary]
+effect = "none"
+
+[case.backport]
+effect = "none"

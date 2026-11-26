@@ -330,7 +330,7 @@ cargo build --locked --release
 
 ## Regenerating generated docs
 
-These Markdown files (and the README "By the numbers" regions) are derived from source. Do not edit them by hand. `python3 scripts/check-docs.py` runs the `--check` mode of the detection-coverage and Shirudo README generators in CI and fails when they are stale; the false-positive report is regenerated with its script.
+These Markdown files (and the README "By the numbers" regions) are derived from source. Do not edit them by hand. `python3 scripts/check-docs.py` runs the `--check` mode of the detection-coverage, Shirudo README and rule-case generators in CI and fails when they are stale; the false-positive report is regenerated with its script.
 
 Hand-written docs must not restate release versions, pinned toolchain or image versions, or code-base counts; link to the fact's home instead. The rules and the full list of checks are in [AGENTS.md](AGENTS.md#documentation).
 
@@ -358,6 +358,13 @@ python3 deploy/shirudo/gen-readmes.py              # writes deploy/shirudo/READM
 python3 deploy/shirudo/gen-readmes.py --check      # fails if stale (also run by verify-shirudo-upatch.sh)
 ```
 
+**4. Rule-case summary** (derived from `java-agent/rules/cases/*.toml` alone; the `rule-cases` probe is what runs the cases):
+
+```bash
+python3 java-agent/scripts/gen-rule-cases.py          # writes java-agent/docs/RULE-CASES.md
+python3 java-agent/scripts/gen-rule-cases.py --check  # fails if stale
+```
+
 Commit regenerated docs in the same PR as the code change that triggered them.
 
 ## Adding a new hook family or detector
@@ -365,6 +372,7 @@ Commit regenerated docs in the same PR as the code change that triggered them.
 1. Implement the hook module under `java-agent/agent-jdk25/src/main/java/io/ohmyrasp/agent/asm/` and register it in `HookRegistry.defaults()`.
 2. Add the detector method to the class in `agent-jdk25/src/main/java/io/ohmyrasp/agent/detect/` that owns its family ([docs/detection.md](docs/detection.md#primary-agent-detector-layout) maps each kind of evidence to its class), or to a new `<Family>Detector` when none fits, and call that class from the hook. Only an HTTP request rule joins `DetectorEngine.detectRequest`, where its position in the first-match order is part of its behaviour.
 3. Write unit tests covering the new detection path in that class's `<Detector>Test` under `agent-jdk25/src/test/java/io/ohmyrasp/agent/detect/`.
+   Then give the rule id cases in `java-agent/rules/cases/<rule id>.toml`: an attack the packaged agent catches and a benign input it lets through, with what each engine does with them, or list the id in `java-agent/rules/cases/uncovered.toml` with the reason. [java-agent/AGENTS.md](java-agent/AGENTS.md#rules) ("A rule has cases") says how to run one file on one line and print what an engine did.
 4. Add or extend an acceptance scenario under `java-agent/acceptance/` (`vulhub/<component>/` for a Vulhub target, `runtime/` for the JDK-level suites).
 5. Update `docs/development/algorithm-coverage.md` and, if mapped to a Vulhub scenario, `docs/development/vulhub-coverage.md` in the same patch.
 6. Regenerate `java-agent/docs/DETECTION-COVERAGE.md`, `java-agent/docs/FALSE-POSITIVE-REPORT.md`, and `deploy/shirudo/` READMEs, and verify `bash java-agent/scripts/check-detector-parity.sh`.

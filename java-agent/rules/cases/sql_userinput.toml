@@ -1,0 +1,54 @@
+[[case]]
+name = "request-quote-breakout"
+kind = "attack"
+via = "request-sink"
+op = "sql.execute"
+args = { sql = "SELECT * FROM users WHERE name = 'admin' OR '1'='1'" }
+
+[case.request]
+method = "GET"
+uri = "/app/users"
+query = "name=admin%27+OR+%271%27%3D%271"
+headers = { User-Agent = "Mozilla/5.0 (X11; Linux x86_64) Firefox/128.0", Accept = "text/html" }
+
+[case.primary]
+effect = "block"
+rule = "sql_userinput"
+
+[case.backport]
+effect = "block"
+rule = "sql_statement_injection"
+
+[[case]]
+name = "quote-breakout-outside-request"
+kind = "attack"
+via = "sink"
+op = "sql.execute"
+args = { sql = "SELECT * FROM users WHERE name = 'admin' OR '1'='1'" }
+
+[case.primary]
+effect = "block"
+rule = "sql_policy"
+
+[case.backport]
+effect = "block"
+rule = "sql_statement_injection"
+
+[[case]]
+name = "benign-request-name"
+kind = "benign"
+via = "request-sink"
+op = "sql.execute"
+args = { sql = "SELECT * FROM users WHERE name = 'admin'" }
+
+[case.request]
+method = "GET"
+uri = "/app/users"
+query = "name=admin"
+headers = { User-Agent = "Mozilla/5.0 (X11; Linux x86_64) Firefox/128.0", Accept = "text/html" }
+
+[case.primary]
+effect = "none"
+
+[case.backport]
+effect = "none"

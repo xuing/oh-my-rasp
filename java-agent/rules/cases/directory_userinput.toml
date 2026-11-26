@@ -1,0 +1,97 @@
+[[case]]
+name = "request-lists-etc"
+kind = "attack"
+via = "request-sink"
+op = "file.list"
+args = { path = "/etc" }
+
+[case.request]
+method = "GET"
+uri = "/app/browse"
+query = "dir=%2Fetc"
+headers = { User-Agent = "Mozilla/5.0 (X11; Linux x86_64) Firefox/128.0", Accept = "text/html" }
+
+[case.primary]
+effect = "block"
+rule = "directory_userinput"
+
+[case.backport]
+effect = "block"
+rule = "directory_userinput"
+
+[[case]]
+name = "lists-etc-outside-request"
+kind = "attack"
+via = "sink"
+op = "file.list"
+args = { path = "/etc" }
+
+[case.primary]
+effect = "none"
+why = "the decision needs a request parameter that names the listed directory; outside a request there is none"
+
+[case.backport]
+effect = "none"
+why = "the decision needs a request parameter that names the listed directory; outside a request there is none"
+
+[[case]]
+name = "lists-etc-unrelated-request"
+kind = "attack"
+via = "request-sink"
+op = "file.list"
+args = { path = "/etc" }
+
+[case.request]
+method = "GET"
+uri = "/app/report"
+query = "id=7"
+headers = { User-Agent = "Mozilla/5.0 (X11; Linux x86_64) Firefox/128.0", Accept = "text/html" }
+
+[case.primary]
+effect = "none"
+why = "the decision needs a request parameter that names the listed directory; this request has none"
+
+[case.backport]
+effect = "none"
+why = "the decision needs a request parameter that names the listed directory; this request has none"
+
+[[case]]
+name = "request-lists-etc-nio"
+kind = "attack"
+via = "request-sink"
+op = "file.list"
+args = { path = "/etc", api = "Files.newDirectoryStream" }
+
+[case.request]
+method = "GET"
+uri = "/app/browse"
+query = "dir=%2Fetc"
+headers = { User-Agent = "Mozilla/5.0 (X11; Linux x86_64) Firefox/128.0", Accept = "text/html" }
+
+[case.primary]
+effect = "block"
+rule = "directory_userinput"
+
+[case.backport]
+effect = "block"
+rule = "directory_userinput"
+
+[[case]]
+name = "benign-request-lists-reports"
+kind = "benign"
+via = "request-sink"
+op = "file.list"
+args = { path = "{tmp}/reports" }
+setup = { files = ["{tmp}/reports/a.txt"] }
+
+[case.request]
+method = "GET"
+uri = "/app/browse"
+query = "dir=reports"
+headers = { User-Agent = "Mozilla/5.0 (X11; Linux x86_64) Firefox/128.0", Accept = "text/html" }
+
+[case.primary]
+effect = "none"
+
+[case.backport]
+effect = "none"

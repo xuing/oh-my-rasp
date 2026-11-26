@@ -1,0 +1,35 @@
+[[case]]
+name = "glue-shell-job"
+kind = "attack"
+via = "request"
+
+[case.request]
+method = "POST"
+uri = "/run"
+query = "jobId=1&executorHandler=demoJobHandler&executorParams=demoJobHandler&glueType=GLUE_SHELL&glueSource=touch%20%2Ftmp%2Fsuccess&logId=1"
+headers = { User-Agent = "Mozilla/5.0 (X11; Linux x86_64) Firefox/128.0", Accept = "text/html" }
+
+[case.primary]
+effect = "block"
+rule = "request_scheduler_shell_job"
+
+[case.backport]
+effect = "unreachable"
+why = "the backports have no request-entry rule for this input"
+
+[[case]]
+name = "benign-bean-job"
+kind = "benign"
+via = "request"
+
+[case.request]
+method = "POST"
+uri = "/run"
+query = "jobId=1&executorHandler=demoJobHandler&glueType=BEAN&glueSource=normal%20handler"
+headers = { User-Agent = "Mozilla/5.0 (X11; Linux x86_64) Firefox/128.0", Accept = "text/html" }
+
+[case.primary]
+effect = "none"
+
+[case.backport]
+effect = "none"

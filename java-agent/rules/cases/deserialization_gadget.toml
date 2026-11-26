@@ -1,0 +1,52 @@
+[[case]]
+name = "bean-comparator-outside-request"
+kind = "attack"
+via = "sink"
+op = "deserialize"
+args = { class = "org.apache.commons.beanutils.BeanComparator" }
+stubs = ["org.apache.commons.beanutils.BeanComparator", "org.apache.commons.beanutils.BeanMap"]
+
+[case.primary]
+effect = "log"
+rule = "deserialization_gadget"
+why = "the primary blocks this only inside an HTTP request; outside one it logs"
+
+[case.backport]
+effect = "block"
+rule = "deserialization_gadget_class"
+
+[[case]]
+name = "bean-comparator-in-request"
+kind = "attack"
+via = "request-sink"
+op = "deserialize"
+args = { class = "org.apache.commons.beanutils.BeanComparator" }
+stubs = ["org.apache.commons.beanutils.BeanComparator", "org.apache.commons.beanutils.BeanMap"]
+
+[case.request]
+method = "GET"
+uri = "/app/report"
+query = "id=7"
+headers = { User-Agent = "Mozilla/5.0 (X11; Linux x86_64) Firefox/128.0", Accept = "text/html" }
+
+[case.primary]
+effect = "block"
+rule = "deserialization_gadget"
+
+[case.backport]
+effect = "block"
+rule = "deserialization_gadget_class"
+
+[[case]]
+name = "benign-bean-map"
+kind = "benign"
+via = "sink"
+op = "deserialize"
+args = { class = "org.apache.commons.beanutils.BeanMap" }
+stubs = ["org.apache.commons.beanutils.BeanComparator", "org.apache.commons.beanutils.BeanMap"]
+
+[case.primary]
+effect = "none"
+
+[case.backport]
+effect = "none"

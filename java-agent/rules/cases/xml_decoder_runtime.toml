@@ -1,0 +1,48 @@
+[[case]]
+name = "process-builder-outside-request"
+kind = "attack"
+via = "sink"
+op = "beans.decode"
+args = { document = "<?xml version=\"1.0\"?><java><object class=\"java.lang.ProcessBuilder\"><array class=\"java.lang.String\" length=\"2\"><void index=\"0\"><string>echo</string></void><void index=\"1\"><string>rule-case</string></void></array><void method=\"start\"/></object></java>" }
+
+[case.primary]
+effect = "none"
+why = "the primary decides XMLDecoder statements only inside an HTTP request"
+
+[case.backport]
+effect = "block"
+rule = "xml_decoder_runtime_execution"
+
+[[case]]
+name = "process-builder-in-request"
+kind = "attack"
+via = "request-sink"
+op = "beans.decode"
+args = { document = "<?xml version=\"1.0\"?><java><object class=\"java.lang.ProcessBuilder\"><array class=\"java.lang.String\" length=\"2\"><void index=\"0\"><string>echo</string></void><void index=\"1\"><string>rule-case</string></void></array><void method=\"start\"/></object></java>" }
+
+[case.request]
+method = "GET"
+uri = "/app/report"
+query = "id=7"
+headers = { User-Agent = "Mozilla/5.0 (X11; Linux x86_64) Firefox/128.0", Accept = "text/html" }
+
+[case.primary]
+effect = "block"
+rule = "xml_decoder_runtime"
+
+[case.backport]
+effect = "block"
+rule = "xml_decoder_runtime_execution"
+
+[[case]]
+name = "benign-array-list"
+kind = "benign"
+via = "sink"
+op = "beans.decode"
+args = { document = "<?xml version=\"1.0\"?><java><object class=\"java.util.ArrayList\"><void method=\"add\"><string>weekly</string></void></object></java>" }
+
+[case.primary]
+effect = "none"
+
+[case.backport]
+effect = "none"

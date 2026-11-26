@@ -1,0 +1,51 @@
+[[case]]
+name = "ftp-url-outside-request"
+kind = "attack"
+via = "sink"
+op = "net.open"
+args = { url = "ftp://127.0.0.1:1/etc/passwd" }
+completes_with = ["ConnectException"]
+
+[case.primary]
+effect = "log"
+rule = "ssrf_protocol"
+why = "the primary blocks this only inside an HTTP request; outside one it logs"
+
+[case.backport]
+effect = "unreachable"
+why = "the backports check outbound HTTP destinations only, not the URL scheme"
+
+[[case]]
+name = "ftp-url-in-request"
+kind = "attack"
+via = "request-sink"
+op = "net.open"
+args = { url = "ftp://127.0.0.1:1/etc/passwd" }
+completes_with = ["ConnectException"]
+
+[case.request]
+method = "GET"
+uri = "/app/report"
+query = "id=7"
+headers = { User-Agent = "Mozilla/5.0 (X11; Linux x86_64) Firefox/128.0", Accept = "text/html" }
+
+[case.primary]
+effect = "block"
+rule = "ssrf_protocol"
+
+[case.backport]
+effect = "unreachable"
+why = "the backports check outbound HTTP destinations only, not the URL scheme"
+
+[[case]]
+name = "benign-http-url"
+kind = "benign"
+via = "sink"
+op = "net.open"
+args = { url = "http://127.0.0.1:{port}/weekly" }
+
+[case.primary]
+effect = "none"
+
+[case.backport]
+effect = "none"

@@ -1,0 +1,48 @@
+[[case]]
+name = "plot-directive-outside-request"
+kind = "attack"
+via = "sink"
+op = "file.write"
+args = { path = "{tmp}/charts/chart.plot", content = "set yrange [0:system(0)]\n" }
+
+[case.primary]
+effect = "unreachable"
+why = "the primary has no plot-stream write rule; it reads plot commands at request entry (request_plot_command_injection)"
+
+[case.backport]
+effect = "block"
+rule = "file_generated_plot_script_command"
+
+[[case]]
+name = "plot-directive-in-request"
+kind = "attack"
+via = "request-sink"
+op = "file.write"
+args = { path = "{tmp}/charts/chart.plot", content = "set yrange [0:system(0)]\n" }
+
+[case.request]
+method = "GET"
+uri = "/app/report"
+query = "id=7"
+headers = { User-Agent = "Mozilla/5.0 (X11; Linux x86_64) Firefox/128.0", Accept = "text/html" }
+
+[case.primary]
+effect = "unreachable"
+why = "the primary has no plot-stream write rule; it reads plot commands at request entry (request_plot_command_injection)"
+
+[case.backport]
+effect = "block"
+rule = "file_generated_plot_script_command"
+
+[[case]]
+name = "benign-plot-title"
+kind = "benign"
+via = "sink"
+op = "file.write"
+args = { path = "{tmp}/charts/chart.plot", content = "set title 'weekly'\n" }
+
+[case.primary]
+effect = "none"
+
+[case.backport]
+effect = "none"

@@ -1,0 +1,35 @@
+[[case]]
+name = "gzip-view-state"
+kind = "attack"
+via = "request"
+
+[case.request]
+method = "POST"
+uri = "/index.xhtml"
+query = "javax.faces.ViewState=H4sIAAAAAAAAA1vzloG1AAAWmZJ6BQAAAA%3D%3D&submit=Login"
+headers = { User-Agent = "Mozilla/5.0 (X11; Linux x86_64) Firefox/128.0", Accept = "text/html", Content-Type = "application/x-www-form-urlencoded" }
+
+[case.primary]
+effect = "block"
+rule = "request_serialized_client_state"
+
+[case.backport]
+effect = "unreachable"
+why = "the backports have no request-entry rule for this input"
+
+[[case]]
+name = "benign-view-state"
+kind = "benign"
+via = "request"
+
+[case.request]
+method = "POST"
+uri = "/index.xhtml"
+query = "javax.faces.ViewState=1234567890abcdef"
+headers = { User-Agent = "Mozilla/5.0 (X11; Linux x86_64) Firefox/128.0", Accept = "text/html", Content-Type = "application/x-www-form-urlencoded" }
+
+[case.primary]
+effect = "none"
+
+[case.backport]
+effect = "none"

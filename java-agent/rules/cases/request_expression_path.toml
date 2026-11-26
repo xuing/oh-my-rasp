@@ -1,0 +1,33 @@
+[[case]]
+name = "ognl-in-path"
+kind = "attack"
+via = "request"
+
+[case.request]
+method = "GET"
+uri = "/%24%7B%28%23a%3D%40org.apache.commons.io.IOUtils%40toString%28%40java.lang.Runtime%40getRuntime%28%29.exec%28%22id%22%29.getInputStream%28%29%2C%22utf-8%22%29%29.%28%40com.opensymphony.webwork.ServletActionContext%40getResponse%28%29.setHeader%28%22X-Cmd-Response%22%2C%23a%29%29%7D/"
+headers = { User-Agent = "Mozilla/5.0 (X11; Linux x86_64) Firefox/128.0", Accept = "text/html" }
+
+[case.primary]
+effect = "block"
+rule = "request_expression_path"
+
+[case.backport]
+effect = "unreachable"
+why = "the backports have no request-entry rule for this input"
+
+[[case]]
+name = "benign-arithmetic-in-path"
+kind = "benign"
+via = "request"
+
+[case.request]
+method = "GET"
+uri = "/struts2-showcase/$%7B233*233%7D/actionChain1.action"
+headers = { User-Agent = "Mozilla/5.0 (X11; Linux x86_64) Firefox/128.0", Accept = "text/html" }
+
+[case.primary]
+effect = "none"
+
+[case.backport]
+effect = "none"

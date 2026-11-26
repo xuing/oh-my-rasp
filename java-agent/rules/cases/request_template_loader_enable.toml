@@ -1,0 +1,35 @@
+[[case]]
+name = "velocity-loader-enable-parameter"
+kind = "attack"
+via = "request"
+
+[case.request]
+method = "POST"
+uri = "/solr/demo/config"
+query = "config=%7B%22update-queryresponsewriter%22%3A%7B%22name%22%3A%22velocity%22%2C%22class%22%3A%22solr.VelocityResponseWriter%22%2C%22params.resource.loader.enabled%22%3A%22true%22%7D%7D"
+headers = { User-Agent = "Mozilla/5.0 (X11; Linux x86_64) Firefox/128.0", Accept = "text/html" }
+
+[case.primary]
+effect = "block"
+rule = "request_template_loader_enable"
+
+[case.backport]
+effect = "unreachable"
+why = "the backports have no request-entry rule for this input"
+
+[[case]]
+name = "benign-velocity-writer-parameter"
+kind = "benign"
+via = "request"
+
+[case.request]
+method = "POST"
+uri = "/solr/demo/config"
+query = "config=%7B%22update-queryresponsewriter%22%3A%7B%22name%22%3A%22velocity%22%2C%22class%22%3A%22solr.VelocityResponseWriter%22%7D%7D"
+headers = { User-Agent = "Mozilla/5.0 (X11; Linux x86_64) Firefox/128.0", Accept = "text/html" }
+
+[case.primary]
+effect = "none"
+
+[case.backport]
+effect = "none"

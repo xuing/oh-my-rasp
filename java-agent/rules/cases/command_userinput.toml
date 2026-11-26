@@ -1,0 +1,54 @@
+[[case]]
+name = "request-shell-syntax"
+kind = "attack"
+via = "request-sink"
+op = "process.exec"
+args = { argv = ["sh", "-c", "echo 127.0.0.1; id"] }
+
+[case.request]
+method = "GET"
+uri = "/app/ping"
+query = "host=127.0.0.1%3B+id"
+headers = { User-Agent = "Mozilla/5.0 (X11; Linux x86_64) Firefox/128.0", Accept = "text/html" }
+
+[case.primary]
+effect = "block"
+rule = "command_userinput"
+
+[case.backport]
+effect = "block"
+rule = "command_execution_shell_meta"
+
+[[case]]
+name = "shell-syntax-outside-request"
+kind = "attack"
+via = "sink"
+op = "process.exec"
+args = { argv = ["sh", "-c", "echo 127.0.0.1; id"] }
+
+[case.primary]
+effect = "none"
+why = "the decision needs a request parameter that carries the shell syntax; outside a request there is none"
+
+[case.backport]
+effect = "none"
+why = "the decision needs a request parameter that carries the shell syntax; outside a request there is none"
+
+[[case]]
+name = "benign-request-host"
+kind = "benign"
+via = "request-sink"
+op = "process.exec"
+args = { argv = ["sh", "-c", "echo 127.0.0.1"] }
+
+[case.request]
+method = "GET"
+uri = "/app/ping"
+query = "host=127.0.0.1"
+headers = { User-Agent = "Mozilla/5.0 (X11; Linux x86_64) Firefox/128.0", Accept = "text/html" }
+
+[case.primary]
+effect = "none"
+
+[case.backport]
+effect = "none"

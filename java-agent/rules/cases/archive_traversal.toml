@@ -1,0 +1,49 @@
+[[case]]
+name = "entry-escapes-outside-request"
+kind = "attack"
+via = "sink"
+op = "archive.extract"
+args = { entry = "../../evil.txt", path = "{tmp}/extract/a/b" }
+
+[case.primary]
+effect = "log"
+rule = "archive_traversal"
+why = "the primary blocks this only inside an HTTP request; outside one it logs"
+
+[case.backport]
+effect = "block"
+rule = "archive_entry_traversal_write"
+
+[[case]]
+name = "entry-escapes-in-request"
+kind = "attack"
+via = "request-sink"
+op = "archive.extract"
+args = { entry = "../../evil.txt", path = "{tmp}/extract/a/b" }
+
+[case.request]
+method = "GET"
+uri = "/app/report"
+query = "id=7"
+headers = { User-Agent = "Mozilla/5.0 (X11; Linux x86_64) Firefox/128.0", Accept = "text/html" }
+
+[case.primary]
+effect = "block"
+rule = "archive_traversal"
+
+[case.backport]
+effect = "block"
+rule = "archive_entry_traversal_write"
+
+[[case]]
+name = "benign-entry-inside"
+kind = "benign"
+via = "sink"
+op = "archive.extract"
+args = { entry = "docs/readme.txt", path = "{tmp}/extract/a/b" }
+
+[case.primary]
+effect = "none"
+
+[case.backport]
+effect = "none"
