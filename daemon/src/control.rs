@@ -316,6 +316,7 @@ impl Controller {
     }
 
     /// Whether the last refusal was a policy the cloud assigned.
+    #[cfg(test)]
     pub fn policy_refused(&self) -> bool {
         self.status
             .lock()

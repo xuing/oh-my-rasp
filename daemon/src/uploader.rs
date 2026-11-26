@@ -130,32 +130,17 @@ struct PolicyRef {
     version: i64,
 }
 
-/// What came of handing the assigned policy to the control file.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum PolicyOutcome {
-    /// The control file holds the policy the cloud wants.
-    Installed,
-    /// The document would be larger than the agents read; the previous policy stays.
-    Refused,
-    /// The policy could not be pulled or written for another reason.
-    PullFailed,
-    /// No controller or no registered identity: nothing was tried.
-    NotPulled,
-}
-
-/// The policy to report upstream: the assignment when the control file holds it or nothing is
-/// known to be wrong, the installed one when the assignment was refused. A failed pull while an
-/// earlier refusal still stands keeps reporting the installed policy rather than flipping back to
-/// the refused one.
+/// The policy to report upstream. With a control file to write, that is the one last written to
+/// it successfully (`installed`, nothing when none is known), whatever the cloud assigns: an
+/// assignment the daemon refused, or could not pull, is not applied, and whether a refusal is
+/// outstanding at this moment does not change what the file holds. Without a control file the
+/// daemon applies nothing and reports the assignment.
 fn reported_policy(
     assigned: PolicyRef,
     installed: Option<&PolicyRef>,
-    outcome: PolicyOutcome,
-    refusal_outstanding: bool,
+    has_control_file: bool,
 ) -> PolicyRef {
-    let refused = outcome == PolicyOutcome::Refused
-        || (outcome == PolicyOutcome::PullFailed && refusal_outstanding);
-    if refused {
+    if has_control_file {
         installed.cloned().unwrap_or_default()
     } else {
         assigned
@@ -267,14 +252,17 @@ impl Uploader {
                     version: assignment.policy_version,
                 };
                 let reported = self.settle_policy(assigned).await;
-                if reported.id.is_some() {
+                // With a control file, what is reported is what it holds, which is also true when
+                // that is nothing (a withdrawn policy); without one, the assignment is only
+                // reported when it names a policy.
+                if self.controller.is_some() || reported.id.is_some() {
                     self.identity.policy_id = reported.id.clone();
                     self.identity.policy_version = reported.version;
                 }
                 self.status.update(|s| {
                     s.connected = true;
                     s.policy_id = reported.id;
-                    if reported.version > 0 {
+                    if self.controller.is_some() || reported.version > 0 {
                         s.policy_version = reported.version;
                     }
                     s.last_heartbeat_at = Some(now_rfc3339());
@@ -291,34 +279,29 @@ impl Uploader {
     }
 
     /// Hand the policy the cloud assigns to the control file, and return the policy to report
-    /// upstream: the one the control file holds. A policy the daemon refuses to install (the
-    /// control file would be larger than the agents read) is assigned but not applied, so the
-    /// cloud is told the version that is installed, not the one that was refused. The upload
-    /// schema has no way to say "assigned, but refused": that is reported locally, as
-    /// `control_status.write_refused`.
+    /// upstream: the one last written to the control file successfully, see [`reported_policy`].
+    /// A policy the daemon refuses to install (the control file would be larger than the agents
+    /// read), or cannot pull, is assigned but not applied. The upload schema has no way to say
+    /// "assigned, but refused": that is reported locally, as `control_status.write_refused`.
     async fn settle_policy(&mut self, assigned: PolicyRef) -> PolicyRef {
-        let outcome = self.refresh_policy(&assigned).await;
-        let refusal_outstanding = self
-            .controller
-            .as_ref()
-            .is_some_and(|controller| controller.policy_refused());
+        self.refresh_policy(&assigned).await;
         reported_policy(
             assigned,
             self.installed_policy.as_ref(),
-            outcome,
-            refusal_outstanding,
+            self.controller.is_some(),
         )
     }
 
     /// Pull the cloud-assigned policy and hand it to the control file for the
     /// agent to install. Idempotent on the controller side, so it can run on
-    /// every heartbeat without churning the file.
-    async fn refresh_policy(&mut self, assigned: &PolicyRef) -> PolicyOutcome {
+    /// every heartbeat without churning the file. `installed_policy` changes only when the file
+    /// holds the pulled policy afterwards: a pull that fails, or a write that is refused, leaves it.
+    async fn refresh_policy(&mut self, assigned: &PolicyRef) {
         let (Some(client), Some(controller)) = (&self.client, &self.controller) else {
-            return PolicyOutcome::NotPulled;
+            return;
         };
         if self.identity.agent_id.is_empty() {
-            return PolicyOutcome::NotPulled;
+            return;
         }
         match client.pull_policy(&self.identity.agent_id).await {
             Ok(policy) => {
@@ -333,27 +316,17 @@ impl Uploader {
                             tracing::info!("distributed updated policy to the control file");
                         }
                         self.installed_policy = has_policy.then(|| assigned.clone());
-                        PolicyOutcome::Installed
                     }
                     // The controller has already logged the refusal and kept it for the status
                     // views.
                     Err(err)
                         if err
                             .downcast_ref::<crate::control::ControlTooLarge>()
-                            .is_some() =>
-                    {
-                        PolicyOutcome::Refused
-                    }
-                    Err(err) => {
-                        tracing::warn!(%err, "failed to write policy to control file");
-                        PolicyOutcome::PullFailed
-                    }
+                            .is_some() => {}
+                    Err(err) => tracing::warn!(%err, "failed to write policy to control file"),
                 }
             }
-            Err(err) => {
-                tracing::debug!(%err, "policy pull failed; keeping last policy");
-                PolicyOutcome::PullFailed
-            }
+            Err(err) => tracing::debug!(%err, "policy pull failed; keeping last policy"),
         }
     }
 
@@ -488,30 +461,21 @@ mod tests {
     }
 
     #[test]
-    fn a_refused_assignment_reports_the_installed_policy_instead() {
+    fn the_reported_policy_is_the_installed_one_whatever_is_assigned() {
         let installed = assignment("p1", 1);
-        let refused = |outcome, outstanding| {
-            reported_policy(assignment("p2", 2), Some(&installed), outcome, outstanding)
-        };
         assert_eq!(
-            refused(PolicyOutcome::Installed, false),
-            assignment("p2", 2)
-        );
-        assert_eq!(refused(PolicyOutcome::Refused, true), installed);
-        // A pull that fails while the refusal stands does not flip back to the refused version.
-        assert_eq!(refused(PolicyOutcome::PullFailed, true), installed);
-        assert_eq!(
-            refused(PolicyOutcome::PullFailed, false),
-            assignment("p2", 2)
-        );
-        assert_eq!(
-            refused(PolicyOutcome::NotPulled, false),
-            assignment("p2", 2)
+            reported_policy(assignment("p2", 2), Some(&installed), true),
+            installed
         );
         // Nothing installed yet: no version is claimed.
         assert_eq!(
-            reported_policy(assignment("p2", 2), None, PolicyOutcome::Refused, true),
+            reported_policy(assignment("p2", 2), None, true),
             PolicyRef::default()
+        );
+        // No control file: the daemon applies nothing and reports the assignment.
+        assert_eq!(
+            reported_policy(assignment("p2", 2), None, false),
+            assignment("p2", 2)
         );
     }
 
@@ -520,6 +484,8 @@ mod tests {
     struct Mock {
         version: i64,
         policy: String,
+        /// The policy request fails with a 500.
+        fail_policy: bool,
         uploads: Vec<serde_json::Value>,
     }
 
@@ -549,7 +515,14 @@ mod tests {
             )
             .route(
                 "/api/v1/agents/{id}/policy",
-                get(|State(state): Shared| async move { state.lock().unwrap().policy.clone() }),
+                get(|State(state): Shared| async move {
+                    let mock = state.lock().unwrap();
+                    if mock.fail_policy {
+                        (axum::http::StatusCode::INTERNAL_SERVER_ERROR, String::new())
+                    } else {
+                        (axum::http::StatusCode::OK, mock.policy.clone())
+                    }
+                }),
             )
             .route(
                 "/api/v1/events/attack",
@@ -575,6 +548,7 @@ mod tests {
         let mock = Arc::new(Mutex::new(Mock {
             version: 1,
             policy: "{\"version\":1}".into(),
+            fail_policy: false,
             uploads: Vec::new(),
         }));
         let addr = mock_control_plane(mock.clone()).await;
@@ -637,6 +611,115 @@ mod tests {
         assert!(!controller.policy_refused());
         assert!(controller.status().write_refused.is_none());
         assert_eq!(up.status.snapshot().policy_version, 1);
+    }
+
+    /// An uploader registered with a mock control plane that serves `{"version":1}` as `p1`.
+    async fn registered_uploader(
+        dir: &std::path::Path,
+    ) -> (
+        Uploader,
+        std::sync::Arc<Mutex<Mock>>,
+        std::sync::Arc<crate::control::Controller>,
+    ) {
+        use std::sync::Arc;
+        let mock = Arc::new(Mutex::new(Mock {
+            version: 1,
+            policy: "{\"version\":1}".into(),
+            ..Mock::default()
+        }));
+        let addr = mock_control_plane(mock.clone()).await;
+        let controller = Arc::new(
+            crate::control::Controller::load_or_init(
+                &dir.join("control.json"),
+                crate::control::Mode::Monitor,
+            )
+            .unwrap(),
+        );
+        let cfg = CloudConfig {
+            enabled: true,
+            backend_url: format!("http://{addr}"),
+            app_id: "app".into(),
+            ..CloudConfig::default()
+        };
+        let mut up = uploader(dir.join("outbox.ndjson"), 10);
+        up.client = Some(CloudClient::new(cfg).unwrap());
+        up.controller = Some(controller.clone());
+        up.ensure_registered().await;
+        assert_eq!(up.status.snapshot().policy_version, 1);
+        (up, mock, controller)
+    }
+
+    /// What the next upload says about the policy: (policy_id, policy_version).
+    async fn uploaded_policy(
+        up: &mut Uploader,
+        mock: &std::sync::Arc<Mutex<Mock>>,
+    ) -> (serde_json::Value, serde_json::Value) {
+        up.enqueue(event(1));
+        up.flush().await;
+        let body = mock.lock().unwrap().uploads.pop().expect("an upload");
+        (body["policy_id"].clone(), body["policy_version"].clone())
+    }
+
+    /// v1 is installed, the heartbeat assigns v2, and the policy request fails: nothing was
+    /// written, so v1 is still what is reported (status and uploads).
+    #[tokio::test]
+    async fn a_failed_policy_pull_after_a_new_assignment_still_reports_the_installed_version() {
+        let dir = tempfile::tempdir().unwrap();
+        let (mut up, mock, controller) = registered_uploader(dir.path()).await;
+        {
+            let mut mock = mock.lock().unwrap();
+            mock.version = 2;
+            mock.fail_policy = true;
+        }
+        up.heartbeat().await;
+        assert_eq!(up.status.snapshot().policy_version, 1);
+        assert_eq!(up.status.snapshot().policy_id.as_deref(), Some("p1"));
+        assert_eq!(
+            controller.snapshot().policy.as_deref(),
+            Some("{\"version\":1}")
+        );
+        let (id, version) = uploaded_policy(&mut up, &mock).await;
+        assert_eq!(
+            (id, version),
+            (serde_json::json!("p1"), serde_json::json!(1))
+        );
+    }
+
+    /// v2 is refused for size; a console write succeeds and clears the refusal; the next policy
+    /// request fails. The control file still holds v1, and v1 is what is reported.
+    #[tokio::test]
+    async fn a_console_write_clearing_a_refusal_does_not_make_the_refused_version_active() {
+        let dir = tempfile::tempdir().unwrap();
+        let (mut up, mock, controller) = registered_uploader(dir.path()).await;
+        {
+            let mut mock = mock.lock().unwrap();
+            mock.version = 2;
+            mock.policy = "a".repeat(crate::control::MAX_CONTROL_BYTES);
+        }
+        up.heartbeat().await;
+        assert!(controller.policy_refused());
+
+        controller
+            .update(Some(crate::control::Mode::Block), None)
+            .unwrap();
+        assert!(
+            !controller.policy_refused(),
+            "the write cleared the refusal"
+        );
+
+        mock.lock().unwrap().fail_policy = true;
+        up.heartbeat().await;
+        assert_eq!(up.status.snapshot().policy_version, 1);
+        assert_eq!(up.identity.policy_version, 1);
+        let (id, version) = uploaded_policy(&mut up, &mock).await;
+        assert_eq!(
+            (id, version),
+            (serde_json::json!("p1"), serde_json::json!(1))
+        );
+        assert_eq!(
+            controller.snapshot().policy.as_deref(),
+            Some("{\"version\":1}")
+        );
     }
 
     #[test]
