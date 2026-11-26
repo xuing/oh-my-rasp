@@ -32,8 +32,9 @@ import java.util.concurrent.atomic.AtomicLong;
  * detection mode and optional shirudo upatch standalone configuration. Mirrors
  * the agent-jdk25 design using only Java 11 APIs.
  *
- * <p>Deliberately self-contained and duplicated per backport module (no shared
- * module), so each backport jar stays independently buildable. When the log
+ * <p>Duplicated per backport module, token for token; beyond the JDK it uses only
+ * shared/ sources, which every line compiles in, so each backport jar stays
+ * independently buildable. When the log
  * target resolved at start-up is a file path, events go through a background
  * daemon writer thread so the protected request never blocks on a file write;
  * a target that becomes a file later, or {@code OHMYRASP_LOG_SYNC=true}, writes

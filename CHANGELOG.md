@@ -21,6 +21,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `CONTRIBUTING.md`, `SECURITY.md`, and `.github/PULL_REQUEST_TEMPLATE.md` to
   align toolchains, commands, and generated-doc checks with the current tree.
 
+### Fixed
+- **Java agent (all 4 tracks):** a `lock_config=true` profile without a baked
+  `control` path no longer polls `/tmp/ohmyrasp-control.json`.
+- **Java agent (all 4 tracks):** the control file is read on every poll and
+  applied when its content changes, not its modification time, so a document
+  read half-written is applied once complete. When the file is removed, the
+  mode (and on `agent-jdk25` the per-algorithm switches) return to their
+  start-up values; an unreadable file keeps the last good state.
+- **Java agent (`java8`/`java11`/`java17`):** only a complete JSON object with a
+  top-level `mode` changes the mode; a truncated document or a nested `mode`
+  no longer switches detection.
+- **Java agent (all 4 tracks):** an invalid control path, poll interval or
+  `ohmyrasp.log.sync` value no longer hides a valid lower-priority value; on the
+  backports the same holds for `ohmyrasp.java{8,11,17}.block`.
+- **Java agent (all 4 tracks):** the shutdown hook waits up to 2 seconds for the
+  event writer before writing what is still queued, and on the backports a
+  queued event is written to the log target it was accepted for.
+- **Java agent (all 4 tracks):** the agent's own event and control-file I/O is
+  no longer reported or blocked by its file hooks, so a spool path such as
+  `webapps/ROOT/events.jsp` no longer aborts or hangs the JVM in block mode.
+
 ## [0.2.0-alpha.1] - 2026-11-25
 
 ### Security
