@@ -1,0 +1,1 @@
+{"timestamp":"2026-01-01T00:00:00Z","kind":"detection","hook":"ssrf","algorithm":"ssrf_aws","action":"log","confidence":100,"latency_us":1234,"message":"Outbound request targets cloud instance metadata","request":{"method":"","uri":"","query":"","parameters":{},"headers":{}},"details":{"url":"http://169.254.169.254/latest/meta-data/"}}

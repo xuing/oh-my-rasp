@@ -5,6 +5,8 @@
 //! README beside them for the normalisation rules and for how to regenerate.
 //!
 //! * `control/*.json` are produced here, by the real [`Controller`], and compared byte for byte.
+//! * `events/**` are produced by the agent's writers; every line goes through the daemon's real
+//!   parsing path ([`AgentEvent::parse_line`]) and the body it would upload.
 
 use std::collections::BTreeSet;
 use std::fs;
@@ -13,6 +15,7 @@ use std::path::{Path, PathBuf};
 use serde_json::Value;
 
 use crate::control::{ControlState, Controller, Mode};
+use crate::model::{AgentEvent, CloudIdentity};
 
 /// What `updated_at` is replaced with in a golden control document.
 const FIXED_UPDATED_AT: &str = "2026-01-01T00:00:00Z";
@@ -259,4 +262,267 @@ fn json_names(dir: &Path) -> BTreeSet<String> {
             name.strip_suffix(".json").map(str::to_string)
         })
         .collect()
+}
+
+// ---- events ---------------------------------------------------------------
+
+/// When the daemon ingested the line, in every parsed event of these tests.
+const RECEIVED_AT: &str = "2026-06-06T12:00:01Z";
+
+/// What the daemon reads from one golden event line.
+struct Expect {
+    file: &'static str,
+    kind: &'static str,
+    hook: &'static str,
+    algorithm: &'static str,
+    action: &'static str,
+    confidence: i64,
+    latency_us: Option<i64>,
+    /// The `timestamp` the daemon parsed. The backports write it as a number, which the daemon
+    /// does not read as text, so it is empty there.
+    timestamp: &'static str,
+    severity: &'static str,
+    /// Whether the daemon counts the line as a detection (the attack log and the upload).
+    detection: bool,
+}
+
+#[rustfmt::skip]
+fn expectations() -> Vec<Expect> {
+    let e = |file, kind, hook, algorithm, action, confidence, latency_us, timestamp, severity, detection| Expect {
+        file, kind, hook, algorithm, action, confidence, latency_us, timestamp, severity, detection,
+    };
+    let at = "2026-01-01T00:00:00Z";
+    vec![
+        e("primary/detection-block-request.json", "detection", "writeFile", "writeFile_script", "block", 90, Some(1234), at, "critical", true),
+        e("primary/detection-monitor-no-request.json", "detection", "ssrf", "ssrf_aws", "log", 100, Some(1234), at, "critical", true),
+        e("primary/telemetry.json", "telemetry", "http_request", "hook_latency", "observe", 0, Some(1234), at, "low", false),
+        e("backport/detection-block-request.json", "detection", "ProcessBuilder.start", "javaN_command_execution_shell_meta", "block", 85, None, "", "high", true),
+        e("backport/detection-monitor-no-request.json", "detection", "ProcessBuilder.start", "javaN_command_execution_exploit_primitive", "log", 95, None, "", "critical", true),
+        e("backport/telemetry.json", "telemetry", "http_request", "hook_latency", "observe", 0, Some(1234), "", "low", false),
+        // FINDING: the start line has no `kind`, so the daemon reads it as a detection with no
+        // hook, algorithm or action. It is counted in the attack log and uploaded as a low
+        // severity "agent event". See the README of the fixtures.
+        e("backport/agent-start-java8.json", "detection", "", "", "", 0, None, "", "low", true),
+        e("backport/agent-start-java11.json", "detection", "", "", "", 0, None, "", "low", true),
+        e("backport/agent-start-java17.json", "detection", "", "", "", 0, None, "", "low", true),
+    ]
+}
+
+fn golden_events() -> Vec<(String, String)> {
+    let mut found = Vec::new();
+    for dir in ["primary", "backport"] {
+        let path = contracts().join("events").join(dir);
+        let mut names: Vec<_> = fs::read_dir(&path)
+            .unwrap_or_else(|e| panic!("{}: {e}", path.display()))
+            .map(|entry| entry.unwrap().file_name().into_string().unwrap())
+            .filter(|name| name.ends_with(".json"))
+            .collect();
+        names.sort();
+        for name in names {
+            let text = fs::read_to_string(path.join(&name)).unwrap();
+            let line = text.strip_suffix('\n').unwrap_or(&text);
+            assert!(!line.contains('\n'), "events/{dir}/{name} is one line");
+            found.push((format!("{dir}/{name}"), line.to_string()));
+        }
+    }
+    found
+}
+
+fn identity() -> CloudIdentity {
+    CloudIdentity {
+        app_id: "app1".into(),
+        environment_id: "env1".into(),
+        agent_id: "agent1".into(),
+        policy_id: Some("pol1".into()),
+        policy_version: 3,
+    }
+}
+
+#[test]
+fn every_golden_event_line_parses_to_what_the_daemon_reads() {
+    let expectations = expectations();
+    let events = golden_events();
+    let listed: BTreeSet<&str> = expectations.iter().map(|e| e.file).collect();
+    let on_disk: BTreeSet<&str> = events.iter().map(|(name, _)| name.as_str()).collect();
+    assert_eq!(
+        on_disk, listed,
+        "events/** against the expectations in contract_tests.rs"
+    );
+
+    for (name, line) in &events {
+        let want = expectations.iter().find(|e| e.file == name).unwrap();
+        let event = AgentEvent::parse_line(7, RECEIVED_AT.into(), line)
+            .unwrap_or_else(|| panic!("{name}: the daemon rejects the line"));
+        assert_eq!(event.kind, want.kind, "{name} kind");
+        assert_eq!(event.hook, want.hook, "{name} hook");
+        assert_eq!(event.algorithm, want.algorithm, "{name} algorithm");
+        assert_eq!(event.action, want.action, "{name} action");
+        assert_eq!(event.confidence, want.confidence, "{name} confidence");
+        assert_eq!(event.latency_us, want.latency_us, "{name} latency_us");
+        assert_eq!(event.timestamp, want.timestamp, "{name} timestamp");
+        assert_eq!(event.severity(), want.severity, "{name} severity");
+        assert_eq!(event.is_detection(), want.detection, "{name} is_detection");
+        assert_eq!(event.is_block(), want.action == "block", "{name} is_block");
+        assert_eq!(
+            event.raw,
+            serde_json::from_str::<Value>(line).unwrap(),
+            "{name} raw line kept verbatim"
+        );
+    }
+}
+
+/// What the daemon uploads for each detection: the fields it forwards, and nothing the agent
+/// redacted. Telemetry is never uploaded (`main.rs` routes it to the latency panel only).
+#[test]
+fn every_golden_detection_uploads_the_body_the_daemon_builds() {
+    let (properties, required) = security_event_input_schema();
+    for (name, line) in golden_events() {
+        let event = AgentEvent::parse_line(7, RECEIVED_AT.into(), &line).unwrap();
+        if !event.is_detection() {
+            continue;
+        }
+        let body = event.to_cloud_attack(&identity());
+        let raw: Value = serde_json::from_str(&line).unwrap();
+
+        // The body is a SecurityEventInput of api/api/openapi.yaml.
+        let keys: BTreeSet<String> = body.as_object().unwrap().keys().cloned().collect();
+        assert!(
+            keys.is_subset(&properties),
+            "{name}: body members {keys:?} are all in the schema {properties:?}"
+        );
+        assert!(
+            required.is_subset(&keys),
+            "{name}: the schema's required members {required:?} are all in {keys:?}"
+        );
+
+        assert_eq!(
+            body["hook"],
+            raw["hook"].as_str().unwrap_or(""),
+            "{name} hook"
+        );
+        assert_eq!(
+            body["algorithm"],
+            raw["algorithm"].as_str().unwrap_or(""),
+            "{name} algorithm"
+        );
+        let message = raw["message"]
+            .as_str()
+            .filter(|m| !m.is_empty())
+            .unwrap_or("agent event");
+        assert_eq!(body["message"], message, "{name} message");
+        let occurred = raw["timestamp"].as_str().unwrap_or(RECEIVED_AT);
+        assert_eq!(body["occurred_at"], occurred, "{name} occurred_at");
+
+        let attributes = body["attributes"].as_object().unwrap();
+        assert_eq!(
+            attributes["action"],
+            raw["action"].as_str().unwrap_or(""),
+            "{name} action"
+        );
+        assert_eq!(
+            attributes["confidence"],
+            raw["confidence"].as_i64().unwrap_or(0),
+            "{name} confidence"
+        );
+        assert_eq!(
+            attributes.get("latency_us"),
+            raw.get("latency_us"),
+            "{name} latency_us"
+        );
+        for (key, value) in raw
+            .get("details")
+            .and_then(Value::as_object)
+            .into_iter()
+            .flatten()
+        {
+            assert_eq!(
+                attributes[&format!("detail.{key}")],
+                *value,
+                "{name} detail.{key}"
+            );
+        }
+        for key in ["method", "uri", "query"] {
+            assert_eq!(
+                attributes.get(&format!("request.{key}")),
+                raw.get("request").and_then(|r| r.get(key)),
+                "{name} request.{key}"
+            );
+        }
+        // Parameters and headers stay local: only the method, URI and query string are forwarded.
+        let members: BTreeSet<&String> = attributes
+            .keys()
+            .filter(|k| k.starts_with("request."))
+            .collect();
+        assert!(
+            members
+                .iter()
+                .all(|k| ["request.method", "request.uri", "request.query"].contains(&k.as_str())),
+            "{name}: {members:?}"
+        );
+    }
+}
+
+/// The redaction the agent applies to `parameters` and `headers` reaches the daemon intact and is
+/// not undone on the way to the cloud.
+#[test]
+fn the_redacted_request_is_not_uploaded_with_its_secrets() {
+    let line = golden_events()
+        .into_iter()
+        .find(|(n, _)| n == "primary/detection-block-request.json")
+        .unwrap()
+        .1;
+    let event = AgentEvent::parse_line(7, RECEIVED_AT.into(), &line).unwrap();
+    let request = &event.raw["request"];
+    assert_eq!(
+        request["parameters"]["password"],
+        serde_json::json!(["[redacted]"])
+    );
+    assert_eq!(request["headers"]["authorization"], "Bearer [redacted]");
+    assert_eq!(request["headers"]["cookie"], "[redacted]");
+
+    let uploaded = event.to_cloud_attack(&identity()).to_string();
+    assert!(
+        !uploaded.contains("eyJhbGci"),
+        "the bearer token is not uploaded"
+    );
+    assert!(
+        !uploaded.contains("JSESSIONID"),
+        "the cookie is not uploaded"
+    );
+    // FINDING: the agent redacts parameter values but writes the query string as it came, so the
+    // daemon uploads `request.query` with the password in it. This pins today's behaviour.
+    assert!(
+        uploaded.contains("password=hunter2"),
+        "request.query is forwarded as written"
+    );
+}
+
+/// The members and required members of `SecurityEventInput` in `api/api/openapi.yaml`, the
+/// schema of `POST /api/v1/events/attack`. No test of the API posts the daemon's body, so this
+/// is the one place the two are compared.
+fn security_event_input_schema() -> (BTreeSet<String>, BTreeSet<String>) {
+    let path = Path::new(env!("CARGO_MANIFEST_DIR")).join("../api/api/openapi.yaml");
+    let text = fs::read_to_string(&path).unwrap();
+    let mut lines = text.lines().skip_while(|l| *l != "    SecurityEventInput:");
+    lines.next().expect("SecurityEventInput is in openapi.yaml");
+    let (mut properties, mut required) = (BTreeSet::new(), BTreeSet::new());
+    for line in lines.take_while(|l| l.starts_with("      ")) {
+        if let Some(list) = line.trim().strip_prefix("required: [") {
+            required.extend(
+                list.trim_end_matches(']')
+                    .split(',')
+                    .map(|s| s.trim().to_string()),
+            );
+        } else if line.starts_with("        ")
+            && !line.starts_with("         ")
+            && let Some((name, _)) = line.trim().split_once(':')
+        {
+            properties.insert(name.to_string());
+        }
+    }
+    assert!(
+        properties.contains("severity") && required.contains("message"),
+        "parsed {properties:?} {required:?}"
+    );
+    (properties, required)
 }

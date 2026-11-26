@@ -1,0 +1,1 @@
+{"timestamp":1767225600000,"kind":"telemetry","hook":"http_request","algorithm":"hook_latency","action":"observe","confidence":0,"latency_us":1234}

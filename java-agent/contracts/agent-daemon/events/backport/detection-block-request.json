@@ -1,0 +1,1 @@
+{"event":"ohmyrasp-detection","timestamp":1767225600000,"hook":"ProcessBuilder.start","algorithm":"javaN_command_execution_shell_meta","action":"block","confidence":85,"message":"Request input controls syntax in the shell program","details":{"command":"/bin/sh -c printf ok; printf done","decision_basis":"request_shell_syntax"}}
