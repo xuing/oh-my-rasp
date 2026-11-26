@@ -38,28 +38,34 @@ dependencies {
     }
 }
 
-/** Every class entry of a JAR or class directory, by internal path, with its bytes. */
-fun classEntries(file: File): Sequence<Pair<String, ByteArray>> =
-    if (file.isDirectory) {
-        file.walkTopDown().filter { it.isFile && it.name.endsWith(".class") }
-            .map { it.relativeTo(file).invariantSeparatorsPath to it.readBytes() }
-            .toList().asSequence()
-    } else {
-        ZipFile(file).use { zip ->
-            zip.entries().asSequence()
-                .filter { !it.isDirectory && it.name.endsWith(".class") }
-                .map { it.name to zip.getInputStream(it).use { input -> input.readBytes() } }
+/**
+ * Class-file helpers for the task actions. An object, not script functions: a task action that calls a
+ * script function captures the script, which the configuration cache (check-agent.sh) cannot store.
+ */
+object ClassFiles {
+    /** Every class entry of a JAR or class directory, by internal path, with its bytes. */
+    fun entries(file: File): Sequence<Pair<String, ByteArray>> =
+        if (file.isDirectory) {
+            file.walkTopDown().filter { it.isFile && it.name.endsWith(".class") }
+                .map { it.relativeTo(file).invariantSeparatorsPath to it.readBytes() }
                 .toList().asSequence()
+        } else {
+            ZipFile(file).use { zip ->
+                zip.entries().asSequence()
+                    .filter { !it.isDirectory && it.name.endsWith(".class") }
+                    .map { it.name to zip.getInputStream(it).use { input -> input.readBytes() } }
+                    .toList().asSequence()
+            }
         }
-    }
 
-fun packaged(name: String) = !name.startsWith("META-INF/") && !name.endsWith("module-info.class")
+    fun packaged(name: String) = !name.startsWith("META-INF/") && !name.endsWith("module-info.class")
 
-fun major(bytes: ByteArray): Int {
-    require(bytes.size >= 8 && (bytes[0].toInt() and 0xFF) == 0xCA && (bytes[1].toInt() and 0xFF) == 0xFE) {
-        "not a class file"
+    fun major(bytes: ByteArray): Int {
+        require(bytes.size >= 8 && (bytes[0].toInt() and 0xFF) == 0xCA && (bytes[1].toInt() and 0xFF) == 0xFE) {
+            "not a class file"
+        }
+        return ((bytes[6].toInt() and 0xFF) shl 8) or (bytes[7].toInt() and 0xFF)
     }
-    return ((bytes[6].toInt() and 0xFF) shl 8) or (bytes[7].toInt() and 0xFF)
 }
 
 // Resolved once per build; each entry knows which project, if any, produced it.
@@ -74,8 +80,8 @@ val verifyAgentAllInputs = tasks.register("verifyAgentAllInputs") {
         val seen = HashMap<String, Pair<String, String>>()
         val clashes = sortedSetOf<String>()
         for (artifact in artifacts.get()) {
-            for ((name, bytes) in classEntries(artifact.file)) {
-                if (!packaged(name)) continue
+            for ((name, bytes) in ClassFiles.entries(artifact.file)) {
+                if (!ClassFiles.packaged(name)) continue
                 val digest = MessageDigest.getInstance("SHA-256").digest(bytes).joinToString("") { "%02x".format(it) }
                 val previous = seen.putIfAbsent(name, digest to artifact.file.name)
                 if (previous != null && previous.first != digest) {
@@ -185,6 +191,7 @@ val verifyAgentAllJars = tasks.register("verifyAgentAllJars") {
     val lockConfig = shirudoLockConfig
     val launcherClass = launcher
     val excludedEntries = otherLauncherEntries
+    val propertiesEntry = shirudoProperties
     inputs.file(general)
     inputs.file(shirudo)
     inputs.files(configurations.runtimeClasspath)
@@ -201,8 +208,8 @@ val verifyAgentAllJars = tasks.register("verifyAgentAllJars") {
             } else {
                 externalLimit
             }
-            for ((name, _) in classEntries(artifact.file)) {
-                if (!packaged(name)) continue
+            for ((name, _) in ClassFiles.entries(artifact.file)) {
+                if (!ClassFiles.packaged(name)) continue
                 val packagedName = if (name.startsWith("org/objectweb/asm/")) {
                     "io/ohmyrasp/agent/shaded/asm/" + name.removePrefix("org/objectweb/asm/")
                 } else {
@@ -230,12 +237,12 @@ val verifyAgentAllJars = tasks.register("verifyAgentAllJars") {
                 var classCount = 0
                 var propertiesCount = 0
                 for (entry in jar.entries().asSequence()) {
-                    if (entry.name == shirudoProperties) propertiesCount++
+                    if (entry.name == propertiesEntry) propertiesCount++
                     if (entry.isDirectory || !entry.name.endsWith(".class")) continue
-                    require(packaged(entry.name)) { "Unexpected ${entry.name} in ${jarFile.name}" }
+                    require(ClassFiles.packaged(entry.name)) { "Unexpected ${entry.name} in ${jarFile.name}" }
                     classCount++
                     val (limit, origin) = limitByClass[entry.name] ?: run { unknown += entry.name; continue }
-                    val found = jar.getInputStream(entry).use { major(it.readNBytes(8)) }
+                    val found = jar.getInputStream(entry).use { ClassFiles.major(it.readNBytes(8)) }
                     if (found > limit) tooNew += "${entry.name}: major $found > $limit ($origin)"
                     if (entry.name == launcherEntry) require(found == 49) {
                         "${jarFile.name}: the launcher entry $launcherEntry is class-file version $found, expected 49"
@@ -248,7 +255,7 @@ val verifyAgentAllJars = tasks.register("verifyAgentAllJars") {
                 }
                 val isShirudo = jarFile == shirudo.get().asFile
                 if (!isShirudo) {
-                    require(propertiesCount == 0) { "${jarFile.name} must not carry $shirudoProperties" }
+                    require(propertiesCount == 0) { "${jarFile.name} must not carry $propertiesEntry" }
                     return@use
                 }
                 require(jarFile.length() < 16L * 1024L * 1024L) {
@@ -257,9 +264,9 @@ val verifyAgentAllJars = tasks.register("verifyAgentAllJars") {
                 require(attributes.getValue("OhMyRasp-Shirudo-Upatch") == "true") {
                     "Missing OhMyRasp-Shirudo-Upatch: true in ${jarFile.name}"
                 }
-                require(propertiesCount == 1) { "${jarFile.name} carries $shirudoProperties $propertiesCount times" }
+                require(propertiesCount == 1) { "${jarFile.name} carries $propertiesEntry $propertiesCount times" }
                 val props = Properties()
-                jar.getInputStream(jar.getJarEntry(shirudoProperties)).use { props.load(it.reader(Charsets.UTF_8)) }
+                jar.getInputStream(jar.getJarEntry(propertiesEntry)).use { props.load(it.reader(Charsets.UTF_8)) }
                 val expected = mapOf(
                     "standalone" to "true", "lock_config" to lockConfig, "mode" to mode,
                     "control" to "none", "log" to "stderr", "latency_sample" to "0",
