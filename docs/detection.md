@@ -482,7 +482,7 @@ attempt at the indicated phase. The remote application's outcome needs separate 
 
 ### Response-side data-leak detection
 
-`response_dataLeak` requires an explicit algorithm policy. The hook checks the declared media type and inspects HTML, JSON and XML, including structured JSON and XML subtypes, for these identifier formats.
+`response_dataLeak` is defined and not wired (see the note below). It requires an explicit algorithm policy; its entry method checks the declared media type and inspects HTML, JSON and XML, including structured JSON and XML subtypes, for these identifier formats.
 
 - **Chinese national ID cards:** 18-digit format with checksum verification
 - **Mobile phone numbers:** validated against Chinese carrier prefix tables
@@ -492,9 +492,9 @@ On the primary agent, `xss_userinput` requires a policy explicitly selecting the
 
 Policy matching uses the request context. For `response_dataLeak` and `xss_echo`, the primary agent then omits request fields and matched values from logged events and block exceptions. The event retains the identifier category or reflection basis.
 
-The response hook `beforeXssEcho` honors an explicit `xss_echo` policy for HTML and XHTML responses. It looks for a markup-bearing request parameter verbatim in the supplied output. Application-owned scripts alone produce no finding. A match establishes text overlap; determining browser execution requires the rendering context.
+The entry method `beforeXssEcho` (defined, not wired) honors an explicit `xss_echo` policy for HTML and XHTML responses. It looks for a markup-bearing request parameter verbatim in the supplied output. Application-owned scripts alone produce no finding. A match establishes text overlap; determining browser execution requires the rendering context.
 
-> **Wiring status: not yet active on live traffic.** Both `detectResponseDataLeak` and `detectXssEcho` are implemented and exposed via `OhMyRaspHooks.beforeResponseDataLeak` and `OhMyRaspHooks.beforeXssEcho`, but **no ASM hook module currently instruments a servlet response-output sink** (`HttpServletResponse.getWriter()` / `ServletOutputStream`). Today they execute only when called directly by the playground probes (`response` and `xss-echo` actions in [`VulnerableServlet.java`](../java-agent/playground/src/main/java/io/ohmyrasp/playground/VulnerableServlet.java)). Wiring response-body scanning onto the hot response path is deferred to avoid adding outbound-body scanning overhead on every request.
+> **Defined, not wired.** `response_dataLeak` and `xss_echo` are implemented and exposed through `OhMyRaspHooks.beforeResponseDataLeak` and `OhMyRaspHooks.beforeXssEcho`, but **no ASM hook module instruments a servlet response-output sink** (`HttpServletResponse.getWriter()` / `ServletOutputStream`), so the packaged agent never reports them on a protected application. Today they run only when something calls the entry methods directly: the `response` and `xss-echo` actions of the playground's [`VulnerableServlet.java`](../java-agent/playground/src/main/java/io/ohmyrasp/playground/VulnerableServlet.java) and the stub servlet of the `servlet-admission` probe, and their detectors' unit tests. Wiring response-body scanning onto the hot response path is deferred to avoid adding outbound-body scanning overhead on every request. Other primary rule ids are in the same state; [DETECTION-COVERAGE.md](../java-agent/docs/DETECTION-COVERAGE.md#defined-not-wired) lists each with its reason, and the generated counts leave them out.
 
 ### Payload redaction before logging
 

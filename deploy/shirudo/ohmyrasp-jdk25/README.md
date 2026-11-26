@@ -2,7 +2,7 @@
 
 > **Generated** by `deploy/shirudo/gen-readmes.py` from `java-agent/` sources.
 
-The `ohmyrasp-jdk25` package installs the `ohmyrasp-jdk25` Java upatch: a standalone, daemonless OhMyRASP runtime self-protection agent targeting **Java 21 and Java 25** JVMs (classfile version `<= 65`). It registers **30 ASM hook modules** and **60 detector capabilities**, backed by **136** end-to-end Vulhub acceptance scenarios.
+The `ohmyrasp-jdk25` package installs the `ohmyrasp-jdk25` Java upatch: a standalone, daemonless OhMyRASP runtime self-protection agent targeting **Java 21 and Java 25** JVMs (classfile version `<= 65`). It registers **30 ASM hook modules** and **45 detector capabilities**, backed by **136** end-to-end Vulhub acceptance scenarios.
 
 This package is for hosts pinned to one Java version; the universal package [`ohmyrasp`](../ohmyrasp/README.md) starts the line that fits each JVM of a mixed host. It starts its line on **Java 21 and later**; on any other Java it writes one `ohmyrasp-agent-skipped` JSON line to stderr and the JVM starts without this agent.
 
@@ -20,7 +20,7 @@ This package is for hosts pinned to one Java version; the universal package [`oh
 | **Expression Engines, Scripting, ClassLoading & JMX** | Inspects Nashorn/Rhino `ScriptEngine`, JEXL, Jakarta/JSP EL, `JavacTool`/Janino compilation, remote `URLClassLoader`/`RMIClassLoader` codebases, and mutating JMX MBean invocations. | `ClassLoaderHookModule`, `ExpressionHookModule`, `JavaCompilationHookModule`, `JmxHookModule`, `SpringConfigHookModule` |
 | **Other / Newly Added** | Additional ASM instrumentation hooks detected in agent sources. | `SparkSubmitHookModule`, `YarnSubmitHookModule` |
 
-<details><summary>All detector capabilities (60)</summary>
+<details><summary>All detector capabilities (45)</summary>
 
 - `detectArchiveExtraction`
 - `detectArgumentFileExpansion`
@@ -30,7 +30,6 @@ This package is for hosts pinned to one Java version; the universal package [`oh
 - `detectDeserialization`
 - `detectDirectoryList`
 - `detectDns`
-- `detectEval`
 - `detectExpression`
 - `detectFastjsonClassResource`
 - `detectFileDelete`
@@ -42,7 +41,6 @@ This package is for hosts pinned to one Java version; the universal package [`oh
 - `detectHessianType`
 - `detectHttpInvokerDeserialization`
 - `detectHttpObjectStreamDeserialization`
-- `detectInclude`
 - `detectJaasConfig`
 - `detectJavaCompilation`
 - `detectJdbcUrl`
@@ -50,37 +48,24 @@ This package is for hosts pinned to one Java version; the universal package [`oh
 - `detectJmxMBeanInvoke`
 - `detectJndi`
 - `detectJwtVerificationFailure`
-- `detectLink`
-- `detectLoadLibrary`
 - `detectMarkupParameter`
 - `detectOgnl`
 - `detectOpenWireThrowable`
 - `detectPolymorphicType`
 - `detectProtocolClassInstantiation`
 - `detectRemoteJob`
-- `detectRename`
 - `detectRequest`
-- `detectResponseDataLeak`
 - `detectRmiRegistryBind`
 - `detectScannerUserAgent`
 - `detectServletIncludeAttributes`
 - `detectSessionDeserialization`
 - `detectSpringConfigLocation`
 - `detectSql`
-- `detectSqlException`
-- `detectSqlRegex`
 - `detectUrl`
-- `detectWebdavUpload`
-- `detectWebshellCallable`
-- `detectWebshellCommand`
-- `detectWebshellEval`
-- `detectWebshellFileWrite`
-- `detectWebshellLdPreload`
 - `detectWindowsStreamWrite`
 - `detectXmlAttachmentReference`
 - `detectXmlDecoderExpression`
 - `detectXmlRpcSerializableValue`
-- `detectXssEcho`
 - `detectXxeEntity`
 
 </details>

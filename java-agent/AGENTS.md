@@ -53,6 +53,8 @@ java-agent/scripts/check-agent.sh --help               # lines and probes
 
 **A new rule id needs a description.** Add it to `rules/general.json` or `rules/product.json`, then regenerate the docs as [../AGENTS.md](../AGENTS.md) describes.
 
+**A primary rule no hook can reach is marked.** A rule id whose detector no hook module reaches (its `OhMyRaspHooks` entry method is injected by no module) goes in the `not_wired` object of the JSON file that describes it, with the reason. Generated counts leave it out and `DETECTION-COVERAGE.md` lists it. `scripts/test_rule_cases.py` (`WiringTest`, reading the sources through `scripts/rule_wiring.py`) fails when a marked id becomes reachable or a rule nothing reaches is not marked, so wiring one in means taking it off the list in the same change.
+
 **A rule has cases.** `rules/cases/<rule id>.toml` holds inputs for one rule id (the primary id, or the backport family when the primary has no counterpart) and what each engine does with each input today: `block`, `log`, `none` or `unreachable`, with a one-sentence `why` on every attack that is not blocked. The schema is the docstring of [`probes/common/rule_cases.py`](probes/common/rule_cases.py). The `rule-cases` probe starts one JVM per case with the packaged agent in block mode and fails when an engine does something else:
 
 ```bash

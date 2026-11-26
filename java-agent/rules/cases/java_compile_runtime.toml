@@ -69,8 +69,8 @@ query = "id=7"
 headers = { User-Agent = "Mozilla/5.0 (X11; Linux x86_64) Firefox/128.0", Accept = "text/html" }
 
 [case.primary]
-effect = "none"
-why = "the primary reads the source by reflection on the unit's own class, which fails for a non-public class, so it sees no source"
+effect = "block"
+rule = "java_compile_runtime"
 
 [case.backport]
 effect = "block"

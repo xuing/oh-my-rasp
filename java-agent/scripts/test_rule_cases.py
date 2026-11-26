@@ -1,4 +1,5 @@
-"""Guards for java-agent/rules/cases: the schema, the rule ids it names, and the coverage ratchet.
+"""Guards for java-agent/rules/cases: the schema, the rule ids it names, and the coverage ratchet; and for the
+catalogue's not_wired marking, which the sources must agree with.
 
 Run: python3 -m unittest discover -s java-agent/scripts -p 'test_rule_cases.py'
 
@@ -14,6 +15,7 @@ sys.path.insert(0, str(HERE))
 sys.path.insert(0, str(HERE.parent / "probes" / "common"))
 import rule_cases  # noqa: E402
 import rule_catalogue  # noqa: E402
+import rule_wiring  # noqa: E402
 
 CATALOGUE = {"primary": rule_catalogue.primary_ids(), "backport": rule_catalogue.backport_families()}
 
@@ -91,7 +93,7 @@ class CoverageTest(unittest.TestCase):
 
     def test_every_rule_is_covered_or_listed(self):
         covered = rule_cases.covered(rule_cases.load())
-        listed = rule_cases.load_uncovered()
+        listed = rule_catalogue.with_not_wired(rule_cases.load_uncovered())
         for engine in rule_cases.ENGINES:
             missing = CATALOGUE[engine] - covered[engine] - set(listed[engine])
             self.assertFalse(missing, f"{engine} rule ids with no attack case that blocks or logs them in a file that "
@@ -100,17 +102,60 @@ class CoverageTest(unittest.TestCase):
 
     def test_no_listed_rule_is_covered(self):
         covered = rule_cases.covered(rule_cases.load())
-        for engine, listed in rule_cases.load_uncovered().items():
+        for engine, listed in rule_catalogue.with_not_wired(rule_cases.load_uncovered()).items():
             stale = set(listed) & covered[engine]
             self.assertFalse(stale, f"{engine} rule ids now covered by cases; take them off rules/cases/uncovered.toml: "
                              f"{', '.join(sorted(stale))}")
 
     def test_every_listed_rule_exists_and_has_a_reason(self):
-        for engine, listed in rule_cases.load_uncovered().items():
+        for engine, listed in rule_catalogue.with_not_wired(rule_cases.load_uncovered()).items():
             unknown = set(listed) - CATALOGUE[engine]
             self.assertFalse(unknown, f"uncovered.toml lists {engine} ids not in rules/*.json: {', '.join(sorted(unknown))}")
             for rule, reason in listed.items():
                 self.assertTrue(reason.strip(), f"uncovered.toml: {engine} {rule} needs a reason")
+
+    def test_a_not_wired_id_is_not_also_listed_in_uncovered_toml(self):
+        # Its reason lives in the catalogue; a second copy could disagree with it.
+        listed = set(rule_cases.load_uncovered()["primary"]) & rule_catalogue.not_wired().keys()
+        self.assertFalse(listed, f"take {', '.join(sorted(listed))} off rules/cases/uncovered.toml: the catalogue's "
+                         "not_wired reason is the one that is shown")
+        self.assertEqual(rule_catalogue.with_not_wired(rule_cases.load_uncovered())["primary"].keys()
+                         & rule_catalogue.not_wired().keys(), rule_catalogue.not_wired().keys())
+
+
+class WiringTest(unittest.TestCase):
+    """The catalogue's not_wired marking agrees with the sources, in both directions.
+
+    scripts/rule_wiring.py reads which OhMyRaspHooks entry methods the hook modules and shared visitors inject
+    and which rule ids the code behind them can report (its docstring says what it cannot see). A rule marked
+    not wired that a hook can now reach, and a rule no hook can reach that is not marked, both fail here.
+    """
+
+    def test_the_analysis_found_the_agent(self):
+        # A scan that silently finds nothing would make both checks below pass.
+        self.assertGreaterEqual(len(rule_wiring.entry_methods()), 150)
+        self.assertGreaterEqual(len(rule_wiring.named_in_emitters()), 60)
+        self.assertGreaterEqual(len(rule_wiring.emitters()), 130)
+        self.assertGreaterEqual(len(rule_wiring.reachable_ids()), 100)
+        self.assertIn(("OhMyRaspHooks", "beforeSql"), rule_wiring.reachable_methods())
+        self.assertIn(("ProcessDetector", "detectCommand"), rule_wiring.reachable_methods())
+
+    def test_every_marked_id_is_a_primary_id_with_a_reason(self):
+        marked = rule_catalogue.not_wired()  # raises for an id outside its file's primary ids, or a blank reason
+        self.assertTrue(marked)
+        self.assertLessEqual(marked.keys(), rule_catalogue.primary_ids())
+
+    def test_no_marked_id_has_become_reachable(self):
+        reachable = rule_wiring.reachable_ids() & rule_catalogue.not_wired().keys()
+        self.assertFalse(reachable, f"{', '.join(sorted(reachable))}: a hook module can now reach "
+                         "the code that reports it, so take it off the not_wired object in rules/general.json (and "
+                         "give it a rule case, or an entry in rules/cases/uncovered.toml)")
+
+    def test_every_id_no_hook_reaches_is_marked(self):
+        unmarked = rule_wiring.unreachable_primary_ids() - rule_catalogue.not_wired().keys()
+        self.assertFalse(unmarked, f"{', '.join(sorted(unmarked))}: no hook module injects a call that reaches "
+                         "the code that reports it, so a count must not present it as a detection. Add it to the "
+                         "not_wired object beside its description in rules/general.json or product.json, or wire it")
 
 
 if __name__ == "__main__":

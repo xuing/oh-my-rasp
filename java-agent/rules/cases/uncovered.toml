@@ -4,18 +4,12 @@
 # engine, and the same file has a benign case. java-agent/scripts/test_rule_cases.py fails for an id
 # listed here that is covered (take it off the list), and for an uncovered id that is not listed.
 # Backport ids are families, without the java8_/java11_/java17_ prefix.
+#
+# A primary id that no hook module can reach ("not_wired" in rules/general.json) is not listed here: its
+# reason lives in the catalogue, and scripts/rule_catalogue.py adds it to this list wherever the list is
+# read. Listing such an id here fails scripts/test_rule_cases.py.
 
 # ---- primary --------------------------------------------------------------------------------
-
-[[primary]]
-reason = "no hook module injects its entry: OhMyRaspHooks defines the method, and nothing under asm/ calls it"
-ids = ["eval_regex", "fileUpload_webdav", "include_protocol", "include_userinput", "link_webshell", "loadLibrary_unc",
-       "rename_webshell", "response_dataLeak", "sql_exception", "sql_regex", "webshell_callable", "webshell_command",
-       "webshell_eval", "webshell_file_put_contents", "webshell_ld_preload", "xss_echo"]
-
-[[primary]]
-reason = "no module reaches it: it is the fallback for an engine name outside the known list, and every engine ExpressionHookModule instruments passes a name that has its own id"
-ids = ["expression_runtime"]
 
 [[primary]]
 reason = "selected only by a loaded policy; the cases run with no policy"
@@ -36,7 +30,7 @@ ids = ["request_sql_identifier_injection", "request_sql_sort_injection"]
 
 [[primary]]
 reason = "needs an expression engine on the driver's class path (EL, JEXL, Jiffle, OGNL, Groovy or MVEL, Spring Expression, Velocity); the JDK ships none of them"
-ids = ["el_runtime", "jexl_runtime", "jiffle_runtime", "ognl_blacklist", "ognl_length_limit", "ognl_runtime",
+ids = ["el_runtime", "jexl_runtime", "jiffle_runtime", "ognl_blacklist", "ognl_length_limit",
        "script_runtime", "spel_runtime", "template_runtime"]
 
 [[primary]]
