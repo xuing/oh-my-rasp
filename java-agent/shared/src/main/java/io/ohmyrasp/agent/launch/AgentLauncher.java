@@ -139,11 +139,14 @@ public final class AgentLauncher {
   }
 
   /**
-   * The one monitor every definition of this class shares: the system properties object, used only as a
-   * lock. Nothing is stored in it.
+   * The one monitor every definition of this class shares: the Runtime instance, used only as a lock. It is a
+   * final field of a bootstrap class, so every definition of this class, in any loader, gets the same object, and
+   * no code can replace it (System.setProperties can replace the properties object between two entry calls). On
+   * Java 8 Runtime.load0 and loadLibrary0 also synchronize on it; the launcher holds it only to check and set its
+   * state and loads no library meanwhile, so the two never wait for each other in a cycle.
    */
   private static Object lock() {
-    return System.getProperties();
+    return Runtime.getRuntime();
   }
 
   /** The state this definition or any other loaded definition of this class recorded, or null. */
