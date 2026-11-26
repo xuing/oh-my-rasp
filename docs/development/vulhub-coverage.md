@@ -295,9 +295,11 @@ coverage, separate from the Java 25 behavioral replay suite:
   starts `vulhub/weblogic:10.3.6.0-2017` on Java 6u45. The baseline
   README-shaped `/wls-wsat/CoordinatorPortType` SOAP `WorkContext` XMLDecoder
   payload reaches `ProcessBuilder.start` and creates
-  `/tmp/ohmyrasp-weblogic-10271-success`; the current Java 8 agent cannot inject
-  because the Java 6 JVM rejects classfile major version 52.0. This is recorded
-  as a legacy runtime boundary rather than a protected LTS acceptance. Evidence:
+  `/tmp/ohmyrasp-weblogic-10271-success`. The Java 8 agent cannot protect Java 6:
+  attached to the image's Java 6 `-version`, it prints its `unsupported-java`
+  skip line and the JVM exits 0 without it. This is recorded as a legacy runtime
+  boundary rather than a protected LTS acceptance. Evidence, from before the
+  agent skipped instead of aborting the JVM:
   `/tmp/ohmyrasp-weblogic-10271-java6-20260611023347.log`.
 - [x] Script the real Java 6 WebLogic CVE-2018-2628 T3/JRMPClient legacy
   boundary: `acceptance/vulhub/weblogic/2628-java6-legacy.sh` starts
@@ -1445,9 +1447,10 @@ coverage, separate from the Java 25 behavioral replay suite:
   `FileSystemXmlApplicationContext` polymorphic JSON body for CVE-2017-17485,
   loads a temporary Spring XML document over HTTP, and creates
   `/tmp/ohmyrasp-jackson-17485-success` through `ProcessBuilder.start`. The
-  current Java 8 LTS agent cannot inject because the Java 7 JVM rejects
-  classfile major version 52.0, so this is recorded as a legacy runtime
-  boundary rather than claimed as a protected LTS acceptance.
+  Java 8 LTS agent cannot protect Java 7: the container started with it in
+  `JAVA_TOOL_OPTIONS` prints its `unsupported-java` skip line and keeps serving
+  the application unprotected, so this is recorded as a legacy runtime boundary
+  rather than claimed as a protected LTS acceptance.
 - [x] Record the real Java 7 Mojarra JSF ViewState deserialization legacy
   boundary:
   `acceptance/vulhub/mojarra/viewstate-java7-legacy.sh` starts

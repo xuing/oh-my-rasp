@@ -71,6 +71,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `"reason":"already-active"`; before, two lines could both instrument one JVM.
   Each kind of agent JAR now names its own entry class in
   `io.ohmyrasp.agent.launch` as `Premain-Class` and `Agent-Class`.
+- **Java agent (all JARs):** on Java 6 and 7 an agent JAR no longer aborts the
+  JVM with `Unsupported major.minor version 52.0`. Its entry class, now
+  class-file version 49, prints the `unsupported-java` skip line and the JVM
+  starts unprotected.
 - The Java agent's shared classes are the `:shared` Gradle module, compiled
   once with `--release 8` instead of once per line.
 

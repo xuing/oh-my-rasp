@@ -554,7 +554,7 @@ For `InitialContext.lookup` and `lookupLink`, the agent checks the name componen
 ## Known limitations
 
 - **Java 25 build toolchain:** `agent-jdk25` builds with `JavaLanguageVersion.of(25)` and `options.release.set(25)`. Production Java 17 or Java 21 LTS deployments must use `agent-java17`.
-- **Java 6 and 7 JVMs are outside agent support:** Agent classfiles target Java 8 (`<= 52`) or newer and cannot load on Java 6 or 7 JVMs. The `java6-legacy` and `java7-legacy` entries in the acceptance matrix document exploit baselines on those runtimes; they do not demonstrate agent blocking.
+- **Java 6 and 7 JVMs are outside agent support:** The agent lines target Java 8 (`<= 52`) or newer. On Java 6 or 7 an agent JAR prints a skip line and the JVM runs unprotected ([which JAR to attach](agent.md#which-jar-to-attach)). The `java6-legacy` and `java7-legacy` entries in the acceptance matrix document exploit baselines on those runtimes; they do not demonstrate agent blocking.
 - **Confluence setup boundary:** Confluence requires an interactive license-setup step that prevents unattended container startup. `acceptance/vulhub/confluence/setup-boundaries.sh` probes expected setup boundaries rather than completing full agent-injection and block assertions.
 - **Curated false-positive corpus:** The zero-false-positive result measures regression precision on curated inputs and must not be extrapolated directly to production FP rates.
 - **Vulhub scope:** Acceptance breadth covers the Java/JVM Vulhub roots listed in [`vulhub-coverage.md`](development/vulhub-coverage.md). Middleware patterns outside that corpus may exercise uninstrumented sinks.

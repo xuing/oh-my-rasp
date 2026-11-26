@@ -39,7 +39,7 @@ docker run --rm -v "$PWD/java-agent":/workspace -w /workspace "$GRADLE_IMAGE" \
 
 ### Which JAR to attach
 
-Attach the universal JAR, `ohmyrasp-agent-all.jar` (or `ohmyrasp.jar` for a Shirudo standalone install), on any supported Java. Each kind of agent JAR has an entry class of its own, its `Premain-Class` and `Agent-Class`, that no other kind of JAR holds: `io.ohmyrasp.agent.launch.UniversalEntry` in the universal pair, and `PrimaryEntry`, `Java17Entry`, `Java11Entry` and `Java8Entry` in the same package for the per-track pairs. The JVM loads a `Premain-Class` by name, so a name shared by two JARs would make the second JAR run the first one's class. The entry hands itself to the launcher, which opens the JAR that class came from, reads `java.specification.version`, and starts the first line, in this order, that this JAR holds and whose range contains the running version:
+Attach the universal JAR, `ohmyrasp-agent-all.jar` (or `ohmyrasp.jar` for a Shirudo standalone install), on any supported Java. Each kind of agent JAR has an entry class of its own, its `Premain-Class` and `Agent-Class`, that no other kind of JAR holds (generated at build time as Java 5 bytecode by `java-agent/shared/src/entryGenerator`): `io.ohmyrasp.agent.launch.UniversalEntry` in the universal pair, and `PrimaryEntry`, `Java17Entry`, `Java11Entry` and `Java8Entry` in the same package for the per-track pairs. The JVM loads a `Premain-Class` by name, so a name shared by two JARs would make the second JAR run the first one's class. The entry hands itself to the launcher, which opens the JAR that class came from, reads `java.specification.version`, and starts the first line, in this order, that this JAR holds and whose range contains the running version:
 
 | Line | Line entry class | Runs on |
 |---|---|---|
@@ -48,7 +48,7 @@ Attach the universal JAR, `ohmyrasp-agent-all.jar` (or `ohmyrasp.jar` for a Shir
 | `agent-java11` | `io.ohmyrasp.agent.java11.OhMyRaspJava11Agent` | Java 11 and later |
 | `agent-java8` | `io.ohmyrasp.agent.java8.OhMyRaspJava8Agent` | Java 8 only |
 
-So the universal JAR runs the primary line on Java 21 and 25, the Java 17 line on 17, the Java 11 line on 11 and the Java 8 line on 8. On a version between or after these (for example 18 or 26) it starts the line the table selects and says nothing extra; the probes cover only 8, 11, 17, 21 and 25. No line runs on Java 9 or 10. A per-track JAR still starts its own line within that line's range: the Java 17 JAR also starts on Java 21 and 25.
+So the universal JAR runs the primary line on Java 21 and 25, the Java 17 line on 17, the Java 11 line on 11 and the Java 8 line on 8. On a version between or after these (for example 18 or 26) it starts the line the table selects and says nothing extra; the probes cover only 8, 11, 17, 21 and 25. No line runs below Java 8 or on Java 9 or 10. A per-track JAR still starts its own line within that line's range: the Java 17 JAR also starts on Java 21 and 25.
 
 One line starts per JVM, whether through `premain` or a later `agentmain` attach. The launcher keeps the state in a static field of `io.ohmyrasp.agent.launch.AgentLauncher`, a class every agent JAR holds under that name and the JVM defines once: unset, `starting`, then `installed:<line>` or `failed:<line>`. It publishes the state as the system property `ohmyrasp.agent.state` and, once a line has started, the line as `ohmyrasp.agent.line`, for operators and probes to read. It never reads them back, so setting them on the command line changes nothing.
 
@@ -56,6 +56,8 @@ The launcher never stops the JVM. In each of these cases it writes one JSON line
 
 - **The JAR holds no line that fits the running Java** (a per-track JAR on an older or a newer JVM than it supports, or any JAR on Java 9 or 10). The state stays unset, so a later JAR that fits still starts. Before, the JVM aborted with exit code 134 (`UnsupportedClassVersionError`, or `NoClassDefFoundError: java/sql/DriverManager` from the Java 8 track on Java 11 and later).
   `{"event":"ohmyrasp-agent-skipped","reason":"unsupported-java","java_version":"25.0.1","lines":"java8","jar":"ohmyrasp-agent-java8.jar"}`
+- **Java 6 or 7.** The entry classes are class-file version 49 (Java 5) and load there, but the launcher is Java 8 bytecode. The entry catches the error and prints the skip line itself, with the Java specification version, its own class name and the error's class, and the JVM starts unprotected. Before, the JVM aborted with `Unsupported major.minor version 52.0`.
+  `{"event":"ohmyrasp-agent-skipped","reason":"unsupported-java","java_version":"1.6","entry":"io.ohmyrasp.agent.launch.Java8Entry","exception":"java.lang.UnsupportedClassVersionError"}`
 - **A line already started or is starting**, for example when Shirudo and the command line each add one of our JARs, or an attach follows `-javaagent`. Before, two lines could both instrument one JVM.
   `{"event":"ohmyrasp-agent-skipped","reason":"already-active","java_version":"25.0.1","state":"installed:primary"}`
 - **The line throws while starting**, including a `LinkageError`. Protection is then inactive or incomplete: the line may have installed some of its hooks. No later JAR or attach starts another line over it, and each says `"reason":"earlier-start-failed"`. Before, the exception aborted the JVM.
