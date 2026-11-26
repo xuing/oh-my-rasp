@@ -359,7 +359,7 @@ impl Controller {
     ) -> Result<()> {
         let json = serde_json::to_string_pretty(state)?;
         if json.len() > MAX_CONTROL_BYTES {
-            return Err(self.refuse(change, json.len(), None, true, identity).into());
+            return Err(self.refuse(change, json.len(), None, identity).into());
         }
         self.persist(&json)?;
         self.clear_refusal();
@@ -386,15 +386,7 @@ impl Controller {
                     json.len()
                 )
             });
-            return Err(self
-                .refuse(
-                    "existing",
-                    json.len(),
-                    message,
-                    found_oversized.is_none(),
-                    None,
-                )
-                .into());
+            return Err(self.refuse("existing", json.len(), message, None).into());
         }
         self.persist(&json)?;
         self.clear_refusal();
@@ -443,14 +435,28 @@ impl Controller {
         change: &'static str,
         size_bytes: usize,
         message: Option<String>,
-        agents_apply_state: bool,
         identity: Option<String>,
     ) -> ControlTooLarge {
         let refusal = ControlTooLarge {
             size_bytes,
             limit_bytes: MAX_CONTROL_BYTES,
         };
-        let message = message.unwrap_or_else(|| refusal.to_string());
+        // Whether the agents apply the daemon's state depends on the file as it lies on disk
+        // after this attempt, not on which kind of write was refused: a file the agents ignore
+        // stays ignored however many later changes are refused too.
+        let on_disk = std::fs::metadata(&self.path).map_or(0, |meta| meta.len() as usize);
+        let agents_apply_state = on_disk <= MAX_CONTROL_BYTES;
+        let message = message.unwrap_or_else(|| {
+            if agents_apply_state {
+                refusal.to_string()
+            } else {
+                format!(
+                    "{refusal}; the control file on disk is {on_disk} bytes, more than the \
+                     {MAX_CONTROL_BYTES} bytes the agents read: they ignore it, keep the mode \
+                     they had, and are not applying the daemon's in-memory state"
+                )
+            }
+        });
         let mut status = self.status.lock().expect("control status mutex");
         // The cloud policy is pulled again at every heartbeat: say it loudly once per
         // assignment, not each time, and not again because the same text came out a byte longer.
@@ -460,6 +466,9 @@ impl Controller {
                 .as_ref()
                 .is_some_and(|r| r.change == change && r.identity == identity);
         if repeated {
+            if let Some(refused) = status.write_refused.as_mut() {
+                refused.agents_apply_state = agents_apply_state;
+            }
             tracing::debug!(change, size_bytes, "control file write still refused");
         } else {
             tracing::error!(
@@ -777,6 +786,47 @@ mod tests {
             refused.message
         );
         assert!(ctrl.status().oversized_file_replaced.is_none());
+    }
+
+    /// A valid file over the limit whose re-serialised document is over it too stays on disk and
+    /// ignored by the agents. A console change that is refused as well must not turn the status
+    /// into "the agents apply the daemon's state": the file on disk is what decides.
+    #[test]
+    fn a_later_refusal_does_not_say_the_agents_apply_the_state_while_the_file_is_still_ignored() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("control.json");
+        let big = format!(
+            "{{\"mode\":\"block\",\"policy\":\"{}\"}}",
+            "a".repeat(MAX_CONTROL_BYTES)
+        );
+        std::fs::write(&path, &big).unwrap();
+        let ctrl = Controller::load_or_init(&path, Mode::Monitor).unwrap();
+        assert!(!ctrl.status().write_refused.unwrap().agents_apply_state);
+
+        let mut toggles = BTreeMap::new();
+        toggles.insert("sqli".to_string(), false);
+        let err = ctrl.update(Some(Mode::Off), Some(toggles)).unwrap_err();
+        assert!(err.downcast_ref::<ControlTooLarge>().is_some(), "{err}");
+        assert_eq!(std::fs::read_to_string(&path).unwrap(), big, "untouched");
+
+        let refused = ctrl.status().write_refused.unwrap();
+        assert_eq!(refused.change, "update");
+        assert!(!refused.agents_apply_state, "{}", refused.message);
+        assert!(
+            refused
+                .message
+                .contains("not applying the daemon's in-memory state"),
+            "{}",
+            refused.message
+        );
+        // The same for a cloud policy refused on top of it.
+        assert!(
+            ctrl.set_policy(Some("b".repeat(MAX_CONTROL_BYTES)))
+                .is_err()
+        );
+        let refused = ctrl.status().write_refused.unwrap();
+        assert_eq!(refused.change, "policy");
+        assert!(!refused.agents_apply_state);
     }
 
     /// A file the agents read (within the limit) whose pretty-printed document is over it stays
