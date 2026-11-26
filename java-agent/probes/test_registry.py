@@ -77,20 +77,32 @@ class RegistryTest(unittest.TestCase):
         self.assertIn('run.py run --line "${{ matrix.line }}" --keep-going', job)
         self.assertIn('run.py run --line "${{ matrix.line }}" --artifact all --keep-going', job)
 
-    def test_artifact_all_runs_the_family_the_launcher_starts(self):
+    def test_artifact_all_applies_where_the_launcher_starts_the_rows_line(self):
         jar, build = runner.load_universal()
+        everything = set(runner.agent_track.LINE_NAMES)
         for line in self.lines.values():
-            universal = runner.for_artifact(line, "all")
             self.assertIs(runner.for_artifact(line, "line"), line)
-            if line.id == "java17-on-21":
-                # The launcher starts the primary line on JDK 21; the jdk21 line runs those probes.
+            started = runner.agent_track.launcher_choice(everything, int(line.jdk))
+            universal = runner.for_artifact(line, "all")
+            if line.no_universal:
                 self.assertIsNone(universal)
-                continue
-            self.assertEqual((universal.jar, universal.build, universal.family, universal.jdk),
-                             (jar, build, line.family, line.jdk), line.id)
-        covered = {(line.jdk, line.family) for line in self.lines.values() if runner.for_artifact(line, "all")}
-        self.assertEqual(covered, {(line.jdk, runner.universal_family(line.jdk)) for line in self.lines.values()},
-                         "every JDK in lines.toml gets one universal pass, on the family its launcher starts")
+                self.assertNotEqual(started, line.track, f"{line.id}: no_universal, yet the universal JAR starts its line")
+            else:
+                self.assertEqual(started, line.track, f"{line.id}: the universal JAR starts another line; "
+                                 "mark the row no_universal with the reason")
+                self.assertEqual((universal.jar, universal.build, universal.track), (jar, build, line.track))
+        covered = {line.jdk for line in self.lines.values() if not line.no_universal}
+        self.assertEqual(covered, {line.jdk for line in self.lines.values()}, "every JDK gets a universal pass")
+
+    def test_every_probe_is_told_the_line_under_test(self):
+        self.assertEqual({line.id: line.track for line in self.lines.values()},
+                         {"java8": "8", "java11": "11", "java17": "17", "java17-on-21": "17",
+                          "jdk21": "main", "jdk25": "main"})
+        texts = {p.id: p.script.read_text() for p in self.probes.values()}
+        guessing = [name for name, text in texts.items()
+                    if "RaspHooks.class" in text or ("namelist()" in text and "agent_track" not in text)]
+        self.assertEqual(guessing, [], "probes must take the line from agent_track.track(), which reads "
+                         f"{runner.agent_track.ENVIRONMENT} from the registry")
 
     def test_artifact_all_substitutes_the_universal_jar_in_commands(self):
         args = runner.argparse.Namespace(jar=None, build_root=None, probe_args=[])

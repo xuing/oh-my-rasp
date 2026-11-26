@@ -1,8 +1,10 @@
 #!/usr/bin/env python3
-"""Check that the launcher starts the line that fits this JDK, skips JARs that do not fit, starts one line per JVM and never stops the JVM."""
+"""Check that each agent JAR starts the line that fits this JDK, skips when none fits, starts one line per JVM and never stops the JVM."""
 import argparse
 import json
+import os
 from pathlib import Path
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -12,8 +14,8 @@ COMMON = Path(__file__).resolve().parent.parent / "common"
 sys.path.insert(0, str(COMMON))
 import agent_track  # noqa: E402
 
-LAUNCHER = "io/ohmyrasp/agent/launch/AgentLauncher.class"
-ENTRY_CLASSES = {
+LAUNCH = "io/ohmyrasp/agent/launch/"
+LINE_ENTRIES = {
     agent_track.PRIMARY: "io.ohmyrasp.agent.OhMyRaspAgent",
     "17": "io.ohmyrasp.agent.java17.OhMyRaspJava17Agent",
     "11": "io.ohmyrasp.agent.java11.OhMyRaspJava11Agent",
@@ -21,18 +23,45 @@ ENTRY_CLASSES = {
 }
 AGENT_OPTIONS = ["-Dohmyrasp.standalone=true", "-Dohmyrasp.mode=block", "-Dohmyrasp.control=none",
                  "-Dohmyrasp.log=stderr", "-Dohmyrasp.log.sync=true"]
+MONITOR_OPTIONS = [o for o in AGENT_OPTIONS if not o.startswith("-Dohmyrasp.mode=")] + ["-Dohmyrasp.mode=monitor"]
 FAILURE_MESSAGE = "simulated by the launcher probe"
+SKIPPED = ("ohmyrasp-agent-skipped", "unsupported-java")
+ACTIVE = ("ohmyrasp-agent-skipped", "already-active")
+EARLIER_FAILED = ("ohmyrasp-agent-skipped", "earlier-start-failed")
+FAILED = ("ohmyrasp-agent-start-failed", None)
+
+
+class Probe:
+    def __init__(self, work, major):
+        self.work, self.major, self.passed = work, major, 0
+        self.classes = work / "classes"
+        self.classes.mkdir()
+        subprocess.run(["javac", "-d", str(self.classes), str(COMMON / "HttpTransportCheck.java"),
+                        str(Path(__file__).with_name("LauncherCheck.java"))], check=True)
+        tools = Path(shutil.which("java")).resolve().parent.parent / "lib" / "tools.jar"  # the attach API on JDK 8
+        self.classpath = [str(self.classes), *([str(tools)] if tools.is_file() else [])]
+
+    def run(self, name, options, agents, app_args, extra_classpath=()):
+        command = ["java", "-Djdk.attach.allowAttachSelf=true", *options,
+                   *(f"-javaagent:{agent}" for agent in agents),
+                   "-cp", os.pathsep.join([*self.classpath, *map(str, extra_classpath)]), "LauncherCheck", *app_args]
+        return Run(self, name, subprocess.run(command, capture_output=True, text=True, timeout=120))
+
+    def fits(self, jar):
+        return agent_track.launcher_choice(agent_track.tracks_in(jar), self.major)
+
+    def first_fit(self, agents):
+        """The track the first attached JAR with a fitting line starts."""
+        return next((track for track in map(self.fits, agents) if track), None)
 
 
 class Run:
-    def __init__(self, name, options, agents, app_args, classes):
-        command = ["java", *options, *(f"-javaagent:{agent}" for agent in agents),
-                   "-cp", str(classes), "LauncherCheck", *app_args]
-        process = subprocess.run(command, capture_output=True, text=True, timeout=120)
-        self.name, self.code, self.out, self.err = name, process.returncode, process.stdout, process.stderr
+    def __init__(self, probe, name, process):
+        self.probe, self.name = probe, name
+        self.code, self.out, self.err = process.returncode, process.stdout, process.stderr
         output = (self.out + self.err).splitlines()
         self.launcher = [json.loads(line) for line in output if line.startswith('{"event":"ohmyrasp-agent-')]
-        self.starts = [track for line in output for track in (start_track(line),) if track]
+        self.starts = [track for track in map(start_track, output) if track]
 
     def fail(self, why):
         raise SystemExit(f"{self.name}: {why}\nexit {self.code}\n--- stdout\n{self.out}--- stderr\n{self.err}")
@@ -49,7 +78,9 @@ class Run:
         reasons = [(line["event"], line.get("reason")) for line in self.launcher]
         if reasons != launcher_lines:
             self.fail(f"expected launcher lines {launcher_lines}, saw {reasons}")
+        self.probe.passed += 1
         print(f"ok   {self.name}")
+        return self
 
 
 def start_track(line):
@@ -65,8 +96,8 @@ def start_track(line):
 
 
 def failing_entry_jar(universal, track, work):
-    """A JAR holding the real launcher and an entry for `track` whose premain throws a LinkageError."""
-    package, _, name = ENTRY_CLASSES[track].rpartition(".")
+    """The real launcher and universal entry, with a line entry for `track` whose premain throws."""
+    package, _, name = LINE_ENTRIES[track].rpartition(".")
     source = work / "failing" / (name + ".java")
     source.parent.mkdir()
     source.write_text(f"package {package};\n"
@@ -80,9 +111,10 @@ def failing_entry_jar(universal, track, work):
     jar = work / "failing-entry.jar"
     with zipfile.ZipFile(universal) as source_jar, zipfile.ZipFile(jar, "w") as fixture:
         fixture.writestr("META-INF/MANIFEST.MF", "Manifest-Version: 1.0\n"
-                         "Premain-Class: io.ohmyrasp.agent.launch.AgentLauncher\n\n")
-        fixture.writestr(LAUNCHER, source_jar.read(LAUNCHER))
-        entry = ENTRY_CLASSES[track].replace(".", "/") + ".class"
+                         f"Premain-Class: {LAUNCH.replace('/', '.')}UniversalEntry\n\n")
+        for launcher_class in ("AgentLauncher.class", "UniversalEntry.class"):
+            fixture.writestr(LAUNCH + launcher_class, source_jar.read(LAUNCH + launcher_class))
+        entry = LINE_ENTRIES[track].replace(".", "/") + ".class"
         fixture.write(classes / entry, entry)
     return jar
 
@@ -98,76 +130,81 @@ def main():
     universal = args.all_jar.resolve(strict=True)
     shirudo = args.shirudo_jar.resolve(strict=True)
     line_jars = [jar.resolve(strict=True) for jar in args.line_jar]
+    tested = agent_track.track(agent) or agent_track.PRIMARY  # the line the registry says is under test
 
     major = agent_track.java_major()
-    expected = agent_track.launcher_choice(set(agent_track.LINE_NAMES), major)
-    if expected is None:
-        raise SystemExit(f"no agent line fits Java {major}; the probes cover 8, 11, 17, 21 and 25")
     if agent_track.tracks_in(universal) != set(agent_track.LINE_NAMES):
         raise SystemExit(f"{universal.name} does not hold every line: {sorted(agent_track.tracks_in(universal))}")
-    track_arg = [expected]
-    skipped = ("ohmyrasp-agent-skipped", "unsupported-java")
-    active = ("ohmyrasp-agent-skipped", "already-active")
-    print(f"Java {major}: the launcher should start {agent_track.LINE_NAMES[expected]}")
-
     with tempfile.TemporaryDirectory(prefix="launcher-") as tmp:
         work = Path(tmp)
-        classes = work / "classes"
-        classes.mkdir()
-        subprocess.run(["javac", "-d", str(classes), str(COMMON / "HttpTransportCheck.java"),
-                        str(Path(__file__).with_name("LauncherCheck.java"))], check=True)
+        probe = Probe(work, major)
+        expected = probe.fits(universal)
+        if expected is None:
+            raise SystemExit(f"no agent line fits Java {major}; the probes cover 8, 11, 17, 21 and 25")
+        print(f"Java {major}: the universal JAR should start {agent_track.LINE_NAMES[expected]}, "
+              f"the JAR under test {agent_track.LINE_NAMES[tested]}")
 
-        Run("universal JAR starts the fitting line and blocks", AGENT_OPTIONS, [universal], track_arg, classes) \
+        probe.run(f"{agent.name} starts the line under test and blocks", AGENT_OPTIONS, [agent], [tested]) \
+            .expect([tested], True, [])
+        probe.run("the universal JAR starts the fitting line and blocks", AGENT_OPTIONS, [universal], [expected]) \
             .expect([expected], True, [])
 
-        unfit = []
-        for jar in line_jars:
-            held = agent_track.tracks_in(jar)
-            if len(held) != 1:
-                raise SystemExit(f"{jar.name} should hold one line, holds {sorted(held)}")
-            if agent_track.launcher_choice(held, major) is not None:
-                continue
-            unfit.append(jar)
-            run = Run(f"{jar.name} does not fit Java {major} and is skipped", AGENT_OPTIONS, [jar], [], classes)
-            run.expect([], None, [skipped])
+        unfit = [jar for jar in line_jars if probe.fits(jar) is None]
+        for jar in unfit:
+            run = probe.run(f"{jar.name} does not fit Java {major} and is skipped", AGENT_OPTIONS, [jar], [])
+            run.expect([], None, [SKIPPED])
             line = run.launcher[0]
-            if line["lines"] != agent_track.LINE_NAMES[next(iter(held))] or str(major) not in line["java_version"]:
+            held = agent_track.LINE_NAMES[next(iter(agent_track.tracks_in(jar)))]
+            if (line["lines"], line["jar"]) != (held, jar.name) or str(major) not in line["java_version"]:
                 run.fail(f"unexpected skip details {line}")
+        for jar in unfit:
+            for second in dict.fromkeys([agent, universal]):
+                probe.run(f"{jar.name} first, {second.name} second: the second starts", AGENT_OPTIONS,
+                          [jar, second], [probe.fits(second)]).expect([probe.fits(second)], True, [SKIPPED])
 
-        for order in ([agent, universal], [universal, agent]):
-            names = " + ".join(jar.name for jar in order)
-            run = Run(f"{names}: one line starts", AGENT_OPTIONS, order, track_arg, classes)
-            run.expect([expected], True, [active])
-            if run.launcher[0]["active_line"] != agent_track.LINE_NAMES[expected]:
-                run.fail(f"unexpected active line {run.launcher[0]}")
+        for order in ([agent, universal], [universal, agent], [agent, agent], [universal, universal]):
+            started = probe.first_fit(order)
+            run = probe.run(f"{order[0].name} + {order[1].name}: one line starts", AGENT_OPTIONS, order, [started])
+            run.expect([started], True, [ACTIVE])
+            if run.launcher[0]["state"] != f"installed:{agent_track.LINE_NAMES[started]}":
+                run.fail(f"unexpected state {run.launcher[0]}")
 
-        if unfit:
-            # The JVM loads a Premain-Class by name, so the second JAR's premain runs the first JAR's
-            # launcher; a JAR that does not fit must not keep the one that does from starting. Java 8
-            # puts every agent JAR on the class path before the first premain, so the first launcher
-            # already sees and starts the fitting line. Java 9 and later add each JAR just before its
-            # own premain, so the first launcher finds no fitting line and the second starts it.
-            Run(f"{unfit[0].name} before the universal JAR: the fitting line still starts", AGENT_OPTIONS,
-                [unfit[0], universal], track_arg, classes).expect([expected], True, [active if major == 8 else skipped])
-
-        run = Run("a line whose premain throws does not stop the JVM", AGENT_OPTIONS,
-                  [failing_entry_jar(universal, expected, work)], [], classes)
-        run.expect([], None, [("ohmyrasp-agent-start-failed", None)])
+        failing = failing_entry_jar(universal, expected, work)
+        run = probe.run("a line whose premain throws does not stop the JVM", AGENT_OPTIONS, [failing], [])
+        run.expect([], None, [FAILED])
         line = run.launcher[0]
-        if (line["line"], line["exception"], line["message"]) != (
-                agent_track.LINE_NAMES[expected], "java.lang.NoClassDefFoundError", FAILURE_MESSAGE):
+        if (line["line"], line["exception"], line["message"], line["protection"]) != (
+                agent_track.LINE_NAMES[expected], "java.lang.NoClassDefFoundError", FAILURE_MESSAGE,
+                "inactive or incomplete"):
             run.fail(f"unexpected failure details {line}")
+        probe.run("after a failed start, a later JAR starts no line", AGENT_OPTIONS, [failing, universal], []) \
+            .expect([], None, [FAILED, EARLIER_FAILED])
 
-        # The baked properties (standalone, log=stderr, mode=block, lock_config=true) are read from the
-        # universal JAR by the line that starts. With lock_config, the monitor flag below is ignored, so
-        # the read is blocked only when the line found the one properties file in this JAR. The general
-        # JAR, which has no properties file, shows that the flag alone does let the read through.
-        monitor = [option for option in AGENT_OPTIONS if not option.startswith("-Dohmyrasp.mode=")]
-        Run("the monitor flag lets the read through without baked properties", [*monitor, "-Dohmyrasp.mode=monitor"],
-            [universal], track_arg, classes).expect([expected], False, [])
-        Run("universal shirudo JAR applies its baked properties", ["-Dohmyrasp.mode=monitor"], [shirudo],
-            track_arg, classes).expect([expected], True, [])
-    print(f"{len(unfit)} per-line JAR(s) do not fit Java {major} and were skipped")
+        probe.run("agentmain alone starts the fitting line", AGENT_OPTIONS, [], [expected, "attach", str(universal)]) \
+            .expect([expected], True, [])
+        probe.run("agentmain after premain starts nothing", AGENT_OPTIONS, [universal],
+                  [expected, "attach", str(universal)]).expect([expected], True, [ACTIVE])
+
+        # Baked properties (standalone, log=stderr, mode=block, lock_config=true) are read from the JAR the
+        # started line's entry class came from. With lock_config the monitor flag is ignored, so the read
+        # is blocked only when the line read ohmyrasp.jar's file; the general JAR shows the flag works.
+        probe.run("the monitor flag lets the read through without baked properties", MONITOR_OPTIONS,
+                  [universal], [expected]).expect([expected], False, [])
+        probe.run("ohmyrasp.jar applies its baked properties", ["-Dohmyrasp.mode=monitor"], [shirudo],
+                  [expected]).expect([expected], True, [])
+        decoy = work / "decoy"
+        (decoy / "META-INF").mkdir(parents=True)
+        (decoy / "META-INF" / "ohmyrasp-shirudo.properties").write_text(
+            "standalone=true\nlock_config=false\nmode=monitor\ncontrol=none\nlog=stderr\nlatency_sample=0\n")
+        probe.run("a same-named properties file on the application class path does not override ohmyrasp.jar's",
+                  [], [shirudo], [expected], extra_classpath=[decoy]).expect([expected], True, [])
+        probe.run("ohmyrasp.jar first, the general universal JAR second: ohmyrasp.jar's properties apply",
+                  ["-Dohmyrasp.mode=monitor"], [shirudo, universal], [expected]).expect([expected], True, [ACTIVE])
+        # The line entry class loads by name through the system class loader, from the first attached JAR
+        # that holds it, so the general JAR attached first starts the line without baked properties.
+        probe.run("the general universal JAR first: it starts, without ohmyrasp.jar's properties", MONITOR_OPTIONS,
+                  [universal, shirudo], [expected]).expect([expected], False, [ACTIVE])
+    print(f"{probe.passed} launcher cases passed on Java {major}; {len(unfit)} per-line JAR(s) do not fit it")
 
 
 if __name__ == "__main__":

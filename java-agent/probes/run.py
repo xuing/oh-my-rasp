@@ -15,9 +15,11 @@ does not apply. lines.toml lists the agent lines (JAR x JDK runtime).
   run.py lines probe..                the lines every named probe applies to, comma-separated
 
 `--artifact all` (plan, run, gradle-tasks) runs a line's probes against the universal JAR
-in place of the line's own: the probes of the family its launcher starts on the line's JDK.
-A line whose JDK makes the launcher start another family's line (java17-on-21 starts the
-primary line) is skipped: the line of that family on the same JDK runs those probes.
+in place of the line's own. A row whose `no_universal` in lines.toml says why it does not
+apply (the universal JAR starts another line on its JDK) is skipped.
+
+Every probe gets the line under test in OHMYRASP_PROBE_TRACK ("8", "11", "17" or "main"),
+the same for both artifacts; probes/common/agent_track.py reads it.
 
 With no probe named, every probe that applies to the line runs. Arguments after
 `--` go to the probe (one probe only). CI and java-agent/scripts/check-agent.sh
@@ -54,6 +56,12 @@ class Line:
     tests: str
     build: tuple[str, ...]
     upatch: str | None = None
+    no_universal: str = ""      # why --artifact all does not apply to this row
+
+    @property
+    def track(self) -> str:
+        """The OHMYRASP_PROBE_TRACK value: the backport line's Java version, or main."""
+        return agent_track.PRIMARY if self.family == "primary" else self.id.removeprefix("java").split("-")[0]
 
 
 @dataclass(frozen=True)
@@ -98,26 +106,19 @@ def load_universal() -> tuple[str, tuple[str, ...]]:
     return table["jar"], tuple(table["build"])
 
 
-def universal_family(jdk: str) -> str:
-    """The family of the line the universal JAR's launcher starts on this JDK."""
-    chosen = agent_track.launcher_choice(set(agent_track.LINE_NAMES), int(jdk))
-    return "primary" if chosen == agent_track.PRIMARY else "backport"
-
-
 def for_artifact(line: Line, artifact: str) -> Line | None:
     """The line as the run sees it: unchanged for `line`; for `all`, the universal JAR in place of the
-    line's own, or None when the launcher starts another family's line on this JDK."""
+    line's own, or None when lines.toml marks the row not applicable."""
     if artifact == "line":
         return line
-    if universal_family(line.jdk) != line.family:
+    if line.no_universal:
         return None
     jar, build = load_universal()
     return dataclasses.replace(line, jar=jar, build=build, upatch=None)
 
 
 def covered_elsewhere(line: Line) -> str:
-    return (f"skip {line.id}: on JDK {line.jdk} the universal JAR starts the {universal_family(line.jdk)} line; "
-            f"the {universal_family(line.jdk)} line on JDK {line.jdk} runs these probes with --artifact all")
+    return f"skip {line.id} with --artifact all: {line.no_universal}"
 
 
 def load_probes() -> dict[str, Probe]:
@@ -209,7 +210,7 @@ def cmd_plan(probes, lines, args):
     chosen, skipped = select(probes, line, args)
     require_runnable(probes, line, args, skipped)
     for probe in chosen:
-        print(" ".join(["python3", *(os.path.relpath(part, JAVA_AGENT) if part.startswith("/") else part
+        print(" ".join([f"{agent_track.ENVIRONMENT}={line.track}", "python3", *(os.path.relpath(part, JAVA_AGENT) if part.startswith("/") else part
                                     for part in command(probe, line, args)[1:])]))
     for probe, reason in skipped:
         print(f"# skip {probe.id}: {reason}")
@@ -238,7 +239,8 @@ def cmd_run(probes, lines, args):
         if in_actions:
             print(f"::group::{probe.id}: {probe.summary}", flush=True)
         start = time.monotonic()
-        code = subprocess.run(command(probe, line, args)).returncode
+        code = subprocess.run(command(probe, line, args),
+                              env={**os.environ, agent_track.ENVIRONMENT: line.track}).returncode
         if in_actions:
             print("::endgroup::", flush=True)
         print(f"{'ok  ' if code == 0 else 'FAIL'} {line.id} {probe.id} {time.monotonic() - start:.1f}s", flush=True)

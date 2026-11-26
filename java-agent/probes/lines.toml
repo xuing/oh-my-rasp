@@ -9,6 +9,7 @@
 #   tests    Gradle task that runs the line's unit tests
 #   build    Gradle tasks that produce `jar`
 #   upatch   standalone JAR that CI also starts on this runtime, where there is one
+#   no_universal  why `run.py --artifact all` does not apply to the row, where it does not
 
 [[line]]
 id = "java8"
@@ -40,6 +41,7 @@ id = "java17-on-21"
 family = "backport"
 jdk = "21"
 jar = "agent-java17/build/libs/ohmyrasp-agent-java17.jar"
+no_universal = "on JDK 21 the universal JAR starts the primary line, which the jdk21 row probes"
 tests = ":agent-java17:test"
 build = [":agent-java17:agentJava17Jar"]
 
