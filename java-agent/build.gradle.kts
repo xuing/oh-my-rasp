@@ -40,6 +40,13 @@ subprojects {
         // Event reporting is asynchronous in production; tests assert on the spool
         // immediately after invoking a hook, so write inline during tests.
         systemProperty("ohmyrasp.log.sync", "true")
+        // The agent-daemon contract fixtures (contracts/agent-daemon/README.md). They are task inputs, so
+        // a changed fixture re-runs the tests; -Pcontracts.update=true rewrites the files the Java
+        // side writes instead of comparing against them.
+        val contracts = rootProject.file("contracts/agent-daemon")
+        inputs.dir(contracts).withPropertyName("agentDaemonContracts").withPathSensitivity(PathSensitivity.RELATIVE)
+        systemProperty("ohmyrasp.contracts", contracts.path)
+        systemProperty("ohmyrasp.contracts.update", providers.gradleProperty("contracts.update").getOrElse("false"))
     }
 }
 

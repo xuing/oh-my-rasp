@@ -1,0 +1,1 @@
+{"event":"ohmyrasp-detection","timestamp":1767225600000,"hook":"ProcessBuilder.start","algorithm":"javaN_command_execution_exploit_primitive","action":"log","confidence":95,"message":"Suspicious command execution reached a Java N process sink","details":{"command":"sh -c cat /etc/shadow","decision_basis":"command_arguments"}}

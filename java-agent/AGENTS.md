@@ -10,6 +10,7 @@ What lives where under `java-agent/`, which command checks a change, and the rul
 | `agent-java8/`, `agent-java11/`, `agent-java17/` | The backport lines. Three separate source trees, each written for its own JDK. |
 | `shared/` | Sources compiled into every line. |
 | `backport-tests/` | The unit tests of the three backport lines, written once. |
+| `contracts/` | Example event lines and control documents shared with the daemon; the agent and daemon tests both read them. |
 | `probes/` | Packaged-agent probes, one directory each, and the registry that runs them. |
 | `acceptance/` | End-to-end suites: `runtime/` per JDK, `vulhub/<component>/` per Vulhub target. |
 | `rules/` | Rule descriptions. The detection coverage doc is generated from them. |
@@ -30,6 +31,8 @@ java-agent/scripts/check-agent.sh --help               # lines and probes
 **A backport change reaches all three lines.** `agent-java8`, `agent-java11` and `agent-java17` may differ in syntax, never in what they decide. Make the same behaviour change in each line in the same commit, and put its test in `backport-tests/`, where one test runs on all three. A test that only one line can run stays in that line's `src/test` and says why in its first line. `scripts/check-backport-drift.py` compares the three trees after replacing the version token and fails on a difference that [`scripts/backport-drift.java11.diff`](scripts/backport-drift.java11.diff) and [`scripts/backport-drift.java17.diff`](scripts/backport-drift.java17.diff) do not record. Record a difference you mean (newer syntax, a per-release constant) with `--update`, and say why in the commit.
 
 **Backport lines gain no invokedynamic call sites.** Their hooks run inside JDK bootstrap classes, where the first use of a lambda, a method reference, a record's generated `toString`/`equals`/`hashCode` or a pattern `switch` links at run time and can re-enter the hooked call. Write an anonymous or static nested class there. `var`, text blocks, `switch` expressions over strings or enums and `instanceof` patterns compile without such call sites and are fine. `scripts/check-dynamic-calls.py --check` compares the built JARs with [`scripts/dynamic-calls.baseline.json`](scripts/dynamic-calls.baseline.json); `check-agent.sh` runs it for backport lines. Raise the baseline only for code that never runs inside a hook, and say why in the commit.
+
+**The event and control-file formats are pinned by examples.** A change to what an agent writes to the event spool, or to how it reads the control file, fails a test against [`contracts/agent-daemon/`](contracts/agent-daemon/README.md). Regenerate the examples there as its README says, read the diff, and run the daemon tests too: the daemon parses the same files.
 
 **`shared/` stays Java 8 source.** The Java 8 line compiles it with `--release 8`.
 
