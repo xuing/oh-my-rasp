@@ -143,12 +143,28 @@ public final class HookMap {
   static List<String> registeredTypes(JarFile agent, String entry) throws Exception {
     ClassNode entryNode = read(agent, entry);
     List<String> registered = new ArrayList<String>();
+    // A static helper of the entry class that takes the transformer and the retransform flag last and calls
+    // addTransformer (the backport entries' register, which records each transformer to undo a failed start) is
+    // where the registrations are: its calls are read instead of the one addTransformer inside it.
+    String helper = null;
+    for (MethodNode method : entryNode.methods) {
+      if (!method.desc.endsWith(TRANSFORMER_AND_FLAG)) continue;
+      for (AbstractInsnNode insn = method.instructions.getFirst(); insn != null; insn = insn.getNext()) {
+        if (insn instanceof MethodInsnNode && INSTRUMENTATION.equals(((MethodInsnNode) insn).owner)
+            && "addTransformer".equals(((MethodInsnNode) insn).name)) {
+          helper = method.name + method.desc;
+        }
+      }
+    }
     MethodNode registering = null;
     for (MethodNode method : entryNode.methods) {
+      if ((method.name + method.desc).equals(helper)) continue;
       for (AbstractInsnNode insn = method.instructions.getFirst(); insn != null; insn = insn.getNext()) {
         if (!(insn instanceof MethodInsnNode)) continue;
         MethodInsnNode call = (MethodInsnNode) insn;
-        if (!INSTRUMENTATION.equals(call.owner) || !"addTransformer".equals(call.name)) continue;
+        boolean direct = INSTRUMENTATION.equals(call.owner) && "addTransformer".equals(call.name);
+        boolean throughHelper = entry.equals(call.owner) && (call.name + call.desc).equals(helper);
+        if (!direct && !throughHelper) continue;
         if (registering != null && registering != method) {
           throw new IllegalStateException(entry + " calls addTransformer in " + registering.name + " and in " + method.name
               + ": the class file does not give their order");
@@ -195,11 +211,14 @@ public final class HookMap {
     return before;
   }
 
-  /** The class constructed as the first argument of one addTransformer call. */
+  /** The end of the descriptor of addTransformer(transformer, canRetransform), and of a helper that wraps it. */
+  private static final String TRANSFORMER_AND_FLAG = "Ljava/lang/instrument/ClassFileTransformer;Z)V";
+
+  /** The class constructed as the transformer argument of one addTransformer call, or of the helper's. */
   private static String transformerArgument(String entry, MethodNode method, MethodInsnNode call) {
     String where = entry + "." + method.name + " at instruction " + method.instructions.indexOf(call);
     AbstractInsnNode producer = previous(call);
-    if (call.desc.equals("(Ljava/lang/instrument/ClassFileTransformer;Z)V")) {
+    if (call.desc.endsWith(TRANSFORMER_AND_FLAG)) {
       int op = producer == null ? -1 : producer.getOpcode();
       boolean oneInstruction = op == Opcodes.ILOAD || (op >= Opcodes.ICONST_0 && op <= Opcodes.ICONST_1)
           || op == Opcodes.BIPUSH || op == Opcodes.GETSTATIC;
