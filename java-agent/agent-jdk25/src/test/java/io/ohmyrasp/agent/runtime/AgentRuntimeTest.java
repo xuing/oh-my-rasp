@@ -135,6 +135,54 @@ final class AgentRuntimeTest {
     assertEquals(DetectionMode.MONITOR, runtime.mode());
   }
 
+  @Test
+  void aMissingControlFileRestoresStartUpSettingsAndAnUnreadableOneKeepsTheLastGoodOnes(@TempDir Path dir)
+      throws Exception {
+    Path file = dir.resolve("control.json");
+    java.util.List<String> installed = new java.util.ArrayList<>();
+    AgentRuntime runtime = AgentRuntime.newForTesting();
+    runtime.setPolicyInstaller(installed::add);
+    runtime.start("control=" + file + ",control_poll_ms=86400000,mode=block");
+    assertEquals(DetectionMode.BLOCK, runtime.mode(), "no file yet");
+
+    String document =
+        "{\"mode\":\"off\",\"algorithms\":{\"sql_userinput\":false},\"revision\":4,"
+            + "\"policy\":\"{\\\"version\\\":4}\"}";
+    Files.writeString(file, document);
+    runtime.reloadIfChanged();
+    assertEquals(DetectionMode.OFF, runtime.mode());
+    assertFalse(runtime.isAlgorithmEnabled("sql_userinput"));
+    assertEquals(4, runtime.revision());
+    assertEquals(java.util.List.of("{\"version\":4}"), installed);
+
+    // Present but not readable as a document: the daemon replaces the file atomically, so this is
+    // transient and the last good settings stay.
+    Files.writeString(file, "{\"mode\":\"block\"");
+    runtime.reloadIfChanged();
+    assertEquals(DetectionMode.OFF, runtime.mode(), "truncated content");
+    Files.delete(file);
+    Files.createDirectory(file);
+    runtime.reloadIfChanged();
+    assertEquals(DetectionMode.OFF, runtime.mode(), "a directory in the file's place");
+    assertFalse(runtime.isAlgorithmEnabled("sql_userinput"));
+
+    // Removed: every setting taken from the file returns to its start-up value. The installed
+    // policy is the one exception and stays (see AgentRuntime#restoreStartUpSettings).
+    Files.delete(file);
+    runtime.reloadIfChanged();
+    assertEquals(DetectionMode.BLOCK, runtime.mode(), "a missing control file restores the start-up mode");
+    assertTrue(runtime.isAlgorithmEnabled("sql_userinput"));
+    assertEquals(0, runtime.revision());
+    assertEquals(java.util.List.of("{\"version\":4}"), installed);
+
+    // The same document written again applies again; its unchanged policy is not reinstalled.
+    Files.writeString(file, document);
+    runtime.reloadIfChanged();
+    assertEquals(DetectionMode.OFF, runtime.mode(), "the same document after a removal");
+    assertFalse(runtime.isAlgorithmEnabled("sql_userinput"));
+    assertEquals(java.util.List.of("{\"version\":4}"), installed);
+  }
+
   /**
    * A runtime polling {@code file}, driven by direct {@link AgentRuntime#reloadIfChanged} calls:
    * its poller thread waits a day before its first poll, so it never runs during a test.

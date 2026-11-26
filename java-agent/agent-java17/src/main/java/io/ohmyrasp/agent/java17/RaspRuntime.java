@@ -12,6 +12,7 @@ import java.net.URLConnection;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.InvalidPathException;
+import java.nio.file.NoSuchFileException;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.ArrayList;
@@ -196,6 +197,7 @@ public final class RaspRuntime {
    * the poller thread calls it, and so can a test, without the thread.
    */
   static final class ControlState {
+    private final Mode startup;
     private volatile Mode mode; // null = unset -> legacy behavior
     // The content last applied. The file is read on every poll and applied when its content
     // differs; content that fails to parse is not recorded, so a document read half-written is
@@ -203,6 +205,7 @@ public final class RaspRuntime {
     private volatile String applied;
 
     ControlState(Mode startup) {
+      this.startup = startup;
       this.mode = startup;
     }
 
@@ -210,15 +213,30 @@ public final class RaspRuntime {
       return mode;
     }
 
+    /**
+     * One polling step. The control file overrides the start-up mode only while it exists: when it
+     * is gone the start-up mode returns. When it exists but cannot be read or parsed, the last good
+     * mode stays; the daemon replaces the file atomically, so such a read is transient.
+     */
     void poll(Path path) {
+      if (path == null) {
+        return;
+      }
       String text;
       try {
-        if (path == null || !Files.isRegularFile(path)) {
+        if (Files.notExists(path)) {
+          restoreStartup();
+          return;
+        }
+        if (!Files.isRegularFile(path)) {
           return;
         }
         text = new String(Files.readAllBytes(path), StandardCharsets.UTF_8);
+      } catch (NoSuchFileException gone) {
+        restoreStartup();
+        return;
       } catch (IOException | RuntimeException unreadable) {
-        return; // keep the last good state
+        return;
       }
       if (text.equals(applied)) {
         return;
@@ -235,6 +253,11 @@ public final class RaspRuntime {
       if (parsed != null) {
         mode = parsed; // an unrecognised mode changes nothing
       }
+    }
+
+    private void restoreStartup() {
+      applied = null;
+      mode = startup;
     }
   }
 

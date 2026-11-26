@@ -31,6 +31,7 @@ public final class AgentRuntime {
   private static final String DEFAULT_CONTROL = "/tmp/ohmyrasp-control.json";
 
   private volatile DetectionMode mode; // null = unset → legacy behavior
+  private volatile DetectionMode startUpMode; // the mode resolved by start, before any control file
   private volatile Map<String, Boolean> algorithms = Map.of();
   private volatile long revision;
 
@@ -149,6 +150,7 @@ public final class AgentRuntime {
     if (resolvedMode != null) {
       mode = resolvedMode;
     }
+    startUpMode = mode;
 
     if (disableControl) {
       controlPath = null;
@@ -271,7 +273,12 @@ public final class AgentRuntime {
     poller.start();
   }
 
-  /** One polling step; the poller thread calls it, and so can a test. */
+  /**
+   * One polling step; the poller thread calls it, and so can a test. The control file overrides
+   * the start-up settings only while it exists: when it is gone they return. When it exists but
+   * cannot be read or parsed, the last good settings stay; the daemon replaces the file
+   * atomically, so such a read is transient.
+   */
   void reloadIfChanged() {
     Path path = controlPath;
     if (path == null) {
@@ -279,12 +286,19 @@ public final class AgentRuntime {
     }
     String text;
     try {
+      if (Files.notExists(path)) {
+        restoreStartUpSettings();
+        return;
+      }
       if (!Files.isRegularFile(path)) {
         return;
       }
       text = Files.readString(path);
+    } catch (java.nio.file.NoSuchFileException gone) {
+      restoreStartUpSettings();
+      return;
     } catch (RuntimeException | java.io.IOException e) {
-      return; // a transient read failure keeps the last good state
+      return;
     }
     // Read on every poll and applied when the content differs from what was last applied. Content
     // that fails to parse is not recorded, so a document read half-written is applied once it is
@@ -295,6 +309,20 @@ public final class AgentRuntime {
     if (apply(text)) {
       lastAppliedContent = text;
     }
+  }
+
+  /**
+   * Returns every setting the control file can change to its start-up value: the mode, the
+   * per-algorithm switches and the revision. An installed policy stays. The start-up policy is
+   * absent, which the installer cannot express (it installs a parsed policy, or an empty one for
+   * null), and with cloud_direct the ControlPlaneClient installs policies into the same slot, so
+   * the runtime cannot tell that the active policy still came from this file.
+   */
+  private void restoreStartUpSettings() {
+    lastAppliedContent = null;
+    mode = startUpMode;
+    algorithms = Map.of();
+    revision = 0;
   }
 
   /** Applies a control document; false, changing nothing, when it is not one JSON object. */

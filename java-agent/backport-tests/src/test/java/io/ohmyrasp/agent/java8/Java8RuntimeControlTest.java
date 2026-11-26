@@ -81,6 +81,46 @@ final class Java8RuntimeControlTest {
   }
 
   @Test
+  void aMissingControlFileRestoresTheStartUpModeAndAnUnreadableOneKeepsTheLastGoodMode()
+      throws Exception {
+    Path file = dir.resolve("control.json");
+    RaspRuntime.ControlState state = new RaspRuntime.ControlState(RaspRuntime.Mode.BLOCK);
+    state.poll(file);
+    assertEquals(RaspRuntime.Mode.BLOCK, state.mode(), "no file yet");
+
+    write(file, "{\"mode\":\"off\"}");
+    state.poll(file);
+    assertEquals(RaspRuntime.Mode.OFF, state.mode());
+
+    // Present but not readable as a document: the daemon replaces the file atomically, so this is
+    // transient and the last good mode stays.
+    write(file, "{\"mode\":\"block\"");
+    state.poll(file);
+    assertEquals(RaspRuntime.Mode.OFF, state.mode(), "truncated content");
+    Files.delete(file);
+    Files.createDirectory(file);
+    state.poll(file);
+    assertEquals(RaspRuntime.Mode.OFF, state.mode(), "a directory in the file's place");
+
+    Files.delete(file);
+    state.poll(file);
+    assertEquals(RaspRuntime.Mode.BLOCK, state.mode(), "a missing control file restores the start-up mode");
+
+    // The same document written again applies again.
+    write(file, "{\"mode\":\"off\"}");
+    state.poll(file);
+    assertEquals(RaspRuntime.Mode.OFF, state.mode(), "the same document after a removal");
+
+    // With no mode resolved at start-up, removal returns to the unset (legacy) mode.
+    RaspRuntime.ControlState unset = new RaspRuntime.ControlState(null);
+    unset.poll(file);
+    assertEquals(RaspRuntime.Mode.OFF, unset.mode());
+    Files.delete(file);
+    unset.poll(file);
+    assertNull(unset.mode());
+  }
+
+  @Test
   void controlDocumentReadsOnlyTheTopLevelOfOneWellFormedObject() {
     assertEquals("off", ControlDocument.topLevelString(" \r\n\t{ \"mode\" : \"off\" }\n", "mode"));
     assertEquals(
