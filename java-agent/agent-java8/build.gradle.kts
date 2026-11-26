@@ -62,7 +62,6 @@ val agentJava8Jar = tasks.register<ShadowJar>("agentJava8Jar") {
         attributes(
             "Premain-Class" to "io.ohmyrasp.agent.launch.Java8Entry",
             "Agent-Class" to "io.ohmyrasp.agent.launch.Java8Entry",
-            "Boot-Class-Path" to "ohmyrasp-agent-java8.jar",
             "Can-Redefine-Classes" to "true",
             "Can-Retransform-Classes" to "true",
             "Implementation-Title" to "OhMyRasp Java 8 Era Agent"

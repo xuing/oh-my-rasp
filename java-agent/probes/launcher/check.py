@@ -183,24 +183,15 @@ def main():
                 run.fail(f"unexpected state {run.launcher[0]}")
 
         java8 = next(jar for jar in line_jars if agent_track.tracks_in(jar) == {"8"})
-        if major > 8:
-            # The Java 8 JAR's Boot-Class-Path puts the Java 8 line on the bootstrap loader even when the
-            # launcher skips it. Started by hand there, the line cannot see java.sql: it must fail before it
-            # registers a transformer, so no transformer class of the line is ever loaded.
-            linker = work / "link-failure.jar"
-            subprocess.run(["javac", "-d", str(work / "link-classes"), str(Path(__file__).with_name("LinkFailureAgent.java"))],
-                           check=True)
-            with zipfile.ZipFile(linker, "w") as fixture:
-                fixture.writestr("META-INF/MANIFEST.MF", "Manifest-Version: 1.0\nPremain-Class: LinkFailureAgent\n"
-                                 "Can-Retransform-Classes: true\n\n")  # as every agent JAR declares
-                fixture.write(work / "link-classes" / "LinkFailureAgent.class", "LinkFailureAgent.class")
-            run = probe.run("a backport line that cannot link a type fails before installing a transformer",
-                            AGENT_OPTIONS, [java8, linker], ["none"])
-            for wanted in ("link-check: line loader=null", "link-check: failed java.lang.NoClassDefFoundError: java/sql/",
-                           "link-check: transformer classes loaded=0"):
-                if wanted not in run.out:
-                    run.fail(f"expected '{wanted}'")
-            run.expect([], None, [SKIPPED])
+        # No agent JAR names a Boot-Class-Path: each line appends the JAR it was started from, so no manifest puts
+        # a line, or a second definition of the launcher, on the bootstrap loader before the launcher has chosen.
+        # (The Java 8 general JAR named one until it, too, appended itself.)
+        for jar in dict.fromkeys([agent, universal, *line_jars]):
+            with zipfile.ZipFile(jar) as archive:
+                manifest = archive.read("META-INF/MANIFEST.MF").decode("utf-8", "replace")
+            if any(row.lower().startswith("boot-class-path:") for row in manifest.splitlines()):
+                raise SystemExit(f"{jar.name} names a Boot-Class-Path in its manifest")
+        print("ok   no agent JAR names a Boot-Class-Path")
 
         failing = failing_entry_jar(universal, expected, work)
         run = probe.run("a line whose premain throws does not stop the JVM", AGENT_OPTIONS, [failing], [])
@@ -219,9 +210,9 @@ def main():
                   [expected, "attach", str(universal), str(universal)]).expect([expected], True, [ACTIVE])
         probe.run("agentmain after premain starts nothing", AGENT_OPTIONS, [universal],
                   [expected, "attach", str(universal)]).expect([expected], True, [ACTIVE])
-        # A line appends its JAR to the bootstrap search, and the Java 8 JAR's Boot-Class-Path puts its
-        # entry there too, so this attach reaches a second, bootstrap definition of AgentLauncher. The
-        # one-start state must be the same object for both definitions.
+        # A line appends its JAR to the bootstrap search, so the entry of this attach resolves AgentLauncher
+        # from that search: a second, bootstrap definition of AgentLauncher. The one-start state must be the
+        # same for both definitions.
         probe.run("the Java 8 JAR attached after the universal JAR's premain starts nothing", AGENT_OPTIONS,
                   [universal], [expected, "attach", str(java8)]).expect([expected], True, [ACTIVE])
 
