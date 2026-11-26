@@ -22,6 +22,12 @@ subprojects {
         apply(from = rootProject.file("gradle/backport-tests.gradle.kts"))
     }
 
+    // The primary line (agent-jdk25) has no list yet: initialising all of its classes at start cost 82 to 92 ms on
+    // JDK 25, over the start-time budget; it still initialises its detectors at start (DetectorEngine).
+    if (name in setOf("agent-java8", "agent-java11", "agent-java17")) {
+        apply(from = rootProject.file("gradle/preload-index.gradle.kts"))
+    }
+
     if (name.startsWith("playground")) {
         tasks.withType<War>().configureEach {
             webXml = rootProject.file("playground/archive-upload-web.xml")

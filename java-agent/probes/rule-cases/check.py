@@ -5,12 +5,19 @@ A case counts only when the line under test started in its JVM: the driver repor
 published (system property ohmyrasp.agent.line) and the line's own start output must be in the JVM's
 output or event file, or the case is broken. The events a case is judged on are the ones written between
 the driver's marks around the operation, not everything in the event file.
+
+Each case JVM also logs class loading (-verbose:class on Java 8, -Xlog:class+load on 9 and later), and the
+driver loads a marker class at each end of the operation. A class of the agent (io.ohmyrasp.agent.) that
+loads between the marks loaded inside a hook or a transformer, inside the JDK call the hook instruments,
+where loading a class can re-enter the hook: on a backport line the case fails and names the class, since those
+lines load at start what their hooks use. On the primary line the classes are reported (ENFORCED_ENGINES).
 """
 from __future__ import annotations
 
 import argparse
 import json
 import os
+import re
 import subprocess
 import sys
 import tempfile
@@ -28,6 +35,32 @@ import rule_cases  # noqa: E402
 from servlet_fixture import api_jar  # noqa: E402
 
 TIMEOUT = 90
+AGENT_PACKAGE = "io.ohmyrasp.agent."
+# The class name in a class-load line: "[Loaded <name> from <source>]" (Java 8 -verbose:class) or
+# "[<decorations>][class,load] <name> source: <source>" (Java 9 and later -Xlog:class+load).
+LOADED = re.compile(r"^\[Loaded (\S+) from |\[class,load\]\s+(\S+)")
+MARKS = ("RuleCaseDriver$OperationStart", "RuleCaseDriver$OperationEnd")
+# The guard fails a case on the backport lines. On the primary line it reports and does not fail: the primary
+# loads its detectors at start but has no full preload list yet, because initialising all of its classes at start
+# cost 82 to 92 ms on JDK 25. Its lambda classes would stay outside any list in any case: a lambda's class does
+# not exist until its call site first runs.
+ENFORCED_ENGINES = ("backport",)
+
+
+def class_load_options(major: int, tmp: Path) -> list[str]:
+    """JVM options that log class loading: to standard output on Java 8, to a file on 9 and later."""
+    return ["-verbose:class"] if major <= 8 else [f"-Xlog:class+load:file={tmp / 'class-load.log'}"]
+
+
+def late_agent_classes(text: str) -> tuple[str, ...] | None:
+    """Agent classes the log shows loading between the driver's two marks, in order; None when a mark is missing."""
+    names = [m.group(1) or m.group(2) for m in map(LOADED.search, text.splitlines()) if m]
+    if MARKS[0] not in names or MARKS[1] not in names:
+        return None
+    between = names[names.index(MARKS[0]) + 1:names.index(MARKS[1])]
+    # A lambda's class name carries a counter and an address that differ between runs.
+    return tuple(re.sub(r"\$\$Lambda(\$\d+)?/(0x[0-9a-f]+|\d+)$", "$$Lambda", name)
+                 for name in between if name.startswith(AGENT_PACKAGE))
 
 
 def engine_of(agent: Path) -> tuple[str, str | None]:
@@ -42,6 +75,7 @@ class Actual:
     rule: str | None
     also: tuple[str, ...]
     note: str               # how the operation ended, for the reader
+    late: tuple[str, ...] = ()  # agent classes that loaded during the operation
 
 
 def spec_lines(case: rule_cases.Case, tmp: Path, classes: Path) -> str:
@@ -80,7 +114,7 @@ def spec_lines(case: rule_cases.Case, tmp: Path, classes: Path) -> str:
     return "".join(f"{k}={v.encode().hex()}\n" for k, v in pairs)
 
 
-def run_case(case, agent, classpath, classes, work, track) -> tuple[Actual, str]:
+def run_case(case, agent, classpath, classes, work, track, major) -> tuple[Actual, str]:
     tmp = work / "cases" / f"{case.file}--{case.name}"
     tmp.mkdir(parents=True)
     for name in case.setup.get("files", []):
@@ -106,6 +140,7 @@ def run_case(case, agent, classpath, classes, work, track) -> tuple[Actual, str]
     props = [f"-D{k}={str(v).replace('{tmp}', str(tmp))}" for k, v in case.properties.items()]
     command = ["java", "-Xverify:all", f"-javaagent:{agent}", "-Dohmyrasp.standalone=true", "-Dohmyrasp.mode=block",
                "-Dohmyrasp.control=none", "-Dohmyrasp.log.sync=true", f"-Dohmyrasp.log={log}", *props,
+               *class_load_options(major, tmp),
                "-cp", classpath, "RuleCaseDriver"]
     try:
         run = subprocess.run(command, input=spec_lines(case, tmp, classes), capture_output=True, text=True,
@@ -134,7 +169,13 @@ def run_case(case, agent, classpath, classes, work, track) -> tuple[Actual, str]
     def family(rule: str) -> str:
         return rule[len(prefix):] if prefix and rule.startswith(prefix) else rule
 
-    return classify(case, result, [(family(e["algorithm"]), e["action"]) for e in events]), output
+    actual = classify(case, result, [(family(e["algorithm"]), e["action"]) for e in events])
+    load_log = tmp / "class-load.log"
+    late = late_agent_classes(load_log.read_text(errors="replace") if load_log.exists() else run.stdout)
+    if late is None:
+        return Actual("broken", None, (), "the class-load log has no operation marks"), output
+    actual.late = late
+    return actual, output
 
 
 def agent_not_started(track: str | None, result: dict, text: str) -> str | None:
@@ -228,6 +269,7 @@ def main():
     cases = [c for c in cases if (not args.file or c.file in args.file) and (not args.case or c.name in args.case)]
     if not cases:
         raise SystemExit("no case selected")
+    major = agent_track.java_major()
     started = time.monotonic()
     with tempfile.TemporaryDirectory(prefix="rule-cases-") as directory:
         work = Path(directory)
@@ -242,13 +284,22 @@ def main():
                 raise SystemExit(compiled.stdout + compiled.stderr)
         classpath = os.pathsep.join((str(classes), str(api)))
         with ThreadPoolExecutor(max_workers=max(1, args.jobs)) as pool:
-            results = list(pool.map(lambda c: run_case(c, agent, classpath, remote, work, track), cases))
+            results = list(pool.map(lambda c: run_case(c, agent, classpath, remote, work, track, major), cases))
         failures = 0
+        late_failures = 0
+        late_by_class: dict[str, list[str]] = {}
+        enforced = engine in ENFORCED_ENGINES
         for case, (actual, output) in zip(cases, results):
             expect = case.expect[engine]
             if args.print_actual:
                 print(as_toml(case, engine, actual) + "\n")
                 continue
+            late = list(dict.fromkeys(actual.late))
+            for name in late:
+                late_by_class.setdefault(name, []).append(case.id)
+            if late and enforced:
+                late_failures += 1
+                print(f"LATE {case.id}: agent classes loaded during the operation: {', '.join(late)}")
             if not matches(expect, actual):
                 failures += 1
                 print(f"FAIL {case.id} ({case.kind}, via {case.via}) on the {engine}\n"
@@ -262,8 +313,14 @@ def main():
         return
     print(f"{len(cases) - failures}/{len(cases)} rule case(s) matched on the {label} agent in {elapsed:.1f}s "
           f"({args.jobs} at once)")
-    if failures:
-        raise SystemExit(f"{failures} rule case(s) differ from what their file declares")
+    affected = len({case_id for ids in late_by_class.values() for case_id in ids})
+    print(f"{len(late_by_class)} agent class(es) loaded during an operation, in {affected} of {len(cases)} case(s)"
+          + ("" if enforced else f"; reported, not enforced on the {engine} line (see ENFORCED_ENGINES)"))
+    for name, ids in sorted(late_by_class.items()):
+        print(f"  late {name}: {len(ids)} case(s), first {ids[0]}")
+    if failures or late_failures:
+        raise SystemExit(f"{failures} rule case(s) differ from what their file declares; "
+                         f"{late_failures} loaded an agent class during the operation")
 
 
 if __name__ == "__main__":

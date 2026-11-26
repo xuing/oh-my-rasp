@@ -94,6 +94,7 @@ public class RuleCaseDriver extends HttpServlet {
     RESULT.put("op", "not-run");
     RESULT.put("ending", "");
     RESULT.put("log_start", String.valueOf(logLength()));
+    mark("OperationStart");
     if ("sink".equals(via)) {
       perform();
     } else {
@@ -108,6 +109,7 @@ public class RuleCaseDriver extends HttpServlet {
       }
       if ("no".equals(RESULT.get("handler")) && redirected) RESULT.put("entry", "blocked-redirect");
     }
+    mark("OperationEnd");
     RESULT.put("log_end", String.valueOf(logLength()));
     RESULT.put("agent_line", System.getProperty("ohmyrasp.agent.line", ""));
     StringBuilder line = new StringBuilder("RULECASE");
@@ -118,6 +120,20 @@ public class RuleCaseDriver extends HttpServlet {
     System.out.flush();
     System.exit(0);
   }
+
+  /**
+   * Loads the marker class {@code RuleCaseDriver$<name>}, so the JVM's class-load log shows where the operation
+   * starts and ends: check.py fails a case when a class of the agent loads between the two marks, since that load
+   * happened inside a hook (or a transformer) during the operation.
+   */
+  private static void mark(String name) throws ClassNotFoundException {
+    Class.forName(RuleCaseDriver.class.getName() + "$" + name, true, RuleCaseDriver.class.getClassLoader());
+  }
+
+  /** Marker classes for {@link #mark}: nothing else loads them. */
+  static final class OperationStart {}
+
+  static final class OperationEnd {}
 
   /** Bytes in the agent's event file now: the agent writes inline (ohmyrasp.log.sync=true), so this is a line boundary. */
   private static long logLength() {
