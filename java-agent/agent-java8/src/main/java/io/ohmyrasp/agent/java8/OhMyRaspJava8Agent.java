@@ -25,9 +25,10 @@ public final class OhMyRaspJava8Agent {
 
   private static void install(String mode, String agentArgs, Instrumentation instrumentation) {
     appendSelfToBootstrap(instrumentation);
+    // Initialises RaspRuntime here, before any transformer, so no hook does it on an app thread.
+    String logPath = RaspRuntime.resolveLogPath();
     io.ohmyrasp.agent.xml.SystemArchiveOrigins.initialize(instrumentation);
     installTransformer(instrumentation);
-    String logPath = RaspRuntime.resolveLogPath();
     RaspRuntime.writeStartupLine(logPath, startupMessage(mode, agentArgs, instrumentation));
   }
 

@@ -35,10 +35,11 @@ public final class OhMyRaspJava17Agent {
 
   private static void install(String mode, String agentArgs, Instrumentation instrumentation) {
     appendSelfToBootstrap(instrumentation);
+    // Initialises RaspRuntime here, before any transformer, so no hook does it on an app thread.
+    String logPath = RaspRuntime.resolveLogPath();
     io.ohmyrasp.agent.xml.SystemArchiveOrigins.initialize(instrumentation);
     installTransformer(instrumentation);
     String message = startupMessage(mode, agentArgs, instrumentation);
-    String logPath = RaspRuntime.resolveLogPath();
     RaspRuntime.writeStartupLine(logPath, message);
   }
 
@@ -231,37 +232,24 @@ public final class OhMyRaspJava17Agent {
   }
 
   private static String json(String value) {
-    StringBuilder builder = new StringBuilder(value.length() + 16);
+    var builder = new StringBuilder(value.length() + 16);
     for (int i = 0; i < value.length(); i++) {
       char ch = value.charAt(i);
       switch (ch) {
-        case '"':
-          builder.append("\\\"");
-          break;
-        case '\\':
-          builder.append("\\\\");
-          break;
-        case '\b':
-          builder.append("\\b");
-          break;
-        case '\f':
-          builder.append("\\f");
-          break;
-        case '\n':
-          builder.append("\\n");
-          break;
-        case '\r':
-          builder.append("\\r");
-          break;
-        case '\t':
-          builder.append("\\t");
-          break;
-        default:
+        case '"' -> builder.append("\\\"");
+        case '\\' -> builder.append("\\\\");
+        case '\b' -> builder.append("\\b");
+        case '\f' -> builder.append("\\f");
+        case '\n' -> builder.append("\\n");
+        case '\r' -> builder.append("\\r");
+        case '\t' -> builder.append("\\t");
+        default -> {
           if (ch < 0x20) {
             builder.append(String.format("\\u%04x", Integer.valueOf(ch)));
           } else {
             builder.append(ch);
           }
+        }
       }
     }
     return builder.toString();

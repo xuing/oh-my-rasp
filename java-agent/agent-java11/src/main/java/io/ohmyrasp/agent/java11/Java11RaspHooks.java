@@ -248,7 +248,7 @@ public final class Java11RaspHooks {
 
   public static void beforeSparkSubmitDispatch(boolean creation, Object request, Class<?> requestApi) {
     if (RaspRuntime.detectionOff() || !SparkSubmitRole.denied(creation, request, requestApi)) return;
-    Finding finding = new Finding("java11_request_remote_job_submission", 95,
+    var finding = new Finding("java11_request_remote_job_submission", 95,
         "Spark job submission lacks the deployment's required role", "operation", "handleSubmit", "required_submit_role_denied");
     boolean block = shouldBlock();
     appendEvent(finding, "SparkRest.handleSubmit", block ? "block" : "log");
@@ -261,7 +261,7 @@ public final class Java11RaspHooks {
   public static void afterYarnSubmitPrepared(Object prepared, Object request, Class<?> requestApi) {
     if (prepared == null || RaspRuntime.detectionOff()
         || !ServletSubmitRole.denied("ohmyrasp.yarn.submitRole", request, requestApi)) return;
-    Finding finding = new Finding("java11_request_remote_job_submission", 95,
+    var finding = new Finding("java11_request_remote_job_submission", 95,
         "YARN job submission lacks the deployment's required role", "operation", "SubmitApplicationRequest.newInstance",
         "required_submit_role_denied");
     boolean block = shouldBlock();
@@ -271,7 +271,7 @@ public final class Java11RaspHooks {
 
   public static void beforeSpringProcessStart(ProcessBuilder builder) {
     if (RaspRuntime.detectionOff() || !io.ohmyrasp.agent.rules.product.spring.SpringProcessInit.selects(builder)) return;
-    Finding finding = new Finding("java11_command_execution_exploit_primitive", 95,
+    var finding = new Finding("java11_command_execution_exploit_primitive", 95,
         "Spring dispatched an HTTP-defined initializer to ProcessBuilder.start",
         "method", "ProcessBuilder.start", "remote_bean_init_dispatch");
     boolean block = shouldBlock();
@@ -332,7 +332,7 @@ public final class Java11RaspHooks {
 
   public static void beforeOpenWireThrowable(Class<?> selected) {
     if (RaspRuntime.detectionOff() || selected == null || Throwable.class.isAssignableFrom(selected)) return;
-    Finding finding = new Finding("java11_deserialization_protocol_class", 100,
+    var finding = new Finding("java11_deserialization_protocol_class", 100,
         "OpenWire selected a non-Throwable constructor for an exception",
         "class", selected.getName(), "non_throwable_constructor");
     boolean block = shouldBlock();
@@ -355,7 +355,7 @@ public final class Java11RaspHooks {
     if (selected == null || RaspRuntime.detectionOff()) return false;
     String name = selected.getName();
     if (!StreamTypeNames.listed(name) || !BeanShellTypes.permitsTypeCheck(selected)) return false;
-    Finding finding = new Finding("java11_deserialization_gadget_class", deserializationConfidence(name),
+    var finding = new Finding("java11_deserialization_gadget_class", deserializationConfidence(name),
         "Stream resolver selected a listed serialization type", "class", name, basis);
     boolean block = shouldBlock();
     appendEvent(finding, hook, block ? "block" : "log");
@@ -367,7 +367,7 @@ public final class Java11RaspHooks {
 
   public static void beforeHessianAllocation(Class<?> selected, String basis) {
     if (RaspRuntime.detectionOff() || !io.ohmyrasp.agent.rules.product.hessian.HessianAllocationTypes.listed(selected)) return;
-    Finding finding = new Finding("java11_deserialization_hessian_type", 95,
+    var finding = new Finding("java11_deserialization_hessian_type", 95,
         "Hessian selected a listed type for allocation", "class", selected.getName(), basis);
     boolean block = shouldBlock();
     appendEvent(finding, "Hessian.allocate", block ? "block" : "log");
@@ -410,7 +410,7 @@ public final class Java11RaspHooks {
     if (!direct && (walk == null || !walk.selected)) return;
     String root = HostDirectory.protectedRoot(path, opened, relative);
     if (root.isEmpty()) return;
-    Finding finding = new Finding("java11_directory_userinput", 90, "Request selected a protected directory listing",
+    var finding = new Finding("java11_directory_userinput", 90, "Request selected a protected directory listing",
         "path", root, direct ? "selected_directory" : "selected_directory_walk");
     boolean block = shouldBlock();
     String operation = opened == null ? "FileSystem.list" : relative ? "SecureDirectoryStream.open" : "DirectoryStream.open";
@@ -432,11 +432,11 @@ public final class Java11RaspHooks {
     if (RaspRuntime.detectionOff()) return;
     RequestSnapshot request = CURRENT_REQUEST.get();
     if (request == null || request.parameterValues == null) return;
-    HostDelete entry = new HostDelete(path, directoryFd, directory != null, true);
+    var entry = new HostDelete(path, directoryFd, directory != null, true);
     for (String input : request.parameterValues) {
       if (entry.match(input) != HostDelete.Basis.ESCAPING_ENTRY) continue;
       if (directory != null && !HostDelete.hasEntry(directory, path, removeDirectory)) return;
-      Finding finding = new Finding("deleteFile_userinput", 85, "Request selected an entry outside the base directory",
+      var finding = new Finding("deleteFile_userinput", 85, "Request selected an entry outside the base directory",
           "path", entry.path(), "escaping_entry");
       boolean block = shouldBlock();
       appendEvent(finding, directory == null ? "host_entry_removal" : "descriptor_relative_unlink", block ? "block" : "log");
@@ -454,6 +454,7 @@ public final class Java11RaspHooks {
   }
 
   public static void beforeFileWrite(Object path) {
+    if (RaspRuntime.inOwnIo()) return; // the agent's own I/O: before any application state
     if (!ARCHIVE_ENTRY.hostDestination(path)) return;
     String rawPath = pathValue(path);
     String normalizedPath = normalizePath(rawPath);
@@ -472,10 +473,11 @@ public final class Java11RaspHooks {
   @Deprecated public static void beforeFileContentWrite(byte[] bytes, int offset, int length) {}
 
   public static void inspectPlotWrite(PlotWrite attempt) {
+    if (RaspRuntime.inOwnIo()) return; // the agent's own I/O: before any application state
     if (attempt == null) return;
     try {
       if (!attempt.hasDirective() || RaspRuntime.detectionOff()) return;
-      Finding finding = new Finding("java11_file_generated_plot_script_command", 91,
+      var finding = new Finding("java11_file_generated_plot_script_command", 91,
           "A plot directive reached its open output stream", "path", attempt.path(), "plot_stream_write");
       boolean block = shouldBlock();
       appendEvent(finding, "FileOutputStream.write", block ? "block" : "log");
@@ -500,6 +502,7 @@ public final class Java11RaspHooks {
 
   public static void beforeUnixFileOpen(java.nio.file.Path path, boolean read, int directoryFd,
       boolean noFollowFinal, boolean creatingNew) {
+    if (RaspRuntime.inOwnIo()) return; // the agent's own I/O: before any application state
     if (HostReadPath.nativeRead(path, read && !creatingNew, directoryFd) && !RaspRuntime.detectionOff()) {
       HostReadPath.OpenPolicy links = noFollowFinal ? HostReadPath.OpenPolicy.NOFOLLOW_FINAL : HostReadPath.OpenPolicy.FOLLOW;
       emitFileFinding(classifyFileRead(path.toString(), links), null, "UnixChannelFactory.open");
@@ -519,6 +522,7 @@ public final class Java11RaspHooks {
   }
 
   public static void beforeNioFileRead(Object path) {
+    if (RaspRuntime.inOwnIo()) return; // the agent's own I/O: before any application state
     if (HostReadPath.needsFacadeRead(path)) {
       emitFileFinding(classifyFileRead(pathValue(path), HostReadPath.OpenPolicy.PATH_ONLY), LAST_LOGGED_FILE_READ, "FileInputStream.open");
     }
@@ -529,6 +533,7 @@ public final class Java11RaspHooks {
   }
 
   public static void beforeNioByteChannelOpen(Object path, Object options) {
+    if (RaspRuntime.inOwnIo()) return; // the agent's own I/O: before any application state
     if (nioOptionsContainWrite(options)) {
       beforeFileWrite(path);
     } else {
@@ -617,7 +622,7 @@ public final class Java11RaspHooks {
   }
 
   private static void emitHttpDestination(Finding finding, String hook, String basis, boolean block, String peer) {
-    Finding observed = new Finding(finding.algorithm, finding.confidence, finding.message,
+    var observed = new Finding(finding.algorithm, finding.confidence, finding.message,
         finding.detailKey, HttpTransportObservation.recordedAddress(finding.detailValue), basis);
     appendEvent(observed, hook, block ? "block" : "log", peer);
     if (block) throw new Java11RaspBlockException("OhMyRASP blocked an outbound HTTP destination");
@@ -717,7 +722,7 @@ public final class Java11RaspHooks {
     while (padding < 3 && src[sl - 1 - padding] == '=') {
       padding++;
     }
-    Finding finding =
+    var finding =
         new Finding(
             "java11_base64_avx512_tail_underflow",
             99,
@@ -929,10 +934,12 @@ public final class Java11RaspHooks {
   public static void beforeJaasConfigEntry(Object loginModuleName, Object options) {}
 
   public static void beforeJmxStreamWrite(String path, int write) {
+    if (RaspRuntime.inOwnIo()) return; // the agent's own I/O: before any application state
     if (write != 0 && JmxWriteScope.current() != null) inspectJmxFileWrite(path, "stream_open");
   }
 
   public static void beforeUnixChannelWrite(java.nio.file.Path path, int directoryFd, boolean write) {
+    if (RaspRuntime.inOwnIo()) return; // the agent's own I/O: before any application state
     if (!write) return;
     ArchiveEntryContext.ChannelWrite open = ARCHIVE_ENTRY.atChannelOpen(path, directoryFd);
     if (open != null && !RaspRuntime.detectionOff())
@@ -941,6 +948,7 @@ public final class Java11RaspHooks {
   }
 
   public static void beforeJmxChannelWrite(java.nio.file.Path path, int directoryFd, boolean write) {
+    if (RaspRuntime.inOwnIo()) return; // the agent's own I/O: before any application state
     if (write && JmxWriteScope.current() != null && (directoryFd < 0 || path.isAbsolute()))
       inspectJmxFileWrite(path.toString(), "channel_open");
   }
@@ -948,7 +956,7 @@ public final class Java11RaspHooks {
   private static void inspectJmxFileWrite(String path, String operation) {
     JmxWriteScope scope = JmxWriteScope.current();
     if (RaspRuntime.detectionOff() || !SCRIPT_FILE_WRITE.matcher(normalizePath(path)).matches() || !scope.selects(path)) return;
-    Finding finding = new Finding("java11_jmx_script_file_write", 90,
+    var finding = new Finding("java11_jmx_script_file_write", 90,
         "A managed operation opens its selected script destination for writing", "path", path, "selected_write_open");
     boolean block = shouldBlock();
     appendEvent(finding, operation, block ? "block" : "log");
@@ -992,7 +1000,7 @@ public final class Java11RaspHooks {
 
   public static void beforeDataEaseFilterContinuation(String rejection, Object request) {
     if (rejection == null || RaspRuntime.detectionOff()) return;
-    Finding finding = new Finding("java11_request_jwt_verification_failure", 95,
+    var finding = new Finding("java11_request_jwt_verification_failure", 95,
         "Authentication filter continued the request after rejecting its credential",
         "exception", rejection, "rejected_token_dispatch");
     boolean block = shouldBlock();
@@ -2659,7 +2667,7 @@ public final class Java11RaspHooks {
 
   private static String normalizeParameterName(String name) {
     String value = lower(name == null ? "" : name);
-    StringBuilder normalized = new StringBuilder(value.length());
+    var normalized = new StringBuilder(value.length());
     for (int i = 0; i < value.length(); i++) {
       char c = value.charAt(i);
       if ((c >= 'a' && c <= 'z') || (c >= '0' && c <= '9')) {
@@ -2734,7 +2742,7 @@ public final class Java11RaspHooks {
     if (headerBytes.length == 0) {
       return "";
     }
-    String header = new String(headerBytes, StandardCharsets.UTF_8);
+    var header = new String(headerBytes, StandardCharsets.UTF_8);
     Matcher matcher = JWT_HMAC_ALGORITHM.matcher(header);
     return matcher.find() ? matcher.group(1) : "";
   }
@@ -3008,7 +3016,7 @@ public final class Java11RaspHooks {
   }
 
   private static String joinPathSegments(List<String> segments) {
-    StringBuilder builder = new StringBuilder();
+    var builder = new StringBuilder();
     for (int i = 0; i < segments.size(); i++) {
       if (i > 0) {
         builder.append('/');
@@ -3020,7 +3028,7 @@ public final class Java11RaspHooks {
 
   private static String stripServletPathParameters(String path) {
     String[] segments = path.split("/", -1);
-    StringBuilder stripped = new StringBuilder(path.length());
+    var stripped = new StringBuilder(path.length());
     for (int i = 0; i < segments.length; i++) {
       if (i > 0) {
         stripped.append('/');
@@ -3036,7 +3044,7 @@ public final class Java11RaspHooks {
     if (value == null || value.indexOf('%') < 0) {
       return value == null ? "" : value;
     }
-    StringBuilder decoded = new StringBuilder(value.length());
+    var decoded = new StringBuilder(value.length());
     for (int i = 0; i < value.length(); i++) {
       char ch = value.charAt(i);
       if (ch == '%' && i + 2 < value.length()) {
@@ -3061,7 +3069,7 @@ public final class Java11RaspHooks {
     if (value == null || value.trim().length() == 0) {
       return value == null ? "" : value;
     }
-    StringBuilder decoded = new StringBuilder(value.length());
+    var decoded = new StringBuilder(value.length());
     boolean changed = false;
     for (int i = 0; i < value.length(); i++) {
       int first = encodedByteValue(value, i);
@@ -3139,7 +3147,7 @@ public final class Java11RaspHooks {
     if (value == null || lower(value).indexOf("%u") < 0) {
       return value == null ? "" : value;
     }
-    StringBuilder decoded = new StringBuilder(value.length());
+    var decoded = new StringBuilder(value.length());
     for (int i = 0; i < value.length(); i++) {
       char ch = value.charAt(i);
       if (ch == '%'
@@ -3170,7 +3178,7 @@ public final class Java11RaspHooks {
     if (value == null || value.trim().length() == 0) {
       return value == null ? "" : value;
     }
-    StringBuilder decoded = new StringBuilder(value.length());
+    var decoded = new StringBuilder(value.length());
     boolean changed = false;
     for (int i = 0; i < value.length(); i++) {
       char ch = value.charAt(i);
@@ -3569,7 +3577,7 @@ public final class Java11RaspHooks {
   }
 
   private static String joinList(List<String> values) {
-    StringBuilder builder = new StringBuilder();
+    var builder = new StringBuilder();
     if (values == null) {
       return "";
     }
@@ -3743,28 +3751,26 @@ public final class Java11RaspHooks {
       return null;
     }
     if (value instanceof java.net.URI) {
-      java.net.URI uri = (java.net.URI) value;
+      var uri = (java.net.URI) value;
       String protocol = lower(uri.getScheme());
       String host = normalizeHost(uri.getHost());
       String rawPath = uri.getRawPath() == null || uri.getRawPath().isEmpty() ? "/" : uri.getRawPath();
       int port = uri.getPort() < 0 ? ("https".equals(protocol) ? 443 : 80) : uri.getPort();
       String query = uri.getRawQuery();
-      return new UrlParts(protocol, host, rawPath, HttpTransportObservation.address(uri),
+      return new UrlParts(host, rawPath, HttpTransportObservation.address(uri),
           protocol + "://" + NetworkHost.destinationKey(host) + ":" + port + rawPath + (query == null ? "" : "?" + query));
     }
     if (value instanceof URL) {
-      URL url = (URL) value;
+      var url = (URL) value;
       return new UrlParts(
-          lower(url.getProtocol()),
           normalizeHost(url.getHost()),
           url.getPath() == null || url.getPath().length() == 0 ? "/" : url.getPath(),
           HttpTransportObservation.isHttp(url) ? HttpTransportObservation.address(url) : String.valueOf(url),
           urlComparisonKey(url));
     }
     try {
-      URL url = new URL(String.valueOf(value));
+      var url = new URL(String.valueOf(value));
       return new UrlParts(
-          lower(url.getProtocol()),
           normalizeHost(url.getHost()),
           url.getPath() == null || url.getPath().length() == 0 ? "/" : url.getPath(),
           HttpTransportObservation.isHttp(url) ? HttpTransportObservation.address(url) : String.valueOf(url),
@@ -3834,7 +3840,7 @@ public final class Java11RaspHooks {
 
   private static void addRequestControlledUrl(List<String> urls, Object value) {
     if (value instanceof String) {
-      String path = (String) value;
+      var path = (String) value;
       if (path.startsWith("/") && !path.startsWith("//") && LOOPBACK_ADMIN_PATH.matcher(path).find()) {
         if (!urls.contains(path)) urls.add(path);
         return;
@@ -3991,14 +3997,12 @@ public final class Java11RaspHooks {
   }
 
   private static final class UrlParts {
-    final String protocol;
     final String host;
     final String path;
     final String fullUrl;
     final String comparisonKey;
 
-    UrlParts(String protocol, String host, String path, String fullUrl, String comparisonKey) {
-      this.protocol = protocol;
+    UrlParts(String host, String path, String fullUrl, String comparisonKey) {
       this.host = host;
       this.path = path;
       this.fullUrl = fullUrl;
@@ -4078,7 +4082,7 @@ public final class Java11RaspHooks {
   }
 
   private static String join(String[] command) {
-    StringBuilder builder = new StringBuilder();
+    var builder = new StringBuilder();
     for (int i = 0; i < command.length; i++) {
       if (command[i] == null || command[i].trim().length() == 0) {
         continue;
@@ -4098,15 +4102,7 @@ public final class Java11RaspHooks {
   public static boolean enforceElasticLz4Bounds() { return shouldBlock(); }
 
   private static boolean shouldBlock() {
-    String property = System.getProperty("ohmyrasp.java11.block");
-    if (property == null || property.trim().length() == 0) {
-      property = System.getenv("OHMYRASP_JAVA11_BLOCK");
-    }
-    boolean legacy =
-        "true".equalsIgnoreCase(property)
-            || "1".equals(property)
-            || "yes".equalsIgnoreCase(property);
-    return RaspRuntime.blockingAllowed(legacy);
+    return RaspRuntime.blockingAllowed(RaspRuntime.legacyBlockFlag());
   }
 
   private static void appendEvent(Finding finding, String hook, String action) {
@@ -4117,7 +4113,19 @@ public final class Java11RaspHooks {
     appendEvent(finding, hook, action, resolvedAddress, -1);
   }
 
+  /**
+   * Records a detection. Nothing that fails while the event is built or written leaves this method,
+   * so a caller that has decided to block always reaches its throw; only the event is lost.
+   */
   private static void appendEvent(Finding finding, String hook, String action, String resolvedAddress, int argc) {
+    try {
+      writeDetection(finding, hook, action, resolvedAddress, argc);
+    } catch (Throwable reportingFailure) {
+      // The caller's decision stands.
+    }
+  }
+
+  private static void writeDetection(Finding finding, String hook, String action, String resolvedAddress, int argc) {
     if (RaspRuntime.detectionOff()) {
       return;
     }
@@ -4164,7 +4172,7 @@ public final class Java11RaspHooks {
   }
 
   private static String json(String value) {
-    StringBuilder builder = new StringBuilder(value.length() + 16);
+    var builder = new StringBuilder(value.length() + 16);
     for (int i = 0; i < value.length(); i++) {
       char ch = value.charAt(i);
       switch (ch) {

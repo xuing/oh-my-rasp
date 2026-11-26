@@ -454,6 +454,7 @@ public final class Java8RaspHooks {
   }
 
   public static void beforeFileWrite(Object path) {
+    if (RaspRuntime.inOwnIo()) return; // the agent's own I/O: before any application state
     if (!ARCHIVE_ENTRY.hostDestination(path)) return;
     String rawPath = pathValue(path);
     String normalizedPath = normalizePath(rawPath);
@@ -472,6 +473,7 @@ public final class Java8RaspHooks {
   @Deprecated public static void beforeFileContentWrite(byte[] bytes, int offset, int length) {}
 
   public static void inspectPlotWrite(PlotWrite attempt) {
+    if (RaspRuntime.inOwnIo()) return; // the agent's own I/O: before any application state
     if (attempt == null) return;
     try {
       if (!attempt.hasDirective() || RaspRuntime.detectionOff()) return;
@@ -500,6 +502,7 @@ public final class Java8RaspHooks {
 
   public static void beforeUnixFileOpen(java.nio.file.Path path, boolean read, int directoryFd,
       boolean noFollowFinal, boolean creatingNew) {
+    if (RaspRuntime.inOwnIo()) return; // the agent's own I/O: before any application state
     if (HostReadPath.nativeRead(path, read && !creatingNew, directoryFd) && !RaspRuntime.detectionOff()) {
       HostReadPath.OpenPolicy links = noFollowFinal ? HostReadPath.OpenPolicy.NOFOLLOW_FINAL : HostReadPath.OpenPolicy.FOLLOW;
       emitFileFinding(classifyFileRead(path.toString(), links), null, "UnixChannelFactory.open");
@@ -519,6 +522,7 @@ public final class Java8RaspHooks {
   }
 
   public static void beforeNioFileRead(Object path) {
+    if (RaspRuntime.inOwnIo()) return; // the agent's own I/O: before any application state
     if (HostReadPath.needsFacadeRead(path)) {
       emitFileFinding(classifyFileRead(pathValue(path), HostReadPath.OpenPolicy.PATH_ONLY), LAST_LOGGED_FILE_READ, "FileInputStream.open");
     }
@@ -529,6 +533,7 @@ public final class Java8RaspHooks {
   }
 
   public static void beforeNioByteChannelOpen(Object path, Object options) {
+    if (RaspRuntime.inOwnIo()) return; // the agent's own I/O: before any application state
     if (nioOptionsContainWrite(options)) {
       beforeFileWrite(path);
     } else {
@@ -929,10 +934,12 @@ public final class Java8RaspHooks {
   public static void beforeJaasConfigEntry(Object loginModuleName, Object options) {}
 
   public static void beforeJmxStreamWrite(String path, int write) {
+    if (RaspRuntime.inOwnIo()) return; // the agent's own I/O: before any application state
     if (write != 0 && JmxWriteScope.current() != null) inspectJmxFileWrite(path, "stream_open");
   }
 
   public static void beforeUnixChannelWrite(java.nio.file.Path path, int directoryFd, boolean write) {
+    if (RaspRuntime.inOwnIo()) return; // the agent's own I/O: before any application state
     if (!write) return;
     ArchiveEntryContext.ChannelWrite open = ARCHIVE_ENTRY.atChannelOpen(path, directoryFd);
     if (open != null && !RaspRuntime.detectionOff())
@@ -941,6 +948,7 @@ public final class Java8RaspHooks {
   }
 
   public static void beforeJmxChannelWrite(java.nio.file.Path path, int directoryFd, boolean write) {
+    if (RaspRuntime.inOwnIo()) return; // the agent's own I/O: before any application state
     if (write && JmxWriteScope.current() != null && (directoryFd < 0 || path.isAbsolute()))
       inspectJmxFileWrite(path.toString(), "channel_open");
   }
@@ -3749,13 +3757,12 @@ public final class Java8RaspHooks {
       String rawPath = uri.getRawPath() == null || uri.getRawPath().isEmpty() ? "/" : uri.getRawPath();
       int port = uri.getPort() < 0 ? ("https".equals(protocol) ? 443 : 80) : uri.getPort();
       String query = uri.getRawQuery();
-      return new UrlParts(protocol, host, rawPath, HttpTransportObservation.address(uri),
+      return new UrlParts(host, rawPath, HttpTransportObservation.address(uri),
           protocol + "://" + NetworkHost.destinationKey(host) + ":" + port + rawPath + (query == null ? "" : "?" + query));
     }
     if (value instanceof URL) {
       URL url = (URL) value;
       return new UrlParts(
-          lower(url.getProtocol()),
           normalizeHost(url.getHost()),
           url.getPath() == null || url.getPath().length() == 0 ? "/" : url.getPath(),
           HttpTransportObservation.isHttp(url) ? HttpTransportObservation.address(url) : String.valueOf(url),
@@ -3764,7 +3771,6 @@ public final class Java8RaspHooks {
     try {
       URL url = new URL(String.valueOf(value));
       return new UrlParts(
-          lower(url.getProtocol()),
           normalizeHost(url.getHost()),
           url.getPath() == null || url.getPath().length() == 0 ? "/" : url.getPath(),
           HttpTransportObservation.isHttp(url) ? HttpTransportObservation.address(url) : String.valueOf(url),
@@ -3991,14 +3997,12 @@ public final class Java8RaspHooks {
   }
 
   private static final class UrlParts {
-    final String protocol;
     final String host;
     final String path;
     final String fullUrl;
     final String comparisonKey;
 
-    UrlParts(String protocol, String host, String path, String fullUrl, String comparisonKey) {
-      this.protocol = protocol;
+    UrlParts(String host, String path, String fullUrl, String comparisonKey) {
       this.host = host;
       this.path = path;
       this.fullUrl = fullUrl;
@@ -4098,15 +4102,7 @@ public final class Java8RaspHooks {
   public static boolean enforceElasticLz4Bounds() { return shouldBlock(); }
 
   private static boolean shouldBlock() {
-    String property = System.getProperty("ohmyrasp.java8.block");
-    if (property == null || property.trim().length() == 0) {
-      property = System.getenv("OHMYRASP_JAVA8_BLOCK");
-    }
-    boolean legacy =
-        "true".equalsIgnoreCase(property)
-            || "1".equals(property)
-            || "yes".equalsIgnoreCase(property);
-    return RaspRuntime.blockingAllowed(legacy);
+    return RaspRuntime.blockingAllowed(RaspRuntime.legacyBlockFlag());
   }
 
   private static void appendEvent(Finding finding, String hook, String action) {
@@ -4117,7 +4113,19 @@ public final class Java8RaspHooks {
     appendEvent(finding, hook, action, resolvedAddress, -1);
   }
 
+  /**
+   * Records a detection. Nothing that fails while the event is built or written leaves this method,
+   * so a caller that has decided to block always reaches its throw; only the event is lost.
+   */
   private static void appendEvent(Finding finding, String hook, String action, String resolvedAddress, int argc) {
+    try {
+      writeDetection(finding, hook, action, resolvedAddress, argc);
+    } catch (Throwable reportingFailure) {
+      // The caller's decision stands.
+    }
+  }
+
+  private static void writeDetection(Finding finding, String hook, String action, String resolvedAddress, int argc) {
     if (RaspRuntime.detectionOff()) {
       return;
     }

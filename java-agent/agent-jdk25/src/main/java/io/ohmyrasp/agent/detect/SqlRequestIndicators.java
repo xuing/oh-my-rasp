@@ -16,7 +16,7 @@ import java.util.Set;
 import java.util.regex.Pattern;
 
 /** Request-field observations selected by explicit SQL metadata policy. */
-final class SqlRequestIndicators {
+public final class SqlRequestIndicators {
   private SqlRequestIndicators() {}
 
   private static final Pattern SQL_POLICY =
@@ -82,7 +82,7 @@ final class SqlRequestIndicators {
 
   private record SqlIdentifierInjectionMatch(String field, int valueLength) {}
 
-  static List<Detection> sqlRequestMetadata(RequestContext request, java.util.function.Predicate<String> selected) {
+  public static List<Detection> sqlRequestMetadata(RequestContext request, java.util.function.Predicate<String> selected) {
     List<Detection> candidates = new ArrayList<>();
     if (selected.test("request_sql_sort_injection")) {
       sqlSortInjection(request).ifPresent(match -> candidates.add(sqlMetadataFinding(request,

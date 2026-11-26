@@ -1,0 +1,9 @@
+[[fixture]]
+flag = "--jar-dir"
+path = "build/runtime-probes"
+stage = ["--stage-dir", "{path}"]
+
+[[fixture]]
+flag = "--api-dir"
+path = "build/servlet-probe"
+gradle = ":stageServletProbe"

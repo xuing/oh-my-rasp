@@ -1,0 +1,8 @@
+[applies]
+family = "primary"
+why = "the fixture asserts the primary agent's stream-filter receipts and fails on the backport agents"
+
+[[fixture]]
+flag = "--c3p0-dir"
+path = "agent-jdk25/build/c3p0-probe"
+gradle = ":agent-jdk25:stageC3p0Probe"

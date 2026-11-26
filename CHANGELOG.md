@@ -21,6 +21,80 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `CONTRIBUTING.md`, `SECURITY.md`, and `.github/PULL_REQUEST_TEMPLATE.md` to
   align toolchains, commands, and generated-doc checks with the current tree.
 
+- Java agent development layout. Packaged-agent probes moved from
+  `java-agent/scripts/fp-harness/` to one directory each under
+  `java-agent/probes/`, with a registry that `java-agent/scripts/check-agent.sh`
+  (replaces `check-jdk25.sh`; takes `--line`) and the CI runtime matrix both
+  read. Acceptance scripts moved from `java-agent/scripts/acceptance*.sh` to
+  `java-agent/acceptance/{runtime,vulhub/<component>}/`. The Java 8, 11 and 17
+  agents share one unit-test tree, `java-agent/backport-tests/`. Detection rules
+  of `agent-jdk25` moved from `DetectorEngine` to per-family detector classes.
+  `scripts/gates.py` lists the checks a change needs.
+- CI runs the `sqlite-identifiers` probe on every agent line, not only JDK 25.
+
+### Fixed
+- **Java agent (all 4 tracks):** the baked `META-INF/ohmyrasp-shirudo.properties`
+  is read only from the agent's own JAR. Before, a same-named file in a JAR on
+  the application class path was read in its place and could switch a locked
+  `mode=block` agent to `off`. A baked file that is malformed part-way keeps the
+  keys read before the malformed line.
+- **Java agent (all 4 tracks):** an unrecognised `mode` or `standalone` value in
+  one source is skipped and the next source applies, so a mistyped value no
+  longer hides a valid `block` and leaves the agent not blocking.
+- **Java agent (`java8`/`java11`/`java17`):** the three lines share one runtime.
+  On `java11` and `java17`, `lock_config=true` now ignores system properties and
+  environment for `standalone`, `mode` and `control` even when a baked key is
+  missing, and standalone with no mode configured resolves to `block`. On
+  `java8`, the event writer thread starts when the agent loads (only when the
+  log target is a file), not inside a hook.
+- **Java agent (all 4 tracks):** a `lock_config=true` profile without a baked
+  `control` path no longer polls `/tmp/ohmyrasp-control.json`.
+- **Java agent (all 4 tracks):** the control file is read on every poll and
+  applied when its content changes, not its modification time, so a document
+  read half-written is applied once complete. When the file is removed, the
+  mode (and on `agent-jdk25` the per-algorithm switches, the revision and a
+  policy the file installed) return to their start-up values together, so an
+  `ignore` rule from a removed control file stops suppressing detections; a
+  policy installed by the direct-cloud client stays. An unreadable file keeps
+  the last good state.
+- **Java agent (`agent-jdk25`):** a control file rewritten without `policy`
+  (how the daemon withdraws one) drops the policy the file installed, so its
+  `ignore` rules stop suppressing detections. Policy text that does not parse is
+  no longer recorded as applied, so it cannot later reinstall the file's
+  unchanged policy over a direct-cloud one.
+- **Java agent (all 4 tracks):** only well-formed control-file content changes
+  anything: at most 1 MiB (the reader stops one byte past that bound), strict
+  UTF-8, and exactly one JSON object, with `mode` read from its top level. A
+  truncated document, a nested `mode`, a number such as `01`, non-ASCII escape
+  digits or malformed UTF-8 no longer switch detection. Nothing thrown while the
+  file is read leaves the poll step, an `Error` from a file system provider
+  included, so the first read at agent start cannot abort the application's
+  start-up, and no error stops the poller.
+- **Java agent (`java8`/`java11`/`java17`):** standalone mode never polls a
+  control file, as on `agent-jdk25`; before, an explicitly set control path was
+  polled in standalone mode.
+- **Java agent (all 4 tracks):** an invalid control path, poll interval or
+  `ohmyrasp.log.sync` value no longer hides a valid lower-priority value; on the
+  backports the same holds for `ohmyrasp.java{8,11,17}.block`, and on
+  `agent-jdk25` for `ohmyrasp.latency_sample` and `ohmyrasp.log.queue`.
+- **Java agent (all 4 tracks):** the shutdown hook waits up to 2 seconds for the
+  event writer, then writes what is still queued waiting up to 1 second for the
+  write lock, and an event submitted after that is written inline. These are
+  bounded waits; events accepted while the JVM is shutting down may be lost. On
+  the backports a queued event is written to the log target it was accepted for.
+- **Java agent (all 4 tracks):** a detection decided as a block is blocked even
+  when recording its event fails (for example a replaced `System.out` that
+  throws while events go to the console); before, the operation went ahead.
+- **Java agent (`agent-jdk25`):** the event logger and the hooks' static state
+  are initialised before the first transformer is added, so no hook starts the
+  event writer or registers its shutdown hook, and the logger's standalone
+  defaults follow the `standalone` value the runtime resolved.
+- **Java agent (all 4 tracks):** the agent's own event and control-file I/O is
+  no longer reported or blocked by its file hooks, so a spool path such as
+  `webapps/ROOT/events.jsp` no longer aborts or hangs the JVM in block mode,
+  and it no longer uses up a pending archive entry the application's next
+  write is checked against.
+
 ## [0.2.0-alpha.1] - 2026-11-25
 
 ### Security

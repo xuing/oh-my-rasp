@@ -20,6 +20,10 @@ subprojects {
         sourceSets.main { java.srcDir(rootProject.file("shared/src/main/java")) }
     }
 
+    if (name in setOf("agent-java8", "agent-java11", "agent-java17")) {
+        apply(from = rootProject.file("gradle/backport-tests.gradle.kts"))
+    }
+
     if (name.startsWith("playground")) {
         tasks.withType<War>().configureEach {
             webXml = rootProject.file("playground/archive-upload-web.xml")

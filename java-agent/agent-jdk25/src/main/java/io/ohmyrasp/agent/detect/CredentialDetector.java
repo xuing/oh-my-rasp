@@ -24,7 +24,7 @@ import javax.crypto.spec.IvParameterSpec;
 import javax.crypto.spec.SecretKeySpec;
 
 /** Credential, signed-token and cookie evidence, with the redaction for each finding. */
-final class CredentialDetector {
+public final class CredentialDetector {
   private CredentialDetector() {}
 
   private static final Pattern JWT_HMAC_ALGORITHM =
@@ -167,7 +167,7 @@ final class CredentialDetector {
     return Optional.empty();
   }
 
-  static Optional<Detection> detectJwtVerificationFailure(
+  public static Optional<Detection> detectJwtVerificationFailure(
       String mechanism, String exceptionClass, String message, RequestContext request) {
     RequestContext safeRequest = request == null ? RequestContext.empty() : request;
     if (!safeRequest.active() || !jwtVerificationFailureType(exceptionClass)) {

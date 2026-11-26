@@ -2,7 +2,7 @@
 
 > **Generated** by `deploy/shirudo/gen-readmes.py` from `java-agent/` sources.
 
-The `ohmyrasp-jdk25` package installs the `ohmyrasp-jdk25` Java upatch: a standalone, daemonless OhMyRASP runtime self-protection agent targeting **Java 21 and Java 25** JVMs (classfile version `<= 65`). It registers **30 ASM hook modules** and **58 `DetectorEngine` capabilities**, backed by **136** end-to-end Vulhub acceptance scenarios.
+The `ohmyrasp-jdk25` package installs the `ohmyrasp-jdk25` Java upatch: a standalone, daemonless OhMyRASP runtime self-protection agent targeting **Java 21 and Java 25** JVMs (classfile version `<= 65`). It registers **30 ASM hook modules** and **60 detector capabilities**, backed by **136** end-to-end Vulhub acceptance scenarios.
 
 ## Security Coverage
 
@@ -18,7 +18,7 @@ The `ohmyrasp-jdk25` package installs the `ohmyrasp-jdk25` Java upatch: a standa
 | **Expression Engines, Scripting, ClassLoading & JMX** | Inspects Nashorn/Rhino `ScriptEngine`, JEXL, Jakarta/JSP EL, `JavacTool`/Janino compilation, remote `URLClassLoader`/`RMIClassLoader` codebases, and mutating JMX MBean invocations. | `ClassLoaderHookModule`, `ExpressionHookModule`, `JavaCompilationHookModule`, `JmxHookModule`, `SpringConfigHookModule` |
 | **Other / Newly Added** | Additional ASM instrumentation hooks detected in agent sources. | `SparkSubmitHookModule`, `YarnSubmitHookModule` |
 
-<details><summary>All DetectorEngine capabilities (58)</summary>
+<details><summary>All detector capabilities (60)</summary>
 
 - `detectArchiveExtraction`
 - `detectArgumentFileExpansion`
@@ -36,6 +36,7 @@ The `ohmyrasp-jdk25` package installs the `ohmyrasp-jdk25` Java upatch: a standa
 - `detectFileUpload`
 - `detectFileWrite`
 - `detectGeneratedScriptFileWrite`
+- `detectHessianAllocation`
 - `detectHessianType`
 - `detectHttpInvokerDeserialization`
 - `detectHttpObjectStreamDeserialization`
@@ -51,9 +52,10 @@ The `ohmyrasp-jdk25` package installs the `ohmyrasp-jdk25` Java upatch: a standa
 - `detectLoadLibrary`
 - `detectMarkupParameter`
 - `detectOgnl`
+- `detectOpenWireThrowable`
 - `detectPolymorphicType`
 - `detectProtocolClassInstantiation`
-- `detectRemoteJobSubmission`
+- `detectRemoteJob`
 - `detectRename`
 - `detectRequest`
 - `detectResponseDataLeak`
@@ -83,7 +85,7 @@ The `ohmyrasp-jdk25` package installs the `ohmyrasp-jdk25` Java upatch: a standa
 
 ## Runtime Behavior
 
-- **Standalone and daemonless**: Built with `standalone=true`, `lock_config=true`, and `control=none`. No control-file poller or background event-writer threads are started, `cloud_direct` is forced off, and `/tmp/ohmyrasp-control.json` or `OHMYRASP_MODE=off` is ignored.
+- **Standalone and daemonless**: Built with `standalone=true`, `lock_config=true`, `control=none` and `log=stderr`. No control-file poller is started, `cloud_direct` is forced off, and `/tmp/ohmyrasp-control.json` or `OHMYRASP_MODE=off` is ignored. No background event-writer thread is started unless a log override names a file at start-up.
 - **Blocking enforcement** uses `mode=block`. Enforcement outside an HTTP request depends on the hook evidence and the active rule. Monitor decisions emit structured events to `stderr`. [Detection policies](../../../docs/detection.md#deserialization-defenses)
 - **Logging**: Emits structured JSON detection events directly to `stderr` (`log=stderr`, `latency_sample=0`) with no `/tmp/ohmyrasp-events.jsonl` file output and no `hook_latency` telemetry.
 

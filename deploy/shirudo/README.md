@@ -19,8 +19,8 @@ with `shirudo bpm build`.
 | `ohmyrasp-java8` | Java 8 (classfile `<= 52`) | `ohmyrasp-java8.jar` | 24 ASM transformers | 45 algorithms | 96 (java8) |
 | `ohmyrasp-java11` | Java 11 (classfile `<= 55`) | `ohmyrasp-java11.jar` | 24 ASM transformers | 45 algorithms | 10 (java11) |
 | `ohmyrasp-java17` | Java 17 and Java 21 (classfile `<= 61`) | `ohmyrasp-java17.jar` | 24 ASM transformers | 45 algorithms | 12 (java17) + 3 (java21) |
-| `ohmyrasp-jdk21` | Java 21 and Java 25 (classfile `<= 65`) | `ohmyrasp-jdk21.jar` | 30 ASM hook modules | 58 `detect*` capabilities | 136 total scenarios across 6 JDK lines |
-| `ohmyrasp-jdk25` | Java 21 and Java 25 (classfile `<= 65`) | `ohmyrasp-jdk25.jar` | 30 ASM hook modules | 58 `detect*` capabilities | 136 total scenarios across 6 JDK lines |
+| `ohmyrasp-jdk21` | Java 21 and Java 25 (classfile `<= 65`) | `ohmyrasp-jdk21.jar` | 30 ASM hook modules | 60 `detect*` capabilities | 136 total scenarios across 6 JDK lines |
+| `ohmyrasp-jdk25` | Java 21 and Java 25 (classfile `<= 65`) | `ohmyrasp-jdk25.jar` | 30 ASM hook modules | 60 `detect*` capabilities | 136 total scenarios across 6 JDK lines |
 
 Choose one primary package per JVM. The JDK 21 and 25 names contain the same agent bytecode.
 For JDK 21, extract `ohmyrasp-jdk21-shirudo.tar.gz` to sign the staged package with your operator keys.
@@ -52,11 +52,11 @@ Each package injects ASM bytecode hooks at JVM class-load / retransform time acr
 
 Each shirudo upatch JAR embeds `META-INF/ohmyrasp-shirudo.properties` so it runs without a host daemon, control file, or spool rotation:
 
-- `standalone=true`: disables daemon polling and cloud upload (`cloud_direct` forced off).
-- `lock_config=true`: read strictly from the signed JAR; ignores `/tmp/ohmyrasp-control.json`, `OHMYRASP_MODE=off`, and `OHMYRASP_CONTROL`.
+- `standalone=true`: turns cloud upload off (`cloud_direct` forced off) and control-file polling off, whatever control path is set.
+- `lock_config=true`: `standalone`, `mode` and `control` come only from this baked file; `OHMYRASP_MODE=off` and `OHMYRASP_CONTROL` are ignored, and a baked file without `control` polls no control file, not even the default `/tmp/ohmyrasp-control.json`. A locked JAR that is not standalone polls a baked control path, the default one included. `log` and `latency_sample` stay overridable. Every package reads the file only from its own JAR; a same-named file on the application class path is ignored.
 - `mode=block`: enables blocking immediately at JVM startup (use `--mode monitor` when building for observe-only rollout).
 - `control=none`: starts zero background control-poller threads.
-- `log=stderr`: writes structured JSON detection events directly to `stderr` with zero file-writer threads and no `/tmp/ohmyrasp-events.jsonl`.
+- `log=stderr`: writes structured JSON detection events directly to `stderr` with zero file-writer threads and no `/tmp/ohmyrasp-events.jsonl`, unless a log override names a file at start-up.
 - `latency_sample=0`: suppresses benign `hook_latency` telemetry lines.
 
 ## Build

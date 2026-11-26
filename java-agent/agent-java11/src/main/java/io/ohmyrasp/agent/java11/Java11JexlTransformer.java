@@ -49,8 +49,8 @@ public final class Java11JexlTransformer implements ClassFileTransformer {
       return null;
     }
     try {
-      ClassReader reader = new ClassReader(classfileBuffer);
-      ClassWriter writer = new ClassWriter(reader, ClassWriter.COMPUTE_MAXS);
+      var reader = new ClassReader(classfileBuffer);
+      var writer = new ClassWriter(reader, ClassWriter.COMPUTE_MAXS);
       reader.accept(new JexlClassVisitor(writer), ClassReader.EXPAND_FRAMES);
       return writer.toByteArray();
     } catch (Throwable throwable) {
@@ -108,11 +108,11 @@ public final class Java11JexlTransformer implements ClassFileTransformer {
     }
 
     protected final void invokeReflectiveHook() {
-      Label start = new Label();
-      Label end = new Label();
-      Label invocationTargetHandler = new Label();
-      Label throwableHandler = new Label();
-      Label done = new Label();
+      var start = new Label();
+      var end = new Label();
+      var invocationTargetHandler = new Label();
+      var throwableHandler = new Label();
+      var done = new Label();
       visitTryCatchBlock(
           start,
           end,
@@ -152,7 +152,7 @@ public final class Java11JexlTransformer implements ClassFileTransformer {
       int cause = newLocal(THROWABLE);
       storeLocal(cause);
 
-      Label notRuntimeException = new Label();
+      var notRuntimeException = new Label();
       loadLocal(cause);
       instanceOf(RUNTIME_EXCEPTION);
       ifZCmp(Opcodes.IFEQ, notRuntimeException);
@@ -161,7 +161,7 @@ public final class Java11JexlTransformer implements ClassFileTransformer {
       visitInsn(Opcodes.ATHROW);
 
       visitLabel(notRuntimeException);
-      Label notError = new Label();
+      var notError = new Label();
       loadLocal(cause);
       instanceOf(ERROR);
       ifZCmp(Opcodes.IFEQ, notError);

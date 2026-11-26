@@ -1,9 +1,11 @@
 name: docs
 
 # Fails when hand-written docs restate facts that drift (release tags, pinned
-# versions, code-base counts, the release asset list) or a generated doc is
-# stale. No path filter: a change to a Dockerfile, a workflow, or the agent
-# sources can make a doc wrong without touching any Markdown.
+# versions, code-base counts, the release asset list), a generated doc is
+# stale, a link or anchor is broken, or an evidence ledger disagrees with the
+# acceptance scripts. No path filter: a change to a Dockerfile, a workflow, the
+# agent sources or an acceptance script can make a doc wrong without touching
+# any Markdown.
 
 on:
   push:
@@ -23,6 +25,8 @@ jobs:
           fetch-depth: 0
       - name: Check Java source file sizes
         run: python3 scripts/check-java-size.py
+      - name: Test the gate table against the workflows
+        run: python3 -m unittest discover -s scripts -p 'test_gates.py'
       - name: Test the docs checker
         run: python3 -m unittest discover -s scripts -p 'test_check_docs.py'
       - name: Check docs against their sources of truth

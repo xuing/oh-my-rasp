@@ -52,7 +52,7 @@ Every hook, detector, and Vulhub replay script lives in this repository and runs
 | Metric | Value | Source |
 |---|---|---|
 | Instrumented sink families | 30 ASM hook modules (`agent-jdk25`); 24 ASM transformers per backport (`java8`, `java11`, `java17`) | [DETECTION-COVERAGE.md](java-agent/docs/DETECTION-COVERAGE.md) |
-| Detection engine | 58 `DetectorEngine` capabilities, 44 algorithm signatures asserted in acceptance scripts | [DETECTION-COVERAGE.md](java-agent/docs/DETECTION-COVERAGE.md) |
+| Detection engine | 60 detector capabilities, 190 algorithm signatures asserted in acceptance scripts | [DETECTION-COVERAGE.md](java-agent/docs/DETECTION-COVERAGE.md) |
 | Exploit replay suite | 136 scenarios across 53 [Vulhub](https://github.com/vulhub/vulhub) roots (130 CVEs tracked) | [vulhub-coverage.md](docs/development/vulhub-coverage.md) |
 | Benign corpus precision | `0 / 194` false positives across 26 categories | [FALSE-POSITIVE-REPORT.md](java-agent/docs/FALSE-POSITIVE-REPORT.md) |
 | Supported JVMs | Builds for JDK 8, 11, 17, and a shared JDK 21/25 build (`javax.servlet` & `jakarta.servlet`) | [docs/agent.md](docs/agent.md) |
@@ -205,7 +205,7 @@ docker run --rm -v "$PWD/api":/src -w /src "$GO_IMAGE" go test ./...
 GRADLE_IMAGE="$(awk '$1 == "FROM" && $2 ~ /^gradle:/ { print $2; exit }' java-agent/Dockerfile)"
 docker run --rm -v "$PWD/java-agent":/workspace -w /workspace "$GRADLE_IMAGE" \
   gradle --no-daemon :agent-jdk25:check
-(cd java-agent && bash scripts/acceptance.sh)
+(cd java-agent && bash acceptance/runtime/jdk25.sh)
 
 # Shirudo upatch Beefile/JAR checks + Temurin 8/11/17/21/25 smoke tests
 ./deploy/shirudo/build-all.sh --jar-only

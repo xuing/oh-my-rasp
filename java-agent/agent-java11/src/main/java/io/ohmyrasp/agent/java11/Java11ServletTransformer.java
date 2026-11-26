@@ -69,7 +69,7 @@ public final class Java11ServletTransformer implements ClassFileTransformer {
     }
     try {
       boolean reflectiveHook = requiresReflectiveHook(loader);
-      ClassReader reader = new ClassReader(classfileBuffer);
+      var reader = new ClassReader(classfileBuffer);
       ClassWriter writer = newClassWriter(reader, reflectiveHook);
       reader.accept(new ServletClassVisitor(writer, reflectiveHook), ClassReader.EXPAND_FRAMES);
       return writer.toByteArray();
@@ -176,11 +176,11 @@ public final class Java11ServletTransformer implements ClassFileTransformer {
     }
 
     protected final void invokeReflectiveHook(String hookName, boolean withRequest) {
-      Label start = new Label();
-      Label end = new Label();
-      Label invocationTargetHandler = new Label();
-      Label throwableHandler = new Label();
-      Label done = new Label();
+      var start = new Label();
+      var end = new Label();
+      var invocationTargetHandler = new Label();
+      var throwableHandler = new Label();
+      var done = new Label();
       visitTryCatchBlock(
           start,
           end,
@@ -224,7 +224,7 @@ public final class Java11ServletTransformer implements ClassFileTransformer {
       int cause = newLocal(THROWABLE);
       storeLocal(cause);
 
-      Label notRuntimeException = new Label();
+      var notRuntimeException = new Label();
       loadLocal(cause);
       instanceOf(RUNTIME_EXCEPTION);
       ifZCmp(Opcodes.IFEQ, notRuntimeException);
@@ -233,7 +233,7 @@ public final class Java11ServletTransformer implements ClassFileTransformer {
       visitInsn(Opcodes.ATHROW);
 
       visitLabel(notRuntimeException);
-      Label notError = new Label();
+      var notError = new Label();
       loadLocal(cause);
       instanceOf(ERROR);
       ifZCmp(Opcodes.IFEQ, notError);

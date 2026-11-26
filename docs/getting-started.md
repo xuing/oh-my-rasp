@@ -300,7 +300,7 @@ docker compose up -d --build
 
 ```bash
 cd java-agent
-bash scripts/acceptance.sh
+bash acceptance/runtime/jdk25.sh
 ```
 
 This builds the agent and playground WARs (`playground` and `playground-javax`), starts all three Tomcat baseline/protected pairs, runs the attack suite, and verifies that protected ports redirect to `/rasp/blocked` and emit the expected NDJSON records while baselines do not.

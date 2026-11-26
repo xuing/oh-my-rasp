@@ -25,19 +25,42 @@ are skipped):
              ohmyrasp-* artifact a doc names is one the release workflow or a
              Gradle build produces
   links      relative Markdown links (inline and reference-style) resolve to
-             tracked files
+             tracked files, and a #fragment on a Markdown target equals one of
+             its ATX heading slugs or <a id> anchors exactly (also checked in the
+             evidence ledgers). A heading whose slug is not modelled is reported
+             once. Links inside generated files and regions are left to their
+             generator.
+
+and over the evidence ledgers (LEDGERS), which need no Vulhub snapshot here:
+
+  ledger     a row is a list item with its continuation lines. A row names an
+             acceptance script by its path in a code span or as a link
+             destination; each named script is a tracked file, and each
+             backticked catalogue id (java-agent/rules/*.json, see
+             java-agent/scripts/rule_catalogue.py) after the row's first script
+             is a whole token in at least one of the row's scripts. A backticked
+             java8_/java11_/java17_ word the catalogue lacks fails. Every script
+             under java-agent/acceptance/vulhub/ is named on a "- [x]" row of
+             the Vulhub ledger's Covered Targets. Text in HTML comments is
+             ignored.
 
 Usage: python3 scripts/check-docs.py
 """
 from __future__ import annotations
 
+import functools
+import html
 import json
+import posixpath
 import re
 import subprocess
 import sys
+import urllib.parse
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(ROOT / "java-agent" / "scripts"))
+import rule_catalogue  # noqa: E402
 RELEASE_WORKFLOW = ROOT / ".github" / "workflows" / "ohmyrasp-release.yml"
 RELEASE_RUNBOOK = "docs/runbooks/release.md"
 
@@ -55,11 +78,15 @@ GENERATED_FILES = {
 GENERATED_FILE_PATTERNS = [re.compile(r"deploy/shirudo/ohmyrasp-[a-z0-9]+/README\.md")]  # gen-readmes.py
 GENERATED_REGIONS = {"metrics": ("README.md", "README.zh-CN.md")}  # gen-detection-coverage.py
 
+VULHUB_LEDGER = "docs/development/vulhub-coverage.md"
+LEDGERS = (VULHUB_LEDGER, "docs/development/algorithm-coverage.md")
 SKIP_PREFIXES = ("docs/internal/",)
 SKIP_FILES = {
     "CHANGELOG.md",  # history by design
-    "docs/development/vulhub-coverage.md",  # evidence ledger, guarded by check-vulhub-java-coverage.py
-    "docs/development/algorithm-coverage.md",  # evidence ledger
+    # The evidence ledgers record CVE ids, vulnerable target versions and the Source Audit counts that
+    # java-agent/scripts/check-vulhub-java-coverage.py verifies against a Vulhub snapshot, so the
+    # release, pins, counts and assets checks do not apply. The links and ledger checks do.
+    *LEDGERS,
 }
 
 REGION = re.compile(r"<!-- BEGIN GENERATED (\S+).*?<!-- END GENERATED \1 -->", re.S)
@@ -95,6 +122,22 @@ INLINE_LINK = re.compile(r"\]\((?:<([^>\n]+)>|([^)\s]+))(?:\s+\"[^\"]*\")?\)")  
 REF_LINK = re.compile(r"^\s{0,3}\[[^\]]+\]:\s*<?([^\s>]+)>?")
 INLINE_CODE = re.compile(r"`[^`]*`")
 FENCE = re.compile(r"^(```|~~~)")
+HEADING = re.compile(r"^ {0,3}#{1,6}\s+(.*?)(?:\s+#+)?\s*$")
+SETEXT_UNDERLINE = re.compile(r"^ {0,3}(?:=+|-+)\s*$")
+HTML_ANCHOR = re.compile(r"<a\s+(?:id|name)=\"([^\"]+)\"")
+HTML_COMMENT = re.compile(r"<!--.*?-->", re.S)
+
+# Inline emphasis delimiters in a heading: "_launches_", "**bold**". An underscore inside a word stays.
+EMPHASIS = re.compile(r"(?<![A-Za-z0-9])[*_]+|[*_]+(?![A-Za-z0-9])")
+
+# An acceptance script path, relative to java-agent/ or to the repo root, inside a code span or as a
+# resolved link destination. It must end at ".sh"; path characters after it (".sh.bak", ".sh/typo")
+# stay part of the path, which then fails as untracked. <placeholder> patterns do not match.
+SCRIPT_PATH = re.compile(r"(?<![\w/.<-])(?:java-agent/)?(acceptance/[\w./-]*?\.sh[\w./-]*)")
+REF_LINK_M = re.compile(REF_LINK.pattern, re.M)
+LIST_ITEM = re.compile(r"^\s*(?:[-*+]|\d+[.)])\s")
+# A backticked word with a backport line prefix is a rule id or a mistake: the prefix means nothing else.
+PREFIXED_WORD = re.compile(rf"(?:{'|'.join(rule_catalogue.BACKPORT_LINES)})_\w+")
 
 
 def git(*args: str) -> str:
@@ -254,14 +297,9 @@ def check_lines(files: list[str], problems: list[str]) -> None:
     value_pats = [(v, owner, token(v)) for v, owner in sorted(values.items(), key=lambda kv: -len(kv[0]))]
     produced, _, _ = release_workflow()
     built = gradle_archives()
-    tracked_paths = set(tracked())
-    tracked_dirs = {str(p) for f in tracked_paths for p in Path(f).parents}
 
     for rel in files:
-        in_fence = False
         for no, line in visible_lines(rel):
-            if FENCE.match(line.strip()):
-                in_fence = not in_fence
             where = f"{rel}:{no}"
             for tag, pat in tags:
                 if pat.search(line):
@@ -284,21 +322,229 @@ def check_lines(files: list[str], problems: list[str]) -> None:
                     problems.append(
                         f"assets: {where}: `{name}` is produced by neither"
                         f" {RELEASE_WORKFLOW.relative_to(ROOT)} nor a Gradle build")
+
+
+class UnsupportedHeading(ValueError):
+    """A heading whose GitHub anchor heading_anchors does not model."""
+
+    def __init__(self, line: int, heading: str, shape: str) -> None:
+        super().__init__(f"line {line}: {shape} `{heading}`")
+        self.line, self.heading, self.shape = line, heading, shape
+
+
+def heading_text(raw: str) -> str:
+    """The text GitHub renders for an ATX heading: link text kept, and outside code spans tags dropped,
+    entities decoded and emphasis delimiters removed; a code span keeps its content as written."""
+    parts = re.split(r"(`[^`]*`)", re.sub(r"\[([^\]]*)\]\([^)]*\)", r"\1", raw))
+    return "".join(part[1:-1] if i % 2 else EMPHASIS.sub("", html.unescape(re.sub(r"<[^>]+>", "", part)))
+                   for i, part in enumerate(parts))
+
+
+def heading_anchors(text: str) -> set[str]:
+    """The #fragments GitHub gives a Markdown file: ATX heading slugs and <a id>/<a name>, case kept.
+
+    Slugs follow github-slugger over the rendered text (heading_text): lowercased, characters other than
+    letters, digits, "_", "-" and spaces removed, spaces turned into "-". A repeated slug gets the
+    first free "-1", "-2", ... suffix, so "Usage", "Usage", "Usage-1" give usage, usage-1, usage-1-1.
+    A setext heading or an image in a heading raises UnsupportedHeading rather than guess.
+    """
+    anchors: set[str] = set()
+    seen: dict[str, int] = {}
+    in_fence = False
+    previous = ""
+    for no, line in enumerate(HTML_COMMENT.sub(lambda m: "\n" * m.group(0).count("\n"), text).split("\n"), start=1):
+        if FENCE.match(line.strip()):
+            in_fence = not in_fence
+        if in_fence:
+            previous = ""
+            continue
+        anchors.update(HTML_ANCHOR.findall(line))
+        if SETEXT_UNDERLINE.match(line) and previous.strip() \
+                and not re.match(r"\s*(?:[|#>*+-]|\d+[.)]\s)", previous):
+            raise UnsupportedHeading(no - 1, previous.strip(), "a setext heading (text underlined with = or -)")
+        previous = line
+        heading = HEADING.match(line)
+        if not heading:
+            continue
+        if "![" in INLINE_CODE.sub("", heading.group(1)):
+            raise UnsupportedHeading(no, line.strip(), "an image in the heading")
+        base = re.sub(r"[^\w\- ]", "", heading_text(heading.group(1)).lower()).replace(" ", "-")
+        slug = base
+        while slug in seen:
+            seen[base] += 1
+            slug = f"{base}-{seen[base]}"
+        seen[slug] = 0
+        anchors.add(slug)
+    return anchors
+
+
+@functools.cache
+def anchors_of(rel: str) -> set[str]:
+    return heading_anchors(read(rel))
+
+
+def check_links(files: list[str], problems: list[str]) -> None:
+    tracked_paths = set(tracked())
+    tracked_dirs = {str(p) for f in tracked_paths for p in Path(f).parents}
+    unsupported: set[str] = set()  # files whose anchors cannot be computed; reported once each
+    for rel in files:
+        in_fence = False
+        for no, line in visible_lines(rel):
+            if FENCE.match(line.strip()):
+                in_fence = not in_fence
             if in_fence:
                 continue
+            where = f"{rel}:{no}"
             for m in [*INLINE_LINK.finditer(INLINE_CODE.sub("", line)), *REF_LINK.finditer(line)]:
                 target = next(g for g in m.groups() if g)
-                if re.match(r"[a-z][a-z0-9+.-]*:", target) or target.startswith("#"):
+                if re.match(r"[a-z][a-z0-9+.-]*:", target):
                     continue
-                path = target.split("#", 1)[0].split("?", 1)[0]
-                if not path:
+                path, _, fragment = target.partition("#")
+                path = path.partition("?")[0]
+                norm: str | None = rel
+                if path:
+                    try:
+                        norm = str(((ROOT / rel).parent / path).resolve().relative_to(ROOT.resolve()))
+                    except ValueError:
+                        norm = None
+                    if norm not in tracked_paths and norm not in tracked_dirs:
+                        problems.append(f"links: {where}: `{target}` does not resolve to a tracked file")
+                        continue
+                if not (fragment and norm and norm.endswith(".md") and norm in tracked_paths) or norm in unsupported:
                     continue
                 try:
-                    norm = str(((ROOT / rel).parent / path).resolve().relative_to(ROOT.resolve()))
-                except ValueError:
-                    norm = None
-                if norm not in tracked_paths and norm not in tracked_dirs:
-                    problems.append(f"links: {where}: `{target}` does not resolve to a tracked file")
+                    anchors = anchors_of(norm)
+                except UnsupportedHeading as e:
+                    unsupported.add(norm)
+                    problems.append(
+                        f"links: {norm}:{e.line}: cannot compute GitHub's anchor for {e.shape} `{e.heading}`, so no"
+                        f" link into {norm} (first: {where}) has its anchor checked; write it as `## Title` or teach"
+                        " heading_anchors in scripts/check-docs.py the GitHub rule")
+                    continue
+                if urllib.parse.unquote(fragment) not in anchors:
+                    problems.append(f"links: {where}: `{target}`: {norm} has no heading with anchor `#{fragment}`")
+
+
+# --- evidence ledgers ---------------------------------------------------------
+
+def script_mentions(doc: str, text: str) -> list[tuple[int, str]]:
+    """(offset, path relative to java-agent/) of each acceptance script `text` in `doc` names.
+
+    A script is named by its path in a code span, or by a Markdown link whose destination, resolved from
+    `doc`, lies under java-agent/acceptance/.
+    """
+    found = [(span.start() + m.start(), m.group(1))
+             for span in INLINE_CODE.finditer(text) for m in SCRIPT_PATH.finditer(span.group(0))]
+    prose = INLINE_CODE.sub(lambda m: " " * len(m.group(0)), text)
+    for link in [*INLINE_LINK.finditer(prose), *REF_LINK_M.finditer(prose)]:
+        target = next(g for g in link.groups() if g).partition("#")[0].partition("?")[0]
+        if not target or re.match(r"[a-z][a-z0-9+.-]*:", target):
+            continue
+        script = SCRIPT_PATH.fullmatch(posixpath.normpath(posixpath.join(posixpath.dirname(doc), target)))
+        if script and script.group(0).startswith("java-agent/"):
+            found.append((link.start(), script.group(1)))
+    return sorted(found)
+
+
+def ledger_rows(text: str) -> list[tuple[int, str]]:
+    """(first line number, text) of each row of a ledger, with HTML comments blanked out.
+
+    A row is a list item: its first line plus the continuation lines up to the next list item, heading
+    or blank line. Any other non-blank line is a row of its own.
+    """
+    rows: list[tuple[int, list[str]]] = []
+    in_item = False
+    for no, line in enumerate(HTML_COMMENT.sub(lambda m: "\n" * m.group(0).count("\n"), text).split("\n"), start=1):
+        if not line.strip():
+            in_item = False
+        elif in_item and not LIST_ITEM.match(line) and not line.lstrip().startswith("#"):
+            rows[-1][1].append(line)
+        else:
+            in_item = bool(LIST_ITEM.match(line))
+            rows.append((no, [line]))
+    return [(no, "\n".join(lines)) for no, lines in rows]
+
+
+@functools.cache
+def acceptance_scripts() -> frozenset[str]:
+    """Tracked .sh files under java-agent/acceptance/, relative to java-agent/."""
+    return frozenset(p.removeprefix("java-agent/") for p in tracked("java-agent/acceptance") if p.endswith(".sh"))
+
+
+@functools.cache
+def script_text(path: str) -> str | None:
+    """A script's text by its path relative to java-agent/, or None if it is not a tracked acceptance script."""
+    return read(f"java-agent/{path}") if path in acceptance_scripts() else None
+
+
+script_tokens = functools.cache(rule_catalogue.tokens)
+
+
+def ledger_row_problems(rel: str, first: int, row: str, script_text) -> list[str]:
+    """Problems on one ledger row of `rel` that starts on line `first`. script_text(path) is the script's
+    text, or None if it is not tracked.
+
+    On a row that names acceptance scripts, every backticked catalogue id (rule_catalogue.catalogue_ids)
+    after the row's first script reference is a claim that at least one of the row's scripts writes the
+    id as a whole token. Ids before it name the rule or scenario the row is about, such as the labels that
+    open a Covered Targets row. A backticked java8_/java11_/java17_ word that the catalogue lacks fails
+    anywhere on the row as an unknown rule id. Other backticked words are not claims.
+    """
+    mentions = script_mentions(rel, row)
+    if not mentions:
+        return []
+
+    def where(offset: int) -> str:
+        return f"{rel}:{first + row.count(chr(10), 0, offset)}"
+
+    problems = []
+    texts: dict[str, str] = {}
+    for offset, path in mentions:
+        text = script_text(path)
+        if text is None:
+            problems.append(f"ledger: {where(offset)}: `{path}` is not a tracked script under java-agent/")
+        else:
+            texts[path] = text
+    ids = rule_catalogue.catalogue_ids()
+    for span in INLINE_CODE.finditer(row):
+        word = span.group(0)[1:-1]
+        if word in ids:
+            if span.start() > mentions[0][0] and texts \
+                    and not any(word in script_tokens(text) for text in texts.values()):
+                names = f"`{next(iter(texts))}` never names" if len(texts) == 1 else \
+                    f"none of {', '.join(f'`{p}`' for p in texts)} names"
+                problems.append(f"ledger: {where(span.start())}: {names} `{word}`; say what the script asserts")
+        elif PREFIXED_WORD.fullmatch(word):
+            problems.append(
+                f"ledger: {where(span.start())}: unknown rule id `{word}`: java-agent/rules/*.json has no such"
+                " backport family; correct it or describe the family there")
+    return problems
+
+
+def covered_rows(ledger: str) -> list[str]:
+    """The "- [x]" rows of the ledger's Covered Targets section."""
+    rows, inside = [], False
+    for _, row in ledger_rows(ledger):
+        if row.startswith("## "):
+            inside = row == "## Covered Targets"
+        elif inside and row.startswith("- [x]"):
+            rows.append(row)
+    return rows
+
+
+def unreferenced_scripts(ledger: str, scripts: list[str]) -> list[str]:
+    """Scripts (relative to java-agent/) that no Covered Targets row of the Vulhub ledger names."""
+    named = {path for row in covered_rows(ledger) for _, path in script_mentions(VULHUB_LEDGER, row)}
+    return sorted(set(scripts) - named)
+
+
+def check_ledgers(problems: list[str]) -> None:
+    for rel in LEDGERS:
+        for first, row in ledger_rows(read(rel)):
+            problems.extend(ledger_row_problems(rel, first, row, script_text))
+    vulhub = [p for p in acceptance_scripts() if p.startswith("acceptance/vulhub/")]
+    for path in unreferenced_scripts(read(VULHUB_LEDGER), vulhub):
+        problems.append(f"ledger: java-agent/{path} is not named on a Covered Targets row of {VULHUB_LEDGER}")
 
 
 def check_release_runbook(problems: list[str]) -> None:
@@ -329,6 +575,8 @@ def main() -> int:
     files = doc_files()
     check_generated(problems)
     check_lines(files, problems)
+    check_links([*files, *LEDGERS], problems)
+    check_ledgers(problems)
     check_release_runbook(problems)
     if not release_tags():
         print("check-docs: warning: no v* tags found (shallow clone?); release check skipped", file=sys.stderr)

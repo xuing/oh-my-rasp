@@ -35,11 +35,11 @@ public final class Java17JdbcTransformer implements ClassFileTransformer {
       return null;
     }
     try {
-      ClassReader reader = new ClassReader(classfileBuffer);
+      var reader = new ClassReader(classfileBuffer);
       boolean jdbcImplementation = JdbcSqlMethod.directJdbcInterface(reader.getInterfaces())
           || JdbcSqlMethod.isJdbcImplementation(classBeingRedefined);
       if (!jdbcImplementation && !isJdbcClass(className)) return null;
-      ClassWriter writer = new ClassWriter(reader, ClassWriter.COMPUTE_MAXS);
+      var writer = new ClassWriter(reader, ClassWriter.COMPUTE_MAXS);
       reader.accept(new JdbcClassVisitor(writer, className, jdbcImplementation), ClassReader.EXPAND_FRAMES);
       return writer.toByteArray();
     } catch (Throwable throwable) {

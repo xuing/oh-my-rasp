@@ -46,7 +46,7 @@ public final class Java11ElTransformer implements ClassFileTransformer {
       return null;
     }
     try {
-      ClassReader reader = new ClassReader(classfileBuffer);
+      var reader = new ClassReader(classfileBuffer);
       ClassWriter writer = newClassWriter(reader);
       reader.accept(new ElClassVisitor(writer), ClassReader.EXPAND_FRAMES);
       return writer.toByteArray();
@@ -115,11 +115,11 @@ public final class Java11ElTransformer implements ClassFileTransformer {
     }
 
     protected final void invokeReflectiveHook() {
-      Label start = new Label();
-      Label end = new Label();
-      Label invocationTargetHandler = new Label();
-      Label throwableHandler = new Label();
-      Label done = new Label();
+      var start = new Label();
+      var end = new Label();
+      var invocationTargetHandler = new Label();
+      var throwableHandler = new Label();
+      var done = new Label();
       visitTryCatchBlock(
           start,
           end,
@@ -159,7 +159,7 @@ public final class Java11ElTransformer implements ClassFileTransformer {
       int cause = newLocal(THROWABLE);
       storeLocal(cause);
 
-      Label notRuntimeException = new Label();
+      var notRuntimeException = new Label();
       loadLocal(cause);
       instanceOf(RUNTIME_EXCEPTION);
       ifZCmp(Opcodes.IFEQ, notRuntimeException);
@@ -168,7 +168,7 @@ public final class Java11ElTransformer implements ClassFileTransformer {
       visitInsn(Opcodes.ATHROW);
 
       visitLabel(notRuntimeException);
-      Label notError = new Label();
+      var notError = new Label();
       loadLocal(cause);
       instanceOf(ERROR);
       ifZCmp(Opcodes.IFEQ, notError);

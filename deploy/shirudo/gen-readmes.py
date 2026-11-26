@@ -26,6 +26,10 @@ JAVA_AGENT = REPO_ROOT / "java-agent"
 SCRIPTS_DIR = JAVA_AGENT / "scripts"
 FP_REPORT = JAVA_AGENT / "docs" / "FALSE-POSITIVE-REPORT.md"
 
+sys.path.insert(0, str(SCRIPTS_DIR))
+import acceptance_scripts  # noqa: E402
+import detector_entry_points  # noqa: E402
+
 JDK_ORDER = ["java7-legacy", "java8", "java11", "java17", "java21", "java6-legacy"]
 
 BACKPORT_TRACKS = [
@@ -218,11 +222,10 @@ def extract_backport(track_info: dict[str, str]) -> dict[str, object]:
 def extract_jdk25() -> dict[str, object]:
     src_dir = JAVA_AGENT / "agent-jdk25" / "src" / "main" / "java" / "io" / "ohmyrasp" / "agent"
     reg_text = (src_dir / "asm" / "HookRegistry.java").read_text(encoding="utf-8")
-    det_text = (src_dir / "detect" / "DetectorEngine.java").read_text(encoding="utf-8")
     gradle_text = (JAVA_AGENT / "agent-jdk25" / "build.gradle.kts").read_text(encoding="utf-8")
 
     modules = sorted(set(re.findall(r"new ([A-Za-z0-9]+HookModule)\(", reg_text)))
-    capabilities = sorted(set(re.findall(r"\bpublic\s+Optional<Detection>\s+detect([A-Z][A-Za-z0-9]+)\(", det_text)))
+    capabilities = detector_entry_points.capabilities()
     baked_keys = sorted(set(re.findall(r"^(standalone|lock_config|mode|control|log|latency_sample)=", gradle_text, re.M)))
 
     grouped: dict[str, list[str]] = {cat: [] for cat in CATEGORY_ORDER}
@@ -247,9 +250,9 @@ def extract_jdk25() -> dict[str, object]:
 def extract_vulhub_counts() -> dict[str, int]:
     counts: dict[str, int] = {}
     total = 0
-    for script in sorted(SCRIPTS_DIR.glob("acceptance-vulhub-*.sh")):
+    for script in acceptance_scripts.vulhub_scripts():
         total += 1
-        stem = script.stem[len("acceptance-vulhub-") :]
+        stem = acceptance_scripts.legacy_stem(script)
         jdk = next((j for j in JDK_ORDER if stem.endswith("-" + j)), "other")
         counts[jdk] = counts.get(jdk, 0) + 1
     counts["total"] = total
@@ -353,11 +356,11 @@ def render_top_readme(
     w("")
     w("Each shirudo upatch JAR embeds `META-INF/ohmyrasp-shirudo.properties` so it runs without a host daemon, control file, or spool rotation:")
     w("")
-    w("- `standalone=true`: disables daemon polling and cloud upload (`cloud_direct` forced off).")
-    w("- `lock_config=true`: read strictly from the signed JAR; ignores `/tmp/ohmyrasp-control.json`, `OHMYRASP_MODE=off`, and `OHMYRASP_CONTROL`.")
+    w("- `standalone=true`: turns cloud upload off (`cloud_direct` forced off) and control-file polling off, whatever control path is set.")
+    w("- `lock_config=true`: `standalone`, `mode` and `control` come only from this baked file; `OHMYRASP_MODE=off` and `OHMYRASP_CONTROL` are ignored, and a baked file without `control` polls no control file, not even the default `/tmp/ohmyrasp-control.json`. A locked JAR that is not standalone polls a baked control path, the default one included. `log` and `latency_sample` stay overridable. Every package reads the file only from its own JAR; a same-named file on the application class path is ignored.")
     w("- `mode=block`: enables blocking immediately at JVM startup (use `--mode monitor` when building for observe-only rollout).")
     w("- `control=none`: starts zero background control-poller threads.")
-    w("- `log=stderr`: writes structured JSON detection events directly to `stderr` with zero file-writer threads and no `/tmp/ohmyrasp-events.jsonl`.")
+    w("- `log=stderr`: writes structured JSON detection events directly to `stderr` with zero file-writer threads and no `/tmp/ohmyrasp-events.jsonl`, unless a log override names a file at start-up.")
     w("- `latency_sample=0`: suppresses benign `hook_latency` telemetry lines.")
     w("")
     w("## Build")
@@ -493,8 +496,12 @@ def render_backport_readme(b: dict[str, object], vulhub: dict[str, int]) -> str:
     w("")
     w(
         "- **Standalone and daemonless**: Built with `standalone=true`, `lock_config=true`, "
-        "and `control=none`. No control-file poller or background event-writer threads are "
-        "started, and `/tmp/ohmyrasp-control.json` or `OHMYRASP_MODE=off` is ignored."
+        "`control=none` and `log=stderr`. No control-file poller is started, and "
+        "`/tmp/ohmyrasp-control.json` or `OHMYRASP_MODE=off` is ignored. The baked settings "
+        "are read only from this JAR: a same-named `META-INF/ohmyrasp-shirudo.properties` "
+        "elsewhere on the class path is ignored. The runtime starts while the agent loads, "
+        "before any hook is installed, and no background event-writer thread is started "
+        "unless a log override names a file at start-up."
     )
     w(
         f"- **Blocking enforcement**: Built with `mode=block`; exploit detections throw "
@@ -547,7 +554,7 @@ def render_primary_readme(jdk25: dict[str, object], bf: dict[str, str], vulhub: 
         f"The `{pkg}` package installs the `{pkg}` Java upatch: a standalone, daemonless "
         f"OhMyRASP runtime self-protection agent targeting **{jdk25['target_jvms']}** JVMs "
         f"(classfile version `{jdk25['classfile']}`). It registers **{len(jdk25['modules'])} "
-        f"ASM hook modules** and **{len(jdk25['capabilities'])} `DetectorEngine` capabilities**, "
+        f"ASM hook modules** and **{len(jdk25['capabilities'])} detector capabilities**, "
         f"backed by **{vulhub['total']}** end-to-end Vulhub acceptance scenarios."
     )
     w("")
@@ -564,7 +571,7 @@ def render_primary_readme(jdk25: dict[str, object], bf: dict[str, str], vulhub: 
         m_list = ", ".join(f"`{m}`" for m in items)
         w(f"| **{cat}** | {CATEGORY_DESCRIPTIONS[cat]} | {m_list} |")
     w("")
-    w("<details><summary>All DetectorEngine capabilities (" + str(len(jdk25["capabilities"])) + ")</summary>")
+    w("<details><summary>All detector capabilities (" + str(len(jdk25["capabilities"])) + ")</summary>")
     w("")
     for cap in jdk25["capabilities"]:
         w(f"- `detect{cap}`")
@@ -575,9 +582,10 @@ def render_primary_readme(jdk25: dict[str, object], bf: dict[str, str], vulhub: 
     w("")
     w(
         "- **Standalone and daemonless**: Built with `standalone=true`, `lock_config=true`, "
-        "and `control=none`. No control-file poller or background event-writer threads are "
-        "started, `cloud_direct` is forced off, and `/tmp/ohmyrasp-control.json` or "
-        "`OHMYRASP_MODE=off` is ignored."
+        "`control=none` and `log=stderr`. No control-file poller is started, `cloud_direct` "
+        "is forced off, and `/tmp/ohmyrasp-control.json` or `OHMYRASP_MODE=off` is ignored. "
+        "No background event-writer thread is started unless a log override names a file "
+        "at start-up."
     )
     w(
         "- **Blocking enforcement** uses `mode=block`. Enforcement outside an HTTP request depends on "

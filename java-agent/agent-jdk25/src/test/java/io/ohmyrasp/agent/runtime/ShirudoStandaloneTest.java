@@ -28,6 +28,7 @@ final class ShirudoStandaloneTest {
           "ohmyrasp.mode",
           "ohmyrasp.standalone",
           "ohmyrasp.control",
+          "ohmyrasp.control.poll_ms",
           "ohmyrasp.log",
           "ohmyrasp.latency_sample",
           "ohmyrasp.lock_config");
@@ -69,9 +70,50 @@ final class ShirudoStandaloneTest {
   }
 
   @Test
-  void shirudoDefaultsLoadReturnsAbsentWhenResourceMissingFromClasspath() {
+  void shirudoDefaultsIgnoreASameNamedResourceOutsideTheAgentsOwnLocation() {
+    // src/test/resources carries META-INF/ohmyrasp-shirudo.properties with lock_config=true and
+    // mode=off. It is on the class path but not where the agent classes are, so it must not count.
+    assertTrue(ShirudoStandaloneTest.class.getResource(ShirudoDefaults.RESOURCE_PATH) != null);
     ShirudoDefaults loaded = ShirudoDefaults.load();
     assertFalse(loaded.isPresent());
+  }
+
+  @Test
+  void shirudoDefaultsAreReadFromTheAgentsOwnLocation(@TempDir Path root) throws Exception {
+    Object loaded = loadFromIsolatedCopy(root, "standalone=true\nlock_config=true\nmode=monitor\n");
+    assertEquals(true, loaded.getClass().getMethod("isPresent").invoke(loaded));
+    assertEquals(true, loaded.getClass().getMethod("lockConfig").invoke(loaded));
+    assertEquals("MONITOR", String.valueOf(loaded.getClass().getMethod("mode").invoke(loaded)));
+  }
+
+  @Test
+  void shirudoDefaultsKeepTheKeysReadBeforeAMalformedLine(@TempDir Path root) throws Exception {
+    // Properties.load throws on the bad unicode escape. The lock and mode read before it must stay,
+    // or a damaged later line would hand the mode back to system properties and environment.
+    Object loaded =
+        loadFromIsolatedCopy(root, "standalone=true\nlock_config=true\nmode=block\nbad=\\u00zz\nlog=none\n");
+    assertEquals(true, loaded.getClass().getMethod("isPresent").invoke(loaded));
+    assertEquals(true, loaded.getClass().getMethod("lockConfig").invoke(loaded));
+    assertEquals("BLOCK", String.valueOf(loaded.getClass().getMethod("mode").invoke(loaded)));
+  }
+
+  /** Loads ShirudoDefaults from a copy of the runtime classes that has {@code baked} beside it. */
+  private static Object loadFromIsolatedCopy(Path root, String baked) throws Exception {
+    Path classes = Path.of(ShirudoDefaults.class.getProtectionDomain().getCodeSource().getLocation().toURI());
+    String packageDir = "io/ohmyrasp/agent/runtime";
+    Files.createDirectories(root.resolve(packageDir));
+    try (var files = Files.list(classes.resolve(packageDir))) {
+      for (Path file : files.toList()) {
+        Files.copy(file, root.resolve(packageDir).resolve(file.getFileName().toString()));
+      }
+    }
+    Files.createDirectories(root.resolve("META-INF"));
+    Files.writeString(root.resolve("META-INF/ohmyrasp-shirudo.properties"), baked);
+    try (var loader =
+        new java.net.URLClassLoader(new java.net.URL[] {root.toUri().toURL()}, ClassLoader.getPlatformClassLoader())) {
+      Class<?> isolated = Class.forName("io.ohmyrasp.agent.runtime.ShirudoDefaults", true, loader);
+      return isolated.getMethod("load").invoke(null);
+    }
   }
 
   @Test
@@ -123,6 +165,62 @@ final class ShirudoStandaloneTest {
   }
 
   @Test
+  void lockedProfileWithoutABakedControlPathPollsNoControlFile(@TempDir Path tempDir) {
+    // The default /tmp/ohmyrasp-control.json is world-writable. A locked profile that bakes no
+    // control path polls nothing, whatever agent arguments and system properties say.
+    System.setProperty("ohmyrasp.control", tempDir.resolve("sys-control.json").toString());
+    Properties props = new Properties();
+    props.setProperty("lock_config", "true");
+    props.setProperty("standalone", "false");
+    long before = countThreadsNamed("ohmyrasp-control-poller");
+    AgentRuntime runtime = AgentRuntime.newForTesting(ShirudoDefaults.fromProperties(props));
+    runtime.start("control=" + tempDir.resolve("arg-control.json"));
+    assertFalse(runtime.isStandalone());
+    assertTrue(runtime.isControlPollingDisabled(), "a locked profile without a baked control path");
+    assertEquals(before, countThreadsNamed("ohmyrasp-control-poller"));
+
+    // A baked control path under lock keeps working.
+    props.setProperty("control", tempDir.resolve("baked-control.json").toString());
+    AgentRuntime baked = AgentRuntime.newForTesting(ShirudoDefaults.fromProperties(props));
+    baked.start("control=none");
+    assertFalse(baked.isControlPollingDisabled(), "a locked profile with a baked control path");
+  }
+
+  @Test
+  void invalidControlPathAndPollIntervalDoNotHideAValidLowerPriorityValue(@TempDir Path tempDir) {
+    String invalid = "bad\0control.json";
+    Path sysControl = tempDir.resolve("sys-control.json");
+    System.setProperty("ohmyrasp.control", sysControl.toString());
+    AgentRuntime fromProperty = AgentRuntime.newForTesting(ShirudoDefaults.absent());
+    fromProperty.start("control=" + invalid);
+    assertFalse(fromProperty.isControlPollingDisabled());
+    assertEquals(sysControl, fromProperty.controlPath(), "an invalid control argument");
+    System.clearProperty("ohmyrasp.control");
+
+    Properties props = new Properties();
+    props.setProperty("control", tempDir.resolve("baked-control.json").toString());
+    AgentRuntime fromBaked = AgentRuntime.newForTesting(ShirudoDefaults.fromProperties(props));
+    fromBaked.start("control=" + invalid);
+    assertEquals(tempDir.resolve("baked-control.json"), fromBaked.controlPath());
+
+    // Under lock an invalid baked path polls nothing.
+    Properties locked = new Properties();
+    locked.setProperty("lock_config", "true");
+    locked.setProperty("control", invalid);
+    AgentRuntime lockedRuntime = AgentRuntime.newForTesting(ShirudoDefaults.fromProperties(locked));
+    lockedRuntime.start(null);
+    assertTrue(lockedRuntime.isControlPollingDisabled());
+    assertNull(lockedRuntime.controlPath());
+
+    System.setProperty("ohmyrasp.control.poll_ms", "700");
+    assertEquals(700L, AgentRuntime.pollIntervalMillis("control_poll_ms=soon"), "an invalid poll argument");
+    assertEquals(300L, AgentRuntime.pollIntervalMillis("control_poll_ms=300"));
+    assertEquals(200L, AgentRuntime.pollIntervalMillis("control_poll_ms=5"), "the floor still applies");
+    System.setProperty("ohmyrasp.control.poll_ms", "later");
+    assertEquals(2000L, AgentRuntime.pollIntervalMillis("control_poll_ms=soon"));
+  }
+
+  @Test
   void unlockedStandaloneAllowsExplicitModeOverrideAndDefaultsUnsetToBlock() {
     Properties props = new Properties();
     props.setProperty("standalone", "true");
@@ -140,6 +238,46 @@ final class ShirudoStandaloneTest {
     overridden.start("mode=monitor");
     assertEquals(DetectionMode.MONITOR, overridden.mode());
     assertFalse(overridden.blockingAllowed());
+  }
+
+  @Test
+  void invalidHigherPriorityModeDoesNotHideAValidLowerPriorityMode() {
+    Properties props = new Properties();
+    props.setProperty("standalone", "true");
+    props.setProperty("lock_config", "false");
+    props.setProperty("control", "none");
+    props.setProperty("mode", "monitor");
+    System.setProperty("ohmyrasp.mode", "block");
+
+    // A mistyped agent argument must not switch protection off: the next source applies.
+    AgentRuntime runtime = AgentRuntime.newForTesting(ShirudoDefaults.fromProperties(props));
+    runtime.start("mode=blokc");
+    assertEquals(DetectionMode.BLOCK, runtime.mode());
+    assertTrue(runtime.blockingAllowed());
+
+    // With no valid explicit source at all, the baked mode applies.
+    System.setProperty("ohmyrasp.mode", "also-wrong");
+    AgentRuntime baked = AgentRuntime.newForTesting(ShirudoDefaults.fromProperties(props));
+    baked.start("mode=blokc");
+    assertEquals(DetectionMode.MONITOR, baked.mode());
+  }
+
+  @Test
+  void invalidHigherPriorityStandaloneDoesNotHideAValidLowerPriorityValue() {
+    Properties props = new Properties();
+    props.setProperty("lock_config", "false");
+    props.setProperty("control", "none");
+    System.setProperty("ohmyrasp.standalone", "true");
+
+    AgentRuntime runtime = AgentRuntime.newForTesting(ShirudoDefaults.fromProperties(props));
+    runtime.start("standalone=maybe");
+    assertTrue(runtime.isStandalone());
+    assertEquals(DetectionMode.BLOCK, runtime.mode());
+
+    // An explicit false is a valid value and still wins over a lower-priority true.
+    AgentRuntime explicit = AgentRuntime.newForTesting(ShirudoDefaults.fromProperties(props));
+    explicit.start("standalone=false");
+    assertFalse(explicit.isStandalone());
   }
 
   @Test
@@ -262,6 +400,43 @@ final class ShirudoStandaloneTest {
             new PrintStream(errBuf, true, StandardCharsets.UTF_8));
     assertEquals("stdout", overriddenLogger.logTarget());
     assertEquals(25, overriddenLogger.latencySampleRate());
+  }
+
+  /**
+   * The logger's standalone defaults (log target stderr, latency sample 0) follow the standalone
+   * value the runtime resolved, not any source that says true.
+   */
+  @Test
+  void loggerTakesItsStandaloneDefaultsFromTheRuntimesResolvedValue() {
+    Properties props = new Properties();
+    props.setProperty("standalone", "true");
+    props.setProperty("log", "none"); // no file writer; the sample rate shows the defaults chosen
+    PrintStream quiet = new PrintStream(new ByteArrayOutputStream(), true, StandardCharsets.UTF_8);
+
+    AgentRuntime argumentSaysNo = AgentRuntime.newForTesting(ShirudoDefaults.fromProperties(props));
+    argumentSaysNo.start("standalone=false,control=none");
+    assertFalse(argumentSaysNo.isStandalone());
+    assertEquals(
+        10,
+        JsonEventLogger.newForTesting(argumentSaysNo, quiet, quiet).latencySampleRate(),
+        "a baked standalone=true overrode the agent argument standalone=false");
+
+    System.setProperty("ohmyrasp.standalone", "true");
+    try {
+      AgentRuntime propertyLoses = AgentRuntime.newForTesting(ShirudoDefaults.fromProperties(props));
+      propertyLoses.start("standalone=false,control=none");
+      assertEquals(
+          10,
+          JsonEventLogger.newForTesting(propertyLoses, quiet, quiet).latencySampleRate(),
+          "a lower-priority ohmyrasp.standalone=true overrode the agent argument");
+    } finally {
+      System.clearProperty("ohmyrasp.standalone");
+    }
+
+    AgentRuntime standalone = AgentRuntime.newForTesting(ShirudoDefaults.fromProperties(props));
+    standalone.start("control=none");
+    assertTrue(standalone.isStandalone());
+    assertEquals(0, JsonEventLogger.newForTesting(standalone, quiet, quiet).latencySampleRate());
   }
 
   private static Detection sampleDetection() {

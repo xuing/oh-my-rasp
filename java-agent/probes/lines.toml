@@ -1,0 +1,62 @@
+# Agent lines: which packaged agent JAR runs on which JDK.
+#
+# One [[line]] per cell of the runtime-compatibility matrix in
+# .github/workflows/agent.yml. test_registry.py fails when the two differ.
+# Paths are relative to java-agent/.
+#
+#   family   "backport" (agent-java8/11/17) or "primary" (agent-jdk25)
+#   jdk      the runtime the probes run on
+#   tests    Gradle task that runs the line's unit tests
+#   build    Gradle tasks that produce `jar`
+#   upatch   standalone JAR that CI also starts on this runtime, where there is one
+
+[[line]]
+id = "java8"
+family = "backport"
+jdk = "8"
+jar = "agent-java8/build/libs/ohmyrasp-agent-java8.jar"
+tests = ":agent-java8:test"
+build = [":agent-java8:agentJava8Jar"]
+
+[[line]]
+id = "java11"
+family = "backport"
+jdk = "11"
+jar = "agent-java11/build/libs/ohmyrasp-agent-java11.jar"
+tests = ":agent-java11:test"
+build = [":agent-java11:agentJava11Jar"]
+
+[[line]]
+id = "java17"
+family = "backport"
+jdk = "17"
+jar = "agent-java17/build/libs/ohmyrasp-agent-java17.jar"
+tests = ":agent-java17:test"
+build = [":agent-java17:agentJava17Jar"]
+
+# CI also runs the Java 17 agent on a JDK 21 runtime.
+[[line]]
+id = "java17-on-21"
+family = "backport"
+jdk = "21"
+jar = "agent-java17/build/libs/ohmyrasp-agent-java17.jar"
+tests = ":agent-java17:test"
+build = [":agent-java17:agentJava17Jar"]
+
+[[line]]
+id = "jdk21"
+family = "primary"
+jdk = "21"
+jar = "agent-jdk25/build/jdk21/ohmyrasp-agent-jdk21.jar"
+upatch = "agent-jdk25/build/jdk21/ohmyrasp-jdk21.jar"
+tests = ":agent-jdk25:test"
+build = [":agent-jdk25:jdk21Jars"]
+
+[[line]]
+id = "jdk25"
+family = "primary"
+jdk = "25"
+jar = "agent-jdk25/build/libs/ohmyrasp-agent.jar"
+upatch = "agent-jdk25/build/libs/ohmyrasp-jdk25.jar"
+tests = ":agent-jdk25:test"
+build = [":agent-jdk25:agentJar"]
