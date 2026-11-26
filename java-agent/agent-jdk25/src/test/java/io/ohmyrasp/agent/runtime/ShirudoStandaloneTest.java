@@ -164,6 +164,28 @@ final class ShirudoStandaloneTest {
   }
 
   @Test
+  void lockedProfileWithoutABakedControlPathPollsNoControlFile(@TempDir Path tempDir) {
+    // The default /tmp/ohmyrasp-control.json is world-writable. A locked profile that bakes no
+    // control path polls nothing, whatever agent arguments and system properties say.
+    System.setProperty("ohmyrasp.control", tempDir.resolve("sys-control.json").toString());
+    Properties props = new Properties();
+    props.setProperty("lock_config", "true");
+    props.setProperty("standalone", "false");
+    long before = countThreadsNamed("ohmyrasp-control-poller");
+    AgentRuntime runtime = AgentRuntime.newForTesting(ShirudoDefaults.fromProperties(props));
+    runtime.start("control=" + tempDir.resolve("arg-control.json"));
+    assertFalse(runtime.isStandalone());
+    assertTrue(runtime.isControlPollingDisabled(), "a locked profile without a baked control path");
+    assertEquals(before, countThreadsNamed("ohmyrasp-control-poller"));
+
+    // A baked control path under lock keeps working.
+    props.setProperty("control", tempDir.resolve("baked-control.json").toString());
+    AgentRuntime baked = AgentRuntime.newForTesting(ShirudoDefaults.fromProperties(props));
+    baked.start("control=none");
+    assertFalse(baked.isControlPollingDisabled(), "a locked profile with a baked control path");
+  }
+
+  @Test
   void unlockedStandaloneAllowsExplicitModeOverrideAndDefaultsUnsetToBlock() {
     Properties props = new Properties();
     props.setProperty("standalone", "true");

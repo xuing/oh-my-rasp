@@ -141,8 +141,47 @@ final class Java8ShirudoStandaloneTest {
     assertTrue(missingStandalone.lockConfig);
     assertFalse(missingStandalone.standalone);
     assertNull(missingStandalone.mode);
-    assertFalse(missingStandalone.controlDisabled);
-    assertEquals(Paths.get("/tmp/ohmyrasp-control.json"), missingStandalone.controlPath);
+  }
+
+  @Test
+  void lockedProfileWithoutABakedControlPathPollsNoControlFile() throws Exception {
+    // The default /tmp/ohmyrasp-control.json is world-writable. A locked profile that bakes no
+    // control path polls nothing, standalone or not, whatever system properties and env say.
+    Properties sysProps = new Properties();
+    sysProps.setProperty("ohmyrasp.control", "/tmp/hostile-sys-control.json");
+    Map<String, String> env = new HashMap<String, String>();
+    env.put("OHMYRASP_CONTROL", "/tmp/hostile-env-control.json");
+    String[] standaloneValues = new String[] {null, "false", "true"};
+    for (int i = 0; i < standaloneValues.length; i++) {
+      Properties baked = new Properties();
+      baked.setProperty("lock_config", "true");
+      if (standaloneValues[i] != null) {
+        baked.setProperty("standalone", standaloneValues[i]);
+      }
+      RaspRuntime.Config config = RaspRuntime.Config.resolve(baked, sysProps, env);
+      assertTrue(config.controlDisabled, "standalone=" + standaloneValues[i]);
+      assertNull(config.controlPath, "standalone=" + standaloneValues[i]);
+    }
+
+    // A baked control path under lock keeps working, standalone or not.
+    for (int i = 0; i < standaloneValues.length; i++) {
+      Properties baked = new Properties();
+      baked.setProperty("lock_config", "true");
+      baked.setProperty("control", "/baked/control.json");
+      if (standaloneValues[i] != null) {
+        baked.setProperty("standalone", standaloneValues[i]);
+      }
+      RaspRuntime.Config config = RaspRuntime.Config.resolve(baked, sysProps, env);
+      assertFalse(config.controlDisabled, "standalone=" + standaloneValues[i]);
+      assertEquals(Paths.get("/baked/control.json"), config.controlPath);
+    }
+
+    // The packaged form: a locked JAR without a control key starts no control poller.
+    int pollersBefore = threadsNamed(CONTROL_THREAD);
+    Map<String, String> init = asyncInit();
+    init.remove("ohmyrasp.control");
+    loadIsolatedRuntime(init, bakedResource("lock_config=true\nlog=none\n"));
+    assertEquals(pollersBefore, threadsNamed(CONTROL_THREAD), "a locked JAR without control polls nothing");
   }
 
   @Test

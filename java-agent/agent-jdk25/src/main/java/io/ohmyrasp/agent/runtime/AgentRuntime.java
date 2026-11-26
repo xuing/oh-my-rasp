@@ -121,7 +121,9 @@ public final class AgentRuntime {
 
     String controlSetting;
     if (lockConfig) {
-      controlSetting = activeDefaults.control();
+      // Only a baked control path counts. Without one nothing is polled: the default lives in
+      // world-writable /tmp and must not steer a locked profile.
+      controlSetting = notBlank(activeDefaults.control()) ? activeDefaults.control() : "none";
     } else {
       controlSetting =
           resolve(
