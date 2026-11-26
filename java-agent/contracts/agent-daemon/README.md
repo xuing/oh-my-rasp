@@ -12,16 +12,40 @@ The directory is under `java-agent/` because the Gradle container the project us
 | `events/backport/*.json` | `Java8EventContractTest` in `backport-tests`: the real hooks, `OhMyRaspJava8Agent.premain` and `RaspRuntime`, on all three backport lines | The same test (equality, on each line); `daemon/src/contract_tests.rs` |
 | `control/*.json` | `daemon/src/contract_tests.rs`: the real `Controller`, driven through the desired states | The same test (equality, and a reload by the daemon); `ControlContractTest` in `agent-jdk25` and `Java8ControlContractTest` in `backport-tests` |
 | `control/expected.properties` | By hand | The three control tests: what each control document means |
+| `control/hand-edited/*.json`, `control/hand-edited/expected.properties` | By hand | `ControlContractTest` and `Java8ControlContractTest` (the agents apply the mode the manifest says); `daemon/src/contract_tests.rs` (the daemon keeps the document and rewrites the canonical mode) |
+| `control/limits.properties` | By hand | The size limit of a control document: `daemon/src/control.rs`, and the control tests of both agent engines, compare their own constant with it |
 | `control/rejected/*.json` | By hand | `ControlContractTest` and `Java8ControlContractTest`: each must leave the agent's state unchanged |
 
 Each event file is one line. The control documents are the daemon's pretty-printed output.
 
 ## What the examples cover
 
-- **Events, primary agent:** a blocked detection inside an HTTP request, with `request` fields and the redaction of `parameters` and `headers`; a monitored detection outside a request, whose `request` is empty; a latency telemetry line.
-- **Events, backport agents:** a blocked detection after a request was entered; a monitored detection outside a request; a latency telemetry line; the agent start line, one file per line. A backport detection carries the `event` member, a numeric `timestamp`, and no `kind`, `request` or `latency_us`; the daemon reads `kind` as `detection` when it is absent.
+- **Events, primary agent:** a blocked detection inside an HTTP request, with `request` fields and the redaction of `parameters`, `headers` and the sensitive values inside `query`; a monitored detection outside a request, whose `request` is empty; a latency telemetry line.
+- **Events, backport agents:** a blocked detection after a request was entered; a monitored detection outside a request; a latency telemetry line; the agent start line, one file per line. A backport detection carries the `event` member, a numeric `timestamp`, and no `kind`, `request` or `latency_us`. The start line has `event` and no `kind` or `timestamp`.
 - **Control:** each mode; a per-algorithm switch off and one explicitly on; a policy installed, with its string escapes; the same state after the policy is withdrawn, which drops the `policy` key. Every document carries the `revision` the daemon wrote.
+- **Hand-edited control documents:** the daemon's document with `mode` changed to each spelling both agent engines accept (`disabled`, `none`, `record`, `observe`, `log`, `blocking`, `protect`), to upper and mixed case, and padded with spaces. The agents must apply the mode, and the daemon must read the document instead of reinitialising it, and write the canonical word next time.
 - **Rejected control documents:** `truncated`, `not-an-object`, `invalid-utf8`, `nested-too-deep`, `trailing-text` and `utf8-bom`. Each says `"mode":"off"` where it parses far enough to say anything, so an agent that applied it would change state.
+
+## How the daemon reads a line
+
+The daemon classifies each line by `kind` when it has one, and by its other members when it has none (`AgentEvent::class` in `daemon/src/model.rs`; `daemon/src/contract_tests.rs` checks every example against it).
+
+| Line | Read as | What the daemon does |
+|---|---|---|
+| `kind` is `detection`; or no `kind` and `event` is `ohmyrasp-detection`; or no `kind` and the line has an `algorithm` and an `action` | detection | Attack log, detection counters, upload |
+| `kind` is `telemetry` | telemetry | Latency panel only |
+| `kind` is `lifecycle`; or no `kind` and `event` is `ohmyrasp-<line>-agent-start` | lifecycle | The `agent` entry of `/api/stats` (agent line, Java version and vendor); nothing else |
+| Any other `kind`; or no `kind` and nothing above matches | ignored | Counted under `ignored_kinds` in `/api/stats` and logged at debug level; never a detection, never uploaded |
+
+`timestamp` is an RFC 3339 string, kept as written, or a number of epoch milliseconds, which the daemon converts to RFC 3339 UTC. A line with neither, or with a number it cannot convert (negative, or past year 9999), has no time of its own and the upload carries the time the daemon read it as `occurred_at`.
+
+## Spellings of the mode
+
+An operator can edit the control file by hand, and both agent engines accept more spellings than the three words the daemon writes. The two engines accept the same set: `off`, `disabled`, `none` for off; `monitor`, `record`, `observe`, `log` for monitor; `block`, `blocking`, `protect` for block; in any letter case, with characters up to U+0020 around the word ignored. The daemon reads exactly that set (`Mode::parse` in `daemon/src/control.rs`) and writes the canonical word (`off`, `monitor` or `block`) the next time it writes the file. A value nobody accepts is ignored by the agents, which keep their mode, while the daemon reinitialises the file; the console and `--default-mode` take the same spellings.
+
+## The size limit of the control file
+
+Both agent engines ignore a control file larger than `max_control_bytes` of [`control/limits.properties`](control/limits.properties) (a file of exactly that size is read), which also stops mode changes from reaching them. The daemon therefore refuses to write a larger document, whether the change is a cloud policy or a console update: it keeps the previous document, logs an error that names the size and the limit, and reports the refusal until a write succeeds, as `control_status.write_refused` in `/api/stats`, as the `ohmyrasp_control_write_refused` gauge of `/metrics`, as a line in the local console, and as a `409` answer to `POST /api/control`. A file it finds already larger than the limit at start-up is left as it is and reported the same way.
 
 ## Normalisation of volatile fields
 
@@ -62,10 +86,5 @@ docker run --rm -u "$(id -u):$(id -g)" -e GRADLE_USER_HOME=/gradle-home \
 
 These are facts about the current code, kept visible here so that a change to any of them shows up as a diff. None is a test failure.
 
-- The backport agent start line has no `kind`, so the daemon ingests it as a detection with an empty hook, algorithm and action: it counts in the attack log and is uploaded as a low-severity "agent event". The primary agent writes no start line.
-- The backports write `timestamp` as a number. The daemon reads only a string, so a backport detection is uploaded with the time the daemon read it as `occurred_at`.
-- The agent redacts the values in `parameters` and `headers` but writes `query` as it came, and the daemon uploads `request.query`. A secret in the query string leaves the host.
 - The start lines of `agent-java8` and of `agent-java11` and `agent-java17` list their hooks in different orders, and the latter two carry a `startup_probe` member. The daemon reads none of them.
-- The daemon's own reader accepts only lowercase `off`, `monitor` and `block` for `mode`; the agents also accept `record`, `observe`, `log`, `protect` and the other aliases, in any case. A control file an operator edited by hand with an alias is reinitialised when the daemon starts.
-- The agents ignore a control file larger than 1 MiB. The daemon writes the cloud policy into it without a limit.
 - The backport agents read only `mode` from the control file. The per-algorithm switches, the revision and the policy apply on the primary agent only.

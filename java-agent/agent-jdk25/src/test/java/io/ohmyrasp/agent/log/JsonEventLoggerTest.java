@@ -106,6 +106,66 @@ final class JsonEventLoggerTest {
     assertEquals(List.of("after-shutdown"), messages(log), "the late event is on disk when log returns");
   }
 
+  /** The query keeps its shape; only the values of the parameters {@code parameters} redacts change. */
+  @Test
+  void theQueryRedactsTheValuesOfSensitiveParametersAndKeepsItsShape() {
+    assertEquals("id=1&password=[redacted]&x=2", JsonEventLogger.redactedQuery("id=1&password=hunter2&x=2"));
+    assertEquals("folder=reports&password=[redacted]", JsonEventLogger.redactedQuery("folder=reports&password=hunter2"));
+    // The same name rule as parameters: case, '_' and '-' do not matter, and neither does encoding.
+    assertEquals("API_KEY=[redacted]&a=b", JsonEventLogger.redactedQuery("API_KEY=k3y&a=b"));
+    assertEquals("access-token=[redacted]", JsonEventLogger.redactedQuery("access-token=abc"));
+    assertEquals("%70assword=[redacted]&q=1", JsonEventLogger.redactedQuery("%70assword=hunter2&q=1"));
+    assertEquals("pass%2Dword=[redacted]", JsonEventLogger.redactedQuery("pass%2Dword=hunter2"));
+    // Executable-source names are redacted in parameters, so they are here.
+    assertEquals("script=[redacted]&a=1", JsonEventLogger.redactedQuery("script=Runtime.exec&a=1"));
+    // Repeated names, empty values, a trailing separator and flags are kept as they are.
+    assertEquals("token=[redacted]&token=[redacted]&u=", JsonEventLogger.redactedQuery("token=a&token=b&u="));
+    assertEquals("password=&a=1&", JsonEventLogger.redactedQuery("password=&a=1&"));
+    assertEquals("a=1&flag&b=2", JsonEventLogger.redactedQuery("a=1&flag&b=2"));
+    assertEquals("a=1&&b=2", JsonEventLogger.redactedQuery("a=1&&b=2"));
+    // Nothing to redact: the same string comes back.
+    String plain = "id=1&name=a%20b&q=password+policy";
+    assertTrue(plain == JsonEventLogger.redactedQuery(plain));
+    assertEquals("", JsonEventLogger.redactedQuery(""));
+  }
+
+  @Test
+  void theQueryRedactsAssignmentsHiddenInsideValuesAndUnsplittableText() {
+    assertEquals("next=[redacted]&a=1", JsonEventLogger.redactedQuery("next=%2Fcb%3Ftoken%3Dabc&a=1"));
+    assertEquals("next=[redacted]", JsonEventLogger.redactedQuery("next=%252Fcb%253Fpassword%253Dabc"));
+    assertEquals("a=[redacted]", JsonEventLogger.redactedQuery("a=1;password=hunter2"));
+    // A piece that is not name=value but names a sensitive parameter.
+    assertEquals("a=1&[redacted]", JsonEventLogger.redactedQuery("a=1&password%3Dhunter2"));
+    assertEquals("a=1&[redacted]", JsonEventLogger.redactedQuery("a=1&{\"password\":\"hunter2\"}"));
+    // A query with no '=' at all is kept unless it names a sensitive parameter.
+    assertEquals("flag&other", JsonEventLogger.redactedQuery("flag&other"));
+    assertEquals("[redacted]", JsonEventLogger.redactedQuery("password:hunter2"));
+    assertEquals("[redacted]", JsonEventLogger.redactedQuery("%7B%22password%22%3A%22hunter2%22%7D"));
+    // A malformed escape is not an error and not a match.
+    assertEquals("a=%zz&b=%4", JsonEventLogger.redactedQuery("a=%zz&b=%4"));
+    // Multi-byte UTF-8 in a name decodes the way the container decodes it.
+    assertEquals("to%E2%84%AAen=[redacted]", JsonEventLogger.redactedQuery("to%E2%84%AAen=abc"));
+  }
+
+  /** The line the daemon uploads from: no secret from the query reaches it, the other members do. */
+  @Test
+  void anEventLineCarriesTheRedactedQuery(@TempDir Path dir) throws Exception {
+    Path log = dir.resolve("events.jsonl");
+    JsonEventLogger logger = JsonEventLogger.newForTesting(null, log.toString(), 0, false, quiet(), quiet());
+    var request =
+        new RequestContext(
+            "GET",
+            "/app/login",
+            "password=hunter2&id=1",
+            Map.of("password", List.of("hunter2"), "id", List.of("1")),
+            Map.of());
+    logger.log(new Detection(Instant.now(), "test", "test_algorithm", "log", 50, "m", request, Map.of()));
+    logger.shutdown(TimeUnit.SECONDS.toMillis(BOUND_SECONDS));
+    String line = Files.readString(log);
+    assertTrue(line.contains("\"query\":\"password=[redacted]&id=1\""), line);
+    assertFalse(line.contains("hunter2"), line);
+  }
+
   private static Detection detection(String message) {
     return new Detection(Instant.now(), "test", "test_algorithm", "log", 50, message, RequestContext.empty(), Map.of());
   }

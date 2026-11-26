@@ -1,13 +1,17 @@
 package io.ohmyrasp.agent.control;
 
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpServer;
+import io.ohmyrasp.agent.log.JsonEventLogger;
 import io.ohmyrasp.agent.model.Detection;
 import io.ohmyrasp.agent.model.RequestContext;
 import io.ohmyrasp.agent.policy.AgentPolicy;
+import java.io.ByteArrayOutputStream;
 import java.io.IOException;
+import java.io.PrintStream;
 import java.net.InetSocketAddress;
 import java.nio.charset.StandardCharsets;
 import java.time.Instant;
@@ -240,6 +244,55 @@ final class ControlPlaneClientTest {
     } finally {
       server.stop(0);
     }
+  }
+
+  /** The direct-cloud upload carries {@code request.query}; the logger hands it the redacted query. */
+  @Test
+  void theUploadedQueryHasItsSecretsRedacted() throws Exception {
+    List<String> requests = new ArrayList<>();
+    HttpServer server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+    server.createContext(
+        "/api/v1/agents/register",
+        exchange -> {
+          record(requests, exchange);
+          respond(exchange, 201, "{\"id\":\"agt_test\"}");
+        });
+    server.createContext(
+        "/api/v1/events/attack",
+        exchange -> {
+          record(requests, exchange);
+          respond(exchange, 201, "{\"id\":\"evt_test\"}");
+        });
+    server.start();
+    try {
+      ControlPlaneConfig config =
+          new ControlPlaneConfig(
+              "http://127.0.0.1:" + server.getAddress().getPort(),
+              "app_test", "secret_test", "env_test", "node-test", "java", "1.0.0");
+      try (ControlPlaneClient client = new ControlPlaneClient(config)) {
+        JsonEventLogger logger =
+            JsonEventLogger.newForTesting(
+                null, "none", 0, true, new PrintStream(new ByteArrayOutputStream()), new PrintStream(new ByteArrayOutputStream()));
+        logger.setControlPlaneClient(client);
+        logger.log(
+            new Detection(
+                Instant.parse("2026-06-01T00:00:00Z"),
+                "command",
+                "command_common",
+                "log",
+                95,
+                "dangerous command",
+                new RequestContext("GET", "/run", "password=hunter2&id=1", Map.of(), Map.of()),
+                Map.of("command", "id")));
+        waitFor(requests, 2);
+      }
+    } finally {
+      server.stop(0);
+    }
+
+    String upload = requests.get(1);
+    assertTrue(upload.contains("\"request.query\":\"password=[redacted]&id=1\""), upload);
+    assertFalse(upload.contains("hunter2"), upload);
   }
 
   private static void waitFor(List<String> requests, int count) throws InterruptedException {

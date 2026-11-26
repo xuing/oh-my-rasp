@@ -99,17 +99,17 @@ The stack runs the daemon with `--default-mode=block`, so a fresh volume starts 
 |---|---|
 | `GET /` | Embedded single-page local console |
 | `GET /healthz` | Returns `ok` |
-| `GET /metrics` | Prometheus text exposition (`ohmyrasp_cloud_enabled`, `ohmyrasp_cloud_connected`, `ohmyrasp_cloud_registered`, `ohmyrasp_cloud_policy_version`, `ohmyrasp_events_pending`, `ohmyrasp_events_uploaded_total`, `ohmyrasp_events_failed_total`, `ohmyrasp_events_dropped_total`) |
+| `GET /metrics` | Prometheus text exposition (`ohmyrasp_cloud_enabled`, `ohmyrasp_cloud_connected`, `ohmyrasp_cloud_registered`, `ohmyrasp_cloud_policy_version`, `ohmyrasp_control_write_refused`, `ohmyrasp_events_pending`, `ohmyrasp_events_uploaded_total`, `ohmyrasp_events_failed_total`, `ohmyrasp_events_dropped_total`) |
 | `GET /api/events?limit=&hook=&action=` | Recent retained detections, newest first (`limit` clamped to `1..2000`, default `200`), preserving raw JSON in `raw` |
-| `GET /api/stats` | Event counters, latency percentiles (`p50_us`, `p95_us`, `p99_us`, `max_us`, `avg_us` over up to 2000 samples), cloud status, control state, paths, and daemon version |
+| `GET /api/stats` | Event counters (`ignored_kinds` counts lines of an unknown kind), the agent's start line (`agent`), latency percentiles (`p50_us`, `p95_us`, `p99_us`, `max_us`, `avg_us` over up to 2000 samples), cloud status, control state, `control_status` (set when a control write was refused for size), paths, and daemon version |
 | `GET /api/control` | Current `ControlState` (`mode`, `algorithms`, `policy`, `revision`, `updated_at`) |
-| `POST /api/control` | Update `mode` (`off`, `monitor`, `block`) and/or `algorithms` toggles (`{ "mode": "block", "algorithms": { "sqli": false } }`) |
+| `POST /api/control` | Update `mode` (`off`, `monitor`, `block`) and/or `algorithms` toggles (`{ "mode": "block", "algorithms": { "sqli": false } }`); `409` when the resulting document would be larger than the agents read |
 
 ## Contract with the Agent and File Permissions
 
 Example files for both formats, tested by the agents and by this daemon, are in [`../java-agent/contracts/agent-daemon/`](../java-agent/contracts/agent-daemon/README.md).
 
-**Events out (`events.jsonl`)**: one JSON object per line written by the agent's `JsonEventLogger`. The daemon reads this file without creating or modifying it, tolerates missing fields, and retains the raw JSON object. Recognized keys: `timestamp`, `kind` (`detection` or `telemetry`), `hook`, `algorithm`, `action`, `confidence`, `latency_us`, `message`, `request`, `details`.
+**Events out (`events.jsonl`)**: one JSON object per line written by the agent's `JsonEventLogger`. The daemon reads this file without creating or modifying it, tolerates missing fields, and retains the raw JSON object. Recognized keys: `timestamp` (an RFC 3339 string, or epoch milliseconds as the backport agents write it), `kind` (`detection`, `telemetry` or `lifecycle`), `event` (read when there is no `kind`), `hook`, `algorithm`, `action`, `confidence`, `latency_us`, `message`, `request`, `details`. Only a detection is logged, counted and uploaded; how the daemon tells a detection from a start line or an unknown kind is in the [fixtures' README](../java-agent/contracts/agent-daemon/README.md#how-the-daemon-reads-a-line).
 
 **Control in (`control.json`)**: written by `Controller` (`src/control.rs`) and polled by the agent:
 
@@ -118,6 +118,7 @@ Example files for both formats, tested by the agents and by this daemon, are in 
 ```
 
 - `mode`: `off` (detection disabled), `monitor` (detect and record without blocking), `block` (detect, record, and block active-request attacks).
+  The daemon writes these three words. When an operator edits the file by hand it also reads every spelling both agent engines accept (`disabled`, `none`, `record`, `observe`, `log`, `blocking`, `protect`, in any letter case) and writes the canonical word the next time it writes the file; see [the fixtures' README](../java-agent/contracts/agent-daemon/README.md#spellings-of-the-mode).
 - `algorithms`: per-algorithm enable flags; absent entries default to enabled.
 - `policy`: optional raw policy JSON pulled from `/api/v1/agents/{id}/policy`.
 - `revision`: monotonic counter incremented on state changes.

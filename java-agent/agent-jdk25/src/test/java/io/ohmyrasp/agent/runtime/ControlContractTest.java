@@ -2,12 +2,14 @@ package io.ohmyrasp.agent.runtime;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import io.ohmyrasp.agent.contract.ContractFiles;
 import java.io.IOException;
 import java.io.StringReader;
 import java.nio.file.Files;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -35,6 +37,35 @@ final class ControlContractTest {
       AgentRuntime runtime = AgentRuntime.newForTesting();
       runtime.reloadIfChanged(place("control/" + document + ".json"));
       assertState(document, expected, runtime);
+    }
+  }
+
+  /**
+   * An operator edits the daemon's file by hand ({@code control/hand-edited/}): every spelling of
+   * the mode that both agent engines accept, in any letter case. The agent must read each as
+   * {@code control/hand-edited/expected.properties} says; the daemon reads the same documents.
+   */
+  @Test
+  void everyHandEditedDocumentAppliesAsItsManifestSays() throws Exception {
+    Properties expected = new Properties();
+    expected.load(new StringReader(ContractFiles.read("control/hand-edited/expected.properties")));
+    List<String> documents = documents("control/hand-edited");
+    assertEquals(new TreeSet<>(manifestDocuments(expected)), new TreeSet<>(documents),
+        "control/hand-edited/expected.properties and the hand-edited/*.json files list the same documents");
+    assertTrue(documents.size() >= 10, "the spellings are there: " + documents);
+    for (String document : documents) {
+      AgentRuntime runtime = AgentRuntime.newForTesting();
+      runtime.reloadIfChanged(place("control/hand-edited/" + document + ".json"));
+      AgentRuntime.ControlState state = runtime.state();
+      assertEquals(expected.getProperty(document + ".mode"), state.mode() == null ? null : state.mode().token(),
+          document + " mode");
+      assertEquals(Long.parseLong(expected.getProperty(document + ".revision")), state.revision(), document + " revision");
+      for (String algorithm : list(expected, document + ".disabled")) {
+        assertFalse(state.isAlgorithmEnabled(algorithm), document + ": " + algorithm + " is disabled");
+      }
+      for (String algorithm : list(expected, document + ".enabled")) {
+        assertTrue(state.isAlgorithmEnabled(algorithm), document + ": " + algorithm + " is enabled");
+      }
     }
   }
 
@@ -69,6 +100,41 @@ final class ControlContractTest {
       assertSame(name, before, runtime.state());
       assertState("policy-installed", expected, runtime);
     }
+  }
+
+  /**
+   * The daemon refuses to write a control document larger than {@code control/limits.properties}
+   * says, because the agent ignores one: this side's constant is that value, and the agent reads
+   * a document of exactly that size and not one byte more.
+   */
+  @Test
+  void theControlSizeLimitIsTheContractValue() throws Exception {
+    int limit = contractLimit();
+    assertEquals(limit, AgentRuntime.MAX_CONTROL_BYTES,
+        "AgentRuntime.MAX_CONTROL_BYTES against control/limits.properties max_control_bytes");
+
+    AgentRuntime atLimit = AgentRuntime.newForTesting();
+    atLimit.reloadIfChanged(placePadded(limit));
+    assertEquals(DetectionMode.BLOCK, atLimit.mode(), "a document of exactly the limit is read");
+
+    AgentRuntime overLimit = AgentRuntime.newForTesting();
+    overLimit.reloadIfChanged(placePadded(limit + 1));
+    assertNull(overLimit.mode(), "a document one byte over the limit is ignored");
+  }
+
+  /** {@code {"mode":"block"}} followed by spaces, {@code bytes} long in all. */
+  private Path placePadded(int bytes) throws IOException {
+    String json = "{\"mode\":\"block\"}";
+    byte[] content = (json + " ".repeat(bytes - json.length())).getBytes(StandardCharsets.UTF_8);
+    Path file = dir.resolve("padded-" + bytes + ".json");
+    Files.write(file, content);
+    return file;
+  }
+
+  private static int contractLimit() throws IOException {
+    Properties limits = new Properties();
+    limits.load(new StringReader(ContractFiles.read("control/limits.properties")));
+    return Integer.parseInt(limits.getProperty("max_control_bytes"));
   }
 
   private static void assertSame(String name, AgentRuntime.ControlState before, AgentRuntime.ControlState after) {
