@@ -33,3 +33,23 @@ effect = "none"
 
 [case.backport]
 effect = "none"
+
+[[case]]
+name = "velocity-loader-enable-parameter-in-json-body"
+kind = "attack"
+via = "request"
+
+[case.request]
+method = "POST"
+uri = "/solr/demo/config"
+headers = { "User-Agent" = "Mozilla/5.0 (X11; Linux x86_64) Firefox/128.0", Accept = "text/html", "Content-Type" = "application/json" }
+body = "{\"config\":\"{\\\"update-queryresponsewriter\\\":{\\\"name\\\":\\\"velocity\\\",\\\"class\\\":\\\"solr.VelocityResponseWriter\\\",\\\"params.resource.loader.enabled\\\":\\\"true\\\"}}\"}"
+body_api = "stream"
+
+[case.primary]
+effect = "none"
+why = "the same input blocks as a query parameter but passes as a JSON body: the agent's request context has no body (no hook reads the input stream or the reader), so body fields are never read"
+
+[case.backport]
+effect = "none"
+why = "the same input blocks as a query parameter but passes as a JSON body: the agent's request context has no body (no hook reads the input stream or the reader), so body fields are never read"

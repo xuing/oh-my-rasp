@@ -137,8 +137,28 @@ class WiringTest(unittest.TestCase):
         self.assertGreaterEqual(len(rule_wiring.named_in_emitters()), 60)
         self.assertGreaterEqual(len(rule_wiring.emitters()), 130)
         self.assertGreaterEqual(len(rule_wiring.reachable_ids()), 100)
-        self.assertIn(("OhMyRaspHooks", "beforeSql"), rule_wiring.reachable_methods())
-        self.assertIn(("ProcessDetector", "detectCommand"), rule_wiring.reachable_methods())
+        self.assertTrue(rule_wiring.is_reachable("OhMyRaspHooks", "beforeSql"))
+        self.assertTrue(rule_wiring.is_reachable("ProcessDetector", "detectCommand"))
+        self.assertFalse(rule_wiring.is_reachable("OhMyRaspHooks", "beforeEval"))
+
+    def test_the_receiver_type_keeps_a_call_on_an_unrelated_type_apart(self):
+        # `List.of(` and a call on a String or a List must not reach the agent method of the same name, and two
+        # overloads with different numbers of parameters are two methods.
+        self.assertTrue(rule_wiring.is_reachable("OhMyRaspHooks", "beforeHessianAllocation"))
+        self.assertFalse(rule_wiring.is_reachable("OhMyRaspHooks", "beforeHessianType"))
+        arities = {key[2] for key in rule_wiring.reachable_methods() if key[:2] == ("OhMyRaspHooks", "beforeProcessBuilderStart")}
+        self.assertEqual({1, 2}, arities)
+
+    def test_a_request_body_enters_the_detectors_through_no_reachable_method(self):
+        # The servlet entry builds its context without a body; the entries that take one are called by no hook module.
+        # If this fails, a hook now supplies a body: measure the body-only rules (rule_wiring.BODY_ONLY) again with
+        # the rule-cases probe, and take off not_wired those that fire.
+        self.assertEqual(set(), rule_wiring.request_body_sources())
+        self.assertLessEqual(rule_wiring.BODY_ONLY.keys(), rule_catalogue.not_wired().keys())
+
+    def test_a_compatibility_stub_is_not_a_capability(self):
+        self.assertIn(("DeserializationDetector", "detectHessianType"), rule_wiring.empty_stubs())
+        self.assertNotIn(("DeserializationDetector", "detectHessianAllocation"), rule_wiring.empty_stubs())
 
     def test_every_marked_id_is_a_primary_id_with_a_reason(self):
         marked = rule_catalogue.not_wired()  # raises for an id outside its file's primary ids, or a blank reason

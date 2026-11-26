@@ -115,6 +115,12 @@ public class RuleCaseDriver extends HttpServlet {
 
   // ---- the servlet ------------------------------------------------------------------------
 
+  @Override protected void service(HttpServletRequest request, HttpServletResponse response)
+      throws javax.servlet.ServletException, IOException {
+    if ("PATCH".equals(request.getMethod())) handle(); // HttpServlet has no doPatch
+    else super.service(request, response);
+  }
+
   @Override protected void doGet(HttpServletRequest request, HttpServletResponse response) { handle(); }
   @Override protected void doPost(HttpServletRequest request, HttpServletResponse response) { handle(); }
   @Override protected void doPut(HttpServletRequest request, HttpServletResponse response) { handle(); }
@@ -122,6 +128,7 @@ public class RuleCaseDriver extends HttpServlet {
 
   private static void handle() {
     RESULT.put("handler", "yes");
+    readBody();
     if ("request-sink".equals(spec("via"))) {
       perform();
       String ending = RESULT.get("op");
@@ -133,6 +140,27 @@ public class RuleCaseDriver extends HttpServlet {
   }
 
   private static final Throwable[] BLOCK_SEEN = new Throwable[1];
+
+  /** The request the handler was given: the stub servlet request, which carries the case's body when it has one. */
+  private static HttpServletRequest current;
+
+  /** The handler reads the case's request body the way an application does: from the input stream or the reader. */
+  private static void readBody() {
+    if (!SPEC.containsKey("request.body") || current == null) return;
+    try {
+      int read = 0;
+      if ("reader".equals(SPEC.get("request.bodyApi"))) {
+        BufferedReader reader = current.getReader();
+        while (reader.read() >= 0) read++;
+      } else {
+        InputStream in = current.getInputStream();
+        while (in.read() >= 0) read++;
+      }
+      RESULT.put("body", "read " + read);
+    } catch (IOException unreadable) {
+      RESULT.put("body", "unreadable");
+    }
+  }
 
   // ---- the operation ----------------------------------------------------------------------
 
@@ -390,6 +418,8 @@ public class RuleCaseDriver extends HttpServlet {
     attributes.putAll(multimap("attr"));
     for (Map.Entry<String, Object> entry : attributes.entrySet()) entry.setValue(((String[]) entry.getValue())[0]);
     final Map<String, String[]> headerNames = multimap("header");
+    final String body = SPEC.containsKey("request.body") ? spec("request.body") : "";
+    final byte[] bodyBytes = body.getBytes(StandardCharsets.UTF_8);
     InvocationHandler handler = new InvocationHandler() {
       @Override public Object invoke(Object proxy, Method m, Object[] a) {
         String name = m.getName();
@@ -431,16 +461,16 @@ public class RuleCaseDriver extends HttpServlet {
           String[] values = headers.get("Content-Type");
           return values == null ? null : values[0];
         }
-        if ("getContentLength".equals(name)) return 0;
-        if ("getContentLengthLong".equals(name)) return 0L;
+        if ("getContentLength".equals(name)) return bodyBytes.length;
+        if ("getContentLengthLong".equals(name)) return (long) bodyBytes.length;
         if ("getCharacterEncoding".equals(name)) return "UTF-8";
         if ("getAttribute".equals(name)) return attributes.get((String) a[0]);
         if ("getAttributeNames".equals(name)) return Collections.enumeration(new ArrayList<String>(attributes.keySet()));
         if ("setAttribute".equals(name)) { attributes.put((String) a[0], a[1]); return null; }
         if ("removeAttribute".equals(name)) { attributes.remove((String) a[0]); return null; }
         if ("getCookies".equals(name)) return cookies(headers.get("Cookie"));
-        if ("getInputStream".equals(name)) return emptyBody();
-        if ("getReader".equals(name)) return new BufferedReader(new StringReader(""));
+        if ("getInputStream".equals(name)) return bodyStream(bodyBytes);
+        if ("getReader".equals(name)) return new BufferedReader(new StringReader(body));
         if ("getDispatcherType".equals(name)) return DispatcherType.REQUEST;
         if ("getLocale".equals(name)) return Locale.US;
         if ("getLocales".equals(name)) return Collections.enumeration(Collections.singletonList(Locale.US));
@@ -450,8 +480,9 @@ public class RuleCaseDriver extends HttpServlet {
         return defaultValue(m.getReturnType());
       }
     };
-    return (HttpServletRequest) Proxy.newProxyInstance(RuleCaseDriver.class.getClassLoader(),
+    current = (HttpServletRequest) Proxy.newProxyInstance(RuleCaseDriver.class.getClassLoader(),
         new Class<?>[]{HttpServletRequest.class}, handler);
+    return current;
   }
 
   private static HttpServletResponse response() {
@@ -489,10 +520,11 @@ public class RuleCaseDriver extends HttpServlet {
     return cookies.toArray(new Cookie[0]);
   }
 
-  private static ServletInputStream emptyBody() {
+  private static ServletInputStream bodyStream(final byte[] bytes) {
     return new ServletInputStream() {
-      @Override public int read() { return -1; }
-      @Override public boolean isFinished() { return true; }
+      private int position;
+      @Override public int read() { return position < bytes.length ? bytes[position++] & 0xff : -1; }
+      @Override public boolean isFinished() { return position >= bytes.length; }
       @Override public boolean isReady() { return true; }
       @Override public void setReadListener(ReadListener listener) { }
     };

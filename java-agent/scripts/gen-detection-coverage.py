@@ -345,9 +345,14 @@ def render() -> str:
         w(f"| `{owner}` | " + " · ".join(f"`detect{n}`" for n in names) + " |")
     w("")
     skipped = detector_entry_points.not_wired_by_class()
+    stubs = detector_entry_points.stubs_by_class()
     w(f"Not counted: **{sum(len(names) for names in skipped.values())}** public `detect*` entry points that serve only rules")
     w("[defined, not wired](#defined-not-wired): " + ", ".join(
         f"`{owner}` " + " · ".join(f"`detect{n}`" for n in names) for owner, names in skipped.items()) + ".")
+    w("")
+    w(f"Also not counted: **{sum(len(names) for names in stubs.values())}** compatibility stubs whose every overload only returns an")
+    w("empty result, so they decide nothing (the rule each is named for is decided by another entry point): " + ", ".join(
+        f"`{owner}` " + " · ".join(f"`detect{n}`" for n in names) for owner, names in stubs.items()) + ".")
     w("")
 
     w("## Rule scope")

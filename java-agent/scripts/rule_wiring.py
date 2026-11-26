@@ -5,17 +5,22 @@ hook module injects a call to an OhMyRaspHooks entry method. The map is read, no
 
 * the roots are the OhMyRaspHooks methods a module or shared visitor names (the injected call is
   `invokeHook("name", ...)` or `visitMethodInsn(INVOKESTATIC, hooks, "name", ...)`, so the name is a
-  string literal under asm/ or shared/, alone or as the signature `void name(Type)` of a Method), and every method of the agent classes outside hook/OhMyRaspHooks
-  and detect/ (the policy, control and runtime classes the hooks call back into, and the classes the
-  agent installs itself, such as DeserializationGuard);
-* the edges are the calls in a method body: `Type.name(`, `new Type(`, `Type::name`, and `name(` in the
-  same class. A call on a value, `x.name(`, is taken to reach every agent method called `name`, so the
-  map can only err towards reachable: a rule it calls unreachable is unreachable.
+  string literal under asm/ or shared/, alone or as the signature `void name(Type)` of a Method), and every
+  method of the agent classes outside OhMyRaspHooks, detect/ and asm/ (the policy, control and runtime
+  classes the hooks call back into, and the classes the agent installs itself, such as DeserializationGuard);
+* the edges are the calls in a method body, matched by name and by number of arguments: `Type.name(`,
+  `new Type(`, `Type::name`, `name(` in the same class or a superclass, and `x.name(` where the declared
+  type of `x` is a parameter, local variable or field of the same class (or `var x = new Type(`): it reaches
+  that type and its subtypes, and nothing at all when the type is not an agent class (a List, a String).
 
-What it cannot see: a rule that its method reaches only on a branch no input takes (the one such case,
-expression_runtime, has its own check: engine_names_without_an_id), and a call the agent makes by reflection
-under a name it builds at run time. A name written as a literal is read, so the reflective calls of the
-EL, JEXL and OSGi servlet paths count.
+What it cannot see, and what is still over-approximated: a call on a value whose type it cannot read (a
+chain `a.b().name(`, a lambda parameter, a field of another class) reaches every agent method of that name
+and arity; two overloads with the same number of parameters are one method; the same-named method of an
+outer class is taken for an unqualified call it cannot find in the class itself. All of these err towards
+reachable, so a rule it calls unreachable is unreachable. It cannot see a branch inside a reachable method
+that no input takes (expression_runtime has its own check, engine_names_without_an_id), a call the agent
+makes by reflection under a name it builds at run time (a name written as a literal is read, so the EL,
+JEXL and OSGi servlet paths count), or a value only a hook supplies (the request body: see BODY_ONLY).
 
 Used by test_rule_cases.py (WiringTest); the catalogue marks the ids it finds as not wired ("not_wired" in
 rules/general.json and product.json).
@@ -37,7 +42,6 @@ HOOKS_CLASS = "OhMyRaspHooks"
 _KEYWORDS = {"if", "for", "while", "switch", "catch", "synchronized", "try", "return", "new", "else", "do",
              "throw", "assert", "super", "this"}
 _SCOPE = re.compile(r"\b(class|interface|enum|record)\s+(\w+)")
-_METHOD = re.compile(r"(\w+)\s*\((?:[^()]|\([^()]*\))*\)\s*(?:throws\s+[\w.,\s]+)?$")
 
 
 def strip(source: str) -> tuple[str, list[str]]:
@@ -82,24 +86,54 @@ def strip(source: str) -> tuple[str, list[str]]:
     return "".join(out), literals
 
 
+_METHOD = re.compile(r"(\w+)\s*\(((?:[^()]|\([^()]*\))*)\)\s*(?:throws\s+[\w.,\s]+)?$")
+_CLASS_HEADER = re.compile(r"\b(?:class|interface|enum|record)\s+(\w+)(?:<[^{]*?>)?(?:\([^)]*\))?\s*((?:extends|implements)\b[^{]*)\{")
+
+
+def count_arguments(text: str) -> int:
+    """The number of top-level, comma-separated items in `text` (a parameter or argument list, without its parentheses)."""
+    if not text.strip():
+        return 0
+    depth = angle = count = 0
+    for i, c in enumerate(text):
+        if c in "([{":
+            depth += 1
+        elif c in ")]}":
+            depth -= 1
+        elif c == "<" and i > 0 and (text[i - 1].isalnum() or text[i - 1] == "_") and i + 1 < len(text) \
+                and (text[i + 1].isupper() or text[i + 1] == "?"):
+            angle += 1
+        elif c == ">" and angle and text[i - 1] != "-":
+            angle -= 1
+        elif c == "," and depth == 0 and angle == 0:
+            count += 1
+    return count + 1
+
+
 class Method:
-    def __init__(self, owner: str, name: str, body: str, table: list[str]):
-        self.owner, self.name, self.body, self.table = owner, name, body, table
+    """One method (or constructor) of a source file: `arity` is the number of declared parameters, and a
+    varargs method (`varargs`) takes that many or more less one."""
+
+    def __init__(self, owner: str, name: str, params: str, body: str, table: list[str], package: str):
+        self.owner, self.name, self.params, self.body, self.table, self.package = owner, name, params, body, table, package
+        self.arity = count_arguments(params)
+        self.varargs = "..." in params
 
     @property
-    def key(self) -> tuple[str, str]:
-        return self.owner, self.name
+    def key(self) -> tuple[str, str, int]:
+        return self.owner, self.name, self.arity
+
+    def takes(self, arguments: int) -> bool:
+        return arguments == self.arity or (self.varargs and arguments >= self.arity - 1)
 
 
-def methods(path: Path) -> list[Method]:
+def methods(path: Path, package: str = "") -> list[Method]:
     """The methods of a source file, each with the text of its body (a nested or anonymous class is part of the
     method that holds it). Class-level text outside any method (field initialisers) is the pseudo method `<init>`."""
     text, literals = strip(path.read_text(encoding="utf-8"))
     found: list[Method] = []
-    # stack entries: ("class", name, field_text_parts) or ("method", Method, start_index, depth_at_open)
-    scopes: list[list] = []
+    scopes: list[list] = []  # ["class", name, field_text_parts] or ["block", "", []]
     header_start = 0
-    depth = 0
     method_depth = 0  # braces opened inside the current method body
     current: list | None = None
 
@@ -113,8 +147,7 @@ def methods(path: Path) -> list[Method]:
             elif ch == "}":
                 method_depth -= 1
                 if method_depth == 0:
-                    body = text[current[2]:i]
-                    found.append(Method(current[1], current[3], body, literals))
+                    found.append(Method(current[1], current[3], current[4], text[current[2]:i], literals, package))
                     current = None
                     header_start = i + 1
             continue
@@ -123,11 +156,9 @@ def methods(path: Path) -> list[Method]:
             scope = list(_SCOPE.finditer(header))
             cls = class_scope()
             if scope and not re.search(r"\bnew\b", header):
-                if cls is not None:
-                    cls[2].append(text[header_start:header_start])
                 scopes.append(["class", scope[-1].group(2), []])
             elif cls is not None and (m := _METHOD.search(header.strip())) and m.group(1) not in _KEYWORDS:
-                current = ["method", cls[1], i + 1, m.group(1)]
+                current = ["method", cls[1], i + 1, m.group(1), m.group(2)]
                 method_depth = 1
             else:  # an initialiser block, an array initialiser, an enum constant body
                 scopes.append(["block", "", []])
@@ -136,8 +167,7 @@ def methods(path: Path) -> list[Method]:
             if scopes:
                 scope = scopes.pop()
                 if scope[0] == "class":
-                    body = "".join(scope[2])
-                    found.append(Method(scope[1], "<init>", body, literals))
+                    found.append(Method(scope[1], "<init>", "", "".join(scope[2]), literals, package))
             header_start = i + 1
         elif ch == ";":
             cls = class_scope()
@@ -147,25 +177,51 @@ def methods(path: Path) -> list[Method]:
     return found
 
 
+def _package_of(path: Path) -> str:
+    parts = path.relative_to(AGENT).parts
+    return parts[0] if len(parts) > 1 else ""
+
+
 @functools.cache
 def _agent_methods() -> tuple[Method, ...]:
-    return tuple(m for p in sorted(AGENT.rglob("*.java")) for m in methods(p))
-
-
-def _package_of(path: Path) -> str:
-    return path.relative_to(AGENT).parts[0] if len(path.relative_to(AGENT).parts) > 1 else ""
+    return tuple(m for p in sorted(AGENT.rglob("*.java")) for m in methods(p, _package_of(p)))
 
 
 @functools.cache
-def _owner_package() -> dict[str, str]:
-    return {p.stem: _package_of(p) for p in AGENT.rglob("*.java")}
+def _supers() -> dict[str, set[str]]:
+    """Class or interface name -> the names its header extends or implements."""
+    found: dict[str, set[str]] = {}
+    for path in AGENT.rglob("*.java"):
+        text, _ = strip(path.read_text(encoding="utf-8"))
+        for name, clause in _CLASS_HEADER.findall(text):
+            clause = re.sub(r"<[^<>]*(?:<[^<>]*>[^<>]*)*>", "", clause)
+            found.setdefault(name, set()).update(re.findall(r"[A-Z]\w*", clause))
+    return found
+
+
+@functools.cache
+def _ancestors(name: str) -> frozenset[str]:
+    seen: set[str] = set()
+    todo = [name]
+    while todo:
+        for parent in _supers().get(todo.pop(), ()):
+            if parent not in seen:
+                seen.add(parent)
+                todo.append(parent)
+    return frozenset(seen)
+
+
+@functools.cache
+def _subtypes(name: str) -> frozenset[str]:
+    return frozenset({name} | {c for c in _supers() if name in _ancestors(c)})
 
 
 def entry_methods() -> set[str]:
     return {m.name for m in _agent_methods() if m.owner == HOOKS_CLASS}
 
 
-def named_in_emitters() -> set[str]:
+@functools.cache
+def named_in_emitters() -> frozenset[str]:
     """OhMyRaspHooks entry names that appear as a string literal under asm/ or shared/: the injected calls."""
     names = entry_methods()
     found: set[str] = set()
@@ -174,56 +230,135 @@ def named_in_emitters() -> set[str]:
             _, literals = strip(path.read_text(encoding="utf-8"))
             for literal in literals:
                 found |= names & set(re.findall(r"\b(\w+)\(", literal) + [literal])
-    return found
-
-
-_CALL = re.compile(r"(?:\b([A-Za-z_]\w*)\s*(\.|::)\s*)?\b([A-Za-z_]\w*)\s*\(|\b([A-Z]\w*)\s*::\s*(\w+)|\bnew\s+([A-Z]\w*)")
+    return frozenset(found)
 
 
 @functools.cache
-def _graph() -> tuple[dict[tuple[str, str], Method], dict[str, list[tuple[str, str]]]]:
-    by_key: dict[tuple[str, str], list[Method]] = {}
+def _graph() -> tuple[dict[tuple[str, str, int], list[Method]], dict[tuple[str, str], list[Method]], dict[str, list[Method]]]:
+    """Methods by key, by (owner, name) and by name."""
+    by_key: dict[tuple[str, str, int], list[Method]] = {}
+    by_owner: dict[tuple[str, str], list[Method]] = {}
+    by_name: dict[str, list[Method]] = {}
     for m in _agent_methods():
         by_key.setdefault(m.key, []).append(m)
-    by_name: dict[str, list[tuple[str, str]]] = {}
-    for key in by_key:
-        by_name.setdefault(key[1], []).append(key)
-    return by_key, by_name
-
-
-def _edges(method: Method) -> set[tuple[str, str]]:
-    by_key, by_name = _graph()
-    classes = {owner for owner, _ in by_key}
-    out: set[tuple[str, str]] = set()
-    body = method.body
-    for m in re.finditer(r"\bnew\s+([A-Z]\w*)", body):
-        out |= {k for k in by_key if k[0] == m.group(1)}
-    for m in re.finditer(r"\b([A-Z]\w*)\s*::\s*(\w+)", body):
-        out |= {(m.group(1), m.group(2))} & by_key.keys()
-    for m in re.finditer(r"(?:(\b[A-Za-z_]\w*|\))\s*\.\s*)?\b([A-Za-z_]\w*)\s*\(", body):
-        qualifier, name = m.group(1), m.group(2)
-        if name in _KEYWORDS:
-            continue
-        if qualifier in classes:
-            out |= {(qualifier, name)} & by_key.keys()
-        elif qualifier is None or qualifier == "this":
-            own = {(method.owner, name)} & by_key.keys()
-            out |= own or set(by_name.get(name, ()))  # an inherited, outer-class or statically imported method
-        else:
-            out |= set(by_name.get(name, ()))
-    for m in re.finditer(r"(?:\bthis|\b[a-z]\w*)\s*::\s*(\w+)", body):
-        out |= set(by_name.get(m.group(1), ()))
-    return out
+        by_owner.setdefault((m.owner, m.name), []).append(m)
+        by_name.setdefault(m.name, []).append(m)
+    return by_key, by_owner, by_name
 
 
 @functools.cache
-def reachable_methods() -> frozenset[tuple[str, str]]:
-    """Methods that can run once some module has injected a call: see the module docstring for the roots."""
-    by_key, _ = _graph()
-    packages = _owner_package()
-    roots = {(HOOKS_CLASS, name) for name in named_in_emitters()}
-    roots |= {key for key in by_key if key[0] != HOOKS_CLASS and packages.get(key[0]) not in ("detect", "asm")}
-    seen: set[tuple[str, str]] = set()
+def _classes() -> frozenset[str]:
+    return frozenset(m.owner for m in _agent_methods())
+
+
+@functools.cache
+def _fields(owner: str) -> str:
+    """The field declarations of a class: its `<init>` text, and that of the classes in the same file (an outer or nested class)."""
+    return "\n".join(m.body for m in _agent_methods() if m.name == "<init>" and m.owner == owner)
+
+
+_PRIMITIVES = {"int", "long", "boolean", "double", "float", "char", "byte", "short", "void"}
+_NOT_TYPES = _KEYWORDS | {"instanceof", "case", "default", "throws", "extends", "implements", "static", "final", "var"}
+
+
+@functools.cache
+def _declaration(name: str) -> re.Pattern:
+    return re.compile(r"(?<![\w.])([A-Za-z_][\w.]*)\s*(?:<[^;(){}]*?>)?\s*(?:\[\]\s*)*\s+(?:final\s+)?"
+                      + re.escape(name) + r"\b(?!\s*\()")
+
+
+@functools.cache
+def declared_type(method: Method, name: str) -> str | None:
+    """The simple type name `name` is declared with as a parameter, local variable or field of the method's class:
+    None when it is not declared there. `var x = new T(` is T; a `var` with another initialiser is None."""
+    for text in (method.params, method.body, _fields(method.owner)):
+        for m in _declaration(name).finditer(text):
+            kind = m.group(1).rsplit(".", 1)[-1]
+            if kind in _NOT_TYPES and kind != "var":
+                continue
+            if kind == "var":
+                init = re.match(r"\s*=\s*(?:\([\w.<>]+\)\s*)?new\s+([A-Z]\w*)", text[m.end():])
+                if init:
+                    return init.group(1)
+                continue
+            return kind
+    return None
+
+
+def _arguments(body: str, open_at: int) -> int:
+    """The number of arguments of the call whose `(` is at `open_at`."""
+    depth = 0
+    for i in range(open_at, len(body)):
+        if body[i] in "([{":
+            depth += 1
+        elif body[i] in ")]}":
+            depth -= 1
+            if depth == 0:
+                return count_arguments(body[open_at + 1:i])
+    return -1
+
+
+_CALL = re.compile(r"(?:(\b[A-Za-z_]\w*|\))\s*\.\s*)?\b([A-Za-z_]\w*)\s*\(")
+_NEW = re.compile(r"\bnew\s+([A-Z]\w*)\s*(?:<[^()]*?>)?\s*\(")
+
+
+def _resolve(owners: set[str], name: str, arguments: int) -> set[tuple[str, str, int]]:
+    _, by_owner, _ = _graph()
+    return {m.key for owner in owners for m in by_owner.get((owner, name), ()) if arguments < 0 or m.takes(arguments)}
+
+
+def _by_name(name: str, arguments: int) -> set[tuple[str, str, int]]:
+    _, _, by_name = _graph()
+    return {m.key for m in by_name.get(name, ()) if arguments < 0 or m.takes(arguments)}
+
+
+@functools.cache
+def _edges(method: Method) -> frozenset[tuple[str, str, int]]:
+    by_key, by_owner, _ = _graph()
+    classes = _classes()
+    out: set[tuple[str, str, int]] = set()
+    body = method.body
+    for m in _NEW.finditer(body):
+        if m.group(1) in classes:
+            out |= _resolve({m.group(1)}, m.group(1), _arguments(body, m.end() - 1))
+            out |= {k for k in by_key if k[0] == m.group(1) and k[1] == "<init>"}
+    for m in re.finditer(r"\b([A-Z]\w*)\s*::\s*(\w+)", body):
+        if m.group(1) in classes:
+            out |= _resolve({m.group(1)}, m.group(2), -1)
+    for m in re.finditer(r"\b(this|[a-z_]\w*)\s*::\s*(\w+)", body):
+        own = {method.owner} | _ancestors(method.owner)
+        out |= (_resolve(own, m.group(2), -1) if m.group(1) == "this" else _by_name(m.group(2), -1))
+    for m in _CALL.finditer(body):
+        qualifier, name = m.group(1), m.group(2)
+        if name in _KEYWORDS or (qualifier is None and body[max(0, m.start() - 4):m.start()].endswith("new ")):
+            continue
+        arguments = _arguments(body, m.end() - 1)
+        if qualifier is None or qualifier == "this" or qualifier == "super":
+            own = {method.owner} | _ancestors(method.owner)
+            found = _resolve(own, name, arguments)
+            out |= found or _by_name(name, arguments)  # an outer-class or statically imported method
+            continue
+        kind = declared_type(method, qualifier) if qualifier != ")" else None
+        if kind is None and qualifier in classes and qualifier != ")":
+            out |= _resolve({qualifier}, name, arguments)  # a static call
+        elif kind is not None:
+            if kind in classes:
+                out |= _resolve(set(_subtypes(kind)), name, arguments)
+            # a type outside the agent (String, List, a JDK class): its methods are not ours
+        elif qualifier[0].isupper() and not qualifier.isupper():
+            pass  # Optional.of(, Map.of(, Objects.requireNonNull(: a class outside the agent
+        else:
+            out |= _by_name(name, arguments)  # a value whose type is not declared here
+    return frozenset(out)
+
+
+@functools.cache
+def reachable_methods() -> frozenset[tuple[str, str, int]]:
+    """Method keys (class, name, number of parameters) that can run once some module has injected a call."""
+    by_key, _, _ = _graph()
+    roots = {m.key for m in _agent_methods() if m.owner == HOOKS_CLASS and m.name in named_in_emitters()}
+    roots |= {m.key for m in _agent_methods() if m.owner != HOOKS_CLASS and m.package not in ("detect", "asm")}
+    seen: set[tuple[str, str, int]] = set()
     todo = [k for k in roots if k in by_key]
     while todo:
         key = todo.pop()
@@ -231,13 +366,16 @@ def reachable_methods() -> frozenset[tuple[str, str]]:
             continue
         seen.add(key)
         for method in by_key[key]:
-            for edge in _edges(method):
-                if edge not in seen:
-                    todo.append(edge)
+            todo.extend(edge for edge in _edges(method) if edge not in seen)
         # a class's field initialisers run when one of its methods does
-        if (key[0], "<init>") in by_key and (key[0], "<init>") not in seen:
-            todo.append((key[0], "<init>"))
+        init = (key[0], "<init>", 0)
+        if init in by_key and init not in seen:
+            todo.append(init)
     return frozenset(seen)
+
+
+def is_reachable(owner: str, name: str) -> bool:
+    return any(k[0] == owner and k[1] == name for k in reachable_methods())
 
 
 def emitted_ids(method: Method) -> set[str]:
@@ -258,17 +396,17 @@ def emitted_ids(method: Method) -> set[str]:
 
 
 @functools.cache
-def emitters() -> dict[str, set[tuple[str, str]]]:
+def emitters() -> dict[str, set[tuple[str, str, int]]]:
     """Primary rule id -> the agent methods that build a Detection with it."""
-    found: dict[str, set[tuple[str, str]]] = {}
+    found: dict[str, set[tuple[str, str, int]]] = {}
     for method in _agent_methods():
-        if _owner_package().get(method.owner) in ("detect", "hook"):
+        if method.package in ("detect", "hook"):
             for rule in emitted_ids(method):
                 found.setdefault(rule, set()).add(method.key)
     return found
 
 
-def unreachable_ids() -> dict[str, set[tuple[str, str]]]:
+def unreachable_ids() -> dict[str, set[tuple[str, str, int]]]:
     """Primary rule id -> its emitting methods, for each id no emitter of which is reachable. An id with no
     emitter at all (built from a computed string) is not in the result: the check cannot say anything about it."""
     reach = reachable_methods()
@@ -285,15 +423,40 @@ def engine_names_without_an_id() -> set[str]:
     module = (ASM / "ExpressionHookModule.java").read_text(encoding="utf-8")
     pushed = set(re.findall(r'\bpush\("(\w+)"\)', module))
     pushed |= set(re.findall(r'return "(\w+)";', module[module.index("engineForScriptClass"):]))
-    detect = next(m for m in _agent_methods() if m.key == ("CodeExecutionDetector", "detectExpression"))
+    detect = next(m for m in _agent_methods() if m.owner == "CodeExecutionDetector" and m.name == "detectExpression")
     cases: set[str] = {"ognl"}
     for labels in re.findall(r"\bcase\s+((?:\"§\d+§\"\s*,?\s*)+)->", detect.body):
         cases |= {detect.table[int(i)] for i in re.findall(r"§(\d+)§", labels)}
     return pushed - cases
 
 
-# Ids that a reachable method emits only on one branch: id -> True when some hook module can take the branch.
+_BODY_ARGUMENT = re.compile(r"new RequestContext\([^;]*,\s*body\s*\)")
+
+
+def request_body_sources() -> set[tuple[str, str, int]]:
+    """Reachable methods outside detect/ that build a RequestContext from a `body` they were given: the only way a
+    request body enters the detectors (the others copy the body a context already has). The servlet entry
+    (buildRequestContext) builds its context without one, and no hook module reads a servlet input stream or reader."""
+    reach = reachable_methods()
+    return {m.key for m in _agent_methods()
+            if m.key in reach and m.package != "detect" and _BODY_ARGUMENT.search(m.body)}
+
+
+# Rules whose decision reads only the request body (`request.body()` blank means no finding): the detectors are
+# reached, but with an empty body unless some reachable method supplies one. The rule-cases probe measured it:
+# a request body the handler reads through getInputStream() and through getReader() does not fire them.
+BODY_ONLY = {
+    "request_json_patch_expression": "RequestExpressionDetector.jsonPatchExpression",
+    "request_message_selector_expression": "RequestConfigurationDetector.messageSelectorExpression",
+    "request_xml_polymorphic_gadget": "RequestPayloadDetector (xml polymorphic gadget, returns on a blank body)",
+    "request_sql_identifier_injection": "SqlRequestIndicators.sqlRequestMetadata, called when the body is not blank",
+    "request_sql_sort_injection": "SqlRequestIndicators.sqlRequestMetadata, called when the body is not blank",
+}
+
+# Ids that a reachable method emits only on one branch, or only for an input a hook may not supply:
+# id -> True when some hook module can take the branch.
 BRANCH_CHECKS = {"expression_runtime": lambda: bool(engine_names_without_an_id())}
+BRANCH_CHECKS.update({rule: (lambda: bool(request_body_sources())) for rule in BODY_ONLY})
 
 
 def reachable_ids() -> set[str]:
@@ -315,13 +478,13 @@ def unreachable_primary_ids() -> set[str]:
 
 def ids_reported_by(class_name: str, method: str) -> set[str]:
     """Primary ids the methods called `method` in `class_name` can report, through everything they call."""
-    by_key, _ = _graph()
-    reverse: dict[tuple[str, str], set[str]] = {}
+    by_key, by_owner, _ = _graph()
+    reverse: dict[tuple[str, str, int], set[str]] = {}
     for rule, keys in emitters().items():
         for key in keys:
             reverse.setdefault(key, set()).add(rule)
-    seen: set[tuple[str, str]] = set()
-    todo = [(class_name, method)]
+    seen: set[tuple[str, str, int]] = set()
+    todo = [m.key for m in by_owner.get((class_name, method), ())]
     found: set[str] = set()
     while todo:
         key = todo.pop()
@@ -332,6 +495,14 @@ def ids_reported_by(class_name: str, method: str) -> set[str]:
         for m in by_key[key]:
             todo.extend(edge for edge in _edges(m) if edge not in seen)
     return found
+
+
+def empty_stubs() -> set[tuple[str, str]]:
+    """(class, method) of the methods that are only `return Optional.empty();` in every overload: a compatibility
+    entry that decides nothing."""
+    _, by_owner, _ = _graph()
+    return {key for key, found in by_owner.items()
+            if key[1] != "<init>" and all(re.sub(r"\s+", "", m.body) == "returnOptional.empty();" for m in found)}
 
 
 def serves_only_not_wired(class_name: str, method: str) -> bool:

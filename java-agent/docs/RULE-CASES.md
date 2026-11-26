@@ -24,11 +24,11 @@ One file per rule id. Effects count the file's attack cases; rules are the ids t
 | [command_common](../rules/cases/command_common.toml) | 4 | 2 | block 1, log 3 | `command_common` | block 4 | `command_execution_exploit_primitive` |
 | [command_dnslog](../rules/cases/command_dnslog.toml) | 2 | 1 | block 1, log 1 | `command_dnslog` | unreachable 2 | - |
 | [command_error](../rules/cases/command_error.toml) | 2 | 1 | block 1, log 1 | `command_error` | unreachable 2 | - |
-| [command_userinput](../rules/cases/command_userinput.toml) | 2 | 1 | block 1, none 1 | `command_userinput` | block 1, none 1 | `command_execution_shell_meta` |
-| [deleteFile_userinput](../rules/cases/deleteFile_userinput.toml) | 2 | 1 | block 1, none 1 | `deleteFile_userinput` | block 1, none 1 | `deleteFile_userinput` |
+| [command_userinput](../rules/cases/command_userinput.toml) | 3 | 1 | block 1, none 2 | `command_userinput` | block 1, none 2 | `command_execution_shell_meta` |
+| [deleteFile_userinput](../rules/cases/deleteFile_userinput.toml) | 3 | 1 | block 1, none 2 | `deleteFile_userinput` | block 1, none 2 | `deleteFile_userinput` |
 | [deserialization_blacklist](../rules/cases/deserialization_blacklist.toml) | 4 | 1 | block 1, log 2, none 1 | `deserialization_blacklist` | block 3, none 1 | `deserialization_gadget_class` |
 | [deserialization_gadget](../rules/cases/deserialization_gadget.toml) | 2 | 1 | block 1, log 1 | `deserialization_gadget` | block 2 | `deserialization_gadget_class` |
-| [directory_userinput](../rules/cases/directory_userinput.toml) | 4 | 1 | block 2, none 2 | `directory_userinput` | block 2, none 2 | `directory_userinput` |
+| [directory_userinput](../rules/cases/directory_userinput.toml) | 5 | 1 | block 2, none 3 | `directory_userinput` | block 2, none 3 | `directory_userinput` |
 | [file_generated_plot_script_command](../rules/cases/file_generated_plot_script_command.toml) | 2 | 1 | unreachable 2 | - | block 2 | `file_generated_plot_script_command` |
 | [java_compile_runtime](../rules/cases/java_compile_runtime.toml) | 5 | 1 | block 4, none 1 | `java_compile_runtime` | block 5 | `java_compile_runtime_execution` |
 | [jdbc_derby_code_loading](../rules/cases/jdbc_derby_code_loading.toml) | 2 | 1 | unreachable 2 | - | block 2 | `jdbc_derby_code_loading` |
@@ -36,15 +36,15 @@ One file per rule id. Effects count the file's attack cases; rules are the ids t
 | [jdbc_mysql_deserialization](../rules/cases/jdbc_mysql_deserialization.toml) | 3 | 1 | block 1, none 2 | `jdbc_mysql_deserialization` | block 3 | `jdbc_mysql_deserialization` |
 | [jndi_disable_all](../rules/cases/jndi_disable_all.toml) | 3 | 1 | block 1, log 2 | `jndi_disable_all` | block 3 | `jndi_remote_lookup` |
 | [readFile_unwanted](../rules/cases/readFile_unwanted.toml) | 3 | 1 | block 1, none 2 | `readFile_unwanted` | block 3 | `file_sensitive_read` |
-| [readFile_userinput](../rules/cases/readFile_userinput.toml) | 2 | 2 | block 2 | `readFile_userinput` | block 2 | `file_sensitive_read` |
-| [request_debug_process_launch](../rules/cases/request_debug_process_launch.toml) | 1 | 1 | block 1 | `request_debug_process_launch` | block 1 | `request_debug_process_launch` |
+| [readFile_userinput](../rules/cases/readFile_userinput.toml) | 3 | 2 | block 2, none 1 | `readFile_userinput` | block 2, none 1 | `file_sensitive_read` |
+| [request_debug_process_launch](../rules/cases/request_debug_process_launch.toml) | 2 | 1 | block 1, none 1 | `request_debug_process_launch` | block 1, none 1 | `request_debug_process_launch` |
 | [request_default_credential](../rules/cases/request_default_credential.toml) | 1 | 1 | block 1 | `request_default_credential` | unreachable 1 | - |
 | [request_default_crypto_cookie](../rules/cases/request_default_crypto_cookie.toml) | 1 | 1 | block 1 | `request_default_crypto_cookie` | block 1 | `request_default_crypto_cookie` |
 | [request_default_jwt_secret](../rules/cases/request_default_jwt_secret.toml) | 1 | 1 | block 1 | `request_default_jwt_secret` | block 1 | `request_default_jwt_secret` |
-| [request_dynamic_script_config](../rules/cases/request_dynamic_script_config.toml) | 1 | 1 | block 1 | `request_dynamic_script_config` | unreachable 1 | - |
+| [request_dynamic_script_config](../rules/cases/request_dynamic_script_config.toml) | 2 | 1 | block 1, none 1 | `request_dynamic_script_config` | none 1, unreachable 1 | - |
 | [request_empty_credential_bypass](../rules/cases/request_empty_credential_bypass.toml) | 1 | 1 | block 1 | `request_empty_credential_bypass` | unreachable 1 | - |
 | [request_expression_header](../rules/cases/request_expression_header.toml) | 1 | 1 | block 1 | `request_expression_header` | unreachable 1 | - |
-| [request_expression_parameter](../rules/cases/request_expression_parameter.toml) | 1 | 1 | block 1 | `request_expression_parameter` | unreachable 1 | - |
+| [request_expression_parameter](../rules/cases/request_expression_parameter.toml) | 2 | 1 | block 1, none 1 | `request_expression_parameter` | none 1, unreachable 1 | - |
 | [request_expression_parameter_name](../rules/cases/request_expression_parameter_name.toml) | 1 | 1 | block 1 | `request_expression_parameter_name` | unreachable 1 | - |
 | [request_expression_path](../rules/cases/request_expression_path.toml) | 1 | 1 | block 1 | `request_expression_path` | unreachable 1 | - |
 | [request_forged_include_attribute](../rules/cases/request_forged_include_attribute.toml) | 1 | 1 | block 1 | `request_forged_include_attribute` | block 1 | `request_forged_include_attribute` |
@@ -53,24 +53,27 @@ One file per rule id. Effects count the file's attack cases; rules are the ids t
 | [request_internal_resource](../rules/cases/request_internal_resource.toml) | 2 | 1 | block 2 | `request_internal_resource` | block 1, none 1 | `request_path_confusion` |
 | [request_java_bean_pollution](../rules/cases/request_java_bean_pollution.toml) | 1 | 1 | block 1 | `request_java_bean_pollution` | unreachable 1 | - |
 | [request_jndi_lookup](../rules/cases/request_jndi_lookup.toml) | 2 | 1 | block 2 | `request_jndi_lookup` | unreachable 2 | - |
+| [request_json_patch_expression](../rules/cases/request_json_patch_expression.toml) | 2 | 1 | none 2 | - | none 2 | - |
+| [request_message_selector_expression](../rules/cases/request_message_selector_expression.toml) | 2 | 1 | none 2 | - | none 2 | - |
 | [request_ogc_filter_sql_injection](../rules/cases/request_ogc_filter_sql_injection.toml) | 1 | 1 | block 1 | `request_ogc_filter_sql_injection` | block 1 | `request_ogc_filter_sql_injection` |
 | [request_path_confusion](../rules/cases/request_path_confusion.toml) | 2 | 1 | block 2 | `request_path_confusion` | block 2 | `request_path_confusion` |
 | [request_plot_command_injection](../rules/cases/request_plot_command_injection.toml) | 1 | 1 | block 1 | `request_plot_command_injection` | unreachable 1 | - |
 | [request_remote_content_stream](../rules/cases/request_remote_content_stream.toml) | 1 | 1 | block 1 | `request_remote_content_stream` | unreachable 1 | - |
 | [request_remote_import_script_write](../rules/cases/request_remote_import_script_write.toml) | 1 | 1 | block 1 | `request_remote_import_script_write` | unreachable 1 | - |
 | [request_repository_webroot_write](../rules/cases/request_repository_webroot_write.toml) | 1 | 1 | block 1 | `request_repository_webroot_write` | unreachable 1 | - |
-| [request_scheduler_shell_job](../rules/cases/request_scheduler_shell_job.toml) | 1 | 1 | block 1 | `request_scheduler_shell_job` | unreachable 1 | - |
+| [request_scheduler_shell_job](../rules/cases/request_scheduler_shell_job.toml) | 2 | 1 | block 1, none 1 | `request_scheduler_shell_job` | none 1, unreachable 1 | - |
 | [request_serialized_client_state](../rules/cases/request_serialized_client_state.toml) | 1 | 1 | block 1 | `request_serialized_client_state` | unreachable 1 | - |
 | [request_server_side_script_put](../rules/cases/request_server_side_script_put.toml) | 1 | 1 | block 1 | `request_server_side_script_put` | unreachable 1 | - |
 | [request_session_file_deserialization](../rules/cases/request_session_file_deserialization.toml) | 1 | 1 | unreachable 1 | - | block 1 | `request_session_file_deserialization` |
 | [request_setup_state_reset](../rules/cases/request_setup_state_reset.toml) | 1 | 1 | block 1 | `request_setup_state_reset` | unreachable 1 | - |
-| [request_template_loader_enable](../rules/cases/request_template_loader_enable.toml) | 1 | 1 | block 1 | `request_template_loader_enable` | unreachable 1 | - |
-| [request_template_parameter](../rules/cases/request_template_parameter.toml) | 1 | 1 | block 1 | `request_template_parameter` | unreachable 1 | - |
+| [request_template_loader_enable](../rules/cases/request_template_loader_enable.toml) | 2 | 1 | block 1, none 1 | `request_template_loader_enable` | none 1, unreachable 1 | - |
+| [request_template_parameter](../rules/cases/request_template_parameter.toml) | 2 | 1 | block 1, none 1 | `request_template_parameter` | none 1, unreachable 1 | - |
 | [request_template_source](../rules/cases/request_template_source.toml) | 2 | 1 | block 2 | `request_template_source` | block 1, none 1 | `request_template_source` |
 | [request_typed_parameter_deserialization](../rules/cases/request_typed_parameter_deserialization.toml) | 1 | 1 | block 1 | `request_typed_parameter_deserialization` | unreachable 1 | - |
-| [request_typed_payload_deserialization](../rules/cases/request_typed_payload_deserialization.toml) | 1 | 1 | block 1 | `request_typed_payload_deserialization` | block 1 | `request_typed_payload_deserialization` |
+| [request_typed_payload_deserialization](../rules/cases/request_typed_payload_deserialization.toml) | 2 | 1 | block 1, none 1 | `request_typed_payload_deserialization` | block 1, none 1 | `request_typed_payload_deserialization` |
 | [request_upload_filename_override](../rules/cases/request_upload_filename_override.toml) | 1 | 1 | block 1 | `request_upload_filename_override` | unreachable 1 | - |
-| [request_xxe_payload](../rules/cases/request_xxe_payload.toml) | 1 | 1 | block 1 | `request_xxe_payload` | unreachable 1 | - |
+| [request_xml_polymorphic_gadget](../rules/cases/request_xml_polymorphic_gadget.toml) | 2 | 1 | none 2 | - | none 2 | - |
+| [request_xxe_payload](../rules/cases/request_xxe_payload.toml) | 2 | 1 | block 1, none 1 | `request_xxe_payload` | none 1, unreachable 1 | - |
 | [sql_derby_code_execution](../rules/cases/sql_derby_code_execution.toml) | 2 | 1 | block 1, none 1 | `sql_derby_code_execution` | unreachable 2 | - |
 | [sql_h2_code_execution](../rules/cases/sql_h2_code_execution.toml) | 2 | 1 | block 2 | `sql_h2_code_execution` | unreachable 2 | - |
 | [sql_policy](../rules/cases/sql_policy.toml) | 2 | 1 | block 2 | `sql_policy` | block 2 | `sql_statement_injection` |
@@ -79,7 +82,7 @@ One file per rule id. Effects count the file's attack cases; rules are the ids t
 | [ssrf_common](../rules/cases/ssrf_common.toml) | 2 | 1 | block 1, log 1 | `ssrf_common` | unreachable 2 | - |
 | [ssrf_obfuscate](../rules/cases/ssrf_obfuscate.toml) | 2 | 1 | block 1, log 1 | `ssrf_obfuscate` | unreachable 2 | - |
 | [ssrf_protocol](../rules/cases/ssrf_protocol.toml) | 2 | 1 | block 1, log 1 | `ssrf_protocol` | unreachable 2 | - |
-| [ssrf_userinput](../rules/cases/ssrf_userinput.toml) | 3 | 2 | block 3 | `ssrf_userinput` | block 3 | `ssrf_loopback_admin`, `ssrf_request_parameter_url` |
+| [ssrf_userinput](../rules/cases/ssrf_userinput.toml) | 4 | 2 | block 3, none 1 | `ssrf_userinput` | block 3, none 1 | `ssrf_loopback_admin`, `ssrf_request_parameter_url` |
 | [writeFile_generated_script](../rules/cases/writeFile_generated_script.toml) | 3 | 1 | block 2, none 1 | `writeFile_generated_script` | none 2, unreachable 1 | - |
 | [writeFile_reflect](../rules/cases/writeFile_reflect.toml) | 2 | 1 | block 1, log 1 | `writeFile_reflect` | block 2 | `file_script_write` |
 | [writeFile_script](../rules/cases/writeFile_script.toml) | 3 | 1 | block 1, none 2 | `writeFile_script` | block 3 | `file_script_write` |
@@ -167,8 +170,6 @@ Not covered on this engine, from [uncovered.toml](../rules/cases/uncovered.toml)
 
 - selected only by a loaded policy; the cases run with no policy: `command_reflect`, `deserialization_http_object_stream`, `directory_reflect`, `directory_unwanted`, `readFile_outsideWebroot`, `request_scanner`, `xss_userinput`
 - decided from a Windows named data stream path and selected only by a loaded policy; the probes run on Linux with no policy: `writeFile_NTFS`
-- decided from a request body, which the packaged request path does not carry; needs a detector-level case: `request_json_patch_expression`, `request_message_selector_expression`, `request_xml_polymorphic_gadget`
-- decided from JSON fields of a request body and selected only by a loaded policy: `request_sql_identifier_injection`, `request_sql_sort_injection`
 - needs an expression engine on the driver's class path (EL, JEXL, Jiffle, OGNL, Groovy or MVEL, Spring Expression, Velocity); the JDK ships none of them: `el_runtime`, `jexl_runtime`, `jiffle_runtime`, `ognl_blacklist`, `ognl_length_limit`, `script_runtime`, `spel_runtime`, `template_runtime`
 - needs Rhino or a standalone Nashorn on the driver's class path; JDK 21 and 25 ship no JavaScript engine: `javascript_runtime`
 - decided from the frames of a specific product on the stack (RocketMQ filter server, Solr RunExecutableListener, Spring bean init, RocketMQ configuration persistence); needs that product's classes: `command_config_injection`, `command_config_listener`, `command_spring_remote_init`, `writeFile_config_path`
@@ -189,6 +190,8 @@ Not covered on this engine, from [uncovered.toml](../rules/cases/uncovered.toml)
 - not wired: No hook module injects a call to OhMyRaspHooks.beforeLoadLibrary; only the playground servlet calls it: `loadLibrary_unc`
 - not wired: No code emits it: the OGNL path (CodeExecutionDetector.detectOgnl) reports ognl_blacklist or ognl_length_limit: `ognl_runtime`
 - not wired: No hook module injects a call to OhMyRaspHooks.beforeRename; only the playground servlet calls it: `rename_webshell`
+- not wired: The request context the servlet entry builds has no body: no hook module reads the request input stream or reader, so a rule decided from the body alone never sees one (measured with the rule-cases probe: a body the handler reads through getInputStream() and through getReader() fires nothing on JDK 25 or Java 17): `request_json_patch_expression`, `request_message_selector_expression`, `request_xml_polymorphic_gadget`
+- not wired: The request context the servlet entry builds has no body: no hook module reads the request input stream or reader, so a rule decided from the body alone never sees one (measured with the rule-cases probe: a body the handler reads through getInputStream() and through getReader() fires nothing on JDK 25 or Java 17); the rule is also selected only by a loaded policy: `request_sql_identifier_injection`, `request_sql_sort_injection`
 - not wired: No hook module injects a call to OhMyRaspHooks.beforeResponseDataLeak; only the playground servlet and the servlet-admission probe's stub servlet call it: `response_dataLeak`
 - not wired: No hook module injects a call to OhMyRaspHooks.beforeSqlException; only the playground servlet calls it: `sql_exception`
 - not wired: No hook module injects a call to OhMyRaspHooks.beforeSqlRegex; only the playground servlet calls it: `sql_regex`
