@@ -39,9 +39,9 @@ docker run --rm -v "$PWD/java-agent":/workspace -w /workspace "$GRADLE_IMAGE" \
 
 ### Which JAR to attach
 
-Attach the universal JAR, `ohmyrasp-agent-all.jar` (or `ohmyrasp.jar` for a Shirudo standalone install), on any supported Java. Every agent JAR, universal or per track, names the same entry class, `io.ohmyrasp.agent.launch.AgentLauncher`, as `Premain-Class` and `Agent-Class`. The launcher reads `java.specification.version` and starts the first line, in this order, that the attached JARs hold and whose range contains the running version:
+Attach the universal JAR, `ohmyrasp-agent-all.jar` (or `ohmyrasp.jar` for a Shirudo standalone install), on any supported Java. Each kind of agent JAR has an entry class of its own, its `Premain-Class` and `Agent-Class`, that no other kind of JAR holds: `io.ohmyrasp.agent.launch.UniversalEntry` in the universal pair, and `PrimaryEntry`, `Java17Entry`, `Java11Entry` and `Java8Entry` in the same package for the per-track pairs. The JVM loads a `Premain-Class` by name, so a name shared by two JARs would make the second JAR run the first one's class. The entry hands itself to the launcher, which opens the JAR that class came from, reads `java.specification.version`, and starts the first line, in this order, that this JAR holds and whose range contains the running version:
 
-| Line | Entry class | Runs on |
+| Line | Line entry class | Runs on |
 |---|---|---|
 | primary (`agent-jdk25`) | `io.ohmyrasp.agent.OhMyRaspAgent` | Java 21 and later |
 | `agent-java17` | `io.ohmyrasp.agent.java17.OhMyRaspJava17Agent` | Java 17 and later |
@@ -50,17 +50,18 @@ Attach the universal JAR, `ohmyrasp-agent-all.jar` (or `ohmyrasp.jar` for a Shir
 
 So the universal JAR runs the primary line on Java 21 and 25, the Java 17 line on 17, the Java 11 line on 11 and the Java 8 line on 8. On a version between or after these (for example 18 or 26) it starts the line the table selects and says nothing extra; the probes cover only 8, 11, 17, 21 and 25. No line runs on Java 9 or 10. A per-track JAR still starts its own line within that line's range: the Java 17 JAR also starts on Java 21 and 25.
 
+One line starts per JVM, whether through `premain` or a later `agentmain` attach. The launcher keeps the state in the system property `ohmyrasp.agent.state`: `starting`, then `installed:<line>` or `failed:<line>`; once a line has started, `ohmyrasp.agent.line` names it. A JVM started with either property already set starts no line.
+
 The launcher never stops the JVM. In each of these cases it writes one JSON line to standard error and the application starts:
 
-- **No line fits the running Java** (a per-track JAR on an older or a newer JVM than it supports, or any JAR on Java 9 or 10). The JVM starts without the agent. Before, it aborted with exit code 134 (`UnsupportedClassVersionError`, or `NoClassDefFoundError: java/sql/DriverManager` from the Java 8 track on Java 11 and later).
-  `{"event":"ohmyrasp-agent-skipped","reason":"unsupported-java","java_version":"25.0.1","lines":"java8"}`
-- **An OhMyRASP agent already started in this JVM**, for example when Shirudo and the command line each add one of our JARs. Only the first JAR to start a line runs; each later one writes
-  `{"event":"ohmyrasp-agent-skipped","reason":"already-active","java_version":"25.0.1","active_line":"primary"}`.
-  The launcher records the started line in the system property `ohmyrasp.agent.active` just before starting it, and a JVM in which that property is already set starts no line. A property is the one place two launchers can both see: a second JAR's `premain` runs whichever copy of the launcher class the system class loader found first.
-- **The line throws while starting**, including a `LinkageError`. The line may have installed some of its hooks before it failed; the JVM keeps starting. Before, the exception aborted the JVM.
-  `{"event":"ohmyrasp-agent-start-failed","line":"java8","java_version":"1.8.0_472","exception":"java.lang.NoClassDefFoundError","message":"..."}`
+- **The JAR holds no line that fits the running Java** (a per-track JAR on an older or a newer JVM than it supports, or any JAR on Java 9 or 10). The state stays unset, so a later JAR that fits still starts. Before, the JVM aborted with exit code 134 (`UnsupportedClassVersionError`, or `NoClassDefFoundError: java/sql/DriverManager` from the Java 8 track on Java 11 and later).
+  `{"event":"ohmyrasp-agent-skipped","reason":"unsupported-java","java_version":"25.0.1","lines":"java8","jar":"ohmyrasp-agent-java8.jar"}`
+- **A line already started or is starting**, for example when Shirudo and the command line each add one of our JARs, or an attach follows `-javaagent`. Before, two lines could both instrument one JVM.
+  `{"event":"ohmyrasp-agent-skipped","reason":"already-active","java_version":"25.0.1","state":"installed:primary"}`
+- **The line throws while starting**, including a `LinkageError`. Protection is then inactive or incomplete: the line may have installed some of its hooks. No later JAR or attach starts another line over it, and each says `"reason":"earlier-start-failed"`. Before, the exception aborted the JVM.
+  `{"event":"ohmyrasp-agent-start-failed","line":"java8","protection":"inactive or incomplete","java_version":"1.8.0_472","exception":"java.lang.NoClassDefFoundError","message":"..."}`
 
-A JAR that does not fit, attached before one that does, does not hide it: the launcher looks entry classes up through the system class loader, which every attached agent JAR has joined by the time the fitting JAR's `premain` runs, so the fitting line starts. The `launcher` probe under `java-agent/probes/` checks each of these cases on every JDK of the runtime matrix.
+With two JARs that hold the same line, the line's classes, and the baked `META-INF/ohmyrasp-shirudo.properties` they read, come from the first of them on the class path: the line entry class is loaded by name through the system class loader, and both properties readers locate the file through that class's code source. Attach `ohmyrasp.jar` first when it should govern. A same-named properties file on the application class path is never read. The `launcher` probe under `java-agent/probes/` checks each of these cases on every JDK of the runtime matrix.
 
 ## Architecture and module layout
 

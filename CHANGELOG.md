@@ -49,9 +49,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `JAVA_TOOL_OPTIONS`.
 - **Java agent (all 4 tracks):** a failure while an agent line starts no longer
   stops the JVM; it is reported as `"event":"ohmyrasp-agent-start-failed"` on
-  `stderr`. A second OhMyRASP JAR in the same JVM starts nothing and reports
+  `stderr`, and no later JAR or attach starts another line over it. A second
+  OhMyRASP JAR or attach in the same JVM starts nothing and reports
   `"reason":"already-active"`; before, two lines could both instrument one JVM.
-  Every agent JAR now enters through `io.ohmyrasp.agent.launch.AgentLauncher`.
+  Each kind of agent JAR now names its own entry class in
+  `io.ohmyrasp.agent.launch` as `Premain-Class` and `Agent-Class`.
 - The Java agent's shared classes are the `:shared` Gradle module, compiled
   once with `--release 8` instead of once per line.
 
