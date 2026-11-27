@@ -1,10 +1,31 @@
 package org.apache.jasper;
 
-/** A stand-in with Jasper's name: the context that drives a JSP compile. */
-public final class JspCompilationContext {
-  private JspCompilationContext() {}
+import org.apache.jasper.compiler.Compiler;
+import org.apache.jasper.compiler.JDTCompiler;
 
-  public static void compile(Runnable write) {
-    org.apache.jasper.compiler.Compiler.compile(write);
+/** A stand-in with Jasper's name: the context that knows a JSP's output directory and drives its compile. */
+public final class JspCompilationContext {
+  private final String outputDir;
+  private String target;
+
+  public JspCompilationContext(String outputDir) {
+    this.outputDir = outputDir;
+  }
+
+  public String getOutputDir() {
+    return outputDir;
+  }
+
+  public String target() {
+    return target;
+  }
+
+  /** Compiles, writing {@code path}; returns what the work inside returned. */
+  public String compile(String path) throws Exception {
+    target = path;
+    Compiler compiler = new JDTCompiler();
+    compiler.init(this);
+    compiler.compile();
+    return compiler.result();
   }
 }
