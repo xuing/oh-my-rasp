@@ -900,12 +900,14 @@ public final class OhMyRaspHooks {
 
   private static void inspectHttpExchange(Object exchange, java.net.URI uri, String peer) {
     try {
+      // The request that submitted the exchange, else the one this thread serves (as on the backports).
+      RequestContext current = currentRequest();
       RequestContext origin = HTTP_SUBMISSIONS.origin(exchange);
-      RequestContext request = origin == null ? RequestContext.empty() : origin;
+      RequestContext request = origin == null ? current : origin;
       var finding = NetworkDestinationDetector.classifyHttpTransport(uri, request, policy().loaded(), peer, HttpTransportObservation.changedOrigin(exchange, uri));
       if (finding.isEmpty()) return;
       var observed = transportEvidence(finding.get(), peer == null ? "http_exchange_acquire" : "http_resolved_route", peer);
-      emit(Optional.of(observed), null, origin != null && origin == currentRequest());
+      emit(Optional.of(observed), null, request.active() && request == current);
     } catch (OhMyRaspBlockException blocked) {
       throw blocked;
     } catch (Throwable failure) {
@@ -2688,13 +2690,14 @@ public final class OhMyRaspHooks {
   /**
    * Whether {@code finding} may block, by the one definition both engines use ({@link OutsideRequest}): always when it
    * carries request evidence (an active request context, which a hook may have carried from the request that started
-   * the operation onto the thread doing it); outside a request, by its class: intrinsic always, operation-only never,
-   * context-dependent when {@code outsideRequestBlocks}.
+   * the operation onto the thread doing it); outside a request, by its class ({@link OutsideRequest#scopeHere}):
+   * intrinsic always, request-only never, context-dependent when {@code outsideRequestBlocks}.
    */
   static boolean blockScope(Detection finding, boolean outsideRequestBlocks) {
     if (finding == null) return false;
-    int scope = OutsideRequest.scope(finding.algorithm(), finding.details().get("decision_basis"));
-    return OutsideRequest.mayBlock(scope, activeRequest(finding), outsideRequestBlocks);
+    boolean requestEvidence = activeRequest(finding);
+    int scope = OutsideRequest.scopeHere(finding.algorithm(), finding.details().get("decision_basis"), requestEvidence);
+    return OutsideRequest.mayBlock(scope, requestEvidence, outsideRequestBlocks);
   }
 
   private static boolean activeRequest(Detection detection) {

@@ -4517,13 +4517,14 @@ public final class BackportHooks {
    * engines use ({@link OutsideRequest}). It has request evidence when the thread serves an HTTP request or
    * {@code heldRequest}: the hook carries the request that started the operation onto this thread (an HTTP client
    * exchange, a walk a request selected) or holds the HTTP request itself (Spark, YARN, DataEase, servlet entry).
-   * Outside a request its class decides: intrinsic blocks, operation-only logs, context-dependent follows
-   * {@code outside_request}.
+   * Outside a request its class decides ({@link OutsideRequest#scopeHere}): intrinsic blocks, request-only logs,
+   * context-dependent follows {@code outside_request}.
    */
   private static boolean shouldBlock(Finding finding, boolean heldRequest) {
+    boolean requestEvidence = heldRequest || DISPATCH.inRequest();
     int scope = finding == null ? OutsideRequest.CONTEXT
-        : OutsideRequest.scope(OutsideRequest.family(finding.algorithm), finding.decisionBasis);
-    return RaspRuntime.findingBlocks(RaspRuntime.legacyBlockFlag(), heldRequest || DISPATCH.inRequest(), scope);
+        : OutsideRequest.scopeHere(OutsideRequest.family(finding.algorithm), finding.decisionBasis, requestEvidence);
+    return RaspRuntime.findingBlocks(RaspRuntime.legacyBlockFlag(), requestEvidence, scope);
   }
 
   /**

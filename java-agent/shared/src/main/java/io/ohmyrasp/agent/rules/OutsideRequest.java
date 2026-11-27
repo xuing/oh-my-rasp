@@ -11,20 +11,29 @@ import java.util.Locale;
  * or the hook holds the HTTP request itself (the Spark and YARN submission checks, the DataEase filter). Both engines
  * decide with that one definition: a finding with request evidence blocks in block mode wherever it runs.
  *
- * <p><b>Outside a request</b> a finding falls in one of three classes, by what shows the attack ({@link #scope}):
+ * <p><b>Outside a request</b> a finding falls in one of these classes, by what shows the attack ({@link #scope}):
  *
  * <ul>
  *   <li>{@link #INTRINSIC}: the argument is the exploit itself (a listed gadget class in a stream, a JNDI name with a
  *       remote URL, the Base64 tail-underflow shape, shell syntax of an exploit primitive, an expression language
  *       reaching the process API, a product exploit chain).
  *       It blocks in block mode whatever {@code outside_request} says.
- *   <li>{@link #OPERATION}: the only evidence is that an operation of some kind happened (a destination such as the
- *       cloud metadata address, a protocol, a configured remote resource). Software does these on purpose at
- *       start-up and in scheduled jobs, so it logs outside a request whatever the setting says.
  *   <li>{@link #CONTEXT}: a sensitive operation whose meaning depends on who asked (a protected host file read, a
- *       script written into a web root, a compiled source that runs a process). It follows {@code outside_request}:
- *       block by default, {@code log} when the operator says so.
+ *       script written into a web root, a class or Spring configuration loaded from a remote URL, a remote DTD or
+ *       entity, a connection to the cloud metadata address). It follows {@code outside_request}: block by default,
+ *       {@code log} when the operator says so.
+ *   <li>{@link #REQUEST_ONLY}: blocks only with request evidence and logs outside a request whatever the setting says.
+ *       Two kinds: the primary's {@code ssrf_protocol}, {@code ssrf_obfuscate} and {@code ssrf_userinput}, rules
+ *       defined against a request that the backports do not have and that only logged outside one before this
+ *       setting existed ({@code ssrf_obfuscate} reports any URL {@code java.net.URI} cannot parse, a JAR path with a
+ *       space included); and a connection to the cloud metadata address made by a cloud provider's own credential or
+ *       metadata client ({@link #scopeHere}).
  * </ul>
+ *
+ * <p><b>Trust boundary of the cloud client allowance.</b> The client is recognised by a frame of a listed class on
+ * the thread's stack, by name. An application that ships a class with one of those names can make its own metadata
+ * access outside a request log instead of block; telling the SDK's class from an impostor's is not cheap on a hook's
+ * path. It cannot do so for a finding with request evidence: that blocks whatever the stack holds.
  *
  * <p>The setting is the control document's top-level {@value #CONTROL_KEY} member (the host's), the policy's
  * {@code config.hardening.outside_request} (the cloud's), and at start-up the system property {@value #PROPERTY}, the
@@ -49,8 +58,8 @@ public final class OutsideRequest {
   public static final int CONTEXT = 0;
   /** Blocks outside a request whatever {@code outside_request} says. */
   public static final int INTRINSIC = 1;
-  /** Logs outside a request whatever {@code outside_request} says. */
-  public static final int OPERATION = 2;
+  /** Blocks only with request evidence: logs outside a request whatever {@code outside_request} says. */
+  public static final int REQUEST_ONLY = 2;
 
   /**
    * Rule ids (primary) and families (backport, without the line prefix) whose every finding is intrinsic. Each is
@@ -74,24 +83,68 @@ public final class OutsideRequest {
   /** Rule id or family prefixes whose every finding is intrinsic: a listed type chosen by a decoder. */
   private static final String[] INTRINSIC_PREFIXES = {"deserialization_"};
 
-  /** Rule ids and families whose every finding is operation-only. */
-  private static final String[] OPERATION_RULES = {
-    // A destination: the cloud metadata address. Cloud SDKs read it at start-up.
-    "ssrf_aws",
-    "ssrf_cloud_metadata",
-    // A protocol, or a URL java.net.URI cannot parse (a file or JAR location with a space).
+  /**
+   * Primary rule ids whose every finding is request-only: defined against a request, with no backport counterpart,
+   * and logged outside a request before {@code outside_request} existed.
+   */
+  private static final String[] REQUEST_ONLY_RULES = {
+    // A protocol (ftp:, ldap:, gopher:...) or a URL java.net.URI cannot parse (a file or JAR location with a space,
+    // which class loading opens at start-up).
     "ssrf_protocol",
     "ssrf_obfuscate",
-    // Outside a request this rule fires only on a managed policy's destination-only candidate.
+    // Request input selecting an internal destination; outside a request only a redirect or a managed policy's
+    // destination-only candidate reaches it.
     "ssrf_userinput",
-    // A remote external entity: a scheduled import fetches the DTD it is configured to fetch.
-    "xxe_protocol",
-    "xxe_external_entity_protocol",
-    // A class or a Spring configuration loaded from a remote location the deployment configured.
-    "classloader_remote",
-    "classloader_remote_codebase",
-    "spring_remote_config",
   };
+
+  /** Rule ids and families whose finding is a connection to the cloud metadata address. */
+  private static final String[] CLOUD_METADATA_RULES = {"ssrf_aws", "ssrf_cloud_metadata"};
+
+  /**
+   * Classes of cloud providers' own credential and metadata clients, each checked in a released SDK JAR from Maven
+   * Central: AWS SDK for Java 1.x ({@code aws-java-sdk-core} 1.12.797), AWS SDK for Java 2.x ({@code auth},
+   * {@code regions}, {@code imds} 2.59.10), Google ({@code google-auth-library-oauth2-http} 1.58.0,
+   * {@code google-cloud-core} 2.81.0), Azure ({@code azure-identity} 1.19.0, {@code msal4j} 1.23.1), Alibaba Cloud
+   * ({@code credentials-java} 1.0.8, {@code aliyun-java-sdk-core} 4.7.10), Tencent Cloud
+   * ({@code tencentcloud-sdk-java-common} 3.2.65) and Huawei Cloud ({@code huaweicloud-sdk-core} 3.1.225). A frame
+   * of one of them, or of a class nested in one, counts.
+   */
+  private static final String[] CLOUD_METADATA_CLIENTS = {
+    "com.amazonaws.auth.InstanceProfileCredentialsProvider",
+    "com.amazonaws.auth.InstanceMetadataServiceCredentialsFetcher",
+    "com.amazonaws.auth.ContainerCredentialsProvider",
+    "com.amazonaws.auth.ContainerCredentialsFetcher",
+    "com.amazonaws.internal.EC2ResourceFetcher",
+    "com.amazonaws.internal.InstanceMetadataServiceResourceFetcher",
+    "com.amazonaws.internal.EC2MetadataClient",
+    "com.amazonaws.util.EC2MetadataUtils",
+    "com.amazonaws.regions.InstanceMetadataRegionProvider",
+    "software.amazon.awssdk.auth.credentials.InstanceProfileCredentialsProvider",
+    "software.amazon.awssdk.auth.credentials.ContainerCredentialsProvider",
+    "software.amazon.awssdk.regions.internal.util.EC2MetadataUtils",
+    "software.amazon.awssdk.regions.providers.InstanceProfileRegionProvider",
+    "com.google.auth.oauth2.ComputeEngineCredentials",
+    "com.google.cloud.MetadataConfig",
+    "com.azure.identity.ManagedIdentityCredential",
+    "com.azure.identity.ManagedIdentityMsalCredential",
+    "com.azure.identity.VirtualMachineMsiCredential",
+    "com.azure.identity.implementation.IdentityClient",
+    "com.azure.identity.implementation.IdentitySyncClient",
+    "com.microsoft.aad.msal4j.IMDSManagedIdentitySource",
+    "com.microsoft.aad.msal4j.ManagedIdentityClient",
+    "com.aliyun.credentials.provider.EcsRamRoleCredentialProvider",
+    "com.aliyun.credentials.provider.ECSMetadataServiceCredentialsFetcher",
+    "com.aliyuncs.auth.InstanceProfileCredentialsProvider",
+    "com.aliyuncs.auth.ECSMetadataServiceCredentialsFetcher",
+    "com.tencentcloudapi.common.provider.CvmRoleCredential",
+    "com.huaweicloud.sdk.core.auth.MetadataAccessor",
+    "com.huaweicloud.sdk.core.auth.MetadataCredentialProvider",
+    "com.huaweicloud.sdk.core.auth.MetadataBasicCredentialProvider",
+    "com.huaweicloud.sdk.core.auth.MetadataGlobalCredentialProvider",
+  };
+
+  /** Packages whose every class is a cloud metadata client: the AWS SDK 2.x instance metadata client. */
+  private static final String[] CLOUD_METADATA_CLIENT_PACKAGES = {"software.amazon.awssdk.imds."};
 
   /**
    * Decision bases that set the class whatever the rule: {basis, class}. The basis says what the evidence is when
@@ -116,14 +169,14 @@ public final class OutsideRequest {
     // (scheduled_script) start processes on purpose as well: those follow the setting.
     {"expression_evaluation", Integer.valueOf(INTRINSIC)},
     // A managed policy's destination-only egress candidate.
-    {"destination_only", Integer.valueOf(OPERATION)},
+    {"destination_only", Integer.valueOf(REQUEST_ONLY)},
   };
 
   private OutsideRequest() {}
 
   /**
    * The class of a finding of {@code rule} (a primary rule id, or a backport family without the line prefix) made on
-   * {@code basis} (its {@code decision_basis}, or null): {@link #CONTEXT}, {@link #INTRINSIC} or {@link #OPERATION}.
+   * {@code basis} (its {@code decision_basis}, or null): {@link #CONTEXT}, {@link #INTRINSIC} or {@link #REQUEST_ONLY}.
    */
   public static int scope(String rule, String basis) {
     if (basis != null) {
@@ -144,15 +197,55 @@ public final class OutsideRequest {
         return INTRINSIC;
       }
     }
-    if (contains(OPERATION_RULES, rule)) {
-      return OPERATION;
+    if (contains(REQUEST_ONLY_RULES, rule)) {
+      return REQUEST_ONLY;
     }
     return CONTEXT;
   }
 
   /**
+   * {@link #scope} of a finding made on this thread: a connection to the cloud metadata address with no request
+   * evidence, made by a cloud provider's own credential or metadata client ({@link #cloudMetadataClient} of this
+   * thread's stack), is {@link #REQUEST_ONLY}. The stack is read only for such a finding.
+   */
+  public static int scopeHere(String rule, String basis, boolean requestEvidence) {
+    int scope = scope(rule, basis);
+    if (scope == CONTEXT && !requestEvidence && contains(CLOUD_METADATA_RULES, rule)
+        && cloudMetadataClient(Thread.currentThread().getStackTrace()) != null) {
+      return REQUEST_ONLY;
+    }
+    return scope;
+  }
+
+  /** The first frame's class on {@code stack} that is a listed cloud metadata client, or null. */
+  public static String cloudMetadataClient(StackTraceElement[] stack) {
+    if (stack == null) {
+      return null;
+    }
+    for (int i = 0; i < stack.length; i++) {
+      String name = stack[i] == null ? null : stack[i].getClassName();
+      if (name == null) {
+        continue;
+      }
+      for (int j = 0; j < CLOUD_METADATA_CLIENTS.length; j++) {
+        String client = CLOUD_METADATA_CLIENTS[j];
+        if (name.startsWith(client)
+            && (name.length() == client.length() || name.charAt(client.length()) == '$')) {
+          return client;
+        }
+      }
+      for (int j = 0; j < CLOUD_METADATA_CLIENT_PACKAGES.length; j++) {
+        if (name.startsWith(CLOUD_METADATA_CLIENT_PACKAGES[j])) {
+          return name;
+        }
+      }
+    }
+    return null;
+  }
+
+  /**
    * Whether a finding of class {@code scope} may block: always with request evidence; outside a request, an intrinsic
-   * finding always, an operation-only finding never, a context-dependent one when {@code outsideRequestBlocks}.
+   * finding always, a request-only finding never, a context-dependent one when {@code outsideRequestBlocks}.
    */
   public static boolean mayBlock(int scope, boolean requestEvidence, boolean outsideRequestBlocks) {
     if (requestEvidence || scope == INTRINSIC) {
