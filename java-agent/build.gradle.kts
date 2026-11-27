@@ -139,8 +139,42 @@ val verifyPreloadLists = tasks.register("verifyPreloadLists") {
         }
     }
 }
+// The hook-miss report of a line reads its family's table from the JAR it was started from
+// (META-INF/ohmyrasp/hook-expectations/<family>.txt, generated into :shared by scripts/gen-hook-targets.py). A line
+// whose table is missing starts with the report off and says so only with ohmyrasp.debug, so the JARs are checked here.
+val hookExpectationFamily = mapOf(
+    "agent-jdk25" to "primary", "agent-java17" to "backport", "agent-java11" to "backport", "agent-java8" to "backport",
+)
+val verifyHookExpectationTables = tasks.register("verifyHookExpectationTables") {
+    group = "verification"
+    description = "Verifies that every agent JAR carries the hook-expectation table of each line it can start, as generated."
+    val tables = project(":shared").layout.projectDirectory.dir("src/main/resources/META-INF/ohmyrasp/hook-expectations")
+    val jars = preloadListJars.map { (path, modules) ->
+        val (module, task) = path.removePrefix(":").split(":")
+        dependsOn(path)
+        Triple(path, modules, provider { project(":$module").tasks.named<Jar>(task).get().archiveFile.get().asFile })
+    }
+    jars.forEach { (_, _, file) -> inputs.file(file) }
+    inputs.dir(tables)
+    doLast {
+        for ((path, modules, file) in jars) {
+            val jarFile = file.get()
+            ZipFile(jarFile).use { zip ->
+                for (family in modules.map { hookExpectationFamily.getValue(it) }.distinct()) {
+                    val name = "META-INF/ohmyrasp/hook-expectations/$family.txt"
+                    val entry = zip.getEntry(name)
+                        ?: error("${jarFile.name} ($path) can start a $family line and has no $name: its hook-miss report would be off")
+                    val expected = tables.file("$family.txt").asFile.readBytes()
+                    require(zip.getInputStream(entry).use { it.readBytes() }.contentEquals(expected)) {
+                        "${jarFile.name} ($path): $name differs from the generated table in :shared"
+                    }
+                }
+            }
+        }
+    }
+}
 tasks.check {
-    dependsOn(verifyLauncherEntries, verifyPreloadLists)
+    dependsOn(verifyLauncherEntries, verifyPreloadLists, verifyHookExpectationTables)
 }
 
 // Kept separate from agent packaging: these libraries run the upstream REST admission fixture.
