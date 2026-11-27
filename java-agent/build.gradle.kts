@@ -182,7 +182,7 @@ val yarnProbeRuntime by configurations.creating {
     isCanBeConsumed = false
 }
 dependencies {
-    val hadoop = "2.8.1"
+    val hadoop = "3.5.0"
     yarnProbeRuntime("org.apache.hadoop:hadoop-yarn-server-resourcemanager:$hadoop")
     yarnProbeRuntime("org.apache.hadoop:hadoop-yarn-common:$hadoop")
     yarnProbeRuntime("org.apache.hadoop:hadoop-common:$hadoop")
