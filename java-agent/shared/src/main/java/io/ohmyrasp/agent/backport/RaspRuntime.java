@@ -405,6 +405,8 @@ public final class RaspRuntime {
   }
 
   private static final Object START_LOCK = new Object();
+  // At JVM exit, how long the hook-miss report may take to hand its pending lines to the spool before it drains.
+  private static final long DIAGNOSTIC_HANDOFF_MILLIS = 500;
   // Guarded by START_LOCK: set once the shutdown hook has run; then no start succeeds.
   private static boolean shuttingDown;
   // Guarded by START_LOCK: what a successful start started, for stop().
@@ -517,6 +519,13 @@ public final class RaspRuntime {
    * runtime that is fully started, and no start succeeds afterwards.
    */
   static void closeForShutdown() {
+    // The hook-miss worker gets a bounded time to hand a line it is writing to the spool before the spool drains;
+    // a stalled one is dropped. Outside the start lock: its write does not wait for a start.
+    try {
+      io.ohmyrasp.agent.hookmiss.HookMisses.awaitIdle(DIAGNOSTIC_HANDOFF_MILLIS);
+    } catch (Throwable ignored) {
+      // A diagnostic never holds up the events.
+    }
     synchronized (START_LOCK) {
       shuttingDown = true;
       SPOOL.shutdown(SHUTDOWN_JOIN_MILLIS);
