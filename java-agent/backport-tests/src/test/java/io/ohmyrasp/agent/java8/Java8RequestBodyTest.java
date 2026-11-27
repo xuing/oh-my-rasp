@@ -16,10 +16,14 @@ import org.junit.jupiter.api.Test;
 
 /** What the application reads of a request body reaches the backport rules, and never an event line. */
 final class Java8RequestBodyTest {
-  /** Other tests on this thread can leave a dispatch open: start each test outside any request. */
+  /**
+   * Other tests on this thread can leave a dispatch open, or stop the runtime while one is (afterHttpRequest then
+   * does nothing): start each test outside any request, with the thread's body recorder closed.
+   */
   @BeforeEach
   void leaveEveryRequest() {
     for (int i = 0; i < 16; i++) Java8RaspHooks.afterHttpRequest();
+    io.ohmyrasp.agent.http.RequestBodyCapture.dispatchExited(true);
   }
 
   @AfterEach
