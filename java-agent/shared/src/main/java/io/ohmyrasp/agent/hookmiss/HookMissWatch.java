@@ -4,30 +4,37 @@ import java.lang.instrument.ClassFileTransformer;
 import java.lang.instrument.IllegalClassFormatException;
 import java.security.ProtectionDomain;
 import java.util.Map;
+import java.util.Set;
 
 /**
  * A backport transformer as a backport line registers it: the transformer itself, and after it the hook-miss check
  * for the classes the {@link HookExpectations} table expects it to instrument.
  *
  * <p>For any other class the check adds one hash lookup on the class name, which the JVM hands every transformer
- * as the same string, so its hash is computed once per class. For an expected class it compares what the
- * transformer returned with what it was given: when the input names no agent class (the usual case, a library
- * class no earlier transformer touched) a gain is any mention of the agent in the output, found by a byte search;
- * otherwise the calls into the agent are counted in both. A failure in the check is dropped, and the
- * transformer's result is returned as it is.
+ * as the same string, so its hash is computed once per class. For an expected class it reads what the transformer
+ * returned (the class file it was given when it returned nothing) once, after the transformer is done, and asks
+ * whether one of the methods the unit is recorded instrumenting there now calls an agent method the unit is
+ * recorded adding ({@link AgentCalls#applied}). That reading is a separate pass over a finished class file, so
+ * whatever it does, the transformer's result is returned as it is; a failure in the check is dropped. What the
+ * transformer throws is reported as a failed transform and thrown again unchanged.
+ *
+ * <p>What this observes is what this transformer returned: a transformer that runs later can still remove the
+ * hook, and the JVM can still reject the class it defines.
  */
 public final class HookMissWatch implements ClassFileTransformer {
   private final ClassFileTransformer delegate;
   private final String unit;
   private final Map<String, HookExpectation> expected;
   private final NamedTargets named;
+  private final HookMissScope scope;
 
   private HookMissWatch(ClassFileTransformer delegate, String unit, Map<String, HookExpectation> expected,
-      NamedTargets named) {
+      NamedTargets named, HookMissScope scope) {
     this.delegate = delegate;
     this.unit = unit;
     this.expected = expected;
     this.named = named;
+    this.scope = scope;
   }
 
   /**
@@ -42,7 +49,8 @@ public final class HookMissWatch implements ClassFileTransformer {
       return transformer;
     }
     return new HookMissWatch(transformer, simpleName, mine,
-        transformer instanceof NamedTargets ? (NamedTargets) transformer : null);
+        transformer instanceof NamedTargets ? (NamedTargets) transformer : null,
+        transformer instanceof HookMissScope ? (HookMissScope) transformer : null);
   }
 
   /** The transformer this watch wraps. */
@@ -53,7 +61,19 @@ public final class HookMissWatch implements ClassFileTransformer {
   @Override
   public byte[] transform(ClassLoader loader, String className, Class<?> classBeingRedefined,
       ProtectionDomain protectionDomain, byte[] classfileBuffer) throws IllegalClassFormatException {
-    byte[] result = delegate.transform(loader, className, classBeingRedefined, protectionDomain, classfileBuffer);
+    byte[] result;
+    try {
+      result = delegate.transform(loader, className, classBeingRedefined, protectionDomain, classfileBuffer);
+    } catch (IllegalClassFormatException failure) {
+      failed(loader, className, protectionDomain, classfileBuffer, failure);
+      throw failure;
+    } catch (RuntimeException failure) {
+      failed(loader, className, protectionDomain, classfileBuffer, failure);
+      throw failure;
+    } catch (Error failure) {
+      failed(loader, className, protectionDomain, classfileBuffer, failure);
+      throw failure;
+    }
     if (className == null || classfileBuffer == null) {
       return result;
     }
@@ -62,25 +82,41 @@ public final class HookMissWatch implements ClassFileTransformer {
       return result;
     }
     try {
-      if (named != null && !named.selectsByName(className)) {
+      if (!claimed(loader, className) || !HookMisses.wants(expectation)) {
         return result;
       }
-      if (result == null) {
-        HookMisses.miss(expectation, unit, classfileBuffer, protectionDomain, HookMisses.NOT_TRANSFORMED, null);
-      } else if (!gained(classfileBuffer, result)) {
-        HookMisses.miss(expectation, unit, classfileBuffer, protectionDomain, HookMisses.NO_AGENT_CALL, null);
+      // A transformer that returned nothing left the class as it was: a hook it finds already there is no miss.
+      Map<String, Set<String>> calls = AgentCalls.inMethods(result == null ? classfileBuffer : result,
+          new HookExpectation[] {expectation});
+      if (calls == null || AgentCalls.applied(expectation, calls)) {
+        return result;
       }
+      HookMisses.miss(expectation, unit, classfileBuffer, protectionDomain,
+          result == null ? HookMisses.NOT_TRANSFORMED : HookMisses.NO_AGENT_CALL, null);
     } catch (Throwable dropped) {
       // The diagnostic never fails a transform: the class is returned as the transformer made it.
     }
     return result;
   }
 
-  /** Whether {@code after} calls into the agent more than {@code before}. */
-  static boolean gained(byte[] before, byte[] after) {
-    if (!AgentCalls.mentionsAgent(before)) {
-      return AgentCalls.mentionsAgent(after);
+  /** The transformer threw: its class loads unchanged, so the unit missed it. Never throws. */
+  private void failed(ClassLoader loader, String className, ProtectionDomain protectionDomain, byte[] classfileBuffer,
+      Throwable failure) {
+    try {
+      if (className == null || classfileBuffer == null) {
+        return;
+      }
+      HookExpectation expectation = expected.get(className);
+      if (expectation != null && claimed(loader, className)) {
+        HookMisses.miss(expectation, unit, classfileBuffer, protectionDomain, HookMisses.TRANSFORM_FAILED, failure);
+      }
+    } catch (Throwable dropped) {
+      // The failure the transformer threw is the one that goes on.
     }
-    return AgentCalls.count(after) > AgentCalls.count(before);
+  }
+
+  /** Whether the transformer means to instrument this class: it takes it by name and has not skipped it on purpose. */
+  private boolean claimed(ClassLoader loader, String className) {
+    return (named == null || named.selectsByName(className)) && (scope == null || scope.inScope(loader, className));
   }
 }

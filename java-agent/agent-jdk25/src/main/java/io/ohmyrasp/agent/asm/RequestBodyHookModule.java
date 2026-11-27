@@ -22,6 +22,16 @@ final class RequestBodyHookModule implements HookModule {
     return RequestBodyVisitor.matches(className, superName);
   }
 
+  /**
+   * Every servlet input stream the table names: the module selects them by their direct superclass, which a
+   * release can change without the hook being right any more, so the report checks them by name, as the backport
+   * transformer does. (A loader that cannot see the agent is left alone: see {@code HookMissProbe}.)
+   */
+  @Override
+  public boolean expectedFor(String className) {
+    return true;
+  }
+
   @Override
   public MethodVisitor visitMethod(
       String className, MethodVisitor methodVisitor, int access, String methodName, String descriptor) {
