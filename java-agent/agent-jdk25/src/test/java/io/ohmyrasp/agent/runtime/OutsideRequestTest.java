@@ -204,6 +204,24 @@ final class OutsideRequestTest {
     assertThrows(OhMyRaspBlockException.class, () -> OhMyRaspHooks.beforeFileRead(PASSWD), "withdrawn");
   }
 
+  /**
+   * The legacy flags (ohmyrasp.block, ohmyrasp.force_block) do not override log only either: a context-dependent
+   * finding outside a request logs, an intrinsic one blocks.
+   */
+  @Test
+  void theLegacyFlagsDoNotOverrideLogOnly() {
+    assertTrue(AgentRuntime.get().apply("{\"outside_request\":\"log\"}"));
+    System.setProperty("ohmyrasp.block", "true");
+    System.setProperty("ohmyrasp.force_block", "true");
+    try {
+      assertDoesNotThrow(() -> OhMyRaspHooks.beforeFileRead(PASSWD));
+      assertThrows(OhMyRaspBlockException.class, () -> OhMyRaspHooks.beforeJndiLookup(LDAP));
+    } finally {
+      System.clearProperty("ohmyrasp.block");
+      System.clearProperty("ohmyrasp.force_block");
+    }
+  }
+
   private static String quoted(String json) {
     return "\"" + json.replace("\\", "\\\\").replace("\"", "\\\"") + "\"";
   }

@@ -25,8 +25,9 @@ const FIXED_UPDATED_AT: &str = "2026-01-01T00:00:00Z";
 const POLICY: &str = r#"{"version":4,"status":"active","canary_percent":100,"rules":[{"algorithm":"sql_userinput","action":"block"}]}"#;
 
 /// A cloud policy whose `config` carries the control plane's `protection.hardening` setting with
-/// `outside_request` set to log, as `GetAgentPolicy` serves it.
-const POLICY_OUTSIDE_LOG: &str = r#"{"version":6,"status":"active","rules":[],"config":{"hardening":{"mode":"monitor","outside_request":"log"}}}"#;
+/// `outside_request` set to log, as `GetAgentPolicy` serves it, beside a rule that blocks a
+/// context-dependent finding: outside a request that finding logs, inside one it blocks.
+const POLICY_OUTSIDE_LOG: &str = r#"{"version":6,"status":"active","rules":[{"algorithm":"readFile_unwanted","action":"block"}],"config":{"hardening":{"mode":"monitor","outside_request":"log"}}}"#;
 
 /// A policy whose text needs every kind of JSON string escape once it is carried as a string
 /// member of the control file: quotes, backslash, newline, tab, a control character, and non-ASCII

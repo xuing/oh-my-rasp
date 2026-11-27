@@ -251,6 +251,23 @@ final class CodeExecutionDetectorTest {
     assertEquals("false", result.orElseThrow().details().get("requestControlled"));
   }
 
+  /**
+   * Since block-scope the rule also matches a single-quoted reflective start, getMethod('start'), inside a request as
+   * outside one. In Java source that text can only be in a comment or a string literal: the rule reads text, not
+   * tokens.
+   */
+  @Test
+  void aSingleQuotedReflectiveStartIsReportedInsideARequestToo() {
+    String source = "public class Demo { String note = \"ProcessBuilder.class.getMethod('start')\"; }";
+
+    var inRequest = CodeExecutionDetector.detectJavaCompilation("javac", source, request());
+    var background = CodeExecutionDetector.detectJavaCompilation("javac", source, RequestContext.empty());
+
+    assertEquals("java_compile_runtime", inRequest.orElseThrow().algorithm());
+    assertEquals(85, inRequest.orElseThrow().confidence(), "not request-controlled");
+    assertEquals("java_compile_runtime", background.orElseThrow().algorithm());
+  }
+
   @Test
   void ignoresBackgroundJavaCompilationWithoutRuntimeExecution() {
     var result =
