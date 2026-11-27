@@ -51,7 +51,7 @@ OhMyRASP 适合运行在 JDK 8、11、17、21 或 25 上的自托管 Java 服务
 <!-- BEGIN GENERATED metrics (java-agent/scripts/gen-detection-coverage.py) — do not edit between markers -->
 | 维度 | 当前状态 | 依据 |
 |---|---|---|
-| 插桩调用点家族 | 31 个 ASM hook 模块（`agent-jdk25`）；回溯版（`java8` / `java11` / `java17`）各 25 个 ASM transformer | [DETECTION-COVERAGE.md](java-agent/docs/DETECTION-COVERAGE.md) |
+| 插桩调用点家族 | 32 个 ASM hook 模块（`agent-jdk25`）；回溯版（`java8` / `java11` / `java17`）各 25 个 ASM transformer | [DETECTION-COVERAGE.md](java-agent/docs/DETECTION-COVERAGE.md) |
 | 检测引擎 | 42 项检测能力，验收脚本中有 176 个算法签名断言；另有 18 个规则 ID 已定义但未接入 hook，不计入 | [DETECTION-COVERAGE.md](java-agent/docs/DETECTION-COVERAGE.md) |
 | 漏洞回放矩阵 | 136 个场景，覆盖 53 个 [Vulhub](https://github.com/vulhub/vulhub) 组件根（追踪 130 个 CVE） | [vulhub-coverage.md](docs/development/vulhub-coverage.md) |
 | 正常语料误报率 | 27 类共 206 条真实构造正常输入，`0 / 206` 误报 | [FALSE-POSITIVE-REPORT.md](java-agent/docs/FALSE-POSITIVE-REPORT.md) |

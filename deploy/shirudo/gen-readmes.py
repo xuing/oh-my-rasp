@@ -128,6 +128,7 @@ MODULE_CATEGORY = {
     "File": "File I/O, Uploads & Archive Traversal",
     "MultipartUpload": "File I/O, Uploads & Archive Traversal",
     "Archive": "File I/O, Uploads & Archive Traversal",
+    "ContainerDeployment": "File I/O, Uploads & Archive Traversal",
     "Expression": "Expression Engines, Scripting, ClassLoading & JMX",
     "JavaCompilation": "Expression Engines, Scripting, ClassLoading & JMX",
     "ClassLoader": "Expression Engines, Scripting, ClassLoading & JMX",
