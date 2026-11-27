@@ -35,6 +35,24 @@ effect = "block"
 rule = "sql_statement_injection"
 
 [[case]]
+name = "constant-disjunction-outside-request-log-only"
+kind = "attack"
+via = "sink"
+op = "sql.execute"
+args = { sql = "SELECT * FROM users WHERE id = 7 OR 1=1" }
+control = { outside_request = "log" }
+
+[case.primary]
+effect = "log"
+rule = "sql_policy"
+why = "outside_request is log: SQL structure is context-dependent (a report or migration runs such statements on purpose), so outside a request the finding is logged and the statement runs."
+
+[case.backport]
+effect = "log"
+rule = "sql_statement_injection"
+why = "outside_request is log: SQL structure is context-dependent (a report or migration runs such statements on purpose), so outside a request the finding is logged and the statement runs."
+
+[[case]]
 name = "benign-in-request"
 kind = "benign"
 via = "request-sink"

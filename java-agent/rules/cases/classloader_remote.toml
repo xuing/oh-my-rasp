@@ -6,14 +6,13 @@ op = "classloader.remote"
 args = { url = "http://127.0.0.1:{port}/", class = "RemoteGreeting" }
 
 [case.primary]
-effect = "log"
+effect = "block"
 rule = "classloader_remote"
-why = "A class defined from a remote URL with no request behind it only shows that an operation happened: start-up code loads configured remote plugin classes, so it logs outside a request whatever outside_request says (docs/detection.md, Outside an HTTP request)."
 
 [case.backport]
-effect = "log"
+effect = "block"
 rule = "classloader_remote_codebase"
-why = "A class defined from a remote URL with no request behind it only shows that an operation happened: start-up code loads configured remote plugin classes, so it logs outside a request whatever outside_request says (docs/detection.md, Outside an HTTP request)."
+
 [[case]]
 name = "http-codebase-in-request"
 kind = "attack"

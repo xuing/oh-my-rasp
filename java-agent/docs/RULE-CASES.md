@@ -20,7 +20,7 @@ One file per rule id. Effects count the file's attack cases; rules are the ids t
 |---|---:|---:|---|---|---|---|
 | [archive_traversal](../rules/cases/archive_traversal.toml) | 4 | 1 | block 3, log 1 | `archive_traversal` | block 3, log 1 | `archive_entry_traversal_write` |
 | [base64_avx512_tail_underflow](../rules/cases/base64_avx512_tail_underflow.toml) | 3 | 1 | block 3 | `base64_avx512_tail_underflow` | block 3 | `base64_avx512_tail_underflow` |
-| [classloader_remote](../rules/cases/classloader_remote.toml) | 4 | 1 | block 2, log 2 | `classloader_remote` | block 2, log 2 | `classloader_remote_codebase` |
+| [classloader_remote](../rules/cases/classloader_remote.toml) | 4 | 1 | block 3, log 1 | `classloader_remote` | block 3, log 1 | `classloader_remote_codebase` |
 | [command_common](../rules/cases/command_common.toml) | 6 | 2 | block 6 | `command_common` | block 6 | `command_execution_exploit_primitive` |
 | [command_dnslog](../rules/cases/command_dnslog.toml) | 2 | 1 | block 2 | `command_dnslog` | unreachable 2 | - |
 | [command_error](../rules/cases/command_error.toml) | 2 | 1 | block 2 | `command_error` | unreachable 2 | - |
@@ -76,9 +76,9 @@ One file per rule id. Effects count the file's attack cases; rules are the ids t
 | [request_xxe_payload](../rules/cases/request_xxe_payload.toml) | 2 | 1 | block 2 | `request_xxe_payload` | unreachable 2 | - |
 | [sql_derby_code_execution](../rules/cases/sql_derby_code_execution.toml) | 2 | 1 | block 1, none 1 | `sql_derby_code_execution` | unreachable 2 | - |
 | [sql_h2_code_execution](../rules/cases/sql_h2_code_execution.toml) | 2 | 1 | block 2 | `sql_h2_code_execution` | unreachable 2 | - |
-| [sql_policy](../rules/cases/sql_policy.toml) | 2 | 1 | block 2 | `sql_policy` | block 2 | `sql_statement_injection` |
+| [sql_policy](../rules/cases/sql_policy.toml) | 3 | 1 | block 2, log 1 | `sql_policy` | block 2, log 1 | `sql_statement_injection` |
 | [sql_userinput](../rules/cases/sql_userinput.toml) | 2 | 1 | block 2 | `sql_userinput`, `sql_policy` | block 2 | `sql_statement_injection` |
-| [ssrf_aws](../rules/cases/ssrf_aws.toml) | 4 | 1 | block 2, log 2 | `ssrf_aws` | block 2, log 2 | `ssrf_cloud_metadata` |
+| [ssrf_aws](../rules/cases/ssrf_aws.toml) | 4 | 1 | block 3, log 1 | `ssrf_aws` | block 3, log 1 | `ssrf_cloud_metadata` |
 | [ssrf_common](../rules/cases/ssrf_common.toml) | 2 | 1 | block 2 | `ssrf_common` | unreachable 2 | - |
 | [ssrf_obfuscate](../rules/cases/ssrf_obfuscate.toml) | 2 | 1 | block 1, log 1 | `ssrf_obfuscate` | unreachable 2 | - |
 | [ssrf_protocol](../rules/cases/ssrf_protocol.toml) | 2 | 1 | block 1, log 1 | `ssrf_protocol` | unreachable 2 | - |
@@ -89,8 +89,8 @@ One file per rule id. Effects count the file's attack cases; rules are the ids t
 | [xml_decoder_runtime](../rules/cases/xml_decoder_runtime.toml) | 4 | 1 | block 3, log 1 | `xml_decoder_runtime` | block 3, log 1 | `xml_decoder_runtime_execution` |
 | [xml_decoder_webshell](../rules/cases/xml_decoder_webshell.toml) | 4 | 1 | block 3, log 1 | `xml_decoder_webshell`, `writeFile_script` | block 3, log 1 | `xml_decoder_script_file_write`, `file_script_write` |
 | [xpath_runtime](../rules/cases/xpath_runtime.toml) | 2 | 1 | block 2 | `xpath_runtime` | unreachable 2 | - |
-| [xxe_file](../rules/cases/xxe_file.toml) | 4 | 1 | block 3, log 1 | `xxe_file`, `xxe_protocol` | block 3, log 1 | `file_sensitive_read`, `xxe_external_entity_protocol` |
-| [xxe_protocol](../rules/cases/xxe_protocol.toml) | 3 | 1 | block 1, log 2 | `xxe_protocol` | block 1, log 2 | `xxe_external_entity_protocol` |
+| [xxe_file](../rules/cases/xxe_file.toml) | 4 | 1 | block 3, log 1 | `xxe_protocol`, `xxe_file` | block 3, log 1 | `xxe_external_entity_protocol`, `file_sensitive_read` |
+| [xxe_protocol](../rules/cases/xxe_protocol.toml) | 3 | 1 | block 3 | `xxe_protocol` | block 3 | `xxe_external_entity_protocol` |
 
 ## Primary rule ids
 
@@ -100,7 +100,7 @@ Each id that some case names on this engine: the attack cases that name it, the 
 |---|---:|---:|---|---|
 | `archive_traversal` | 4 | 1 | block 3, log 1 | [archive_traversal](../rules/cases/archive_traversal.toml) |
 | `base64_avx512_tail_underflow` | 3 | 1 | block 3 | [base64_avx512_tail_underflow](../rules/cases/base64_avx512_tail_underflow.toml) |
-| `classloader_remote` | 4 | 1 | block 2, log 2 | [classloader_remote](../rules/cases/classloader_remote.toml) |
+| `classloader_remote` | 4 | 1 | block 3, log 1 | [classloader_remote](../rules/cases/classloader_remote.toml) |
 | `command_common` | 6 | 2 | block 6 | [command_common](../rules/cases/command_common.toml) |
 | `command_dnslog` | 2 | 1 | block 2 | [command_dnslog](../rules/cases/command_dnslog.toml) |
 | `command_error` | 2 | 1 | block 2 | [command_error](../rules/cases/command_error.toml) |
@@ -153,9 +153,9 @@ Each id that some case names on this engine: the attack cases that name it, the 
 | `request_xxe_payload` | 2 | 1 | block 2 | [request_xxe_payload](../rules/cases/request_xxe_payload.toml) |
 | `sql_derby_code_execution` | 1 | 1 | block 1 | [sql_derby_code_execution](../rules/cases/sql_derby_code_execution.toml) |
 | `sql_h2_code_execution` | 2 | 1 | block 2 | [sql_h2_code_execution](../rules/cases/sql_h2_code_execution.toml) |
-| `sql_policy` | 3 | 2 | block 3 | [sql_policy](../rules/cases/sql_policy.toml), [sql_userinput](../rules/cases/sql_userinput.toml) |
+| `sql_policy` | 4 | 2 | block 3, log 1 | [sql_policy](../rules/cases/sql_policy.toml), [sql_userinput](../rules/cases/sql_userinput.toml) |
 | `sql_userinput` | 1 | 1 | block 1 | [sql_userinput](../rules/cases/sql_userinput.toml) |
-| `ssrf_aws` | 4 | 1 | block 2, log 2 | [ssrf_aws](../rules/cases/ssrf_aws.toml) |
+| `ssrf_aws` | 4 | 1 | block 3, log 1 | [ssrf_aws](../rules/cases/ssrf_aws.toml) |
 | `ssrf_common` | 2 | 1 | block 2 | [ssrf_common](../rules/cases/ssrf_common.toml) |
 | `ssrf_obfuscate` | 2 | 1 | block 1, log 1 | [ssrf_obfuscate](../rules/cases/ssrf_obfuscate.toml) |
 | `ssrf_protocol` | 2 | 1 | block 1, log 1 | [ssrf_protocol](../rules/cases/ssrf_protocol.toml) |
@@ -166,8 +166,8 @@ Each id that some case names on this engine: the attack cases that name it, the 
 | `xml_decoder_runtime` | 4 | 1 | block 3, log 1 | [xml_decoder_runtime](../rules/cases/xml_decoder_runtime.toml) |
 | `xml_decoder_webshell` | 4 | 1 | block 3, log 1 | [xml_decoder_webshell](../rules/cases/xml_decoder_webshell.toml) |
 | `xpath_runtime` | 2 | 1 | block 2 | [xpath_runtime](../rules/cases/xpath_runtime.toml) |
-| `xxe_file` | 2 | 1 | block 1, log 1 | [xxe_file](../rules/cases/xxe_file.toml) |
-| `xxe_protocol` | 7 | 2 | block 3, block (also) 1, log 2, log (also) 1 | [xxe_file](../rules/cases/xxe_file.toml), [xxe_protocol](../rules/cases/xxe_protocol.toml) |
+| `xxe_file` | 1 | 1 | log 1 | [xxe_file](../rules/cases/xxe_file.toml) |
+| `xxe_protocol` | 7 | 2 | block 6, log (also) 1 | [xxe_file](../rules/cases/xxe_file.toml), [xxe_protocol](../rules/cases/xxe_protocol.toml) |
 
 Not covered on this engine, from [uncovered.toml](../rules/cases/uncovered.toml) and, for the ids marked `not wired`, from the `not_wired` object of the [catalogue](../rules/general.json):
 
@@ -211,7 +211,7 @@ Each id that some case names on this engine: the attack cases that name it, the 
 |---|---:|---:|---|---|
 | `archive_entry_traversal_write` | 4 | 1 | block 3, log 1 | [archive_traversal](../rules/cases/archive_traversal.toml) |
 | `base64_avx512_tail_underflow` | 3 | 1 | block 3 | [base64_avx512_tail_underflow](../rules/cases/base64_avx512_tail_underflow.toml) |
-| `classloader_remote_codebase` | 4 | 1 | block 2, log 2 | [classloader_remote](../rules/cases/classloader_remote.toml) |
+| `classloader_remote_codebase` | 4 | 1 | block 3, log 1 | [classloader_remote](../rules/cases/classloader_remote.toml) |
 | `command_execution_exploit_primitive` | 6 | 2 | block 6 | [command_common](../rules/cases/command_common.toml) |
 | `command_execution_shell_meta` | 7 | 2 | block 7 | [command_userinput](../rules/cases/command_userinput.toml) |
 | `deleteFile_userinput` | 2 | 1 | block 2 | [deleteFile_userinput](../rules/cases/deleteFile_userinput.toml) |
@@ -219,7 +219,7 @@ Each id that some case names on this engine: the attack cases that name it, the 
 | `directory_userinput` | 3 | 1 | block 3 | [directory_userinput](../rules/cases/directory_userinput.toml) |
 | `file_generated_plot_script_command` | 2 | 1 | block 2 | [file_generated_plot_script_command](../rules/cases/file_generated_plot_script_command.toml) |
 | `file_script_write` | 8 | 3 | block 6, log 1, log (also) 1 | [writeFile_reflect](../rules/cases/writeFile_reflect.toml), [writeFile_script](../rules/cases/writeFile_script.toml), [xml_decoder_webshell](../rules/cases/xml_decoder_webshell.toml) |
-| `file_sensitive_read` | 10 | 4 | block 8, log 1, log (also) 1 | [readFile_unwanted](../rules/cases/readFile_unwanted.toml), [readFile_userinput](../rules/cases/readFile_userinput.toml), [xxe_file](../rules/cases/xxe_file.toml) |
+| `file_sensitive_read` | 9 | 4 | block 7, log 1, log (also) 1 | [readFile_unwanted](../rules/cases/readFile_unwanted.toml), [readFile_userinput](../rules/cases/readFile_userinput.toml), [xxe_file](../rules/cases/xxe_file.toml) |
 | `java_compile_runtime_execution` | 7 | 1 | block 6, log 1 | [java_compile_runtime](../rules/cases/java_compile_runtime.toml) |
 | `jdbc_derby_code_loading` | 2 | 1 | block 2 | [jdbc_derby_code_loading](../rules/cases/jdbc_derby_code_loading.toml) |
 | `jdbc_h2_code_execution` | 4 | 1 | block 3, log 1 | [jdbc_h2_init](../rules/cases/jdbc_h2_init.toml) |
@@ -236,13 +236,13 @@ Each id that some case names on this engine: the attack cases that name it, the 
 | `request_session_file_deserialization` | 1 | 1 | block 1 | [request_session_file_deserialization](../rules/cases/request_session_file_deserialization.toml) |
 | `request_template_source` | 1 | 1 | block 1 | [request_template_source](../rules/cases/request_template_source.toml) |
 | `request_typed_payload_deserialization` | 2 | 1 | block 2 | [request_typed_payload_deserialization](../rules/cases/request_typed_payload_deserialization.toml) |
-| `sql_statement_injection` | 4 | 2 | block 4 | [sql_policy](../rules/cases/sql_policy.toml), [sql_userinput](../rules/cases/sql_userinput.toml) |
-| `ssrf_cloud_metadata` | 4 | 1 | block 2, log 2 | [ssrf_aws](../rules/cases/ssrf_aws.toml) |
+| `sql_statement_injection` | 5 | 2 | block 4, log 1 | [sql_policy](../rules/cases/sql_policy.toml), [sql_userinput](../rules/cases/sql_userinput.toml) |
+| `ssrf_cloud_metadata` | 4 | 1 | block 3, log 1 | [ssrf_aws](../rules/cases/ssrf_aws.toml) |
 | `ssrf_loopback_admin` | 2 | 2 | block 2 | [ssrf_userinput](../rules/cases/ssrf_userinput.toml) |
 | `ssrf_request_parameter_url` | 2 | 2 | block 2 | [ssrf_userinput](../rules/cases/ssrf_userinput.toml) |
 | `xml_decoder_runtime_execution` | 4 | 1 | block 3, log 1 | [xml_decoder_runtime](../rules/cases/xml_decoder_runtime.toml) |
 | `xml_decoder_script_file_write` | 4 | 1 | block 3, log 1 | [xml_decoder_webshell](../rules/cases/xml_decoder_webshell.toml) |
-| `xxe_external_entity_protocol` | 7 | 2 | block 3, block (also) 1, log 3 | [xxe_file](../rules/cases/xxe_file.toml), [xxe_protocol](../rules/cases/xxe_protocol.toml) |
+| `xxe_external_entity_protocol` | 7 | 2 | block 6, log 1 | [xxe_file](../rules/cases/xxe_file.toml), [xxe_protocol](../rules/cases/xxe_protocol.toml) |
 
 Not covered on this engine, from [uncovered.toml](../rules/cases/uncovered.toml) and, for the ids marked `not wired`, from the `not_wired` object of the [catalogue](../rules/general.json):
 

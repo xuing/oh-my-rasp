@@ -7,13 +7,12 @@ args = { document = "<?xml version=\"1.0\"?><!DOCTYPE r [<!ENTITY x SYSTEM \"fil
 
 [case.primary]
 effect = "block"
-rule = "xxe_file"
-also = ["xxe_protocol"]
+rule = "xxe_protocol"
 
 [case.backport]
 effect = "block"
-rule = "file_sensitive_read"
-also = ["xxe_external_entity_protocol"]
+rule = "xxe_external_entity_protocol"
+
 [[case]]
 name = "passwd-entity-in-request"
 kind = "attack"
