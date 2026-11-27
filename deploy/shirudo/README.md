@@ -32,8 +32,8 @@ A second OhMyRASP package on the same host is harmless. One line starts per JVM,
 | `ohmyrasp-java8` | Java 8 only (classfile `<= 52`) | `ohmyrasp-java8.jar` | 25 ASM transformers | 45 algorithms | 95 (java8) |
 | `ohmyrasp-java11` | Java 11 and later (classfile `<= 55`) | `ohmyrasp-java11.jar` | 25 ASM transformers | 45 algorithms | 10 (java11) |
 | `ohmyrasp-java17` | Java 17 and later (classfile `<= 61`) | `ohmyrasp-java17.jar` | 25 ASM transformers | 45 algorithms | 12 (java17) + 3 (java21) |
-| `ohmyrasp-jdk21` | Java 21 and later (classfile `<= 65`) | `ohmyrasp-jdk21.jar` | 32 ASM hook modules | 42 `detect*` capabilities | 120 Vulhub scripts on supported JVMs |
-| `ohmyrasp-jdk25` | Java 21 and later (classfile `<= 65`) | `ohmyrasp-jdk25.jar` | 32 ASM hook modules | 42 `detect*` capabilities | 120 Vulhub scripts on supported JVMs |
+| `ohmyrasp-jdk21` | Java 21 and later (classfile `<= 65`) | `ohmyrasp-jdk21.jar` | 32 ASM hook modules | 43 `detect*` capabilities | 120 Vulhub scripts on supported JVMs |
+| `ohmyrasp-jdk25` | Java 21 and later (classfile `<= 65`) | `ohmyrasp-jdk25.jar` | 32 ASM hook modules | 43 `detect*` capabilities | 120 Vulhub scripts on supported JVMs |
 
 ## Which package to install
 

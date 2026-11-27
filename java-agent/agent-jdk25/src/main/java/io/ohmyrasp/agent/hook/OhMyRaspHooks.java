@@ -1996,18 +1996,24 @@ public final class OhMyRaspHooks {
     emit(DeserializationDetector.detectXmlRpcSerializableValue("ApacheXmlRpc", currentRequest()));
   }
 
+  /**
+   * {@code java.beans.Expression.getValue()} and {@code Statement.execute()}, which every bean framework calls, not
+   * only XMLDecoder. The target type and the method name decide first whether any XMLDecoder rule can match; only
+   * then are the arguments read (an ordinary statement's arguments never see a call from the agent) and the stack
+   * walked for XMLDecoder.
+   */
   public static void beforeJavaBeansStatement(Object statement) {
     if (HookActivation.inactive()) return;
-    if (detectionDisabled()) {
-      return;
-    }
     try {
+      if (detectionDisabled()) return;
       Object target = invoke(statement, "getTarget").orElse(null);
       String methodName = invokeString(statement, "getMethodName").orElse("");
+      String targetType = javaBeansTargetType(target);
+      if (!DeserializationDetector.xmlDecoderCandidate(targetType, methodName)) return;
       Object arguments = invoke(statement, "getArguments").orElse(new Object[0]);
       emit(
           DeserializationDetector.detectXmlDecoderExpression(
-              javaBeansTargetType(target),
+              targetType,
               methodName,
               javaBeansArguments(target, arguments),
               currentRequest(),
@@ -2017,6 +2023,45 @@ public final class OhMyRaspHooks {
     } catch (Throwable throwable) {
       quiet("beforeJavaBeansStatement", throwable);
     }
+  }
+
+  /**
+   * XMLDecoder's {@code <method>} and {@code <property>} elements, just before the decoder's own {@code
+   * MethodUtil.invoke(method, target, arguments)}: returns {@code arguments}, which that call then takes, also when
+   * the hook fails. The caller is a class of the decoder itself, so no stack is walked to find XMLDecoder.
+   */
+  public static Object[] beforeXmlDecoderInvoke(Object[] arguments, Method method, Object target) {
+    if (HookActivation.inactive()) return arguments;
+    try {
+      xmlDecoderOperation(target, method == null ? "" : method.getName(), arguments);
+    } catch (OhMyRaspBlockException blocked) {
+      throw blocked;
+    } catch (Throwable throwable) {
+      quiet("beforeXmlDecoderInvoke", throwable);
+    }
+    return arguments;
+  }
+
+  /** XMLDecoder's {@code <new class="...">} element, before it looks up the constructor (as above, no stack walk). */
+  public static void beforeXmlDecoderNew(Class<?> type, Object[] arguments) {
+    if (HookActivation.inactive()) return;
+    try {
+      xmlDecoderOperation(type, "new", arguments);
+    } catch (OhMyRaspBlockException blocked) {
+      throw blocked;
+    } catch (Throwable throwable) {
+      quiet("beforeXmlDecoderNew", throwable);
+    }
+  }
+
+  /** Called inside its entry's protected region: the target and the method decide before the arguments are read. */
+  private static void xmlDecoderOperation(Object target, String methodName, Object[] arguments) {
+    if (detectionDisabled()) return;
+    String targetType = javaBeansTargetType(target);
+    if (!DeserializationDetector.xmlDecoderCandidate(targetType, methodName)) return;
+    emit(
+        DeserializationDetector.detectXmlDecoderOperation(
+            targetType, methodName, javaBeansArguments(target, arguments), currentRequest()));
   }
 
   public static void rethrowIfOhMyRaspBlock(Object throwable) {
@@ -2405,29 +2450,42 @@ public final class OhMyRaspHooks {
     return target == null ? "" : target.getClass().getName();
   }
 
+  // The bounds of the XMLDecoder argument traversal, the backports' numbers: nesting below the arguments array, and
+  // elements taken from any array or Iterable (a null, a skipped value or a nested container counts as one), so an
+  // endless Iterable of empty values ends too.
+  private static final int JAVA_BEANS_ARGUMENT_DEPTH = 3;
+  private static final int JAVA_BEANS_ARGUMENT_ITEMS = 64;
+
   private static List<String> javaBeansArguments(Object target, Object arguments) {
     var items = new ArrayList<String>();
-    addJavaBeansArgument(items, arguments);
+    int[] budget = {JAVA_BEANS_ARGUMENT_ITEMS};
+    addJavaBeansArgument(items, arguments, 0, budget);
     if (target instanceof ProcessBuilder processBuilder) {
-      items.addAll(processBuilder.command());
+      // command() is the list the application gave the builder, so it is bounded as an argument is.
+      for (String item : processBuilder.command()) {
+        if (budget[0]-- <= 0) break;
+        if (item != null) items.add(item);
+      }
     }
     return items;
   }
 
-  private static void addJavaBeansArgument(List<String> items, Object value) {
-    if (value == null) {
+  private static void addJavaBeansArgument(List<String> items, Object value, int depth, int[] budget) {
+    if (value == null || depth > JAVA_BEANS_ARGUMENT_DEPTH || budget[0] <= 0) {
       return;
     }
     if (value instanceof Iterable<?> iterable) {
       for (Object item : iterable) {
-        addJavaBeansArgument(items, item);
+        if (budget[0]-- <= 0) return;
+        addJavaBeansArgument(items, item, depth + 1, budget);
       }
       return;
     }
     if (value.getClass().isArray()) {
       int length = Array.getLength(value);
       for (int i = 0; i < length; i++) {
-        addJavaBeansArgument(items, Array.get(value, i));
+        if (budget[0]-- <= 0) return;
+        addJavaBeansArgument(items, Array.get(value, i), depth + 1, budget);
       }
       return;
     }
@@ -2837,16 +2895,25 @@ public final class OhMyRaspHooks {
     return URLEncoder.encode(value == null ? "" : value, StandardCharsets.UTF_8);
   }
 
+  /**
+   * Reports a hook's own failure, and never throws: the failure is the application's object as often as not (an
+   * exception from its {@code toString()}), and its {@code toString()} or {@code getMessage()} may throw in turn.
+   * Every hook's catch calls this, so nothing but the block leaves a hook through it.
+   */
   static void quiet(String hook, Throwable throwable) {
-    JsonEventLogger events = events();
-    if (events.discards()) {
-      return; // the warm-up's logger: nothing is reported anywhere
-    }
-    // A failure on a request with a body may quote it (a sink's exception message): its class alone.
-    Throwable shown = requestBodyMayBeIn() ? new IllegalStateException(throwable.getClass().getName()) : throwable;
-    events.reportError(hook, shown);
-    if (Boolean.getBoolean("ohmyrasp.debug")) {
-      System.err.println("[OHMYRASP] hook failure in " + hook + ": " + shown);
+    try {
+      JsonEventLogger events = events();
+      if (events.discards()) {
+        return; // the warm-up's logger: nothing is reported anywhere
+      }
+      // A failure on a request with a body may quote it (a sink's exception message): its class alone.
+      Throwable shown = requestBodyMayBeIn() ? new IllegalStateException(throwable.getClass().getName()) : throwable;
+      events.reportError(hook, shown);
+      if (Boolean.getBoolean("ohmyrasp.debug")) {
+        System.err.println("[OHMYRASP] hook failure in " + hook + ": " + shown);
+      }
+    } catch (Throwable unreportable) {
+      // Reporting a failure never fails the application's call.
     }
   }
 

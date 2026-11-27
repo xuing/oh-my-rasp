@@ -233,7 +233,48 @@ public class RuleCaseDriver extends HttpServlet {
 
   // ---- the operation ----------------------------------------------------------------------
 
+  // How long an absent witness file is looked for again before it counts as absent.
+  private static final long WITNESS_WAIT_MILLIS = 500;
+
+  /**
+   * The operation, and with a witness (a file the operation creates) a file-system observation around it: the file
+   * must not exist before (else the case is an error), and whether it exists after is reported for check.py, which
+   * fails a block that left it behind and a run that did not. It is an observation of the file, not of the launch.
+   */
   private static void perform() {
+    File witness = SPEC.containsKey("witness") ? new File(spec("witness")) : null;
+    if (witness != null && witness.exists()) {
+      RESULT.put("op", "error");
+      RESULT.put("ending", "the witness " + witness + " exists before the operation");
+      return;
+    }
+    try {
+      performOperation();
+    } finally {
+      if (witness != null) RESULT.put("witness", witnessAfter(witness));
+    }
+  }
+
+  /**
+   * Whether the witness exists after the operation. A child process the operation started can create it after the
+   * operation ended (a block that came after the launch), so an absent file is looked for again for up to
+   * {@link #WITNESS_WAIT_MILLIS} before it counts as absent.
+   */
+  private static String witnessAfter(File witness) {
+    long deadline = System.nanoTime() + WITNESS_WAIT_MILLIS * 1000000L;
+    while (!witness.exists()) {
+      if (System.nanoTime() - deadline >= 0) return "absent";
+      try {
+        Thread.sleep(25);
+      } catch (InterruptedException interrupted) {
+        Thread.currentThread().interrupt();
+        return "absent";
+      }
+    }
+    return "present";
+  }
+
+  private static void performOperation() {
     String op = spec("op");
     try {
       String detail = run(op);
@@ -432,6 +473,11 @@ public class RuleCaseDriver extends HttpServlet {
     try {
       Object value = decoder.readObject();
       if (failure[0] != null) throw new IllegalStateException("decoder reported", failure[0]);
+      // The case's expected value of the first object, as String.valueOf writes it: a hook that lost or changed an
+      // operand on the way shows here.
+      if (SPEC.containsKey("returns") && !spec("returns").equals(String.valueOf(value))) {
+        throw new IllegalStateException("decoded " + value + ", the case expects " + spec("returns"));
+      }
       return "decoded " + typeOf(value);
     } finally {
       decoder.close();

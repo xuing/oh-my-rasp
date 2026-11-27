@@ -9,7 +9,7 @@
 | Metric | Count |
 |--------|------:|
 | Hook families (instrumentation points) | 32 |
-| Detector capabilities (public `detect*` entry points) | 42 |
+| Detector capabilities (public `detect*` entry points) | 43 |
 | Algorithm signatures asserted in acceptance scripts | 176 |
 | End-to-end vulnerability acceptance scenarios | 136 |
 | JDK lines exercised | 6 |
@@ -57,7 +57,7 @@ rewrites a family of risky call sites and routes them to a detector class.
 
 ## Detector capabilities
 
-The detector classes in `agent-jdk25/src/main/java/io/ohmyrasp/agent/detect/` expose **42**
+The detector classes in `agent-jdk25/src/main/java/io/ohmyrasp/agent/detect/` expose **43**
 distinct public `detect*` entry points. Hooks call the class that owns each one;
 `DetectorEngine.detectRequest` runs the request-level detectors in a fixed first-match order.
 
@@ -66,7 +66,7 @@ distinct public `detect*` entry points. Hooks call the class that owns each one;
 | `Base64DecodeDetector` | `detectBase64Decode` |
 | `CodeExecutionDetector` | `detectExpression` · `detectJavaCompilation` · `detectOgnl` |
 | `CredentialDetector` | `detectJwtVerificationFailure` |
-| `DeserializationDetector` | `detectDeserialization` · `detectFastjsonClassResource` · `detectHessianAllocation` · `detectHttpInvokerDeserialization` · `detectHttpObjectStreamDeserialization` · `detectOpenWireThrowable` · `detectPolymorphicType` · `detectRmiRegistryBind` · `detectSessionDeserialization` · `detectXmlDecoderExpression` · `detectXmlRpcSerializableValue` |
+| `DeserializationDetector` | `detectDeserialization` · `detectFastjsonClassResource` · `detectHessianAllocation` · `detectHttpInvokerDeserialization` · `detectHttpObjectStreamDeserialization` · `detectOpenWireThrowable` · `detectPolymorphicType` · `detectRmiRegistryBind` · `detectSessionDeserialization` · `detectXmlDecoderExpression` · `detectXmlDecoderOperation` · `detectXmlRpcSerializableValue` |
 | `DetectorEngine` | `detectRequest` · `detectScannerUserAgent` |
 | `FileAccessDetector` | `detectArgumentFileExpansion` · `detectDirectoryList` · `detectFileRead` · `detectServletIncludeAttributes` |
 | `FileUploadDetector` | `detectFileUpload` |

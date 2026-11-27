@@ -568,18 +568,24 @@ public final class DeserializationDetector {
     if (!isXmlDecoderStack(stackClassNames)) {
       return Optional.empty();
     }
+    return detectXmlDecoderOperation(targetType, methodName, arguments, request);
+  }
+
+  /**
+   * An operation of an XMLDecoder object graph: target type, method name ({@code new} for a constructor) and
+   * arguments, for a caller that is XMLDecoder's own code and so needs no stack to say so.
+   */
+  public static Optional<Detection> detectXmlDecoderOperation(
+      String targetType, String methodName, List<String> arguments, RequestContext request) {
+    if (request == null) {
+      return Optional.empty();
+    }
     String normalizedTarget = normalizeJavaTypeName(targetType);
     String normalizedMethod = lower(methodName);
     List<String> safeArguments = arguments == null ? List.of() : arguments;
     String joinedArguments = String.join(" ", safeArguments);
 
-    boolean processBuilderStart =
-        normalizedTarget.equals("java.lang.ProcessBuilder") && normalizedMethod.equals("start");
-    boolean runtimeExec =
-        normalizedTarget.equals("java.lang.Runtime") && normalizedMethod.startsWith("exec");
-    boolean reflectiveInvoke =
-        normalizedTarget.equals("java.lang.reflect.Method") && normalizedMethod.equals("invoke");
-    if (processBuilderStart || runtimeExec || reflectiveInvoke) {
+    if (xmlDecoderRuntimePrimitive(normalizedTarget, normalizedMethod)) {
       return Optional.of(
           Detection.log(
               "deserialization",
@@ -593,12 +599,7 @@ public final class DeserializationDetector {
                   "arguments", abbreviate(joinedArguments))));
     }
 
-    boolean writerConstruction =
-        (normalizedTarget.equals("java.io.PrintWriter")
-                || normalizedTarget.equals("java.io.FileWriter")
-                || normalizedTarget.equals("java.io.FileOutputStream"))
-            && (normalizedMethod.equals("new") || normalizedMethod.equals("newinstance"));
-    if (writerConstruction) {
+    if (xmlDecoderWriterConstruction(normalizedTarget, normalizedMethod)) {
       for (String argument : safeArguments) {
         String path = normalizePath(argument);
         // Outside a request the script files of the backport rule.
@@ -618,6 +619,31 @@ public final class DeserializationDetector {
       }
     }
     return Optional.empty();
+  }
+
+  /**
+   * Whether a rule of {@link #detectXmlDecoderOperation} can match an operation with this target type and method
+   * name, whatever its arguments. A hook asks this first and reads the arguments only when it is true: reading them
+   * calls their {@code toString()} and {@code Iterable} methods, which an ordinary bean's arguments must not see.
+   */
+  public static boolean xmlDecoderCandidate(String targetType, String methodName) {
+    String normalizedTarget = normalizeJavaTypeName(targetType);
+    String normalizedMethod = lower(methodName);
+    return xmlDecoderRuntimePrimitive(normalizedTarget, normalizedMethod)
+        || xmlDecoderWriterConstruction(normalizedTarget, normalizedMethod);
+  }
+
+  private static boolean xmlDecoderRuntimePrimitive(String normalizedTarget, String normalizedMethod) {
+    return (normalizedTarget.equals("java.lang.ProcessBuilder") && normalizedMethod.equals("start"))
+        || (normalizedTarget.equals("java.lang.Runtime") && normalizedMethod.startsWith("exec"))
+        || (normalizedTarget.equals("java.lang.reflect.Method") && normalizedMethod.equals("invoke"));
+  }
+
+  private static boolean xmlDecoderWriterConstruction(String normalizedTarget, String normalizedMethod) {
+    return (normalizedTarget.equals("java.io.PrintWriter")
+            || normalizedTarget.equals("java.io.FileWriter")
+            || normalizedTarget.equals("java.io.FileOutputStream"))
+        && (normalizedMethod.equals("new") || normalizedMethod.equals("newinstance"));
   }
 
   private static boolean isXmlDecoderStack(List<String> stackClassNames) {

@@ -409,6 +409,16 @@ def agent_not_started(track: str | None, result: dict, text: str) -> str | None:
 
 
 def classify(case, result: dict, events: list[tuple[str, str]]) -> Actual:
+    actual = effect_of(case, result, events)
+    if case.rule_events is not None and actual.effect in ("block", "log"):
+        count = sum(1 for rule, _ in events if rule == actual.rule)
+        if count != case.rule_events:
+            return Actual("broken", actual.rule, actual.also,
+                          f"{count} events of {actual.rule}, the case expects {case.rule_events} ({actual.note})")
+    return actual
+
+
+def effect_of(case, result: dict, events: list[tuple[str, str]]) -> Actual:
     entry, handler, op, ending = result.get("entry"), result.get("handler"), result.get("op"), result.get("ending", "")
     if case.via == "sink":
         outcome, note = op, ending
@@ -433,6 +443,15 @@ def classify(case, result: dict, events: list[tuple[str, str]]) -> Actual:
         return Actual("broken", None, tuple(rules), f"an event's action is neither block nor log: {', '.join(unexpected)}")
     if outcome == "error" or outcome not in ("ran", "blocked"):
         return Actual("broken", None, tuple(rules), f"the operation failed without the agent: {note}")
+    # The witness is a file-system observation after the operation (see RuleCaseDriver.perform), not of the launch.
+    witness, witness_path = result.get("witness"), case.args.get("witness", "")
+    if witness_path and witness not in ("present", "absent"):
+        return Actual("broken", None, tuple(rules), f"the case names the witness {witness_path} but the driver "
+                      f"reported no observation of it ({note})")
+    if witness == "present" and outcome == "blocked":
+        return Actual("broken", None, tuple(rules), f"blocked, but the operation ran: {witness_path} exists ({note})")
+    if witness == "absent" and outcome == "ran":
+        return Actual("broken", None, tuple(rules), f"the operation did not happen: no {witness_path} ({note})")
     if outcome == "blocked":
         if not blocks:
             return Actual("broken", None, tuple(rules), f"blocked, but no event says block: {note}")

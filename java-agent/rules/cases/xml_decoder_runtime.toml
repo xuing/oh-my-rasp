@@ -86,3 +86,230 @@ rule = "xml_decoder_runtime"
 [case.backport]
 effect = "block"
 rule = "xml_decoder_runtime_execution"
+
+[[case]]
+name = "method-process-builder-outside-request"
+kind = "attack"
+via = "sink"
+op = "beans.decode"
+args = { document = "<?xml version=\"1.0\"?><java><object class=\"java.lang.ProcessBuilder\"><array class=\"java.lang.String\" length=\"2\"><void index=\"0\"><string>touch</string></void><void index=\"1\"><string>{tmp}/xml-decoder-ran</string></void></array><method name=\"start\" id=\"process\"><method name=\"waitFor\" id=\"status\"/></method></object></java>", witness = "{tmp}/xml-decoder-ran" }
+
+[case.primary]
+effect = "block"
+rule = "xml_decoder_runtime"
+
+[case.backport]
+effect = "block"
+rule = "xml_decoder_runtime_execution"
+
+[[case]]
+name = "method-process-builder-in-request"
+kind = "attack"
+via = "request-sink"
+op = "beans.decode"
+args = { document = "<?xml version=\"1.0\"?><java><object class=\"java.lang.ProcessBuilder\"><array class=\"java.lang.String\" length=\"2\"><void index=\"0\"><string>touch</string></void><void index=\"1\"><string>{tmp}/xml-decoder-ran</string></void></array><method name=\"start\" id=\"process\"><method name=\"waitFor\" id=\"status\"/></method></object></java>", witness = "{tmp}/xml-decoder-ran" }
+
+[case.request]
+method = "GET"
+uri = "/app/report"
+query = "id=7"
+headers = { User-Agent = "Mozilla/5.0 (X11; Linux x86_64) Firefox/128.0", Accept = "text/html" }
+
+[case.primary]
+effect = "block"
+rule = "xml_decoder_runtime"
+
+[case.backport]
+effect = "block"
+rule = "xml_decoder_runtime_execution"
+
+[[case]]
+name = "method-process-builder-outside-request-log-only"
+kind = "attack"
+via = "sink"
+op = "beans.decode"
+args = { document = "<?xml version=\"1.0\"?><java><object class=\"java.lang.ProcessBuilder\"><array class=\"java.lang.String\" length=\"2\"><void index=\"0\"><string>touch</string></void><void index=\"1\"><string>{tmp}/xml-decoder-ran</string></void></array><method name=\"start\" id=\"process\"><method name=\"waitFor\" id=\"status\"/></method></object></java>", witness = "{tmp}/xml-decoder-ran" }
+control = { outside_request = "log" }
+rule_events = 1
+
+[case.primary]
+effect = "log"
+rule = "xml_decoder_runtime"
+why = "outside_request is log: outside a request the finding is logged and the operation runs"
+
+[case.backport]
+effect = "log"
+rule = "xml_decoder_runtime_execution"
+why = "outside_request is log: outside a request the finding is logged and the operation runs"
+
+[[case]]
+name = "method-runtime-exec-outside-request"
+kind = "attack"
+via = "sink"
+op = "beans.decode"
+args = { document = "<?xml version=\"1.0\"?><java><method class=\"java.lang.Runtime\" name=\"getRuntime\"><method name=\"exec\" id=\"process\"><array class=\"java.lang.String\" length=\"2\"><void index=\"0\"><string>touch</string></void><void index=\"1\"><string>{tmp}/xml-decoder-ran</string></void></array><method name=\"waitFor\" id=\"status\"/></method></method></java>", witness = "{tmp}/xml-decoder-ran" }
+
+[case.primary]
+effect = "block"
+rule = "xml_decoder_runtime"
+
+[case.backport]
+effect = "block"
+rule = "xml_decoder_runtime_execution"
+
+[[case]]
+name = "method-runtime-exec-in-request"
+kind = "attack"
+via = "request-sink"
+op = "beans.decode"
+args = { document = "<?xml version=\"1.0\"?><java><method class=\"java.lang.Runtime\" name=\"getRuntime\"><method name=\"exec\" id=\"process\"><array class=\"java.lang.String\" length=\"2\"><void index=\"0\"><string>touch</string></void><void index=\"1\"><string>{tmp}/xml-decoder-ran</string></void></array><method name=\"waitFor\" id=\"status\"/></method></method></java>", witness = "{tmp}/xml-decoder-ran" }
+
+[case.request]
+method = "GET"
+uri = "/app/report"
+query = "id=7"
+headers = { User-Agent = "Mozilla/5.0 (X11; Linux x86_64) Firefox/128.0", Accept = "text/html" }
+
+[case.primary]
+effect = "block"
+rule = "xml_decoder_runtime"
+
+[case.backport]
+effect = "block"
+rule = "xml_decoder_runtime_execution"
+
+[[case]]
+name = "method-runtime-exec-outside-request-log-only"
+kind = "attack"
+via = "sink"
+op = "beans.decode"
+args = { document = "<?xml version=\"1.0\"?><java><method class=\"java.lang.Runtime\" name=\"getRuntime\"><method name=\"exec\" id=\"process\"><array class=\"java.lang.String\" length=\"2\"><void index=\"0\"><string>touch</string></void><void index=\"1\"><string>{tmp}/xml-decoder-ran</string></void></array><method name=\"waitFor\" id=\"status\"/></method></method></java>", witness = "{tmp}/xml-decoder-ran" }
+control = { outside_request = "log" }
+
+[case.primary]
+effect = "log"
+rule = "xml_decoder_runtime"
+why = "outside_request is log: outside a request the finding is logged and the operation runs"
+
+[case.backport]
+effect = "log"
+rule = "xml_decoder_runtime_execution"
+why = "outside_request is log: outside a request the finding is logged and the operation runs"
+
+# The JDK refuses this one itself: sun.reflect.misc.MethodUtil, which <method> calls, does not invoke
+# Method.invoke (UnsupportedOperationException), so no process starts. The agent decides before that call.
+[[case]]
+name = "method-reflective-invoke-outside-request"
+kind = "attack"
+via = "sink"
+op = "beans.decode"
+args = { document = "<?xml version=\"1.0\"?><java><method class=\"java.lang.Class\" name=\"forName\"><string>java.lang.Runtime</string><method name=\"getMethod\" id=\"exec\"><string>exec</string><class>java.lang.String</class><method name=\"invoke\" id=\"process\"><method class=\"java.lang.Runtime\" name=\"getRuntime\"/><string>touch {tmp}/xml-decoder-ran</string><method name=\"waitFor\" id=\"status\"/></method></method></method></java>" }
+completes_with = ["UnsupportedOperationException"]
+
+[case.primary]
+effect = "block"
+rule = "xml_decoder_runtime"
+
+[case.backport]
+effect = "block"
+rule = "xml_decoder_runtime_execution"
+
+# The JDK refuses this one itself: sun.reflect.misc.MethodUtil, which <method> calls, does not invoke
+# Method.invoke (UnsupportedOperationException), so no process starts. The agent decides before that call.
+[[case]]
+name = "method-reflective-invoke-in-request"
+kind = "attack"
+via = "request-sink"
+op = "beans.decode"
+args = { document = "<?xml version=\"1.0\"?><java><method class=\"java.lang.Class\" name=\"forName\"><string>java.lang.Runtime</string><method name=\"getMethod\" id=\"exec\"><string>exec</string><class>java.lang.String</class><method name=\"invoke\" id=\"process\"><method class=\"java.lang.Runtime\" name=\"getRuntime\"/><string>touch {tmp}/xml-decoder-ran</string><method name=\"waitFor\" id=\"status\"/></method></method></method></java>" }
+completes_with = ["UnsupportedOperationException"]
+
+[case.request]
+method = "GET"
+uri = "/app/report"
+query = "id=7"
+headers = { User-Agent = "Mozilla/5.0 (X11; Linux x86_64) Firefox/128.0", Accept = "text/html" }
+
+[case.primary]
+effect = "block"
+rule = "xml_decoder_runtime"
+
+[case.backport]
+effect = "block"
+rule = "xml_decoder_runtime_execution"
+
+# The JDK refuses this one itself: sun.reflect.misc.MethodUtil, which <method> calls, does not invoke
+# Method.invoke (UnsupportedOperationException), so no process starts. The agent decides before that call.
+[[case]]
+name = "method-reflective-invoke-outside-request-log-only"
+kind = "attack"
+via = "sink"
+op = "beans.decode"
+args = { document = "<?xml version=\"1.0\"?><java><method class=\"java.lang.Class\" name=\"forName\"><string>java.lang.Runtime</string><method name=\"getMethod\" id=\"exec\"><string>exec</string><class>java.lang.String</class><method name=\"invoke\" id=\"process\"><method class=\"java.lang.Runtime\" name=\"getRuntime\"/><string>touch {tmp}/xml-decoder-ran</string><method name=\"waitFor\" id=\"status\"/></method></method></method></java>" }
+completes_with = ["UnsupportedOperationException"]
+control = { outside_request = "log" }
+
+[case.primary]
+effect = "log"
+rule = "xml_decoder_runtime"
+why = "outside_request is log: outside a request the attempt is logged, and the JDK then refuses the call"
+
+[case.backport]
+effect = "log"
+rule = "xml_decoder_runtime_execution"
+why = "outside_request is log: outside a request the attempt is logged, and the JDK then refuses the call"
+
+[[case]]
+name = "benign-method-static-and-instance"
+kind = "benign"
+via = "sink"
+op = "beans.decode"
+args = { document = "<?xml version=\"1.0\"?><java><method class=\"java.lang.Integer\" name=\"valueOf\"><string>7</string></method><object class=\"java.util.ArrayList\"><method name=\"add\" id=\"added\"><string>weekly</string></method></object></java>" }
+
+[case.primary]
+effect = "none"
+
+[case.backport]
+effect = "none"
+
+# Every <property> call site: an indexed set and get (no name: ArrayList.set(int, Object) and get(int)) and an
+# ordinary set and get (Date's time). returns is the decoded list, so a hook that lost or changed an operand fails it.
+[[case]]
+name = "benign-property-get-and-set"
+kind = "benign"
+via = "sink"
+op = "beans.decode"
+args = { document = "<?xml version=\"1.0\"?><java><object class=\"java.util.ArrayList\"><void method=\"add\"><string>a</string></void><void method=\"add\"><string>b</string></void><property index=\"1\"><string>B</string></property><property index=\"0\" id=\"first\"/><void method=\"add\"><object idref=\"first\"/></void><void method=\"add\"><object class=\"java.util.Date\"><property name=\"time\"><long>42</long></property><property name=\"time\" id=\"time\"/></object></void><void method=\"set\"><int>3</int><object idref=\"time\"/></void></object></java>", returns = "[a, B, a, 42]" }
+
+[case.primary]
+effect = "none"
+
+[case.backport]
+effect = "none"
+
+[[case]]
+name = "benign-field-read"
+kind = "benign"
+via = "sink"
+op = "beans.decode"
+args = { document = "<?xml version=\"1.0\"?><java><field class=\"java.lang.Integer\" name=\"MAX_VALUE\"/></java>" }
+
+[case.primary]
+effect = "none"
+
+[case.backport]
+effect = "none"
+
+# As java.beans.XMLEncoder writes an ordinary bean (here on Java 8).
+[[case]]
+name = "benign-xml-encoder-bean"
+kind = "benign"
+via = "sink"
+op = "beans.decode"
+args = { document = "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<java version=\"1.8.0_504\" class=\"java.beans.XMLDecoder\">\n <object class=\"javax.swing.DefaultBoundedRangeModel\">\n  <void property=\"maximum\">\n   <int>50</int>\n  </void>\n  <void property=\"value\">\n   <int>7</int>\n  </void>\n </object>\n</java>\n" }
+
+[case.primary]
+effect = "none"
+
+[case.backport]
+effect = "none"

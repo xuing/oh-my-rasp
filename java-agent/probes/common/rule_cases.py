@@ -9,7 +9,12 @@ engine does with it today:
     kind = "attack"                          # or "benign"
     via = "sink"                             # sink | request | request-sink
     op = "file.read"                         # the sink (absent when via = "request")
-    args = { path = "/etc/passwd" }          # the sink's arguments; see OPS
+    args = { path = "/etc/passwd" }          # the sink's arguments; see OPS. beans.decode also takes witness, a file
+                                             #   its document creates, observed on the file system: it must not exist
+                                             #   before the decode; after it, an absent file is looked for again for
+                                             #   up to half a second; the probe fails a case blocked while the file
+                                             #   exists, run while it does not, or with no observation. And returns:
+                                             #   String.valueOf of the first object decoded, else the decode fails
     completes_with = ["NamingException"]     # optional: exceptions (simple names, or a superclass's) that end
                                              #   the sink when it runs and the agent let it through
                                              #   (an exception that agent code threw never counts; leave it out
@@ -20,6 +25,7 @@ engine does with it today:
                                              #   from the control file at start, instead of standalone block mode
     setup = { files = ["{tmp}/a/b.txt"] }    # optional: files created before the JVM starts
     stubs = ["org.example.Gadget"]           # optional: empty serializable classes of these names on the class path
+    rule_events = 1                          # optional: on a block or log, the number of events of the matched rule
 
     [case.request]                           # via = request or request-sink
     method = "GET"
@@ -77,12 +83,12 @@ OPS = {
     "base64.decode": ({"input"}, {"api"}),
     "jdbc.connect": ({"url"}, set()),
     "sql.execute": ({"sql"}, set()),
-    "beans.decode": ({"document"}, set()),
+    "beans.decode": ({"document"}, {"witness", "returns"}),
     "java.compile": ({"source"}, {"api"}),
     "xpath.evaluate": ({"expression"}, set()),
 }
 CASE_KEYS = {"name", "kind", "via", "op", "args", "completes_with", "properties", "control", "setup", "stubs", "request",
-             *ENGINES}
+             "rule_events", *ENGINES}
 REQUEST_KEYS = {"method", "uri", "query", "params", "headers", "attributes", "body", "body_api", "body_chunk",
                 "body_read", "body_repeat"}
 BODY_READS = ("all", "content-length", "none")
@@ -115,6 +121,7 @@ class Case:
     control: dict = field(default_factory=dict)
     setup: dict = field(default_factory=dict)
     stubs: tuple[str, ...] = ()
+    rule_events: int | None = None
 
     @property
     def id(self) -> str:
@@ -233,6 +240,10 @@ def parse(file: str, text: str) -> tuple[list[Case], list[str]]:
                                                   and "." in n for n in stubs):
             errors.append(f"{where}: stubs is a list of binary class names in a package")
             stubs = []
+        rule_events = raw.get("rule_events")
+        if rule_events is not None and not (type(rule_events) is int and rule_events > 0):
+            errors.append(f"{where}: rule_events is a positive integer")
+            rule_events = None
         completes = raw.get("completes_with", [])
         if not isinstance(completes, list) or not all(isinstance(n, str) and n.isidentifier() for n in completes):
             errors.append(f"{where}: completes_with is a list of exception simple names")
@@ -248,7 +259,7 @@ def parse(file: str, text: str) -> tuple[list[Case], list[str]]:
                               request=request, expect=expect, completes_with=tuple(completes),
                               properties=dict(raw.get("properties", {})), control=dict(control),
                               setup=dict(raw.get("setup", {})),
-                              stubs=tuple(stubs)))
+                              stubs=tuple(stubs), rule_events=rule_events))
     if not data.get("case"):
         errors.append(f"{file}: holds no [[case]]")
     return cases, errors

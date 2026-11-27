@@ -133,6 +133,50 @@ backport = { effect = "none" }
                                   "command_common::shell: process.exec takes no args command"])
 
 
+class WitnessAndEventCountTest(unittest.TestCase):
+    """A named witness file must be observed and agree with the outcome; rule_events counts the matched rule."""
+
+    CASE = '''
+[[case]]
+name = "method-start"
+kind = "attack"
+via = "sink"
+op = "beans.decode"
+args = { document = "<java/>", witness = "{tmp}/ran" }
+rule_events = 1
+primary = { effect = "block", rule = "xml_decoder_runtime" }
+backport = { effect = "block", rule = "xml_decoder_runtime_execution" }
+'''
+
+    @classmethod
+    def setUpClass(cls):
+        cls.probe = _rule_cases_probe()
+        cases, errors = rule_cases.parse("xml_decoder_runtime", cls.CASE)
+        assert not errors, errors
+        cls.case = cases[0]
+
+    def actual(self, result, events=(("xml_decoder_runtime", "block"),)):
+        return self.probe.classify(self.case, {"op": "blocked", "ending": "blocked", **result}, list(events))
+
+    def test_a_block_with_the_witness_absent_matches(self):
+        self.assertEqual(self.actual({"witness": "absent"}).effect, "block")
+
+    def test_a_block_that_left_the_witness_or_reported_none_is_broken(self):
+        self.assertIn("exists", self.actual({"witness": "present"}).note)
+        self.assertIn("no observation", self.actual({}).note)
+        self.assertEqual(self.actual({}).effect, "broken")
+
+    def test_the_matched_rule_must_have_the_expected_number_of_events(self):
+        twice = (("xml_decoder_runtime", "log"), ("xml_decoder_runtime", "block"))
+        actual = self.actual({"witness": "absent"}, twice)
+        self.assertEqual(actual.effect, "broken")
+        self.assertIn("2 events of xml_decoder_runtime", actual.note)
+
+    def test_rule_events_is_a_positive_integer(self):
+        _, errors = rule_cases.parse("xml_decoder_runtime", self.CASE.replace("rule_events = 1", "rule_events = 0"))
+        self.assertIn("xml_decoder_runtime::method-start: rule_events is a positive integer", errors)
+
+
 class CatalogueTest(unittest.TestCase):
     def test_every_file_is_named_for_a_rule_id(self):
         for path in rule_cases.case_files():

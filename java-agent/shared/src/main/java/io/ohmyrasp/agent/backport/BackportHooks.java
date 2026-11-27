@@ -1456,33 +1456,86 @@ public final class BackportHooks {
     if (block) throw line().block("OhMyRASP blocked continuation after credential rejection");
   }
 
+  /**
+   * {@code java.beans.Expression.getValue()} and {@code Statement.execute()}, which every bean framework calls. The
+   * target type and the method name decide first whether an XMLDecoder rule can match; only then are the arguments
+   * read and the stack walked for XMLDecoder.
+   */
   public static void beforeJavaBeansStatement(Object statement) {
     if (inactive()) return;
-    beforeJavaBeansStatement(statement, stackTraceClassNames());
+    javaBeansStatement(statement, null);
   }
 
   public static void beforeJavaBeansStatement(Object statement, List<String> stackClassNames) {
     if (inactive()) return;
+    javaBeansStatement(statement, stackClassNames);
+  }
+
+  /** {@code stackClassNames} null: this thread's stack, walked only for an operation a rule can match. */
+  private static void javaBeansStatement(Object statement, List<String> stackClassNames) {
     try {
+      if (RaspRuntime.detectionOff()) return;
       Object target = invoke(statement, "getTarget");
       String methodName = invokeString(statement, "getMethodName");
-      Object arguments = invoke(statement, "getArguments");
-      Finding finding =
-          classifyXmlDecoderExpression(
-              javaBeansTargetType(target),
-              methodName,
-              javaBeansArguments(target, arguments),
-              stackClassNames);
-      emitXmlDecoderFinding(finding);
-    } catch (Throwable throwable) {
-      if (line().isBlock(throwable)) {
-        throw (RuntimeException) throwable;
+      String targetType = javaBeansTargetType(target);
+      if (!xmlDecoderCandidate(targetType, methodName)
+          || !isXmlDecoderStack(stackClassNames == null ? stackTraceClassNames() : stackClassNames)) {
+        return;
       }
+      emitXmlDecoderFinding(classifyXmlDecoderOperation(
+          targetType, methodName, javaBeansArguments(target, invoke(statement, "getArguments"))), "statement");
+    } catch (Throwable throwable) {
+      javaBeansHookFailed(throwable);
+    }
+  }
+
+  /**
+   * XMLDecoder's {@code <method>} and {@code <property>} elements, just before the decoder's own {@code
+   * MethodUtil.invoke(method, target, arguments)}: returns {@code arguments}, which that call then takes, also when
+   * the hook fails. The caller is a class of the decoder itself, so no stack is walked to find XMLDecoder.
+   */
+  public static Object[] beforeXmlDecoderInvoke(Object[] arguments, Method method, Object target) {
+    if (inactive()) return arguments;
+    try {
+      xmlDecoderOperation(target, method == null ? "" : method.getName(), arguments, "invoke");
+    } catch (Throwable throwable) {
+      javaBeansHookFailed(throwable);
+    }
+    return arguments;
+  }
+
+  /** XMLDecoder's {@code <new class="...">} element, before it looks up the constructor (as above, no stack walk). */
+  public static void beforeXmlDecoderNew(Class<?> type, Object[] arguments) {
+    if (inactive()) return;
+    try {
+      xmlDecoderOperation(type, "new", arguments, "new");
+    } catch (Throwable throwable) {
+      javaBeansHookFailed(throwable);
+    }
+  }
+
+  /** Called inside its entry's protected region: the target and the method decide before the arguments are read. */
+  private static void xmlDecoderOperation(Object target, String methodName, Object[] arguments, String observedAt) {
+    if (RaspRuntime.detectionOff()) return;
+    String targetType = javaBeansTargetType(target);
+    if (!xmlDecoderCandidate(targetType, methodName)) return;
+    emitXmlDecoderFinding(classifyXmlDecoderOperation(
+        targetType, methodName, javaBeansArguments(target, arguments)), observedAt);
+  }
+
+  /** Rethrows the line's block; reports anything else best-effort, and never throws itself. */
+  private static void javaBeansHookFailed(Throwable throwable) {
+    if (line().isBlock(throwable)) {
+      throw (RuntimeException) throwable;
+    }
+    try {
       if (Boolean.getBoolean("ohmyrasp.debug")) {
         // On a request with a body, the exception's message may quote it: its class alone.
         System.err.println(line().logPrefix + " JavaBeans hook failed: "
             + (requestHasBody() ? throwable.getClass().getName() : String.valueOf(throwable)));
       }
+    } catch (Throwable unreportable) {
+      // The failure may be the application's object, whose toString() throws in turn: reporting never fails the call.
     }
   }
 
@@ -2257,23 +2310,38 @@ public final class BackportHooks {
     return null;
   }
 
-  private static Finding classifyXmlDecoderExpression(
-      String targetType, String methodName, List<String> arguments, List<String> stackClassNames) {
-    if (!isXmlDecoderStack(stackClassNames)) {
-      return null;
-    }
+  /**
+   * Whether a rule of {@link #classifyXmlDecoderOperation} can match this target type and method name, whatever the
+   * arguments. Asked first: reading the arguments calls their {@code toString()} and {@code Iterable} methods.
+   */
+  private static boolean xmlDecoderCandidate(String targetType, String methodName) {
+    String normalizedTarget = normalizeJavaTypeName(targetType);
+    String normalizedMethod = lower(methodName);
+    return xmlDecoderRuntimePrimitive(normalizedTarget, normalizedMethod)
+        || xmlDecoderWriterConstruction(normalizedTarget, normalizedMethod);
+  }
+
+  private static boolean xmlDecoderRuntimePrimitive(String normalizedTarget, String normalizedMethod) {
+    return ("java.lang.ProcessBuilder".equals(normalizedTarget) && "start".equals(normalizedMethod))
+        || ("java.lang.Runtime".equals(normalizedTarget) && normalizedMethod.startsWith("exec"))
+        || ("java.lang.reflect.Method".equals(normalizedTarget) && "invoke".equals(normalizedMethod));
+  }
+
+  private static boolean xmlDecoderWriterConstruction(String normalizedTarget, String normalizedMethod) {
+    return ("java.io.PrintWriter".equals(normalizedTarget)
+            || "java.io.FileWriter".equals(normalizedTarget)
+            || "java.io.FileOutputStream".equals(normalizedTarget))
+        && ("new".equals(normalizedMethod) || "newinstance".equals(normalizedMethod));
+  }
+
+  /** An operation of an XMLDecoder object graph: target type, method name ({@code new} for a constructor), arguments. */
+  private static Finding classifyXmlDecoderOperation(String targetType, String methodName, List<String> arguments) {
     String normalizedTarget = normalizeJavaTypeName(targetType);
     String normalizedMethod = lower(methodName);
     List<String> safeArguments = arguments == null ? new ArrayList<String>() : arguments;
     String joinedArguments = joinList(safeArguments);
 
-    boolean processBuilderStart =
-        "java.lang.ProcessBuilder".equals(normalizedTarget) && "start".equals(normalizedMethod);
-    boolean runtimeExec =
-        "java.lang.Runtime".equals(normalizedTarget) && normalizedMethod.startsWith("exec");
-    boolean reflectiveInvoke =
-        "java.lang.reflect.Method".equals(normalizedTarget) && "invoke".equals(normalizedMethod);
-    if (processBuilderStart || runtimeExec || reflectiveInvoke) {
+    if (xmlDecoderRuntimePrimitive(normalizedTarget, normalizedMethod)) {
       return new Finding(
           rule("xml_decoder_runtime_execution"),
           95,
@@ -2282,12 +2350,7 @@ public final class BackportHooks {
           abbreviate(normalizedTarget + " " + methodName + " " + joinedArguments, 1200));
     }
 
-    boolean writerConstruction =
-        ("java.io.PrintWriter".equals(normalizedTarget)
-                || "java.io.FileWriter".equals(normalizedTarget)
-                || "java.io.FileOutputStream".equals(normalizedTarget))
-            && ("new".equals(normalizedMethod) || "newinstance".equals(normalizedMethod));
-    if (writerConstruction) {
+    if (xmlDecoderWriterConstruction(normalizedTarget, normalizedMethod)) {
       for (String argument : safeArguments) {
         String path = normalizePath(argument);
         if (ScriptFileWrite.isScriptFile(path)) {
@@ -2303,16 +2366,22 @@ public final class BackportHooks {
     return null;
   }
 
-  private static void emitXmlDecoderFinding(Finding finding) {
+  /**
+   * {@code observedAt} (statement, invoke, new) is part of the repeat key: a finding at an element handler and one at
+   * a statement are never one operation, so neither suppresses the other.
+   */
+  private static void emitXmlDecoderFinding(Finding finding, String observedAt) {
     if (finding == null) {
       return;
     }
     String action = shouldBlock(finding) ? "block" : "log";
-    String previous = LAST_LOGGED_XML_DECODER.get();
-    if (!"block".equals(action) && repeats(finding.detailValue, previous)) {
+    String key = observedAt + " " + finding.detailValue;
+    if (!"block".equals(action) && repeats(key, LAST_LOGGED_XML_DECODER.get())) {
       return;
     }
-    LAST_LOGGED_XML_DECODER.set(finding.detailValue);
+    LAST_LOGGED_XML_DECODER.set(key);
+    // Every observation path keeps the hook label XMLDecoder.Statement: the label is half of the (hook, algorithm)
+    // pair that the API's catalogue, stored policies and the console persist, so a new one belongs to the event format.
     appendEvent(finding, "XMLDecoder.Statement", action);
     if ("block".equals(action)) {
       throw line().block("OhMyRASP " + line().displayName + " blocked suspicious XMLDecoder object graph");
@@ -3910,13 +3979,17 @@ public final class BackportHooks {
     return target == null ? "" : target.getClass().getName();
   }
 
+  /**
+   * At most 3 levels below the arguments array and 64 elements taken from any array or Iterable (a null, a blank or a
+   * nested container counts as one), the primary's numbers too: an endless Iterable of skipped values ends.
+   */
   private static List<String> javaBeansArguments(Object target, Object arguments) {
     List<String> values = new ArrayList<String>();
-    collectJavaBeansArguments(values, arguments, 0);
+    int[] budget = {64};
+    collectJavaBeansArguments(values, arguments, 0, budget);
     if (target instanceof ProcessBuilder) {
-      List<String> command = ((ProcessBuilder) target).command();
-      for (String item : command) {
-        if (values.size() >= 64) {
+      for (String item : ((ProcessBuilder) target).command()) {
+        if (budget[0]-- <= 0) {
           break;
         }
         if (item != null && item.trim().length() > 0) {
@@ -3927,24 +4000,24 @@ public final class BackportHooks {
     return values;
   }
 
-  private static void collectJavaBeansArguments(List<String> values, Object value, int depth) {
-    if (value == null || depth > 3 || values.size() >= 64) {
+  private static void collectJavaBeansArguments(List<String> values, Object value, int depth, int[] budget) {
+    if (value == null || depth > 3 || budget[0] <= 0) {
       return;
     }
     if (value instanceof Iterable<?>) {
       for (Object item : (Iterable<?>) value) {
-        if (values.size() >= 64) {
-          break;
+        if (budget[0]-- <= 0) {
+          return;
         }
-        collectJavaBeansArguments(values, item, depth + 1);
+        collectJavaBeansArguments(values, item, depth + 1, budget);
       }
       return;
     }
     Class<?> valueClass = value.getClass();
     if (valueClass.isArray()) {
       int length = Array.getLength(value);
-      for (int i = 0; i < length && values.size() < 64; i++) {
-        collectJavaBeansArguments(values, Array.get(value, i), depth + 1);
+      for (int i = 0; i < length && budget[0]-- > 0; i++) {
+        collectJavaBeansArguments(values, Array.get(value, i), depth + 1, budget);
       }
       return;
     }
