@@ -2619,7 +2619,7 @@ public final class OhMyRaspHooks {
     // Blocking is decided. Nothing that fails while the event is built, redacted or recorded, or
     // while the response is redirected, stops the block: the event is lost, or the block is not
     // redirected.
-    Detection blocked = publicView(recorded);
+    Detection blocked = withoutUrlCredentials(publicView(recorded));
     try {
       blocked = report(recorded, started, ruleEvaluationUs);
     } catch (Throwable reportingFailure) {
@@ -2635,8 +2635,10 @@ public final class OhMyRaspHooks {
   }
 
   /**
-   * Records {@code event} without the evidence a response finding must not carry and without body text (see
-   * {@link #publicView}); returns what was recorded.
+   * Records {@code event} without the evidence a response finding must not carry, without body text (see
+   * {@link #publicView}) and then without URL credentials (see {@link #withoutUrlCredentials}); returns what was
+   * recorded, as the block exception carries it. The body is scrubbed first: a body value inside a URL becomes its
+   * field's name and the URL's own credentials are still found around it.
    */
   private static Detection report(Detection event, long started, long ruleEvaluationUs) {
     Detection recorded = publicView(event);
@@ -2647,7 +2649,7 @@ public final class OhMyRaspHooks {
           recorded.confidence(), recorded.message(), RequestContext.empty(), evidence);
     }
     events().record(withoutUrlCredentials(redactHttpObservation(recorded)), elapsedMicros(started), ruleEvaluationUs);
-    return recorded;
+    return withoutUrlCredentials(recorded);
   }
 
   /**

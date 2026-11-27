@@ -1,5 +1,6 @@
 package io.ohmyrasp.agent.hook;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -7,6 +8,8 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import io.ohmyrasp.agent.log.JsonEventLogger;
 import java.io.ByteArrayOutputStream;
 import java.io.PrintStream;
+import java.net.URL;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import org.junit.jupiter.api.AfterEach;
@@ -46,6 +49,51 @@ final class OhMyRaspHooksUrlCredentialsTest {
     assertTrue(spooled.contains("jdbc_h2_init"), spooled);
     assertTrue(spooled.contains("RUNSCRIPT FROM 'http://127.0.0.1:1/init.sql'"), "the evidence stays: " + spooled);
     assertFalse(spooled.contains(SENTINEL), spooled);
+  }
+
+  /**
+   * Both rewrites of an event's details, in their order: the body's value is named first (fix/body), then the URL's
+   * own credentials are removed around that name (fix/scope). The application builds a URL with its credentials to
+   * a host the request body chose; the event and the block both carry the field's name, and neither the host nor a
+   * credential.
+   */
+  @Test
+  void aBodyValueInsideAUrlWithCredentialsIsNamedAndTheCredentialsAreStillRemoved(@TempDir Path dir) throws Exception {
+    Path log = dir.resolve("events.jsonl");
+    OhMyRaspHooks.reportTo(logger(log));
+    System.setProperty("ohmyrasp.block", "true");
+    String host = "10.20.30.40";
+    byte[] body = ("{\"host\":\"" + host + "\"}").getBytes(StandardCharsets.UTF_8);
+    OhMyRaspHooks.enterHttpRequest(new OhMyRaspHooksRequestBodyTest.BodyRequest("/app/ping", "application/json",
+        body.length), new OhMyRaspHooksPolicyTest.FakeResponse());
+    try {
+      Object stream = new Object();
+      OhMyRaspHooks.exitBodyRead(body.length, OhMyRaspHooks.enterBodyRead(stream), body, 0);
+      URL url = new URL("http://reporter:" + SENTINEL + "@" + host + "/hook?password=" + SENTINEL);
+
+      OhMyRaspBlockException blocked = assertThrows(OhMyRaspBlockException.class, () -> OhMyRaspHooks.beforeUrlOpen(url));
+
+      String expected = "http://[redacted]@[body:host]/hook?password=[redacted]";
+      String spooled = Files.readString(log);
+      assertTrue(spooled.contains("\"url\":\"" + expected + "\""), spooled);
+      assertFalse(spooled.contains(SENTINEL), spooled);
+      assertFalse(spooled.contains(host), spooled);
+      assertEquals(expected, blocked.detection().details().get("url"), "the block carries what the event carries");
+      String shown = blocked.detection().details() + " " + blocked.getMessage();
+      assertFalse(shown.contains(SENTINEL), shown);
+      assertFalse(shown.contains(host), shown);
+
+      // The same in a JDBC URL whose script URL the body's host is inside, as the backports test it.
+      Files.delete(log);
+      assertThrows(OhMyRaspBlockException.class, () -> OhMyRaspHooks.beforeJdbcConnect("jdbc:h2:mem:reports;PASSWORD="
+          + SENTINEL + ";INIT=RUNSCRIPT FROM 'http://loader:" + SENTINEL + "@" + host + "/init.sql'"));
+      spooled = Files.readString(log);
+      assertTrue(spooled.contains("RUNSCRIPT FROM 'http://[redacted]@[body:host]/init.sql'"), spooled);
+      assertFalse(spooled.contains(SENTINEL), spooled);
+      assertFalse(spooled.contains(host), spooled);
+    } finally {
+      OhMyRaspHooks.exitHttpRequest();
+    }
   }
 
   private static JsonEventLogger logger(Path log) {

