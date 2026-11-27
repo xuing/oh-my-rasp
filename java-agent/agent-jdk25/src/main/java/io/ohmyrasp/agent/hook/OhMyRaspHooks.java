@@ -80,14 +80,19 @@ public final class OhMyRaspHooks {
       StackWalker.getInstance(
           Set.of(StackWalker.Option.RETAIN_CLASS_REFERENCE, StackWalker.Option.SHOW_REFLECT_FRAMES));
 
-  // The logger emit reports to in place of the shared one; only tests set it.
+  // The logger emit reports to in place of the shared one; tests set it, and Warmup while it runs.
   private static volatile JsonEventLogger reporter;
 
   private OhMyRaspHooks() {}
 
-  /** Makes emit report to {@code logger}, or to the shared logger again when it is null. Tests only. */
+  /** Makes emit report to {@code logger}, or to the shared logger again when it is null. Tests and Warmup. */
   static void reportTo(JsonEventLogger logger) {
     reporter = logger;
+  }
+
+  /** The logger emit reports to in place of the shared one, or null. */
+  static JsonEventLogger reportingTo() {
+    return reporter;
   }
 
   private static JsonEventLogger events() {
@@ -162,7 +167,7 @@ public final class OhMyRaspHooks {
     } catch (Throwable throwable) {
       quiet("enterHttpRequest", throwable);
     }
-    JsonEventLogger.get().sampleHookLatency("http_request", elapsedMicros(started));
+    events().sampleHookLatency("http_request", elapsedMicros(started));
   }
 
   private static void inspectRequest(RequestContext request) {
@@ -469,7 +474,7 @@ public final class OhMyRaspHooks {
     } catch (Throwable throwable) {
       quiet("requestBody", throwable);
     }
-    JsonEventLogger.get().sampleHookLatency("http_request_body", elapsedMicros(started));
+    events().sampleHookLatency("http_request_body", elapsedMicros(started));
   }
 
   /** The finding as an event carries it: about the request itself, whose parameters hold no body value. */
@@ -2581,7 +2586,11 @@ public final class OhMyRaspHooks {
   }
 
   private static void quiet(String hook, Throwable throwable) {
-    JsonEventLogger.get().reportError(hook, throwable);
+    JsonEventLogger events = events();
+    if (events.discards()) {
+      return; // the warm-up's logger: nothing is reported anywhere
+    }
+    events.reportError(hook, throwable);
     if (Boolean.getBoolean("ohmyrasp.debug")) {
       System.err.println("[OHMYRASP] hook failure in " + hook + ": " + throwable);
     }
