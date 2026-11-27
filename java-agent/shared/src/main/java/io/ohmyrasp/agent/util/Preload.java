@@ -30,6 +30,34 @@ public final class Preload {
    */
   public static int classes(File agentJar, String module, ClassLoader loader) throws IOException {
     List<String> names = index(agentJar, module);
+    load(names, agentJar, loader);
+    return names.size();
+  }
+
+  /**
+   * Reads the list of {@code module} and checks that the JAR holds a class file for every name on it, loading
+   * nothing. A line calls it before it starts anything, so a JAR without its list, or with a list its classes do
+   * not match, fails the start while there is nothing yet to undo; {@link #load} then loads the names.
+   */
+  public static List<String> verified(File agentJar, String module) throws IOException {
+    List<String> names = index(agentJar, module);
+    JarFile jar = new JarFile(agentJar);
+    try {
+      for (int i = 0; i < names.size(); i++) {
+        String path = names.get(i).replace('.', '/') + ".class";
+        if (jar.getEntry(path) == null) {
+          throw new IllegalStateException(agentJar + " lists " + names.get(i) + " in " + INDEX + module
+              + ".txt but holds no " + path);
+        }
+      }
+    } finally {
+      jar.close();
+    }
+    return names;
+  }
+
+  /** Loads and initialises each name through {@code loader} (null for the bootstrap loader); throws on the first failure. */
+  public static void load(List<String> names, File agentJar, ClassLoader loader) {
     for (int i = 0; i < names.size(); i++) {
       try {
         Class.forName(names.get(i), true, loader);
@@ -37,7 +65,6 @@ public final class Preload {
         throw new IllegalStateException("cannot load " + names.get(i) + " from " + agentJar + ": " + failure, failure);
       }
     }
-    return names.size();
   }
 
   static List<String> index(File agentJar, String module) throws IOException {
