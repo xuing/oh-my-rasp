@@ -78,14 +78,15 @@ public final class SpringProcessVisitor {
       };
     }
     if (parse || init) {
-      return new ScopedMethodAdvice(Opcodes.ASM9, mv, access, name, desc) {
+      return new ScopedMethodAdvice(Opcodes.ASM9, mv, access, name, desc, true) {
         @Override protected void enterDispatch() {
           loadArg(parse ? 0 : 1);
           loadArg(parse ? 1 : 2);
-          invokeStatic(TRACE, Method.getMethod(parse ? "void enterParse(org.xml.sax.InputSource,Object)" : "void enterInit(Object,Object)"));
+          invokeStatic(TRACE, Method.getMethod(parse ? "Object enterParse(org.xml.sax.InputSource,Object)" : "Object enterInit(Object,Object)"));
         }
         @Override protected void exitDispatch() {
-          invokeStatic(TRACE, Method.getMethod(parse ? "void exitParse()" : "void exitInit()"));
+          loadToken();
+          invokeStatic(TRACE, Method.getMethod(parse ? "void exitParse(Object)" : "void exitInit(Object)"));
         }
       };
     }

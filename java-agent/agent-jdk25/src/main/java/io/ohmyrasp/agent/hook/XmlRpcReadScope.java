@@ -10,7 +10,13 @@ public final class XmlRpcReadScope {
 
   private XmlRpcReadScope(XmlRpcReadScope parent) { this.parent = parent; }
 
-  public static void enter() { ACTIVE.set(new XmlRpcReadScope(ACTIVE.get())); }
+  /** Opens the scope of one parse; returns it as the token {@link #exit} takes, or null while the hooks are off. */
+  public static Object enter() {
+    if (HookActivation.inactive()) return null;
+    XmlRpcReadScope scope = new XmlRpcReadScope(ACTIVE.get());
+    ACTIVE.set(scope);
+    return scope;
+  }
 
   static void reading(ObjectInputStream stream) {
     XmlRpcReadScope active = ACTIVE.get();
@@ -25,9 +31,11 @@ public final class XmlRpcReadScope {
     return false;
   }
 
-  public static void exit() {
-    XmlRpcReadScope active = ACTIVE.get();
-    if (active.parent == null) ACTIVE.remove();
-    else ACTIVE.set(active.parent);
+  /** Closes the scope {@code token} opened: the thread's scope is its parent again. Null opened none. */
+  public static void exit(Object token) {
+    if (token == null) return;
+    XmlRpcReadScope parent = ((XmlRpcReadScope) token).parent;
+    if (parent == null) ACTIVE.remove();
+    else ACTIVE.set(parent);
   }
 }

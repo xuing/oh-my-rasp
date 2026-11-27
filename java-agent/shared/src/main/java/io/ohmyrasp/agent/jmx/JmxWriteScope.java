@@ -1,5 +1,6 @@
 package io.ohmyrasp.agent.jmx;
 
+import io.ohmyrasp.agent.hook.HookActivation;
 import java.util.Collections;
 import java.util.List;
 
@@ -13,17 +14,26 @@ public final class JmxWriteScope {
 
   private JmxWriteScope(JmxWriteScope parent) { this.parent = parent; }
 
-  public static void enter() { CURRENT.set(new JmxWriteScope(CURRENT.get())); }
+  /** Opens the scope of one invocation; returns it as the token {@link #exit} takes, or null while the hooks are off. */
+  public static Object enter() {
+    if (HookActivation.inactive()) return null;
+    JmxWriteScope scope = new JmxWriteScope(CURRENT.get());
+    CURRENT.set(scope);
+    return scope;
+  }
 
   public static void clearArguments() {
+    if (HookActivation.inactive()) return;
     JmxWriteScope scope = CURRENT.get();
     if (scope != null) scope.arguments = Collections.emptyList();
   }
 
-  public static void exit() {
-    JmxWriteScope scope = CURRENT.get();
-    if (scope == null || scope.parent == null) CURRENT.remove();
-    else CURRENT.set(scope.parent);
+  /** Closes the scope {@code token} opened: the thread's scope is its parent again. Null opened none. */
+  public static void exit(Object token) {
+    if (token == null) return;
+    JmxWriteScope parent = ((JmxWriteScope) token).parent;
+    if (parent == null) CURRENT.remove();
+    else CURRENT.set(parent);
   }
 
   public static void select(String bean, String operation, List<String> arguments) {

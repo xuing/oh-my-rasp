@@ -1,5 +1,6 @@
 package io.ohmyrasp.agent.sql;
 
+import io.ohmyrasp.agent.hook.HookActivation;
 import java.lang.ref.ReferenceQueue;
 import java.lang.ref.WeakReference;
 import java.util.BitSet;
@@ -127,33 +128,39 @@ public final class MyBatisSqlTrace {
   }
 
   public static void characters(String source, char[] chars) {
+    if (HookActivation.inactive()) return;
     copy(source, 0, chars.length, chars, 0);
   }
 
   /** GenericTokenParser copies precisely this slice around a token it expands or binds. */
   public static StringBuilder appendSlice(StringBuilder dest, char[] chars, int start, int length) {
+    if (HookActivation.inactive()) return dest.append(chars, start, length);
     dest.append(chars, start, length);
     copy(chars, start, length, dest, dest.length() - length);
     return dest;
   }
 
   public static StringBuilder appendPiece(StringBuilder dest, String piece) {
+    if (HookActivation.inactive()) return dest.append(piece);
     dest.append(piece);
     if (piece != null) copy(piece, 0, piece.length(), dest, dest.length() - piece.length());
     return dest;
   }
 
   public static StringJoiner joinPiece(StringJoiner dest, CharSequence piece) {
+    if (HookActivation.inactive()) return dest.add(piece);
     dest.add(piece);
     if (piece instanceof String) copy(piece, 0, piece.length(), dest, dest.length() - piece.length());
     return dest;
   }
 
   public static void built(Object builder, String result) {
+    if (HookActivation.inactive()) return;
     copy(builder, 0, result.length(), result, 0);
   }
 
   public static void trimmed(String source, String result) {
+    if (HookActivation.inactive()) return;
     if (source == result || get(source) == null) return;
     int start = 0;
     while (start < source.length() && source.charAt(start) <= ' ') start++;
@@ -161,10 +168,12 @@ public final class MyBatisSqlTrace {
   }
 
   public static void initialized(StringBuilder builder, String text) {
+    if (HookActivation.inactive()) return;
     copy(text, 0, text.length(), builder, 0);
   }
 
   public static StringBuilder delete(StringBuilder builder, int start, int end) {
+    if (HookActivation.inactive()) return builder.delete(start, end);
     int oldLength = builder.length();
     builder.delete(start, end);
     relocateTail(builder, Math.min(end, oldLength), start, oldLength);
@@ -172,6 +181,7 @@ public final class MyBatisSqlTrace {
   }
 
   public static StringBuilder insert(StringBuilder builder, int start, String text) {
+    if (HookActivation.inactive()) return builder.insert(start, text);
     int oldLength = builder.length();
     builder.insert(start, text);
     int added = builder.length() - oldLength;
@@ -193,28 +203,37 @@ public final class MyBatisSqlTrace {
   }
 
   public static void compiled(Object boundSql, String sql) {
+    if (HookActivation.inactive()) return;
     Marks marks = get(sql);
     if (marks == null || !marks.candidate) return;
     marks.compiled = true;
     if (boundSql != null) writable(boundSql).original = new WeakReference<String>(sql);
   }
 
-  public static void enterStatement(Object boundSql) {
+  /**
+   * Enters one statement of a mapped {@code BoundSql}: returns the use it opened, as the token {@link #exitStatement}
+   * takes, or null when it opened none (the hooks are off, or nothing traces this SQL).
+   */
+  public static Object enterStatement(Object boundSql) {
+    if (HookActivation.inactive()) return null;
     Use parent = ACTIVE.get();
     Marks owner = get(boundSql);
-    if (parent != null || (owner != null && owner.original != null)) {
-      ACTIVE.set(new Use(parent, boundSql, owner == null ? null : owner.original));
-    }
+    if (parent == null && (owner == null || owner.original == null)) return null;
+    Use use = new Use(parent, boundSql, owner == null ? null : owner.original);
+    ACTIVE.set(use);
+    return use;
   }
 
-  public static void exitStatement() {
-    Use current = ACTIVE.get();
-    if (current == null) return;
-    if (current.parent == null) ACTIVE.remove();
-    else ACTIVE.set(current.parent);
+  /** Leaves the statement {@code token} entered: the thread's use is its parent again. Null entered none. */
+  public static void exitStatement(Object token) {
+    if (token == null) return;
+    Use parent = ((Use) token).parent;
+    if (parent == null) ACTIVE.remove();
+    else ACTIVE.set(parent);
   }
 
   public static void returnedSql(Object boundSql, String result) {
+    if (HookActivation.inactive()) return;
     Use current = ACTIVE.get();
     if (current != null && current.owner == boundSql) current.returned = result;
   }
@@ -254,6 +273,7 @@ public final class MyBatisSqlTrace {
 
   /** Preserve offsets only when the whole observed output matches the tokenized input. */
   public static void compacted(String input, String result) {
+    if (HookActivation.inactive()) return;
     Marks source = get(input);
     if (source == null || input == result || result.isEmpty()) return;
     BitSet offsets = new BitSet();

@@ -137,21 +137,21 @@ final class OutsideRequestTest {
     assertTrue(AgentRuntime.get().apply("{\"mode\":\"block\",\"outside_request\":\"log\"}"));
     Path report = Files.writeString(dir.resolve("weekly.txt"), "weekly");
     Object source = new Object();
-    io.ohmyrasp.agent.xml.AttachmentFileRead.beginReference(report.toUri().toString(), null);
+    Object reference = io.ohmyrasp.agent.xml.AttachmentFileRead.beginReference(report.toUri().toString(), null);
     try {
       io.ohmyrasp.agent.xml.AttachmentFileRead.created(source, report.toUri().toURL());
     } finally {
-      io.ohmyrasp.agent.xml.AttachmentFileRead.endReference();
+      io.ohmyrasp.agent.xml.AttachmentFileRead.endReference(reference);
     }
     var thrown = new java.util.concurrent.atomic.AtomicReference<Throwable>();
     Thread reader = new Thread(() -> {
-      io.ohmyrasp.agent.xml.AttachmentFileRead.beginRead(source);
+      Object read = io.ohmyrasp.agent.xml.AttachmentFileRead.beginRead(source);
       try {
         OhMyRaspHooks.beforeFileRead(report.toString());
       } catch (Throwable failure) {
         thrown.set(failure);
       } finally {
-        io.ohmyrasp.agent.xml.AttachmentFileRead.endRead();
+        io.ohmyrasp.agent.xml.AttachmentFileRead.endRead(read);
       }
     }, "attachment-reader");
     reader.start();

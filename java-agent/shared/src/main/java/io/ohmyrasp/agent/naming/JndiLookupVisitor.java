@@ -36,12 +36,15 @@ public final class JndiLookupVisitor {
     boolean string = desc.startsWith("(" + STRING + ")");
     boolean named = desc.startsWith("(Ljavax/naming/Name;)");
     if (INITIAL.equals(owner) && lookup && (string || named) && desc.endsWith(")Ljava/lang/Object;")) {
-      return new ScopedMethodAdvice(Opcodes.ASM9, mv, access, name, desc) {
+      return new ScopedMethodAdvice(Opcodes.ASM9, mv, access, name, desc, true) {
         @Override protected void enterDispatch() {
           loadThis(); loadArg(0); push("InitialContext." + name);
-          invokeStatic(ROUTE, Method.getMethod("void enter(Object, Object, String)"));
+          invokeStatic(ROUTE, Method.getMethod("Object enter(Object, Object, String)"));
         }
-        @Override protected void exitDispatch() { invokeStatic(ROUTE, Method.getMethod("void exit()")); }
+        @Override protected void exitDispatch() {
+          loadToken();
+          invokeStatic(ROUTE, Method.getMethod("void exit(Object)"));
+        }
         @Override public void visitMethodInsn(int op, String callee, String method, String signature, boolean itf) {
           if (op == INVOKEINTERFACE && "javax/naming/Context".equals(callee) && name.equals(method) && desc.equals(signature)) {
             dup2();

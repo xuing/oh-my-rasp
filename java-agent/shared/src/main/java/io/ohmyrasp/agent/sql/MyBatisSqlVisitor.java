@@ -42,14 +42,15 @@ public final class MyBatisSqlVisitor {
             || desc.equals("(Ljava/sql/Connection;)Ljava/sql/Statement;")))
         || (SIMPLE_HANDLER.equals(owner) && desc.startsWith("(Ljava/sql/Statement;")
           && (name.equals("batch") || name.equals("query") || name.equals("queryCursor") || name.equals("update")))) {
-      return new ScopedMethodAdvice(Opcodes.ASM9, delegate, access, name, desc) {
+      return new ScopedMethodAdvice(Opcodes.ASM9, delegate, access, name, desc, true) {
         @Override protected void enterDispatch() {
           loadThis();
           getField(Type.getObjectType(BASE_HANDLER), "boundSql", Type.getObjectType(BOUND));
-          mv.visitMethodInsn(INVOKESTATIC, TRACE, "enterStatement", "(Ljava/lang/Object;)V", false);
+          mv.visitMethodInsn(INVOKESTATIC, TRACE, "enterStatement", "(Ljava/lang/Object;)Ljava/lang/Object;", false);
         }
         @Override protected void exitDispatch() {
-          mv.visitMethodInsn(INVOKESTATIC, TRACE, "exitStatement", "()V", false);
+          loadToken();
+          mv.visitMethodInsn(INVOKESTATIC, TRACE, "exitStatement", "(Ljava/lang/Object;)V", false);
         }
       };
     }

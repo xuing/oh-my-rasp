@@ -11,18 +11,19 @@ public final class FacadeReadVisitor {
   private FacadeReadVisitor() {}
   public static MethodVisitor wrap(MethodVisitor visitor, int access, String name, String descriptor,
       final Type hooks, final boolean channel) {
-    return new ScopedMethodAdvice(Opcodes.ASM9, visitor, access, name, descriptor) {
+    return new ScopedMethodAdvice(Opcodes.ASM9, visitor, access, name, descriptor, true) {
       @Override protected void enterDispatch() {
         loadArg(0);
         if (channel) {
           loadArg(1);
-          invokeStatic(hooks, Method.getMethod("void beginNioChannel(Object, Object)"));
+          invokeStatic(hooks, Method.getMethod("Object beginNioChannel(Object, Object)"));
         } else {
-          invokeStatic(hooks, Method.getMethod("void beginNioRead(Object)"));
+          invokeStatic(hooks, Method.getMethod("Object beginNioRead(Object)"));
         }
       }
       @Override protected void exitDispatch() {
-        invokeStatic(Type.getType(HostReadPath.class), Method.getMethod("void endFacade()"));
+        loadToken();
+        invokeStatic(Type.getType(HostReadPath.class), Method.getMethod("void endFacade(Object)"));
       }
     };
   }

@@ -16,7 +16,7 @@ final class HostFileMutationDetectorTest {
   void correlatesManagedArgumentsWithAnObservedWrite() {
     String selected = "/reports/weekly.jsp";
     for (String argument : List.of(selected, "<report destination=\"" + selected + "\"/>")) {
-      io.ohmyrasp.agent.jmx.JmxWriteScope.enter();
+      Object opened = io.ohmyrasp.agent.jmx.JmxWriteScope.enter();
       try {
         var values = List.of(argument);
         io.ohmyrasp.agent.jmx.JmxWriteScope.select("reports:type=Writer", "publish", values);
@@ -27,7 +27,7 @@ final class HostFileMutationDetectorTest {
         assertAlgorithm(detection, "jmx_file_write");
         assertEquals("selected_write_open", detection.get().details().get("decision_basis"));
       } finally {
-        io.ohmyrasp.agent.jmx.JmxWriteScope.exit();
+        io.ohmyrasp.agent.jmx.JmxWriteScope.exit(opened);
       }
     }
   }

@@ -128,10 +128,10 @@ public final class MultipartFilenameVisitor {
     } else return visitor;
     // New implementation coverage is limited to archive authorization, which has an explicit deployment policy.
     final boolean archiveOnly = !known || (!backport && kind == MultipartFilename.SPRING);
-    return new ScopedMethodAdvice(Opcodes.ASM9, visitor, access, name, descriptor) {
+    return new ScopedMethodAdvice(Opcodes.ASM9, visitor, access, name, descriptor, true) {
       @Override protected void enterDispatch() {
         loadThis(); push(kind);
-        invokeStatic(SCOPE, Method.getMethod("void enter(Object, int)"));
+        invokeStatic(SCOPE, Method.getMethod("Object enter(Object, int)"));
       }
       @Override public void visitInsn(int opcode) {
         if (opcode == ARETURN) {
@@ -141,7 +141,8 @@ public final class MultipartFilenameVisitor {
         super.visitInsn(opcode);
       }
       @Override protected void exitDispatch() {
-        invokeStatic(SCOPE, Method.getMethod("void exit()"));
+        loadToken();
+        invokeStatic(SCOPE, Method.getMethod("void exit(Object)"));
       }
     };
   }

@@ -170,8 +170,8 @@ public final class Java11RaspHooks {
     BackportHooks.captureDirectoryWalk(walker, path);
   }
 
-  public static void beginDirectoryVisit(Object walker, java.nio.file.Path path) {
-    BackportHooks.beginDirectoryVisit(walker, path);
+  public static Object beginDirectoryVisit(Object walker, java.nio.file.Path path) {
+    return BackportHooks.beginDirectoryVisit(walker, path);
   }
 
   public static void afterFileList(String[] entries, String path) {
@@ -223,12 +223,12 @@ public final class Java11RaspHooks {
     BackportHooks.beforeUnixFileOpen(path, read, directoryFd, noFollowFinal, creatingNew);
   }
 
-  public static void beginNioRead(Object path) {
-    BackportHooks.beginNioRead(path);
+  public static Object beginNioRead(Object path) {
+    return BackportHooks.beginNioRead(path);
   }
 
-  public static void beginNioChannel(Object path, Object options) {
-    BackportHooks.beginNioChannel(path, options);
+  public static Object beginNioChannel(Object path, Object options) {
+    return BackportHooks.beginNioChannel(path, options);
   }
 
   public static void beforeNioFileRead(Object path) {
@@ -423,8 +423,8 @@ public final class Java11RaspHooks {
     BackportHooks.rethrowIfBlock(throwable);
   }
 
-  public static void beginAttachmentReference(String id) {
-    BackportHooks.beginAttachmentReference(id);
+  public static Object beginAttachmentReference(String id) {
+    return BackportHooks.beginAttachmentReference(id);
   }
 
   public static void beforeXmlEntity(String name, Object source) {

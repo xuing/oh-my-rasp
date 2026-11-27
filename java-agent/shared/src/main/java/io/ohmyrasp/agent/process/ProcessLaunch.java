@@ -1,5 +1,7 @@
 package io.ohmyrasp.agent.process;
 
+import io.ohmyrasp.agent.hook.HookActivation;
+
 /** Preserve which public Runtime overload led to a launch without reading a mutable builder or retaining argv. */
 public final class ProcessLaunch {
   private static final ThreadLocal<Entry> ENTRIES = new ThreadLocal<Entry>();
@@ -16,14 +18,20 @@ public final class ProcessLaunch {
     }
   }
 
-  public static void enter(boolean stringMethod) {
-    ENTRIES.set(new Entry(ENTRIES.get(), stringMethod));
+  /** Records one Runtime.exec call; returns it as the token {@link #exit} takes, or null while the hooks are off. */
+  public static Object enter(boolean stringMethod) {
+    if (HookActivation.inactive()) return null;
+    Entry entry = new Entry(ENTRIES.get(), stringMethod);
+    ENTRIES.set(entry);
+    return entry;
   }
 
-  public static void exit() {
-    Entry current = ENTRIES.get();
-    if (current == null || current.parent == null) ENTRIES.remove();
-    else ENTRIES.set(current.parent);
+  /** Ends the call {@code token} recorded: the thread's entry is its parent again. Null recorded none. */
+  public static void exit(Object token) {
+    if (token == null) return;
+    Entry parent = ((Entry) token).parent;
+    if (parent == null) ENTRIES.remove();
+    else ENTRIES.set(parent);
   }
 
   public static String api() {
