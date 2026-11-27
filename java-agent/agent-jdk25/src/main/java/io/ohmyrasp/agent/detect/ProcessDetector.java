@@ -55,7 +55,10 @@ public final class ProcessDetector {
     String expressionEngine = expressionEngineFromStack(stackClassNames);
     if (!expressionEngine.isBlank()) {
       String algorithm = expressionRuntimeAlgorithm(expressionEngine);
-      // The frame says who started the process, not what it runs: the backports' basis for the same evidence.
+      // The backports' bases for the same evidence: an expression language reaching the process API is expression
+      // injection (intrinsic); a general-purpose script engine starts processes on purpose too (follows the setting).
+      boolean script = "groovy".equals(expressionEngine) || "javascript".equals(expressionEngine)
+          || "script".equals(expressionEngine);
       return Optional.of(
           Detection.log(
               expressionEngine,
@@ -63,7 +66,8 @@ public final class ProcessDetector {
               95,
               "Command execution reached from dynamic expression evaluation",
               request,
-              Map.of("command", abbreviate(joined), "decision_basis", "expression_evaluation")));
+              Map.of("command", abbreviate(joined),
+                  "decision_basis", script ? "script_evaluation" : "expression_evaluation")));
     }
     String executableListener = SolrExecutableListener.frame(stackClassNames);
     if (executableListener != null) {

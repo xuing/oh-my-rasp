@@ -31,6 +31,9 @@ final class OutsideRequestScopeTest {
       {"command_common", null},
       {"command_execution_exploit_primitive", "command_arguments"},
       {"command_execution_exploit_primitive", "object_deserialization"},
+      // An expression language reaching the process API: Struts OGNL in a filter, SpEL under WebFlux.
+      {"spel_runtime", "expression_evaluation"},
+      {"command_execution_exploit_primitive", "expression_evaluation"},
       {"command_execution_exploit_primitive", "xml_deserialization"},
       {"command_config_injection", "configuration_launcher"},
       {"command_execution_shell_meta", "configuration_launcher"},
@@ -57,11 +60,6 @@ final class OutsideRequestScopeTest {
       {"classloader_remote", "url_class_definition"},
       {"classloader_remote_codebase", null},
       {"spring_remote_config", null},
-      {"script_runtime", "expression_evaluation"},
-      {"spel_runtime", "expression_evaluation"},
-      {"command_execution_exploit_primitive", "expression_evaluation"},
-      {"command_execution_exploit_primitive", "database_stack"},
-      {"command_execution_shell_meta", "scheduled_script"},
     };
     for (String[] row : operation) {
       assertEquals(OutsideRequest.OPERATION, OutsideRequest.scope(row[0], row[1]), row[0] + "/" + row[1]);
@@ -83,6 +81,11 @@ final class OutsideRequestScopeTest {
       {"command_dnslog", null},
       {"command_config_listener", null},
       {"command_execution_exploit_primitive", "configured_listener"},
+      // General-purpose scripts, database routines and scheduled shell jobs start processes on purpose too.
+      {"script_runtime", "script_evaluation"},
+      {"command_execution_exploit_primitive", "script_evaluation"},
+      {"command_execution_exploit_primitive", "database_stack"},
+      {"command_execution_shell_meta", "scheduled_script"},
       {"archive_traversal", null},
       // Expression text with a runtime primitive (CodeExecutionDetector), not an evaluator frame alone.
       {"spel_runtime", null},

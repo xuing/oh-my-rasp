@@ -15,11 +15,12 @@ import java.util.Locale;
  *
  * <ul>
  *   <li>{@link #INTRINSIC}: the argument is the exploit itself (a listed gadget class in a stream, a JNDI name with a
- *       remote URL, the Base64 tail-underflow shape, shell syntax of an exploit primitive, a product exploit chain).
+ *       remote URL, the Base64 tail-underflow shape, shell syntax of an exploit primitive, an expression language
+ *       reaching the process API, a product exploit chain).
  *       It blocks in block mode whatever {@code outside_request} says.
  *   <li>{@link #OPERATION}: the only evidence is that an operation of some kind happened (a destination such as the
- *       cloud metadata address, a protocol, a configured remote resource, an evaluator on the stack). Software does
- *       these on purpose at start-up and in scheduled jobs, so it logs outside a request whatever the setting says.
+ *       cloud metadata address, a protocol, a configured remote resource). Software does these on purpose at
+ *       start-up and in scheduled jobs, so it logs outside a request whatever the setting says.
  *   <li>{@link #CONTEXT}: a sensitive operation whose meaning depends on who asked (a protected host file read, a
  *       script written into a web root, a compiled source that runs a process). It follows {@code outside_request}:
  *       block by default, {@code log} when the operator says so.
@@ -108,12 +109,12 @@ public final class OutsideRequest {
     {"command_arguments", Integer.valueOf(INTRINSIC)},
     // Shell operators in the program RocketMQ's filter-server manager launches (CVE-2023-33246).
     {"configuration_launcher", Integer.valueOf(INTRINSIC)},
-    // A process started under an expression or script evaluator, or a database Java routine: the frame says who
-    // started it, not what it runs. Groovy jobs, build scripts and stored routines start processes on purpose.
-    {"expression_evaluation", Integer.valueOf(OPERATION)},
-    {"database_stack", Integer.valueOf(OPERATION)},
-    // A shell script an XXL-JOB executor runs: the job type the scheduler was configured with.
-    {"scheduled_script", Integer.valueOf(OPERATION)},
+    // A process started under an expression language (OGNL, SpEL, MVEL, JEXL, EL, a template engine, XPath, Jiffle):
+    // expression injection reaching the process API. It often runs where no servlet request is tracked (a Struts
+    // filter, WebFlux, Netty), so it blocks there too. A general-purpose script engine (Groovy, JavaScript,
+    // javax.script: script_evaluation), a database Java routine (database_stack) and an XXL-JOB executor's shell job
+    // (scheduled_script) start processes on purpose as well: those follow the setting.
+    {"expression_evaluation", Integer.valueOf(INTRINSIC)},
     // A managed policy's destination-only egress candidate.
     {"destination_only", Integer.valueOf(OPERATION)},
   };

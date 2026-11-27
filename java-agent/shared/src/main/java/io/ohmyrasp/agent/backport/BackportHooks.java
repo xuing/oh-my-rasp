@@ -1387,6 +1387,15 @@ public final class BackportHooks {
           "command",
           joined, "expression_evaluation");
     }
+    if (isGroovyScriptStack(stack)) {
+      // A general-purpose script engine starts processes on purpose too: script_evaluation follows outside_request.
+      return new Finding(
+          rule("command_execution_exploit_primitive"),
+          93,
+          "Script evaluation reached a " + line().displayName + " process sink",
+          "command",
+          joined, "script_evaluation");
+    }
     if (isJiffleRuntimeCommandStack(stack)) {
       return new Finding(
           rule("command_execution_exploit_primitive"),
@@ -1466,12 +1475,20 @@ public final class BackportHooks {
           || className.startsWith("org.elasticsearch.common.mvel2.")
           || className.startsWith("org.elasticsearch.script.mvel.")
           || className.startsWith("ognl.")
-          || className.startsWith("groovy.")
-          || className.startsWith("org.codehaus.groovy.")
           || (className.startsWith("org.apache.commons.jexl.") || className.startsWith("org.apache.commons.jexl2.")
               || className.startsWith("org.apache.commons.jexl3."))
           || className.startsWith("org.springframework.expression.")
           || className.startsWith("org.springframework.webflow.expression.")) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  private static boolean isGroovyScriptStack(StackTraceElement[] stack) {
+    for (StackTraceElement element : stack) {
+      String className = element.getClassName();
+      if (className.startsWith("groovy.") || className.startsWith("org.codehaus.groovy.")) {
         return true;
       }
     }
