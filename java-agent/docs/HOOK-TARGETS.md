@@ -5,7 +5,7 @@
 > `hook-targets` probe records a new map; `--check` fails CI when this file is stale.
 
 A hook aimed at a library matches a class name and a method. When a release renames the method,
-the hook stops applying and nothing says so. The `hook-targets` probe runs each packaged agent over
+the hook stops applying silently. The `hook-targets` probe runs each packaged agent over
 every class of real library JARs and records which methods come out calling back into the agent.
 This page summarises those recorded maps; the full rows are in
 [`recorded/primary.txt`](../probes/hook-targets/recorded/primary.txt) and
@@ -36,6 +36,26 @@ A backport transformer counts only when its entry class constructs it and passes
 `Instrumentation.addTransformer`, and the backport map is the chained run in registration order, as
 production runs it. A class on which a transformer adds something else after its predecessors than on the
 original bytes is a `# chain:` line in the recorded map and is listed below.
+
+## At run time
+
+Each agent JAR carries a table derived from these maps: per hook unit, the classes it hooks on some
+recorded version and the methods it hooks there. A running agent writes one diagnostic line when it
+loads such a class and the unit hooks none of those methods, so a version the probe never saw is
+reported where it runs ([docs/agent.md](../../docs/agent.md#hooks-that-did-not-apply)). The probe
+runs the agent with that report on over the libraries below and fails on a version that the unit does
+not hook unless [`hook-miss.toml`](../probes/hook-targets/hook-miss.toml) explains it:
+
+| Unit | Class | Check | Why |
+|---|---|---|---|
+| `ExpressionHookModule` | `org/apache/velocity/runtime/RuntimeInstance` | absent | RuntimeInstance.evaluate came with Velocity 1.6; on 1.5 the Velocity and VelocityEngine evaluate methods, which the module hooks there, do the work. |
+| `Java{N}FastjsonTransformer` | `com/alibaba/fastjson/parser/ParserConfig` | never | The hook guards the class-resource read that checkAutoType gained in fastjson 1.2.68; 1.2.24 has no checkAutoType and 1.2.47 has one without that read, and fastjson 1.x ended with 1.2.83. |
+| `Java{N}JdbcTransformer` | `org/apache/ibatis/builder/SqlSourceBuilder` | absent | SqlSourceBuilder.removeExtraWhitespaces came with MyBatis 3.5.0 (shrinkWhitespacesInSql); before it nothing compacts the SQL text. |
+| `PolymorphicDeserializationHookModule` | `com/alibaba/fastjson/parser/ParserConfig` | absent | ParserConfig.checkAutoType came with fastjson 1.2.25; on 1.2.24 TypeUtils.loadClass, which the module hooks there, resolves the type. |
+| `SqlHookModule` | `org/apache/ibatis/builder/SqlSourceBuilder` | absent | SqlSourceBuilder.removeExtraWhitespaces came with MyBatis 3.5.0 (shrinkWhitespacesInSql); before it nothing compacts the SQL text. |
+
+`absent`: not reported when the class declares no method of a name the unit looks for (a release from
+before the hooked code existed). `never`: not reported.
 
 ## Hooked methods per library version
 

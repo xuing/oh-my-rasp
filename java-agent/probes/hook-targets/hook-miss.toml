@@ -1,0 +1,45 @@
+# (hook unit, class) pairs that the run-time hook-miss report treats differently, each with the reason.
+#
+# The report (docs/agent.md, "Hooks that did not apply") writes a diagnostic line when a hook unit that the
+# recorded maps show instrumenting a library class on some recorded version loads that class and instruments
+# none of its methods. A recorded version on which the unit hooks the class it otherwise hooks is a gap: the
+# hook-targets probe runs the real transformers with the report on over every staged library JAR and fails on a
+# gap that is not explained here, as it fails on a library version with no hooked method that libraries.toml does
+# not list under `none`. It also fails on an entry here that no recorded version needs, so the list can only
+# shrink.
+#
+# check = "absent": not a miss when the class declares no method of a name the unit looks for (a release from
+#   before the hooked code existed). A method of such a name with another descriptor is still reported.
+# check = "never": the pair is left out of the report.
+# A backport transformer is written with {N} for its version token, as in recorded/backport.txt.
+# java-agent/scripts/gen-hook-targets.py writes the run-time table from the recorded maps and this file.
+
+[[pair]]
+unit = "ExpressionHookModule"
+class = "org/apache/velocity/runtime/RuntimeInstance"
+check = "absent"
+why = "RuntimeInstance.evaluate came with Velocity 1.6; on 1.5 the Velocity and VelocityEngine evaluate methods, which the module hooks there, do the work."
+
+[[pair]]
+unit = "PolymorphicDeserializationHookModule"
+class = "com/alibaba/fastjson/parser/ParserConfig"
+check = "absent"
+why = "ParserConfig.checkAutoType came with fastjson 1.2.25; on 1.2.24 TypeUtils.loadClass, which the module hooks there, resolves the type."
+
+[[pair]]
+unit = "Java{N}FastjsonTransformer"
+class = "com/alibaba/fastjson/parser/ParserConfig"
+check = "never"
+why = "The hook guards the class-resource read that checkAutoType gained in fastjson 1.2.68; 1.2.24 has no checkAutoType and 1.2.47 has one without that read, and fastjson 1.x ended with 1.2.83."
+
+[[pair]]
+unit = "SqlHookModule"
+class = "org/apache/ibatis/builder/SqlSourceBuilder"
+check = "absent"
+why = "SqlSourceBuilder.removeExtraWhitespaces came with MyBatis 3.5.0 (shrinkWhitespacesInSql); before it nothing compacts the SQL text."
+
+[[pair]]
+unit = "Java{N}JdbcTransformer"
+class = "org/apache/ibatis/builder/SqlSourceBuilder"
+check = "absent"
+why = "SqlSourceBuilder.removeExtraWhitespaces came with MyBatis 3.5.0 (shrinkWhitespacesInSql); before it nothing compacts the SQL text."
