@@ -2353,8 +2353,28 @@ public final class OhMyRaspHooks {
       recorded = new Detection(recorded.timestamp(), recorded.hook(), recorded.algorithm(), recorded.action(),
           recorded.confidence(), recorded.message(), RequestContext.empty(), evidence);
     }
-    events().record(redactHttpObservation(recorded), elapsedMicros(started), ruleEvaluationUs);
+    events().record(withoutUrlCredentials(redactHttpObservation(recorded)), elapsedMicros(started), ruleEvaluationUs);
     return recorded;
+  }
+
+  /**
+   * The finding with the credentials of every URL in its details removed (user information, Oracle's
+   * {@code user/password@}, password-like parameters: {@link io.ohmyrasp.agent.util.Redaction#redactedUrls}), so a
+   * JDBC URL a pool configured never reaches the spool or the cloud with its password. The backports do the same.
+   */
+  private static Detection withoutUrlCredentials(Detection event) {
+    java.util.LinkedHashMap<String, String> details = null;
+    for (Map.Entry<String, String> entry : event.details().entrySet()) {
+      String value = entry.getValue();
+      String redacted = io.ohmyrasp.agent.util.Redaction.redactedUrls(value);
+      if (redacted != value && !java.util.Objects.equals(redacted, value)) {
+        if (details == null) details = new java.util.LinkedHashMap<>(event.details());
+        details.put(entry.getKey(), redacted);
+      }
+    }
+    if (details == null) return event;
+    return new Detection(event.timestamp(), event.hook(), event.algorithm(), event.action(),
+        event.confidence(), event.message(), event.request(), details);
   }
 
   private static Detection redactHttpObservation(Detection event) {

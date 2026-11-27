@@ -289,6 +289,42 @@ final class JdbcDetectorTest {
     assertAlgorithm(background, "jdbc_mysql_deserialization");
   }
 
+  /**
+   * autoDeserialize with an interceptor of the pool's own is not the exploit: only ServerStatusDiffInterceptor, or
+   * detectCustomCollations, makes the driver read the server's bytes at connect time.
+   */
+  @Test
+  void aPoolsOwnInterceptorBesideAutoDeserializeIsNotReported() {
+    for (String url : List.of(
+        "jdbc:mysql://db.internal:3306/app?autoDeserialize=true&queryInterceptors=com.example.TracingInterceptor",
+        "jdbc:mysql://db.internal:3306/app?autoDeserialize=true",
+        "jdbc:mysql://db.internal:3306/app?autoDeserialize=false&queryInterceptors="
+            + "com.mysql.cj.jdbc.interceptors.ServerStatusDiffInterceptor",
+        "jdbc:postgresql://db.internal/app?autoDeserialize=true&detectCustomCollations=true")) {
+      assertTrue(JdbcDetector.detectJdbcUrl(url, RequestContext.empty()).isEmpty(), url);
+    }
+    for (String url : List.of(
+        "jdbc:mysql://db/app?autoDeserialize=true&detectCustomCollations=true",
+        "jdbc:mysql://db/app?autoDeserialize%3Dtrue%26queryInterceptors%3Dcom.mysql.cj.jdbc.interceptors."
+            + "ServerStatusDiffInterceptor",
+        "jdbc:mysql://db/app?autoDeserialize = true&statementInterceptors = "
+            + "com.mysql.jdbc.interceptors.ServerStatusDiffInterceptor")) {
+      assertAlgorithm(JdbcDetector.detectJdbcUrl(url, RequestContext.empty()), "jdbc_mysql_deserialization");
+    }
+  }
+
+  /** The event names the driver, the host and the options; never the URL, whose credentials a pool configured. */
+  @Test
+  void theMysqlEventNamesTheOptionsAndNeverTheUrl() {
+    String url = "jdbc:mysql://reporter:Sentinel-Pw-9@db.internal:3306/app?password=Sentinel-Pw-9&autoDeserialize=true"
+        + "&queryInterceptors=com.mysql.cj.jdbc.interceptors.ServerStatusDiffInterceptor";
+
+    var details = JdbcDetector.detectJdbcUrl(url, RequestContext.empty()).orElseThrow().details();
+
+    assertEquals(Map.of("driver", "mysql", "host", "db.internal:3306",
+        "options", "autoDeserialize+ServerStatusDiffInterceptor"), details);
+  }
+
   @Test
   void ignoresRequestControlledOrdinaryMysqlJdbcUrl() {
     String url = "jdbc:mysql://db.example:3306/app?useSSL=false&connectTimeout=1000";

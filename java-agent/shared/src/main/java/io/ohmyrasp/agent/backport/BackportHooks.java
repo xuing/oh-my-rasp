@@ -1723,13 +1723,14 @@ public final class BackportHooks {
           "jdbc_url",
           normalized);
     }
-    if (relaxed.startsWith("jdbc:mysql:") && isDangerousMysqlJdbcUrl(relaxed)) {
+    if (io.ohmyrasp.agent.sql.MysqlDeserializationUrl.trigger(normalized) != null) {
+      // The primary's rule too; the event names the driver, host and options, never the URL (it can hold a password).
       return new Finding(
           rule("jdbc_mysql_deserialization"),
           92,
           "MySQL JDBC deserialization primitive reached a " + line().displayName + " JDBC sink",
-          "jdbc_url",
-          normalized);
+          "jdbc_options",
+          io.ohmyrasp.agent.sql.MysqlDeserializationUrl.evidence(normalized));
     }
     return null;
   }
@@ -1823,17 +1824,6 @@ public final class BackportHooks {
         || lower.indexOf("external name") >= 0
         || lower.indexOf("parameter style java") >= 0
         || lower.indexOf("language java") >= 0;
-  }
-
-  private static boolean isDangerousMysqlJdbcUrl(String lower) {
-    if (!isJdbcOptionEnabled(lower, "autodeserialize")) {
-      return false;
-    }
-    return lower.indexOf("statementinterceptors") >= 0
-        || lower.indexOf("queryinterceptors") >= 0
-        || lower.indexOf("detectcustomcollations=true") >= 0
-        || lower.indexOf("detectcustomcollations=1") >= 0
-        || lower.indexOf("detectcustomcollations=yes") >= 0;
   }
 
   private static void emitClassLoaderFindings(Object sources, String mechanism) {
@@ -4458,7 +4448,8 @@ public final class BackportHooks {
             + "\"details\":{\""
             + json(finding.detailKey)
             + "\":\""
-            + json(finding.detailValue)
+            // The credentials of a URL in the detail (a JDBC URL a pool configured) never reach the spool.
+            + json(io.ohmyrasp.agent.util.Redaction.redactedUrls(finding.detailValue))
             + "\""
             + (argc < 0 ? "" : ",\"process_operation\":\"ProcessImpl.start\",\"argument_count\":\"" + argc + "\"")
             + (resolvedAddress == null ? "" : ",\"resolved_address\":\"" + json(resolvedAddress) + "\"")
