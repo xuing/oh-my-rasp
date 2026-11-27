@@ -4470,7 +4470,7 @@ public final class BackportHooks {
   public static void initialise() {
     BackportLine.initialise(
         Finding.class, RequestSnapshot.class, UrlParts.class, IncludeAttributes.class, TypedPayloadMatch.class,
-        BackportRequestBody.class);
+        BackportRequestBody.class, BodyState.class);
   }
 
   /** The installed line. Read where used, not while this class initialises: a hook may run before the line starts. */

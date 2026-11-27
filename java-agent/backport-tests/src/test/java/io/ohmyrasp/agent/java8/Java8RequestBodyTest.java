@@ -98,7 +98,7 @@ final class Java8RequestBodyTest {
 
   @Test
   void aBlockOnTheBodyIsThrownAgainByEveryLaterReadOfTheRequest() throws Exception {
-    log();
+    final Path log = log();
     System.setProperty("ohmyrasp.java8.block", "true");
     final byte[] body = "{\"exePath\":\"id\"}".getBytes(StandardCharsets.UTF_8);
     Java8RaspHooks.beforeHttpRequest(new BodyRequest("/app/rest/debug/processes", "application/json", body.length));
@@ -107,6 +107,14 @@ final class Java8RequestBodyTest {
         new org.junit.jupiter.api.function.Executable() {
           @Override public void execute() {
             Java8RaspHooks.exitBodyRead(body.length, token, body, 0);
+          }
+        }, new java.util.function.Supplier<String>() {
+          @Override public String get() {
+            try {
+              return "token " + token + ", events: " + read(log);
+            } catch (Exception e) {
+              return e.toString();
+            }
           }
         });
     Java8RaspBlockException again = assertThrows(Java8RaspBlockException.class,
