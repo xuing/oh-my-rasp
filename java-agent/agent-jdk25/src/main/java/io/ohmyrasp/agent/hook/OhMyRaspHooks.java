@@ -873,7 +873,7 @@ public final class OhMyRaspHooks {
         emit(Optional.of(Detection.log("ssrf", "ssrf_protocol", 95, "External attachment reference opened a host file",
             request, Map.of("scheme", "file", "mechanism", "cxf-aegis-xop", "path", path,
                 "decision_basis", "attachment_file_open"))), ignored -> io.ohmyrasp.agent.xml.AttachmentFileRead.repeated(),
-            request.active() && request == currentRequest());
+            request.active() && request == currentRequest(), true);
       } else {
         var finding = FileAccessDetector.detectFileRead(path, currentRequest(), OhMyRaspHooks::isXmlParserStack, policy().loaded(), links);
         if (finding.isPresent()) {
@@ -2153,13 +2153,20 @@ public final class OhMyRaspHooks {
     emit(detection, repeatedObservation, true);
   }
 
+  private static void emit(Optional<Detection> detection,
+      java.util.function.Predicate<String> repeatedObservation, boolean mayRedirect) {
+    emit(detection, repeatedObservation, mayRedirect, false);
+  }
+
   /**
    * Decides and records a finding. It blocks when blocking is permitted, the finding's action is block, and either
    * it was made inside an HTTP request or the control setting {@code outside_request} says block (the default):
-   * the same scope as the backport lines.
+   * the same scope as the backport lines. A rule that blocks only inside a request ({@link OutsideRequest}) logs
+   * outside one, unless {@code ownEvidence}: the finding shows the attack without a request (an XML attachment
+   * that opened a host file), as the backport lines' rule for it does.
    */
   private static void emit(Optional<Detection> detection,
-      java.util.function.Predicate<String> repeatedObservation, boolean mayRedirect) {
+      java.util.function.Predicate<String> repeatedObservation, boolean mayRedirect, boolean ownEvidence) {
     // The agent's own event and control I/O is neither reported nor blocked.
     if (detection.isEmpty() || AgentOwnIo.active()) {
       return;
@@ -2181,7 +2188,7 @@ public final class OhMyRaspHooks {
     }
     Detection event = policyEvaluation.detection();
     boolean blockScope = activeRequest(value)
-        || (runtime.outsideRequestBlocks() && OutsideRequest.mayBlockOutsideRequest(value.algorithm()));
+        || (runtime.outsideRequestBlocks() && (ownEvidence || OutsideRequest.mayBlockOutsideRequest(value.algorithm())));
     if (!policyEvaluation.controlled()
         && (legacyBlockEnabled() || runtime.mode() == DetectionMode.BLOCK)
         && blockScope) {
