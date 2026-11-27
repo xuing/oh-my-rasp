@@ -1506,6 +1506,7 @@ public final class OhMyRaspHooks {
 
   public static void afterZipEntryRead(Object entry, Object reader) {
     if (HookActivation.inactive()) return;
+    if (AgentOwnIo.active()) return; // the agent's own I/O: before any bookkeeping of application state
     if (!(entry instanceof ZipEntry zip)) {
       ARCHIVE_ENTRY.remove();
       return;
@@ -1518,16 +1519,19 @@ public final class OhMyRaspHooks {
 
   public static void afterZipLookup(Object stream, String selectedName, Object reader) {
     if (HookActivation.inactive()) return;
+    if (AgentOwnIo.active()) return; // the agent's own I/O: before any bookkeeping of application state
     ARCHIVE_ENTRY.observe(reader, stream == null ? null : selectedName);
   }
 
   public static void closeArchiveReader(Object reader) {
     if (HookActivation.inactive()) return;
+    if (AgentOwnIo.active()) return; // the agent's own I/O: before any bookkeeping of application state
     ARCHIVE_ENTRY.closed(reader);
   }
 
   public static void clearArchiveEntry() {
     if (HookActivation.inactive()) return;
+    if (AgentOwnIo.active()) return; // the agent's own I/O: before any bookkeeping of application state
     ARCHIVE_ENTRY.remove();
   }
 

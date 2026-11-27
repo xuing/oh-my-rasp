@@ -36,7 +36,11 @@
 //! `hook_miss_suppressed` once its per-JVM limit is reached); the backport agents have no `kind`
 //! and say it with `event` (`ohmyrasp-hook-miss`, `ohmyrasp-hook-miss-suppressed`).
 //! [`AgentEvent::hook_miss`] reads the first as a bounded, typed [`HookMiss`]. A diagnostic is
-//! not a detection: it stays in the local status view and the daemon log.
+//! not a detection: it stays in the local status view and the daemon log. A record that has the
+//! shape of a detection (an `algorithm` with an `action`, or `"kind":"detection"`) is a detection
+//! whatever else it says: a diagnostic is only a line the agent wrote as one, with no detection
+//! members, and a conflicting record is never allowed to take a detection out of the attack log and
+//! the upload.
 
 use serde::Serialize;
 use serde_json::{Map, Value, json};
@@ -90,8 +94,12 @@ pub struct HookMiss {
     pub exception: Option<String>,
     /// The method descriptors the hook looks for.
     pub looked_for: Vec<String>,
+    /// How many more the agent left out of `looked_for` (it lists at most 16), when it says.
+    pub looked_for_omitted: Option<u64>,
     /// The method descriptors the class has instead.
     pub found: Vec<String>,
+    /// How many more the agent left out of `found`, when it says.
+    pub found_omitted: Option<u64>,
     pub code_source: Option<String>,
     pub code_source_path: Option<String>,
     pub implementation_version: Option<String>,
@@ -211,7 +219,11 @@ impl AgentEvent {
             reason: text("reason").unwrap_or_default(),
             exception: text("exception"),
             looked_for: list("looked_for"),
+            looked_for_omitted: int_field(&self.raw, "looked_for_omitted")
+                .and_then(|n| u64::try_from(n).ok()),
             found: list("found"),
+            found_omitted: int_field(&self.raw, "found_omitted")
+                .and_then(|n| u64::try_from(n).ok()),
             code_source: text("code_source"),
             code_source_path: text("code_source_path"),
             implementation_version: text("implementation_version"),
@@ -367,32 +379,38 @@ fn truncate_chars(text: &str) -> String {
     }
 }
 
+/// Whether a record has the shape of a detection: a non-empty `algorithm` and a non-empty `action`.
+fn detection_shaped(raw: &Value) -> bool {
+    let has = |key: &str| str_field(raw, key).is_some_and(|v| !v.is_empty());
+    has("algorithm") && has("action")
+}
+
 /// The kind of a line that has no `kind`. The backport agents write a start line
 /// (`ohmyrasp-<line>-agent-start`), hook-miss diagnostics (`ohmyrasp-hook-miss`,
 /// `ohmyrasp-hook-miss-suppressed`) and detections with `"event":"ohmyrasp-detection"`; an older
-/// primary agent wrote detections with neither. A line with an `algorithm` and an `action` is a
-/// detection; anything else says nothing the daemon can classify. A diagnostic is decided first,
-/// so it is never a detection whatever else it carries.
+/// primary agent wrote detections with neither. A start line is lifecycle. A line with an
+/// `algorithm` and an `action` is a detection, and it stays one when its `event` names a
+/// diagnostic: the diagnostic events are recognised only on a line that has no detection members,
+/// as the agents write them, so a record can never lose its detection routing by carrying one.
+/// Anything else says nothing the daemon can classify.
 fn infer_kind(raw: &Value) -> &'static str {
     let event = str_field(raw, "event");
-    if matches!(
-        event.as_deref(),
-        Some(HOOK_MISS_EVENT | HOOK_MISS_SUPPRESSED_EVENT)
-    ) {
-        return "diagnostic";
-    }
     if let Some(event) = &event
         && event.starts_with("ohmyrasp-")
         && event.ends_with("-agent-start")
     {
         return "lifecycle";
     }
-    let has = |key: &str| str_field(raw, key).is_some_and(|v| !v.is_empty());
-    if event.as_deref() == Some("ohmyrasp-detection") || (has("algorithm") && has("action")) {
-        "detection"
-    } else {
-        "unknown"
+    if event.as_deref() == Some("ohmyrasp-detection") || detection_shaped(raw) {
+        return "detection";
     }
+    if matches!(
+        event.as_deref(),
+        Some(HOOK_MISS_EVENT | HOOK_MISS_SUPPRESSED_EVENT)
+    ) {
+        return "diagnostic";
+    }
+    "unknown"
 }
 
 /// The label an ignored line is counted under when its `kind` is present but not a string.
@@ -400,9 +418,14 @@ pub const NON_STRING_KIND: &str = "(non-string)";
 
 /// The `kind` as written, or inferred when the line has none. A `kind` that is present and not a
 /// string is a writer saying something the daemon cannot read: it is never inferred from the other
-/// members, which would let a malformed line pass as a detection.
+/// members, which would let a malformed line pass as a detection. A `"kind":"diagnostic"` on a
+/// record that has the shape of a detection is read as the detection it is shaped like: the agents'
+/// diagnostics carry no `algorithm` or `action`.
 fn kind_field(raw: &Value) -> String {
     match raw.get("kind") {
+        Some(Value::String(kind)) if kind == "diagnostic" && detection_shaped(raw) => {
+            "detection".to_string()
+        }
         Some(Value::String(kind)) => kind.clone(),
         Some(_) => NON_STRING_KIND.to_string(),
         None => infer_kind(raw).into(),
@@ -556,24 +579,60 @@ mod tests {
         assert_eq!(ev.class(), EventClass::Ignored);
     }
 
+    /// A record that has the shape of a detection is one whatever its `event` or a `diagnostic` kind
+    /// says: no record can take a detection out of the attack log and the upload by carrying one.
     #[test]
-    fn a_diagnostic_is_never_a_detection_even_when_it_looks_like_one() {
-        // By kind, and by the backport `event`, checked before the detection inference.
+    fn a_record_with_the_shape_of_a_detection_is_a_detection_whatever_else_it_says() {
         for line in [
-            r#"{"kind":"diagnostic","diagnostic":"hook_miss","hook":"h","algorithm":"a","action":"block"}"#,
+            // Kindless, with a diagnostic event: it was a detection before the diagnostics existed.
             r#"{"event":"ohmyrasp-hook-miss","hook":"h","algorithm":"a","action":"block"}"#,
             r#"{"event":"ohmyrasp-hook-miss-suppressed","algorithm":"a","action":"block"}"#,
+            // An explicit diagnostic kind on a detection-shaped record.
+            r#"{"kind":"diagnostic","diagnostic":"hook_miss","hook":"h","algorithm":"a","action":"block"}"#,
             r#"{"kind":"diagnostic","event":"ohmyrasp-detection","algorithm":"a","action":"block"}"#,
+            // An explicit detection kind wins over any event.
+            r#"{"kind":"detection","event":"ohmyrasp-hook-miss"}"#,
+            r#"{"kind":"detection","event":"ohmyrasp-hook-miss-suppressed","diagnostic":"hook_miss"}"#,
+        ] {
+            let ev = parse(line);
+            assert_eq!(ev.kind, "detection", "{line}");
+            assert_eq!(ev.class(), EventClass::Detection, "{line}");
+            assert!(ev.is_detection(), "{line}");
+            assert!(
+                ev.hook_miss().is_none() && !ev.is_hook_miss_suppressed(),
+                "{line}"
+            );
+        }
+        // An empty member is not a detection member.
+        let ev = parse(r#"{"event":"ohmyrasp-hook-miss","algorithm":"a","action":""}"#);
+        assert_eq!(ev.class(), EventClass::Diagnostic);
+    }
+
+    /// A diagnostic is a line the agent wrote as one: no detection members, and either the primary
+    /// agent's `kind` or a backport agent's recognised `event`.
+    #[test]
+    fn a_diagnostic_is_a_line_written_as_one() {
+        for line in [
+            r#"{"kind":"diagnostic","diagnostic":"hook_miss","unit":"U","class":"a.B"}"#,
+            r#"{"event":"ohmyrasp-hook-miss","unit":"U","class":"a.B"}"#,
+            r#"{"event":"ohmyrasp-hook-miss-suppressed","limit":32}"#,
+            r#"{"kind":"diagnostic","event":"ohmyrasp-detection"}"#,
         ] {
             let ev = parse(line);
             assert_eq!(ev.kind, "diagnostic", "{line}");
             assert_eq!(ev.class(), EventClass::Diagnostic, "{line}");
             assert!(!ev.is_detection(), "{line}");
         }
+        // An event that only resembles one is not a diagnostic.
+        let ev = parse(r#"{"event":"ohmyrasp-hook-miss-later","unit":"U"}"#);
+        assert_eq!(ev.class(), EventClass::Ignored);
         // A non-string kind is still ignored, not read through the other members.
         let ev = parse(r#"{"kind":5,"event":"ohmyrasp-hook-miss"}"#);
         assert_eq!(ev.class(), EventClass::Ignored);
         assert!(ev.hook_miss().is_none());
+        // A start line stays a lifecycle line, as before the diagnostics existed.
+        let start = parse(r#"{"event":"ohmyrasp-java8-agent-start","algorithm":"a","action":"b"}"#);
+        assert_eq!(start.class(), EventClass::Lifecycle);
     }
 
     #[test]
@@ -643,6 +702,20 @@ mod tests {
             miss.found,
             [cut, "x".to_string()],
             "non-strings are skipped"
+        );
+
+        // What the agent says it left out is kept apart from the lists.
+        let counted = parse(
+            r#"{"kind":"diagnostic","diagnostic":"hook_miss","looked_for":["m()V"],"looked_for_omitted":3,"found":[],"found_omitted":"x"}"#,
+        )
+        .hook_miss()
+        .unwrap();
+        assert_eq!(counted.looked_for_omitted, Some(3));
+        assert_eq!(counted.found_omitted, None, "a non-number is no count");
+        assert_eq!(
+            counted.looked_for,
+            ["m()V"],
+            "the list holds no marker element"
         );
 
         let bare = parse(r#"{"kind":"diagnostic","diagnostic":"hook_miss"}"#)

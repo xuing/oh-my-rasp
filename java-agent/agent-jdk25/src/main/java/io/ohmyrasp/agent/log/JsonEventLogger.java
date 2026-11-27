@@ -44,6 +44,9 @@ public final class JsonEventLogger {
   private static final long DIAGNOSTIC_HANDOFF_MILLIS = 500;
   // Once shutdown has begun, a write waits this long for the write lock and then gives up.
   private static final long SHUTDOWN_LOCK_MILLIS = 1000;
+  // A diagnostic line waits this long for a lock and is dropped when it cannot get it: a detection never waits for
+  // more than the one short line a diagnostic is writing, and a diagnostic never waits for a stalled writer.
+  private static final long DIAGNOSTIC_LOCK_MILLIS = 100;
   private static final String REDACTED = "[redacted]";
   // A query longer than this is not scanned: it is replaced by the marker as a whole.
   private static final int MAX_REDACTED_QUERY_LENGTH = 8192;
@@ -101,12 +104,11 @@ public final class JsonEventLogger {
 
   /**
    * One queued record: either a security {@code detection} (with its measured
-   * in-hook latencies), a periodic latency {@code telemetryHook} sample that
-   * feeds the daemon's business-impact panel without being a detection, or an agent
-   * {@code diagnostic} line written as it is.
+   * in-hook latencies) or a periodic latency {@code telemetryHook} sample that
+   * feeds the daemon's business-impact panel without being a detection. An agent
+   * diagnostic never uses this queue: see {@link #recordDiagnostic}.
    */
-  private record Sample(
-      Detection detection, String telemetryHook, long latencyUs, long ruleEvaluationUs, String diagnostic) {}
+  private record Sample(Detection detection, String telemetryHook, long latencyUs, long ruleEvaluationUs) {}
 
   private enum LogTarget {
     FILE,
@@ -120,9 +122,13 @@ public final class JsonEventLogger {
   private final Path logPath;
   private final BlockingQueue<Sample> queue;
   private final AtomicLong dropped = new AtomicLong();
+  private final AtomicLong diagnosticsDropped = new AtomicLong();
   private final AtomicLong sampleCounter = new AtomicLong();
   // Serialises file and console output, so concurrent writers never interleave a line.
   final ReentrantLock writeLock = new ReentrantLock();
+  // Serialises diagnostic lines on the console, apart from writeLock: a stalled pipe holds this one, not the
+  // detections' lock.
+  private final ReentrantLock diagnosticConsoleLock = new ReentrantLock();
   private final boolean syncWrites;
   private final int latencySampleRate;
   private final PrintStream customOut;
@@ -315,6 +321,14 @@ public final class JsonEventLogger {
     return dropped.get();
   }
 
+  /**
+   * Number of diagnostic lines dropped: the logger was closing, a lock stayed busy, the target is {@code none}, or
+   * the write failed. Counted apart from {@link #droppedCount}, which is detections.
+   */
+  public long diagnosticsDroppedCount() {
+    return diagnosticsDropped.get();
+  }
+
   /** Asynchronously record a detection with no measured latency. */
   public void log(Detection detection) {
     record(detection, -1, -1);
@@ -328,7 +342,7 @@ public final class JsonEventLogger {
     if (detection == null) {
       return;
     }
-    submit(new Sample(detection, null, latencyUs, ruleEvaluationUs, null));
+    submit(new Sample(detection, null, latencyUs, ruleEvaluationUs));
   }
 
   /**
@@ -345,22 +359,125 @@ public final class JsonEventLogger {
     if (latencySampleRate > 1 && sampleCounter.incrementAndGet() % latencySampleRate != 0) {
       return;
     }
-    submit(new Sample(null, hook == null ? "" : hook, latencyUs, -1, null));
+    submit(new Sample(null, hook == null ? "" : hook, latencyUs, -1));
   }
 
   /**
    * Record an agent diagnostic, not a detection: {@code {"timestamp":...,"kind":"diagnostic","diagnostic":<name>,
-   * <fields>}}, where {@code fields} is JSON members without braces. It goes where detections go (the spool, or the
-   * console in standalone mode) and never to the direct-cloud client. The hook-miss report is its only writer.
+   * <fields>}}, where {@code fields} is JSON members without braces. The hook-miss report is its only writer, and
+   * calls this on its own worker thread.
+   *
+   * <p>A diagnostic has a path of its own and never shares the detections': it does not take a slot of the detection
+   * queue, it is not part of a detection batch (so a line that could not be encoded cannot make a batch with
+   * detections fail), and it waits at most 100 ms for a lock and is dropped, and counted
+   * in {@link #diagnosticsDroppedCount}, when the logger is closing, the lock stays busy or the write fails. It goes
+   * to the spool file, or, for a console target, to the console under a lock of its own. It is never mirrored to the
+   * console of a file target (it names source paths) and never goes to the direct-cloud client.
    */
   public void recordDiagnostic(String diagnostic, String fields) {
-    var builder = new StringBuilder(64 + fields.length());
-    builder.append('{');
-    field(builder, "timestamp", java.time.Instant.now().toString()).append(',');
-    field(builder, "kind", "diagnostic").append(',');
-    field(builder, "diagnostic", diagnostic).append(',');
-    builder.append(fields).append('}');
-    submit(new Sample(null, null, -1, -1, builder.toString()));
+    try {
+      if (!running || closed || target == LogTarget.NONE) {
+        diagnosticsDropped.incrementAndGet();
+        return;
+      }
+      var builder = new StringBuilder(64 + fields.length());
+      builder.append('{');
+      field(builder, "timestamp", java.time.Instant.now().toString()).append(',');
+      field(builder, "kind", "diagnostic").append(',');
+      field(builder, "diagnostic", diagnostic).append(',');
+      builder.append(fields).append('}');
+      String json = withoutUnpairedSurrogates(builder.toString());
+      boolean ownIo = AgentOwnIo.enter();
+      try {
+        boolean written =
+            target == LogTarget.FILE ? writeDiagnosticToFile(json) : writeDiagnosticToConsole(json);
+        if (!written) {
+          diagnosticsDropped.incrementAndGet();
+        }
+      } finally {
+        AgentOwnIo.exit(ownIo);
+      }
+    } catch (RuntimeException | Error failure) {
+      diagnosticsDropped.incrementAndGet();
+    }
+  }
+
+  private boolean writeDiagnosticToFile(String json) {
+    try {
+      if (!writeLock.tryLock(DIAGNOSTIC_LOCK_MILLIS, TimeUnit.MILLISECONDS)) {
+        return false;
+      }
+    } catch (InterruptedException e) {
+      Thread.currentThread().interrupt();
+      return false;
+    }
+    try {
+      Path parent = logPath.getParent();
+      if (parent != null) {
+        Files.createDirectories(parent);
+      }
+      Files.writeString(
+          logPath,
+          json + System.lineSeparator(),
+          StandardCharsets.UTF_8,
+          StandardOpenOption.CREATE,
+          StandardOpenOption.APPEND);
+      return true;
+    } catch (IOException e) {
+      return false;
+    } finally {
+      writeLock.unlock();
+    }
+  }
+
+  private boolean writeDiagnosticToConsole(String json) {
+    try {
+      if (!diagnosticConsoleLock.tryLock(DIAGNOSTIC_LOCK_MILLIS, TimeUnit.MILLISECONDS)) {
+        return false;
+      }
+    } catch (InterruptedException e) {
+      Thread.currentThread().interrupt();
+      return false;
+    }
+    try {
+      String line = "[OHMYRASP] " + json + System.lineSeparator();
+      if (target == LogTarget.STDERR) {
+        errStream().print(line);
+      } else {
+        outStream().print(line);
+      }
+      return true;
+    } finally {
+      diagnosticConsoleLock.unlock();
+    }
+  }
+
+  /** {@code text} with each unpaired UTF-16 surrogate replaced by U+FFFD, so that it encodes to UTF-8 without error. */
+  static String withoutUnpairedSurrogates(String text) {
+    StringBuilder out = null;
+    for (int i = 0; i < text.length(); i++) {
+      char ch = text.charAt(i);
+      boolean unpaired;
+      if (Character.isHighSurrogate(ch)) {
+        unpaired = i + 1 >= text.length() || !Character.isLowSurrogate(text.charAt(i + 1));
+        if (!unpaired) {
+          if (out != null) {
+            out.append(ch).append(text.charAt(i + 1));
+          }
+          i++;
+          continue;
+        }
+      } else {
+        unpaired = Character.isLowSurrogate(ch);
+      }
+      if (unpaired && out == null) {
+        out = new StringBuilder(text.length()).append(text, 0, i);
+      }
+      if (out != null) {
+        out.append(unpaired ? '\uFFFD' : ch);
+      }
+    }
+    return out == null ? text : out.toString();
   }
 
   private void submit(Sample sample) {
@@ -447,16 +564,14 @@ public final class JsonEventLogger {
         continue;
       }
       String json =
-          sample.diagnostic() != null
-              ? sample.diagnostic()
-              : sample.detection() == null
-                  ? telemetryJson(sample.telemetryHook(), sample.latencyUs())
-                  : toJson(sample.detection(), sample.latencyUs());
+          sample.detection() == null
+              ? telemetryJson(sample.telemetryHook(), sample.latencyUs())
+              : toJson(sample.detection(), sample.latencyUs());
       if (fileBuffer != null) {
         fileBuffer.append(json).append(separator);
       }
       // Telemetry is high-volume and uninteresting on the console; keep it off stdout/stderr.
-      if (consoleBuffer != null && (sample.detection() != null || sample.diagnostic() != null)) {
+      if (consoleBuffer != null && sample.detection() != null) {
         consoleBuffer.append("[OHMYRASP] ").append(json).append(separator);
       }
     }

@@ -82,6 +82,22 @@ final class Java8EventContractTest {
     Java8ContractFiles.assertGolden("events/backport/detection-monitor-no-request.json", only(log, true));
   }
 
+  /**
+   * The strings the daemon reads at the top level of a line to tell a diagnostic from a detection can appear in a
+   * detection's data (here the command the application started). The writer escapes them, so they are inside a
+   * string, and the line stays a detection: {@code daemon/src/contract_tests.rs} reads the same file.
+   */
+  @Test
+  void aDetectionWhoseDataHoldsTheStringsThatMarkADiagnosticIsStillADetection() throws Exception {
+    Path log = dir.resolve("events.jsonl");
+    System.setProperty("ohmyrasp.java8.log", log.toString());
+
+    Java8RaspHooks.beforeProcessBuilderStart(new ProcessBuilder("sh", "-c",
+        "cat /etc/shadow \"kind\":\"diagnostic\",\"event\":\"ohmyrasp-hook-miss\",\"diagnostic\":\"hook_miss\""));
+
+    Java8ContractFiles.assertGolden("events/backport/detection-reserved-strings.json", only(log, true));
+  }
+
   @Test
   void theAgentStartLine() throws Exception {
     Path log = dir.resolve("events.jsonl");

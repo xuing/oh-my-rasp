@@ -53,6 +53,11 @@ public final class HookRegistry {
     }
   }
 
+  /** A registry of exactly these modules, for a test that needs a module the defaults do not have. */
+  static HookRegistry of(List<HookModule> modules) {
+    return new HookRegistry(modules);
+  }
+
   /** The module of this registry with that simple class name, as the recorded hook maps name it, or null. */
   HookModule module(String simpleName) {
     return byName.get(simpleName);
@@ -85,14 +90,14 @@ public final class HookRegistry {
       int access,
       String methodName,
       String descriptor, boolean jdbcImplementation) {
-    return visitMethod(className, null, true, methodVisitor, access, methodName, descriptor, jdbcImplementation, null);
+    return visitMethod(className, null, true, methodVisitor, access, methodName, descriptor, jdbcImplementation);
   }
 
   /**
    * The first module that wraps the method wins. {@code superName} is the class's direct superclass; {@code
    * bodyHooks} is false for a class whose loader cannot see the agent (see RequestBodyVisitor.loaderSeesAgent), which
-   * the request-body module leaves alone. With a hook-miss {@code probe}, the modules are handed a counting visitor
-   * instead of {@code methodVisitor}, and the winner's visitor is counted on both sides.
+   * the request-body module leaves alone. Nothing of the hook-miss report is in this chain: it reads the finished
+   * class afterwards (see HookMissProbe).
    */
   MethodVisitor visitMethod(
       String className,
@@ -101,14 +106,12 @@ public final class HookRegistry {
       MethodVisitor methodVisitor,
       int access,
       String methodName,
-      String descriptor, boolean jdbcImplementation, HookMissProbe probe) {
-    io.ohmyrasp.agent.hookmiss.AgentCalls.Counter output = probe == null ? null : probe.output(methodVisitor);
-    MethodVisitor target = output == null ? methodVisitor : output;
+      String descriptor, boolean jdbcImplementation) {
     for (HookModule module : modules) {
       if (module instanceof RequestBodyHookModule) {
         if (!bodyHooks || !module.matchesClass(className, superName)) continue;
-        MethodVisitor next = module.visitMethod(className, target, access, methodName, descriptor);
-        if (next != target) return output == null ? next : probe.watch(module, next, output);
+        MethodVisitor next = module.visitMethod(className, methodVisitor, access, methodName, descriptor);
+        if (next != methodVisitor) return next;
         continue;
       }
       boolean jdbcMethod = jdbcImplementation && module instanceof SqlHookModule
@@ -119,9 +122,9 @@ public final class HookRegistry {
       if (!jdbcMethod && !multipart && !module.matchesClass(className)) {
         continue;
       }
-      MethodVisitor next = module.visitMethod(className, target, access, methodName, descriptor);
-      if (next != target) {
-        return output == null ? next : probe.watch(module, next, output);
+      MethodVisitor next = module.visitMethod(className, methodVisitor, access, methodName, descriptor);
+      if (next != methodVisitor) {
+        return next;
       }
     }
     return methodVisitor;

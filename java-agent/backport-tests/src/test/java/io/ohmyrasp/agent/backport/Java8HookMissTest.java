@@ -68,8 +68,133 @@ final class Java8HookMissTest {
 
     byte[] out = jdbc.transform(APPLICATION, HANDLER, null, null, classWith(HANDLER, RECORDED));
 
-    assertTrue(AgentCalls.count(out) > 0, "the transformer instrumented prepare");
+    java.util.Map<String, java.util.Set<String>> calls = AgentCalls.inMethods(out, HookExpectations.parse(TABLE).forClass(HANDLER));
+    assertTrue(calls.get(RECORDED) != null && !calls.get(RECORDED).isEmpty(), "the transformer instrumented prepare: " + calls);
     assertEquals(Collections.emptyList(), lines);
+  }
+
+  /** The table says which agent methods the transformer calls from the method; another call into the agent is no evidence. */
+  @Test
+  void onlyTheRecordedCalleeInTheRecordedMethodCounts() throws Exception {
+    byte[] input = classWith(HANDLER, RECORDED);
+
+    ClassFileTransformer right = watched("Java{N}JdbcTransformer " + HANDLER + " report " + RECORDED + "=enterStatement,exitStatement\n",
+        new Java8JdbcTransformer());
+    right.transform(APPLICATION, HANDLER, null, null, input);
+    assertEquals(Collections.emptyList(), lines, "MyBatisSqlTrace.enterStatement is the recorded callee");
+
+    ClassFileTransformer wrong = watched("Java{N}JdbcTransformer " + HANDLER + " report " + RECORDED + "=neverCalledByTheTransformer\n",
+        new Java8JdbcTransformer());
+    wrong.transform(APPLICATION, HANDLER, null, null, input);
+    assertEquals(1, lines.size(), "prepare was instrumented, but not as the recorded maps show");
+  }
+
+  /** A call into the agent in another method of the class is not evidence for the method the transformer looks for. */
+  @Test
+  void aCallInAnotherMethodDoesNotHideTheMiss() throws Exception {
+    ClassFileTransformer jdbc = watched(TABLE, new Java8JdbcTransformer());
+
+    jdbc.transform(APPLICATION, HANDLER, null, null,
+        agentCallIn("unrelated", "()V", "somethingElse", classWith(HANDLER, CHANGED, "unrelated()V")));
+
+    assertEquals(1, lines.size());
+  }
+
+  /** A transformer that returns nothing for a class that already carries its hook has not missed it. */
+  @Test
+  void aHookTheClassAlreadyCarriesIsNoMissWhenTheTransformerReturnsNothing() throws Exception {
+    HookMisses.start(HookExpectations.parse("Java{N}QuietTransformer " + HANDLER + " report " + RECORDED + "=prepareHook\n"), recorder(), true);
+    ClassFileTransformer quiet = HookMissWatch.wrap(new Java8QuietTransformer());
+    assertTrue(quiet instanceof HookMissWatch);
+    byte[] hooked = agentCallIn("prepare", "(Ljava/sql/Connection;Ljava/lang/Integer;)Ljava/sql/Statement;", "prepareHook",
+        classWith(HANDLER, RECORDED));
+
+    assertEquals(null, quiet.transform(APPLICATION, HANDLER, null, null, hooked));
+    assertEquals(Collections.emptyList(), lines, "the input already calls prepareHook from prepare");
+
+    assertEquals(null, quiet.transform(APPLICATION, HANDLER, null, null, classWith(HANDLER, RECORDED)));
+    assertEquals(1, lines.size(), "without the call, nothing was instrumented");
+  }
+
+  /** What a transformer throws is reported as a failed transform and thrown again, unchanged. */
+  @Test
+  void aTransformerThatThrowsIsReportedAndItsFailureGoesOn() throws Exception {
+    final IllegalStateException failure = new IllegalStateException("transformer down");
+    HookMisses.start(HookExpectations.parse("Java{N}ThrowingTransformer " + HANDLER + " report " + RECORDED + "\n"), recorder(), true);
+    ClassFileTransformer throwing = HookMissWatch.wrap(new Java8ThrowingTransformer(failure));
+    assertTrue(throwing instanceof HookMissWatch);
+
+    try {
+      throwing.transform(APPLICATION, HANDLER, null, null, classWith(HANDLER, RECORDED));
+      throw new AssertionError("the failure was swallowed");
+    } catch (IllegalStateException thrown) {
+      assertSame(failure, thrown);
+    }
+
+    assertEquals(1, lines.size());
+    assertTrue(lines.get(0)[1].contains("\"reason\":\"transform_failed\",\"exception\":\"java.lang.IllegalStateException\""), lines.get(0)[1]);
+  }
+
+  /** Named so that its simple name gives the table's {@code Java{N}ThrowingTransformer}. */
+  static final class Java8ThrowingTransformer implements ClassFileTransformer {
+    private final RuntimeException failure;
+
+    Java8ThrowingTransformer(RuntimeException failure) {
+      this.failure = failure;
+    }
+
+    @Override public byte[] transform(ClassLoader loader, String className, Class<?> redefined,
+        java.security.ProtectionDomain domain, byte[] classfileBuffer) {
+      throw failure;
+    }
+  }
+
+  /** A transformer that never changes a class: {@code Java{N}QuietTransformer} in the table. */
+  static final class Java8QuietTransformer implements ClassFileTransformer {
+    @Override public byte[] transform(ClassLoader loader, String className, Class<?> redefined,
+        java.security.ProtectionDomain domain, byte[] classfileBuffer) {
+      return null;
+    }
+  }
+
+  /**
+   * The request-body transformer skips a class whose loader cannot see the agent on purpose, which is no miss; for an
+   * application loader it checks every class the table names, whatever the class extends.
+   */
+  @Test
+  void theRequestBodyTransformerIsCheckedForEveryTableClassExceptAnUnseeingLoader() throws Exception {
+    String stream = "org/springframework/web/util/ContentCachingRequestWrapper$ContentCachingInputStream";
+    ClassFileTransformer body = watched("Java{N}RequestBodyTransformer " + stream + " report read()I\n",
+        new io.ohmyrasp.agent.java8.Java8RequestBodyTransformer());
+    byte[] unrelated = classWith(stream, "read()I");
+
+    assertEquals(null, body.transform(null, stream, null, null, unrelated), "the bootstrap loader: left alone on purpose");
+    assertEquals(Collections.emptyList(), lines);
+
+    assertEquals(null, body.transform(APPLICATION, stream, null, null, unrelated), "no servlet superclass: not transformed");
+    assertEquals(1, lines.size(), "the table names it, so the loss of the hook is reported");
+    assertTrue(lines.get(0)[1].contains("\"reason\":\"not_transformed\""), lines.get(0)[1]);
+  }
+
+  /** A copy of {@code classFile} whose method {@code name}{@code descriptor} calls {@code Java8RaspHooks.callee()} first. */
+  static byte[] agentCallIn(final String name, final String descriptor, final String callee, byte[] classFile) {
+    ClassWriter writer = new ClassWriter(ClassWriter.COMPUTE_MAXS);
+    new org.objectweb.asm.ClassReader(classFile).accept(new org.objectweb.asm.ClassVisitor(Opcodes.ASM9, writer) {
+      @Override
+      public MethodVisitor visitMethod(int access, String methodName, String methodDescriptor, String signature, String[] exceptions) {
+        MethodVisitor mv = super.visitMethod(access, methodName, methodDescriptor, signature, exceptions);
+        if (!methodName.equals(name) || !methodDescriptor.equals(descriptor)) {
+          return mv;
+        }
+        return new MethodVisitor(Opcodes.ASM9, mv) {
+          @Override public void visitCode() {
+            super.visitCode();
+            super.visitMethodInsn(Opcodes.INVOKESTATIC, "io/ohmyrasp/agent/java8/Java8RaspHooks", callee, "()V", false);
+          }
+        };
+      }
+    }, 0);
+    return writer.toByteArray();
   }
 
   @Test

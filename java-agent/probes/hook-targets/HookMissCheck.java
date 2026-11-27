@@ -1,5 +1,6 @@
 import io.ohmyrasp.agent.hookmiss.HookExpectation;
 import io.ohmyrasp.agent.hookmiss.HookExpectations;
+import io.ohmyrasp.agent.hookmiss.HookMissScope;
 import io.ohmyrasp.agent.hookmiss.HookMissSink;
 import io.ohmyrasp.agent.hookmiss.HookMissWatch;
 import io.ohmyrasp.agent.hookmiss.HookMisses;
@@ -40,9 +41,10 @@ import java.util.regex.Pattern;
  * report &lt;unit&gt; &lt;class&gt; &lt;library&gt; &lt;version&gt; &lt;reason&gt;
  * </pre>
  *
- * A pair is claimed when the table names it and its unit selects the class by name (a primary module's
- * {@code matchesClass}; a backport transformer's {@code NamedTargets.selectsByName}, or any class for one that
- * selects by name only). check.py derives from the recorded map which claimed pairs the report must report.
+ * A pair is claimed when the table names it and its unit means to instrument the class: a primary module's
+ * {@code expectedFor} (its name selection, or for the request-body module every class the table names); a backport
+ * transformer's {@code NamedTargets.selectsByName} and {@code HookMissScope.inScope}, or any class for one that has
+ * neither. check.py derives from the recorded map which claimed pairs the report must report.
  */
 public final class HookMissCheck {
   private static final Pattern REPORT = Pattern.compile("^\"unit\":\"([^\"]+)\",\"class\":\"([^\"]+)\",\"reason\":\"([^\"]+)\"");
@@ -86,10 +88,10 @@ public final class HookMissCheck {
       Object registry = registryType.getMethod("defaults").invoke(null);
       Field modulesField = registryType.getDeclaredField("modules");
       modulesField.setAccessible(true);
-      Method matchesClass = Class.forName("io.ohmyrasp.agent.asm.HookModule").getDeclaredMethod("matchesClass", String.class);
-      matchesClass.setAccessible(true);
+      Method expectedFor = Class.forName("io.ohmyrasp.agent.asm.HookModule").getDeclaredMethod("expectedFor", String.class);
+      expectedFor.setAccessible(true);
       for (Object module : (List<?>) modulesField.get(registry)) {
-        claims.put(module.getClass().getSimpleName(), (className) -> (Boolean) matchesClass.invoke(module, className));
+        claims.put(module.getClass().getSimpleName(), (className) -> (Boolean) expectedFor.invoke(module, className));
       }
       Class<?> transformerType = Class.forName("io.ohmyrasp.agent.asm.OhMyRaspTransformer");
       primaryTransformer = transformerType.getConstructor(registryType).newInstance(registry);
@@ -102,9 +104,9 @@ public final class HookMissCheck {
           Constructor<?> constructor = Class.forName(type.replace('/', '.')).getConstructor();
           ClassFileTransformer transformer = (ClassFileTransformer) constructor.newInstance();
           String unit = HookExpectations.unitName(transformer.getClass().getSimpleName());
-          claims.put(unit, transformer instanceof NamedTargets
-              ? (className) -> ((NamedTargets) transformer).selectsByName(className)
-              : (className) -> true);
+          claims.put(unit, (className) ->
+              (!(transformer instanceof NamedTargets) || ((NamedTargets) transformer).selectsByName(className))
+              && (!(transformer instanceof HookMissScope) || ((HookMissScope) transformer).inScope(APPLICATION, className)));
           chain.add(HookMissWatch.wrap(transformer));
         }
       }

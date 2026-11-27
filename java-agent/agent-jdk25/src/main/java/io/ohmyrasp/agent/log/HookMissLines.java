@@ -7,8 +7,8 @@ import io.ohmyrasp.agent.runtime.AgentOwnIo;
 
 /**
  * The primary agent's hook-miss writer: each diagnostic is one {@code "kind":"diagnostic"} line through
- * {@link JsonEventLogger#recordDiagnostic}, which the daemon classifies by its {@code kind} and never uploads as
- * an attack.
+ * {@link JsonEventLogger#recordDiagnostic}, a path of its own that never uses the detections' queue or batches,
+ * and which the daemon classifies by its {@code kind} and never uploads as an attack.
  */
 public final class HookMissLines implements HookMissSink {
   private final JsonEventLogger logger;
@@ -30,9 +30,8 @@ public final class HookMissLines implements HookMissSink {
       HookMisses.startHeld(HookExpectations.load("primary"), new HookMissLines(JsonEventLogger.get()));
       return true;
     } catch (Throwable unavailable) {
-      if (Boolean.getBoolean("ohmyrasp.debug")) {
-        System.err.println("[OHMYRASP] hook-miss report off: " + unavailable);
-      }
+      // One status line, whatever the debug flag: the agent still starts and protects, only this report is off.
+      System.err.println("[OHMYRASP] hook-miss report unavailable (protection is not affected): " + unavailable);
       return false;
     }
   }
