@@ -7,9 +7,9 @@ import java.nio.file.StandardOpenOption;
 /**
  * An application for the launcher probe: {@code LauncherCheck TRACK|none [attach AGENT-JAR...]}. It always
  * prints that it ran. With "attach" it loads each AGENT-JAR into its own JVM (agentmain), all at once from
- * one thread each. "touch-hooks-then-attach" first calls the backport line TRACK's hooks class through the
- * system class loader (the agent JAR must be on the class path), and "start-copy-then-attach" first starts that
- * line's runtime there; then both attach as "attach" does. It prints the
+ * one thread each. "touch-hooks-then-attach" first calls the line TRACK's hooks class (the primary's OhMyRaspHooks,
+ * or a backport's Java&lt;N&gt;RaspHooks) through the system class loader (the agent JAR must be on the class path),
+ * and "start-copy-then-attach" first starts a backport line's runtime there; then both attach as "attach" does. It prints the
  * published ohmyrasp.agent.line property. Given a track
  * ("8", "11", "17" or "main"), it then opens the system hosts file inside a request that names that
  * file, which every line blocks in block mode (the file-read probe's "file-channel" case), and prints
@@ -21,8 +21,13 @@ public class LauncherCheck {
     if (args.length > 2 && args[1].equals("touch-hooks-then-attach")) {
       // A hook of the system class loader's copy of the line, before the agent starts: it does nothing, but the
       // line's classes are now defined twice.
-      Class.forName("io.ohmyrasp.agent.java" + args[0] + ".Java" + args[0] + "RaspHooks")
-          .getMethod("beforeFileRead", Object.class).invoke(null, "/etc/hosts");
+      if (args[0].equals("main")) {
+        Class.forName("io.ohmyrasp.agent.hook.OhMyRaspHooks")
+            .getMethod("beforeFileRead", String.class).invoke(null, "/etc/hosts");
+      } else {
+        Class.forName("io.ohmyrasp.agent.java" + args[0] + ".Java" + args[0] + "RaspHooks")
+            .getMethod("beforeFileRead", Object.class).invoke(null, "/etc/hosts");
+      }
       System.out.println("launcher-check: touched the system copy of the hooks");
     } else if (args.length > 2 && args[1].equals("start-copy-then-attach")) {
       Class.forName("io.ohmyrasp.agent.java" + args[0] + ".Java" + args[0] + "RaspLine").getMethod("start").invoke(null);
