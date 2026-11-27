@@ -1,5 +1,6 @@
 package io.ohmyrasp.agent.backport;
 
+import io.ohmyrasp.agent.rules.OutsideRequest;
 import io.ohmyrasp.agent.util.ControlDocument;
 import java.io.File;
 import java.io.FileWriter;
@@ -55,6 +56,8 @@ public final class RaspRuntime {
     final boolean standalone;
     final boolean lockConfig;
     final Mode mode;
+    // Whether a finding outside an HTTP request blocks; see OutsideRequest.
+    final boolean outsideRequestBlocks;
     final Path controlPath;
     final boolean controlDisabled;
     final String logPath;
@@ -64,6 +67,7 @@ public final class RaspRuntime {
         boolean standalone,
         boolean lockConfig,
         Mode mode,
+        boolean outsideRequestBlocks,
         Path controlPath,
         boolean controlDisabled,
         String logPath,
@@ -71,6 +75,7 @@ public final class RaspRuntime {
       this.standalone = standalone;
       this.lockConfig = lockConfig;
       this.mode = mode;
+      this.outsideRequestBlocks = outsideRequestBlocks;
       this.controlPath = controlPath;
       this.controlDisabled = controlDisabled;
       this.logPath = logPath;
@@ -138,6 +143,18 @@ public final class RaspRuntime {
         resolvedMode = Mode.BLOCK;
       }
 
+      // Resolved like mode: each source on its own, only the baked value under lock_config.
+      Boolean bakedOutside = OutsideRequest.parse(bakedProperty(baked, OutsideRequest.CONTROL_KEY));
+      Boolean chosenOutside =
+          lockConfig
+              ? bakedOutside
+              : firstNonNull(
+                  OutsideRequest.parse(sysProps.get(OutsideRequest.PROPERTY)),
+                  OutsideRequest.parse(env.get(OutsideRequest.ENVIRONMENT)),
+                  bakedOutside);
+      boolean outsideRequestBlocks =
+          chosenOutside == null ? OutsideRequest.DEFAULT_BLOCKS : chosenOutside.booleanValue();
+
       String bakedControl = validControl(bakedProperty(baked, "control"));
       String controlRaw;
       if (lockConfig) {
@@ -184,6 +201,7 @@ public final class RaspRuntime {
           standalone,
           lockConfig,
           resolvedMode,
+          outsideRequestBlocks,
           controlPath,
           controlDisabled,
           logPath,
@@ -221,30 +239,55 @@ public final class RaspRuntime {
   // ---- detection mode, polled from the control file -----------------------
 
   /**
-   * The detection mode and the control file that steers it. {@link #poll} is one polling step:
-   * the poller thread calls it, and so can a test, without the thread.
+   * What the control file steers, published as one value: a hook reads it once and never sees a
+   * new mode beside an old {@code outside_request}.
+   */
+  static final class Settings {
+    final Mode mode; // null = unset -> legacy behavior
+    final boolean outsideRequestBlocks;
+
+    Settings(Mode mode, boolean outsideRequestBlocks) {
+      this.mode = mode;
+      this.outsideRequestBlocks = outsideRequestBlocks;
+    }
+  }
+
+  private static final String[] CONTROL_KEYS = {"mode", OutsideRequest.CONTROL_KEY};
+
+  /**
+   * The detection mode, whether a finding outside a request blocks, and the control file that
+   * steers them. {@link #poll} is one polling step: the poller thread calls it, and so can a test,
+   * without the thread.
    */
   static final class ControlState {
-    private final Mode startup;
-    private volatile Mode mode; // null = unset -> legacy behavior
+    private final Settings startup;
+    private volatile Settings current;
     // The content last applied. The file is read on every poll and applied when its content
     // differs; content that fails to parse is not recorded, so a document read half-written is
     // applied once it is complete, whatever its modification time.
     private volatile String applied;
 
     ControlState(Mode startup) {
-      this.startup = startup;
-      this.mode = startup;
+      this(startup, OutsideRequest.DEFAULT_BLOCKS);
+    }
+
+    ControlState(Mode startup, boolean outsideRequestBlocks) {
+      this.startup = new Settings(startup, outsideRequestBlocks);
+      this.current = this.startup;
     }
 
     Mode mode() {
-      return mode;
+      return current.mode;
+    }
+
+    Settings settings() {
+      return current;
     }
 
     /**
-     * One polling step. The control file overrides the start-up mode only while it exists: when it
-     * is gone the start-up mode returns. When it exists but cannot be read or parsed, the last good
-     * mode stays; the daemon replaces the file atomically, so such a read is transient.
+     * One polling step. The control file overrides the start-up settings only while it exists:
+     * when it is gone they return. When it exists but cannot be read or parsed, the last good
+     * settings stay; the daemon replaces the file atomically, so such a read is transient.
      */
     void poll(Path path) {
       if (path == null) {
@@ -254,8 +297,8 @@ public final class RaspRuntime {
         pollOnce(path);
       } catch (Throwable e) {
         // Nothing the poll step throws escapes it, an Error from a file system provider included:
-        // the last good mode stays, and the first poll, made while RaspRuntime initialises before
-        // any hook is installed, cannot abort the JVM's start-up.
+        // the last good settings stay, and the first poll, made while RaspRuntime initialises
+        // before any hook is installed, cannot abort the JVM's start-up.
       }
     }
 
@@ -283,23 +326,35 @@ public final class RaspRuntime {
       if (text.equals(applied)) {
         return;
       }
-      String token;
+      Object[] values;
       try {
-        // Only one complete JSON object counts, and only its top-level mode.
-        token = ControlDocument.topLevelString(text, "mode");
+        // Only one complete JSON object counts, and only its top-level members.
+        values = ControlDocument.topLevelValues(text, CONTROL_KEYS);
       } catch (IllegalArgumentException malformed) {
         return; // keep the last good state and record nothing
       }
       applied = text;
-      Mode parsed = parseMode(token);
-      if (parsed != null) {
-        mode = parsed; // an unrecognised mode changes nothing
+      Settings now = current;
+      // An unrecognised mode changes nothing.
+      Mode parsed = values[0] instanceof String ? parseMode((String) values[0]) : null;
+      current = new Settings(parsed != null ? parsed : now.mode, outsideRequest(values[1], now));
+    }
+
+    /**
+     * The {@code outside_request} a document sets: absent or null returns the start-up value, a
+     * value nobody accepts changes nothing, as an unrecognised mode does.
+     */
+    private boolean outsideRequest(Object value, Settings now) {
+      if (value == null) {
+        return startup.outsideRequestBlocks;
       }
+      Boolean parsed = value instanceof String ? OutsideRequest.parse((String) value) : null;
+      return parsed != null ? parsed.booleanValue() : now.outsideRequestBlocks;
     }
 
     private void restoreStartup() {
       applied = null;
-      mode = startup;
+      current = startup;
     }
   }
 
@@ -342,7 +397,7 @@ public final class RaspRuntime {
       this.baked = baked;
       this.initial = initial;
       this.controlPath = initial.controlPath;
-      this.control = new ControlState(initial.mode);
+      this.control = new ControlState(initial.mode, initial.outsideRequestBlocks);
       this.sync = sync;
       this.sampleRate = initial.latencySample;
       this.writerEnabled = isFileLogTarget(initial.logPath);
@@ -402,7 +457,7 @@ public final class RaspRuntime {
       // the hooks run inside JDK classes, where loading a class can re-enter them. Mode is used by
       // every detectionOff() and is otherwise loaded only once a mode has been read.
       new Event("", "");
-      BackportLine.initialise(Mode.class);
+      BackportLine.initialise(Mode.class, Settings.class, OutsideRequest.class);
       if (state.controlPath != null) {
         state.control.poll(state.controlPath);
       }
@@ -533,6 +588,11 @@ public final class RaspRuntime {
     return started().control.mode();
   }
 
+  /** One polling step of the started runtime against {@code path}, as the poller makes it. Tests only. */
+  static void pollControl(Path path) {
+    started().control.poll(path);
+  }
+
   /** True when detection is explicitly OFF, and during the agent's own I/O on this thread. */
   static boolean detectionOff() {
     return started().control.mode() == Mode.OFF || inOwnIo();
@@ -548,6 +608,20 @@ public final class RaspRuntime {
     }
     Started state = started();
     return blockingAllowed(state.initial.standalone, state.control.mode(), legacyEnvFlag);
+  }
+
+  /**
+   * Whether a finding blocks here: {@link #blockingAllowed(boolean)}, and either the thread serves
+   * an HTTP request or {@code outside_request} says block. One read of the control settings.
+   */
+  static boolean findingBlocks(boolean legacyEnvFlag, boolean inRequest) {
+    if (inOwnIo()) {
+      return false;
+    }
+    Started state = started();
+    Settings settings = state.control.settings();
+    return blockingAllowed(state.initial.standalone, settings.mode, legacyEnvFlag)
+        && (inRequest || settings.outsideRequestBlocks);
   }
 
   static boolean blockingAllowed(boolean standalone, Mode currentMode, boolean legacyEnvFlag) {

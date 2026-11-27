@@ -140,6 +140,18 @@ public final class HostReadPath {
     return false;
   }
 
+  private static final java.util.regex.Pattern PROTECTED_HOST_FILE =
+      java.util.regex.Pattern.compile(
+          "^/(?:etc/(?:passwd|shadow|issue)|proc/self/(?:environ|cmdline)|root/\\.ssh/(?:id_rsa|authorized_keys)|home/[^/]+/\\.ssh/id_rsa)$");
+
+  /**
+   * Whether {@code location} (a {@link #location}) is a host file every line blocks a read of, inside or outside an
+   * HTTP request: account databases, the process environment and command line, SSH keys.
+   */
+  public static boolean isProtectedHostFile(String location) {
+    return location != null && PROTECTED_HOST_FILE.matcher(location).matches();
+  }
+
   public static boolean isHostsFile(String location) {
     if (File.separatorChar == '/') return "/etc/hosts".equals(location);
     if (!location.endsWith("/system32/drivers/etc/hosts")) return false;

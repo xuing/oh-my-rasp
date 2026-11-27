@@ -34,6 +34,7 @@ import io.ohmyrasp.agent.model.Detection;
 import io.ohmyrasp.agent.model.RequestContext;
 import io.ohmyrasp.agent.policy.AgentPolicy;
 import io.ohmyrasp.agent.policy.PolicyEvaluation;
+import io.ohmyrasp.agent.rules.OutsideRequest;
 import io.ohmyrasp.agent.process.PosixShellCommand;
 import io.ohmyrasp.agent.naming.LookupRoute;
 import io.ohmyrasp.agent.loading.CodebaseUrls;
@@ -291,7 +292,7 @@ public final class OhMyRaspHooks {
           "", Map.of(), Map.of());
       emit(Optional.of(Detection.log("request", "request_remote_job_submission", 95,
           service + " job submission lacks the deployment's required role", context,
-          Map.of("decision_basis", "required_submit_role_denied", "operation", operation))), true);
+          Map.of("decision_basis", "required_submit_role_denied", "operation", operation))));
     } catch (OhMyRaspBlockException blocked) {
       throw blocked;
     } catch (Throwable failure) {
@@ -361,7 +362,7 @@ public final class OhMyRaspHooks {
     if (detectionDisabled() || !io.ohmyrasp.agent.rules.product.spring.SpringProcessInit.selects(builder)) return;
     emit(Optional.of(Detection.log("command", "command_spring_remote_init", 95,
         "Spring dispatched an HTTP-defined initializer to ProcessBuilder.start", currentRequest(),
-        Map.of("decision_basis", "remote_bean_init_dispatch", "method", "ProcessBuilder.start"))), true);
+        Map.of("decision_basis", "remote_bean_init_dispatch", "method", "ProcessBuilder.start"))));
   }
 
   public static void beforeProcessLaunch(String[] argv) {
@@ -462,11 +463,11 @@ public final class OhMyRaspHooks {
         var finding = Detection.log("sql", "sql_identifier_injection", 95,
             "A raw mapper substitution introduced SQL control at JDBC", redacted,
             Map.of("source", "MyBatis", "reason", reason, "decision_basis", "mapper_substitution_at_jdbc"));
-        emit(Optional.of(finding), true, algorithm -> MyBatisSqlTrace.repeatedObservation(query, algorithm));
+        emit(Optional.of(finding), algorithm -> MyBatisSqlTrace.repeatedObservation(query, algorithm));
         // A managed policy may independently select the existing JDBC classifier.
         if (!policy().loaded()) return;
       }
-      emit(JdbcDetector.detectSql(query, request, jdbcReceiver), true,
+      emit(JdbcDetector.detectSql(query, request, jdbcReceiver),
           algorithm -> MyBatisSqlTrace.repeatedObservation(query, algorithm));
     } catch (OhMyRaspBlockException blocked) {
       throw blocked;
@@ -486,7 +487,7 @@ public final class OhMyRaspHooks {
       return;
     }
     try {
-      emit(Base64DecodeDetector.detectBase64Decode(src, sp, sl, isURL, isMIME, currentRequest()), true);
+      emit(Base64DecodeDetector.detectBase64Decode(src, sp, sl, isURL, isMIME, currentRequest()));
     } catch (OhMyRaspBlockException blocked) {
       throw blocked;
     } catch (Throwable throwable) {
@@ -599,7 +600,7 @@ public final class OhMyRaspHooks {
       var finding = NetworkDestinationDetector.classifyHttpTransport(uri, request, policy().loaded(), peer, HttpTransportObservation.changedOrigin(exchange, uri));
       if (finding.isEmpty()) return;
       var observed = transportEvidence(finding.get(), peer == null ? "http_exchange_acquire" : "http_resolved_route", peer);
-      emit(Optional.of(observed), false, null, origin != null && origin == currentRequest());
+      emit(Optional.of(observed), null, origin != null && origin == currentRequest());
     } catch (OhMyRaspBlockException blocked) {
       throw blocked;
     } catch (Throwable failure) {
@@ -656,7 +657,7 @@ public final class OhMyRaspHooks {
       var finding = NetworkDestinationDetector.classifyHttpTransport(url, request, policy().loaded(), peer, redirected);
       if (finding.isEmpty()) return;
       Detection observed = transportEvidence(finding.get(), basis, peer);
-      emit(Optional.of(observed), false,
+      emit(Optional.of(observed),
           algorithm -> HttpTransportObservation.repeated(connection, url, request, algorithm, write));
     } catch (OhMyRaspBlockException blocked) {
       throw blocked;
@@ -871,7 +872,7 @@ public final class OhMyRaspHooks {
         RequestContext request = origin instanceof RequestContext source ? source : RequestContext.empty();
         emit(Optional.of(Detection.log("ssrf", "ssrf_protocol", 95, "External attachment reference opened a host file",
             request, Map.of("scheme", "file", "mechanism", "cxf-aegis-xop", "path", path,
-                "decision_basis", "attachment_file_open"))), true, ignored -> io.ohmyrasp.agent.xml.AttachmentFileRead.repeated(),
+                "decision_basis", "attachment_file_open"))), ignored -> io.ohmyrasp.agent.xml.AttachmentFileRead.repeated(),
             request.active() && request == currentRequest());
       } else {
         var finding = FileAccessDetector.detectFileRead(path, currentRequest(), OhMyRaspHooks::isXmlParserStack, policy().loaded(), links);
@@ -884,7 +885,7 @@ public final class OhMyRaspHooks {
             observed = new Detection(observed.timestamp(), observed.hook(), observed.algorithm(), observed.action(),
                 observed.confidence(), observed.message(), observed.request(), details);
           }
-          emit(Optional.of(observed), false, algorithm -> HostReadPath.repeated(path, algorithm + ":" + basis));
+          emit(Optional.of(observed), algorithm -> HostReadPath.repeated(path, algorithm + ":" + basis));
         }
       }
     } catch (OhMyRaspBlockException blocked) {
@@ -1017,7 +1018,7 @@ public final class OhMyRaspHooks {
           finding = new Detection(finding.timestamp(), finding.hook(), finding.algorithm(), finding.action(),
               finding.confidence(), finding.message(), finding.request(), details);
         }
-        emit(Optional.of(finding), false, null, origin == current);
+        emit(Optional.of(finding), null, origin == current);
       }
     } catch (OhMyRaspBlockException blocked) {
       throw blocked;
@@ -1076,7 +1077,7 @@ public final class OhMyRaspHooks {
           event = new Detection(event.timestamp(), event.hook(), event.algorithm(), event.action(), event.confidence(),
               event.message(), event.request(), details);
         }
-        emit(Optional.of(event), false, algorithm -> MultipartFilename.repeated(
+        emit(Optional.of(event), algorithm -> MultipartFilename.repeated(
             DISPATCH.servletRequest(), filename, algorithm, basis, evaluation.policyDigest));
       }
     } catch (OhMyRaspBlockException blocked) {
@@ -1186,7 +1187,7 @@ public final class OhMyRaspHooks {
     if (output == null || detectionDisabled()) return;
     try {
       String content = output.append(line);
-      if (content != null) emit(HostFileMutationDetector.detectGeneratedScriptFileWrite(output.path, content, currentRequest()), false, ignored -> output.repeated());
+      if (content != null) emit(HostFileMutationDetector.detectGeneratedScriptFileWrite(output.path, content, currentRequest()), ignored -> output.repeated());
     } catch (OhMyRaspBlockException denied) {
       throw denied;
     } catch (Throwable failure) {
@@ -1389,7 +1390,7 @@ public final class OhMyRaspHooks {
       emit(Optional.of(Detection.log("request", "request_jwt_verification_failure", 95,
           "Authentication filter continued the request after rejecting its credential", context,
           Map.of("exception", rejection, "decision_basis", "rejected_token_dispatch",
-              "operation", "FilterChain.doFilter"))), true);
+              "operation", "FilterChain.doFilter"))));
     } catch (OhMyRaspBlockException blocked) {
       throw blocked;
     } catch (Throwable failure) {
@@ -1424,7 +1425,7 @@ public final class OhMyRaspHooks {
       event = new Detection(event.timestamp(), event.hook(), event.algorithm(), event.action(),
           event.confidence(), event.message(), event.request(), details);
     }
-    emit(Optional.of(event), (xmlRpc || blockingEnabled()) && isDangerousDeserialization(className));
+    emit(Optional.of(event));
   }
 
   /**
@@ -1519,7 +1520,7 @@ public final class OhMyRaspHooks {
       return;
     }
     try {
-      emit(DeserializationDetector.detectFastjsonClassResource(resource, currentRequest()), true);
+      emit(DeserializationDetector.detectFastjsonClassResource(resource, currentRequest()));
     } catch (OhMyRaspBlockException blocked) {
       throw blocked;
     } catch (Throwable throwable) {
@@ -1534,7 +1535,7 @@ public final class OhMyRaspHooks {
 
   public static void beforeOpenWireThrowable(Class<?> selected) {
     if (detectionDisabled()) return;
-    emit(DeserializationDetector.detectOpenWireThrowable(selected, currentRequest()), true);
+    emit(DeserializationDetector.detectOpenWireThrowable(selected, currentRequest()));
   }
 
   public static void beforeHttpInvokerDeserialization(String mechanism) {}
@@ -1553,7 +1554,7 @@ public final class OhMyRaspHooks {
   public static void beforeHessianType(String type) {}
 
   public static void beforeHessianAllocation(Class<?> selected, String basis) {
-    if (!detectionDisabled()) emit(DeserializationDetector.detectHessianAllocation(selected, basis, currentRequest()), true);
+    if (!detectionDisabled()) emit(DeserializationDetector.detectHessianAllocation(selected, basis, currentRequest()));
   }
 
   /** Compatibility entry for callers that only saw a declaration. */
@@ -1563,7 +1564,7 @@ public final class OhMyRaspHooks {
     if (detectionDisabled()) return;
     XmlRpcReadScope.reading(stream);
     if (!policy().selectsAlgorithm("deserialization_xmlrpc_serialized")) return;
-    emit(DeserializationDetector.detectXmlRpcSerializableValue("ApacheXmlRpc", currentRequest()), true);
+    emit(DeserializationDetector.detectXmlRpcSerializableValue("ApacheXmlRpc", currentRequest()));
   }
 
   public static void beforeJavaBeansStatement(Object statement) {
@@ -2145,21 +2146,20 @@ public final class OhMyRaspHooks {
   }
 
   private static void emit(Optional<Detection> detection) {
-    emit(detection, false);
+    emit(detection, null);
   }
 
-  private static void emit(
-      Optional<Detection> detection, boolean allowNonRequestBlock) {
-    emit(detection, allowNonRequestBlock, null);
+  private static void emit(Optional<Detection> detection, java.util.function.Predicate<String> repeatedObservation) {
+    emit(detection, repeatedObservation, true);
   }
 
+  /**
+   * Decides and records a finding. It blocks when blocking is permitted, the finding's action is block, and either
+   * it was made inside an HTTP request or the control setting {@code outside_request} says block (the default):
+   * the same scope as the backport lines.
+   */
   private static void emit(Optional<Detection> detection,
-      boolean allowNonRequestBlock, java.util.function.Predicate<String> repeatedObservation) {
-    emit(detection, allowNonRequestBlock, repeatedObservation, true);
-  }
-
-  private static void emit(Optional<Detection> detection,
-      boolean allowNonRequestBlock, java.util.function.Predicate<String> repeatedObservation, boolean mayRedirect) {
+      java.util.function.Predicate<String> repeatedObservation, boolean mayRedirect) {
     // The agent's own event and control I/O is neither reported nor blocked.
     if (detection.isEmpty() || AgentOwnIo.active()) {
       return;
@@ -2180,7 +2180,8 @@ public final class OhMyRaspHooks {
       return;
     }
     Detection event = policyEvaluation.detection();
-    boolean blockScope = activeRequest(value) || allowNonRequestBlock;
+    boolean blockScope = activeRequest(value)
+        || (runtime.outsideRequestBlocks() && OutsideRequest.mayBlockOutsideRequest(value.algorithm()));
     if (!policyEvaluation.controlled()
         && (legacyBlockEnabled() || runtime.mode() == DetectionMode.BLOCK)
         && blockScope) {
@@ -2189,10 +2190,7 @@ public final class OhMyRaspHooks {
     if (forceBlockEnabled() && blockScope && !value.requiresExplicitRule()) {
       event = event.withAction("block");
     }
-    boolean willBlock =
-        runtime.blockingAllowed()
-            && "block".equalsIgnoreCase(event.action())
-            && (activeRequest(event) || allowNonRequestBlock);
+    boolean willBlock = runtime.blockingAllowed() && "block".equalsIgnoreCase(event.action()) && blockScope;
     if (!willBlock && repeatedObservation != null && repeatedObservation.test(event.algorithm())) return;
     Detection recorded = event;
     if (!willBlock && "block".equalsIgnoreCase(event.action())) {

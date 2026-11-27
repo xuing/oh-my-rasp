@@ -8,6 +8,7 @@ import static io.ohmyrasp.agent.detect.DeserializationTypes.normalizeJavaTypeNam
 import static io.ohmyrasp.agent.detect.DetectorStrings.abbreviate;
 import static io.ohmyrasp.agent.detect.DetectorStrings.lower;
 import static io.ohmyrasp.agent.detect.DetectorStrings.normalizePath;
+import io.ohmyrasp.agent.file.ScriptFileWrite;
 import io.ohmyrasp.agent.model.Detection;
 import io.ohmyrasp.agent.model.RequestContext;
 import java.util.LinkedHashMap;
@@ -560,7 +561,8 @@ public final class DeserializationDetector {
       List<String> arguments,
       RequestContext request,
       List<String> stackClassNames) {
-    if (request == null || !request.active()) {
+    // Decided inside and outside a request, as on the backport lines.
+    if (request == null) {
       return Optional.empty();
     }
     if (!isXmlDecoderStack(stackClassNames)) {
@@ -599,7 +601,8 @@ public final class DeserializationDetector {
     if (writerConstruction) {
       for (String argument : safeArguments) {
         String path = normalizePath(argument);
-        if (HostFileMutationDetector.isScriptTarget(path)) {
+        // Outside a request the script files of the backport rule.
+        if (request.active() ? HostFileMutationDetector.isScriptTarget(path) : ScriptFileWrite.isScriptFile(path)) {
           return Optional.of(
               Detection.log(
                   "deserialization",

@@ -134,10 +134,8 @@ public final class CodeExecutionDetector {
     if (source == null || source.isBlank()) {
       return Optional.empty();
     }
+    // Decided inside and outside a request, as on the backport lines.
     boolean requestControlled = request.hasParameterIn(source);
-    if (!requestControlled && !request.active()) {
-      return Optional.empty();
-    }
     String normalized = lower(source);
     String compact = normalized.replaceAll("\\s+", "");
     boolean runtimeExec =
@@ -147,7 +145,9 @@ public final class CodeExecutionDetector {
                 && compact.contains(".exec"));
     boolean processBuilderStart =
         compact.contains("processbuilder")
-            && (compact.contains(".start(") || compact.contains("getmethod(\"start\""));
+            && (compact.contains(".start(")
+                || compact.contains("getmethod(\"start\"")
+                || compact.contains("getmethod('start'"));
     boolean scriptEngineEval =
         compact.contains("scriptenginemanager") && compact.contains(".eval(");
     if (!runtimeExec && !processBuilderStart && !scriptEngineEval) {

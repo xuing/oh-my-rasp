@@ -40,6 +40,19 @@ final class HostFileMutationDetectorTest {
     assertEquals("writeFile_script", result.orElseThrow().algorithm());
   }
 
+  /** Outside a request the script-write rule of the backports decides, on every line. */
+  @Test
+  void decidesScriptWritesOutsideARequestWithTheBackportRule() {
+    assertAlgorithm(HostFileMutationDetector.detectFileWrite("/usr/local/tomcat/webapps/ROOT/shell.jsp",
+        RequestContext.empty()), "writeFile_script");
+    assertAlgorithm(HostFileMutationDetector.detectFileWrite("/srv/upload/../webapps/ROOT/x.war",
+        RequestContext.empty()), "writeFile_script");
+    for (String benign : List.of("/tmp/report.jsp", "/srv/app/webapps/ROOT/WEB-INF/lib/app.jar",
+        "/home/build/.m2/repository/org/example/lib/1.0/lib-1.0.jar", "/usr/local/tomcat/webapps/ROOT/index.html")) {
+      assertTrue(HostFileMutationDetector.detectFileWrite(benign, RequestContext.empty()).isEmpty(), benign);
+    }
+  }
+
   @Test
   void distinguishesDirectReflectiveWriteFromOrdinaryBackgroundWrite() {
     String path = "/srv/app/views/order.jsp";

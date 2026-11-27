@@ -238,13 +238,24 @@ final class CodeExecutionDetectorTest {
     assertTrue(result.isEmpty());
   }
 
+  /** Outside a request the rule decides as the backport lines do. */
   @Test
-  void ignoresBackgroundJavaCompilationRuntimeExecution() {
+  void detectsBackgroundJavaCompilationRuntimeExecution() {
     var result =
         CodeExecutionDetector.detectJavaCompilation(
             "javac",
             "public class Demo { void run() throws Exception { Runtime.getRuntime().exec(\"id\"); } }",
             RequestContext.empty());
+
+    assertEquals("java_compile_runtime", result.orElseThrow().algorithm());
+    assertEquals("false", result.orElseThrow().details().get("requestControlled"));
+  }
+
+  @Test
+  void ignoresBackgroundJavaCompilationWithoutRuntimeExecution() {
+    var result =
+        CodeExecutionDetector.detectJavaCompilation(
+            "javac", "public class Demo { int add(int a, int b) { return a + b; } }", RequestContext.empty());
 
     assertTrue(result.isEmpty());
   }

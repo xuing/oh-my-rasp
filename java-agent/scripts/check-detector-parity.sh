@@ -50,8 +50,11 @@ require_symbol() {
 # ---------------------------------------------------------------------------
 hooks="$ROOT/shared/src/main/java/io/ohmyrasp/agent/backport/BackportHooks.java"
 
-# Symbol 1: Maven .m2 artifact write carve-out.
-require_symbol "$hooks" "isMavenRepositoryArtifactWrite"
+# Symbol 1: Maven .m2 artifact write carve-out. It lives in the shared script-write rule, which the backport
+# decisions call for every write and the primary for the writes made outside an HTTP request.
+script_write="$ROOT/shared/src/main/java/io/ohmyrasp/agent/file/ScriptFileWrite.java"
+require_symbol "$script_write" "isMavenRepositoryArtifactWrite"
+require_symbol "$hooks" "ScriptFileWrite.protectedWrite"
 # Symbol 2: Nacos internal maintenance-path carve-out.
 require_symbol "$hooks" "isBenignInternalServicePath"
 # Symbol 3: Liferay portal internal-include carve-out (+ its companion helper).
@@ -64,13 +67,14 @@ require_symbol "$hooks" "isKnownLiferayInternalIncludePath"
 #
 #   * Nacos    -> isBenignInternalServicePath   (same name; guards looksLikeInternalIdentityBypass)
 #   * Liferay  -> isKnownLiferayPortalInclude   (same name; guards detectServletIncludeAttributes)
-#   * Maven    -> INTENTIONALLY EXCLUDED. jdk25's SCRIPT_FILE pattern does NOT
-#                 include jar/war/ear/class, so a benign ~/.m2/repository/*.jar
-#                 write is never classified as a script write and never blocked.
-#                 The FP is eliminated by construction, so no carve-out symbol
-#                 exists (or is needed) in jdk25. Do not add one here.
+#   * Maven    -> Inside a request jdk25's SCRIPT_FILE pattern does NOT include
+#                 jar/war/ear/class, so a benign ~/.m2/repository/*.jar write is
+#                 never classified as a script write. Outside a request jdk25
+#                 decides with the shared ScriptFileWrite, which carries the
+#                 carve-out checked above.
 # ---------------------------------------------------------------------------
 jdk25_detectors="$ROOT/agent-jdk25/src/main/java/io/ohmyrasp/agent/detect"
+require_symbol "$jdk25_detectors" "ScriptFileWrite.protectedWrite"
 require_symbol "$jdk25_detectors" "isBenignInternalServicePath"
 require_symbol "$jdk25_detectors" "isKnownLiferayPortalInclude"
 require_symbol "$jdk25_detectors" "isKnownLiferayInternalIncludePath"
