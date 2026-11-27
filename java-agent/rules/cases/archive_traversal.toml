@@ -6,9 +6,8 @@ op = "archive.extract"
 args = { entry = "../../evil.txt", path = "{tmp}/extract/a/b" }
 
 [case.primary]
-effect = "log"
+effect = "block"
 rule = "archive_traversal"
-why = "the primary blocks this only inside an HTTP request; outside one it logs"
 
 [case.backport]
 effect = "block"
@@ -47,3 +46,43 @@ effect = "none"
 
 [case.backport]
 effect = "none"
+
+[[case]]
+name = "entry-escapes-outside-request-log-only"
+kind = "attack"
+via = "sink"
+op = "archive.extract"
+args = { entry = "../../evil.txt", path = "{tmp}/extract/a/b" }
+control = { outside_request = "log" }
+
+[case.primary]
+effect = "log"
+rule = "archive_traversal"
+why = "outside_request is log: outside a request the finding is logged and the operation runs"
+
+[case.backport]
+effect = "log"
+rule = "archive_entry_traversal_write"
+why = "outside_request is log: outside a request the finding is logged and the operation runs"
+
+[[case]]
+name = "entry-escapes-in-request-log-only"
+kind = "attack"
+via = "request-sink"
+op = "archive.extract"
+args = { entry = "../../evil.txt", path = "{tmp}/extract/a/b" }
+control = { outside_request = "log" }
+
+[case.request]
+method = "GET"
+uri = "/app/report"
+query = "id=7"
+headers = { User-Agent = "Mozilla/5.0 (X11; Linux x86_64) Firefox/128.0", Accept = "text/html" }
+
+[case.primary]
+effect = "block"
+rule = "archive_traversal"
+
+[case.backport]
+effect = "block"
+rule = "archive_entry_traversal_write"

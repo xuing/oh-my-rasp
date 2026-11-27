@@ -7,9 +7,8 @@ args = { argv = ["/nonexistent/rule-case/nslookup", "abc123.dnslog.cn"] }
 completes_with = ["IOException"]
 
 [case.primary]
-effect = "log"
+effect = "block"
 rule = "command_dnslog"
-why = "the primary blocks this only inside an HTTP request; outside one it logs"
 
 [case.backport]
 effect = "unreachable"

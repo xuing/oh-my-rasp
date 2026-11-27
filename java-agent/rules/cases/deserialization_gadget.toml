@@ -7,9 +7,8 @@ args = { class = "org.apache.commons.beanutils.BeanComparator" }
 stubs = ["org.apache.commons.beanutils.BeanComparator", "org.apache.commons.beanutils.BeanMap"]
 
 [case.primary]
-effect = "log"
+effect = "block"
 rule = "deserialization_gadget"
-why = "the primary blocks this only inside an HTTP request; outside one it logs"
 
 [case.backport]
 effect = "block"

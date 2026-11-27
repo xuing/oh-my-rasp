@@ -6,9 +6,8 @@ op = "process.exec"
 args = { argv = ["sh", "-c", "echo 'unclosed"] }
 
 [case.primary]
-effect = "log"
+effect = "block"
 rule = "command_error"
-why = "the primary blocks this only inside an HTTP request; outside one it logs"
 
 [case.backport]
 effect = "unreachable"

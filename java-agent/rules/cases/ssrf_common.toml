@@ -6,9 +6,8 @@ op = "net.open"
 args = { url = "http://abc123.dnslog.cn/" }
 
 [case.primary]
-effect = "log"
+effect = "block"
 rule = "ssrf_common"
-why = "the primary blocks this only inside an HTTP request; outside one it logs"
 
 [case.backport]
 effect = "unreachable"

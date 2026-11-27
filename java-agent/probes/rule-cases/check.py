@@ -147,8 +147,15 @@ def run_case(case, agent, classpath, classes, work, track, major) -> tuple[Actua
     # The driver's report is a file, not a line of standard output: on Java 8 the class-load log shares
     # standard output and can split a line printed there.
     report = tmp / "rulecase-report.txt"
-    command = ["java", "-Xverify:all", f"-javaagent:{agent}", "-Dohmyrasp.standalone=true", "-Dohmyrasp.mode=block",
-               "-Dohmyrasp.control=none", "-Dohmyrasp.log.sync=true", f"-Dohmyrasp.log={log}", *props,
+    if case.control:
+        # Daemon-managed: the agent reads the control document at start, as it reads the daemon's.
+        control = tmp / "control.json"
+        control.write_text(json.dumps({"mode": "block", **case.control}, indent=2) + "\n")
+        settings = ["-Dohmyrasp.standalone=false", f"-Dohmyrasp.control={control}"]
+    else:
+        settings = ["-Dohmyrasp.standalone=true", "-Dohmyrasp.mode=block", "-Dohmyrasp.control=none"]
+    command = ["java", "-Xverify:all", f"-javaagent:{agent}", *settings,
+               "-Dohmyrasp.log.sync=true", f"-Dohmyrasp.log={log}", *props,
                *class_load_options(major, tmp), f"-Drulecase.report={report}",
                "-cp", classpath, "RuleCaseDriver"]
     try:
