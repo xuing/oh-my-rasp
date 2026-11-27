@@ -67,6 +67,71 @@ public final class ControlDocument {
   }
 
   /**
+   * The value at {@code path} in {@code text}, a JSON object: {@code path[0]} a member of the top-level object,
+   * each next name a member of the object the previous one holds. As {@link #topLevelValues} returns it: the string
+   * for a string value, null when a member on the path is absent, is not an object where the path goes on, or holds
+   * JSON null, and {@link #NOT_A_STRING} for any other value at the end of the path. Where a name occurs more than
+   * once in one object, the last occurrence counts, as for the top level.
+   *
+   * @throws IllegalArgumentException when {@code text} is not exactly one well-formed JSON object
+   */
+  public static Object valueAt(String text, String[] path) {
+    if (text == null) {
+      throw new IllegalArgumentException("no JSON document");
+    }
+    ControlDocument document = new ControlDocument(text);
+    document.skipWhitespace();
+    Object value = document.objectAt(path, 0, 1);
+    document.skipWhitespace();
+    if (document.offset != text.length()) {
+      throw new IllegalArgumentException("text after the JSON object");
+    }
+    return value;
+  }
+
+  /** Reads the object at the offset; the value at {@code path[index..]} inside it. */
+  private Object objectAt(String[] path, int index, int depth) {
+    expect('{');
+    Object found = null;
+    skipWhitespace();
+    if (take('}')) {
+      return null;
+    }
+    while (true) {
+      skipWhitespace();
+      String name = string();
+      skipWhitespace();
+      expect(':');
+      skipWhitespace();
+      boolean onPath = index < path.length && name.equals(path[index]);
+      if (onPath && index == path.length - 1) {
+        if (peek() == '"') {
+          found = string();
+        } else {
+          found = text.startsWith("null", offset) ? null : NOT_A_STRING;
+          value(depth);
+        }
+      } else if (onPath && peek() == '{') {
+        if (depth >= MAX_DEPTH) {
+          throw new IllegalArgumentException("JSON document nested too deeply");
+        }
+        found = objectAt(path, index + 1, depth + 1);
+      } else {
+        if (onPath) {
+          found = null;
+        }
+        value(depth);
+      }
+      skipWhitespace();
+      if (take(',')) {
+        continue;
+      }
+      expect('}');
+      return found;
+    }
+  }
+
+  /**
    * Checks that {@code text} is exactly one well-formed JSON object.
    *
    * @throws IllegalArgumentException when it is not

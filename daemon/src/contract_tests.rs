@@ -25,8 +25,9 @@ const FIXED_UPDATED_AT: &str = "2026-01-01T00:00:00Z";
 const POLICY: &str = r#"{"version":4,"status":"active","canary_percent":100,"rules":[{"algorithm":"sql_userinput","action":"block"}]}"#;
 
 /// A cloud policy whose `config` carries the control plane's `protection.hardening` setting with
-/// `outside_request` set to log, as `GetAgentPolicy` serves it.
-const POLICY_OUTSIDE_LOG: &str = r#"{"version":6,"status":"active","rules":[],"config":{"hardening":{"mode":"monitor","outside_request":"log"}}}"#;
+/// `outside_request` set to log, as `GetAgentPolicy` serves it, beside a rule that blocks a
+/// context-dependent finding: outside a request that finding logs, inside one it blocks.
+const POLICY_OUTSIDE_LOG: &str = r#"{"version":6,"status":"active","rules":[{"algorithm":"readFile_unwanted","action":"block"}],"config":{"hardening":{"mode":"monitor","outside_request":"log"}}}"#;
 
 /// A policy whose text needs every kind of JSON string escape once it is carried as a string
 /// member of the control file: quotes, backslash, newline, tab, a control character, and non-ASCII
@@ -124,10 +125,11 @@ fn control_documents() -> Vec<(&'static str, String, ControlState)> {
     assert!(ctrl.set_policy(Some(ESCAPED_POLICY.to_string())).unwrap());
     docs.push(("policy-escaped", normalized_control(&path), ctrl.snapshot()));
 
-    // Findings outside a request logged instead of blocked: set on the console, then by the cloud.
+    // Findings outside a request logged instead of blocked: set on the host's console, then by
+    // the cloud, whose value travels in the policy and leaves with it.
     let path = dir.path().join("outside.json");
     let ctrl = Controller::load_or_init(&path, Mode::Block).unwrap();
-    ctrl.update_with(None, Some(OutsideRequest::Log), None)
+    ctrl.update_with(None, Some(Some(OutsideRequest::Log)), None)
         .unwrap();
     docs.push((
         "outside-request-log",
@@ -142,6 +144,27 @@ fn control_documents() -> Vec<(&'static str, String, ControlState)> {
     );
     docs.push((
         "outside-request-from-policy",
+        normalized_control(&path),
+        ctrl.snapshot(),
+    ));
+    assert!(ctrl.set_policy(None).unwrap());
+    docs.push((
+        "outside-request-policy-withdrawn",
+        normalized_control(&path),
+        ctrl.snapshot(),
+    ));
+    // The host says block and the cloud says log: blocking needs both, so the agents log, and the
+    // host's member stays for when the cloud's policy no longer says log.
+    let path = dir.path().join("outside-both.json");
+    let ctrl = Controller::load_or_init(&path, Mode::Block).unwrap();
+    ctrl.update_with(None, Some(Some(OutsideRequest::Block)), None)
+        .unwrap();
+    assert!(
+        ctrl.set_policy(Some(POLICY_OUTSIDE_LOG.to_string()))
+            .unwrap()
+    );
+    docs.push((
+        "outside-request-host-and-policy",
         normalized_control(&path),
         ctrl.snapshot(),
     ));
@@ -189,10 +212,27 @@ fn assert_manifest(document: &str, state: &ControlState) {
             .unwrap_or_default()
     };
     assert_eq!(get("mode"), state.mode.as_str(), "{document} mode");
+    // What an agent started with the default (block) applies, and the two parties' values.
+    let view = state.outside_request_view();
+    let applied = if view.effective == "start-up" {
+        "block"
+    } else {
+        view.effective
+    };
     assert_eq!(
         get("outside_request"),
-        state.outside_request.as_str(),
+        applied,
         "{document} outside_request"
+    );
+    assert_eq!(
+        get("outside_request.host"),
+        view.host.unwrap_or("none"),
+        "{document} outside_request.host"
+    );
+    assert_eq!(
+        get("outside_request.cloud"),
+        view.cloud.unwrap_or("none"),
+        "{document} outside_request.cloud"
     );
     assert_eq!(
         get("revision"),
@@ -385,17 +425,18 @@ fn the_daemon_reads_the_hand_edited_control_documents_and_writes_the_canonical_m
                 .collect();
             assert_eq!(held, listed, "{name} {field} switches");
         }
-        // `outside_request`: a word the agents accept is written back canonical; absent, or a
-        // value nobody accepts (the agents keep what they had), is written as the default.
+        // `outside_request`: a word the agents accept is written back canonical; a value nobody
+        // accepts (the agents keep what they had) is kept as found; absent or null stays absent
+        // (the agents keep their start-up value). The daemon never invents one.
         let outside = &manifest[&format!("{name}.outside_request")];
-        let canonical = if outside == "unknown" {
-            "block"
-        } else {
-            outside.as_str()
+        let found = original.get("outside_request").filter(|v| !v.is_null());
+        let expected_member = match (found, outside.as_str()) {
+            (None, _) => None,
+            (Some(kept), "unknown") => Some(kept.clone()),
+            (Some(_), word) => Some(Value::from(word)),
         };
         assert_eq!(
-            state.outside_request.as_str(),
-            canonical,
+            state.outside_request, expected_member,
             "{name} outside_request"
         );
         // Rewritten with the canonical words and nothing else changed.
@@ -406,7 +447,8 @@ fn the_daemon_reads_the_hand_edited_control_documents_and_writes_the_canonical_m
             "{name} rewritten mode"
         );
         assert_eq!(
-            written["outside_request"], canonical,
+            written.get("outside_request").cloned(),
+            expected_member,
             "{name} rewritten outside_request"
         );
         for field in ["algorithms", "revision", "updated_at"] {

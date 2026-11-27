@@ -93,6 +93,15 @@ public final class AgentPolicy {
     return config;
   }
 
+  /**
+   * Whether this policy permits blocking a context-dependent finding outside a request: false when its
+   * {@code config.hardening.outside_request} is {@code log}. An absent policy permits it; withdrawing the policy
+   * withdraws the setting with it.
+   */
+  public boolean permitsOutsideRequestBlock() {
+    return config.permitsOutsideRequestBlock();
+  }
+
   public PolicyEvaluation evaluate(Detection detection, String stableAgentKey) {
     if (!loaded) {
       return detection != null && detection.requiresExplicitRule()
@@ -180,9 +189,10 @@ public final class AgentPolicy {
       List<String> allowlistEntries,
       String hardeningMode,
       boolean blockReflectionAbuse,
-      boolean blockProcessExecution) {
+      boolean blockProcessExecution,
+      boolean permitsOutsideRequestBlock) {
     static PolicyConfig empty() {
-      return new PolicyConfig(false, List.of(), "monitor", false, false);
+      return new PolicyConfig(false, List.of(), "monitor", false, false, true);
     }
 
     static PolicyConfig from(Object value) {
@@ -196,7 +206,10 @@ public final class AgentPolicy {
           stringListField(allowlist, "entries"),
           stringField(hardening, "mode", "monitor"),
           boolField(hardening, "block_reflection_abuse", false),
-          boolField(hardening, "block_process_execution", false));
+          boolField(hardening, "block_process_execution", false),
+          // The cloud's outside_request: only an accepted "log" restricts; anything else leaves the host's in force.
+          !(hardening.get(io.ohmyrasp.agent.rules.OutsideRequest.CONTROL_KEY) instanceof String outside
+              && Boolean.FALSE.equals(io.ohmyrasp.agent.rules.OutsideRequest.parse(outside))));
     }
 
     boolean allowlisted(Detection detection) {

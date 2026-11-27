@@ -1201,7 +1201,7 @@ public final class OhMyRaspHooks {
         emit(Optional.of(Detection.log("ssrf", "ssrf_protocol", 95, "External attachment reference opened a host file",
             request, Map.of("scheme", "file", "mechanism", "cxf-aegis-xop", "path", path,
                 "decision_basis", "attachment_file_open"))), ignored -> io.ohmyrasp.agent.xml.AttachmentFileRead.repeated(),
-            request.active() && request == currentRequest(), true);
+            request.active() && request == currentRequest());
       } else {
         var finding = FileAccessDetector.detectFileRead(path, currentRequest(), OhMyRaspHooks::isXmlParserStack, policy().loaded(), links);
         if (finding.isPresent()) {
@@ -2563,20 +2563,12 @@ public final class OhMyRaspHooks {
     emit(detection, repeatedObservation, true);
   }
 
-  private static void emit(Optional<Detection> detection,
-      java.util.function.Predicate<String> repeatedObservation, boolean mayRedirect) {
-    emit(detection, repeatedObservation, mayRedirect, false);
-  }
-
   /**
-   * Decides and records a finding. It blocks when blocking is permitted, the finding's action is block, and either
-   * it was made inside an HTTP request or the control setting {@code outside_request} says block (the default):
-   * the same scope as the backport lines. A rule that blocks only inside a request ({@link OutsideRequest}) logs
-   * outside one, unless {@code ownEvidence}: the finding shows the attack without a request (an XML attachment
-   * that opened a host file), as the backport lines' rule for it does.
+   * Decides and records a finding. It blocks when blocking is permitted, the finding's action is block, and its
+   * block scope allows it ({@link #blockScope}): the same decision as the backport lines make.
    */
   private static void emit(Optional<Detection> detection,
-      java.util.function.Predicate<String> repeatedObservation, boolean mayRedirect, boolean ownEvidence) {
+      java.util.function.Predicate<String> repeatedObservation, boolean mayRedirect) {
     // The agent's own event and control I/O is neither reported nor blocked.
     if (detection.isEmpty() || AgentOwnIo.active()) {
       return;
@@ -2597,8 +2589,7 @@ public final class OhMyRaspHooks {
       return;
     }
     Detection event = policyEvaluation.detection();
-    boolean blockScope = activeRequest(value)
-        || (runtime.outsideRequestBlocks() && (ownEvidence || OutsideRequest.mayBlockOutsideRequest(value.algorithm())));
+    boolean blockScope = blockScope(value, runtime.outsideRequestBlocks());
     if (!policyEvaluation.controlled()
         && (legacyBlockEnabled() || runtime.mode() == DetectionMode.BLOCK)
         && blockScope) {
@@ -2652,8 +2643,28 @@ public final class OhMyRaspHooks {
       recorded = new Detection(recorded.timestamp(), recorded.hook(), recorded.algorithm(), recorded.action(),
           recorded.confidence(), recorded.message(), RequestContext.empty(), evidence);
     }
-    events().record(redactHttpObservation(recorded), elapsedMicros(started), ruleEvaluationUs);
+    events().record(withoutUrlCredentials(redactHttpObservation(recorded)), elapsedMicros(started), ruleEvaluationUs);
     return recorded;
+  }
+
+  /**
+   * The finding with the credentials of every URL in its details removed (user information, Oracle's
+   * {@code user/password@}, password-like parameters: {@link io.ohmyrasp.agent.util.Redaction#redactedUrls}), so a
+   * JDBC URL a pool configured never reaches the spool or the cloud with its password. The backports do the same.
+   */
+  private static Detection withoutUrlCredentials(Detection event) {
+    java.util.LinkedHashMap<String, String> details = null;
+    for (Map.Entry<String, String> entry : event.details().entrySet()) {
+      String value = entry.getValue();
+      String redacted = io.ohmyrasp.agent.util.Redaction.redactedUrls(value);
+      if (redacted != value && !java.util.Objects.equals(redacted, value)) {
+        if (details == null) details = new java.util.LinkedHashMap<>(event.details());
+        details.put(entry.getKey(), redacted);
+      }
+    }
+    if (details == null) return event;
+    return new Detection(event.timestamp(), event.hook(), event.algorithm(), event.action(),
+        event.confidence(), event.message(), event.request(), details);
   }
 
   private static Detection redactHttpObservation(Detection event) {
@@ -2667,6 +2678,18 @@ public final class OhMyRaspHooks {
     var request = new RequestContext(event.request().method(), event.request().uri(), "", Map.of(), Map.of());
     return new Detection(event.timestamp(), event.hook(), event.algorithm(), event.action(),
         event.confidence(), event.message(), request, details);
+  }
+
+  /**
+   * Whether {@code finding} may block, by the one definition both engines use ({@link OutsideRequest}): always when it
+   * carries request evidence (an active request context, which a hook may have carried from the request that started
+   * the operation onto the thread doing it); outside a request, by its class: intrinsic always, operation-only never,
+   * context-dependent when {@code outsideRequestBlocks}.
+   */
+  static boolean blockScope(Detection finding, boolean outsideRequestBlocks) {
+    if (finding == null) return false;
+    int scope = OutsideRequest.scope(finding.algorithm(), finding.details().get("decision_basis"));
+    return OutsideRequest.mayBlock(scope, activeRequest(finding), outsideRequestBlocks);
   }
 
   private static boolean activeRequest(Detection detection) {

@@ -1,0 +1,63 @@
+package io.ohmyrasp.agent.java8;
+
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
+
+/**
+ * A URL in an event's detail reaches the spool without its credentials, on every backport line, as on the primary
+ * (OhMyRaspHooksUrlCredentialsTest there): a JDBC URL a pool configured, with the password in its user information and
+ * its parameters. The MySQL rule names the driver, host and options instead of the URL.
+ */
+final class Java8UrlCredentialsTest {
+  private static final String SENTINEL = "Sentinel-Pw-9";
+
+  @TempDir Path dir;
+  private Path log;
+
+  @BeforeEach
+  void blockMode() {
+    log = dir.resolve("events.jsonl");
+    System.setProperty("ohmyrasp.java8.log", log.toString());
+    System.setProperty("ohmyrasp.java8.block", "true");
+  }
+
+  @AfterEach
+  void restore() {
+    System.clearProperty("ohmyrasp.java8.log");
+    System.clearProperty("ohmyrasp.java8.block");
+  }
+
+  @Test
+  void aConfiguredJdbcUrlNeverWritesItsPassword() throws Exception {
+    assertThrows(Java8RaspBlockException.class, () -> Java8RaspHooks.beforeJdbcConnection(
+        "jdbc:mysql://reporter:" + SENTINEL + "@db.internal:3306/app?password=" + SENTINEL
+            + "&autoDeserialize=true&queryInterceptors=com.mysql.cj.jdbc.interceptors.ServerStatusDiffInterceptor"));
+    assertThrows(Java8RaspBlockException.class, () -> Java8RaspHooks.beforeJdbcConnection(
+        "jdbc:h2:mem:reports;PASSWORD=" + SENTINEL + ";INIT=RUNSCRIPT FROM 'http://127.0.0.1:1/init.sql'"));
+
+    String spooled = new String(Files.readAllBytes(log), StandardCharsets.UTF_8);
+    assertTrue(spooled.contains("\"jdbc_options\":\"driver=mysql host=db.internal:3306 "
+        + "options=autoDeserialize+ServerStatusDiffInterceptor\""), spooled);
+    assertTrue(spooled.contains("java8_jdbc_h2_code_execution"), spooled);
+    assertTrue(spooled.contains("RUNSCRIPT FROM 'http://127.0.0.1:1/init.sql'"), "the evidence stays: " + spooled);
+    assertFalse(spooled.contains(SENTINEL), spooled);
+  }
+
+  /** autoDeserialize beside a pool's own interceptor is not the exploit, as on the primary. */
+  @Test
+  void aPoolsOwnInterceptorBesideAutoDeserializeIsNotReported() throws Exception {
+    Java8RaspHooks.beforeJdbcConnection(
+        "jdbc:mysql://db.internal:3306/app?autoDeserialize=true&queryInterceptors=com.example.TracingInterceptor");
+    assertFalse(Files.exists(log) && new String(Files.readAllBytes(log), StandardCharsets.UTF_8)
+        .contains("jdbc_mysql_deserialization"));
+  }
+}

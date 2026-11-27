@@ -100,15 +100,12 @@ args = { argv = ["sh", "-c", "cat /etc/passwd"] }
 control = { outside_request = "log" }
 
 [case.primary]
-effect = "log"
+effect = "block"
 rule = "command_common"
-why = "outside_request is log: outside a request the finding is logged and the operation runs"
 
 [case.backport]
-effect = "log"
+effect = "block"
 rule = "command_execution_exploit_primitive"
-why = "outside_request is log: outside a request the finding is logged and the operation runs"
-
 [[case]]
 name = "shell-reads-passwd-in-request-log-only"
 kind = "attack"

@@ -15,11 +15,19 @@ public class DirectoryWalkCheck {
     }
   }
 
+  /**
+   * The consumer's own request. In carried mode (the agent runs with outside_request=log) it serves none: only the
+   * request that created the walk, which the walk carries, makes the listing a request's, and it still blocks.
+   */
+  private static HttpTransportCheck.Scope consumerScope(String track, String mode, Path tree) throws Exception {
+    return mode.equals("carried") ? null : scope(track, tree.resolve("config").toString(), "/consumer");
+  }
+
   private static void consume(String track, String mode, String label, Stream<Path> walk, Path tree,
       boolean expectBlock, boolean hasChildren) throws Exception {
     int children = 0;
     boolean denied = false;
-    try (Stream<Path> entries = walk; HttpTransportCheck.Scope ignored = scope(track, tree.resolve("config").toString(), "/consumer")) {
+    try (Stream<Path> entries = walk; HttpTransportCheck.Scope ignored = consumerScope(track, mode, tree)) {
       Iterator<Path> it = entries.iterator();
       while (it.hasNext()) if (it.next().getNameCount() > tree.getNameCount() + 1) children++;
     } catch (Exception e) {
@@ -29,7 +37,8 @@ public class DirectoryWalkCheck {
     System.out.println("row," + label + "," + expectBlock + "," + denied + "," + (children != 0));
     if (denied && children != 0) throw new AssertionError("received protected names before denial");
     if (!denied && (children != 0) != hasChildren) throw new AssertionError("unexpected traversal depth");
-    if (!mode.equals("observe") && denied != (mode.equals("block") && expectBlock)) throw new AssertionError(label);
+    boolean blocking = mode.equals("block") || mode.equals("carried");
+    if (!mode.equals("observe") && denied != (blocking && expectBlock)) throw new AssertionError(label);
   }
 
   public static void main(String[] args) throws Exception {

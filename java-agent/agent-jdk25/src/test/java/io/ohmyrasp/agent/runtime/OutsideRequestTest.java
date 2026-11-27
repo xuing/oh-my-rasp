@@ -17,11 +17,14 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 /**
- * The control setting {@code outside_request}: whether a finding made on a thread that serves no HTTP request
- * blocks. Block by default, as on the backport lines; {@code log} records it and lets the operation run.
+ * Block scope on the primary, as on the backports (Java8OutsideRequestTest there): a finding with request evidence
+ * blocks wherever it runs; outside a request an intrinsic finding blocks whatever {@code outside_request} says, an
+ * operation-only finding logs whatever it says, and a context-dependent one follows it (block by default).
  */
 final class OutsideRequestTest {
   private static final String LDAP = "ldap://127.0.0.1:1/Exploit";
+  private static final String PASSWD = "/etc/passwd";
+  private static final String METADATA = "http://169.254.169.254/latest/meta-data/";
 
   @AfterEach
   void restoreTheSharedRuntime() {
@@ -30,28 +33,197 @@ final class OutsideRequestTest {
   }
 
   @Test
-  void blockModeBlocksAFindingOutsideARequestByDefault() {
+  void blockModeBlocksAContextFindingOutsideARequestByDefault() {
     assertTrue(AgentRuntime.get().apply("{\"mode\":\"block\"}"));
     assertFalse(OhMyRaspHooks.currentRequest().active());
 
-    assertThrows(OhMyRaspBlockException.class, () -> OhMyRaspHooks.beforeJndiLookup(LDAP));
+    assertThrows(OhMyRaspBlockException.class, () -> OhMyRaspHooks.beforeFileRead(PASSWD));
   }
 
   @Test
-  void logOnlyOutsideARequestRecordsTheFindingAndLetsTheOperationRun() {
+  void logOnlyOutsideARequestRecordsAContextFindingAndLetsTheOperationRun() {
     assertTrue(AgentRuntime.get().apply("{\"mode\":\"block\",\"outside_request\":\"log\"}"));
 
-    assertDoesNotThrow(() -> OhMyRaspHooks.beforeJndiLookup(LDAP));
+    assertDoesNotThrow(() -> OhMyRaspHooks.beforeFileRead(PASSWD));
   }
 
-  /** ssrf_protocol and ssrf_obfuscate are too broad to block without a request that supplied the URL. */
+  /** A remote JNDI name and the Base64 tail-underflow shape are the exploit itself: log only does not turn them off. */
   @Test
-  void aRequestOnlyRuleLogsOutsideARequestWhateverTheSetting() throws Exception {
+  void anIntrinsicFindingBlocksOutsideARequestWithLogOnly() {
+    assertTrue(AgentRuntime.get().apply("{\"mode\":\"block\",\"outside_request\":\"log\"}"));
+
+    assertThrows(OhMyRaspBlockException.class, () -> OhMyRaspHooks.beforeJndiLookup(LDAP));
+    byte[] candidate = ("A".repeat(64) + "AA=").getBytes(java.nio.charset.StandardCharsets.US_ASCII);
+    assertThrows(OhMyRaspBlockException.class,
+        () -> OhMyRaspHooks.beforeBase64Decode(candidate, 0, candidate.length, false, false));
+  }
+
+  /**
+   * A cloud SDK reads instance metadata at start-up, a job fetches an ftp: URL: outside a request these log whatever
+   * the setting says; inside one they block.
+   */
+  @Test
+  void anOperationOnlyFindingLogsOutsideARequestAndBlocksInsideOne() throws Exception {
     assertTrue(AgentRuntime.get().apply("{\"mode\":\"block\"}"));
 
     assertDoesNotThrow(() -> OhMyRaspHooks.beforeUrlOpen(URI.create("ftp://127.0.0.1:1/report.csv").toURL()));
-    assertThrows(OhMyRaspBlockException.class,
-        () -> OhMyRaspHooks.beforeUrlOpen(URI.create("http://169.254.169.254/latest/meta-data/").toURL()));
+    assertDoesNotThrow(() -> OhMyRaspHooks.beforeUrlOpen(URI.create(METADATA).toURL()));
+    OhMyRaspHooks.enterHttpRequest(new ReportRequest(), new Object());
+    try {
+      assertThrows(OhMyRaspBlockException.class, () -> OhMyRaspHooks.beforeUrlOpen(URI.create(METADATA).toURL()));
+    } finally {
+      OhMyRaspHooks.exitHttpRequest();
+    }
+  }
+
+  /** The YARN handler holds the HTTP request: a denial is inside a request with no servlet frame tracked. */
+  @Test
+  void aHookThatHoldsTheRequestDecidesInsideARequestWithoutAServletFrame() {
+    assertTrue(AgentRuntime.get().apply("{\"mode\":\"block\",\"outside_request\":\"log\"}"));
+    System.setProperty("ohmyrasp.yarn.submitRole", "submitter");
+    try {
+      RoleRequest request = role -> false;
+      assertThrows(OhMyRaspBlockException.class,
+          () -> OhMyRaspHooks.afterYarnSubmitPrepared(new Object(), request, RoleRequest.class));
+    } finally {
+      System.clearProperty("ohmyrasp.yarn.submitRole");
+    }
+  }
+
+  /** A plain request: GET /reports?id=7, nothing in it a request rule reports. */
+  public static final class ReportRequest {
+    public String getMethod() { return "GET"; }
+    public String getRequestURI() { return "/reports"; }
+    public String getQueryString() { return "id=7"; }
+    public java.util.Map<String, java.util.List<String>> getParameterMap() {
+      return java.util.Map.of("id", java.util.List.of("7"));
+    }
+    public java.util.Enumeration<String> getHeaderNames() {
+      return java.util.Collections.enumeration(java.util.List.of("user-agent"));
+    }
+    public String getHeader(String name) { return "JUnit"; }
+  }
+
+  /** The one method of a servlet request the YARN submission check calls. */
+  public interface RoleRequest {
+    boolean isUserInRole(String role);
+  }
+
+  /**
+   * An HTTP client exchange submitted inside a request carries it onto the thread that runs the exchange: the
+   * metadata destination blocks there with log only, as on the backports. Submitted outside a request it logs.
+   */
+  @Test
+  void anExchangeSubmittedInsideARequestIsInsideItOnTheThreadThatRunsIt() throws Exception {
+    assertTrue(AgentRuntime.get().apply("{\"mode\":\"block\",\"outside_request\":\"log\"}"));
+    URI metadata = URI.create(METADATA);
+    Object carried = new Object();
+    OhMyRaspHooks.enterHttpRequest(new ReportRequest(), new Object());
+    try {
+      OhMyRaspHooks.captureHttpSubmission(carried, metadata);
+    } finally {
+      OhMyRaspHooks.exitHttpRequest();
+    }
+    assertTrue(blockedOnAnotherThread(carried, metadata), "submitted in a request");
+    assertFalse(blockedOnAnotherThread(new Object(), metadata), "submitted outside a request");
+  }
+
+  /**
+   * A CXF XOP attachment reference that opens a host file is intrinsic: read on another thread, with no request behind
+   * it and log only, it still blocks, as on the backports.
+   */
+  @Test
+  void anAttachmentThatOpensAHostFileBlocksOutsideARequestWithLogOnly(@TempDir Path dir) throws Exception {
+    assertTrue(AgentRuntime.get().apply("{\"mode\":\"block\",\"outside_request\":\"log\"}"));
+    Path report = Files.writeString(dir.resolve("weekly.txt"), "weekly");
+    Object source = new Object();
+    io.ohmyrasp.agent.xml.AttachmentFileRead.beginReference(report.toUri().toString(), null);
+    try {
+      io.ohmyrasp.agent.xml.AttachmentFileRead.created(source, report.toUri().toURL());
+    } finally {
+      io.ohmyrasp.agent.xml.AttachmentFileRead.endReference();
+    }
+    var thrown = new java.util.concurrent.atomic.AtomicReference<Throwable>();
+    Thread reader = new Thread(() -> {
+      io.ohmyrasp.agent.xml.AttachmentFileRead.beginRead(source);
+      try {
+        OhMyRaspHooks.beforeFileRead(report.toString());
+      } catch (Throwable failure) {
+        thrown.set(failure);
+      } finally {
+        io.ohmyrasp.agent.xml.AttachmentFileRead.endRead();
+      }
+    }, "attachment-reader");
+    reader.start();
+    reader.join(10_000);
+    assertTrue(thrown.get() instanceof OhMyRaspBlockException, String.valueOf(thrown.get()));
+  }
+
+  private static boolean blockedOnAnotherThread(Object exchange, URI uri) throws Exception {
+    var thrown = new java.util.concurrent.atomic.AtomicReference<Throwable>();
+    Thread worker = new Thread(() -> {
+      try {
+        OhMyRaspHooks.beforeHttpExchange(exchange, new Object(), uri);
+      } catch (Throwable failure) {
+        thrown.set(failure);
+      }
+    }, "exchange-worker");
+    worker.start();
+    worker.join(10_000);
+    Throwable failure = thrown.get();
+    if (failure != null && !(failure instanceof OhMyRaspBlockException)) throw new AssertionError(failure);
+    return failure != null;
+  }
+
+  /**
+   * The cloud's setting travels in the policy (config.hardening.outside_request) through the managed path, beside a
+   * rule that blocks the finding: log in the policy makes it log outside a request, and withdrawing the policy (a
+   * document without one) withdraws the setting with it. Blocking needs both the host's member and the policy's.
+   */
+  @Test
+  void theCloudsSettingTravelsInThePolicyAndLeavesWithIt() {
+    String rule = "\"rules\":[{\"algorithm\":\"readFile_unwanted\",\"action\":\"block\"}]";
+    String logPolicy = "{\"version\":7,\"status\":\"active\"," + rule
+        + ",\"config\":{\"hardening\":{\"outside_request\":\"log\"}}}";
+    assertTrue(AgentRuntime.get().apply("{\"mode\":\"block\",\"policy\":" + quoted(logPolicy) + "}"));
+    assertFalse(AgentRuntime.get().state().outsideRequestBlocks(), "the policy says log");
+    assertTrue(AgentRuntime.get().state().hostOutsideRequestBlocks(), "the host's start-up value is untouched");
+    assertDoesNotThrow(() -> OhMyRaspHooks.beforeFileRead(PASSWD));
+
+    assertTrue(AgentRuntime.get().apply(
+        "{\"mode\":\"block\",\"outside_request\":\"block\",\"policy\":" + quoted(logPolicy) + "}"));
+    assertDoesNotThrow(() -> OhMyRaspHooks.beforeFileRead(PASSWD), "the host's block does not override the cloud's log");
+
+    String blockPolicy = "{\"version\":8,\"status\":\"active\"," + rule + "}";
+    assertTrue(AgentRuntime.get().apply("{\"mode\":\"block\",\"policy\":" + quoted(blockPolicy) + "}"));
+    assertThrows(OhMyRaspBlockException.class, () -> OhMyRaspHooks.beforeFileRead(PASSWD), "a policy without it");
+
+    assertTrue(AgentRuntime.get().apply("{\"mode\":\"block\",\"policy\":" + quoted(logPolicy) + "}"));
+    assertTrue(AgentRuntime.get().apply("{\"mode\":\"block\",\"revision\":9}"));
+    assertTrue(AgentRuntime.get().state().outsideRequestBlocks(), "withdrawn");
+    assertThrows(OhMyRaspBlockException.class, () -> OhMyRaspHooks.beforeFileRead(PASSWD), "withdrawn");
+  }
+
+  /**
+   * The legacy flags (ohmyrasp.block, ohmyrasp.force_block) do not override log only either: a context-dependent
+   * finding outside a request logs, an intrinsic one blocks.
+   */
+  @Test
+  void theLegacyFlagsDoNotOverrideLogOnly() {
+    assertTrue(AgentRuntime.get().apply("{\"outside_request\":\"log\"}"));
+    System.setProperty("ohmyrasp.block", "true");
+    System.setProperty("ohmyrasp.force_block", "true");
+    try {
+      assertDoesNotThrow(() -> OhMyRaspHooks.beforeFileRead(PASSWD));
+      assertThrows(OhMyRaspBlockException.class, () -> OhMyRaspHooks.beforeJndiLookup(LDAP));
+    } finally {
+      System.clearProperty("ohmyrasp.block");
+      System.clearProperty("ohmyrasp.force_block");
+    }
+  }
+
+  private static String quoted(String json) {
+    return "\"" + json.replace("\\", "\\\\").replace("\"", "\\\"") + "\"";
   }
 
   @Test

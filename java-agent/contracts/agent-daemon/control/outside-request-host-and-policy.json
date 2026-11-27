@@ -1,0 +1,8 @@
+{
+  "mode": "block",
+  "outside_request": "block",
+  "algorithms": {},
+  "policy": "{\"version\":6,\"status\":\"active\",\"rules\":[{\"algorithm\":\"readFile_unwanted\",\"action\":\"block\"}],\"config\":{\"hardening\":{\"mode\":\"monitor\",\"outside_request\":\"log\"}}}",
+  "revision": 3,
+  "updated_at": "2026-01-01T00:00:00Z"
+}

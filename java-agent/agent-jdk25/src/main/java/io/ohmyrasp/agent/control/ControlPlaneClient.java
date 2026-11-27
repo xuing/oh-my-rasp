@@ -8,6 +8,7 @@ import java.io.IOException;
 import java.io.OutputStream;
 import java.lang.management.ManagementFactory;
 import java.lang.management.RuntimeMXBean;
+import io.ohmyrasp.agent.runtime.AgentOwnIo;
 import java.net.HttpURLConnection;
 import java.net.URI;
 import java.nio.charset.StandardCharsets;
@@ -614,7 +615,22 @@ public final class ControlPlaneClient implements AutoCloseable {
     return Math.max(0, value);
   }
 
+  /**
+   * One request to the configured control plane, as the agent's own I/O ({@link AgentOwnIo}): the hooks it passes
+   * through (URL, DNS, socket, transport) neither report nor block it, so a backend address that matches a network
+   * rule (a callback-looking name, an address a policy selects) cannot stop registration, heartbeats or uploads, and
+   * no agent exception reaches the scheduled task. The mark covers only this call on this thread.
+   */
   private Response send(String method, String path, String body) throws IOException {
+    boolean ownIo = AgentOwnIo.enter();
+    try {
+      return sendMarked(method, path, body);
+    } finally {
+      AgentOwnIo.exit(ownIo);
+    }
+  }
+
+  private Response sendMarked(String method, String path, String body) throws IOException {
     HttpURLConnection connection = (HttpURLConnection) endpoint(path).toURL().openConnection();
     connection.setConnectTimeout(3_000);
     connection.setReadTimeout(5_000);

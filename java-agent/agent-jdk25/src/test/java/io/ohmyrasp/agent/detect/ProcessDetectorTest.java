@@ -161,9 +161,11 @@ final class ProcessDetectorTest {
 
   @Test
   void detectsRocketMqCve202333246RuntimeConfigCommandLauncherStack() {
+    // FilterServerUtil.callShell splits "sh <rocketmqHome>/bin/startfsrv.sh ..." on spaces; the exploit's home
+    // "-c $@|sh . echo touch /tmp/success;" makes the inline program "$@|sh".
     var result =
         ProcessDetector.detectCommand(
-            List.of("sh", "-c", "touch /tmp/success"),
+            List.of("sh", "-c", "$@|sh", ".", "echo", "touch", "/tmp/success;/bin/startfsrv.sh"),
             RequestContext.empty(),
             List.of(
                 "java.lang.Runtime",
@@ -174,6 +176,22 @@ final class ProcessDetectorTest {
     assertEquals(
         "org.apache.rocketmq.broker.filtersrv.FilterServerManager",
         result.orElseThrow().details().get("launcher"));
+    assertEquals("configuration_launcher", result.orElseThrow().details().get("decision_basis"));
+  }
+
+  /** The broker's own filter-server start has no shell operator: nothing to report, as on the backports. */
+  @Test
+  void aRocketMqFilterServerStartWithoutShellOperatorsIsNotReported() {
+    var result =
+        ProcessDetector.detectCommand(
+            List.of("sh", "/opt/rocketmq/bin/startfsrv.sh", "-c", "/opt/rocketmq/conf/fsrv.properties"),
+            RequestContext.empty(),
+            List.of(
+                "java.lang.Runtime",
+                "org.apache.rocketmq.broker.filtersrv.FilterServerUtil",
+                "org.apache.rocketmq.broker.filtersrv.FilterServerManager"));
+
+    assertTrue(result.isEmpty(), String.valueOf(result));
   }
 
   @Test

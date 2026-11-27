@@ -76,15 +76,12 @@ completes_with = ["NamingException"]
 control = { outside_request = "log" }
 
 [case.primary]
-effect = "log"
+effect = "block"
 rule = "jndi_disable_all"
-why = "outside_request is log: outside a request the finding is logged and the operation runs"
 
 [case.backport]
-effect = "log"
+effect = "block"
 rule = "jndi_remote_lookup"
-why = "outside_request is log: outside a request the finding is logged and the operation runs"
-
 [[case]]
 name = "ldap-lookup-in-request-log-only"
 kind = "attack"

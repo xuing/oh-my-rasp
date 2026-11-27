@@ -3,6 +3,7 @@ package io.ohmyrasp.agent.log;
 import io.ohmyrasp.agent.control.ControlPlaneClient;
 import io.ohmyrasp.agent.model.Detection;
 import io.ohmyrasp.agent.model.RequestContext;
+import io.ohmyrasp.agent.util.Redaction;
 import io.ohmyrasp.agent.runtime.AgentOwnIo;
 import io.ohmyrasp.agent.runtime.AgentRuntime;
 import io.ohmyrasp.agent.runtime.ShirudoDefaults;
@@ -48,9 +49,6 @@ public final class JsonEventLogger {
   // more than the one short line a diagnostic is writing, and a diagnostic never waits for a stalled writer.
   private static final long DIAGNOSTIC_LOCK_MILLIS = 100;
   private static final String REDACTED = "[redacted]";
-  // A query longer than this is not scanned: it is replaced by the marker as a whole.
-  private static final int MAX_REDACTED_QUERY_LENGTH = 8192;
-  private static final int MAX_QUERY_DECODE_ROUNDS = 8;
   private static final Set<String> SENSITIVE_HEADER_NAMES =
       Set.of(
           "authorization",
@@ -62,45 +60,6 @@ public final class JsonEventLogger {
           "access-token",
           "refresh-token",
           "id-token");
-  private static final Set<String> SENSITIVE_PARAMETER_NAMES =
-      Set.of(
-          "authorization",
-          "password",
-          "passwd",
-          "pwd",
-          "pass",
-          "token",
-          "accesstoken",
-          "refreshtoken",
-          "idtoken",
-          "secret",
-          "apikey",
-          "xapikey",
-          "auth",
-          "credential",
-          "credentials");
-  private static final Set<String> EXECUTABLE_SOURCE_PARAMETER_NAMES =
-      Set.of(
-          "gluesource",
-          "executorparams",
-          "script",
-          "source",
-          "command",
-          "commandline",
-          "cmd",
-          "shell",
-          "code",
-          "payload",
-          "dataconfig",
-          "routeconfig",
-          "routedefinition",
-          "gatewayroute",
-          "filterconfig",
-          "scriptfields",
-          "scriptfield",
-          "scriptconfig",
-          "template",
-          "expression");
 
   /**
    * One queued record: either a security {@code detection} (with its measured
@@ -1019,224 +978,12 @@ public final class JsonEventLogger {
 
   /** The one name rule for {@code parameters} and for the parameters inside {@code query}. */
   private static boolean isRedactedParameterName(String name) {
-    String normalized = normalizeName(name);
-    return SENSITIVE_PARAMETER_NAMES.contains(normalized)
-        || EXECUTABLE_SOURCE_PARAMETER_NAMES.contains(normalized);
+    return Redaction.isRedactedParameterName(name);
   }
 
-  /**
-   * The query string with every piece that names a sensitive parameter carrying the marker in
-   * place of its value. The query is split once, left to right, on {@code &} only, and the
-   * separators stay: a {@code ;} is part of its piece, as Tomcat reads it, so
-   * {@code password=alpha;omega} is one value. A piece is sensitive when it, or what it decodes to
-   * (percent escapes and {@code +}, repeated until the text stops changing, at most
-   * {@value #MAX_QUERY_DECODE_ROUNDS} rounds; a piece still changing after that is sensitive),
-   * holds a name {@link #isRedactedParameterName} names as a token: a run of ASCII
-   * letters, digits and underscores, or of those and hyphens, so {@code amp;password},
-   * {@code user[password]}, {@code {"password":"x"}} and {@code next=/cb?token=abc} match and
-   * {@code passwordless} does not. A sensitive piece keeps its text up to and including the first
-   * {@code =} and gets the marker as its value, as long as that text is a plain parameter name;
-   * a piece with no {@code =}, or whose text before it holds punctuation that could carry the
-   * secret ({@code {"password":"a=b"}}), is replaced as a whole. A parameter with an empty value
-   * has nothing to hide and stays. A query longer than {@value #MAX_REDACTED_QUERY_LENGTH}
-   * characters is not scanned and becomes the marker. Runs on the event-writing path: plain
-   * loops over ASCII comparisons, no regular expression, no lambda and no Unicode tables.
-   */
+  /** The query string with the values of sensitive parameters redacted: see {@link Redaction#redactedQuery}. */
   static String redactedQuery(String query) {
-    if (query == null || query.isEmpty()) {
-      return query;
-    }
-    int length = query.length();
-    if (length > MAX_REDACTED_QUERY_LENGTH) {
-      return REDACTED;
-    }
-    var out = new StringBuilder(length + 16);
-    boolean changed = false;
-    int start = 0;
-    for (int i = 0; i <= length; i++) {
-      if (i < length && query.charAt(i) != '&') {
-        continue;
-      }
-      String piece = query.substring(start, i);
-      String written = redactedPiece(piece);
-      changed |= written != piece;
-      out.append(written);
-      if (i < length) {
-        out.append(query.charAt(i));
-      }
-      start = i + 1;
-    }
-    return changed ? out.toString() : query;
-  }
-
-  /** The piece itself when nothing in it is sensitive, so the caller can tell by identity. */
-  private static String redactedPiece(String piece) {
-    if (piece.isEmpty() || !holdsRedactedName(piece)) {
-      return piece;
-    }
-    int equals = piece.indexOf('=');
-    if (equals < 0 || !isPlainParameterName(piece.substring(0, equals))) {
-      return REDACTED;
-    }
-    if (equals + 1 == piece.length()) {
-      return piece;
-    }
-    return piece.substring(0, equals + 1) + REDACTED;
-  }
-
-  /**
-   * Whether the text, or any of its decodings, holds a redacted parameter name as a token. Text
-   * that is still changing after {@link #MAX_QUERY_DECODE_ROUNDS} rounds counts as holding one: a
-   * name could be behind the next layer.
-   */
-  private static boolean holdsRedactedName(String text) {
-    String current = text;
-    for (int round = 0; ; round++) {
-      String lower = asciiLowerCase(current);
-      if (holdsRedactedToken(lower, false) || holdsRedactedToken(lower, true)) {
-        return true;
-      }
-      String next = percentDecode(current);
-      if (next.equals(current)) {
-        return false;
-      }
-      if (round == MAX_QUERY_DECODE_ROUNDS) {
-        return true;
-      }
-      current = next;
-    }
-  }
-
-  /**
-   * Whether a token of {@code lower} is a redacted name. A token is a maximal run of ASCII
-   * letters, digits and underscores, or, with {@code hyphenJoins}, of those and hyphens, which
-   * keeps {@code api-key} and {@code access-token} one name.
-   */
-  private static boolean holdsRedactedToken(String lower, boolean hyphenJoins) {
-    int length = lower.length();
-    int from = 0;
-    while (from < length) {
-      while (from < length && !isTokenChar(lower.charAt(from), hyphenJoins)) {
-        from++;
-      }
-      int to = from;
-      while (to < length && isTokenChar(lower.charAt(to), hyphenJoins)) {
-        to++;
-      }
-      if (to > from && isRedactedParameterName(lower.substring(from, to))) {
-        return true;
-      }
-      from = to;
-    }
-    return false;
-  }
-
-  private static boolean isTokenChar(char ch, boolean hyphenJoins) {
-    return (ch >= 'a' && ch <= 'z')
-        || (ch >= 'A' && ch <= 'Z')
-        || (ch >= '0' && ch <= '9')
-        || ch == '_'
-        || (hyphenJoins && ch == '-');
-  }
-
-  /**
-   * Whether the text before the first {@code =} is only a parameter name once decoded: letters,
-   * digits, {@code _ - . [ ]}, spaces and non-ASCII characters. Quotes, braces, colons, slashes
-   * and a {@code %} left over after the decoding rounds could carry a secret.
-   */
-  private static boolean isPlainParameterName(String rawKey) {
-    String current = rawKey;
-    for (int round = 0; round < MAX_QUERY_DECODE_ROUNDS; round++) {
-      String next = percentDecode(current);
-      if (next.equals(current)) {
-        break;
-      }
-      current = next;
-    }
-    for (int i = 0; i < current.length(); i++) {
-      char ch = current.charAt(i);
-      boolean plain =
-          isTokenChar(ch, true) || ch == '.' || ch == '[' || ch == ']' || ch == ' ' || ch > 0x7f;
-      if (!plain) {
-        return false;
-      }
-    }
-    return true;
-  }
-
-  /**
-   * ASCII lower-casing, with the two characters whose Unicode lower case is ASCII ({@code U+212A}
-   * Kelvin sign, {@code U+0130} dotted capital I) mapped by hand, so a server that folds case
-   * with Unicode rules still reads {@code to\u212Aen} as {@code token}. The same string comes
-   * back when nothing changes.
-   */
-  private static String asciiLowerCase(String text) {
-    char[] chars = null;
-    for (int i = 0; i < text.length(); i++) {
-      char ch = text.charAt(i);
-      char lower = ch;
-      if (ch >= 'A' && ch <= 'Z') {
-        lower = (char) (ch + ('a' - 'A'));
-      } else if (ch == '\u212A') {
-        lower = 'k';
-      } else if (ch == '\u0130') {
-        lower = 'i';
-      }
-      if (lower != ch) {
-        if (chars == null) {
-          chars = text.toCharArray();
-        }
-        chars[i] = lower;
-      }
-    }
-    return chars == null ? text : new String(chars);
-  }
-
-  /** URL-decodes a query component: {@code %XX} as UTF-8 bytes, {@code +} as a space. */
-  private static String percentDecode(String value) {
-    if (value.indexOf('%') < 0 && value.indexOf('+') < 0) {
-      return value;
-    }
-    int length = value.length();
-    var out = new StringBuilder(length);
-    byte[] run = new byte[length];
-    int runLength = 0;
-    for (int i = 0; i < length; i++) {
-      char ch = value.charAt(i);
-      int high = ch == '%' && i + 2 < length ? hexValue(value.charAt(i + 1)) : -1;
-      int low = high < 0 ? -1 : hexValue(value.charAt(i + 2));
-      if (low >= 0) {
-        run[runLength++] = (byte) (high * 16 + low);
-        i += 2;
-        continue;
-      }
-      if (runLength > 0) {
-        out.append(new String(run, 0, runLength, StandardCharsets.UTF_8));
-        runLength = 0;
-      }
-      out.append(ch == '+' ? ' ' : ch);
-    }
-    if (runLength > 0) {
-      out.append(new String(run, 0, runLength, StandardCharsets.UTF_8));
-    }
-    return out.toString();
-  }
-
-  private static int hexValue(char ch) {
-    if (ch >= '0' && ch <= '9') {
-      return ch - '0';
-    }
-    if (ch >= 'a' && ch <= 'f') {
-      return ch - 'a' + 10;
-    }
-    if (ch >= 'A' && ch <= 'F') {
-      return ch - 'A' + 10;
-    }
-    return -1;
-  }
-
-  private static String normalizeName(String name) {
-    return name == null ? "" : name.replace("_", "").replace("-", "").toLowerCase(Locale.ROOT);
+    return Redaction.redactedQuery(query);
   }
 
   private static String escape(String value) {

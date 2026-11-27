@@ -342,6 +342,11 @@ def classify(case, result: dict, events: list[tuple[str, str]]) -> Actual:
         outcome, note = "error", f"handler did not run; entry {entry}: {result.get('entry_ending', '')}"
     rules = list(dict.fromkeys(rule for rule, _ in events))
     blocks = list(dict.fromkeys(rule for rule, action in events if action == "block"))
+    # Every case runs in block mode: an event says block or log, and anything else (monitor, a missing action)
+    # means the agent did not run as the case declares, not a "log".
+    unexpected = sorted({f"{rule}={action}" for rule, action in events if action not in ("block", "log")})
+    if unexpected:
+        return Actual("broken", None, tuple(rules), f"an event's action is neither block nor log: {', '.join(unexpected)}")
     if outcome == "error" or outcome not in ("ran", "blocked"):
         return Actual("broken", None, tuple(rules), f"the operation failed without the agent: {note}")
     if outcome == "blocked":

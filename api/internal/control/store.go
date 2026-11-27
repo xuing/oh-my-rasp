@@ -2372,17 +2372,25 @@ func (s *MemoryStore) resolveApplicationConfigLocked(appID string, environmentID
 }
 
 func (s *MemoryStore) effectiveApplicationSettingLocked(appID string, environmentID string, key string) ApplicationSetting {
+	application, appFound := s.applicationSettings[applicationSettingMapKey(appID, "", key)]
+	if appFound {
+		application.Value = copyStringAnyMap(application.Value)
+		if normalizeSettingKey(key) == "protection.hardening" {
+			application.Value = DefaultHardeningMembers(application.Value)
+		}
+	} else {
+		application = DefaultApplicationSetting(appID, environmentID, key, s.now())
+	}
 	if environmentID != "" {
 		if setting, ok := s.applicationSettings[applicationSettingMapKey(appID, environmentID, key)]; ok {
 			setting.Value = copyStringAnyMap(setting.Value)
+			if normalizeSettingKey(key) == "protection.hardening" {
+				setting.Value = InheritHardeningMembers(setting.Value, application.Value)
+			}
 			return setting
 		}
 	}
-	if setting, ok := s.applicationSettings[applicationSettingMapKey(appID, "", key)]; ok {
-		setting.Value = copyStringAnyMap(setting.Value)
-		return setting
-	}
-	return DefaultApplicationSetting(appID, environmentID, key, s.now())
+	return application
 }
 
 func (s *MemoryStore) MaintenanceCleanup(_ context.Context, actorID string, request MaintenanceCleanupRequest) (MaintenanceCleanupReport, error) {
@@ -2669,8 +2677,11 @@ func valueForApplicationConfig(settings map[string]ApplicationSetting, key strin
 
 // ValidateApplicationSettingValue checks the members of an application setting that the hosts read
 // and normalises them. protection.hardening's outside_request, which every agent line reads from
-// the control file the daemon writes, is block or log (any case, stored lowercase): whether a
-// finding on a thread that serves no HTTP request blocks or is only logged.
+// the policy's config.hardening, is block or log: whether a context-dependent finding with no HTTP
+// request behind it blocks or is only logged. It is read as both agent engines and the daemon read
+// it: in any letter case, with characters up to U+0020 around the word ignored (Java's
+// String.trim, not Go's Unicode TrimSpace), and stored lowercase. Null removes the member, so an
+// environment inherits the application's value and an application takes the default.
 func ValidateApplicationSettingValue(key string, value map[string]any) error {
 	if normalizeSettingKey(key) != "protection.hardening" {
 		return nil
@@ -2679,13 +2690,54 @@ func ValidateApplicationSettingValue(key string, value map[string]any) error {
 	if !ok {
 		return nil
 	}
+	if raw == nil {
+		delete(value, "outside_request")
+		return nil
+	}
 	text, isString := raw.(string)
-	normalized := strings.ToLower(strings.TrimSpace(text))
-	if !isString || (normalized != "block" && normalized != "log") {
-		return fmt.Errorf("%w: protection.hardening outside_request must be block or log", ErrInvalid)
+	normalized := ParseOutsideRequest(text)
+	if !isString || normalized == "" {
+		return fmt.Errorf("%w: protection.hardening outside_request must be block, log or null", ErrInvalid)
 	}
 	value["outside_request"] = normalized
 	return nil
+}
+
+// ParseOutsideRequest returns "block" or "log" for a word every agent line accepts, and "" for
+// anything else. The grammar is the agents' (OutsideRequest.parse: String.trim, then
+// toLowerCase(Locale.ROOT)) and the daemon's (OutsideRequest::parse): characters up to U+0020
+// around the word are trimmed, nothing wider, and letters are compared lowercased (the Kelvin sign
+// lowercases to k in all four readers).
+func ParseOutsideRequest(text string) string {
+	switch strings.ToLower(strings.TrimFunc(text, func(r rune) bool { return r <= ' ' })) {
+	case "block":
+		return "block"
+	case "log":
+		return "log"
+	}
+	return ""
+}
+
+// InheritHardeningMembers fills the members of an environment's protection.hardening that its row
+// does not carry from the application's value (or the default): an environment row stored before
+// outside_request existed, or saved without it, inherits the application's setting instead of
+// silently meaning block. It returns env, changed in place.
+func InheritHardeningMembers(env map[string]any, application map[string]any) map[string]any {
+	if env == nil {
+		return env
+	}
+	if _, ok := env["outside_request"]; !ok {
+		if inherited, ok := application["outside_request"]; ok {
+			env["outside_request"] = inherited
+		}
+	}
+	return env
+}
+
+// DefaultHardeningMembers fills an application's protection.hardening members its row does not
+// carry with the defaults: a row stored before outside_request existed means the default, block.
+func DefaultHardeningMembers(application map[string]any) map[string]any {
+	return InheritHardeningMembers(application, DefaultApplicationSettingValue("protection.hardening"))
 }
 
 func isApplicationScopedSetting(key string) bool {

@@ -1462,10 +1462,15 @@ final class Java8RaspHooksTest {
     Java8RaspHooks.beforeFileWrite(
         "/opt/coldfusion11/cfusion/wwwroot/WEB-INF/cfclasses/cfcomponent2ecfc531178316.class");
     Java8RaspHooks.beforeFileWrite("/usr/local/tomcat/webapps/ROOT/WEB-INF/lib/app.jar");
-    org.apache.catalina.startup.ExpandWar.writeJava8DeploymentFile(
-        "/usr/local/tomcat/webapps/ROOT/index.jsp");
-    org.apache.jasper.compiler.JDTCompiler.writeJava8JspCompilationFile(
-        "/usr/local/tomcat/work/Catalina/localhost/ROOT/org/apache/jsp/index_jsp.class");
+    // Tomcat's own unpack and JSP compile, under its base directory (ScriptFileWriteTomcatTest has the rest).
+    System.setProperty("catalina.base", "/usr/local/tomcat");
+    try {
+      org.apache.catalina.startup.HostConfig.deployJava8War("/usr/local/tomcat/webapps/ROOT/index.jsp");
+      org.apache.jasper.JspCompilationContext.compileJava8(
+          "/usr/local/tomcat/work/Catalina/localhost/ROOT/org/apache/jsp/index_jsp.class");
+    } finally {
+      System.clearProperty("catalina.base");
+    }
     io.netty.resolver.HostsFileEntriesProvider.ParserImpl.readJava8HostsFile("/etc/hosts");
 
     assertFalse(Files.exists(log));

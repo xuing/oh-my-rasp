@@ -55,6 +55,10 @@ public final class ProcessDetector {
     String expressionEngine = expressionEngineFromStack(stackClassNames);
     if (!expressionEngine.isBlank()) {
       String algorithm = expressionRuntimeAlgorithm(expressionEngine);
+      // The backports' bases for the same evidence: an expression language reaching the process API is expression
+      // injection (intrinsic); a general-purpose script engine starts processes on purpose too (follows the setting).
+      boolean script = "groovy".equals(expressionEngine) || "javascript".equals(expressionEngine)
+          || "script".equals(expressionEngine);
       return Optional.of(
           Detection.log(
               expressionEngine,
@@ -62,7 +66,8 @@ public final class ProcessDetector {
               95,
               "Command execution reached from dynamic expression evaluation",
               request,
-              Map.of("command", abbreviate(joined))));
+              Map.of("command", abbreviate(joined),
+                  "decision_basis", script ? "script_evaluation" : "expression_evaluation")));
     }
     String executableListener = SolrExecutableListener.frame(stackClassNames);
     if (executableListener != null) {
@@ -77,8 +82,12 @@ public final class ProcessDetector {
                   "command", abbreviate(joined),
                   "listener", abbreviate(executableListener))));
     }
+    PosixShellCommand shell = PosixShellCommand.from(command);
+    WindowsShellCommand windows = WindowsShellCommand.from(command);
     String configLauncher = RocketMqFilterServer.directOwner(stackClassNames);
-    if (configLauncher != null) {
+    // Shell operators in the program the filter-server manager launches, as on the backports: its own start command
+    // (sh <home>/bin/startfsrv.sh ...) has none, an injected rocketmqHome (CVE-2023-33246) does.
+    if (configLauncher != null && shell != null && shell.hasOperator()) {
       return Optional.of(
           Detection.log(
               "command",
@@ -88,10 +97,9 @@ public final class ProcessDetector {
               request,
               Map.of(
                   "command", abbreviate(joined),
-                  "launcher", abbreviate(configLauncher))));
+                  "launcher", abbreviate(configLauncher),
+                  "decision_basis", "configuration_launcher")));
     }
-    PosixShellCommand shell = PosixShellCommand.from(command);
-    WindowsShellCommand windows = WindowsShellCommand.from(command);
     boolean requestSyntax = shell != null && shell.hasOperator()
         && (request.inputParameters().values().stream().anyMatch(values -> RequestShellSyntax.matches(shell, values))
             || bodyHasSinkValue(request, shell.source()));

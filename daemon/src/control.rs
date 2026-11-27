@@ -146,20 +146,27 @@ impl Mode {
     }
 }
 
-/// Whether an agent blocks a finding made on a thread that serves no HTTP request (a scheduled
-/// job, a message consumer, start-up code), on every agent line. Inside a request nothing changes.
+/// Whether an agent blocks a context-dependent finding made with no request evidence (a
+/// scheduled job, a message consumer, start-up code), on every agent line. Inside a request
+/// nothing changes, and findings whose argument is the exploit itself block whatever it says.
+///
+/// Two parties set it, and the agents need both to allow blocking, as a hardening finding needs
+/// both the top-level `mode` and the policy's `hardening.mode`:
+///
+/// - the host: the control document's top-level `outside_request` member, which only the host
+///   console (`POST /api/control`) or an operator's hand edit writes. Absent or null means the
+///   agent's start-up value. The daemon keeps it as found: a value nobody accepts stays in the
+///   file (the agents ignore it and keep what they had) and is reported, never rewritten.
+/// - the cloud: `config.hardening.outside_request` inside the policy the cloud assigns. It
+///   travels with the policy: a policy without it, or no policy, does not restrict.
 ///
 /// Read as `block` or `log` in any letter case with characters up to U+0020 around the word
 /// ignored, as both agent engines read it (`OutsideRequest.parse`), and written as the lowercase
-/// word. Absent or null means the default, `block`. A value nobody accepts is kept out of the
-/// daemon's state: the agents ignore it and keep what they had, and the daemon, which cannot
-/// carry it, writes `block` instead of reinitialising the whole document as it does for an
-/// unknown `mode` (that would reset the mode too).
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize)]
+/// word.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "lowercase")]
 pub enum OutsideRequest {
     /// Block outside a request as inside one (the default).
-    #[default]
     Block,
     /// Record the finding with the action `log` and let the operation run.
     Log,
@@ -178,7 +185,6 @@ impl OutsideRequest {
         }
     }
 
-    #[cfg(test)]
     pub fn as_str(self) -> &'static str {
         match self {
             Self::Block => "block",
@@ -201,21 +207,30 @@ impl OutsideRequest {
     }
 }
 
-fn outside_request_or_default<'de, D: serde::Deserializer<'de>>(
-    deserializer: D,
-) -> Result<OutsideRequest, D::Error> {
-    let value = serde_json::Value::deserialize(deserializer)?;
-    Ok(match &value {
-        serde_json::Value::Null => OutsideRequest::Block,
-        serde_json::Value::String(text) => OutsideRequest::parse(text).unwrap_or_else(|| {
-            tracing::warn!(value = %text, "unknown outside_request in the control file; writing block");
-            OutsideRequest::Block
-        }),
-        other => {
-            tracing::warn!(value = %other, "outside_request in the control file is not a word; writing block");
-            OutsideRequest::Block
-        }
-    })
+/// The host's `outside_request` member as the control document holds it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum HostOutsideRequest {
+    /// Absent (or null): the agents use their start-up value.
+    Unset,
+    /// A word the agents accept.
+    Set(OutsideRequest),
+    /// A value nobody accepts, kept as found: the agents ignore it and keep what they had.
+    Invalid,
+}
+
+/// The `outside_request` the agents apply, with where it comes from, for the consoles: the
+/// host's member, the cloud policy's value, and what follows from the two.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct OutsideRequestView {
+    /// The host's setting: `block`, `log`, `invalid`, or null when it has none.
+    pub host: Option<&'static str>,
+    /// The cloud policy's `config.hardening.outside_request`: `block`, `log`, or null.
+    pub cloud: Option<&'static str>,
+    /// What the agents apply: `block`, `log`, `start-up` (each agent's start-up value, block
+    /// unless it was started with log) or `unchanged` (the agents keep the value they had).
+    pub effective: &'static str,
+    /// Who decides `effective`: `cloud`, `host`, `agent` or `invalid`.
+    pub source: &'static str,
 }
 
 /// Serializable control document — exactly what is written to the control file
@@ -223,9 +238,11 @@ fn outside_request_or_default<'de, D: serde::Deserializer<'de>>(
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ControlState {
     pub mode: Mode,
-    /// Whether a finding outside an HTTP request blocks; see [`OutsideRequest`].
-    #[serde(default, deserialize_with = "outside_request_or_default")]
-    pub outside_request: OutsideRequest,
+    /// The host's `outside_request` exactly as the document holds it: absent unless the host set
+    /// it; a value nobody accepts is kept as found. See [`OutsideRequest`] and
+    /// [`ControlState::host_outside_request`].
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub outside_request: Option<serde_json::Value>,
     /// Per-algorithm enable flags. An algorithm absent from this map is treated
     /// as enabled by the agent; a present `false` disables it.
     #[serde(default)]
@@ -247,11 +264,54 @@ impl ControlState {
     fn initial(mode: Mode) -> Self {
         Self {
             mode,
-            outside_request: OutsideRequest::Block,
+            outside_request: None,
             algorithms: BTreeMap::new(),
             policy: None,
             revision: 1,
             updated_at: now_rfc3339(),
+        }
+    }
+
+    /// The host's `outside_request`, as the agents read the member.
+    pub fn host_outside_request(&self) -> HostOutsideRequest {
+        match &self.outside_request {
+            None | Some(serde_json::Value::Null) => HostOutsideRequest::Unset,
+            Some(serde_json::Value::String(text)) => OutsideRequest::parse(text)
+                .map_or(HostOutsideRequest::Invalid, HostOutsideRequest::Set),
+            Some(_) => HostOutsideRequest::Invalid,
+        }
+    }
+
+    /// The cloud policy's `config.hardening.outside_request`, when it carries one the agents
+    /// accept.
+    pub fn cloud_outside_request(&self) -> Option<OutsideRequest> {
+        self.policy.as_deref().and_then(OutsideRequest::of_policy)
+    }
+
+    /// What the agents apply to a context-dependent finding with no request evidence, and why:
+    /// a cloud `log` decides whatever the host says; otherwise the host's word, else each
+    /// agent's start-up value.
+    pub fn outside_request_view(&self) -> OutsideRequestView {
+        let host = self.host_outside_request();
+        let cloud = self.cloud_outside_request();
+        let (effective, source) = if cloud == Some(OutsideRequest::Log) {
+            ("log", "cloud")
+        } else {
+            match host {
+                HostOutsideRequest::Set(value) => (value.as_str(), "host"),
+                HostOutsideRequest::Unset => ("start-up", "agent"),
+                HostOutsideRequest::Invalid => ("unchanged", "invalid"),
+            }
+        };
+        OutsideRequestView {
+            host: match host {
+                HostOutsideRequest::Unset => None,
+                HostOutsideRequest::Set(value) => Some(value.as_str()),
+                HostOutsideRequest::Invalid => Some("invalid"),
+            },
+            cloud: cloud.map(OutsideRequest::as_str),
+            effective,
+            source,
         }
     }
 }
@@ -269,6 +329,29 @@ fn policy_identity(text: &str, assignment: Option<&str>) -> String {
     }
 }
 
+/// The control document in `text`, as the agents read it: a member named twice counts with its
+/// last value (serde's struct reader would refuse the document and the daemon would reinitialise
+/// it), and the host's `outside_request` is rewritten as its canonical word when the agents
+/// accept it and kept as found when they do not.
+fn parse_document(text: &str) -> Result<ControlState> {
+    let value: serde_json::Value = serde_json::from_str(text)?;
+    let mut state: ControlState = serde_json::from_value(value)?;
+    match state.host_outside_request() {
+        HostOutsideRequest::Unset => state.outside_request = None,
+        HostOutsideRequest::Set(word) => {
+            state.outside_request = Some(serde_json::Value::from(word.as_str()));
+        }
+        HostOutsideRequest::Invalid => {
+            tracing::warn!(
+                value = %state.outside_request.as_ref().map_or_else(String::new, ToString::to_string),
+                "outside_request in the control file is neither block nor log; kept as found: the \
+                 agents ignore it and keep the value they had"
+            );
+        }
+    }
+    Ok(state)
+}
+
 /// Thread-safe controller wrapping the control state and its backing file.
 pub struct Controller {
     path: PathBuf,
@@ -284,7 +367,7 @@ impl Controller {
         // would write from it.
         let mut found_bytes = None;
         let state = match std::fs::read_to_string(path) {
-            Ok(text) => serde_json::from_str::<ControlState>(&text)
+            Ok(text) => parse_document(&text)
                 .with_context(|| format!("parsing control file {}", path.display()))
                 .inspect(|_| found_bytes = Some(text.len()))
                 .unwrap_or_else(|err| {
@@ -339,13 +422,15 @@ impl Controller {
         self.update_with(mode, None, algorithms)
     }
 
-    /// Apply a partial update from the console: the mode, `outside_request` and per-algorithm
-    /// switches. Any field left `None` is kept. When the resulting document would be larger than
-    /// the agents read, nothing changes and the error is a [`ControlTooLarge`].
+    /// Apply a partial update from the console: the mode, the host's `outside_request` and
+    /// per-algorithm switches. Any field left `None` is kept; `outside_request` of `Some(None)`
+    /// removes the host's member, so the agents return to the cloud's value or their start-up
+    /// value. When the resulting document would be larger than the agents read, nothing changes
+    /// and the error is a [`ControlTooLarge`].
     pub fn update_with(
         &self,
         mode: Option<Mode>,
-        outside_request: Option<OutsideRequest>,
+        outside_request: Option<Option<OutsideRequest>>,
         algorithms: Option<BTreeMap<String, bool>>,
     ) -> Result<ControlState> {
         let mut guard = self.state.lock().expect("control mutex");
@@ -354,7 +439,8 @@ impl Controller {
             next.mode = mode;
         }
         if let Some(outside_request) = outside_request {
-            next.outside_request = outside_request;
+            next.outside_request =
+                outside_request.map(|value| serde_json::Value::from(value.as_str()));
         }
         if let Some(updates) = algorithms {
             for (name, enabled) in updates {
@@ -386,10 +472,9 @@ impl Controller {
     /// When the policy asked for is the one installed, the refusal of an earlier policy no
     /// longer applies and is cleared.
     ///
-    /// A new policy that carries `config.hardening.outside_request` sets the document's
-    /// `outside_request` too (see [`OutsideRequest::of_policy`]). It is applied when the policy
-    /// changes, like the policy itself: a later console change stands until the cloud assigns a
-    /// different policy, and a withdrawn policy, or one without the setting, leaves it as it is.
+    /// The cloud's `outside_request` stays inside the policy (`config.hardening`), where the
+    /// agents read it: installing, replacing or withdrawing a policy changes it with the policy
+    /// and never touches the host's top-level member.
     pub fn set_policy_assigned(
         &self,
         policy: Option<String>,
@@ -404,9 +489,6 @@ impl Controller {
             .as_deref()
             .map(|text| policy_identity(text, assignment));
         let mut next = guard.clone();
-        if let Some(outside_request) = policy.as_deref().and_then(OutsideRequest::of_policy) {
-            next.outside_request = outside_request;
-        }
         next.policy = policy;
         next.revision += 1;
         next.updated_at = now_rfc3339();
@@ -697,7 +779,7 @@ mod tests {
     fn state_of_size(bytes: usize) -> ControlState {
         let mut state = ControlState {
             mode: Mode::Monitor,
-            outside_request: OutsideRequest::Block,
+            outside_request: None,
             algorithms: BTreeMap::new(),
             policy: Some(String::new()),
             revision: 2,
@@ -1142,13 +1224,13 @@ mod tests {
         ] {
             assert_eq!(OutsideRequest::parse(text), want, "{text:?}");
         }
-        assert_eq!(OutsideRequest::default(), OutsideRequest::Block);
     }
 
-    /// An unknown `outside_request` in a hand-edited file keeps the rest of the document (an
-    /// unknown mode would reinitialise it, resetting the mode too) and is written as block.
+    /// An `outside_request` nobody accepts, in a hand-edited file, is kept as found (the agents
+    /// ignore it and keep the value they had) and the rest of the document applies; the daemon
+    /// neither rewrites it as block nor reinitialises the document.
     #[test]
-    fn an_unknown_outside_request_is_written_as_block_and_keeps_the_document() {
+    fn an_unknown_outside_request_is_kept_as_found_and_the_rest_of_the_document_applies() {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("control.json");
         for found in [r#""sometimes""#, "true", "7"] {
@@ -1161,69 +1243,180 @@ mod tests {
             let state = ctrl.snapshot();
             assert_eq!(state.mode, Mode::Block, "{found}: not reinitialised");
             assert_eq!(state.revision, 7, "{found}");
-            assert_eq!(state.outside_request, OutsideRequest::Block, "{found}");
+            assert_eq!(
+                state.host_outside_request(),
+                HostOutsideRequest::Invalid,
+                "{found}"
+            );
+            assert_eq!(
+                state.outside_request_view().effective,
+                "unchanged",
+                "{found}"
+            );
             let written: serde_json::Value =
                 serde_json::from_str(&std::fs::read_to_string(&path).unwrap()).unwrap();
-            assert_eq!(written["outside_request"], "block", "{found}");
+            let kept: serde_json::Value = serde_json::from_str(found).unwrap();
+            assert_eq!(written["outside_request"], kept, "{found} kept as found");
         }
     }
 
-    /// A file written before the setting existed has none: it means block, and the daemon writes it.
+    /// No member means no host setting: the daemon does not invent one, and the agents keep their
+    /// start-up value (an agent started with outside_request=log stays log).
     #[test]
-    fn a_document_without_outside_request_means_block() {
+    fn a_document_without_outside_request_has_no_host_setting_and_none_is_written() {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("control.json");
-        std::fs::write(&path, r#"{"mode":"monitor","revision":3}"#).unwrap();
-        let ctrl = Controller::load_or_init(&path, Mode::Off).unwrap();
-        assert_eq!(ctrl.snapshot().outside_request, OutsideRequest::Block);
-        assert_eq!(ctrl.snapshot().mode, Mode::Monitor);
+        for found in [
+            r#"{"mode":"monitor","revision":3}"#,
+            r#"{"mode":"monitor","outside_request":null,"revision":3}"#,
+        ] {
+            std::fs::write(&path, found).unwrap();
+            let ctrl = Controller::load_or_init(&path, Mode::Off).unwrap();
+            assert_eq!(
+                ctrl.snapshot().host_outside_request(),
+                HostOutsideRequest::Unset
+            );
+            assert_eq!(ctrl.snapshot().mode, Mode::Monitor);
+            assert_eq!(ctrl.snapshot().outside_request_view().effective, "start-up");
+            let written: serde_json::Value =
+                serde_json::from_str(&std::fs::read_to_string(&path).unwrap()).unwrap();
+            assert!(
+                written.get("outside_request").is_none(),
+                "{found}: {written}"
+            );
+        }
     }
 
-    /// The cloud's setting travels in the policy's `config.hardening` and is applied when the policy
-    /// changes. A console change stands until the cloud assigns a different policy; withdrawing the
-    /// policy, or a policy without the setting, leaves it.
+    /// A member named twice counts with its last value, as both agent engines read it, instead of
+    /// the document being refused and reinitialised.
     #[test]
-    fn the_policy_sets_outside_request_when_it_changes() {
+    fn a_member_named_twice_counts_with_its_last_value() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("control.json");
+        std::fs::write(
+            &path,
+            r#"{"mode":"off","mode":"block","outside_request":"block","outside_request":"log","revision":9}"#,
+        )
+        .unwrap();
+        let ctrl = Controller::load_or_init(&path, Mode::Monitor).unwrap();
+        let state = ctrl.snapshot();
+        assert_eq!(state.mode, Mode::Block);
+        assert_eq!(
+            state.host_outside_request(),
+            HostOutsideRequest::Set(OutsideRequest::Log)
+        );
+        assert_eq!(state.revision, 9, "not reinitialised");
+    }
+
+    const POLICY_LOG: &str = r#"{"version":1,"config":{"hardening":{"outside_request":"log"}}}"#;
+
+    /// The cloud's value travels inside the policy and leaves with it: withdrawing the policy, or
+    /// replacing it with one that does not carry the setting, leaves no cloud value behind.
+    #[test]
+    fn withdrawing_or_replacing_the_policy_leaves_no_stale_cloud_value() {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("control.json");
         let ctrl = Controller::load_or_init(&path, Mode::Block).unwrap();
-        let log = r#"{"version":1,"config":{"hardening":{"outside_request":"log"}}}"#;
-        assert!(ctrl.set_policy(Some(log.into())).unwrap());
-        assert_eq!(ctrl.snapshot().outside_request, OutsideRequest::Log);
-
-        ctrl.update_with(None, Some(OutsideRequest::Block), None)
-            .unwrap();
-        assert!(
-            !ctrl.set_policy(Some(log.into())).unwrap(),
-            "unchanged policy"
+        assert!(ctrl.set_policy(Some(POLICY_LOG.into())).unwrap());
+        let view = ctrl.snapshot().outside_request_view();
+        assert_eq!(
+            (view.cloud, view.effective, view.source),
+            (Some("log"), "log", "cloud")
         );
         assert_eq!(
-            ctrl.snapshot().outside_request,
-            OutsideRequest::Block,
-            "the console change stands while the policy is unchanged"
+            ctrl.snapshot().host_outside_request(),
+            HostOutsideRequest::Unset,
+            "not copied"
         );
 
-        let log_again = r#"{"version":2,"config":{"hardening":{"outside_request":" Log "}}}"#;
-        assert!(ctrl.set_policy(Some(log_again.into())).unwrap());
-        assert_eq!(ctrl.snapshot().outside_request, OutsideRequest::Log);
+        assert!(ctrl.set_policy(None).unwrap());
+        let view = ctrl.snapshot().outside_request_view();
+        assert_eq!(
+            (view.cloud, view.effective),
+            (None, "start-up"),
+            "withdrawn"
+        );
 
-        for silent in [
+        assert!(ctrl.set_policy(Some(POLICY_LOG.into())).unwrap());
+        for replacement in [
             r#"{"version":3}"#,
             r#"{"version":4,"config":{"hardening":{"outside_request":"sometimes"}}}"#,
             "not json",
         ] {
-            assert!(ctrl.set_policy(Some(silent.into())).unwrap());
+            assert!(ctrl.set_policy(Some(replacement.into())).unwrap());
+            let view = ctrl.snapshot().outside_request_view();
             assert_eq!(
-                ctrl.snapshot().outside_request,
-                OutsideRequest::Log,
-                "{silent}"
+                (view.cloud, view.effective),
+                (None, "start-up"),
+                "{replacement}"
             );
         }
-        assert!(ctrl.set_policy(None).unwrap());
+        let written: serde_json::Value =
+            serde_json::from_str(&std::fs::read_to_string(&path).unwrap()).unwrap();
+        assert!(written.get("outside_request").is_none(), "{written}");
+    }
+
+    /// The host's value is its own: an unchanged policy and an unrelated policy edit keep it, the
+    /// cloud never overwrites it, a cloud `log` still decides while it is in force, and the host
+    /// can clear it.
+    #[test]
+    fn a_host_setting_stands_through_policy_changes_until_the_host_clears_it() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("control.json");
+        let ctrl = Controller::load_or_init(&path, Mode::Block).unwrap();
+        ctrl.update_with(None, Some(Some(OutsideRequest::Log)), None)
+            .unwrap();
+        let rules = r#"{"version":1,"rules":[{"algorithm":"readFile_unwanted","action":"block"}]}"#;
+        assert!(ctrl.set_policy(Some(rules.into())).unwrap());
+        assert!(
+            !ctrl.set_policy(Some(rules.into())).unwrap(),
+            "unchanged policy"
+        );
+        let edited = r#"{"version":2,"rules":[{"algorithm":"sql_userinput","action":"block"}]}"#;
+        assert!(
+            ctrl.set_policy(Some(edited.into())).unwrap(),
+            "unrelated edit"
+        );
+        let view = ctrl.snapshot().outside_request_view();
         assert_eq!(
-            ctrl.snapshot().outside_request,
-            OutsideRequest::Log,
-            "withdrawn"
+            (view.host, view.effective, view.source),
+            (Some("log"), "log", "host")
+        );
+
+        ctrl.update_with(None, Some(Some(OutsideRequest::Block)), None)
+            .unwrap();
+        assert!(ctrl.set_policy(Some(POLICY_LOG.into())).unwrap());
+        let view = ctrl.snapshot().outside_request_view();
+        assert_eq!(
+            (view.host, view.cloud, view.effective, view.source),
+            (Some("block"), Some("log"), "log", "cloud"),
+            "both must allow blocking: the cloud's log decides, the host's block is kept"
+        );
+        assert!(ctrl.set_policy(None).unwrap());
+        let view = ctrl.snapshot().outside_request_view();
+        assert_eq!(
+            (view.host, view.effective),
+            (Some("block"), "block"),
+            "the host's again"
+        );
+
+        ctrl.update_with(None, Some(None), None).unwrap();
+        assert_eq!(
+            ctrl.snapshot().host_outside_request(),
+            HostOutsideRequest::Unset,
+            "cleared"
+        );
+        let written: serde_json::Value =
+            serde_json::from_str(&std::fs::read_to_string(&path).unwrap()).unwrap();
+        assert!(written.get("outside_request").is_none(), "{written}");
+
+        // A restart reads the host's value back unchanged.
+        ctrl.update_with(None, Some(Some(OutsideRequest::Log)), None)
+            .unwrap();
+        let reloaded = Controller::load_or_init(&path, Mode::Off).unwrap();
+        assert_eq!(
+            reloaded.snapshot().host_outside_request(),
+            HostOutsideRequest::Set(OutsideRequest::Log)
         );
     }
 }

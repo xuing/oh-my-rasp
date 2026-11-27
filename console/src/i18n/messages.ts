@@ -204,8 +204,8 @@ const zh: Table = {
   "Block reflection abuse": "阻断反射滥用",
   "Block process execution": "阻断进程执行",
   "Outside an HTTP request": "HTTP 请求之外",
-  "Findings on scheduled jobs, message consumers, background threads and start-up code. Every agent line applies it.":
-    "定时任务、消息消费者、后台线程与启动代码中的检测结果。所有 Agent 版本线都应用此设置。",
+  "Findings with no HTTP request behind them: scheduled jobs, message consumers, background threads, start-up code. Every agent line applies it. Log only does not stop findings whose argument is the exploit itself (a remote JNDI name, a gadget class in a stream); findings that only show an operation happened (a cloud metadata address, a remote DTD) are logged there either way. A host can also choose log on its own console; blocking needs both.":
+    "没有 HTTP 请求的检测结果：定时任务、消息消费者、后台线程与启动代码。所有 Agent 版本线都应用此设置。“仅记录”不会放行参数本身就是攻击载荷的检测（远程 JNDI 名称、流中的利用链类）；只说明发生了某种操作的检测（云元数据地址、远程 DTD）在请求之外始终只记录。主机也可在本机控制台选择仅记录；两者都允许时才阻断。",
   "Block — as inside a request": "阻断——与请求内相同",
   "Log only — record and let it run": "仅记录——记录事件并放行",
   Bypass: "放行",
@@ -613,8 +613,8 @@ const ja: Table = {
   "Block reflection abuse": "リフレクション悪用をブロック",
   "Block process execution": "プロセス実行をブロック",
   "Outside an HTTP request": "HTTP リクエスト外",
-  "Findings on scheduled jobs, message consumers, background threads and start-up code. Every agent line applies it.":
-    "スケジュールジョブ、メッセージコンシューマー、バックグラウンドスレッド、起動コードでの検出。すべてのエージェントラインに適用されます。",
+  "Findings with no HTTP request behind them: scheduled jobs, message consumers, background threads, start-up code. Every agent line applies it. Log only does not stop findings whose argument is the exploit itself (a remote JNDI name, a gadget class in a stream); findings that only show an operation happened (a cloud metadata address, a remote DTD) are logged there either way. A host can also choose log on its own console; blocking needs both.":
+    "HTTP リクエストを伴わない検出：スケジュールジョブ、メッセージコンシューマー、バックグラウンドスレッド、起動コード。すべてのエージェントラインに適用されます。「記録のみ」でも、引数そのものが攻撃である検出（リモート JNDI 名、ストリーム内のガジェットクラス）はブロックされます。操作が行われたことだけを示す検出（クラウドメタデータのアドレス、リモート DTD）はリクエスト外では常に記録のみです。ホストのローカルコンソールでも記録のみを選べます。ブロックには両方の許可が必要です。",
   "Block — as inside a request": "ブロック——リクエスト内と同じ",
   "Log only — record and let it run": "記録のみ——記録して実行を許可",
   Bypass: "バイパス",
