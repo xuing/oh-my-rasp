@@ -100,19 +100,40 @@ public final class BootstrapAgentFailureMain {
                 return method.getReturnType() == boolean.class ? Boolean.FALSE : null;
               }
             });
-    String ended = "started";
-    try {
-      BootstrapAgent.start("", instrumentation, scenario.equals("no-jar") ? null : jar);
-    } catch (Throwable failure) {
-      Throwable root = failure;
-      while (root.getCause() != null) {
-        root = root.getCause();
+    String ended;
+    if (scenario.equals("concurrent")) {
+      // Two starts that bypass the launcher, released together: one starts, the other is refused and touches nothing.
+      java.util.concurrent.CountDownLatch ready = new java.util.concurrent.CountDownLatch(2);
+      String[] outcomes = new String[2];
+      Thread[] starts = new Thread[2];
+      for (int i = 0; i < 2; i++) {
+        final int index = i;
+        starts[i] = new Thread(() -> {
+          ready.countDown();
+          try {
+            ready.await();
+          } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+          }
+          outcomes[index] = start(instrumentation, jar);
+        }, "test-start-" + i);
+        starts[i].start();
       }
-      ended = "threw " + failure.getClass().getSimpleName() + ": " + failure.getMessage() + " | root " + root;
+      for (Thread start : starts) {
+        start.join();
+      }
+      java.util.Arrays.sort(outcomes);
+      ended = outcomes[0] + " + " + outcomes[1];
+    } else if (scenario.equals("again-after-failure")) {
+      // The first start fails (its JAR has no list); a second, with a good JAR, is refused: one start per JVM.
+      String first = start(instrumentation, new File(args[2]));
+      ended = first.startsWith("threw ") ? start(instrumentation, jar) : "the first start did not fail: " + first;
+    } else {
+      ended = start(instrumentation, scenario.equals("no-jar") ? null : jar);
     }
     // A thread told to stop needs a moment to notice.
     long deadline = System.nanoTime() + 5_000_000_000L;
-    boolean succeeded = ended.equals("started");
+    boolean succeeded = ended.equals("started") || ended.startsWith("started + ");
     TreeSet<String> threads = ourThreads();
     while (!threads.isEmpty() && !succeeded && System.nanoTime() < deadline) {
       Thread.sleep(50);
@@ -129,6 +150,19 @@ public final class BootstrapAgentFailureMain {
         + "\t" + hookMissWritten + "\t" + (HookMisses.table() != null));
     System.out.flush();
     Runtime.getRuntime().halt(0);
+  }
+
+  private static String start(Instrumentation instrumentation, File jar) {
+    try {
+      BootstrapAgent.start("", instrumentation, jar);
+      return "started";
+    } catch (Throwable failure) {
+      Throwable root = failure;
+      while (root.getCause() != null) {
+        root = root.getCause();
+      }
+      return "threw " + failure.getClass().getSimpleName() + ": " + failure.getMessage() + " | root " + root;
+    }
   }
 
   private static boolean hookMissIn(Path log) {

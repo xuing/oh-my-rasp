@@ -162,9 +162,16 @@ public final class AgentRuntime {
   private volatile Integer argLatencySample;
 
   private Path controlPath;
-  // The control-file poller, while one runs: stop interrupts it.
-  private volatile Thread poller;
+  // Guards poller and stopped against each other: a stop that runs while start is about to start the poller
+  // either sees the poller or keeps it from starting.
+  private final Object lifecycle = new Object();
+  // The control-file poller, while one runs. Guarded by lifecycle.
+  private Thread poller;
+  // Set by stop, under lifecycle and stateLock: no poller starts and no poll publishes state from then on.
+  private volatile boolean stopped;
   private final AtomicBoolean started = new AtomicBoolean();
+  // stop waits this long for the poller to end; a poll stuck in file-system I/O is left to finish without effect.
+  private static final long STOP_JOIN_MILLIS = 1000;
 
   private AgentRuntime(ShirudoDefaults defaults) {
     ShirudoDefaults active = defaults == null ? ShirudoDefaults.absent() : defaults;
@@ -416,14 +423,41 @@ public final class AgentRuntime {
   }
 
   /**
-   * Stops the control-file poller this runtime started, if any. The mode and the policy stay as the last read left
-   * them. For a start that fails after the runtime started: the JVM goes on without a thread of ours.
+   * Stops the control-file poller this runtime started, if any, for a start that fails after the runtime started:
+   * the JVM goes on without a thread of ours. From the moment it returns no poll changes the control state (a poll
+   * in progress finishes without publishing), a poller that start had not yet started never starts, and the poller
+   * has ended or, stuck in file-system I/O, is waited for at most {@value #STOP_JOIN_MILLIS} ms. The mode and the
+   * policy stay as the last read left them.
    */
   public void stop() {
-    Thread running = poller;
-    poller = null;
-    if (running != null) {
+    Thread running;
+    synchronized (lifecycle) {
+      synchronized (stateLock) {
+        stopped = true;
+      }
+      running = poller;
+      poller = null;
+    }
+    if (running == null || running == Thread.currentThread()) {
+      return;
+    }
+    boolean interrupted = Thread.interrupted();
+    try {
       running.interrupt();
+      running.join(STOP_JOIN_MILLIS);
+    } catch (InterruptedException e) {
+      interrupted = true;
+    } finally {
+      if (interrupted) {
+        Thread.currentThread().interrupt();
+      }
+    }
+  }
+
+  /** The control-file poller while one runs. Tests only. */
+  Thread pollerThread() {
+    synchronized (lifecycle) {
+      return poller;
     }
   }
 
@@ -431,7 +465,7 @@ public final class AgentRuntime {
     Thread poller =
         new Thread(
             () -> {
-              while (true) {
+              while (!stopped) {
                 try {
                   Thread.sleep(intervalMillis);
                   reloadIfChanged();
@@ -445,8 +479,13 @@ public final class AgentRuntime {
             },
             "ohmyrasp-control-poller");
     poller.setDaemon(true);
-    this.poller = poller;
-    poller.start();
+    synchronized (lifecycle) {
+      if (stopped) {
+        return;
+      }
+      this.poller = poller;
+      poller.start();
+    }
   }
 
   /**
@@ -511,6 +550,9 @@ public final class AgentRuntime {
    */
   private void restoreStartUpSettings() {
     synchronized (stateLock) {
+      if (stopped) {
+        return;
+      }
       ControlState current = state;
       boolean ownsPolicy = current.policySource == PolicySource.CONTROL_FILE;
       state =
@@ -544,6 +586,9 @@ public final class AgentRuntime {
       return false;
     }
     synchronized (stateLock) {
+      if (stopped) {
+        return false;
+      }
       ControlState current = state;
       DetectionMode nextMode = current.mode;
       if (object.get("mode") instanceof String token) {

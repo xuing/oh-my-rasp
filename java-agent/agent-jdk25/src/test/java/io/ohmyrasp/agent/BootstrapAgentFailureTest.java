@@ -70,6 +70,23 @@ final class BootstrapAgentFailureTest {
     assertFails(result, "has an empty META-INF/ohmyrasp/preload/agent-jdk25.txt");
   }
 
+  /** Two starts that bypass the launcher, at once: exactly one starts, the other is refused and registers nothing. */
+  @Test
+  void twoConcurrentStartsStartOnce() throws Exception {
+    Result result = run("concurrent", jarWith(List.of(LISTED)));
+    assertTrue(result.ended.startsWith("started + threw IllegalStateException: the primary line was already "),
+        result.ended);
+    assertEquals(1, result.transformers, "the refused start registered a transformer");
+    assertTrue(result.threads.contains("ohmyrasp-event-writer"), result.threads);
+  }
+
+  /** The launcher does not retry a failed start; a start that bypasses it does not either. */
+  @Test
+  void aStartAfterAFailedStartIsRefused() throws Exception {
+    Result result = run("again-after-failure", jarWith(List.of(LISTED)), jarWith(null));
+    assertFails(result, "the primary line was already started once and failed in this JVM");
+  }
+
   @Test
   void anUnreadableJarFailsBeforeAnythingStarts() throws Exception {
     Path notAJar = Files.writeString(work.resolve("broken.jar"), "this is not a ZIP file");
@@ -139,19 +156,20 @@ final class BootstrapAgentFailureTest {
 
   private record Result(String ended, int transformers, String threads, boolean hookMissWritten, boolean reportOn) {}
 
-  private Result run(String scenario, File jar) throws Exception {
+  private Result run(String scenario, File jar, File... more) throws Exception {
     Path java = Path.of(System.getProperty("java.home"), "bin", "java");
-    Process process =
-        new ProcessBuilder(
-                java.toString(),
-                "-cp", System.getProperty("java.class.path"),
-                "-Dohmyrasp.log=" + work.resolve(scenario + "-events.jsonl"),
-                "-Dohmyrasp.control=" + work.resolve(scenario + "-control.json"),
-                BootstrapAgentFailureMain.class.getName(),
-                scenario,
-                jar.getPath())
-            .redirectErrorStream(true)
-            .start();
+    java.util.List<String> command = new java.util.ArrayList<>(List.of(
+        java.toString(),
+        "-cp", System.getProperty("java.class.path"),
+        "-Dohmyrasp.log=" + work.resolve(scenario + "-events.jsonl"),
+        "-Dohmyrasp.control=" + work.resolve(scenario + "-control.json"),
+        BootstrapAgentFailureMain.class.getName(),
+        scenario,
+        jar.getPath()));
+    for (File extra : more) {
+      command.add(extra.getPath());
+    }
+    Process process = new ProcessBuilder(command).redirectErrorStream(true).start();
     ByteArrayOutputStream output = new ByteArrayOutputStream();
     process.getInputStream().transferTo(output);
     assertTrue(process.waitFor(60, TimeUnit.SECONDS), "the JVM did not finish");

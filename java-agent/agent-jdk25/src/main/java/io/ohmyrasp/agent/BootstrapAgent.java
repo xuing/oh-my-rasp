@@ -5,6 +5,7 @@ import io.ohmyrasp.agent.asm.HookRegistry;
 import io.ohmyrasp.agent.asm.OhMyRaspTransformer;
 import io.ohmyrasp.agent.control.ControlPlaneClient;
 import io.ohmyrasp.agent.control.ControlPlaneConfig;
+import io.ohmyrasp.agent.hook.HookActivation;
 import io.ohmyrasp.agent.hook.OhMyRaspHooks;
 import io.ohmyrasp.agent.hook.Warmup;
 import io.ohmyrasp.agent.hookmiss.HookMisses;
@@ -15,69 +16,137 @@ import io.ohmyrasp.agent.runtime.DetectionMode;
 import io.ohmyrasp.agent.util.Preload;
 import java.lang.instrument.ClassFileTransformer;
 import java.lang.instrument.Instrumentation;
+import java.util.ArrayList;
 import java.util.List;
 
 public final class BootstrapAgent {
   /** The module whose preload list this line reads (META-INF/ohmyrasp/preload/&lt;module&gt;.txt, written by the build). */
   static final String MODULE = "agent-jdk25";
 
+  // The one start this JVM makes, whichever entry calls start: NONE until one claims it, then STARTING, then
+  // STARTED or FAILED for good. Guarded by LIFECYCLE. This class is defined once, by the bootstrap loader, so the
+  // claim holds for every entry, the launcher's and one that bypasses it.
+  private static final Object LIFECYCLE = new Object();
+  private static final int NONE = 0;
+  private static final int STARTING = 1;
+  private static final int STARTED = 2;
+  private static final int FAILED = 3;
+  private static int state = NONE;
+
   private BootstrapAgent() {}
 
   /**
-   * Starts the primary line. {@code agentJar} is the JAR the entry class appended to the bootstrap search. Every
-   * class of ours its preload list names is loaded and initialised before the transformer is registered, so no
-   * hook or transformer loads one for the first time inside an instrumented call, where loading can re-enter the
-   * hook. A missing list or JAR, a class that is not there or fails to initialise, and any failure after the
-   * transformer was registered fail the start: the transformer is removed and what this call started (the
-   * control-file poller, the event writer, the control-plane client, the hook-miss report) is stopped, so the
-   * launcher's start-failed report holds and the JVM goes on with no hook added by this start and no thread of ours.
-   * The start commits when {@code begin} returns: only then may the hook-miss report start its writer thread for
-   * what classes loaded during the start reported.
+   * Starts the primary line. {@code agentJar} is the JAR the entry class appended to the bootstrap search.
+   *
+   * <p>One start per JVM: a second call, concurrent or later, from any entry, throws and touches nothing.
+   *
+   * <p>Every class of ours its preload list names is loaded and initialised before the transformer is registered,
+   * so no hook or transformer loads one for the first time inside an instrumented call, where loading can re-enter
+   * the hook. The hooks the transformer injects stay inert ({@link HookActivation}) until the start commits, its
+   * last step; the hook-miss report's worker, the cloud client's I/O and the crash reporter start only after that.
+   * A failure before the commit (a missing list or JAR, a class that is not there or fails to initialise, the JVM
+   * shutting down, anything after the transformer was registered) undoes the start: the hooks stay off, the
+   * transformer is removed, the classes it retransformed are retransformed again without it, and what this call
+   * started (the control-file poller, the event writer and its shutdown hook) is stopped without writing anything,
+   * so the launcher's start-failed report holds and the JVM goes on with no active hook and no thread of ours.
+   * Code the transformer already injected stays in the classes it rewrote; it does nothing.
    */
   public static void start(String agentArgs, Instrumentation instrumentation, java.io.File agentJar) {
-    if (agentJar == null) {
-      throw new IllegalStateException("the agent JAR is not on the bootstrap search: no hook is installed");
-    }
-    // What can fail without a trace comes first, while there is nothing to undo.
-    List<String> preload;
+    claim();
+    boolean committed = false;
     try {
-      preload = Preload.verified(agentJar, MODULE);
-    } catch (java.io.IOException e) {
-      throw new IllegalStateException("cannot read the preload list of " + agentJar, e);
-    }
-    Started started = new Started();
-    try {
-      begin(agentArgs, instrumentation, agentJar, preload, started);
-    } catch (RuntimeException | Error failure) {
-      started.undo(instrumentation, failure);
-      throw failure;
-    }
-    // Committed: the hooks the transformer injected act from now on.
-    io.ohmyrasp.agent.hook.HookActivation.activate();
-    if (started.hookMisses) {
-      HookMisses.release();
+      if (agentJar == null) {
+        throw new IllegalStateException("the agent JAR is not on the bootstrap search: no hook is installed");
+      }
+      requireNotShuttingDown();
+      // What can fail without a trace comes first, while there is nothing to undo.
+      List<String> preload;
+      try {
+        preload = Preload.verified(agentJar, MODULE);
+      } catch (java.io.IOException e) {
+        throw new IllegalStateException("cannot read the preload list of " + agentJar, e);
+      }
+      Started started = new Started();
+      try {
+        begin(agentArgs, instrumentation, agentJar, preload, started);
+      } catch (RuntimeException | Error failure) {
+        started.undo(instrumentation, failure);
+        throw failure;
+      }
+      committed = true;
+      started.commit();
+    } finally {
+      synchronized (LIFECYCLE) {
+        state = committed ? STARTED : FAILED;
+      }
     }
   }
 
-  /** What one start did that a failed start must undo. */
+  /** Claims the JVM's one start; throws when a start is running or has run, from this entry or another. */
+  private static void claim() {
+    synchronized (LIFECYCLE) {
+      if (state != NONE) {
+        throw new IllegalStateException("the primary line was already "
+            + (state == STARTING ? "being started" : state == STARTED ? "started" : "started once and failed")
+            + " in this JVM: this start does nothing");
+      }
+      state = STARTING;
+    }
+  }
+
+  /** Throws when the JVM has begun to shut down: the JVM refuses a shutdown hook then, and a start has no use. */
+  private static void requireNotShuttingDown() {
+    Thread probe = new Thread("ohmyrasp-shutdown-probe");
+    try {
+      Runtime.getRuntime().addShutdownHook(probe);
+    } catch (IllegalStateException shuttingDown) {
+      throw new IllegalStateException("the JVM is shutting down: the agent does not start", shuttingDown);
+    }
+    Runtime.getRuntime().removeShutdownHook(probe);
+  }
+
+  /** What one start did that a failed start must undo, recorded before each step can fail. */
   private static final class Started {
-    boolean runtime;
-    boolean logger;
+    AgentRuntime runtime;
+    JsonEventLogger logger;
     boolean hookMisses;
     ControlPlaneClient controlPlane;
-    Thread.UncaughtExceptionHandler handlerBefore;
-    boolean handlerReplaced;
     ClassFileTransformer transformer;
+    final List<Class<?>> retransformed = new ArrayList<>();
 
-    void undo(Instrumentation instrumentation, Throwable failure) {
-      io.ohmyrasp.agent.hook.HookActivation.deactivate();
-      if (transformer != null) {
+    /**
+     * The start committed: the hooks act from now on. Then, each on its own and none able to fail the start, the
+     * hook-miss worker, the cloud client's registration and heartbeats, and the crash reporter.
+     */
+    void commit() {
+      HookActivation.activate();
+      if (hookMisses) {
+        HookMisses.release();
+      }
+      if (controlPlane != null) {
         try {
-          instrumentation.removeTransformer(transformer);
-        } catch (RuntimeException | Error other) {
-          failure.addSuppressed(other);
+          logger.setControlPlaneClient(controlPlane);
+          controlPlane.startReporting();
+        } catch (RuntimeException | Error refused) {
+          logger.setControlPlaneClient(null);
+          controlPlane.close();
+          System.err.println("[OHMYRASP] direct cloud reporting did not start: " + refused);
+          return;
+        }
+        try {
+          installCrashReporter(controlPlane);
+        } catch (RuntimeException | Error refused) {
+          // Crashes are not reported to the cloud; everything else is.
         }
       }
+    }
+
+    /**
+     * Undoes what the start did, each step on its own: a failing step is added to {@code failure} as suppressed
+     * and the next still runs. The hooks are turned off first; nothing here writes an event or waits on output.
+     */
+    void undo(Instrumentation instrumentation, Throwable failure) {
+      HookActivation.deactivate();
       if (hookMisses) {
         try {
           HookMisses.stop();
@@ -85,27 +154,39 @@ public final class BootstrapAgent {
           failure.addSuppressed(other);
         }
       }
-      if (handlerReplaced) {
-        Thread.setDefaultUncaughtExceptionHandler(handlerBefore);
+      if (transformer != null) {
+        try {
+          instrumentation.removeTransformer(transformer);
+        } catch (RuntimeException | Error other) {
+          failure.addSuppressed(other);
+        }
+        // Best effort: the classes this start retransformed get their bytecode back without this transformer. A
+        // class first loaded during the start, and a method running when it was rewritten, keep the inert calls.
+        for (Class<?> rewritten : retransformed) {
+          try {
+            instrumentation.retransformClasses(rewritten);
+          } catch (Throwable ignored) {
+            // The calls it holds stay inert.
+          }
+        }
       }
       if (controlPlane != null) {
         try {
-          JsonEventLogger.get().setControlPlaneClient(null);
           controlPlane.close();
         } catch (RuntimeException | Error other) {
           failure.addSuppressed(other);
         }
       }
-      if (logger) {
+      if (logger != null) {
         try {
-          JsonEventLogger.get().stop();
+          logger.cancel();
         } catch (RuntimeException | Error other) {
           failure.addSuppressed(other);
         }
       }
-      if (runtime) {
+      if (runtime != null) {
         try {
-          AgentRuntime.get().stop();
+          runtime.stop();
         } catch (RuntimeException | Error other) {
           failure.addSuppressed(other);
         }
@@ -121,35 +202,31 @@ public final class BootstrapAgent {
     // Local runtime control: detection mode, algorithm switches and the cloud policy the daemon
     // distributes, hot-reloaded from the daemon/operator control file. This is the only
     // coordination the agent needs to run standalone.
-    started.runtime = AgentRuntime.get().start(agentArgs);
+    AgentRuntime runtime = AgentRuntime.get();
+    if (!runtime.start(agentArgs)) {
+      throw new IllegalStateException("the agent runtime was started before this start: nothing is installed");
+    }
+    started.runtime = runtime;
 
-    // The agent reports events asynchronously to its local spool (tailed by the
-    // daemon). Direct cloud communication and heartbeats are off by default —
-    // that is the daemon's job now — and suppressed entirely in standalone or
-    // locked-config mode, remaining available only for legacy deployments via
-    // cloud_direct=true.
-    if (!AgentRuntime.get().isDirectCloudDisabled()
-        && ControlPlaneConfig.directCloudEnabled(agentArgs)) {
-      ControlPlaneClient controlPlane =
-          ControlPlaneClient.start(ControlPlaneConfig.load(agentArgs), OhMyRaspHooks::installPolicy);
-      if (controlPlane != null) {
-        started.controlPlane = controlPlane;
-        // The logger exists from here on, and so does the thread it may start.
-        started.logger = started.runtime;
-        JsonEventLogger.get().setControlPlaneClient(controlPlane);
-        installCrashReporter(controlPlane, started);
-      }
+    // The agent reports events asynchronously to its local spool (tailed by the daemon). Its writer thread and
+    // shutdown hook start here; when the JVM is already shutting down this throws and nothing of it started.
+    JsonEventLogger logger = JsonEventLogger.get();
+    started.logger = logger;
+    logger.start();
+
+    // Direct cloud communication and heartbeats are off by default — that is the daemon's job now — and
+    // suppressed entirely in standalone or locked-config mode, remaining available only for legacy deployments
+    // via cloud_direct=true. The client is prepared here and sends nothing until the start commits.
+    if (!runtime.isDirectCloudDisabled() && ControlPlaneConfig.directCloudEnabled(agentArgs)) {
+      started.controlPlane =
+          ControlPlaneClient.prepare(ControlPlaneConfig.load(agentArgs), OhMyRaspHooks::installPolicy);
     }
 
-    // Hooks run, on any thread, from the moment the transformer is added. Initialise what they use
-    // first, so that no hook does: the event logger, which loads its settings, starts its writer
-    // thread and registers a shutdown hook, the hooks' static state (DetectorEngine and the request
-    // scopes, whose initial value is an empty RequestContext) and the DetectionMode every hook
-    // compares against. AgentRuntime was initialised and started above.
-    started.logger = started.runtime;
-    JsonEventLogger.get();
     started.hookMisses = io.ohmyrasp.agent.log.HookMissLines.start();
-    initialize(io.ohmyrasp.agent.hook.HookActivation.class);
+    // Hooks run, on any thread, once the start commits. Initialise what they use first, so that no hook does: the
+    // hooks' static state (DetectorEngine and the request scopes, whose initial value is an empty RequestContext)
+    // and the DetectionMode every hook compares against. AgentRuntime and the logger were started above.
+    initialize(HookActivation.class);
     initialize(OhMyRaspHooks.class);
     initialize(RequestContext.class);
     initialize(DetectionMode.class);
@@ -160,17 +237,17 @@ public final class BootstrapAgent {
     // stream classes) happens here and not on the first request's thread.
     Warmup.run();
     ClassFileTransformer transformer = new OhMyRaspTransformer(hookRegistry);
-    instrumentation.addTransformer(transformer, true);
     started.transformer = transformer;
-    retransformAlreadyLoadedTargets(instrumentation, hookRegistry);
+    instrumentation.addTransformer(transformer, true);
+    retransformAlreadyLoadedTargets(instrumentation, hookRegistry, started.retransformed);
     String startupMessage =
         "[OHMYRASP] agent started with ASM transformer, standalone="
-            + AgentRuntime.get().isStandalone()
+            + runtime.isStandalone()
             + ", mode="
             + describeMode()
             + ", args="
             + (agentArgs == null ? "" : agentArgs);
-    String logTarget = JsonEventLogger.get().logTarget();
+    String logTarget = logger.logTarget();
     if ("stderr".equals(logTarget)) {
       System.err.println(startupMessage);
     } else if (!"none".equals(logTarget)) {
@@ -191,13 +268,12 @@ public final class BootstrapAgent {
     return mode == null ? "legacy" : mode.token();
   }
 
-  private static void installCrashReporter(ControlPlaneClient controlPlane, Started started) {
-    if (controlPlane == null) {
-      return;
-    }
+  /**
+   * Reports a thread's uncaught exception to the cloud and hands it on to the handler that was there. Installed only
+   * after the start committed, so a failed start never replaces the JVM-wide handler and never has to restore it.
+   */
+  private static void installCrashReporter(ControlPlaneClient controlPlane) {
     Thread.UncaughtExceptionHandler previous = Thread.getDefaultUncaughtExceptionHandler();
-    started.handlerBefore = previous;
-    started.handlerReplaced = true;
     Thread.setDefaultUncaughtExceptionHandler(
         (thread, throwable) -> {
           controlPlane.submitCrash(thread == null ? "" : thread.getName(), throwable);
@@ -208,7 +284,7 @@ public final class BootstrapAgent {
   }
 
   private static void retransformAlreadyLoadedTargets(
-      Instrumentation instrumentation, HookRegistry hookRegistry) {
+      Instrumentation instrumentation, HookRegistry hookRegistry, List<Class<?>> retransformed) {
     if (!instrumentation.isRetransformClassesSupported()) {
       return;
     }
@@ -221,6 +297,8 @@ public final class BootstrapAgent {
       String name = loaded.getName();
       if (hookRegistry.isRetransformTarget(name) || multipartOwners.contains(loaded) || JdbcSqlMethod.isJdbcImplementation(loaded)
           || io.ohmyrasp.agent.http.RequestBodyVisitor.loadedTarget(loaded)) {
+        // Recorded first: a retransformation that fails half-way may still have rewritten the class.
+        retransformed.add(loaded);
         try {
           instrumentation.retransformClasses(loaded);
         } catch (Throwable throwable) {

@@ -52,7 +52,7 @@ public final class ShirudoDefaults {
     return props == null ? ABSENT : fromProperties(props);
   }
 
-  static ShirudoDefaults absent() {
+  public static ShirudoDefaults absent() {
     return ABSENT;
   }
 

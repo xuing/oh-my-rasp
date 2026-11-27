@@ -38,6 +38,10 @@ public final class JsonEventLogger {
   private static final JsonEventLogger INSTANCE = new JsonEventLogger();
   // The shutdown hook waits this long for the writer to finish the batch it holds.
   private static final long SHUTDOWN_JOIN_MILLIS = 2000;
+  // cancel waits at most this long for the writer to end; a writer stuck in an output call is left to it.
+  private static final long CANCEL_JOIN_MILLIS = 1000;
+  // At JVM exit, the hook-miss report may hand its pending lines to this logger for this long before it drains.
+  private static final long DIAGNOSTIC_HANDOFF_MILLIS = 500;
   // Once shutdown has begun, a write waits this long for the write lock and then gives up.
   private static final long SHUTDOWN_LOCK_MILLIS = 1000;
   private static final String REDACTED = "[redacted]";
@@ -123,13 +127,20 @@ public final class JsonEventLogger {
   private final int latencySampleRate;
   private final PrintStream customOut;
   private final PrintStream customErr;
-  private final Thread writer;
-  // The JVM shutdown hook that flushes the queue; null when there is no writer.
-  private final Thread shutdownHook;
+  // Guards the start against the shutdown hook and cancel: writer, shutdownHook and shutdownBegan.
+  private final Object lifecycle = new Object();
+  // The writer thread and the JVM shutdown hook that flushes the queue, once start ran; null before, and
+  // always for a target without a queue. Guarded by lifecycle; written once.
+  private volatile Thread writer;
+  private Thread shutdownHook;
+  // Guarded by lifecycle: the shutdown hook has begun, so no start succeeds any more.
+  private boolean shutdownBegan;
   private volatile boolean running = true;
   // Set by shutdown once the writer is gone or given up on: from then on events are written on
   // the caller's thread, and writes wait only a bounded time for the write lock.
   private volatile boolean closed;
+  // Set by cancel, for a start that failed: every event from then on is dropped, and nothing is written.
+  private volatile boolean cancelled;
   private volatile ControlPlaneClient controlPlaneClient;
 
   private JsonEventLogger() {
@@ -201,27 +212,63 @@ public final class JsonEventLogger {
               : intSetting("ohmyrasp.latency_sample", "OHMYRASP_LATENCY_SAMPLE", defaultSampleRate);
     }
 
-    if (this.target == LogTarget.FILE) {
-      this.queue = new ArrayBlockingQueue<>(queueCapacity());
-      Thread writer = new Thread(this::drainLoop, "ohmyrasp-event-writer");
-      writer.setDaemon(true);
-      this.writer = writer;
-      writer.start();
-      Thread hook = new Thread(this::shutdown, "ohmyrasp-event-writer-shutdown");
-      this.shutdownHook = hook;
-      Runtime.getRuntime().addShutdownHook(hook);
-    } else {
-      this.queue = null;
-      this.writer = null;
-      this.shutdownHook = null;
+    // Construction starts no thread and registers no shutdown hook (start does), so creating the logger, which
+    // the shared one does in its class initialiser, cannot fail half-way or leave a thread behind.
+    this.queue = this.target == LogTarget.FILE ? new ArrayBlockingQueue<>(queueCapacity()) : null;
+  }
+
+  /**
+   * Starts the writer thread of a file target and registers the JVM shutdown hook that flushes its queue, on the
+   * start thread before any hook acts. The hook is registered first: when the JVM is already shutting down that
+   * throws and nothing is started. Synchronised with the shutdown hook, which then waits for a start in progress
+   * and closes a logger that is fully started; a start after the hook has begun throws. A logger without a queue,
+   * a started one and a cancelled one start nothing more.
+   */
+  public void start() {
+    if (queue == null) {
+      return;
     }
+    synchronized (lifecycle) {
+      if (writer != null || cancelled) {
+        return;
+      }
+      if (shutdownBegan) {
+        throw new IllegalStateException("the JVM is shutting down: the event writer does not start");
+      }
+      Thread hook = new Thread(this::shutdownForExit, "ohmyrasp-event-writer-shutdown");
+      Runtime.getRuntime().addShutdownHook(hook);
+      Thread thread = new Thread(this::drainLoop, "ohmyrasp-event-writer");
+      thread.setDaemon(true);
+      try {
+        thread.start();
+      } catch (RuntimeException | Error failure) {
+        try {
+          Runtime.getRuntime().removeShutdownHook(hook);
+        } catch (IllegalStateException shuttingDown) {
+          // The hook runs and finds no writer.
+        }
+        throw failure;
+      }
+      shutdownHook = hook;
+      writer = thread;
+    }
+  }
+
+  /** A logger that writes nothing anywhere and reports nothing to a cloud client: the warm-up's. */
+  public static JsonEventLogger discarding() {
+    return new JsonEventLogger(ShirudoDefaults.absent(), null, "none", 0, true, null, null);
+  }
+
+  /** Whether this logger drops every event and error report. */
+  public boolean discards() {
+    return target == LogTarget.NONE && controlPlaneClient == null;
   }
 
   public static JsonEventLogger get() {
     return INSTANCE;
   }
 
-  /** Creates an isolated logger for unit tests without touching {@link #INSTANCE}. */
+  /** Creates an isolated, started logger for unit tests without touching {@link #INSTANCE}. */
   public static JsonEventLogger newForTesting(
       ShirudoDefaults defaults,
       String targetOverride,
@@ -229,13 +276,22 @@ public final class JsonEventLogger {
       boolean syncWrites,
       PrintStream out,
       PrintStream err) {
-    return new JsonEventLogger(
-        defaults, null, targetOverride, latencySampleOverride, syncWrites, out, err);
+    JsonEventLogger logger =
+        new JsonEventLogger(defaults, null, targetOverride, latencySampleOverride, syncWrites, out, err);
+    logger.start();
+    return logger;
   }
 
-  /** Creates an isolated logger for unit tests from a started {@code runtime}'s settings. */
+  /** Creates an isolated, started logger for unit tests from a started {@code runtime}'s settings. */
   public static JsonEventLogger newForTesting(AgentRuntime runtime, PrintStream out, PrintStream err) {
-    return new JsonEventLogger(runtime.shirudoDefaults(), runtime, null, null, false, out, err);
+    JsonEventLogger logger = new JsonEventLogger(runtime.shirudoDefaults(), runtime, null, null, false, out, err);
+    logger.start();
+    return logger;
+  }
+
+  /** Creates an isolated logger for unit tests that is not started: no writer thread, no shutdown hook. */
+  static JsonEventLogger unstartedForTesting(String targetOverride, PrintStream out, PrintStream err) {
+    return new JsonEventLogger(ShirudoDefaults.absent(), null, targetOverride, 0, false, out, err);
   }
 
   public String logTarget() {
@@ -308,6 +364,9 @@ public final class JsonEventLogger {
   }
 
   private void submit(Sample sample) {
+    if (cancelled) {
+      return;
+    }
     if (target != LogTarget.FILE) {
       if (target == LogTarget.NONE && controlPlaneClient == null) {
         return;
@@ -355,6 +414,9 @@ public final class JsonEventLogger {
         batch.clear();
         batch.add(first);
         queue.drainTo(batch, 511);
+        if (cancelled) {
+          return; // a failed start: what was queued is dropped, nothing is written
+        }
         flush(batch);
       } catch (InterruptedException e) {
         Thread.currentThread().interrupt();
@@ -416,7 +478,9 @@ public final class JsonEventLogger {
                 StandardOpenOption.CREATE,
                 StandardOpenOption.APPEND);
           } catch (IOException e) {
-            errStream().println("[OHMYRASP] failed to write event log: " + e);
+            if (!cancelled) {
+              errStream().println("[OHMYRASP] failed to write event log: " + e);
+            }
           }
         }
         if (consoleOutput) {
@@ -509,24 +573,69 @@ public final class JsonEventLogger {
     return standalone ? "stderr" : "/tmp/ohmyrasp-events.jsonl";
   }
 
-  private void shutdown() {
+  /**
+   * The JVM shutdown hook's work. Under the lifecycle lock first, so a start in progress finishes and no start
+   * succeeds afterwards; then the hook-miss report may hand over what it holds, for a bounded time, so a line it
+   * was writing is queued before the queue is drained; then the queue is drained as {@link #shutdown(long)} says.
+   */
+  private void shutdownForExit() {
+    synchronized (lifecycle) {
+      shutdownBegan = true;
+    }
+    try {
+      io.ohmyrasp.agent.hookmiss.HookMisses.awaitIdle(DIAGNOSTIC_HANDOFF_MILLIS);
+    } catch (Throwable ignored) {
+      // A diagnostic never holds up the events.
+    }
     shutdown(SHUTDOWN_JOIN_MILLIS);
   }
 
   /**
-   * Stops the writer thread, flushes what is queued and removes the shutdown hook, for a start that fails after the
-   * logger started. An event after this is written on the caller's thread. Does nothing without a writer.
+   * Undoes {@link #start} for a start that failed, without writing anything: every event queued or submitted from
+   * now on is dropped, the shutdown hook is removed, and the writer is told to stop and waited for at most
+   * {@value #CANCEL_JOIN_MILLIS} ms. It never takes the write lock and never waits on a file or the console: a
+   * writer stuck in an output call (a full pipe) is left to finish it on its own and then ends, dropping the rest.
    */
-  public void stop() {
-    if (writer == null) {
-      return;
+  public void cancel() {
+    Thread current;
+    Thread hook;
+    synchronized (lifecycle) {
+      cancelled = true;
+      current = writer;
+      hook = shutdownHook;
     }
-    try {
-      Runtime.getRuntime().removeShutdownHook(shutdownHook);
-    } catch (IllegalStateException shuttingDown) {
-      // The JVM is already exiting; the hook runs and flushes.
+    running = false;
+    if (queue != null) {
+      queue.clear();
     }
-    shutdown(SHUTDOWN_JOIN_MILLIS);
+    if (hook != null) {
+      try {
+        Runtime.getRuntime().removeShutdownHook(hook);
+      } catch (IllegalStateException shuttingDown) {
+        // The JVM is exiting: the hook runs and finds the queue empty.
+      }
+    }
+    if (current != null && current != Thread.currentThread()) {
+      boolean interrupted = Thread.interrupted();
+      try {
+        current.interrupt();
+        current.join(CANCEL_JOIN_MILLIS);
+      } catch (InterruptedException e) {
+        interrupted = true;
+      } finally {
+        if (interrupted) {
+          Thread.currentThread().interrupt();
+        }
+      }
+    }
+    if (queue != null) {
+      queue.clear();
+    }
+  }
+
+  /** The writer thread once started, else null. Tests only. */
+  Thread writerThread() {
+    return writer;
   }
 
   /**
@@ -538,7 +647,10 @@ public final class JsonEventLogger {
    */
   void shutdown(long joinMillis) {
     running = false;
-    Thread current = writer;
+    Thread current;
+    synchronized (lifecycle) {
+      current = writer;
+    }
     if (current != null && current != Thread.currentThread()) {
       try {
         current.join(joinMillis);
@@ -552,6 +664,9 @@ public final class JsonEventLogger {
 
   /** Writes everything still queued. */
   private void flushRest() {
+    if (cancelled) {
+      return;
+    }
     List<Sample> remaining = new ArrayList<>();
     queue.drainTo(remaining);
     if (!remaining.isEmpty()) {

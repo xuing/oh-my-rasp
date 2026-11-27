@@ -153,6 +153,54 @@ final class ControlPlaneClientTest {
     assertTrue("agt_policy".equals(installedAgentKey.get()));
   }
 
+  /**
+   * The agent's start prepares the client while it can still fail and starts its cloud I/O only once it has
+   * committed: a prepared client sends nothing until then, and a closed one cannot start.
+   */
+  @Test
+  void aPreparedClientSendsNothingUntilItStartsReporting() throws Exception {
+    List<String> requests = new ArrayList<>();
+    AtomicReference<AgentPolicy> installed = new AtomicReference<>();
+    HttpServer server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+    server.createContext(
+        "/",
+        exchange -> {
+          record(requests, exchange);
+          respond(exchange, 200, "{\"id\":\"agt_prepared\"}");
+        });
+    server.start();
+    try {
+      ControlPlaneConfig config =
+          new ControlPlaneConfig(
+              "http://127.0.0.1:" + server.getAddress().getPort(),
+              "app_test", "secret_test", "env_test", "node-test", "java", "1.0.0");
+      try (ControlPlaneClient client = ControlPlaneClient.prepare(config, (policy, key) -> installed.set(policy))) {
+        Thread.sleep(300);
+        synchronized (requests) {
+          assertTrue(requests.isEmpty(), "a prepared client sent " + requests);
+        }
+        client.startReporting();
+        waitFor(requests, 1);
+        assertTrue(requests.get(0).contains("POST /api/v1/agents/register"), requests.get(0));
+      }
+    } finally {
+      server.stop(0);
+    }
+    ControlPlaneClient closed = ControlPlaneClient.prepare(
+        new ControlPlaneConfig("http://127.0.0.1:9", "a", "s", "e", "n", "java", "1"), (policy, key) -> installed.set(policy));
+    closed.close();
+    assertThrowsRejected(closed);
+  }
+
+  private static void assertThrowsRejected(ControlPlaneClient closed) {
+    try {
+      closed.startReporting();
+    } catch (java.util.concurrent.RejectedExecutionException expected) {
+      return;
+    }
+    throw new AssertionError("a closed client started reporting");
+  }
+
   @Test
   void reportsRuntimeProducersAndOperationalEvents() throws Exception {
     List<String> requests = new ArrayList<>();
