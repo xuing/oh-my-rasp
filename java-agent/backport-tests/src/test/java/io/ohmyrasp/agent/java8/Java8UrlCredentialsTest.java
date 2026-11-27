@@ -43,8 +43,14 @@ final class Java8UrlCredentialsTest {
             + "&autoDeserialize=true&queryInterceptors=com.mysql.cj.jdbc.interceptors.ServerStatusDiffInterceptor"));
     assertThrows(Java8RaspBlockException.class, () -> Java8RaspHooks.beforeJdbcConnection(
         "jdbc:h2:mem:reports;PASSWORD=" + SENTINEL + ";INIT=RUNSCRIPT FROM 'http://127.0.0.1:1/init.sql'"));
+    // Connector/J's address form carries the credentials as keys of the host.
+    assertThrows(Java8RaspBlockException.class, () -> Java8RaspHooks.beforeJdbcConnection(
+        "jdbc:mysql://address=(host=db2.internal)(port=3307)(user=reporter-" + SENTINEL + ")(password=" + SENTINEL
+            + ")(autoDeserialize=true)/app?queryInterceptors=com.mysql.cj.jdbc.interceptors.ServerStatusDiffInterceptor"));
 
     String spooled = new String(Files.readAllBytes(log), StandardCharsets.UTF_8);
+    assertTrue(spooled.contains("\"jdbc_options\":\"driver=mysql host=db2.internal:3307 "
+        + "options=autoDeserialize+ServerStatusDiffInterceptor\""), spooled);
     assertTrue(spooled.contains("\"jdbc_options\":\"driver=mysql host=db.internal:3306 "
         + "options=autoDeserialize+ServerStatusDiffInterceptor\""), spooled);
     assertTrue(spooled.contains("java8_jdbc_h2_code_execution"), spooled);

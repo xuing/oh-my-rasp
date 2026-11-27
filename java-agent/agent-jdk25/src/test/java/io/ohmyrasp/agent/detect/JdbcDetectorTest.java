@@ -300,13 +300,15 @@ final class JdbcDetectorTest {
         "jdbc:mysql://db.internal:3306/app?autoDeserialize=true",
         "jdbc:mysql://db.internal:3306/app?autoDeserialize=false&queryInterceptors="
             + "com.mysql.cj.jdbc.interceptors.ServerStatusDiffInterceptor",
-        "jdbc:postgresql://db.internal/app?autoDeserialize=true&detectCustomCollations=true")) {
+        "jdbc:postgresql://db.internal/app?autoDeserialize=true&detectCustomCollations=true",
+        // Separators percent-encoded: Connector/J 8.0.33 and 5.1.49 split the query before decoding and read no
+        // option from it (MysqlDeserializationUrlDriverTest), so the driver does not deserialize.
+        "jdbc:mysql://db/app?autoDeserialize%3Dtrue%26queryInterceptors%3Dcom.mysql.cj.jdbc.interceptors."
+            + "ServerStatusDiffInterceptor")) {
       assertTrue(JdbcDetector.detectJdbcUrl(url, RequestContext.empty()).isEmpty(), url);
     }
     for (String url : List.of(
         "jdbc:mysql://db/app?autoDeserialize=true&detectCustomCollations=true",
-        "jdbc:mysql://db/app?autoDeserialize%3Dtrue%26queryInterceptors%3Dcom.mysql.cj.jdbc.interceptors."
-            + "ServerStatusDiffInterceptor",
         "jdbc:mysql://db/app?autoDeserialize = true&statementInterceptors = "
             + "com.mysql.jdbc.interceptors.ServerStatusDiffInterceptor")) {
       assertAlgorithm(JdbcDetector.detectJdbcUrl(url, RequestContext.empty()), "jdbc_mysql_deserialization");
