@@ -52,6 +52,8 @@ public final class BootstrapAgent {
       started.undo(instrumentation, failure);
       throw failure;
     }
+    // Committed: the hooks the transformer injected act from now on.
+    io.ohmyrasp.agent.hook.HookActivation.activate();
     if (started.hookMisses) {
       HookMisses.release();
     }
@@ -68,6 +70,7 @@ public final class BootstrapAgent {
     ClassFileTransformer transformer;
 
     void undo(Instrumentation instrumentation, Throwable failure) {
+      io.ohmyrasp.agent.hook.HookActivation.deactivate();
       if (transformer != null) {
         try {
           instrumentation.removeTransformer(transformer);
@@ -146,6 +149,7 @@ public final class BootstrapAgent {
     started.logger = started.runtime;
     JsonEventLogger.get();
     started.hookMisses = io.ohmyrasp.agent.log.HookMissLines.start();
+    initialize(io.ohmyrasp.agent.hook.HookActivation.class);
     initialize(OhMyRaspHooks.class);
     initialize(RequestContext.class);
     initialize(DetectionMode.class);

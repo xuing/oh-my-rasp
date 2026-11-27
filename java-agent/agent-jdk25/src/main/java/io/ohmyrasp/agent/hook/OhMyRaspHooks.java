@@ -106,6 +106,7 @@ public final class OhMyRaspHooks {
   }
 
   public static void enterHttpRequest(Object request, Object response) {
+    if (HookActivation.inactive()) return;
     enterHttpRequest(request, response, false);
   }
 
@@ -125,10 +126,12 @@ public final class OhMyRaspHooks {
   }
 
   public static boolean admitServletRequest(Object request, Object response) {
+    if (HookActivation.inactive()) return true;
     return admitServletRequest(request, response, false);
   }
 
   public static boolean admitServletRequest(Object request, Object response, boolean genericService) {
+    if (HookActivation.inactive()) return true;
     try {
       enterHttpRequest(request, response, genericService);
       return true;
@@ -180,6 +183,7 @@ public final class OhMyRaspHooks {
       String query,
       Map<String, List<String>> parameters,
       Map<String, String> headers) {
+    if (HookActivation.inactive()) return;
     if (detectionDisabled()) {
       return;
     }
@@ -200,6 +204,7 @@ public final class OhMyRaspHooks {
       Map<String, List<String>> parameters,
       Map<String, String> headers,
       String body) {
+    if (HookActivation.inactive()) return;
     if (detectionDisabled()) {
       return;
     }
@@ -222,6 +227,7 @@ public final class OhMyRaspHooks {
       String body,
       Object config,
       String mechanism) {
+    if (HookActivation.inactive()) return;
     // Raw configuration does not establish a naming operation.
   }
 
@@ -234,6 +240,7 @@ public final class OhMyRaspHooks {
       String mechanism,
       String exceptionClass,
       String message) {
+    if (HookActivation.inactive()) return;
     if (detectionDisabled()) {
       return;
     }
@@ -249,6 +256,7 @@ public final class OhMyRaspHooks {
 
   public static void beforeServletIncludeAttributes(
       Map<String, String> attributes, List<String> stackClassNames) {
+    if (HookActivation.inactive()) return;
     if (detectionDisabled()) {
       return;
     }
@@ -269,6 +277,7 @@ public final class OhMyRaspHooks {
       Map<String, String> headers,
       Map<String, String> attributes,
       List<String> stackClassNames) {
+    if (HookActivation.inactive()) return;
     if (detectionDisabled()) {
       return;
     }
@@ -283,11 +292,13 @@ public final class OhMyRaspHooks {
   }
 
   public static void beforeSparkSubmitDispatch(boolean creation, Object request, Class<?> requestApi) {
+    if (HookActivation.inactive()) return;
     if (detectionDisabled() || !SparkSubmitRole.denied(creation, request, requestApi)) return;
     emitSubmitRoleDenial(request, "Spark", "SparkRest.handleSubmit");
   }
 
   public static void afterYarnSubmitPrepared(Object prepared, Object request, Class<?> requestApi) {
+    if (HookActivation.inactive()) return;
     if (prepared == null || detectionDisabled()
         || !ServletSubmitRole.denied("ohmyrasp.yarn.submitRole", request, requestApi)) return;
     emitSubmitRoleDenial(request, "YARN", "RMWebServices.submitApplication");
@@ -308,6 +319,7 @@ public final class OhMyRaspHooks {
   }
 
   public static void beforeRemoteJobSubmission(String mechanism, String descriptor) {
+    if (HookActivation.inactive()) return;
     if (detectionDisabled()) {
       return;
     }
@@ -322,6 +334,7 @@ public final class OhMyRaspHooks {
   }
 
   public static void beforeRmiRegistryBind(String operation, String bindingName, Object remote) {
+    if (HookActivation.inactive()) return;
     if (detectionDisabled()) {
       return;
     }
@@ -330,6 +343,7 @@ public final class OhMyRaspHooks {
 
   public static void beforeRmiRegistryBind(
       String operation, String bindingName, Object remote, List<String> stackClassNames) {
+    if (HookActivation.inactive()) return;
     if (detectionDisabled()) {
       return;
     }
@@ -347,6 +361,7 @@ public final class OhMyRaspHooks {
 
   public static void beforeSyntheticRmiRegistryBind(
       String operation, String bindingName, String remoteClassName, List<String> stackClassNames) {
+    if (HookActivation.inactive()) return;
     if (detectionDisabled()) {
       return;
     }
@@ -362,6 +377,7 @@ public final class OhMyRaspHooks {
   }
 
   public static void exitHttpRequest() {
+    if (HookActivation.inactive()) return;
     DISPATCH.exit();
     RequestBodyCapture.dispatchExited(!DISPATCH.inRequest());
   }
@@ -369,38 +385,47 @@ public final class OhMyRaspHooks {
   // ---- request body: what the application's own read calls returned (RequestBodyVisitor injects these) ----
 
   public static Object enterBodyRead() {
+    if (HookActivation.inactive()) return null;
     return RequestBodyCapture.enter();
   }
 
   public static void exitBodyRead(int result, Object token) {
+    if (HookActivation.inactive()) return;
     if (RequestBodyCapture.exitByte(result, token)) bodyCompleted();
   }
 
   public static void exitBodyRead(int result, Object token, byte[] buffer, int offset) {
+    if (HookActivation.inactive()) return;
     if (RequestBodyCapture.exitBytes(result, token, buffer, offset)) bodyCompleted();
   }
 
   public static void exitBodyRead(int result, Object token, java.nio.ByteBuffer buffer) {
+    if (HookActivation.inactive()) return;
     if (RequestBodyCapture.exitBuffer(result, token, buffer)) bodyCompleted();
   }
 
   public static void exitBodyRead(byte[] result, Object token, boolean toEnd) {
+    if (HookActivation.inactive()) return;
     if (RequestBodyCapture.exitAll(result, token, toEnd)) bodyCompleted();
   }
 
   public static void exitBodyChars(int result, Object token) {
+    if (HookActivation.inactive()) return;
     if (RequestBodyCapture.exitChar(result, token)) bodyCompleted();
   }
 
   public static void exitBodyChars(int result, Object token, char[] buffer, int offset) {
+    if (HookActivation.inactive()) return;
     if (RequestBodyCapture.exitChars(result, token, buffer, offset)) bodyCompleted();
   }
 
   public static void exitBodyChars(int result, Object token, java.nio.CharBuffer buffer) {
+    if (HookActivation.inactive()) return;
     if (RequestBodyCapture.exitCharBuffer(result, token, buffer)) bodyCompleted();
   }
 
   public static void exitBodyLine(String result, Object token) {
+    if (HookActivation.inactive()) return;
     if (RequestBodyCapture.exitLine(result, token)) bodyCompleted();
   }
 
@@ -479,6 +504,7 @@ public final class OhMyRaspHooks {
   }
 
   public static void beforeSpringProcessStart(ProcessBuilder builder) {
+    if (HookActivation.inactive()) return;
     if (detectionDisabled() || !io.ohmyrasp.agent.rules.product.spring.SpringProcessInit.selects(builder)) return;
     emit(Optional.of(Detection.log("command", "command_spring_remote_init", 95,
         "Spring dispatched an HTTP-defined initializer to ProcessBuilder.start", currentRequest(),
@@ -486,6 +512,7 @@ public final class OhMyRaspHooks {
   }
 
   public static void beforeProcessLaunch(String[] argv) {
+    if (HookActivation.inactive()) return;
     if (detectionDisabled()) return;
     try {
       var finding = ProcessDetector.detectCommand(java.util.Arrays.asList(argv), currentRequest(), stackTraceClassNames(),
@@ -508,6 +535,7 @@ public final class OhMyRaspHooks {
   }
 
   public static void beforeProcessBuilderStart(ProcessBuilder processBuilder) {
+    if (HookActivation.inactive()) return;
     if (detectionDisabled()) {
       return;
     }
@@ -516,6 +544,7 @@ public final class OhMyRaspHooks {
 
   public static void beforeProcessBuilderStart(
       ProcessBuilder processBuilder, List<String> stackClassNames) {
+    if (HookActivation.inactive()) return;
     if (detectionDisabled()) {
       return;
     }
@@ -529,6 +558,7 @@ public final class OhMyRaspHooks {
   }
 
   public static void beforeRuntimeExecString(String command) {
+    if (HookActivation.inactive()) return;
     if (detectionDisabled()) {
       return;
     }
@@ -543,6 +573,7 @@ public final class OhMyRaspHooks {
   }
 
   public static void beforeRuntimeExecArray(String[] command) {
+    if (HookActivation.inactive()) return;
     if (detectionDisabled()) {
       return;
     }
@@ -560,14 +591,17 @@ public final class OhMyRaspHooks {
   }
 
   public static void observeMyBatisSubstitution(StringBuilder builder, String value, Object handler, String expression) {
+    if (HookActivation.inactive()) return;
     if (!detectionDisabled()) MyBatisSqlTrace.substitution(builder, value, handler, expression);
   }
 
   public static void beforeSql(String query) {
+    if (HookActivation.inactive()) return;
     inspectSql(null, query);
   }
 
   public static void beforeSql(Object jdbcReceiver, String query) {
+    if (HookActivation.inactive()) return;
     if (jdbcReceiver != null) inspectSql(jdbcReceiver, query);
   }
 
@@ -598,6 +632,7 @@ public final class OhMyRaspHooks {
 
   public static void beforeBase64Decode(
       byte[] src, int sp, int sl, boolean isURL, boolean isMIME) {
+    if (HookActivation.inactive()) return;
     // Pure arithmetic fast path first so benign Base64 decoding never triggers
     // class initialization or allocates on the hot path.
     if (!Base64DecodeDetector.isBase64TailUnderflowCandidate(src, sp, sl, isURL, isMIME)) {
@@ -616,6 +651,7 @@ public final class OhMyRaspHooks {
   }
 
   public static void beforeJdbcConnect(String url) {
+    if (HookActivation.inactive()) return;
     if (detectionDisabled()) {
       return;
     }
@@ -636,6 +672,7 @@ public final class OhMyRaspHooks {
       Map<String, String> headers,
       String body,
       String url) {
+    if (HookActivation.inactive()) return;
     if (detectionDisabled()) {
       return;
     }
@@ -651,6 +688,7 @@ public final class OhMyRaspHooks {
 
   public static void beforeSqlException(
       String server, String errorCode, String errorState, String errorMessage, String query) {
+    if (HookActivation.inactive()) return;
     if (detectionDisabled()) {
       return;
     }
@@ -666,6 +704,7 @@ public final class OhMyRaspHooks {
   }
 
   public static void beforeSqlRegex(String query, String regex) {
+    if (HookActivation.inactive()) return;
     if (detectionDisabled()) {
       return;
     }
@@ -682,6 +721,7 @@ public final class OhMyRaspHooks {
       new HttpTransportObservation.Submissions<>();
 
   public static void captureHttpSubmission(Object exchange, java.net.URI uri) {
+    if (HookActivation.inactive()) return;
     if (detectionDisabled()) return;
     RequestContext request = currentRequest();
     if (request.active()) {
@@ -693,10 +733,12 @@ public final class OhMyRaspHooks {
   }
 
   public static void finishHttpSubmission(java.util.concurrent.CompletableFuture<?> future, Object exchange) {
+    if (HookActivation.inactive()) return;
     HTTP_SUBMISSIONS.finishedWhen(future, exchange);
   }
 
   public static void beforeHttpExchange(Object exchange, Object requestObject, java.net.URI uri) {
+    if (HookActivation.inactive()) return;
     if (detectionDisabled() || uri == null || !("http".equalsIgnoreCase(uri.getScheme())
         || "https".equalsIgnoreCase(uri.getScheme()))) return;
     HttpTransportObservation.bindExchange(requestObject, exchange, uri);
@@ -705,6 +747,7 @@ public final class OhMyRaspHooks {
 
   public static void beforeResolvedHttpExchange(Object requestObject, java.net.URI uri, java.net.InetSocketAddress address,
       java.net.InetSocketAddress proxy) {
+    if (HookActivation.inactive()) return;
     if (detectionDisabled()) return;
     String peer = HttpTransportObservation.directAddress(uri, address, proxy);
     if (peer != null) {
@@ -737,10 +780,12 @@ public final class OhMyRaspHooks {
   }
 
   public static void beforeUrlConnectionFactory(URL url) {
+    if (HookActivation.inactive()) return;
     if (!HttpTransportObservation.isHttp(url)) beforeUrlOpen(url);
   }
 
   public static void captureHttpRedirect(Object connection, URL to, URL from) {
+    if (HookActivation.inactive()) return;
     if (detectionDisabled() || !HttpTransportObservation.isHttp(from) || !HttpTransportObservation.isHttp(to)) return;
     String source = HttpTransportObservation.address(from);
     boolean supplied = NetworkDestinationDetector.requestSuppliesHttpUrl(HttpTransportObservation.comparisonUri(from, source),
@@ -749,16 +794,19 @@ public final class OhMyRaspHooks {
   }
 
   public static void beginHttpRoute(Object client, URL url, java.net.Proxy proxy) {
+    if (HookActivation.inactive()) return;
     HttpTransportObservation.beginRoute(client, detectionDisabled() ? null : url, proxy);
   }
 
   public static void beforeHttpDial(Object client, java.net.SocketAddress destination) {
+    if (HookActivation.inactive()) return;
     if (detectionDisabled()) return;
     URL url = HttpTransportObservation.dialTarget(client, destination);
     if (url != null) inspectHttpTransport(client, url, false, HttpTransportObservation.peer(client, url), "http_direct_connect", HttpTransportObservation.dialingRedirect(url));
   }
 
   public static void beforeHttpWrite(Object client, Object connection, URL url) {
+    if (HookActivation.inactive()) return;
     if (detectionDisabled()) return;
     String peer = HttpTransportObservation.peer(client, url);
     inspectHttpTransport(peer == null ? connection : client, url, true, peer, "http_request_write",
@@ -766,6 +814,7 @@ public final class OhMyRaspHooks {
   }
 
   public static void beforeHttpTransport(Object connection, URL url, boolean write) {
+    if (HookActivation.inactive()) return;
     inspectHttpTransport(connection, url, write, null, write ? "http_request_write" : "http_transport_acquire",
         HttpTransportObservation.redirected(connection, url));
   }
@@ -787,6 +836,7 @@ public final class OhMyRaspHooks {
   }
 
   public static void beforeUrlOpen(Object url) {
+    if (HookActivation.inactive()) return;
     if (detectionDisabled()) {
       return;
     }
@@ -801,6 +851,7 @@ public final class OhMyRaspHooks {
   }
 
   public static void beforeDnsLookup(String host) {
+    if (HookActivation.inactive()) return;
     if (detectionDisabled()) {
       return;
     }
@@ -815,14 +866,17 @@ public final class OhMyRaspHooks {
 
   /** Compatibility entry for callers that explicitly supply a lookup string. */
   public static void beforeJndiLookup(Object name) {
+    if (HookActivation.inactive()) return;
     if (name instanceof String text) onJndiRoute(text, "declared_lookup");
   }
 
   public static void beforeJndiProviderLookup(String url, Object provider, String operation) {
+    if (HookActivation.inactive()) return;
     if (!LookupRoute.observedAtSelection(provider, url)) onJndiRoute(url, operation);
   }
 
   public static void onJndiRoute(String url, String operation) {
+    if (HookActivation.inactive()) return;
     if (operation == null || detectionDisabled()) return;
     try {
       RequestContext request = currentRequest();
@@ -852,28 +906,34 @@ public final class OhMyRaspHooks {
   public static void beforeClassLoaderUrls(Object urls) {}
 
   public static void onClassResourceRead(java.net.URLConnection connection, Object resource) {
+    if (HookActivation.inactive()) return;
     if (!detectionDisabled()) ClassDefinitionOrigin.read(connection, resource);
   }
 
   public static void beforeClassDefinition(java.net.URL origin, Object handler, Object resource) {
+    if (HookActivation.inactive()) return;
     if (detectionDisabled()) return;
     String selected = ClassDefinitionOrigin.selected(resource, origin, handler);
     if (selected != null) onClassDefinitionSource(selected);
   }
 
   public static void onClassDefinitionSource(String source) {
+    if (HookActivation.inactive()) return;
     if (!detectionDisabled()) emit(RemoteResourceDetector.detectClassLoaderUrl(source, "URLClassLoader", currentRequest()));
   }
 
   public static void beforeRmiClassLoaderCodebase(String codebase) {
+    if (HookActivation.inactive()) return;
     // An annotation alone does not select a codebase loader.
   }
 
   public static void beforeRmiCodebaseLoader(java.net.URL[] urls) {
+    if (HookActivation.inactive()) return;
     if (!detectionDisabled()) beforeClassLoaderSources("RMIClassLoader", urls);
   }
 
   public static void beforeSpringConfigLocation(Object location) {
+    if (HookActivation.inactive()) return;
     if (detectionDisabled()) {
       return;
     }
@@ -881,6 +941,7 @@ public final class OhMyRaspHooks {
   }
 
   public static void beforeSpringConfigLocations(Object locations) {
+    if (HookActivation.inactive()) return;
     if (detectionDisabled()) {
       return;
     }
@@ -912,6 +973,7 @@ public final class OhMyRaspHooks {
   }
 
   public static void beforeJmxStreamWrite(String path, int write) {
+    if (HookActivation.inactive()) return;
     if (AgentOwnIo.active()) return; // the agent's own I/O: before any application state
     JmxWriteScope scope = write != 0 ? JmxWriteScope.current() : null;
     if (scope != null && !detectionDisabled())
@@ -919,6 +981,7 @@ public final class OhMyRaspHooks {
   }
 
   public static void beforeUnixChannelWrite(java.nio.file.Path path, int directoryFd, boolean write) {
+    if (HookActivation.inactive()) return;
     if (AgentOwnIo.active()) return; // the agent's own I/O: before any application state
     if (!write) return;
     var open = ARCHIVE_ENTRY.atChannelOpen(path, directoryFd);
@@ -927,6 +990,7 @@ public final class OhMyRaspHooks {
   }
 
   public static void beforeJmxChannelWrite(java.nio.file.Path path, int directoryFd, boolean write) {
+    if (HookActivation.inactive()) return;
     if (AgentOwnIo.active()) return; // the agent's own I/O: before any application state
     JmxWriteScope scope = write ? JmxWriteScope.current() : null;
     if (scope != null && !detectionDisabled() && (directoryFd < 0 || path.isAbsolute()))
@@ -934,10 +998,12 @@ public final class OhMyRaspHooks {
   }
 
   public static void beforeJmxMBeanInvoke(Object mbeanName, String operationName, Object arguments) {
+    if (HookActivation.inactive()) return;
     inspectJmxInvoke(mbeanName, operationName, arguments, false);
   }
 
   public static void beforeResolvedJmxInvoke(Object mbeanName, String operationName, Object arguments) {
+    if (HookActivation.inactive()) return;
     inspectJmxInvoke(mbeanName, operationName, arguments, true);
   }
 
@@ -960,6 +1026,7 @@ public final class OhMyRaspHooks {
   }
 
   public static void beforeArgumentFileExpansion(Object arguments) {
+    if (HookActivation.inactive()) return;
     if (detectionDisabled()) {
       return;
     }
@@ -975,10 +1042,12 @@ public final class OhMyRaspHooks {
   }
 
   public static void beforeStreamFileRead(String path, String hook) {
+    if (HookActivation.inactive()) return;
     inspectFileRead(path, HostReadPath.OpenPolicy.FOLLOW, hook);
   }
 
   public static void beforeFileRead(String path) {
+    if (HookActivation.inactive()) return;
     inspectFileRead(path, HostReadPath.OpenPolicy.PATH_ONLY, null);
   }
 
@@ -1016,6 +1085,7 @@ public final class OhMyRaspHooks {
   }
 
   public static void beforeFileReadObject(Object file) {
+    if (HookActivation.inactive()) return;
     if (detectionDisabled()) {
       return;
     }
@@ -1023,6 +1093,7 @@ public final class OhMyRaspHooks {
   }
 
   public static void beforeFileWrite(String path) {
+    if (HookActivation.inactive()) return;
     if (AgentOwnIo.active()) return; // the agent's own I/O: before any application state
     if (detectionDisabled()) {
       return;
@@ -1031,6 +1102,7 @@ public final class OhMyRaspHooks {
   }
 
   public static void beforeFileWrite(String path, List<String> stackClassNames) {
+    if (HookActivation.inactive()) return;
     if (AgentOwnIo.active()) return; // the agent's own I/O: before any application state
     if (detectionDisabled()) {
       return;
@@ -1048,6 +1120,7 @@ public final class OhMyRaspHooks {
   }
 
   public static void beforeWindowsStreamWrite(String path, int writeAccess) {
+    if (HookActivation.inactive()) return;
     if (AgentOwnIo.active()) return; // the agent's own I/O: before any application state
     if (writeAccess == 0 || java.io.File.separatorChar != '\\') return;
     WindowsDataStream stream = WindowsDataStream.parse(path);
@@ -1063,6 +1136,7 @@ public final class OhMyRaspHooks {
   }
 
   public static void beforeFileWriteObject(Object file) {
+    if (HookActivation.inactive()) return;
     if (AgentOwnIo.active()) return; // the agent's own I/O: before any application state
     if (detectionDisabled()) {
       return;
@@ -1071,6 +1145,7 @@ public final class OhMyRaspHooks {
   }
 
   public static void beforeFileDelete(Object file) {
+    if (HookActivation.inactive()) return;
     if (detectionDisabled()) return;
     try {
       if (HostReadPath.isHostPath(file)) beforeFileDeletePath(pathFrom(file), "file_api_delete");
@@ -1082,6 +1157,7 @@ public final class OhMyRaspHooks {
   }
 
   public static void beforeFileDeletePath(String value, String operation) {
+    if (HookActivation.inactive()) return;
     if (detectionDisabled() || value == null || value.isEmpty()) return;
     try {
       inspectDelete(java.nio.file.Paths.get(value), null, -1, false, operation);
@@ -1091,6 +1167,7 @@ public final class OhMyRaspHooks {
   }
 
   public static void captureDirectoryWalk(Object walker, java.nio.file.Path path) {
+    if (HookActivation.inactive()) return;
     RequestContext request = currentRequest();
     if (!detectionDisabled() && request.active() && path != null && HostReadPath.isHostPath(path)) {
       HostDirectory.submitted(walker, request, FileAccessDetector.requestSelectsDirectory(path.toString(), request, false));
@@ -1098,24 +1175,29 @@ public final class OhMyRaspHooks {
   }
 
   public static void beginDirectoryVisit(Object walker, java.nio.file.Path path) {
+    if (HookActivation.inactive()) return;
     HostDirectory.visiting(walker, path, currentRequest().active());
   }
 
   public static void beforeDirectoryList(Object file) {
+    if (HookActivation.inactive()) return;
     if (!detectionDisabled() && HostReadPath.isHostPath(file))
       inspectDirectory(pathFrom(file), null, false, false, null, OhMyRaspHooks::stackTraceClassNames);
   }
 
   public static void beforeDirectoryList(Object file, List<String> stackClassNames) {
+    if (HookActivation.inactive()) return;
     if (!detectionDisabled() && HostReadPath.isHostPath(file))
       inspectDirectory(pathFrom(file), null, false, false, null, () -> stackClassNames);
   }
 
   public static void afterFileList(String[] entries, String path) {
+    if (HookActivation.inactive()) return;
     if (entries != null && !detectionDisabled()) inspectDirectory(path, null, false, true, null, OhMyRaspHooks::stackTraceClassNames);
   }
 
   public static void afterDirectoryOpen(java.nio.file.DirectoryStream<?> opened, java.nio.file.Path path, boolean relativeApi) {
+    if (HookActivation.inactive()) return;
     if (opened == null || detectionDisabled()) return;
     try {
       inspectDirectory(path.toString(), opened, relativeApi && !path.isAbsolute(), true, HostDirectory.origin(path), OhMyRaspHooks::stackTraceClassNames);
@@ -1148,6 +1230,7 @@ public final class OhMyRaspHooks {
   }
 
   public static void beforeInclude(String url, String realPath, String function) {
+    if (HookActivation.inactive()) return;
     if (detectionDisabled()) {
       return;
     }
@@ -1161,20 +1244,23 @@ public final class OhMyRaspHooks {
   }
 
   public static void afterMultipartAccess(Object source, Object result, boolean iterator) {
+    if (HookActivation.inactive()) return;
     DISPATCH.multipartAccess(source, result, iterator);
   }
 
   public static void afterMultipartLookup(Object result, Object request, int kind, boolean bulk) {
+    if (HookActivation.inactive()) return;
     DISPATCH.multipartResult(request, result, kind, bulk);
   }
 
   public static void inspectMultipartFilename(String filename, boolean archiveOnly) {
+    if (HookActivation.inactive()) return;
     if (MultipartFilename.eligible() && (!archiveOnly || DISPATCH.deliveredPart(MultipartFilename.receiver()))) {
       inspectFileUpload(filename, archiveOnly);
     }
   }
 
-  public static void beforeFileUpload(String filename) { inspectFileUpload(filename, false); }
+  public static void beforeFileUpload(String filename) { if (HookActivation.inactive()) return; inspectFileUpload(filename, false); }
 
   private static void inspectFileUpload(String filename, boolean archiveOnly) {
     if (detectionDisabled() || DISPATCH.inspectingRequest()) {
@@ -1208,6 +1294,7 @@ public final class OhMyRaspHooks {
   }
 
   public static void beforeWebdavUpload(String source, String destination, String method) {
+    if (HookActivation.inactive()) return;
     if (detectionDisabled()) {
       return;
     }
@@ -1221,6 +1308,7 @@ public final class OhMyRaspHooks {
   }
 
   public static void beforeRename(String source, String destination) {
+    if (HookActivation.inactive()) return;
     if (detectionDisabled()) {
       return;
     }
@@ -1234,6 +1322,7 @@ public final class OhMyRaspHooks {
   }
 
   public static void beforeLink(String source, String destination, String type) {
+    if (HookActivation.inactive()) return;
     if (detectionDisabled()) {
       return;
     }
@@ -1247,11 +1336,13 @@ public final class OhMyRaspHooks {
   }
 
   public static void beforeUnixFileOpen(java.nio.file.Path path, boolean read, int directoryFd) {
+    if (HookActivation.inactive()) return;
     beforeUnixFileOpen(path, read, directoryFd, false, false);
   }
 
   public static void beforeUnixFileOpen(java.nio.file.Path path, boolean read, int directoryFd,
       boolean noFollowFinal, boolean creatingNew) {
+    if (HookActivation.inactive()) return;
     if (AgentOwnIo.active()) return; // the agent's own I/O: before any application state
     if (HostReadPath.nativeRead(path, read && !creatingNew, directoryFd)) {
       inspectFileRead(path.toString(), noFollowFinal ? HostReadPath.OpenPolicy.NOFOLLOW_FINAL : HostReadPath.OpenPolicy.FOLLOW,
@@ -1260,6 +1351,7 @@ public final class OhMyRaspHooks {
   }
 
   public static void beginNioRead(Object path) {
+    if (HookActivation.inactive()) return;
     HostReadPath.beginFacade(path);
     try {
       if (!detectionDisabled() && HostReadPath.needsFacadeRead(path)) inspectFileRead(pathFrom(path), HostReadPath.OpenPolicy.PATH_ONLY, null);
@@ -1270,6 +1362,7 @@ public final class OhMyRaspHooks {
   }
 
   public static void beforePathRead(Object path) {
+    if (HookActivation.inactive()) return;
     if (detectionDisabled()) {
       return;
     }
@@ -1277,6 +1370,7 @@ public final class OhMyRaspHooks {
   }
 
   public static void beforePathWrite(Object path) {
+    if (HookActivation.inactive()) return;
     if (AgentOwnIo.active()) return; // the agent's own I/O: before any application state
     if (detectionDisabled()) {
       return;
@@ -1285,6 +1379,7 @@ public final class OhMyRaspHooks {
   }
 
   public static void beforePathWrite(Object path, List<String> stackClassNames) {
+    if (HookActivation.inactive()) return;
     if (AgentOwnIo.active()) return; // the agent's own I/O: before any application state
     if (detectionDisabled()) {
       return;
@@ -1293,6 +1388,7 @@ public final class OhMyRaspHooks {
   }
 
   public static GeneratedLineWrite beginGeneratedLines(Object target) {
+    if (HookActivation.inactive()) return null;
     if (detectionDisabled() || !currentRequest().active() || !(target instanceof java.nio.file.Path) || !HostFileSystem.contains(target)) return null;
     try {
       String path = pathFrom(target);
@@ -1304,6 +1400,7 @@ public final class OhMyRaspHooks {
   }
 
   public static void beforeGeneratedLine(String line, GeneratedLineWrite output) {
+    if (HookActivation.inactive()) return;
     if (output == null || detectionDisabled()) return;
     try {
       String content = output.append(line);
@@ -1316,6 +1413,7 @@ public final class OhMyRaspHooks {
   }
 
   public static void beforeEncodedScriptWrite(byte[] bytes, Object target, String text, java.nio.charset.Charset charset) {
+    if (HookActivation.inactive()) return;
     if (AgentOwnIo.active()) return; // the agent's own I/O: before any application state
     // The immediately following Files.write(byte[]) observes a complete small UTF-8 input itself.
     if (text == null || detectionDisabled() || (charset == StandardCharsets.UTF_8 && bytes.length <= 8192)
@@ -1335,6 +1433,7 @@ public final class OhMyRaspHooks {
   }
 
   public static void beforeGeneratedScriptFileWrite(Object path, Object content) {
+    if (HookActivation.inactive()) return;
     if (AgentOwnIo.active()) return; // the agent's own I/O: before any application state
     if (detectionDisabled() || !HostFileSystem.contains(path)) {
       return;
@@ -1351,16 +1450,19 @@ public final class OhMyRaspHooks {
   }
 
   public static void beforePortablePathDelete(Object value) {
+    if (HookActivation.inactive()) return;
     if (detectionDisabled() || !(value instanceof java.nio.file.Path path) || !HostReadPath.isHostPath(path)) return;
     if (!io.ohmyrasp.agent.file.UnixDeleteVisitor.usesNativeBoundary(path)) inspectDelete(path, null, -1, false, "file_api_delete");
   }
 
   public static void beforeHostDelete(java.nio.file.Path path) {
+    if (HookActivation.inactive()) return;
     inspectDelete(path, null, -1, false, "host_entry_removal");
   }
 
   public static void beforeSecureDelete(int directoryFd, java.nio.file.SecureDirectoryStream<java.nio.file.Path> directory,
       java.nio.file.Path path, int flags) {
+    if (HookActivation.inactive()) return;
     inspectDelete(path, directory, directoryFd, flags != 0, "descriptor_relative_unlink");
   }
 
@@ -1388,14 +1490,17 @@ public final class OhMyRaspHooks {
   }
 
   public static void beforePathDelete(Object path) {
+    if (HookActivation.inactive()) return;
     beforeFileDelete(path);
   }
 
   public static void afterArchiveEntry(Object entry) {
+    if (HookActivation.inactive()) return;
     afterZipEntryRead(entry, null);
   }
 
   public static void afterZipEntryRead(Object entry, Object reader) {
+    if (HookActivation.inactive()) return;
     if (!(entry instanceof ZipEntry zip)) {
       ARCHIVE_ENTRY.remove();
       return;
@@ -1407,18 +1512,22 @@ public final class OhMyRaspHooks {
   }
 
   public static void afterZipLookup(Object stream, String selectedName, Object reader) {
+    if (HookActivation.inactive()) return;
     ARCHIVE_ENTRY.observe(reader, stream == null ? null : selectedName);
   }
 
   public static void closeArchiveReader(Object reader) {
+    if (HookActivation.inactive()) return;
     ARCHIVE_ENTRY.closed(reader);
   }
 
   public static void clearArchiveEntry() {
+    if (HookActivation.inactive()) return;
     ARCHIVE_ENTRY.remove();
   }
 
   public static void beforeXmlEntityOpen(URL target, String name, Object parserInput, Object document, String literal) {
+    if (HookActivation.inactive()) return;
     if (target == null || "[xml]".equals(name) || detectionDisabled()) {
       return;
     }
@@ -1434,6 +1543,7 @@ public final class OhMyRaspHooks {
   }
 
   public static void beforeXmlEntity(String name, Object source) {
+    if (HookActivation.inactive()) return;
     if (detectionDisabled()) {
       return;
     }
@@ -1453,10 +1563,12 @@ public final class OhMyRaspHooks {
   }
 
   public static void beginAttachmentReference(String id) {
+    if (HookActivation.inactive()) return;
     io.ohmyrasp.agent.xml.AttachmentFileRead.beginReference(detectionDisabled() ? null : id, currentRequest());
   }
 
   public static void beforeUrlDataSource(Object url) {
+    if (HookActivation.inactive()) return;
     if (detectionDisabled()) {
       return;
     }
@@ -1474,6 +1586,7 @@ public final class OhMyRaspHooks {
   }
 
   public static void beforeXmlAttachmentReference(String mechanism, String href) {
+    if (HookActivation.inactive()) return;
     if (detectionDisabled()) {
       return;
     }
@@ -1487,6 +1600,7 @@ public final class OhMyRaspHooks {
   }
 
   public static void beforeXxeFileRead(String path) {
+    if (HookActivation.inactive()) return;
     if (detectionDisabled()) {
       return;
     }
@@ -1503,6 +1617,7 @@ public final class OhMyRaspHooks {
   public static void beforeJwtVerificationFailure(String mechanism, Object failure) {}
 
   public static void beforeDataEaseFilterContinuation(String rejection, Object request) {
+    if (HookActivation.inactive()) return;
     if (rejection == null || detectionDisabled()) return;
     try {
       RequestContext context = new RequestContext(invokeString(request, "getMethod").orElse(""),
@@ -1519,6 +1634,7 @@ public final class OhMyRaspHooks {
   }
 
   public static void beforeDeserializationClass(String className) {
+    if (HookActivation.inactive()) return;
     if (detectionDisabled()) {
       return;
     }
@@ -1563,10 +1679,11 @@ public final class OhMyRaspHooks {
   }
 
   public static Object jmxAttributeDisplayReceiver(Object value) {
+    if (HookActivation.inactive()) return value;
     return io.ohmyrasp.agent.jmx.JmxAttributeDisplay.receiver(value, runtimeRepairEnabled());
   }
 
-  public static boolean enforceElasticLz4Bounds() { return runtimeRepairEnabled(); }
+  public static boolean enforceElasticLz4Bounds() { if (HookActivation.inactive()) return false; return runtimeRepairEnabled(); }
 
   private static boolean runtimeRepairEnabled() {
     return AgentRuntime.get().mode() == DetectionMode.BLOCK || blockingEnabled();
@@ -1585,6 +1702,7 @@ public final class OhMyRaspHooks {
 
   public static void beforeSyntheticDeserializationClass(
       String className, List<String> stackClassNames) {
+    if (HookActivation.inactive()) return;
     if (detectionDisabled()) {
       return;
     }
@@ -1600,16 +1718,19 @@ public final class OhMyRaspHooks {
   public static void beforeObjectInputStream(Object inputStream) {}
 
   public static void afterObjectInputStreamConstruction(java.io.ObjectInputStream stream, Object input) {
+    if (HookActivation.inactive()) return;
     ServletObjectStreams.constructed(stream, input);
   }
 
   public static void beforeServletObjectRead(java.io.ObjectInputStream stream) {
+    if (HookActivation.inactive()) return;
     if (detectionDisabled() || !policy().selectsAlgorithm("deserialization_http_object_stream")) return;
     String source = ServletObjectStreams.source(stream);
     if (source != null) emit(DeserializationDetector.detectHttpObjectStreamDeserialization(source, currentRequest()));
   }
 
   public static void beforeSessionDeserialization(String sessionId, String mechanism) {
+    if (HookActivation.inactive()) return;
     if (detectionDisabled()) {
       return;
     }
@@ -1623,6 +1744,7 @@ public final class OhMyRaspHooks {
   }
 
   public static void beforePolymorphicType(String parser, String className) {
+    if (HookActivation.inactive()) return;
     if (detectionDisabled()) {
       return;
     }
@@ -1636,6 +1758,7 @@ public final class OhMyRaspHooks {
   }
 
   public static void beforeFastjsonClassResource(String resource) {
+    if (HookActivation.inactive()) return;
     if (detectionDisabled()) {
       return;
     }
@@ -1650,10 +1773,12 @@ public final class OhMyRaspHooks {
 
   public static void beforeProtocolClassInstantiation(
       String protocol, String className, Object arguments) {
+    if (HookActivation.inactive()) return;
     // A declared class name is not the type of a resolved constructor.
   }
 
   public static void beforeOpenWireThrowable(Class<?> selected) {
+    if (HookActivation.inactive()) return;
     if (detectionDisabled()) return;
     emit(DeserializationDetector.detectOpenWireThrowable(selected, currentRequest()));
   }
@@ -1661,6 +1786,7 @@ public final class OhMyRaspHooks {
   public static void beforeHttpInvokerDeserialization(String mechanism) {}
 
   public static void beforeHttpInvokerRead(Object exporter) {
+    if (HookActivation.inactive()) return;
     if (detectionDisabled() || !policy().selectsAlgorithm("deserialization_http_invoker")) return;
     for (Class<?> c = exporter.getClass(); c != null; c = c.getSuperclass()) {
       if ("org.springframework.remoting.httpinvoker.HttpInvokerServiceExporter".equals(c.getName())
@@ -1674,6 +1800,7 @@ public final class OhMyRaspHooks {
   public static void beforeHessianType(String type) {}
 
   public static void beforeHessianAllocation(Class<?> selected, String basis) {
+    if (HookActivation.inactive()) return;
     if (!detectionDisabled()) emit(DeserializationDetector.detectHessianAllocation(selected, basis, currentRequest()));
   }
 
@@ -1681,6 +1808,7 @@ public final class OhMyRaspHooks {
   public static void beforeXmlRpcSerializableValue(String mechanism) {}
 
   public static void beforeXmlRpcObjectRead(java.io.ObjectInputStream stream) {
+    if (HookActivation.inactive()) return;
     if (detectionDisabled()) return;
     XmlRpcReadScope.reading(stream);
     if (!policy().selectsAlgorithm("deserialization_xmlrpc_serialized")) return;
@@ -1688,6 +1816,7 @@ public final class OhMyRaspHooks {
   }
 
   public static void beforeJavaBeansStatement(Object statement) {
+    if (HookActivation.inactive()) return;
     if (detectionDisabled()) {
       return;
     }
@@ -1710,6 +1839,7 @@ public final class OhMyRaspHooks {
   }
 
   public static void rethrowIfOhMyRaspBlock(Object throwable) {
+    if (HookActivation.inactive()) return;
     Throwable current = throwable instanceof Throwable value ? value : null;
     while (current != null) {
       if (current instanceof OhMyRaspBlockException blocked) {
@@ -1720,6 +1850,7 @@ public final class OhMyRaspHooks {
   }
 
   public static void beforeOgnl(String expression) {
+    if (HookActivation.inactive()) return;
     if (detectionDisabled()) {
       return;
     }
@@ -1733,6 +1864,7 @@ public final class OhMyRaspHooks {
   }
 
   public static void beforeExpressionEvaluation(String engine, Object expression) {
+    if (HookActivation.inactive()) return;
     if (detectionDisabled()) {
       return;
     }
@@ -1746,6 +1878,7 @@ public final class OhMyRaspHooks {
   }
 
   public static void beforeJavaCompilationSource(String compiler, Object source) {
+    if (HookActivation.inactive()) return;
     if (detectionDisabled()) {
       return;
     }
@@ -1759,6 +1892,7 @@ public final class OhMyRaspHooks {
   }
 
   public static void beforeJavaCompilationUnits(Object units) {
+    if (HookActivation.inactive()) return;
     if (detectionDisabled()) {
       return;
     }
@@ -1766,6 +1900,7 @@ public final class OhMyRaspHooks {
   }
 
   public static void beforeJavaCompilationUnits(String compiler, Object units) {
+    if (HookActivation.inactive()) return;
     if (detectionDisabled()) {
       return;
     }
@@ -1781,6 +1916,7 @@ public final class OhMyRaspHooks {
   }
 
   public static void beforeEval(String function, String code) {
+    if (HookActivation.inactive()) return;
     if (detectionDisabled()) {
       return;
     }
@@ -1794,6 +1930,7 @@ public final class OhMyRaspHooks {
   }
 
   public static void beforeLoadLibrary(String function, String path, boolean windows) {
+    if (HookActivation.inactive()) return;
     if (detectionDisabled()) {
       return;
     }
@@ -1807,6 +1944,7 @@ public final class OhMyRaspHooks {
   }
 
   public static void beforeResponseDataLeak(String contentType, String content) {
+    if (HookActivation.inactive()) return;
     if (detectionDisabled() || !policy().selectsAlgorithm("response_dataLeak")) {
       return;
     }
@@ -1820,6 +1958,7 @@ public final class OhMyRaspHooks {
   }
 
   public static void beforeXssEcho(String content) {
+    if (HookActivation.inactive()) return;
     Object response = RESPONSE.get();
     if (detectionDisabled() || response == null || !policy().selectsAlgorithm("xss_echo")) return;
     try {
@@ -1836,6 +1975,7 @@ public final class OhMyRaspHooks {
   }
 
   public static void beforeWebshellEval(String function, String code) {
+    if (HookActivation.inactive()) return;
     if (detectionDisabled()) {
       return;
     }
@@ -1849,6 +1989,7 @@ public final class OhMyRaspHooks {
   }
 
   public static void beforeWebshellCommand(String command) {
+    if (HookActivation.inactive()) return;
     if (detectionDisabled()) {
       return;
     }
@@ -1862,6 +2003,7 @@ public final class OhMyRaspHooks {
   }
 
   public static void beforeWebshellFileWrite(String path, String content) {
+    if (HookActivation.inactive()) return;
     if (detectionDisabled()) {
       return;
     }
@@ -1875,6 +2017,7 @@ public final class OhMyRaspHooks {
   }
 
   public static void beforeWebshellCallable(String function) {
+    if (HookActivation.inactive()) return;
     if (detectionDisabled()) {
       return;
     }
@@ -1888,6 +2031,7 @@ public final class OhMyRaspHooks {
   }
 
   public static void beforeWebshellLdPreload(String name, String value) {
+    if (HookActivation.inactive()) return;
     if (detectionDisabled()) {
       return;
     }
