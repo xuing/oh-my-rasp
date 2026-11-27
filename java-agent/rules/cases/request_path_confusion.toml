@@ -1,0 +1,51 @@
+[[case]]
+name = "semicolon-traversal"
+kind = "attack"
+via = "request"
+
+[case.request]
+method = "GET"
+uri = "/xxx/..;/admin/"
+headers = { User-Agent = "Mozilla/5.0 (X11; Linux x86_64) Firefox/128.0", Accept = "text/html" }
+
+[case.primary]
+effect = "block"
+rule = "request_path_confusion"
+
+[case.backport]
+effect = "block"
+rule = "request_path_confusion"
+
+[[case]]
+name = "encoded-dot-segment"
+kind = "attack"
+via = "request"
+
+[case.request]
+method = "GET"
+uri = "/static/%2e%2e/admin/users"
+headers = { User-Agent = "Mozilla/5.0 (X11; Linux x86_64) Firefox/128.0", Accept = "text/html" }
+
+[case.primary]
+effect = "block"
+rule = "request_path_confusion"
+
+[case.backport]
+effect = "block"
+rule = "request_path_confusion"
+
+[[case]]
+name = "benign-canonical-admin"
+kind = "benign"
+via = "request"
+
+[case.request]
+method = "GET"
+uri = "/admin"
+headers = { User-Agent = "Mozilla/5.0 (X11; Linux x86_64) Firefox/128.0", Accept = "text/html" }
+
+[case.primary]
+effect = "none"
+
+[case.backport]
+effect = "none"

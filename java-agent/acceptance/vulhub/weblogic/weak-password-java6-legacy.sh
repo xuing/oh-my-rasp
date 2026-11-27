@@ -3,22 +3,16 @@ set -euo pipefail
 
 cd "$(dirname "$0")/../../.."
 
-host_agent_jar="$(pwd)/agent-java8/build/libs/ohmyrasp-agent-java8.jar"
-vulhub_dir="${OHMYRASP_VULHUB_WEBLOGIC_WEAK_PASSWORD_DIR:-/tmp/vulhub-ohmyrasp-20260603/weblogic/weak_password}"
+# shellcheck source=acceptance/lib/agent-build.sh
+source acceptance/lib/agent-build.sh
+host_agent_jar="$(ohmyrasp_agent_jar "$(pwd)/agent-java8/build/libs/ohmyrasp-agent-java8.jar")"
+vulhub_dir="${OHMYRASP_VULHUB_WEBLOGIC_WEAK_PASSWORD_DIR:-${OHMYRASP_VULHUB_ROOT:?set OHMYRASP_VULHUB_ROOT to a Vulhub checkout}/weblogic/weak_password}"
 image="${OHMYRASP_VULHUB_WEBLOGIC_WEAK_PASSWORD_IMAGE:-vulhub/weblogic:10.3.6.0-2017}"
 baseline_name="${OHMYRASP_VULHUB_WEBLOGIC_WEAK_PASSWORD_BASELINE_NAME:-ohmyrasp-weblogic-weak-password-baseline}"
 baseline_port="${OHMYRASP_VULHUB_WEBLOGIC_WEAK_PASSWORD_BASELINE_PORT:-19650}"
 baseline_dir="logs/vulhub-weblogic-weak-password-java6-baseline"
 protected_dir="logs/vulhub-weblogic-weak-password-java6-protected"
 web_dir="${vulhub_dir}/web"
-gradle_cache_dir="${OHMYRASP_GRADLE_CACHE_DIR:-}"
-cleanup_gradle_cache="false"
-
-if [[ -z "$gradle_cache_dir" ]]; then
-  gradle_cache_dir="$(mktemp -d "${TMPDIR:-/tmp}/ohmyrasp-gradle-cache-weblogic-weak-password.XXXXXX")"
-  cleanup_gradle_cache="true"
-fi
-
 copy_artifacts() {
   mkdir -p "$baseline_dir"
   if docker inspect "$baseline_name" >/dev/null 2>&1; then
@@ -29,9 +23,6 @@ copy_artifacts() {
 cleanup() {
   copy_artifacts
   docker rm -f -v "$baseline_name" >/dev/null 2>&1 || true
-  if [[ "$cleanup_gradle_cache" == "true" ]]; then
-    rm -rf "$gradle_cache_dir"
-  fi
 }
 trap cleanup EXIT
 
@@ -63,9 +54,22 @@ verify_java6_boundary() {
   local status="$?"
   set -e
   printf 'java8_agent_on_java6_status=%s\n' "$status" > "${protected_dir}/attempts.log"
-  if ! grep -Fq 'Unsupported major.minor version 52.0' "${protected_dir}/java8-agent-on-java6.log"; then
-    cat "${protected_dir}/java8-agent-on-java6.log" >&2 || true
-    echo "Java 6 WebLogic did not reject the Java 8 agent with the expected class-version error" >&2
+  # The agent cannot protect Java 6. Its entry class (class-file version 49) loads, finds that the Java 8
+  # launcher cannot, prints one skip line and returns, so the JVM starts unprotected.
+  local log="${protected_dir}/java8-agent-on-java6.log"
+  if [[ "$status" != 0 ]] || ! grep -Fq 'java version "1.6.0_45"' "$log"; then
+    cat "$log" >&2 || true
+    echo "Java 6 WebLogic did not start with the Java 8 agent attached (exit ${status})" >&2
+    exit 1
+  fi
+  if ! grep -Fq '{"event":"ohmyrasp-agent-skipped","reason":"unsupported-java","java_version":"1.6","entry":"io.ohmyrasp.agent.launch.Java8Entry"' "$log"; then
+    cat "$log" >&2 || true
+    echo "Java 6 WebLogic did not print the agent's unsupported-java skip line" >&2
+    exit 1
+  fi
+  if grep -Fq 'FATAL ERROR in native method' "$log"; then
+    cat "$log" >&2 || true
+    echo "Java 6 WebLogic still aborted on the Java 8 agent" >&2
     exit 1
   fi
 }
@@ -89,14 +93,7 @@ wait_for_file_read() {
   exit 1
 }
 
-mkdir -p "$gradle_cache_dir"
-docker run --rm -u "$(id -u):$(id -g)" \
-  -e GRADLE_USER_HOME=/tmp/gradle-cache \
-  -v "${gradle_cache_dir}:/tmp/gradle-cache" \
-  -v "$(pwd):/workspace" \
-  -w /workspace \
-  gradle:jdk25 \
-  gradle --no-daemon :agent-java8:agentJava8Jar >/dev/null
+ohmyrasp_build :agent-java8:agentJava8Jar >/dev/null
 
 if [[ ! -d "$web_dir" ]]; then
   echo "missing Vulhub weak-password web directory: ${web_dir}" >&2

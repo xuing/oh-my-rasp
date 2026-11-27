@@ -1,0 +1,35 @@
+[[case]]
+name = "snapshot-repository-in-webroot"
+kind = "attack"
+via = "request"
+
+[case.request]
+method = "PUT"
+uri = "/_snapshot/yz.jsp"
+query = "location=%2Fusr%2Flocal%2Ftomcat%2Fwebapps%2Fwwwroot%2F"
+headers = { User-Agent = "Mozilla/5.0 (X11; Linux x86_64) Firefox/128.0", Accept = "text/html" }
+
+[case.primary]
+effect = "block"
+rule = "request_repository_webroot_write"
+
+[case.backport]
+effect = "unreachable"
+why = "the backports have no request-entry rule for this input"
+
+[[case]]
+name = "benign-snapshot-repository"
+kind = "benign"
+via = "request"
+
+[case.request]
+method = "PUT"
+uri = "/_snapshot/daily-backup"
+query = "location=%2Fusr%2Flocal%2Ftomcat%2Fwebapps%2Fbackups"
+headers = { User-Agent = "Mozilla/5.0 (X11; Linux x86_64) Firefox/128.0", Accept = "text/html" }
+
+[case.primary]
+effect = "none"
+
+[case.backport]
+effect = "none"

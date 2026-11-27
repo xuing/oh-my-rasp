@@ -11,7 +11,7 @@ expressions over strings or enums and instanceof patterns compile without invoke
 
   check-dynamic-calls.py                 every call site: line, class, method, bootstrap method
   check-dynamic-calls.py --summary       counts per line and bootstrap kind, top classes
-  check-dynamic-calls.py --check         fail when a backport line gained a gated site
+  check-dynamic-calls.py --check         fail when a backport line has a site its baseline does not record
   check-dynamic-calls.py --update        rewrite dynamic-calls.baseline.json from the JARs
 
 The JARs are the ones java-agent/probes/lines.toml names; build them first (see
@@ -36,7 +36,9 @@ LINES = ("java8", "java11", "java17", "jdk25")  # lines.toml ids recorded in the
 
 LAMBDA, CONCAT, RECORD, SWITCH, OTHER = "lambda", "string-concat", "record", "switch", "other"
 KINDS = (LAMBDA, CONCAT, RECORD, SWITCH, OTHER)
-GATED_KINDS = (LAMBDA, RECORD, SWITCH, OTHER)  # string-concat is reported, not gated
+# Every kind is gated on the backport lines, string concatenation too: their own sources compile with
+# -XDstringConcat=inline, and their baseline records no site at all.
+GATED_KINDS = KINDS
 BOOTSTRAP_KIND = {
     "java/lang/invoke/LambdaMetafactory": LAMBDA,
     "java/lang/invoke/StringConcatFactory": CONCAT,
@@ -192,7 +194,8 @@ def scan_jar(line: str, jar: Path) -> list[Site]:
     sites = []
     with zipfile.ZipFile(jar) as archive:
         for entry in sorted(archive.namelist()):
-            if not entry.endswith(".class") or entry.startswith(SHADED_PREFIX):
+            # Shaded classes are scanned too: ASM runs in the transformers, inside class definition.
+            if not entry.endswith(".class"):
                 continue
             try:
                 name, found = parse_class(archive.read(entry))
@@ -243,10 +246,10 @@ read files, which can re-enter a hooked JDK API or fail during early startup, an
 hook methods run inside those APIs. Instead:
   - use an anonymous class or a static nested class for a lambda or method reference;
   - write equals/hashCode/toString by hand instead of a record or pattern-matching switch;
-  - use if/else on instanceof where a pattern-matching switch was meant.
-If the code provably never runs inside a hook or on the early startup path, run
-`python3 java-agent/scripts/check-dynamic-calls.py --update` in the same change and say why in the
-commit message."""
+  - use if/else on instanceof where a pattern-matching switch was meant;
+  - compile string concatenation with -XDstringConcat=inline (the backport modules do).
+The backport lines allow no call site at all, shaded classes included: the rule is in this script, and
+--update does not record one."""
 
 
 def load_lines():
@@ -324,7 +327,16 @@ def main(argv: list[str] | None = None) -> int:
     scanned = {line: scan_jar(line, path) for line, (_, path) in jars.items()}
 
     if args.update:
-        write_baseline(args.baseline, {line: summarize(sites) for line, sites in scanned.items()})
+        recorded = {line: summarize(sites) for line, sites in scanned.items()}
+        refused = [line for line, (family, _) in jars.items() if family == "backport" and recorded[line]]
+        if refused:
+            # Zero is the rule for the backport lines, not a number of the baseline.
+            for line in refused:
+                print_summary(line, scanned[line])
+            print(f"\nnot written: {', '.join(refused)} hold invokedynamic call sites, and the backport lines "
+                  "allow none\n\n" + FIX, file=sys.stderr)
+            return 1
+        write_baseline(args.baseline, recorded)
         for line, sites in scanned.items():
             print_summary(line, sites)
         print(f"wrote {args.baseline}")
@@ -346,11 +358,10 @@ def main(argv: list[str] | None = None) -> int:
         if family != "backport":
             print(f"{line}: primary line, recorded but not gated ({sum(count.values())} sites)")
             continue
-        found = compare(baseline.get(line, {}), scanned[line])
+        found = compare({}, scanned[line])  # none allowed, whatever the baseline file says
         failures.extend(found)
-        print(f"{line}: {'FAIL' if found else 'ok'}; gated sites "
-              + ", ".join(f"{k}={count[k]}" for k in GATED_KINDS)
-              + f"; string-concat={count[CONCAT]} (reported, not gated)")
+        print(f"{line}: {'FAIL' if found else 'ok'}; sites "
+              + ", ".join(f"{k}={count[k]}" for k in GATED_KINDS))
     if failures:
         print("\ninvokedynamic check failed:\n", file=sys.stderr)
         print("\n".join(failures), file=sys.stderr)

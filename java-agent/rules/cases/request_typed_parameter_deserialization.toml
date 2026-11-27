@@ -1,0 +1,35 @@
+[[case]]
+name = "typed-parameter-name"
+kind = "attack"
+via = "request"
+
+[case.request]
+method = "POST"
+uri = "/api/jsonws/invoke"
+query = "cmd=%7B%22%2Fexpandocolumn%2Fadd-column%22%3A%7B%7D%7D&%2BdefaultData:com.mchange.v2.c3p0.WrapperConnectionPoolDataSource=%7B%22userOverridesAsString%22%3A%22HexAsciiSerializedMap%3Aaced00057372003d636f6d2e6d6368%22%7D"
+headers = { User-Agent = "Mozilla/5.0 (X11; Linux x86_64) Firefox/128.0", Accept = "text/html", Content-Type = "application/x-www-form-urlencoded" }
+
+[case.primary]
+effect = "block"
+rule = "request_typed_parameter_deserialization"
+
+[case.backport]
+effect = "unreachable"
+why = "the backports have no request-entry rule for this input"
+
+[[case]]
+name = "benign-typed-parameter-name"
+kind = "benign"
+via = "request"
+
+[case.request]
+method = "POST"
+uri = "/api/jsonws/invoke"
+query = "%2BdefaultData:com.example.portal.SafeColumn=%7B%22name%22%3A%22display%22%7D"
+headers = { User-Agent = "Mozilla/5.0 (X11; Linux x86_64) Firefox/128.0", Accept = "text/html", Content-Type = "application/x-www-form-urlencoded" }
+
+[case.primary]
+effect = "none"
+
+[case.backport]
+effect = "none"

@@ -1,0 +1,32 @@
+# The launcher is checked against every agent JAR at once: the universal pair and each
+# per-line JAR, whichever JAR the run substitutes as the one under test.
+
+[[fixture]]
+flag = "--all-jar"
+path = "agent-all/build/libs/ohmyrasp-agent-all.jar"
+gradle = ":agent-all:agentAllJar"
+
+[[fixture]]
+flag = "--shirudo-jar"
+path = "agent-all/build/libs/ohmyrasp.jar"
+gradle = ":agent-all:shirudoUpatchJar"
+
+[[fixture]]
+flag = "--line-jar"
+path = "agent-java8/build/libs/ohmyrasp-agent-java8.jar"
+gradle = ":agent-java8:agentJava8Jar"
+
+[[fixture]]
+flag = "--line-jar"
+path = "agent-java11/build/libs/ohmyrasp-agent-java11.jar"
+gradle = ":agent-java11:agentJava11Jar"
+
+[[fixture]]
+flag = "--line-jar"
+path = "agent-java17/build/libs/ohmyrasp-agent-java17.jar"
+gradle = ":agent-java17:agentJava17Jar"
+
+[[fixture]]
+flag = "--line-jar"
+path = "agent-jdk25/build/libs/ohmyrasp-agent.jar"
+gradle = ":agent-jdk25:agentJar"

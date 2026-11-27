@@ -109,11 +109,91 @@ final class ShirudoStandaloneTest {
     }
     Files.createDirectories(root.resolve("META-INF"));
     Files.writeString(root.resolve("META-INF/ohmyrasp-shirudo.properties"), baked);
-    try (var loader =
-        new java.net.URLClassLoader(new java.net.URL[] {root.toUri().toURL()}, ClassLoader.getPlatformClassLoader())) {
+    return loadIsolated(root);
+  }
+
+  /** ShirudoDefaults.load() of a ShirudoDefaults whose code source is {@code location}, a directory or JAR. */
+  private static Object loadIsolated(Path location) throws Exception {
+    java.net.URL shared =
+        io.ohmyrasp.agent.util.BakedProperties.class.getProtectionDomain().getCodeSource().getLocation();
+    try (var loader = new java.net.URLClassLoader(
+        new java.net.URL[] {location.toUri().toURL(), shared}, ClassLoader.getPlatformClassLoader())) {
       Class<?> isolated = Class.forName("io.ohmyrasp.agent.runtime.ShirudoDefaults", true, loader);
       return isolated.getMethod("load").invoke(null);
     }
+  }
+
+  /**
+   * A JAR at {@code jar} holding the runtime classes, a manifest that says it is an upatch JAR when
+   * {@code upatch}, and {@code baked} (none when null), its compressed data overwritten when {@code corrupt}.
+   */
+  private static Path runtimeJar(Path jar, String baked, boolean upatch, boolean corrupt) throws Exception {
+    Path classes = Path.of(ShirudoDefaults.class.getProtectionDomain().getCodeSource().getLocation().toURI());
+    String packageDir = "io/ohmyrasp/agent/runtime";
+    Files.createDirectories(jar.getParent());
+    var manifest = new java.util.jar.Manifest();
+    manifest.getMainAttributes().put(java.util.jar.Attributes.Name.MANIFEST_VERSION, "1.0");
+    if (upatch) {
+      manifest.getMainAttributes().putValue("OhMyRasp-Shirudo-Upatch", "true");
+    }
+    try (var out = new java.util.jar.JarOutputStream(Files.newOutputStream(jar), manifest);
+        var files = Files.list(classes.resolve(packageDir))) {
+      for (Path file : files.toList()) {
+        out.putNextEntry(new java.util.jar.JarEntry(packageDir + "/" + file.getFileName()));
+        out.write(Files.readAllBytes(file));
+        out.closeEntry();
+      }
+      if (baked != null) {
+        byte[] bytes = baked.getBytes(java.nio.charset.StandardCharsets.UTF_8);
+        var entry = new java.util.jar.JarEntry("META-INF/ohmyrasp-shirudo.properties");
+        out.putNextEntry(entry);
+        out.write(bytes);
+        out.closeEntry();
+      }
+    }
+    if (corrupt) {
+      // The compressed data of the settings, overwritten: reading them fails in the inflater.
+      byte[] all = Files.readAllBytes(jar);
+      byte[] name = "META-INF/ohmyrasp-shirudo.properties".getBytes(StandardCharsets.UTF_8);
+      int header = new String(all, StandardCharsets.ISO_8859_1).indexOf(new String(name, StandardCharsets.ISO_8859_1)) - 30;
+      assertTrue(header >= 0, "the settings are in the JAR");
+      int nameLength = (all[header + 26] & 0xff) | (all[header + 27] & 0xff) << 8;
+      int extraLength = (all[header + 28] & 0xff) | (all[header + 29] & 0xff) << 8;
+      int data = header + 30 + nameLength + extraLength;
+      for (int i = 0; i < 4; i++) {
+        all[data + i] = (byte) 0xff;
+      }
+      Files.write(jar, all);
+    }
+    return jar;
+  }
+
+  @Test
+  void shirudoDefaultsAreReadFromAJarUnderADirectoryWhoseNameEndsInABang(@TempDir Path root) throws Exception {
+    // A jar: URL takes the first "!/" as the end of the archive name: the settings were silently lost.
+    Path jar = runtimeJar(root.resolve("odd!").resolve("ohmyrasp.jar"),
+        "standalone=true\nlock_config=true\nmode=block\n", true, false);
+    Object loaded = loadIsolated(jar);
+    assertEquals(true, loaded.getClass().getMethod("isPresent").invoke(loaded));
+    assertEquals(true, loaded.getClass().getMethod("lockConfig").invoke(loaded));
+    assertEquals("BLOCK", String.valueOf(loaded.getClass().getMethod("mode").invoke(loaded)));
+  }
+
+  @Test
+  void anUpatchJarWhoseSettingsAreMissingOrUnreadableDoesNotLoad(@TempDir Path root) throws Exception {
+    Path missing = runtimeJar(root.resolve("missing.jar"), null, true, false);
+    var failure = org.junit.jupiter.api.Assertions.assertThrows(
+        java.lang.reflect.InvocationTargetException.class, () -> loadIsolated(missing));
+    assertTrue(String.valueOf(failure.getCause()).contains("upatch JAR without"), String.valueOf(failure.getCause()));
+
+    Path corrupt = runtimeJar(root.resolve("corrupt.jar"), "standalone=true\nlock_config=true\nmode=block\n", true, true);
+    failure = org.junit.jupiter.api.Assertions.assertThrows(
+        java.lang.reflect.InvocationTargetException.class, () -> loadIsolated(corrupt));
+    assertTrue(String.valueOf(failure.getCause()).contains("cannot read"), String.valueOf(failure.getCause()));
+
+    // A general JAR carries no settings: absent, not an error.
+    Object general = loadIsolated(runtimeJar(root.resolve("general.jar"), null, false, false));
+    assertEquals(false, general.getClass().getMethod("isPresent").invoke(general));
   }
 
   @Test

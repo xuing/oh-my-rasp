@@ -23,7 +23,14 @@ public final class ServletQueryParameters {
       if (name.isEmpty()) continue;
       String key = decode(name);
       String value = equal < 0 ? "" : decode(field.substring(equal + 1));
-      if (key != null && value != null) result.computeIfAbsent(key, ignored -> new ArrayList<String>()).add(value);
+      if (key != null && value != null) {
+        List<String> values = result.get(key);
+        if (values == null) {
+          values = new ArrayList<String>();
+          result.put(key, values);
+        }
+        values.add(value);
+      }
     }
     return result;
   }

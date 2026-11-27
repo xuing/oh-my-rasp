@@ -1,0 +1,33 @@
+[[case]]
+name = "routing-expression-runtime"
+kind = "attack"
+via = "request"
+
+[case.request]
+method = "POST"
+uri = "/functionRouter"
+headers = { User-Agent = "Mozilla/5.0 (X11; Linux x86_64) Firefox/128.0", Accept = "text/html", "spring.cloud.function.routing-expression" = "T(java.lang.Runtime).getRuntime().exec(\"touch /tmp/success\")" }
+
+[case.primary]
+effect = "block"
+rule = "request_expression_header"
+
+[case.backport]
+effect = "unreachable"
+why = "the backports have no request-entry rule for this input"
+
+[[case]]
+name = "benign-routing-expression"
+kind = "benign"
+via = "request"
+
+[case.request]
+method = "POST"
+uri = "/functionRouter"
+headers = { User-Agent = "Mozilla/5.0 (X11; Linux x86_64) Firefox/128.0", Accept = "text/html", "spring.cloud.function.routing-expression" = "headers['route'] ?: 'uppercase'" }
+
+[case.primary]
+effect = "none"
+
+[case.backport]
+effect = "none"

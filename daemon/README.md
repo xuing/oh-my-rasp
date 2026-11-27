@@ -99,15 +99,17 @@ The stack runs the daemon with `--default-mode=block`, so a fresh volume starts 
 |---|---|
 | `GET /` | Embedded single-page local console |
 | `GET /healthz` | Returns `ok` |
-| `GET /metrics` | Prometheus text exposition (`ohmyrasp_cloud_enabled`, `ohmyrasp_cloud_connected`, `ohmyrasp_cloud_registered`, `ohmyrasp_cloud_policy_version`, `ohmyrasp_events_pending`, `ohmyrasp_events_uploaded_total`, `ohmyrasp_events_failed_total`, `ohmyrasp_events_dropped_total`) |
+| `GET /metrics` | Prometheus text exposition (`ohmyrasp_cloud_enabled`, `ohmyrasp_cloud_connected`, `ohmyrasp_cloud_registered`, `ohmyrasp_cloud_policy_version`, `ohmyrasp_control_write_refused`, `ohmyrasp_events_pending`, `ohmyrasp_events_uploaded_total`, `ohmyrasp_events_failed_total`, `ohmyrasp_events_dropped_total`) |
 | `GET /api/events?limit=&hook=&action=` | Recent retained detections, newest first (`limit` clamped to `1..2000`, default `200`), preserving raw JSON in `raw` |
-| `GET /api/stats` | Event counters, latency percentiles (`p50_us`, `p95_us`, `p99_us`, `max_us`, `avg_us` over up to 2000 samples), cloud status, control state, paths, and daemon version |
+| `GET /api/stats` | Event counters (`ignored_kinds` counts lines of an unknown kind), the agent's start line (`agent`), latency percentiles (`p50_us`, `p95_us`, `p99_us`, `max_us`, `avg_us` over up to 2000 samples), cloud status, control state, `control_status` (set when a control write was refused for size, or the file found at start-up was larger than the agents read), paths, and daemon version. The control state and `control_status` come from one snapshot taken under the controller's lock |
 | `GET /api/control` | Current `ControlState` (`mode`, `algorithms`, `policy`, `revision`, `updated_at`) |
-| `POST /api/control` | Update `mode` (`off`, `monitor`, `block`) and/or `algorithms` toggles (`{ "mode": "block", "algorithms": { "sqli": false } }`) |
+| `POST /api/control` | Update `mode` (`off`, `monitor`, `block`) and/or `algorithms` toggles (`{ "mode": "block", "algorithms": { "sqli": false } }`); `409` when the resulting document would be larger than the agents read |
 
 ## Contract with the Agent and File Permissions
 
-**Events out (`events.jsonl`)**: one JSON object per line written by the agent's `JsonEventLogger`. The daemon reads this file without creating or modifying it, tolerates missing fields, and retains the raw JSON object. Recognized keys: `timestamp`, `kind` (`detection` or `telemetry`), `hook`, `algorithm`, `action`, `confidence`, `latency_us`, `message`, `request`, `details`.
+Example files for both formats, tested by the agents and by this daemon, are in [`../java-agent/contracts/agent-daemon/`](../java-agent/contracts/agent-daemon/README.md).
+
+**Events out (`events.jsonl`)**: one JSON object per line written by the agent's `JsonEventLogger`. The daemon reads this file without creating or modifying it, tolerates missing fields, and retains the raw JSON object. Recognized keys: `timestamp` (an RFC 3339 string, or epoch milliseconds as the backport agents write it), `kind` (`detection`, `telemetry` or `lifecycle`), `event` (read when there is no `kind`), `hook`, `algorithm`, `action`, `confidence`, `latency_us`, `message`, `request`, `details`. Only a detection is logged, counted and uploaded; how the daemon tells a detection from a start line or an unknown kind is in the [fixtures' README](../java-agent/contracts/agent-daemon/README.md#how-the-daemon-reads-a-line).
 
 **Control in (`control.json`)**: written by `Controller` (`src/control.rs`) and polled by the agent:
 
@@ -116,6 +118,7 @@ The stack runs the daemon with `--default-mode=block`, so a fresh volume starts 
 ```
 
 - `mode`: `off` (detection disabled), `monitor` (detect and record without blocking), `block` (detect, record, and block active-request attacks).
+  The daemon writes these three words. When an operator edits the file by hand it also reads every spelling both agent engines accept (`disabled`, `none`, `record`, `observe`, `log`, `blocking`, `protect`, in any letter case) and writes the canonical word the next time it writes the file; see [the fixtures' README](../java-agent/contracts/agent-daemon/README.md#spellings-of-the-mode).
 - `algorithms`: per-algorithm enable flags; absent entries default to enabled.
 - `policy`: optional raw policy JSON pulled from `/api/v1/agents/{id}/policy`.
 - `revision`: monotonic counter incremented on state changes.
@@ -130,6 +133,12 @@ Current durability boundaries documented in `src/tailer.rs` and `src/uploader.rs
 
 - **Graceful-shutdown outbox**: pending detections are held in a bounded in-memory queue (`buffer.max_pending`, evicting oldest entries and incrementing `dropped_total` when full) and flushed to `<buffer.dir>/outbox.ndjson` on `SIGINT`/`SIGTERM`. A hard crash (`SIGKILL` or power loss) loses events still in memory.
 - **Non-persistent spool offset**: `tailer.rs` does not checkpoint its byte offset across restarts; restarting without `--from-start` resumes at current EOF, while `--from-start` replays the spool from byte 0.
+
+## Known Limits
+
+- **One daemon per control and outbox path.** Two daemon instances that share the same control file or the same `buffer.dir` are not supported. They write the control file through one temp file (`control.json.tmp`) and can collide on it, and they replay and overwrite the same `outbox.ndjson`.
+- **A replayed outbox can lose events on a kill.** At start-up the uploader reads `outbox.ndjson` into memory and removes the file at once. Events it replayed are held only in memory until they are uploaded, or written back by a graceful shutdown, so a `SIGKILL` or power loss between the removal and the upload loses them (the same boundary as the graceful-shutdown outbox above).
+- **The upload schema cannot say "assigned, but refused".** When the daemon refuses a cloud policy that would make the control file larger than the agents read, it reports the version that is installed (in `/api/stats` and in the uploaded events), not the assignment it refused. The refusal is visible locally, in `control_status.write_refused`, and not to the cloud.
 
 ## Module Map
 

@@ -1,0 +1,49 @@
+[[case]]
+name = "unclosed-quote"
+kind = "attack"
+via = "sink"
+op = "process.exec"
+args = { argv = ["sh", "-c", "echo 'unclosed"] }
+
+[case.primary]
+effect = "log"
+rule = "command_error"
+why = "the primary blocks this only inside an HTTP request; outside one it logs"
+
+[case.backport]
+effect = "unreachable"
+why = "the backports do not check the quoting of a shell program"
+
+[[case]]
+name = "unclosed-quote-in-request"
+kind = "attack"
+via = "request-sink"
+op = "process.exec"
+args = { argv = ["sh", "-c", "echo 'unclosed"] }
+
+[case.request]
+method = "GET"
+uri = "/app/report"
+query = "id=7"
+headers = { User-Agent = "Mozilla/5.0 (X11; Linux x86_64) Firefox/128.0", Accept = "text/html" }
+
+[case.primary]
+effect = "block"
+rule = "command_error"
+
+[case.backport]
+effect = "unreachable"
+why = "the backports do not check the quoting of a shell program"
+
+[[case]]
+name = "benign-closed-quote"
+kind = "benign"
+via = "sink"
+op = "process.exec"
+args = { argv = ["sh", "-c", "echo 'closed'"] }
+
+[case.primary]
+effect = "none"
+
+[case.backport]
+effect = "none"

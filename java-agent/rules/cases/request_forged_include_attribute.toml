@@ -1,0 +1,35 @@
+[[case]]
+name = "include-web-inf"
+kind = "attack"
+via = "request"
+
+[case.request]
+method = "GET"
+uri = "/asdf"
+headers = { User-Agent = "Mozilla/5.0 (X11; Linux x86_64) Firefox/128.0", Accept = "text/html" }
+attributes = { "javax.servlet.include.request_uri" = "/", "javax.servlet.include.path_info" = "WEB-INF/web.xml", "javax.servlet.include.servlet_path" = "/" }
+
+[case.primary]
+effect = "block"
+rule = "request_forged_include_attribute"
+
+[case.backport]
+effect = "block"
+rule = "request_forged_include_attribute"
+
+[[case]]
+name = "benign-include-asset"
+kind = "benign"
+via = "request"
+
+[case.request]
+method = "GET"
+uri = "/"
+headers = { User-Agent = "Mozilla/5.0 (X11; Linux x86_64) Firefox/128.0", Accept = "text/html" }
+attributes = { "javax.servlet.include.servlet_path" = "/assets/logo.png" }
+
+[case.primary]
+effect = "none"
+
+[case.backport]
+effect = "none"

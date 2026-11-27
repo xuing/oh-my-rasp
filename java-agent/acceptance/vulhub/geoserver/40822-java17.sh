@@ -12,13 +12,14 @@ baseline_target="${OHMYRASP_VULHUB_GEOSERVER_40822_BASELINE_TARGET:-ohmyrasp-vul
 protected_target="${OHMYRASP_VULHUB_GEOSERVER_40822_PROTECTED_TARGET:-ohmyrasp-vulhub-geoserver-40822-protected-target}"
 baseline_port="${OHMYRASP_VULHUB_GEOSERVER_40822_BASELINE_PORT:-18620}"
 protected_port="${OHMYRASP_VULHUB_GEOSERVER_40822_PROTECTED_PORT:-18621}"
-host_agent_jar="$(pwd)/agent-java17/build/libs/ohmyrasp-agent-java17.jar"
+# shellcheck source=acceptance/lib/agent-build.sh
+source acceptance/lib/agent-build.sh
+host_agent_jar="$(ohmyrasp_agent_jar "$(pwd)/agent-java17/build/libs/ohmyrasp-agent-java17.jar")"
 baseline_dir="logs/vulhub-geoserver-40822-java17-baseline"
 protected_dir="logs/vulhub-geoserver-40822-java17-protected"
 protected_log="${protected_dir}/events.jsonl"
 
-docker run --rm -v "$(pwd):/workspace" -w /workspace gradle:jdk25 \
-  gradle --no-daemon :agent-java17:agentJava17Jar
+ohmyrasp_build :agent-java17:agentJava17Jar
 
 rm -rf "$baseline_dir" "$protected_dir"
 mkdir -p "$baseline_dir" "$protected_dir"

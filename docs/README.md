@@ -44,8 +44,9 @@ Do not edit generated files by hand; regenerate them from source and verify with
 | Generated file | Generator script |
 |---|---|
 | [DETECTION-COVERAGE.md](../java-agent/docs/DETECTION-COVERAGE.md) | `python3 java-agent/scripts/gen-detection-coverage.py` |
+| [HOOK-TARGETS.md](../java-agent/docs/HOOK-TARGETS.md) | `python3 java-agent/scripts/gen-hook-targets.py` |
 | [FALSE-POSITIVE-REPORT.md](../java-agent/docs/FALSE-POSITIVE-REPORT.md) | `bash java-agent/scripts/run-fp-report.sh` |
-| [Shirudo top-level README](../deploy/shirudo/README.md) & per-track READMEs (`ohmyrasp-{java8,java11,java17,jdk25}/README.md`) | `python3 deploy/shirudo/gen-readmes.py` |
+| [Shirudo top-level README](../deploy/shirudo/README.md) & per-track READMEs (`ohmyrasp/README.md` and `ohmyrasp-{java8,java11,java17,jdk21,jdk25}/README.md`) | `python3 deploy/shirudo/gen-readmes.py` |
 
 ## Historical archive
 

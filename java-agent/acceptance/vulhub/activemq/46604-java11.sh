@@ -3,10 +3,11 @@ set -euo pipefail
 
 cd "$(dirname "$0")/../../.."
 
-host_agent_jar="$(pwd)/agent-java11/build/libs/ohmyrasp-agent-java11.jar"
+# shellcheck source=acceptance/lib/agent-build.sh
+source acceptance/lib/agent-build.sh
+host_agent_jar="$(ohmyrasp_agent_jar "$(pwd)/agent-java11/build/libs/ohmyrasp-agent-java11.jar")"
 
-docker run --rm -v "$(pwd):/workspace" -w /workspace gradle:jdk25 \
-  gradle --no-daemon :agent-java11:agentJava11Jar
+ohmyrasp_build :agent-java11:agentJava11Jar
 
 image="${OHMYRASP_VULHUB_ACTIVEMQ_46604_IMAGE:-vulhub/activemq:5.17.3}"
 baseline_name="${OHMYRASP_VULHUB_ACTIVEMQ_46604_BASELINE_NAME:-ohmyrasp-vulhub-activemq46604-baseline}"
@@ -17,7 +18,7 @@ protected_web_port="${OHMYRASP_VULHUB_ACTIVEMQ_46604_PROTECTED_WEB_PORT:-19283}"
 protected_openwire_port="${OHMYRASP_VULHUB_ACTIVEMQ_46604_PROTECTED_OPENWIRE_PORT:-19285}"
 http_port="${OHMYRASP_VULHUB_ACTIVEMQ_46604_HTTP_PORT:-19286}"
 success_file="/tmp/ohmyrasp-activemq46604-success"
-poc_py="${OHMYRASP_VULHUB_ACTIVEMQ_46604_POC:-/tmp/vulhub-ohmyrasp-20260603/activemq/CVE-2023-46604/poc.py}"
+poc_py="${OHMYRASP_VULHUB_ACTIVEMQ_46604_POC:-${OHMYRASP_VULHUB_ROOT:?set OHMYRASP_VULHUB_ROOT to a Vulhub checkout}/activemq/CVE-2023-46604/poc.py}"
 baseline_dir="logs/vulhub-activemq-46604-java11-baseline"
 protected_dir="logs/vulhub-activemq-46604-java11-protected"
 protected_log="${protected_dir}/events.jsonl"

@@ -1,0 +1,65 @@
+[[case]]
+name = "http-entity-outside-request"
+kind = "attack"
+via = "sink"
+op = "xml.parse"
+args = { document = "<?xml version=\"1.0\"?><!DOCTYPE r [<!ENTITY x SYSTEM \"http://127.0.0.1:{port}/entity.txt\">]><r>&x;</r>" }
+
+[case.primary]
+effect = "log"
+rule = "xxe_protocol"
+why = "the primary blocks this only inside an HTTP request; outside one it logs"
+
+[case.backport]
+effect = "block"
+rule = "xxe_external_entity_protocol"
+
+[[case]]
+name = "http-entity-in-request"
+kind = "attack"
+via = "request-sink"
+op = "xml.parse"
+args = { document = "<?xml version=\"1.0\"?><!DOCTYPE r [<!ENTITY x SYSTEM \"http://127.0.0.1:{port}/entity.txt\">]><r>&x;</r>" }
+
+[case.request]
+method = "GET"
+uri = "/app/report"
+query = "id=7"
+headers = { User-Agent = "Mozilla/5.0 (X11; Linux x86_64) Firefox/128.0", Accept = "text/html" }
+
+[case.primary]
+effect = "block"
+rule = "xxe_protocol"
+
+[case.backport]
+effect = "block"
+rule = "xxe_external_entity_protocol"
+
+[[case]]
+name = "benign-plain-document"
+kind = "benign"
+via = "sink"
+op = "xml.parse"
+args = { document = "<?xml version=\"1.0\"?><r><item>weekly</item></r>" }
+
+[case.primary]
+effect = "none"
+
+[case.backport]
+effect = "none"
+
+[[case]]
+name = "external-dtd"
+kind = "attack"
+via = "sink"
+op = "xml.parse"
+args = { document = "<?xml version=\"1.0\"?><!DOCTYPE r SYSTEM \"http://127.0.0.1:{port}/ext.dtd\"><r>&remote;</r>" }
+
+[case.primary]
+effect = "log"
+rule = "xxe_protocol"
+why = "the primary blocks this only inside an HTTP request; outside one it logs"
+
+[case.backport]
+effect = "block"
+rule = "xxe_external_entity_protocol"

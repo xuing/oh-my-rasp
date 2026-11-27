@@ -135,5 +135,29 @@
     "xml_decoder_runtime_execution": "JavaBeans XML decoding is correlated with a runtime or script-file operation.",
     "xml_decoder_script_file_write": "JavaBeans XML decoding is correlated with a runtime or script-file operation.",
     "xxe_external_entity_protocol": "The XML parser opens an external entity transport after resolver and input selection."
+  },
+  "not_wired": {
+    "eval_regex": "No hook module injects a call to OhMyRaspHooks.beforeEval; only the playground servlet calls it.",
+    "expression_runtime": "OhMyRaspHooks.beforeExpressionEvaluation reports it only for an engine name that has no id of its own, and every engine name ExpressionHookModule passes has one.",
+    "fileUpload_webdav": "No hook module injects a call to OhMyRaspHooks.beforeWebdavUpload; only the playground servlet calls it.",
+    "include_protocol": "No hook module injects a call to OhMyRaspHooks.beforeInclude; only the playground servlet calls it.",
+    "include_userinput": "No hook module injects a call to OhMyRaspHooks.beforeInclude; only the playground servlet calls it.",
+    "link_webshell": "No hook module injects a call to OhMyRaspHooks.beforeLink; only the playground servlet calls it.",
+    "loadLibrary_unc": "No hook module injects a call to OhMyRaspHooks.beforeLoadLibrary; only the playground servlet calls it.",
+    "ognl_runtime": "No code emits it: the OGNL path (CodeExecutionDetector.detectOgnl) reports ognl_blacklist or ognl_length_limit.",
+    "rename_webshell": "No hook module injects a call to OhMyRaspHooks.beforeRename; only the playground servlet calls it.",
+    "request_json_patch_expression": "The request context the servlet entry builds has no body: no hook module reads the request input stream or reader, so a rule decided from the body alone never sees one (measured with the rule-cases probe: a body the handler reads through getInputStream() and through getReader() fires nothing on JDK 25 or Java 17).",
+    "request_message_selector_expression": "The request context the servlet entry builds has no body: no hook module reads the request input stream or reader, so a rule decided from the body alone never sees one (measured with the rule-cases probe: a body the handler reads through getInputStream() and through getReader() fires nothing on JDK 25 or Java 17).",
+    "request_sql_identifier_injection": "The request context the servlet entry builds has no body: no hook module reads the request input stream or reader, so a rule decided from the body alone never sees one (measured with the rule-cases probe: a body the handler reads through getInputStream() and through getReader() fires nothing on JDK 25 or Java 17); the rule is also selected only by a loaded policy.",
+    "request_sql_sort_injection": "The request context the servlet entry builds has no body: no hook module reads the request input stream or reader, so a rule decided from the body alone never sees one (measured with the rule-cases probe: a body the handler reads through getInputStream() and through getReader() fires nothing on JDK 25 or Java 17); the rule is also selected only by a loaded policy.",
+    "response_dataLeak": "No hook module injects a call to OhMyRaspHooks.beforeResponseDataLeak; only the playground servlet and the servlet-admission probe's stub servlet call it.",
+    "sql_exception": "No hook module injects a call to OhMyRaspHooks.beforeSqlException; only the playground servlet calls it.",
+    "sql_regex": "No hook module injects a call to OhMyRaspHooks.beforeSqlRegex; only the playground servlet calls it.",
+    "webshell_callable": "No hook module injects a call to OhMyRaspHooks.beforeWebshellCallable; only the playground servlet calls it.",
+    "webshell_command": "No hook module injects a call to OhMyRaspHooks.beforeWebshellCommand; only the playground servlet calls it.",
+    "webshell_eval": "No hook module injects a call to OhMyRaspHooks.beforeWebshellEval; only the playground servlet calls it.",
+    "webshell_file_put_contents": "No hook module injects a call to OhMyRaspHooks.beforeWebshellFileWrite; only the playground servlet calls it.",
+    "webshell_ld_preload": "No hook module injects a call to OhMyRaspHooks.beforeWebshellLdPreload; only the playground servlet calls it.",
+    "xss_echo": "No hook module injects a call to OhMyRaspHooks.beforeXssEcho; only the playground servlet and the servlet-admission probe's stub servlet call it."
   }
 }

@@ -12,6 +12,18 @@ pub fn now_rfc3339() -> String {
         .unwrap_or_else(|_| "1970-01-01T00:00:00Z".into())
 }
 
+/// Epoch milliseconds as an RFC3339 UTC string (`2026-01-01T00:00:00Z`, with a fraction only when
+/// the milliseconds are not zero). `None` for a negative value or one beyond year 9999.
+pub fn epoch_millis_rfc3339(millis: i64) -> Option<String> {
+    if millis < 0 {
+        return None;
+    }
+    OffsetDateTime::from_unix_timestamp_nanos(i128::from(millis) * 1_000_000)
+        .ok()?
+        .format(&Rfc3339)
+        .ok()
+}
+
 /// Restrict a file to owner read/write only (mode `0600`).
 ///
 /// The daemon writes several files under `/tmp` that carry sensitive data — the

@@ -13,7 +13,9 @@ protected_name="${OHMYRASP_VULHUB_LINKIS_44645_PROTECTED_NAME:-ohmyrasp-vulhub-l
 rogue_name="${OHMYRASP_VULHUB_LINKIS_44645_ROGUE_NAME:-ohmyrasp-vulhub-linkis44645-rogue}"
 baseline_port="${OHMYRASP_VULHUB_LINKIS_44645_BASELINE_PORT:-19310}"
 protected_port="${OHMYRASP_VULHUB_LINKIS_44645_PROTECTED_PORT:-19311}"
-host_agent_jar="$(pwd)/agent-java8/build/libs/ohmyrasp-agent-java8.jar"
+# shellcheck source=acceptance/lib/agent-build.sh
+source acceptance/lib/agent-build.sh
+host_agent_jar="$(ohmyrasp_agent_jar "$(pwd)/agent-java8/build/libs/ohmyrasp-agent-java8.jar")"
 baseline_dir="logs/vulhub-linkis-1.3.0-44645-java8-baseline"
 protected_dir="logs/vulhub-linkis-1.3.0-44645-java8-protected"
 payload_dir="logs/vulhub-linkis-1.3.0-44645-java8-payload"
@@ -310,8 +312,7 @@ run_protected() {
   exit 1
 }
 
-docker run --rm -v "$(pwd):/workspace" -w /workspace gradle:jdk25 \
-  gradle --no-daemon :agent-java8:agentJava8Jar
+ohmyrasp_build :agent-java8:agentJava8Jar
 
 rm -rf "$baseline_dir" "$protected_dir" "$payload_dir"
 mkdir -p "$baseline_dir" "$protected_dir" "$payload_dir"

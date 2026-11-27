@@ -6,9 +6,11 @@ import json
 from pathlib import Path
 import subprocess
 import tempfile
-import zipfile
+import sys
 
 COMMON = Path(__file__).resolve().parent.parent / "common"
+sys.path.insert(0, str(COMMON))
+import agent_track  # noqa: E402
 
 
 def main():
@@ -16,9 +18,7 @@ def main():
     parser.add_argument("agent", type=Path)
     agent = parser.parse_args().agent.resolve(strict=True)
     src = Path(__file__).parent
-    with zipfile.ZipFile(agent) as jar:
-        track = next((v for v in ("8", "11", "17") if
-                      f"io/ohmyrasp/agent/java{v}/Java{v}RaspHooks.class" in jar.namelist()), "main")
+    track = agent_track.track(agent) or "main"
     version = subprocess.run(["javac", "-version"], capture_output=True, text=True, check=True)
     exports = [] if "javac 1.8" in version.stdout + version.stderr else [
         "--add-exports", "java.naming/com.sun.jndi.toolkit.url=ALL-UNNAMED"]

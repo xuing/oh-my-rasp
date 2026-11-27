@@ -44,11 +44,7 @@ public final class Java17JavaCompilationTransformer implements ClassFileTransfor
 
   private static boolean isTarget(String className) {
     return "com/sun/tools/javac/api/JavacTool".equals(className)
-        || "org/codehaus/janino/Cookable".equals(className)
-        || "org/codehaus/janino/SimpleCompiler".equals(className)
-        || "org/codehaus/janino/ScriptEvaluator".equals(className)
-        || "org/codehaus/janino/ExpressionEvaluator".equals(className)
-        || "org/codehaus/janino/ClassBodyEvaluator".equals(className);
+        || "org/codehaus/commons/compiler/Cookable".equals(className);
   }
 
   private static final class JavaCompilationClassVisitor extends ClassVisitor {
@@ -79,25 +75,26 @@ public final class Java17JavaCompilationTransformer implements ClassFileTransfor
           };
         }
       }
-      if (className.startsWith("org/codehaus/janino/") && isJaninoSourceMethod(name)) {
-        int sourceArg = firstStringArgument(descriptor);
-        if (sourceArg >= 0) {
-          return new AdviceAdapter(Opcodes.ASM9, methodVisitor, access, name, descriptor) {
-            @Override
-            protected void onMethodEnter() {
-              push("janino");
-              loadArg(sourceArg);
-              invokeStatic(HOOKS, BEFORE_JAVA_COMPILATION_SOURCE);
-            }
-          };
-        }
+      if ("org/codehaus/commons/compiler/Cookable".equals(className)
+          && "cook".equals(name)
+          && "(Ljava/lang/String;Ljava/lang/String;)V".equals(descriptor)) {
+        // Janino 2.7 and later keep the base class in commons-compiler (2.7.8, 3.0.16 and 3.1.12 checked).
+        // cook(String source) calls cook(String fileName, String source), which wraps the text in a
+        // StringReader for cook(String fileName, Reader). That is the one level every String source
+        // passes through and still holds as text, so it is the only one hooked: one compilation, one
+        // report, and no file name read as source. The Reader and InputStream overloads, cookFile and
+        // the evaluators' own cook(String fileName, Reader) are not hooked; a source that exists only
+        // as a Reader or stream is not inspected (docs/detection.md, Runtime Java compilation).
+        return new AdviceAdapter(Opcodes.ASM9, methodVisitor, access, name, descriptor) {
+          @Override
+          protected void onMethodEnter() {
+            push("janino");
+            loadArg(1);
+            invokeStatic(HOOKS, BEFORE_JAVA_COMPILATION_SOURCE);
+          }
+        };
       }
       return methodVisitor;
-    }
-
-    private static boolean isJaninoSourceMethod(String name) {
-      String normalized = name.toLowerCase(java.util.Locale.ROOT);
-      return "cook".equals(normalized) || normalized.startsWith("compile");
     }
 
     private static int javacCompilationUnitsArgument(String descriptor) {
@@ -115,22 +112,6 @@ public final class Java17JavaCompilationTransformer implements ClassFileTransfor
               && "java/lang/Iterable".equals(argument.getInternalName())
           ? 5
           : -1;
-    }
-
-    private static int firstStringArgument(String descriptor) {
-      Type[] arguments;
-      try {
-        arguments = Type.getArgumentTypes(descriptor);
-      } catch (RuntimeException e) {
-        return -1;
-      }
-      for (int index = 0; index < arguments.length; index++) {
-        Type argument = arguments[index];
-        if (argument.getSort() == Type.OBJECT && "java/lang/String".equals(argument.getInternalName())) {
-          return index;
-        }
-      }
-      return -1;
     }
   }
 }

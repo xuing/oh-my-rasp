@@ -3,7 +3,9 @@
 Run: python3 -m unittest discover -s java-agent/probes -p 'test_*.py'
 """
 import re
+import subprocess
 import sys
+import tempfile
 import unittest
 from pathlib import Path
 
@@ -49,6 +51,70 @@ class RegistryTest(unittest.TestCase):
                     task = fixture.gradle.rsplit(":", 1)[-1]
                     self.assertIn(f'"{task}"', self.gradle, f"{probe.id}: Gradle task {fixture.gradle} is not registered")
 
+    def test_ci_stages_every_gradle_fixture(self):
+        # The build-agents job names its staging tasks one by one; a probe whose fixture is missing there fails on every line.
+        job = (WORKFLOWS / "agent.yml").read_text()
+        job = job[:job.index("  windows-file-streams:")]
+        for probe in self.probes.values():
+            for fixture in probe.fixtures:
+                if fixture.gradle:
+                    self.assertIn(fixture.gradle, job, f"{probe.id}: agent.yml's build-agents job does not run {fixture.gradle}")
+
+    def test_a_probe_that_downloads_stages_its_downloads(self):
+        # A runtime row must not fetch from the network: twelve rows fetching the same JAR were
+        # rate-limited by Maven Central. A probe that can download declares a `stage` fixture, so
+        # the build job fetches once and the rows read from disk.
+        for probe in self.probes.values():
+            text = (JAVA_AGENT / "probes" / probe.id / "check.py").read_text()
+            if "urlopen" in text:
+                self.assertTrue(any(fixture.stage for fixture in probe.fixtures),
+                                f"{probe.id}: check.py downloads but probe.toml has no fixture with `stage`")
+
+    def test_check_agent_help_lists_the_probes(self):
+        # --help runs before Docker is touched. Its usage text is a here-document under `set -u`, so an
+        # unescaped variable in it ends the script with "unbound variable".
+        run = subprocess.run(["bash", str(JAVA_AGENT / "scripts" / "check-agent.sh"), "--help"],
+                             capture_output=True, text=True, env={"PATH": "/usr/bin:/bin"}, timeout=60)
+        self.assertEqual(run.returncode, 0, run.stderr)
+        self.assertIn("Probes:", run.stdout)
+        for name in self.probes:
+            self.assertIn(name, run.stdout)
+
+    def run_registry(self, *argv, java_version=None):
+        env = {"PATH": "/usr/bin:/bin", "PYTHONDONTWRITEBYTECODE": "1"}
+        with tempfile.TemporaryDirectory() as tmp:
+            if java_version:
+                fake = Path(tmp) / "java"
+                fake.write_text(f"#!/bin/sh\necho 'openjdk version \"{java_version}\"' >&2\n")
+                fake.chmod(0o755)
+                env["PATH"] = f"{tmp}:{env['PATH']}"
+            return subprocess.run([sys.executable, str(HERE / "run.py"), *argv], capture_output=True, text=True, env=env, timeout=60)
+
+    def test_isolated_run_of_a_probe_that_is_not_isolated_is_an_error(self):
+        run = self.run_registry("run", "--line", "jdk25", "--any-jdk", "--isolated", "launcher")
+        self.assertNotEqual(run.returncode, 0)
+        self.assertIn("launcher", run.stderr)
+        self.assertIn("not an isolated probe", run.stderr)
+        # The plan says why in a comment instead, which check-agent.sh reads as "nothing to run".
+        plan = self.run_registry("plan", "--line", "jdk25", "--isolated", "launcher")
+        self.assertEqual(plan.returncode, 0, plan.stderr)
+        self.assertTrue(all(line.startswith("#") for line in plan.stdout.splitlines()) and "not an isolated probe" in plan.stdout)
+        # An isolated probe, and no probe named, are unchanged.
+        self.assertEqual(self.run_registry("plan", "--line", "jdk25", "--isolated", "elastic-lz4").returncode, 0)
+        self.assertEqual(self.run_registry("plan", "--line", "jdk25", "--isolated").returncode, 0)
+
+    def test_universal_jar_on_another_jdk_must_start_the_requested_line(self):
+        lines = runner.load_lines()
+        self.assertIsNone(runner.universal_mismatch(lines["jdk25"], 25))
+        self.assertIsNone(runner.universal_mismatch(lines["java17"], 17))
+        self.assertIsNone(runner.universal_mismatch(lines["java8"], 8))
+        self.assertIn("starts the java17 line, not primary", runner.universal_mismatch(lines["jdk25"], 17))
+        self.assertIn("starts the primary line, not java17", runner.universal_mismatch(lines["java17"], 21))
+        self.assertIn("starts no line, not java8", runner.universal_mismatch(lines["java8"], 9) or "")  # nothing fits Java 9 and 10
+        run = self.run_registry("run", "--line", "jdk25", "--artifact", "all", "--any-jdk", "launcher", java_version="17.0.2")
+        self.assertNotEqual(run.returncode, 0)
+        self.assertIn("starts the java17 line, not primary", run.stderr)
+
     def test_line_tasks_exist_in_the_build(self):
         for line in self.lines.values():
             for task in line.build:
@@ -62,6 +128,54 @@ class RegistryTest(unittest.TestCase):
         self.assertEqual({(line, jdk, jar, upatch or None) for line, jdk, jar, upatch in rows},
                          {(line.id, line.jdk, line.jar, line.upatch) for line in self.lines.values()},
                          "the runtime-compatibility matrix in agent.yml and probes/lines.toml differ")
+
+    def test_universal_jar_is_built_and_uploaded(self):
+        jar, build = runner.load_universal()
+        for task in build:
+            module, name = task.strip(":").split(":")
+            self.assertIn(f'"{name}"', (JAVA_AGENT / module / "build.gradle.kts").read_text(), task)
+        self.assertIn(f"java-agent/{jar}", (WORKFLOWS / "agent.yml").read_text(),
+                      "the runtime matrix downloads the universal JAR from the build job's artifact")
+
+    def test_ci_runs_every_row_against_the_universal_jar(self):
+        job = (WORKFLOWS / "agent.yml").read_text()
+        job = job[job.index("  runtime-compatibility:"):]
+        self.assertIn('run.py run --line "${{ matrix.line }}" --keep-going', job)
+        self.assertIn('run.py run --line "${{ matrix.line }}" --artifact all --keep-going', job)
+
+    def test_artifact_all_applies_where_the_launcher_starts_the_rows_line(self):
+        jar, build = runner.load_universal()
+        everything = set(runner.agent_track.LINE_NAMES)
+        for line in self.lines.values():
+            self.assertIs(runner.for_artifact(line, "line"), line)
+            started = runner.agent_track.launcher_choice(everything, int(line.jdk))
+            universal = runner.for_artifact(line, "all")
+            if line.no_universal:
+                self.assertIsNone(universal)
+                self.assertNotEqual(started, line.track, f"{line.id}: no_universal, yet the universal JAR starts its line")
+            else:
+                self.assertEqual(started, line.track, f"{line.id}: the universal JAR starts another line; "
+                                 "mark the row no_universal with the reason")
+                self.assertEqual((universal.jar, universal.build, universal.track), (jar, build, line.track))
+        covered = {line.jdk for line in self.lines.values() if not line.no_universal}
+        self.assertEqual(covered, {line.jdk for line in self.lines.values()}, "every JDK gets a universal pass")
+
+    def test_every_probe_is_told_the_line_under_test(self):
+        self.assertEqual({line.id: line.track for line in self.lines.values()},
+                         {"java8": "8", "java11": "11", "java17": "17", "java17-on-21": "17",
+                          "jdk21": "main", "jdk25": "main"})
+        texts = {p.id: p.script.read_text() for p in self.probes.values()}
+        guessing = [name for name, text in texts.items()
+                    if "RaspHooks.class" in text or ("namelist()" in text and "agent_track" not in text)]
+        self.assertEqual(guessing, [], "probes must take the line from agent_track.track(), which reads "
+                         f"{runner.agent_track.ENVIRONMENT} from the registry")
+
+    def test_artifact_all_substitutes_the_universal_jar_in_commands(self):
+        args = runner.argparse.Namespace(jar=None, build_root=None, probe_args=[])
+        probe = self.probes["background-process"]
+        universal = runner.for_artifact(self.lines["java8"], "all")
+        self.assertEqual(runner.command(probe, universal, args)[2],
+                         str(JAVA_AGENT / runner.load_universal()[0]))
 
     def test_ci_runs_probes_through_the_registry(self):
         # A workflow that names a probe's check.py has a second list to forget.

@@ -3,17 +3,18 @@ set -euo pipefail
 
 cd "$(dirname "$0")/../../.."
 
-host_agent_jar="$(pwd)/agent-java8/build/libs/ohmyrasp-agent-java8.jar"
+# shellcheck source=acceptance/lib/agent-build.sh
+source acceptance/lib/agent-build.sh
+host_agent_jar="$(ohmyrasp_agent_jar "$(pwd)/agent-java8/build/libs/ohmyrasp-agent-java8.jar")"
 
-docker run --rm -v "$(pwd):/workspace" -w /workspace gradle:jdk25 \
-  gradle --no-daemon :agent-java8:agentJava8Jar
+ohmyrasp_build :agent-java8:agentJava8Jar
 
 image="${OHMYRASP_VULHUB_NACOS_IMAGE:-vulhub/nacos:1.4.0}"
 baseline_name="${OHMYRASP_VULHUB_NACOS_BASELINE_NAME:-ohmyrasp-vulhub-nacos-29442-baseline}"
 protected_name="${OHMYRASP_VULHUB_NACOS_PROTECTED_NAME:-ohmyrasp-vulhub-nacos-29442-protected}"
 baseline_port="${OHMYRASP_VULHUB_NACOS_BASELINE_PORT:-19084}"
 protected_port="${OHMYRASP_VULHUB_NACOS_PROTECTED_PORT:-19085}"
-vulhub_root="${OHMYRASP_VULHUB_ROOT:-/tmp/vulhub-ohmyrasp-20260603}"
+vulhub_root="${OHMYRASP_VULHUB_ROOT:?set OHMYRASP_VULHUB_ROOT to a Vulhub checkout}"
 poc_py="${OHMYRASP_VULHUB_NACOS_POC:-${vulhub_root}/nacos/CVE-2021-29442/poc.py}"
 poc_timeout_seconds="${OHMYRASP_VULHUB_NACOS_POC_TIMEOUT_SECONDS:-120}"
 protected_poc_timeout_seconds="${OHMYRASP_VULHUB_NACOS_PROTECTED_POC_TIMEOUT_SECONDS:-10}"

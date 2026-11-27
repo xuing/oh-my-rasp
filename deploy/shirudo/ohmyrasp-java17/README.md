@@ -2,7 +2,9 @@
 
 > **Generated** by `deploy/shirudo/gen-readmes.py` from `java-agent/` sources.
 
-The `ohmyrasp-java17` package installs the `ohmyrasp-java17` Java upatch: a standalone, daemonless OhMyRASP runtime self-protection agent targeting **Java 17 and Java 21** JVMs (classfile version `<= 61`). It covers **24 ASM transformer families** and **45 detection algorithms**, validated against **12** real Vulhub scenarios on `java17` plus **3** on `java21`.
+The `ohmyrasp-java17` package installs the `ohmyrasp-java17` Java upatch: a standalone, daemonless OhMyRASP runtime self-protection agent targeting **Java 17 and Java 21** JVMs (classfile version `<= 61`). It covers **24 ASM transformer families** and **45 detection algorithms**, validated against **12** Vulhub scripts that run the exploit on `java17` plus **3** on `java21`.
+
+This package is for hosts pinned to one Java version; the universal package [`ohmyrasp`](../ohmyrasp/README.md) starts the line that fits each JVM of a mixed host. It starts its line on **Java 17 and later**; on any other Java it writes one `ohmyrasp-agent-skipped` JSON line to stderr and the JVM starts without this agent.
 
 ## Security Coverage
 

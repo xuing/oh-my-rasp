@@ -15,18 +15,34 @@ public final class RocketMqFilterServer {
     return name != null && (OWNER.equals(name) || name.startsWith(OWNER + "$"));
   }
 
-  public static boolean directlyCallsProcessApi(StackTraceElement[] stack) {
-    return directOwner(stack.length, i -> stack[i].getClassName(), i -> isProcessApi(stack[i])) != null;
+  // Anonymous classes, not lambdas: the backport command decision runs these, and a lambda links at run time.
+  public static boolean directlyCallsProcessApi(final StackTraceElement[] stack) {
+    return directOwner(stack.length, new IntFunction<String>() {
+      public String apply(int i) {
+        return stack[i].getClassName();
+      }
+    }, new IntPredicate() {
+      public boolean test(int i) {
+        return isProcessApi(stack[i]);
+      }
+    }) != null;
   }
 
   /** Class-name stack captured inside a process API entry hook, innermost frame first. */
-  public static String directOwner(List<String> stack) {
+  public static String directOwner(final List<String> stack) {
     if (stack == null) {
       return null;
     }
-    return directOwner(stack.size(), stack::get,
-        i -> "java.lang.ProcessImpl".equals(stack.get(i)) || "java.lang.ProcessBuilder".equals(stack.get(i))
-            || "java.lang.Runtime".equals(stack.get(i)));
+    return directOwner(stack.size(), new IntFunction<String>() {
+      public String apply(int i) {
+        return stack.get(i);
+      }
+    }, new IntPredicate() {
+      public boolean test(int i) {
+        return "java.lang.ProcessImpl".equals(stack.get(i)) || "java.lang.ProcessBuilder".equals(stack.get(i))
+            || "java.lang.Runtime".equals(stack.get(i));
+      }
+    });
   }
 
   private static String directOwner(int depth, IntFunction<String> name, IntPredicate processApi) {

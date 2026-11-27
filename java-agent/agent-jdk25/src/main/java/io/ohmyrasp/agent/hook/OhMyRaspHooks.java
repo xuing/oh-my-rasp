@@ -48,6 +48,7 @@ import java.io.File;
 import java.lang.StackWalker.StackFrame;
 import java.lang.reflect.Array;
 import java.lang.reflect.Method;
+import java.lang.reflect.Modifier;
 import java.net.URL;
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
@@ -1908,7 +1909,8 @@ public final class OhMyRaspHooks {
 
   private static Optional<String> invokeString(Class<?> api, Object target, String methodName) {
     try {
-      Object value = api.getMethod(methodName).invoke(target);
+      Method method = accessibleMethod(api, methodName);
+      Object value = method == null ? null : method.invoke(target);
       return value == null ? Optional.empty() : Optional.of(String.valueOf(value));
     } catch (ReflectiveOperationException | RuntimeException e) {
       return Optional.empty();
@@ -1920,7 +1922,8 @@ public final class OhMyRaspHooks {
       if (target == null) {
         return Optional.empty();
       }
-      return Optional.ofNullable(target.getClass().getMethod(methodName).invoke(target));
+      Method method = accessibleMethod(target.getClass(), methodName);
+      return method == null ? Optional.empty() : Optional.ofNullable(method.invoke(target));
     } catch (ReflectiveOperationException | RuntimeException e) {
       return Optional.empty();
     }
@@ -2006,7 +2009,8 @@ public final class OhMyRaspHooks {
       return text.toString();
     }
     try {
-      Object content = unit.getClass().getMethod("getCharContent", boolean.class).invoke(unit, true);
+      Method getCharContent = accessibleMethod(unit.getClass(), "getCharContent", boolean.class);
+      Object content = getCharContent == null ? null : getCharContent.invoke(unit, true);
       if (content != null) {
         return String.valueOf(content);
       }
@@ -2014,6 +2018,47 @@ public final class OhMyRaspHooks {
       // Fall through to a conservative string representation.
     }
     return String.valueOf(unit);
+  }
+
+  /**
+   * The public method {@code name} as declared by a public type this class can call into: {@code type} itself when it
+   * qualifies, else the nearest superclass or interface that does. A method looked up on a non-public class, or one
+   * in a package its module does not export (an anonymous {@code SimpleJavaFileObject}, Tomcat's package-private
+   * {@code ApplicationHttpRequest}, a JDK proxy of a servlet request), fails to invoke when the class overrides it.
+   * Null when no such type declares it.
+   *
+   * <p>No class is named here: this class is on the bootstrap path, where javax.tools and the servlet API are not
+   * visible, so the types come from the object's own hierarchy, which is already loaded.
+   */
+  private static Method accessibleMethod(Class<?> type, String name, Class<?>... parameters) {
+    var pending = new ArrayList<Class<?>>();
+    pending.add(type);
+    for (int i = 0; i < pending.size(); i++) {
+      Class<?> candidate = pending.get(i);
+      if (callable(candidate)) {
+        try {
+          Method method = candidate.getMethod(name, parameters);
+          if (callable(method.getDeclaringClass())) {
+            return method;
+          }
+        } catch (NoSuchMethodException e) {
+          // A type that does not declare it: try what it extends.
+        }
+      }
+      if (candidate.getSuperclass() != null && !pending.contains(candidate.getSuperclass())) {
+        pending.add(candidate.getSuperclass());
+      }
+      for (Class<?> implemented : candidate.getInterfaces()) {
+        if (!pending.contains(implemented)) {
+          pending.add(implemented);
+        }
+      }
+    }
+    return null;
+  }
+
+  private static boolean callable(Class<?> type) {
+    return Modifier.isPublic(type.getModifiers()) && type.getModule().isExported(type.getPackageName());
   }
 
   private static String pathFrom(Object value) {

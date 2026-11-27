@@ -1,0 +1,58 @@
+[[case]]
+name = "stomp-selector-expression-via-input-stream"
+kind = "attack"
+via = "request"
+
+[case.request]
+method = "POST"
+uri = "/gs-guide-websocket/123/abc/xhr_send"
+headers = { User-Agent = "Mozilla/5.0 (X11; Linux x86_64) Firefox/128.0", "Content-Type" = "application/json" }
+body = "[\"SUBSCRIBE\\nid:sub-0\\ndestination:/topic/greetings\\nselector:T(java.lang.Runtime).getRuntime().exec('touch /tmp/success')\\n\\n\\u0000\"]"
+body_api = "stream"
+
+[case.primary]
+effect = "none"
+why = "the agent's request context has no body (no hook reads the input stream or the reader), so a rule decided from the body alone cannot fire"
+
+[case.backport]
+effect = "none"
+why = "the agent's request context has no body (no hook reads the input stream or the reader), so a rule decided from the body alone cannot fire"
+
+[[case]]
+name = "stomp-selector-expression-via-reader"
+kind = "attack"
+via = "request"
+
+[case.request]
+method = "POST"
+uri = "/gs-guide-websocket/123/abc/xhr_send"
+headers = { User-Agent = "Mozilla/5.0 (X11; Linux x86_64) Firefox/128.0", "Content-Type" = "application/json" }
+body = "[\"SUBSCRIBE\\nid:sub-0\\ndestination:/topic/greetings\\nselector:T(java.lang.Runtime).getRuntime().exec('touch /tmp/success')\\n\\n\\u0000\"]"
+body_api = "reader"
+
+[case.primary]
+effect = "none"
+why = "the agent's request context has no body (no hook reads the input stream or the reader), so a rule decided from the body alone cannot fire"
+
+[case.backport]
+effect = "none"
+why = "the agent's request context has no body (no hook reads the input stream or the reader), so a rule decided from the body alone cannot fire"
+
+[[case]]
+name = "benign-stomp-selector"
+kind = "benign"
+via = "request"
+
+[case.request]
+method = "POST"
+uri = "/gs-guide-websocket/123/abc/xhr_send"
+headers = { User-Agent = "Mozilla/5.0 (X11; Linux x86_64) Firefox/128.0", "Content-Type" = "application/json" }
+body = "[\"SUBSCRIBE\\nid:sub-0\\ndestination:/topic/greetings\\nselector:priority > 3\\n\\n\\u0000\"]"
+body_api = "stream"
+
+[case.primary]
+effect = "none"
+
+
+[case.backport]
+effect = "none"

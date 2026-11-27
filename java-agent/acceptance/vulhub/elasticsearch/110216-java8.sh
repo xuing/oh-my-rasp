@@ -12,13 +12,14 @@ protected_es_port="${OHMYRASP_VULHUB_ELASTICSEARCH_110216_PROTECTED_ES_PORT:-185
 protected_tomcat_port="${OHMYRASP_VULHUB_ELASTICSEARCH_110216_PROTECTED_TOMCAT_PORT:-18589}"
 baseline_cluster="${OHMYRASP_VULHUB_ELASTICSEARCH_110216_BASELINE_CLUSTER:-ohmyrasp-es110216-baseline}"
 protected_cluster="${OHMYRASP_VULHUB_ELASTICSEARCH_110216_PROTECTED_CLUSTER:-ohmyrasp-es110216-protected}"
-host_agent_jar="$(pwd)/agent-java8/build/libs/ohmyrasp-agent-java8.jar"
+# shellcheck source=acceptance/lib/agent-build.sh
+source acceptance/lib/agent-build.sh
+host_agent_jar="$(ohmyrasp_agent_jar "$(pwd)/agent-java8/build/libs/ohmyrasp-agent-java8.jar")"
 baseline_dir="logs/vulhub-elasticsearch-110216-java8-baseline"
 protected_dir="logs/vulhub-elasticsearch-110216-java8-protected"
 protected_log="${protected_dir}/events.jsonl"
 
-docker run --rm -v "$(pwd):/workspace" -w /workspace gradle:jdk25 \
-  gradle --no-daemon :agent-java8:agentJava8Jar
+ohmyrasp_build :agent-java8:agentJava8Jar
 
 rm -rf "$baseline_dir" "$protected_dir"
 mkdir -p "$baseline_dir" "$protected_dir"

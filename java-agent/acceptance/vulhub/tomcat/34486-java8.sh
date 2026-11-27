@@ -3,7 +3,7 @@ set -euo pipefail
 
 cd "$(dirname "$0")/../../.."
 
-vulhub_dir="${OHMYRASP_VULHUB_TOMCAT_34486_DIR:-/tmp/vulhub-ohmyrasp-20260603/tomcat/CVE-2026-34486}"
+vulhub_dir="${OHMYRASP_VULHUB_TOMCAT_34486_DIR:-${OHMYRASP_VULHUB_ROOT:?set OHMYRASP_VULHUB_ROOT to a Vulhub checkout}/tomcat/CVE-2026-34486}"
 poc_py="${OHMYRASP_VULHUB_TOMCAT_34486_POC:-${vulhub_dir}/poc.py}"
 image="${OHMYRASP_VULHUB_TOMCAT_34486_IMAGE:-vulhub/tomcat:9.0.116}"
 baseline_name="${OHMYRASP_VULHUB_TOMCAT_34486_BASELINE_NAME:-ohmyrasp-tomcat34486-baseline}"
@@ -12,7 +12,9 @@ baseline_http_port="${OHMYRASP_VULHUB_TOMCAT_34486_BASELINE_HTTP_PORT:-19080}"
 baseline_tribes_port="${OHMYRASP_VULHUB_TOMCAT_34486_BASELINE_TRIBES_PORT:-19400}"
 protected_http_port="${OHMYRASP_VULHUB_TOMCAT_34486_PROTECTED_HTTP_PORT:-19081}"
 protected_tribes_port="${OHMYRASP_VULHUB_TOMCAT_34486_PROTECTED_TRIBES_PORT:-19401}"
-host_agent_jar="$(pwd)/agent-java8/build/libs/ohmyrasp-agent-java8.jar"
+# shellcheck source=acceptance/lib/agent-build.sh
+source acceptance/lib/agent-build.sh
+host_agent_jar="$(ohmyrasp_agent_jar "$(pwd)/agent-java8/build/libs/ohmyrasp-agent-java8.jar")"
 ysoserial_dir="${OHMYRASP_YSOSERIAL_DIR:-/tmp/ohmyrasp-ysoserial}"
 maven_jdk8_image="${OHMYRASP_MAVEN_JDK8_IMAGE:-maven:3.8.1-jdk-8}"
 baseline_dir="logs/vulhub-tomcat-9.0.116-34486-java8-baseline"
@@ -224,8 +226,7 @@ run_protected() {
   fi
 }
 
-docker run --rm -v "$(pwd):/workspace" -w /workspace gradle:jdk25 \
-  gradle --no-daemon :agent-java8:agentJava8Jar >/dev/null
+ohmyrasp_build :agent-java8:agentJava8Jar >/dev/null
 
 rm -rf "$baseline_dir" "$protected_dir" "$payload_dir"
 mkdir -p "$baseline_dir" "$protected_dir" "$payload_dir"

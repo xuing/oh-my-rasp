@@ -5,12 +5,16 @@ import io.ohmyrasp.agent.net.HttpTransportVisitor;
 import io.ohmyrasp.agent.sql.JdbcSqlMethod;
 import io.ohmyrasp.agent.sql.MyBatisSqlVisitor;
 import io.ohmyrasp.agent.xml.XmlEntityOpenVisitor;
+import io.ohmyrasp.agent.backport.RaspRuntime;
 import java.io.File;
 import java.io.IOException;
 import java.lang.instrument.Instrumentation;
 import java.net.URISyntaxException;
 import java.net.URL;
 import java.util.jar.JarFile;
+import java.lang.instrument.ClassFileTransformer;
+import java.util.ArrayList;
+import java.util.List;
 
 public final class OhMyRaspJava8Agent {
   private OhMyRaspJava8Agent() {}
@@ -24,12 +28,79 @@ public final class OhMyRaspJava8Agent {
   }
 
   private static void install(String mode, String agentArgs, Instrumentation instrumentation) {
-    appendSelfToBootstrap(instrumentation);
-    // Initialises RaspRuntime here, before any transformer, so no hook does it on an app thread.
-    String logPath = RaspRuntime.resolveLogPath();
-    io.ohmyrasp.agent.xml.SystemArchiveOrigins.initialize(instrumentation);
-    installTransformer(instrumentation);
-    RaspRuntime.writeStartupLine(logPath, startupMessage(mode, agentArgs, instrumentation));
+    Class<?>[] outsideJavaBase = null;
+    if (instrumentation != null) {
+      // The transformers inject calls that the bootstrap loader resolves: without the JAR on its search the start
+      // fails here, before any transformer is registered, and the launcher reports it.
+      File agentJar = appendSelfToBootstrap(instrumentation);
+      requireBootstrapDefined("io.ohmyrasp.agent.java8.Java8RaspLine", "io.ohmyrasp.agent.backport.BackportLine",
+          "io.ohmyrasp.agent.backport.RaspRuntime", "io.ohmyrasp.agent.backport.BackportHooks",
+          "io.ohmyrasp.agent.java8.Java8RaspHooks", "io.ohmyrasp.agent.util.Preload");
+      // Every class of ours a hook or a transformer can use, loaded and initialised now, not inside a hooked call.
+      try {
+        io.ohmyrasp.agent.util.Preload.classes(agentJar, "agent-java8", null);
+      } catch (IOException e) {
+        throw new IllegalStateException("cannot read the preload list of " + agentJar, e);
+      }
+      outsideJavaBase = typesOutsideJavaBase();
+    }
+    // Installs the line and starts the shared runtime here, before any transformer, so no hook does it on an app
+    // thread. What can fail without a trace is done above; a failure from here on undoes the start.
+    boolean startedHere = Java8RaspLine.start();
+    List<ClassFileTransformer> registered = new ArrayList<ClassFileTransformer>();
+    try {
+      String logPath = RaspRuntime.resolveLogPath();
+      io.ohmyrasp.agent.xml.SystemArchiveOrigins.initialize(instrumentation);
+      installTransformer(instrumentation, outsideJavaBase, registered);
+      RaspRuntime.writeStartupLine(logPath, startupMessage(mode, agentArgs, instrumentation));
+    } catch (RuntimeException | Error failure) {
+      undo(instrumentation, registered, startedHere, failure);
+      throw failure;
+    }
+  }
+
+  /**
+   * After a failure that follows the line's start: removes the transformers this start registered and, when this
+   * call started the runtime, stops it, so the launcher's start-failed holds (no thread, no transformer, hooks
+   * inactive). A failure on the way is added to {@code failure} as suppressed.
+   */
+  private static void undo(Instrumentation instrumentation, List<ClassFileTransformer> registered, boolean startedHere,
+      Throwable failure) {
+    for (int i = registered.size() - 1; i >= 0; i--) {
+      try {
+        instrumentation.removeTransformer(registered.get(i));
+      } catch (RuntimeException | Error other) {
+        failure.addSuppressed(other);
+      }
+    }
+    if (startedHere) {
+      try {
+        RaspRuntime.stop();
+      } catch (RuntimeException | Error other) {
+        failure.addSuppressed(other);
+      }
+    }
+  }
+
+  /**
+   * The types outside java.base that the transformers or the retransform list use, resolved before the line starts.
+   * A type this JVM cannot link (java.sql is not visible to the bootstrap loader on Java 9 and later) then fails the
+   * start before anything is started or registered.
+   */
+  private static Class<?>[] typesOutsideJavaBase() {
+    return new Class<?>[] {
+      javax.naming.InitialContext.class,
+      java.sql.DriverManager.class,
+      javax.script.AbstractScriptEngine.class,
+      java.beans.Expression.class,
+      java.beans.Statement.class,
+    };
+  }
+
+  private static void register(Instrumentation instrumentation, List<ClassFileTransformer> registered,
+      ClassFileTransformer transformer, boolean canRetransform) {
+    instrumentation.addTransformer(transformer, canRetransform);
+    registered.add(transformer);
   }
 
   private static String startupMessage(
@@ -68,63 +139,90 @@ public final class OhMyRaspJava8Agent {
         + "}";
   }
 
-  private static void appendSelfToBootstrap(Instrumentation instrumentation) {
-    if (instrumentation == null) {
-      return;
+  /** Appends the agent JAR to the bootstrap search and returns it. Throws when it cannot: the start must fail. */
+  private static File appendSelfToBootstrap(Instrumentation instrumentation) {
+    if (OhMyRaspJava8Agent.class.getProtectionDomain() == null
+        || OhMyRaspJava8Agent.class.getProtectionDomain().getCodeSource() == null
+        || OhMyRaspJava8Agent.class.getProtectionDomain().getCodeSource().getLocation() == null) {
+      throw new IllegalStateException("[OHMYRASP-JAVA8] cannot find the agent JAR to append to the bootstrap search");
+    }
+    URL location =
+        OhMyRaspJava8Agent.class.getProtectionDomain().getCodeSource().getLocation();
+    File agentFile;
+    try {
+      agentFile = new File(location.toURI());
+    } catch (URISyntaxException e) {
+      agentFile = new File(location.getPath());
+    } catch (IllegalArgumentException e) {
+      agentFile = new File(location.getPath());
     }
     try {
-      if (OhMyRaspJava8Agent.class.getProtectionDomain() == null
-          || OhMyRaspJava8Agent.class.getProtectionDomain().getCodeSource() == null
-          || OhMyRaspJava8Agent.class.getProtectionDomain().getCodeSource().getLocation() == null) {
-        return;
-      }
-      URL location =
-          OhMyRaspJava8Agent.class.getProtectionDomain().getCodeSource().getLocation();
-      File agentFile;
-      try {
-        agentFile = new File(location.toURI());
-      } catch (URISyntaxException e) {
-        agentFile = new File(location.getPath());
-      } catch (IllegalArgumentException e) {
-        agentFile = new File(location.getPath());
-      }
       instrumentation.appendToBootstrapClassLoaderSearch(new JarFile(agentFile));
-    } catch (IOException e) {
-      System.err.println("[OHMYRASP-JAVA8] unable to append agent jar to bootstrap search: " + e);
-    } catch (RuntimeException e) {
-      System.err.println("[OHMYRASP-JAVA8] unable to append agent jar to bootstrap search: " + e);
+    } catch (IOException | RuntimeException e) {
+      throw new IllegalStateException(
+          "[OHMYRASP-JAVA8] unable to append agent jar to bootstrap search: " + e, e);
+    }
+    return agentFile;
+  }
+
+  /**
+   * Throws unless each class, looked up through this entry's own loader as the start is about to use it, is the
+   * one the bootstrap loader defined from the appended JAR, which the injected calls reach. A copy that another
+   * loader defined first (the agent JAR is also on the application class path and the application used it, or an
+   * earlier attach did) would start a runtime that the hooks never see.
+   */
+  private static void requireBootstrapDefined(String... classNames) {
+    ClassLoader own = OhMyRaspJava8Agent.class.getClassLoader();
+    for (String className : classNames) {
+      Class<?> found;
+      try {
+        found = Class.forName(className, false, own);
+      } catch (ClassNotFoundException e) {
+        throw new IllegalStateException(
+            "[OHMYRASP-JAVA8] " + className + " is not on the bootstrap search after the append", e);
+      }
+      if (found.getClassLoader() != null) {
+        throw new IllegalStateException("[OHMYRASP-JAVA8] " + className + " is already defined by "
+            + found.getClassLoader() + ", not the bootstrap loader: the start would use a runtime the hooks do not");
+      }
     }
   }
 
-  private static void installTransformer(Instrumentation instrumentation) {
+  private static void installTransformer(Instrumentation instrumentation, Class<?>[] outsideJavaBase,
+      List<ClassFileTransformer> registered) {
     if (instrumentation == null) {
       return;
     }
+    Class<?> initialContext = outsideJavaBase[0];
+    Class<?> driverManager = outsideJavaBase[1];
+    Class<?> scriptEngine = outsideJavaBase[2];
+    Class<?> beanExpression = outsideJavaBase[3];
+    Class<?> beanStatement = outsideJavaBase[4];
     boolean canRetransform = instrumentation.isRetransformClassesSupported();
-    instrumentation.addTransformer(new Java8ServletTransformer(), canRetransform);
-    instrumentation.addTransformer(new Java8SparkRestTransformer(), canRetransform);
-    instrumentation.addTransformer(new Java8YarnRestTransformer(), canRetransform);
-    instrumentation.addTransformer(new Java8ProcessTransformer(), canRetransform);
-    instrumentation.addTransformer(new Java8JndiTransformer(), canRetransform);
-    instrumentation.addTransformer(new Java8DeserializationTransformer(), canRetransform);
-    instrumentation.addTransformer(new Java8FastjsonTransformer(), canRetransform);
-    instrumentation.addTransformer(new Java8HessianTransformer(), canRetransform);
-    instrumentation.addTransformer(new Java8FileTransformer(), canRetransform);
-    instrumentation.addTransformer(new Java8MultipartUploadTransformer(), canRetransform);
-    instrumentation.addTransformer(new Java8UrlTransformer(), canRetransform);
-    instrumentation.addTransformer(new Java8ArchiveTransformer(), canRetransform);
-    instrumentation.addTransformer(new Java8JdbcTransformer(), canRetransform);
-    instrumentation.addTransformer(new Java8ClassLoaderTransformer(), canRetransform);
-    instrumentation.addTransformer(new Java8ScriptEngineTransformer(), canRetransform);
-    instrumentation.addTransformer(new Java8JexlTransformer(), canRetransform);
-    instrumentation.addTransformer(new Java8ElTransformer(), canRetransform);
-    instrumentation.addTransformer(new Java8JavaCompilationTransformer(), canRetransform);
-    instrumentation.addTransformer(new Java8JmxTransformer(), canRetransform);
-    instrumentation.addTransformer(new Java8JwtTransformer(), canRetransform);
-    instrumentation.addTransformer(new Java8JavaBeansTransformer(), canRetransform);
-    instrumentation.addTransformer(new Java8XxeTransformer(), canRetransform);
-    instrumentation.addTransformer(new Java8ElasticLz4Transformer(), canRetransform);
-    instrumentation.addTransformer(new Java8Base64Transformer(), canRetransform);
+    register(instrumentation, registered, new Java8ServletTransformer(), canRetransform);
+    register(instrumentation, registered, new Java8SparkRestTransformer(), canRetransform);
+    register(instrumentation, registered, new Java8YarnRestTransformer(), canRetransform);
+    register(instrumentation, registered, new Java8ProcessTransformer(), canRetransform);
+    register(instrumentation, registered, new Java8JndiTransformer(), canRetransform);
+    register(instrumentation, registered, new Java8DeserializationTransformer(), canRetransform);
+    register(instrumentation, registered, new Java8FastjsonTransformer(), canRetransform);
+    register(instrumentation, registered, new Java8HessianTransformer(), canRetransform);
+    register(instrumentation, registered, new Java8FileTransformer(), canRetransform);
+    register(instrumentation, registered, new Java8MultipartUploadTransformer(), canRetransform);
+    register(instrumentation, registered, new Java8UrlTransformer(), canRetransform);
+    register(instrumentation, registered, new Java8ArchiveTransformer(), canRetransform);
+    register(instrumentation, registered, new Java8JdbcTransformer(), canRetransform);
+    register(instrumentation, registered, new Java8ClassLoaderTransformer(), canRetransform);
+    register(instrumentation, registered, new Java8ScriptEngineTransformer(), canRetransform);
+    register(instrumentation, registered, new Java8JexlTransformer(), canRetransform);
+    register(instrumentation, registered, new Java8ElTransformer(), canRetransform);
+    register(instrumentation, registered, new Java8JavaCompilationTransformer(), canRetransform);
+    register(instrumentation, registered, new Java8JmxTransformer(), canRetransform);
+    register(instrumentation, registered, new Java8JwtTransformer(), canRetransform);
+    register(instrumentation, registered, new Java8JavaBeansTransformer(), canRetransform);
+    register(instrumentation, registered, new Java8XxeTransformer(), canRetransform);
+    register(instrumentation, registered, new Java8ElasticLz4Transformer(), canRetransform);
+    register(instrumentation, registered, new Java8Base64Transformer(), canRetransform);
     if (!canRetransform) {
       return;
     }
@@ -137,7 +235,7 @@ public final class OhMyRaspJava8Agent {
     if (io.ohmyrasp.agent.process.ProcessLaunchVisitor.platformHandoff()) retransformByName(instrumentation, "java.lang.ProcessImpl");
     retransform(instrumentation, ProcessBuilder.class);
     retransform(instrumentation, Runtime.class);
-    retransform(instrumentation, javax.naming.InitialContext.class);
+    retransform(instrumentation, initialContext);
     retransform(instrumentation, java.io.ObjectInputStream.class);
     retransformByName(instrumentation, "com.alibaba.fastjson.parser.ParserConfig");
     retransform(instrumentation, java.io.FileInputStream.class);
@@ -147,14 +245,16 @@ public final class OhMyRaspJava8Agent {
     retransformByName(instrumentation, "sun.nio.fs.UnixChannelFactory");
     retransform(instrumentation, java.net.URL.class);
     retransform(instrumentation, java.util.zip.ZipEntry.class);
-    retransform(instrumentation, java.sql.DriverManager.class);
+    retransform(instrumentation, driverManager);
     retransformByName(
         instrumentation, "org.apache.skywalking.oap.server.storage.plugin.jdbc.h2.dao.H2LogQueryDAO");
+    retransformByName(
+        instrumentation,
+        "org.apache.skywalking.oap.server.storage.plugin.jdbc.common.dao.JDBCLogQueryDAO");
     retransform(instrumentation, java.net.URLClassLoader.class);
-    retransform(instrumentation, javax.script.AbstractScriptEngine.class);
+    retransform(instrumentation, scriptEngine);
     retransformByName(instrumentation, "org.apache.commons.jexl3.internal.Script");
     retransformByName(instrumentation, "org.apache.commons.jexl2.ExpressionImpl");
-    retransformByName(instrumentation, "org.apache.commons.jexl2.ScriptImpl");
     retransformByName(instrumentation, "org.apache.commons.jexl.ExpressionImpl");
     retransformByName(instrumentation, "org.apache.commons.jexl.Script");
     retransformByName(instrumentation, "com.sun.el.ValueExpressionImpl");
@@ -165,8 +265,8 @@ public final class OhMyRaspJava8Agent {
     retransformByName(instrumentation, "de.odysseus.el.TreeMethodExpression");
     retransformByName(instrumentation, "org.jboss.el.ValueExpressionImpl");
     retransformByName(instrumentation, "org.jboss.el.MethodExpressionImpl");
-    retransform(instrumentation, java.beans.Expression.class);
-    retransform(instrumentation, java.beans.Statement.class);
+    retransform(instrumentation, beanExpression);
+    retransform(instrumentation, beanStatement);
     retransformByName(instrumentation, io.ohmyrasp.agent.jmx.JmxDispatchVisitor.TARGET.replace('/', '.'));
 
     retransformByName(instrumentation, "com.sun.beans.decoder.DocumentHandler");
@@ -198,6 +298,8 @@ public final class OhMyRaspJava8Agent {
     retransformByName(instrumentation, java.io.File.separatorChar == '/'
         ? "sun.nio.fs.UnixFileSystemProvider" : "sun.nio.fs.WindowsFileSystemProvider");
     retransformByName(instrumentation, "com.sun.tools.javac.api.JavacTool");
+    // Janino loaded before a dynamic attach: its compiler base class is hooked like javac.
+    retransformByName(instrumentation, "org.codehaus.commons.compiler.Cookable");
     retransform(instrumentation, java.util.Base64.Decoder.class);
   }
 

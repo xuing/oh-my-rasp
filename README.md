@@ -52,7 +52,7 @@ Every hook, detector, and Vulhub replay script lives in this repository and runs
 | Metric | Value | Source |
 |---|---|---|
 | Instrumented sink families | 30 ASM hook modules (`agent-jdk25`); 24 ASM transformers per backport (`java8`, `java11`, `java17`) | [DETECTION-COVERAGE.md](java-agent/docs/DETECTION-COVERAGE.md) |
-| Detection engine | 60 detector capabilities, 190 algorithm signatures asserted in acceptance scripts | [DETECTION-COVERAGE.md](java-agent/docs/DETECTION-COVERAGE.md) |
+| Detection engine | 42 detector capabilities, 173 algorithm signatures asserted in acceptance scripts; 23 rule ids are defined but not wired, and not counted | [DETECTION-COVERAGE.md](java-agent/docs/DETECTION-COVERAGE.md) |
 | Exploit replay suite | 136 scenarios across 53 [Vulhub](https://github.com/vulhub/vulhub) roots (130 CVEs tracked) | [vulhub-coverage.md](docs/development/vulhub-coverage.md) |
 | Benign corpus precision | `0 / 194` false positives across 26 categories | [FALSE-POSITIVE-REPORT.md](java-agent/docs/FALSE-POSITIVE-REPORT.md) |
 | Supported JVMs | Builds for JDK 8, 11, 17, and a shared JDK 21/25 build (`javax.servlet` & `jakarta.servlet`) | [docs/agent.md](docs/agent.md) |
@@ -82,13 +82,18 @@ Full specification: [docs/detection.md](docs/detection.md).
 
 OhMyRASP ships ready-to-sign **[shirudo](https://github.com/shirudo-dev/shirudo) Java upatch packages** in [`deploy/shirudo/`](deploy/shirudo/README.md) for targets managed by shirudo's pull-based, ML-DSA-87 signed, TPM2-measured deployment model.
 
-| Package | Target JVMs | Upatch JAR | Gradle module |
+Install one package, **`ohmyrasp`**. It holds every agent line, and each JVM on the host, from Java 8 to Java 25, starts the line that fits its Java version. A JVM that fits no line writes one JSON line to `stderr` and starts without protection; the launcher never stops a JVM. A second OhMyRASP package on the same host is harmless: one line starts per JVM.
+
+| Package | Starts on | Upatch JAR | Gradle module |
 |---|---|---|---|
-| `ohmyrasp-java8` | Java 8 (classfile `<= 52`) | `ohmyrasp-java8.jar` | `:agent-java8` |
-| `ohmyrasp-java11` | Java 11 (classfile `<= 55`) | `ohmyrasp-java11.jar` | `:agent-java11` |
-| `ohmyrasp-java17` | Java 17 & Java 21 (classfile `<= 61`) | `ohmyrasp-java17.jar` | `:agent-java17` |
-| `ohmyrasp-jdk21` | Java 21 (classfile `<= 65`) | `ohmyrasp-jdk21.jar` | `:agent-jdk25` |
-| `ohmyrasp-jdk25` | Java 21 & Java 25 (classfile `<= 65`) | `ohmyrasp-jdk25.jar` | `:agent-jdk25` |
+| **`ohmyrasp`** (default) | Java 8 to 25, the line that fits | `ohmyrasp.jar` | `:agent-all` |
+| `ohmyrasp-java8` | Java 8 only | `ohmyrasp-java8.jar` | `:agent-java8` |
+| `ohmyrasp-java11` | Java 11 and later | `ohmyrasp-java11.jar` | `:agent-java11` |
+| `ohmyrasp-java17` | Java 17 and later | `ohmyrasp-java17.jar` | `:agent-java17` |
+| `ohmyrasp-jdk21` | Java 21 and later | `ohmyrasp-jdk21.jar` | `:agent-jdk25` |
+| `ohmyrasp-jdk25` | Java 21 and later | `ohmyrasp-jdk25.jar` | `:agent-jdk25` |
+
+The per-line packages are for hosts pinned to one Java version. The universal package also lists the advisories whose tested exploit path the agent blocks in its Beefile (`fixes`, read by shirudo's backend); the list is in [deploy/shirudo/ohmyrasp/README.md](deploy/shirudo/ohmyrasp/README.md).
 
 For JDK 21, download `ohmyrasp-agent-jdk21.jar` for the standard agent or `ohmyrasp-jdk21.jar` for Shirudo. Each is byte-for-byte identical to its JDK 25 counterpart.
 
@@ -116,7 +121,7 @@ See [deploy/shirudo/README.md](deploy/shirudo/README.md) for `shirudo bpm instal
 
 ### Option A: Download pre-built artifacts
 
-Each release on [GitHub Releases](https://github.com/xuing/oh-my-rasp/releases) publishes the standard Java agent JARs, the standalone shirudo upatch JARs and Shirudo bundle, the Rust daemon tarball, the Helm chart archive, and `SHA256SUMS.txt`; the full asset list is in the [release runbook](docs/runbooks/release.md).
+Each release on [GitHub Releases](https://github.com/xuing/oh-my-rasp/releases) publishes the universal agent JAR `ohmyrasp-agent-all.jar` (start here) and the per-line standard Java agent JARs, the universal shirudo upatch JAR `ohmyrasp.jar` and the per-line standalone shirudo upatch JARs and Shirudo bundle, the Rust daemon tarball, the Helm chart archive, and `SHA256SUMS.txt`; the full asset list is in the [release runbook](docs/runbooks/release.md).
 
 Container images (`ghcr.io/xuing/control-api`, `ghcr.io/xuing/control-web`) and the OCI Helm chart (`oci://ghcr.io/xuing/charts/ohmyrasp-control`) are published alongside the release assets. Verify checksums and GitHub artifact attestations before deploying:
 
@@ -134,18 +139,18 @@ cd java-agent
 GRADLE_IMAGE="$(awk '$1 == "FROM" && $2 ~ /^gradle:/ { print $2; exit }' Dockerfile)"
 docker run --rm -u "$(id -u):$(id -g)" -e GRADLE_USER_HOME=/tmp/gradle-home \
   -v "$PWD":/workspace -w /workspace "$GRADLE_IMAGE" \
-  gradle --no-daemon :agent-jdk25:agentJar
-# -> agent-jdk25/build/libs/ohmyrasp-agent.jar
+  gradle --no-daemon :agent-all:agentAllJar
+# -> agent-all/build/libs/ohmyrasp-agent-all.jar
 ```
 
-Use `:agent-java8:agentJava8Jar`, `:agent-java11:agentJava11Jar`, or `:agent-java17:agentJava17Jar` for earlier JDKs, or `:agent-*:shirudoUpatchJar` for daemonless shirudo builds.
+`ohmyrasp-agent-all.jar` runs on Java 8 to 25. Use `:agent-jdk25:agentJar` for a JAR that holds only the Java 21 and later line, `:agent-java8:agentJava8Jar`, `:agent-java11:agentJava11Jar`, or `:agent-java17:agentJava17Jar` for one earlier line, `:agent-all:shirudoUpatchJar` for the universal daemonless shirudo JAR (`ohmyrasp.jar`), or `:agent-*:shirudoUpatchJar` for a per-line one.
 
 ### Attach to an application
 
 Standalone (no control plane):
 
 ```bash
-java -javaagent:/opt/ohmyrasp/ohmyrasp-agent.jar=mode=monitor \
+java -javaagent:/opt/ohmyrasp/ohmyrasp-agent-all.jar=mode=monitor \
      -Dohmyrasp.log=/var/log/ohmyrasp/events.jsonl \
      -jar your-app.jar
 ```
@@ -168,7 +173,7 @@ docker compose --env-file .env -f docker-compose.yml up -d --build
 Sign in as `admin@ohmyrasp.local` with `OHMYRASP_BOOTSTRAP_ADMIN_PASSWORD`, create an application to obtain `app_id` and `app_secret`, then start your JVM:
 
 ```bash
-java -javaagent:/opt/ohmyrasp/ohmyrasp-agent.jar=backend_url=http://<host>:18090,app_id=<app-id>,app_secret=<secret>,environment_id=<env-id>,mode=block \
+java -javaagent:/opt/ohmyrasp/ohmyrasp-agent-all.jar=backend_url=http://<host>:18090,app_id=<app-id>,app_secret=<secret>,environment_id=<env-id>,mode=block \
      -jar your-app.jar
 ```
 

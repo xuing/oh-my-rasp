@@ -1,0 +1,84 @@
+[[case]]
+name = "request-escapes-delete-root"
+kind = "attack"
+via = "request-sink"
+op = "file.delete"
+args = { path = "{tmp}/root/tenant-reports/catalog/../../weekly.csv" }
+properties = { "ohmyrasp.file.delete_root" = "{tmp}/root/tenant-reports" }
+setup = { files = ["{tmp}/root/weekly.csv", "{tmp}/root/tenant-reports/catalog/keep.csv"] }
+
+[case.request]
+method = "POST"
+uri = "/app/reports/delete"
+query = "file=..%2F..%2Fweekly.csv"
+headers = { User-Agent = "Mozilla/5.0 (X11; Linux x86_64) Firefox/128.0", Accept = "text/html" }
+
+[case.primary]
+effect = "block"
+rule = "deleteFile_userinput"
+
+[case.backport]
+effect = "block"
+rule = "deleteFile_userinput"
+
+[[case]]
+name = "escapes-delete-root-outside-request"
+kind = "attack"
+via = "sink"
+op = "file.delete"
+args = { path = "{tmp}/root/tenant-reports/catalog/../../weekly.csv" }
+properties = { "ohmyrasp.file.delete_root" = "{tmp}/root/tenant-reports" }
+setup = { files = ["{tmp}/root/weekly.csv", "{tmp}/root/tenant-reports/catalog/keep.csv"] }
+
+[case.primary]
+effect = "none"
+why = "the decision compares the removed entry with request parameter values; outside a request there are none"
+
+[case.backport]
+effect = "none"
+why = "the decision compares the removed entry with request parameter values; outside a request there are none"
+
+[[case]]
+name = "benign-request-deletes-own-entry"
+kind = "benign"
+via = "request-sink"
+op = "file.delete"
+args = { path = "{tmp}/root/tenant-reports/catalog/keep.csv" }
+properties = { "ohmyrasp.file.delete_root" = "{tmp}/root/tenant-reports" }
+setup = { files = ["{tmp}/root/weekly.csv", "{tmp}/root/tenant-reports/catalog/keep.csv"] }
+
+[case.request]
+method = "POST"
+uri = "/app/reports/delete"
+query = "file=keep.csv"
+headers = { User-Agent = "Mozilla/5.0 (X11; Linux x86_64) Firefox/128.0", Accept = "text/html" }
+
+[case.primary]
+effect = "none"
+
+[case.backport]
+effect = "none"
+
+[[case]]
+name = "request-escapes-delete-root-in-json-body"
+kind = "attack"
+via = "request-sink"
+op = "file.delete"
+args = { path = "{tmp}/root/tenant-reports/catalog/../../weekly.csv" }
+properties = { "ohmyrasp.file.delete_root" = "{tmp}/root/tenant-reports" }
+setup = { files = ["{tmp}/root/weekly.csv", "{tmp}/root/tenant-reports/catalog/keep.csv"] }
+
+[case.request]
+method = "POST"
+uri = "/app/reports/delete"
+headers = { "User-Agent" = "Mozilla/5.0 (X11; Linux x86_64) Firefox/128.0", Accept = "text/html", "Content-Type" = "application/json" }
+body = "{\"file\":\"../../weekly.csv\"}"
+body_api = "stream"
+
+[case.primary]
+effect = "none"
+why = "the same input blocks as a query parameter but passes as a JSON body: the agent's request context has no body (no hook reads the input stream or the reader), so body fields are never read"
+
+[case.backport]
+effect = "none"
+why = "the same input blocks as a query parameter but passes as a JSON body: the agent's request context has no body (no hook reads the input stream or the reader), so body fields are never read"

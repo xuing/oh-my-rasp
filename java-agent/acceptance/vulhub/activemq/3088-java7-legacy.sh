@@ -3,10 +3,11 @@ set -euo pipefail
 
 cd "$(dirname "$0")/../../.."
 
-host_agent_jar="$(pwd)/agent-java8/build/libs/ohmyrasp-agent-java8.jar"
+# shellcheck source=acceptance/lib/agent-build.sh
+source acceptance/lib/agent-build.sh
+host_agent_jar="$(ohmyrasp_agent_jar "$(pwd)/agent-java8/build/libs/ohmyrasp-agent-java8.jar")"
 
-docker run --rm -v "$(pwd):/workspace" -w /workspace gradle:jdk25 \
-  gradle --no-daemon :agent-java8:agentJava8Jar
+ohmyrasp_build :agent-java8:agentJava8Jar
 
 image="${OHMYRASP_VULHUB_ACTIVEMQ_3088_IMAGE:-vulhub/activemq:5.11.1-with-cron}"
 baseline_name="${OHMYRASP_VULHUB_ACTIVEMQ_3088_BASELINE_NAME:-ohmyrasp-vulhub-activemq3088-baseline}"
@@ -116,15 +117,18 @@ docker run -d --name "$protected_name" \
   -e "JAVA_TOOL_OPTIONS=-javaagent:/opt/ohmyrasp/ohmyrasp-agent-java8.jar -Dohmyrasp.java8.log=/opt/ohmyrasp/logs/events.jsonl -Dohmyrasp.java8.block=true" \
   "$image" >/dev/null
 
-sleep 3
+# The agent cannot protect Java 7. Its entry class (class-file version 49) loads, finds that the Java 8
+# launcher cannot, prints one skip line and returns, so the application starts unprotected.
+wait_for_http "$protected_name" "$protected_port" "$protected_dir"
 docker logs "$protected_name" > "${protected_dir}/container.log" 2>&1 || true
-if ! grep -q 'Unsupported major.minor version 52.0' "${protected_dir}/container.log"; then
+if ! grep -Fq '{"event":"ohmyrasp-agent-skipped","reason":"unsupported-java","java_version":"1.7","entry":"io.ohmyrasp.agent.launch.Java8Entry"' "${protected_dir}/container.log"; then
   sed -n '1,180p' "${protected_dir}/container.log" >&2 || true
-  echo "ActiveMQ CVE-2016-3088 Java 7 protected probe did not show Java 8 agent class-version mismatch" >&2
+  echo "ActiveMQ CVE-2016-3088 Java 7 container did not print the agent's unsupported-java skip line" >&2
   exit 1
 fi
-if docker ps --filter "name=${protected_name}" --filter "status=running" --format '{{.Names}}' | grep -q .; then
-  echo "ActiveMQ CVE-2016-3088 Java 7 container unexpectedly kept running with Java 8 agent" >&2
+if ! docker ps --filter "name=${protected_name}" --filter "status=running" --format '{{.Names}}' | grep -q .; then
+  sed -n '1,180p' "${protected_dir}/container.log" >&2
+  echo "ActiveMQ CVE-2016-3088 Java 7 container stopped with the Java 8 agent attached" >&2
   exit 1
 fi
 

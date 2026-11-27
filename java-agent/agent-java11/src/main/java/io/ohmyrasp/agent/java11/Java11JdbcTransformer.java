@@ -21,6 +21,15 @@ public final class Java11JdbcTransformer implements ClassFileTransformer {
       Method.getMethod("void beforeH2JdbcConnection(java.lang.String)");
   private static final Method BEFORE_SQL_IDENTIFIER =
       Method.getMethod("void beforeSqlIdentifier(java.lang.String)");
+  private static final Method BEFORE_SQL_IDENTIFIER_FROM =
+      Method.getMethod(
+          "void beforeSqlIdentifier(java.lang.String, java.lang.String, java.lang.String)");
+  // SkyWalking 8.x: queryLogs(String metricName, ...) names the table. 9.x moved the DAO to a common
+  // package and builds the statement in buildSQL(..., String table).
+  private static final String H2_LOG_QUERY_DAO =
+      "org/apache/skywalking/oap/server/storage/plugin/jdbc/h2/dao/H2LogQueryDAO";
+  private static final String JDBC_LOG_QUERY_DAO =
+      "org/apache/skywalking/oap/server/storage/plugin/jdbc/common/dao/JDBCLogQueryDAO";
   private static final Method BEFORE_SQL_STATEMENT =
       Method.getMethod("void beforeSqlStatement(java.lang.Object, java.lang.String, java.lang.String)");
 
@@ -54,8 +63,8 @@ public final class Java11JdbcTransformer implements ClassFileTransformer {
     return "java/sql/DriverManager".equals(className)
         || "org/h2/jdbc/JdbcConnection".equals(className)
         || MyBatisSqlVisitor.matches(className)
-        || "org/apache/skywalking/oap/server/storage/plugin/jdbc/h2/dao/H2LogQueryDAO"
-            .equals(className)
+        || H2_LOG_QUERY_DAO.equals(className)
+        || JDBC_LOG_QUERY_DAO.equals(className)
         || isJdbcStatementClass(className);
   }
 
@@ -110,12 +119,20 @@ public final class Java11JdbcTransformer implements ClassFileTransformer {
           }
         };
       }
-      if (isSqlIdentifierMethod(className, name, descriptor)) {
+      int identifierArg = sqlIdentifierArgument(className, name, descriptor);
+      if (identifierArg >= 0) {
+        final boolean h2 = H2_LOG_QUERY_DAO.equals(className);
         return new AdviceAdapter(Opcodes.ASM9, methodVisitor, access, name, descriptor) {
           @Override
           protected void onMethodEnter() {
-            loadArg(0);
-            invokeStatic(HOOKS, BEFORE_SQL_IDENTIFIER);
+            loadArg(identifierArg);
+            if (h2) {
+              invokeStatic(HOOKS, BEFORE_SQL_IDENTIFIER);
+            } else {
+              push("SkyWalking.JDBCLogQueryDAO.buildSQL");
+              push("table");
+              invokeStatic(HOOKS, BEFORE_SQL_IDENTIFIER_FROM);
+            }
           }
         };
       }
@@ -156,11 +173,17 @@ public final class Java11JdbcTransformer implements ClassFileTransformer {
           && descriptor.startsWith("(Ljava/lang/String;");
     }
 
-    private static boolean isSqlIdentifierMethod(String className, String name, String descriptor) {
-      return "org/apache/skywalking/oap/server/storage/plugin/jdbc/h2/dao/H2LogQueryDAO"
-              .equals(className)
-          && "queryLogs".equals(name)
-          && descriptor.startsWith("(Ljava/lang/String;");
+    /** The index of the argument that becomes a SQL identifier, or -1 when the method has none. */
+    private static int sqlIdentifierArgument(String className, String name, String descriptor) {
+      if (H2_LOG_QUERY_DAO.equals(className)) {
+        return "queryLogs".equals(name) && descriptor.startsWith("(Ljava/lang/String;") ? 0 : -1;
+      }
+      if (JDBC_LOG_QUERY_DAO.equals(className) && "buildSQL".equals(name)) {
+        Type[] arguments = Type.getArgumentTypes(descriptor);
+        int last = arguments.length - 1;
+        return last >= 0 && "Ljava/lang/String;".equals(arguments[last].getDescriptor()) ? last : -1;
+      }
+      return -1;
     }
 
     private static boolean isSqlStatementMethod(

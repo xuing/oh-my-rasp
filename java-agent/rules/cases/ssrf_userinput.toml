@@ -1,0 +1,115 @@
+[[case]]
+name = "request-selects-loopback-admin"
+kind = "attack"
+via = "request-sink"
+op = "net.open"
+args = { url = "http://127.0.0.1:{port}/actuator/env" }
+
+[case.request]
+method = "GET"
+uri = "/app/fetch"
+query = "url=http%3A%2F%2F127.0.0.1%3A{port}%2Factuator%2Fenv"
+headers = { User-Agent = "Mozilla/5.0 (X11; Linux x86_64) Firefox/128.0", Accept = "text/html" }
+
+[case.primary]
+effect = "block"
+rule = "ssrf_userinput"
+
+[case.backport]
+effect = "block"
+rule = "ssrf_loopback_admin"
+
+[[case]]
+name = "request-selects-url"
+kind = "attack"
+via = "request-sink"
+op = "net.open"
+args = { url = "http://10.1.2.3:8080/internal" }
+
+[case.request]
+method = "GET"
+uri = "/app/fetch"
+query = "url=http%3A%2F%2F10.1.2.3%3A8080%2Finternal"
+headers = { User-Agent = "Mozilla/5.0 (X11; Linux x86_64) Firefox/128.0", Accept = "text/html" }
+
+[case.primary]
+effect = "block"
+rule = "ssrf_userinput"
+
+[case.backport]
+effect = "block"
+rule = "ssrf_request_parameter_url"
+
+[[case]]
+name = "benign-loopback-admin-outside-request"
+kind = "benign"
+via = "sink"
+op = "net.open"
+args = { url = "http://127.0.0.1:{port}/actuator/env" }
+
+[case.primary]
+effect = "none"
+
+[case.backport]
+effect = "none"
+
+[[case]]
+name = "request-selects-loopback-url"
+kind = "attack"
+via = "request-sink"
+op = "net.open"
+args = { url = "http://127.0.0.1:{port}/health" }
+
+[case.request]
+method = "GET"
+uri = "/app/fetch"
+query = "url=http%3A%2F%2F127.0.0.1%3A{port}%2Fhealth"
+headers = { User-Agent = "Mozilla/5.0 (X11; Linux x86_64) Firefox/128.0", Accept = "text/html" }
+
+[case.primary]
+effect = "block"
+rule = "ssrf_userinput"
+
+[case.backport]
+effect = "block"
+rule = "ssrf_request_parameter_url"
+
+[[case]]
+name = "benign-request-fetches-fixed-url"
+kind = "benign"
+via = "request-sink"
+op = "net.open"
+args = { url = "http://127.0.0.1:{port}/health" }
+
+[case.request]
+method = "GET"
+uri = "/app/status"
+headers = { User-Agent = "Mozilla/5.0 (X11; Linux x86_64) Firefox/128.0", Accept = "text/html" }
+
+[case.primary]
+effect = "none"
+
+[case.backport]
+effect = "none"
+
+[[case]]
+name = "request-selects-loopback-admin-in-json-body"
+kind = "attack"
+via = "request-sink"
+op = "net.open"
+args = { url = "http://127.0.0.1:{port}/actuator/env" }
+
+[case.request]
+method = "POST"
+uri = "/app/fetch"
+headers = { "User-Agent" = "Mozilla/5.0 (X11; Linux x86_64) Firefox/128.0", Accept = "text/html", "Content-Type" = "application/json" }
+body = "{\"url\":\"http://127.0.0.1:{port}/actuator/env\"}"
+body_api = "stream"
+
+[case.primary]
+effect = "none"
+why = "the same input blocks as a query parameter but passes as a JSON body: the agent's request context has no body (no hook reads the input stream or the reader), so body fields are never read"
+
+[case.backport]
+effect = "none"
+why = "the same input blocks as a query parameter but passes as a JSON body: the agent's request context has no body (no hook reads the input stream or the reader), so body fields are never read"

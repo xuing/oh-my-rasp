@@ -19,7 +19,7 @@ use axum::routing::get;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 
-use crate::control::{ControlState, Controller, Mode};
+use crate::control::{ControlState, ControlStatus, ControlTooLarge, Controller, Mode};
 use crate::store::EventStore;
 use crate::uploader::{CloudStatus, CloudStatusHandle};
 
@@ -61,12 +61,12 @@ async fn healthz() -> &'static str {
 /// counters so an operator can alert on event loss — the same counters the
 /// console shows as JSON, in the text exposition format scrapers understand.
 async fn metrics(State(state): State<Arc<AppState>>) -> impl IntoResponse {
-    let body = render_metrics(&state.cloud_status.snapshot());
+    let body = render_metrics(&state.cloud_status.snapshot(), &state.controller.status());
     ([(CONTENT_TYPE, PROMETHEUS_CONTENT_TYPE)], body)
 }
 
 /// Render the cloud status as Prometheus text exposition format.
-fn render_metrics(status: &CloudStatus) -> String {
+fn render_metrics(status: &CloudStatus, control: &ControlStatus) -> String {
     let mut out = String::with_capacity(1024);
     let mut gauge = |name: &str, help: &str, value: i64| {
         let _ = writeln!(out, "# HELP {name} {help}");
@@ -92,6 +92,11 @@ fn render_metrics(status: &CloudStatus) -> String {
         "ohmyrasp_cloud_policy_version",
         "Version of the cloud-assigned policy currently held.",
         status.policy_version,
+    );
+    gauge(
+        "ohmyrasp_control_write_refused",
+        "Whether the last control file write was refused because the document was larger than the agents read (1) or not (0).",
+        control.write_refused.is_some() as i64,
     );
     gauge(
         "ohmyrasp_events_pending",
@@ -138,10 +143,13 @@ async fn events(State(state): State<Arc<AppState>>, Query(q): Query<EventsQuery>
 }
 
 async fn stats(State(state): State<Arc<AppState>>) -> Json<Value> {
+    // The document and the status of its last write in one snapshot.
+    let (control, control_status) = state.controller.view();
     Json(json!({
         "stats": state.store.stats(),
         "cloud": state.cloud_status.snapshot(),
-        "control": state.controller.snapshot(),
+        "control": control,
+        "control_status": control_status,
         "spool_path": state.spool_path,
         "control_path": state.control_path,
         "version": state.version,
@@ -187,8 +195,15 @@ async fn control_post(
         .update(mode, update.algorithms)
         .map(Json)
         .map_err(|err| {
+            // A change that would make the document larger than the agents read conflicts with
+            // the state the file is in; it is not a server fault.
+            let status = if err.downcast_ref::<ControlTooLarge>().is_some() {
+                StatusCode::CONFLICT
+            } else {
+                StatusCode::INTERNAL_SERVER_ERROR
+            };
             (
-                StatusCode::INTERNAL_SERVER_ERROR,
+                status,
                 Json(ApiError {
                     error: err.to_string(),
                 }),
@@ -216,7 +231,24 @@ mod tests {
             dropped_total: 7,
             ..Default::default()
         };
-        let text = render_metrics(&status);
+        let refused = ControlStatus {
+            oversized_file_replaced: None,
+            write_refused: Some(crate::control::WriteRefused {
+                change: "policy",
+                size_bytes: 2_000_000,
+                limit_bytes: crate::control::MAX_CONTROL_BYTES,
+                at: "t".into(),
+                message: "m".into(),
+                agents_apply_state: true,
+                identity: None,
+            }),
+        };
+        let text = render_metrics(&status, &refused);
+        assert!(text.contains("ohmyrasp_control_write_refused 1"));
+        assert!(
+            render_metrics(&status, &ControlStatus::default())
+                .contains("ohmyrasp_control_write_refused 0")
+        );
         assert!(text.contains("# TYPE ohmyrasp_events_dropped_total counter"));
         assert!(text.contains("ohmyrasp_events_dropped_total 7"));
         assert!(text.contains("ohmyrasp_events_uploaded_total 12"));
@@ -264,5 +296,54 @@ mod tests {
             text.contains("ohmyrasp_events_dropped_total"),
             "metrics body missing drop counter: {text}"
         );
+    }
+
+    async fn get_json(app: Router, uri: &str) -> Value {
+        let resp = app
+            .oneshot(Request::builder().uri(uri).body(Body::empty()).unwrap())
+            .await
+            .unwrap();
+        let bytes = axum::body::to_bytes(resp.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        serde_json::from_slice(&bytes).unwrap()
+    }
+
+    /// A refused control write is visible where the daemon reports its control state, and a
+    /// console change that cannot be written is a conflict, not a server fault.
+    #[tokio::test]
+    async fn a_refused_control_write_is_reported_in_the_status_and_answered_with_a_conflict() {
+        let state = test_state();
+        let app = router(state.clone());
+        let stats = get_json(app.clone(), "/api/stats").await;
+        assert_eq!(stats["control_status"]["write_refused"], Value::Null);
+
+        state
+            .controller
+            .set_policy(Some("a".repeat(crate::control::MAX_CONTROL_BYTES - 300)))
+            .unwrap();
+        let body = json!({ "algorithms": { "s".repeat(300): false } }).to_string();
+        let resp = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/api/control")
+                    .header(CONTENT_TYPE, "application/json")
+                    .body(Body::from(body))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::CONFLICT);
+
+        let stats = get_json(app, "/api/stats").await;
+        let refused = &stats["control_status"]["write_refused"];
+        assert_eq!(refused["change"], "update");
+        assert_eq!(
+            refused["limit_bytes"],
+            json!(crate::control::MAX_CONTROL_BYTES)
+        );
+        assert!(refused["size_bytes"].as_u64().unwrap() > refused["limit_bytes"].as_u64().unwrap());
     }
 }

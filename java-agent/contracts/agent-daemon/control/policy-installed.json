@@ -1,0 +1,10 @@
+{
+  "mode": "block",
+  "algorithms": {
+    "sql_userinput": false,
+    "xss_userinput": true
+  },
+  "policy": "{\"version\":4,\"status\":\"active\",\"canary_percent\":100,\"rules\":[{\"algorithm\":\"sql_userinput\",\"action\":\"block\"}]}",
+  "revision": 3,
+  "updated_at": "2026-01-01T00:00:00Z"
+}

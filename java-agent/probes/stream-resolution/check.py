@@ -9,9 +9,11 @@ from pathlib import Path
 import subprocess
 import tempfile
 from urllib.request import urlopen
-import zipfile
+import sys
 
 COMMON = Path(__file__).resolve().parent.parent / "common"
+sys.path.insert(0, str(COMMON))
+import agent_track  # noqa: E402
 
 
 def main():
@@ -42,9 +44,7 @@ def main():
             return
         agent = args.agent.resolve(strict=True)
         src = Path(__file__).parent
-        with zipfile.ZipFile(agent) as jar:
-            track = next((v for v in ("8", "11", "17") if
-                          f"io/ohmyrasp/agent/java{v}/Java{v}RaspHooks.class" in jar.namelist()), "main")
+        track = agent_track.track(agent) or "main"
         classpath = [tmp, str(library)]
         if args.collections_dir:
             classpath.append(str(args.collections_dir / "*"))

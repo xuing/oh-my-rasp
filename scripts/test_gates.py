@@ -2,6 +2,7 @@
 
 Run: python3 -m unittest discover -s scripts -p 'test_gates.py'
 """
+import re
 import subprocess
 import sys
 import unittest
@@ -37,6 +38,16 @@ class GatesTest(unittest.TestCase):
                         base = gates.ROOT / "java-agent" if command.startswith("cd java-agent") else gates.ROOT
                         self.assertTrue((base / word).is_file(), f"{gate.id}: {word} does not exist")
 
+    def test_workflows_run_when_only_the_contract_examples_change(self):
+        # agent.yml filters on java-agent/**; daemon.yml needs the examples listed because they live there.
+        fixture = "java-agent/contracts/agent-daemon/control/mode-block.json"
+        for name, patterns in (("agent.yml", ("java-agent/**",)), ("daemon.yml", ("java-agent/contracts/**",))):
+            text = (WORKFLOWS / name).read_text()
+            for event in ("push", "pull_request"):
+                block = re.search(rf"^  {event}:\n((?:    .*\n)+)", text, re.M).group(1)
+                for pattern in patterns:
+                    self.assertIn(f'- "{pattern}"', block, f"{name} {event} paths must include {pattern} ({fixture})")
+
     def test_every_source_directory_has_a_gate_beyond_docs(self):
         # A new top-level component with no gate would get only the docs check.
         tracked = subprocess.run(["git", "-C", str(gates.ROOT), "ls-files"], capture_output=True, text=True, check=True)
@@ -48,6 +59,13 @@ class GatesTest(unittest.TestCase):
                 p.startswith(directory + "/") or directory + "/" == p[:len(directory) + 1] for p in g.paths)]
             self.assertTrue(covered, f"no gate lists a path under {directory}/ (for example {sample})")
 
+    def test_probe_sweep_covers_the_line_jars_and_the_universal_jar(self):
+        commands = gates.BY_ID["agent-probes"].commands
+        self.assertEqual(len(commands), 2)
+        self.assertNotIn("--artifact", commands[0])
+        self.assertIn("--artifact all", commands[1])
+        self.assertEqual(commands[0].replace("check-agent.sh ", "check-agent.sh --artifact all "), commands[1])
+
     def test_changed_paths_pick_the_expected_gates(self):
         def ids(paths, slow=False):
             return [gate.id for gate, _ in gates.select(paths, slow)]
@@ -56,7 +74,13 @@ class GatesTest(unittest.TestCase):
         self.assertEqual(ids(["java-agent/agent-java11/src/main/java/X.java"]), ["docs", "agent-parity", "agent-backports"])
         self.assertEqual(ids(["java-agent/shared/src/main/java/X.java"]), ["docs", "agent-primary", "agent-backports"])
         self.assertIn("agent-probes", ids(["java-agent/shared/src/main/java/X.java"], slow=True))
+        # The agent-daemon contract examples are read by the agent tests on every line and by the daemon tests.
+        self.assertEqual(ids(["java-agent/contracts/agent-daemon/control/mode-block.json"]),
+                         ["docs", "agent-primary", "agent-backports", "daemon"])
         self.assertEqual(ids(["java-agent/probes/file-read/check.py"]), ["docs", "probe-registry", "probe:file-read"])
+        # The library list and the recorded hook maps are inputs of the hook-targets probe and of a generated doc.
+        for path in ("java-agent/probes/hook-targets/libraries.toml", "java-agent/probes/hook-targets/recorded/primary.txt"):
+            self.assertEqual(ids([path]), ["docs", "probe-registry", "probe:hook-targets"])
 
 
 if __name__ == "__main__":

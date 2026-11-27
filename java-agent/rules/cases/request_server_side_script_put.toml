@@ -1,0 +1,33 @@
+[[case]]
+name = "put-jsp-trailing-slash"
+kind = "attack"
+via = "request"
+
+[case.request]
+method = "PUT"
+uri = "/1.jsp/"
+headers = { User-Agent = "Mozilla/5.0 (X11; Linux x86_64) Firefox/128.0", Accept = "text/html" }
+
+[case.primary]
+effect = "block"
+rule = "request_server_side_script_put"
+
+[case.backport]
+effect = "unreachable"
+why = "the backports have no request-entry rule for this input"
+
+[[case]]
+name = "benign-put-text"
+kind = "benign"
+via = "request"
+
+[case.request]
+method = "PUT"
+uri = "/assets/upload/report.txt"
+headers = { User-Agent = "Mozilla/5.0 (X11; Linux x86_64) Firefox/128.0", Accept = "text/html" }
+
+[case.primary]
+effect = "none"
+
+[case.backport]
+effect = "none"

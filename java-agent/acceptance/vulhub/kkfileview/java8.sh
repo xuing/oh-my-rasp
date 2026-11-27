@@ -4,19 +4,20 @@ set -euo pipefail
 cd "$(dirname "$0")/../../.."
 
 image="${OHMYRASP_VULHUB_KKFILEVIEW_IMAGE:-vulhub/kkfileview:4.3.0}"
-vulhub_dir="${OHMYRASP_VULHUB_KKFILEVIEW_DIR:-/home/ubuntu/vulhub/kkfileview/4.3-zipslip-rce}"
+vulhub_dir="${OHMYRASP_VULHUB_KKFILEVIEW_DIR:-${OHMYRASP_VULHUB_ROOT:?set OHMYRASP_VULHUB_ROOT to a Vulhub checkout}/kkfileview/4.3-zipslip-rce}"
 sample_odt="${OHMYRASP_VULHUB_KKFILEVIEW_SAMPLE_ODT:-${vulhub_dir}/sample.odt}"
 baseline_name="${OHMYRASP_VULHUB_KKFILEVIEW_BASELINE_NAME:-ohmyrasp-vulhub-kkfileview-baseline}"
 protected_name="${OHMYRASP_VULHUB_KKFILEVIEW_PROTECTED_NAME:-ohmyrasp-vulhub-kkfileview-protected}"
 marker="${OHMYRASP_VULHUB_KKFILEVIEW_MARKER:-/tmp/ohmyrasp-kkfileview-success}"
-host_agent_jar="$(pwd)/agent-java8/build/libs/ohmyrasp-agent-java8.jar"
+# shellcheck source=acceptance/lib/agent-build.sh
+source acceptance/lib/agent-build.sh
+host_agent_jar="$(ohmyrasp_agent_jar "$(pwd)/agent-java8/build/libs/ohmyrasp-agent-java8.jar")"
 baseline_dir="logs/vulhub-kkfileview-43-zipslip-java8-baseline"
 protected_dir="logs/vulhub-kkfileview-43-zipslip-java8-protected"
 protected_log="${protected_dir}/events.jsonl"
 uno_path="/opt/libreoffice7.5/program/uno.py"
 
-docker run --rm -v "$(pwd):/workspace" -w /workspace gradle:jdk25 \
-  gradle --no-daemon :agent-java8:agentJava8Jar
+ohmyrasp_build :agent-java8:agentJava8Jar
 
 if [[ ! -f "$sample_odt" ]]; then
   echo "missing kkFileView sample ODT: ${sample_odt}" >&2

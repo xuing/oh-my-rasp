@@ -1,0 +1,69 @@
+[[case]]
+name = "ldap-lookup-outside-request"
+kind = "attack"
+via = "sink"
+op = "jndi.lookup"
+args = { name = "ldap://127.0.0.1:1/Exploit" }
+completes_with = ["NamingException"]
+
+[case.primary]
+effect = "log"
+rule = "jndi_disable_all"
+why = "the primary blocks this only inside an HTTP request; outside one it logs"
+
+[case.backport]
+effect = "block"
+rule = "jndi_remote_lookup"
+
+[[case]]
+name = "ldap-lookup-in-request"
+kind = "attack"
+via = "request-sink"
+op = "jndi.lookup"
+args = { name = "ldap://127.0.0.1:1/Exploit" }
+completes_with = ["NamingException"]
+
+[case.request]
+method = "GET"
+uri = "/app/report"
+query = "id=7"
+headers = { User-Agent = "Mozilla/5.0 (X11; Linux x86_64) Firefox/128.0", Accept = "text/html" }
+
+[case.primary]
+effect = "block"
+rule = "jndi_disable_all"
+
+[case.backport]
+effect = "block"
+rule = "jndi_remote_lookup"
+
+[[case]]
+name = "benign-java-comp-lookup"
+kind = "benign"
+via = "sink"
+op = "jndi.lookup"
+args = { name = "java:comp/env/jdbc/reports" }
+completes_with = ["NamingException"]
+
+[case.primary]
+effect = "none"
+
+[case.backport]
+effect = "none"
+
+[[case]]
+name = "rmi-lookup"
+kind = "attack"
+via = "sink"
+op = "jndi.lookup"
+args = { name = "rmi://127.0.0.1:1/Exploit" }
+completes_with = ["NamingException"]
+
+[case.primary]
+effect = "log"
+rule = "jndi_disable_all"
+why = "the primary blocks this only inside an HTTP request; outside one it logs"
+
+[case.backport]
+effect = "block"
+rule = "jndi_remote_lookup"

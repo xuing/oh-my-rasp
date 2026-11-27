@@ -3,15 +3,16 @@ set -euo pipefail
 
 cd "$(dirname "$0")/../../.."
 
-docker run --rm -v "$(pwd):/workspace" -w /workspace gradle:jdk25 \
-  gradle --no-daemon :agent-java17:agentJava17Jar
+# shellcheck source=acceptance/lib/agent-build.sh
+source acceptance/lib/agent-build.sh
+ohmyrasp_build :agent-java17:agentJava17Jar
 
 image="${OHMYRASP_VULHUB_TEAMCITY_42793_IMAGE:-vulhub/teamcity:2023.05.3}"
 baseline_name="${OHMYRASP_VULHUB_TEAMCITY_42793_BASELINE_NAME:-ohmyrasp-vulhub-teamcity-42793-baseline}"
 protected_name="${OHMYRASP_VULHUB_TEAMCITY_42793_PROTECTED_NAME:-ohmyrasp-vulhub-teamcity-42793-protected}"
 baseline_port="${OHMYRASP_VULHUB_TEAMCITY_42793_BASELINE_PORT:-19272}"
 protected_port="${OHMYRASP_VULHUB_TEAMCITY_42793_PROTECTED_PORT:-19273}"
-host_agent_jar="$(pwd)/agent-java17/build/libs/ohmyrasp-agent-java17.jar"
+host_agent_jar="$(ohmyrasp_agent_jar "$(pwd)/agent-java17/build/libs/ohmyrasp-agent-java17.jar")"
 baseline_dir="logs/vulhub-teamcity-2023-42793-java17-baseline"
 protected_dir="logs/vulhub-teamcity-2023-42793-java17-protected"
 payload_dir="logs/vulhub-teamcity-2023-42793-java17-payload"

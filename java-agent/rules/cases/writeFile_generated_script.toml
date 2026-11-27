@@ -1,0 +1,75 @@
+[[case]]
+name = "request-plot-system-call"
+kind = "attack"
+via = "request-sink"
+op = "file.write"
+args = { path = "{tmp}/charts/chart.plot", content = "set yrange [0:system('id')]\n", api = "Files.write" }
+
+[case.request]
+method = "GET"
+uri = "/q"
+query = "yrange=%5B0%3Asystem%28%27id%27%29%5D"
+headers = { User-Agent = "Mozilla/5.0 (X11; Linux x86_64) Firefox/128.0", Accept = "text/html" }
+
+[case.primary]
+effect = "block"
+rule = "writeFile_generated_script"
+
+[case.backport]
+effect = "none"
+why = "the backports watch plot directives written through FileOutputStream only, not through Files.write"
+
+[[case]]
+name = "request-shell-script-exec"
+kind = "attack"
+via = "request-sink"
+op = "file.write"
+args = { path = "{tmp}/cache/run.sh", content = "#!/bin/sh\nexec('id')\n", api = "Files.write" }
+
+[case.request]
+method = "POST"
+uri = "/app/jobs"
+query = "script=%23%21%2Fbin%2Fsh%0Aexec%28%27id%27%29%0A"
+headers = { User-Agent = "Mozilla/5.0 (X11; Linux x86_64) Firefox/128.0", Accept = "text/html" }
+
+[case.primary]
+effect = "block"
+rule = "writeFile_generated_script"
+
+[case.backport]
+effect = "unreachable"
+why = "the backports have no generated-script rule, and their script-write rule needs a web root or a ../ in the path"
+
+[[case]]
+name = "plot-system-call-outside-request"
+kind = "attack"
+via = "sink"
+op = "file.write"
+args = { path = "{tmp}/charts/chart.plot", content = "set yrange [0:system('id')]\n", api = "Files.write" }
+
+[case.primary]
+effect = "none"
+why = "the primary decides generated scripts only inside an HTTP request"
+
+[case.backport]
+effect = "none"
+why = "the backports watch plot directives written through FileOutputStream only, not through Files.write"
+
+[[case]]
+name = "benign-request-plot-range"
+kind = "benign"
+via = "request-sink"
+op = "file.write"
+args = { path = "{tmp}/charts/chart.plot", content = "set yrange [0:100]\n", api = "Files.write" }
+
+[case.request]
+method = "GET"
+uri = "/q"
+query = "yrange=%5B0%3A100%5D"
+headers = { User-Agent = "Mozilla/5.0 (X11; Linux x86_64) Firefox/128.0", Accept = "text/html" }
+
+[case.primary]
+effect = "none"
+
+[case.backport]
+effect = "none"

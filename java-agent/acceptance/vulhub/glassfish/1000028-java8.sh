@@ -9,14 +9,15 @@ protected_name="${OHMYRASP_VULHUB_GLASSFISH_1000028_PROTECTED_NAME:-ohmyrasp-vul
 baseline_port="${OHMYRASP_VULHUB_GLASSFISH_1000028_BASELINE_PORT:-18610}"
 protected_port="${OHMYRASP_VULHUB_GLASSFISH_1000028_PROTECTED_PORT:-18611}"
 admin_password="${OHMYRASP_VULHUB_GLASSFISH_1000028_ADMIN_PASSWORD:-vulhub_default_password}"
-host_agent_jar="$(pwd)/agent-java8/build/libs/ohmyrasp-agent-java8.jar"
+# shellcheck source=acceptance/lib/agent-build.sh
+source acceptance/lib/agent-build.sh
+host_agent_jar="$(ohmyrasp_agent_jar "$(pwd)/agent-java8/build/libs/ohmyrasp-agent-java8.jar")"
 baseline_dir="logs/vulhub-glassfish-1000028-java8-baseline"
 protected_dir="logs/vulhub-glassfish-1000028-java8-protected"
 protected_log="${protected_dir}/events.jsonl"
 traversal_path="/theme/META-INF/%c0%ae%c0%ae/%c0%ae%c0%ae/%c0%ae%c0%ae/%c0%ae%c0%ae/%c0%ae%c0%ae/%c0%ae%c0%ae/%c0%ae%c0%ae/%c0%ae%c0%ae/%c0%ae%c0%ae/%c0%ae%c0%ae/etc/passwd"
 
-docker run --rm -v "$(pwd):/workspace" -w /workspace gradle:jdk25 \
-  gradle --no-daemon :agent-java8:agentJava8Jar
+ohmyrasp_build :agent-java8:agentJava8Jar
 
 rm -rf "$baseline_dir" "$protected_dir"
 mkdir -p "$baseline_dir" "$protected_dir"

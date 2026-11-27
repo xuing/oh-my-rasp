@@ -20,6 +20,13 @@ public final class MultipartFilenameVisitor {
         || owner.equals("org/apache/commons/fileupload/disk/DiskFileItem")
         || owner.equals("org/eclipse/jetty/util/MultiPartInputStreamParser$MultiPart")
         || owner.equals("org/eclipse/jetty/server/MultiPartFormInputStream$MultiPart")
+        // Jetty 12 moved the servlet layer out of jetty-server: ee8, ee9 and ee10/ee11 each carry their own.
+        || owner.equals("org/eclipse/jetty/ee8/nested/MultiPartFormInputStream$MultiPart")
+        || owner.equals("org/eclipse/jetty/ee8/nested/MultiPartInputStreamLegacyParser$MultiPart")
+        || owner.equals("org/eclipse/jetty/ee9/nested/MultiPartFormInputStream$MultiPart")
+        || owner.equals("org/eclipse/jetty/ee9/nested/MultiPartInputStreamLegacyParser$MultiPart")
+        || owner.equals("org/eclipse/jetty/ee10/servlet/ServletMultiPartFormData$ServletPart")
+        || owner.equals("org/eclipse/jetty/ee11/servlet/ServletMultiPartFormData$ServletPart")
         || (backport && (owner.equals("org/glassfish/jersey/media/multipart/ContentDisposition")
             || owner.equals("org/springframework/web/multipart/MultipartFile")
             || owner.equals("org/springframework/web/multipart/commons/CommonsMultipartFile")

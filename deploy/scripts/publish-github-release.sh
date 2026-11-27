@@ -8,7 +8,7 @@ set -euo pipefail
 VERSION="${VERSION:?VERSION is required}"
 REF="${REF:-v${VERSION}}"
 DIST_DIR="${DIST_DIR:-dist}"
-EXPECTED_ASSETS="${EXPECTED_ASSETS:-15}"
+EXPECTED_ASSETS="${EXPECTED_ASSETS:?EXPECTED_ASSETS is required (the release workflow sets it)}"
 IMAGE_NAMESPACE="${IMAGE_NAMESPACE:?IMAGE_NAMESPACE is required}"
 REGISTRY="${REGISTRY:-ghcr.io}"
 GITHUB_REPOSITORY="${GITHUB_REPOSITORY:?GITHUB_REPOSITORY is required}"
@@ -106,8 +106,9 @@ cat >> "$notes_file" <<EOF
 
 ## Release Artifacts
 
-- **Java Agents (standard)**: \`ohmyrasp-agent-java8.jar\`, \`ohmyrasp-agent-java11.jar\`, \`ohmyrasp-agent-java17.jar\`, \`ohmyrasp-agent-jdk21.jar\`, \`ohmyrasp-agent.jar\`
-- **shirudo Java upatch JARs (standalone/daemonless)**: \`ohmyrasp-java8.jar\`, \`ohmyrasp-java11.jar\`, \`ohmyrasp-java17.jar\`, \`ohmyrasp-jdk21.jar\`, \`ohmyrasp-jdk25.jar\`
+- **Java Agents (standard)**: \`ohmyrasp-agent-all.jar\` (every Java line, started by a launcher; use this one first), \`ohmyrasp-agent-java8.jar\`, \`ohmyrasp-agent-java11.jar\`, \`ohmyrasp-agent-java17.jar\`, \`ohmyrasp-agent-jdk21.jar\`, \`ohmyrasp-agent.jar\`
+- **shirudo Java upatch JAR for any host (standalone/daemonless)**: \`ohmyrasp.jar\` (the \`ohmyrasp\` package: install this one)
+- **shirudo Java upatch JARs, one per line**: \`ohmyrasp-java8.jar\`, \`ohmyrasp-java11.jar\`, \`ohmyrasp-java17.jar\`, \`ohmyrasp-jdk21.jar\`, \`ohmyrasp-jdk25.jar\`
 - **JDK 21 Shirudo package ready to sign**: \`ohmyrasp-jdk21-shirudo.tar.gz\`
 - **shirudo Beefile bundle**: \`ohmyrasp-shirudo-upatches-${VERSION}.tar.gz\`
 - **Rust Host Daemon**: \`ohmyrasp-daemon-linux-amd64.tar.gz\`

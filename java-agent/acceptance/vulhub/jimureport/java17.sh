@@ -12,14 +12,15 @@ baseline_name="${OHMYRASP_VULHUB_JIMUREPORT_BASELINE_NAME:-ohmyrasp-vulhub-jimur
 protected_name="${OHMYRASP_VULHUB_JIMUREPORT_PROTECTED_NAME:-ohmyrasp-vulhub-jimureport4450-protected}"
 baseline_port="${OHMYRASP_VULHUB_JIMUREPORT_BASELINE_PORT:-18620}"
 protected_port="${OHMYRASP_VULHUB_JIMUREPORT_PROTECTED_PORT:-18621}"
-host_agent_jar="$(pwd)/agent-java17/build/libs/ohmyrasp-agent-java17.jar"
+# shellcheck source=acceptance/lib/agent-build.sh
+source acceptance/lib/agent-build.sh
+host_agent_jar="$(ohmyrasp_agent_jar "$(pwd)/agent-java17/build/libs/ohmyrasp-agent-java17.jar")"
 baseline_dir="logs/vulhub-jimureport-1.6.0-java17-baseline"
 protected_dir="logs/vulhub-jimureport-1.6.0-java17-protected"
 protected_log="${protected_dir}/events.jsonl"
 payload='{"sql":"select '\''result:<#assign ex=\"freemarker.template.utility.Execute\"?new()> ${ex(\"cat /etc/passwd\")}'\''"}'
 
-docker run --rm -v "$(pwd):/workspace" -w /workspace gradle:jdk25 \
-  gradle --no-daemon :agent-java17:agentJava17Jar
+ohmyrasp_build :agent-java17:agentJava17Jar
 
 rm -rf "$baseline_dir" "$protected_dir"
 mkdir -p "$baseline_dir" "$protected_dir"

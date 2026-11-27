@@ -193,8 +193,9 @@ class CompareTest(unittest.TestCase):
         self.assertEqual(len(cdc.compare({}, [site("a/S", SWITCH)])), 1)
         self.assertEqual(len(cdc.compare({}, [site("a/O", CONDY)])), 1)
 
-    def test_string_concat_is_never_a_failure(self):
-        self.assertEqual(cdc.compare({}, [site("a/Concat", CONCAT)] * 5), [])
+    def test_string_concat_is_gated_too(self):
+        # The backport lines compile their own sources with -XDstringConcat=inline: none is allowed.
+        self.assertEqual(len(cdc.compare({}, [site("a/Concat", CONCAT)] * 5)), 1)
 
     def test_one_kind_cannot_borrow_another_kinds_allowance(self):
         self.assertEqual(len(cdc.compare(self.base, [site("a/Foo", LAMBDA), site("a/Foo", RECORD)])), 1)
@@ -243,16 +244,16 @@ class CommandTest(unittest.TestCase):
         return code, out.getvalue(), err.getvalue()
 
     def test_update_then_check_passes_and_primary_line_is_not_gated(self):
-        self.build(java17={"a/Foo": class_with("a/Foo", LAMBDA, CONCAT)}, jdk25={"a/P": class_with("a/P", RECORD)})
+        self.build(java17={"a/Foo": class_with("a/Foo")}, jdk25={"a/P": class_with("a/P", RECORD)})
         self.assertEqual(self.run_cli("--update")[0], 0)
         baseline = json.loads(self.baseline.read_text())["lines"]
-        self.assertEqual(baseline["java17"], {"a/Foo": {"lambda": 1, "string-concat": 1}})
-        self.assertEqual(baseline["java8"], {})
-        self.build(java17={"a/Foo": class_with("a/Foo", LAMBDA, CONCAT)},
+        self.assertEqual(baseline["java17"], {})
+        self.assertEqual(baseline["jdk25"], {"a/P": {"record": 1}})
+        self.build(java17={"a/Foo": class_with("a/Foo")},
                    jdk25={"a/P": class_with("a/P", RECORD, RECORD, LAMBDA)})  # primary line grew: still fine
         code, out, _ = self.run_cli("--check")
         self.assertEqual(code, 0, out)
-        self.assertIn("string-concat=1 (reported, not gated)", out)
+        self.assertIn("java17: ok; sites lambda=0, string-concat=0", out)
         self.assertIn("jdk25: primary line, recorded but not gated", out)
 
     def test_check_fails_for_a_new_lambda_with_actionable_message(self):
@@ -261,13 +262,29 @@ class CommandTest(unittest.TestCase):
         self.build(java11={"a/Foo": class_with("a/Foo", LAMBDA)})
         code, _, err = self.run_cli("--check")
         self.assertEqual(code, 1)
-        for text in ("java11", "a/Foo", "f()V", "lambda or method reference", "anonymous class", "--update", "commit"):
+        for text in ("java11", "a/Foo", "f()V", "lambda or method reference", "anonymous class", "allow no call site"):
             self.assertIn(text, err)
 
-    def test_shaded_classes_are_skipped(self):
+    def test_update_does_not_record_a_backport_site(self):
+        self.build(java17={"a/Foo": class_with("a/Foo", LAMBDA, CONCAT)})
+        code, _, err = self.run_cli("--update")
+        self.assertEqual(code, 1)
+        self.assertIn("java17", err)
+        self.assertFalse(self.baseline.exists(), "nothing written")
+
+    def test_a_baseline_entry_does_not_allow_a_backport_site(self):
+        self.build(java11={"a/Foo": class_with("a/Foo", LAMBDA)})
+        self.baseline.write_text(json.dumps({"comment": "", "lines": {"java11": {"a/Foo": {"lambda": 1}}}}))
+        code, _, err = self.run_cli("--check")
+        self.assertEqual(code, 1, err)
+
+    def test_shaded_classes_are_scanned(self):
         self.build(java8={cdc.SHADED_PREFIX + "asm/X": class_with(cdc.SHADED_PREFIX + "asm/X", LAMBDA)})
-        self.assertEqual(self.run_cli("--update")[0], 0)
-        self.assertEqual(json.loads(self.baseline.read_text())["lines"]["java8"], {})
+        self.assertEqual(self.run_cli("--update")[0], 1)
+        self.baseline.write_text(json.dumps({"comment": "", "lines": {}}))
+        code, _, err = self.run_cli("--check")
+        self.assertEqual(code, 1)
+        self.assertIn(cdc.SHADED_PREFIX + "asm/X", err)
 
     def test_missing_jar_is_a_clear_error(self):
         code, _, err = self.run_cli("--check")

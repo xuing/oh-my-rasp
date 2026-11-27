@@ -1,0 +1,51 @@
+[[case]]
+name = "print-writer-jsp-outside-request"
+kind = "attack"
+via = "sink"
+op = "beans.decode"
+args = { document = "<?xml version=\"1.0\"?><java><object class=\"java.io.PrintWriter\"><string>{tmp}/webapps/ROOT/d.jsp</string><void method=\"println\"><string>&lt;%= 1 %&gt;</string></void><void method=\"close\"/></object></java>" }
+setup = { files = ["{tmp}/webapps/ROOT/index.html", "{tmp}/reports/index.txt"] }
+
+[case.primary]
+effect = "none"
+why = "the primary decides XMLDecoder statements only inside an HTTP request"
+
+[case.backport]
+effect = "block"
+rule = "xml_decoder_script_file_write"
+
+[[case]]
+name = "print-writer-jsp-in-request"
+kind = "attack"
+via = "request-sink"
+op = "beans.decode"
+args = { document = "<?xml version=\"1.0\"?><java><object class=\"java.io.PrintWriter\"><string>{tmp}/webapps/ROOT/d.jsp</string><void method=\"println\"><string>&lt;%= 1 %&gt;</string></void><void method=\"close\"/></object></java>" }
+setup = { files = ["{tmp}/webapps/ROOT/index.html", "{tmp}/reports/index.txt"] }
+
+[case.request]
+method = "GET"
+uri = "/app/report"
+query = "id=7"
+headers = { User-Agent = "Mozilla/5.0 (X11; Linux x86_64) Firefox/128.0", Accept = "text/html" }
+
+[case.primary]
+effect = "block"
+rule = "xml_decoder_webshell"
+
+[case.backport]
+effect = "block"
+rule = "xml_decoder_script_file_write"
+
+[[case]]
+name = "benign-print-writer-text"
+kind = "benign"
+via = "sink"
+op = "beans.decode"
+args = { document = "<?xml version=\"1.0\"?><java><object class=\"java.io.PrintWriter\"><string>{tmp}/reports/d.txt</string><void method=\"println\"><string>weekly</string></void><void method=\"close\"/></object></java>" }
+setup = { files = ["{tmp}/webapps/ROOT/index.html", "{tmp}/reports/index.txt"] }
+
+[case.primary]
+effect = "none"
+
+[case.backport]
+effect = "none"

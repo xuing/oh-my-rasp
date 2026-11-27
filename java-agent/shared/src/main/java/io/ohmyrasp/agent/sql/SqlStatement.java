@@ -490,12 +490,19 @@ public final class SqlStatement {
   /** Check syntax contributed by an observed raw substitution, at its actual JDBC offsets. */
   String mapperControl(BitSet supplied) {
     if (mysqlView == null) return scanMapperControl(supplied, null);
-    Map<Integer, String> alternate = new HashMap<Integer, String>();
-    mysqlView.scanMapperControl(supplied, (offset, reason) -> {
-      alternate.put(offset, reason);
-      return false;
+    // Anonymous classes, not lambdas: backport hooks run this, and a lambda links at run time.
+    final Map<Integer, String> alternate = new HashMap<Integer, String>();
+    mysqlView.scanMapperControl(supplied, new BiPredicate<Integer, String>() {
+      public boolean test(Integer offset, String reason) {
+        alternate.put(offset, reason);
+        return false;
+      }
     });
-    return scanMapperControl(supplied, (offset, reason) -> reason.equals(alternate.get(offset)));
+    return scanMapperControl(supplied, new BiPredicate<Integer, String>() {
+      public boolean test(Integer offset, String reason) {
+        return reason.equals(alternate.get(offset));
+      }
+    });
   }
 
   private String scanMapperControl(BitSet supplied, BiPredicate<Integer, String> confirmed) {

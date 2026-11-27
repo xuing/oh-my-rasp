@@ -1,0 +1,50 @@
+[[case]]
+name = "tail-underflow-outside-request"
+kind = "attack"
+via = "sink"
+op = "base64.decode"
+args = { input = "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=" }
+completes_with = ["IllegalArgumentException"]
+
+[case.primary]
+effect = "block"
+rule = "base64_avx512_tail_underflow"
+
+[case.backport]
+effect = "block"
+rule = "base64_avx512_tail_underflow"
+
+[[case]]
+name = "tail-underflow-in-request"
+kind = "attack"
+via = "request-sink"
+op = "base64.decode"
+args = { input = "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=" }
+completes_with = ["IllegalArgumentException"]
+
+[case.request]
+method = "GET"
+uri = "/app/report"
+query = "id=7"
+headers = { User-Agent = "Mozilla/5.0 (X11; Linux x86_64) Firefox/128.0", Accept = "text/html" }
+
+[case.primary]
+effect = "block"
+rule = "base64_avx512_tail_underflow"
+
+[case.backport]
+effect = "block"
+rule = "base64_avx512_tail_underflow"
+
+[[case]]
+name = "benign-whole-quanta"
+kind = "benign"
+via = "sink"
+op = "base64.decode"
+args = { input = "QUJDQUJDQUJDQUJDQUJDQUJDQUJDQUJDQUJDQUJDQUJDQUJDQUJDQUJDQUJDQUJDQUJD" }
+
+[case.primary]
+effect = "none"
+
+[case.backport]
+effect = "none"

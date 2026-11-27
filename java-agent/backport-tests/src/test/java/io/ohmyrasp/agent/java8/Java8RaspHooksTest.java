@@ -1,5 +1,6 @@
 package io.ohmyrasp.agent.java8;
 
+import io.ohmyrasp.agent.backport.OwnIoAccess;
 import io.ohmyrasp.agent.rules.general.PlotWrite;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -97,6 +98,86 @@ final class Java8RaspHooksTest {
     assertTrue(text.contains("\"event\":\"ohmyrasp-detection\""));
     assertTrue(text.contains("\"algorithm\":\"java8_command_execution_exploit_primitive\""));
     assertTrue(text.contains("\"action\":\"log\""));
+  }
+
+  @Test
+  void aMonitoredCommandIsLoggedOncePerRequestAndAgainInTheNextRequestOnTheSameThread() throws Exception {
+    Path log = Files.createTempFile("ohmyrasp-java8-per-request", ".jsonl");
+    Files.delete(log);
+    System.setProperty("ohmyrasp.java8.log", log.toString());
+    final ProcessBuilder command = new ProcessBuilder("sh", "-c", "cat /etc/shadow");
+    // A worker thread of its own: the request state is per thread, and other tests leave theirs on this one.
+    final Throwable[] failure = new Throwable[1];
+    Thread worker = new Thread(new Runnable() {
+      public void run() {
+        try {
+          for (int request = 0; request < 2; request++) {
+            Java8RaspHooks.beforeHttpRequest(new RequestStub("GET", "/app/report", ""));
+            try {
+              Java8RaspHooks.beforeProcessBuilderStart(command);
+              Java8RaspHooks.beforeProcessBuilderStart(command); // an immediate repeat inside the request
+            } finally {
+              Java8RaspHooks.afterHttpRequest();
+            }
+          }
+        } catch (Throwable thrown) {
+          failure[0] = thrown;
+        }
+      }
+    }, "per-request-dedup");
+    worker.start();
+    worker.join(30000L);
+    if (failure[0] != null) {
+      throw new AssertionError(failure[0]);
+    }
+
+    int logged = 0;
+    for (String line : Files.readAllLines(log, StandardCharsets.UTF_8)) {
+      if (line.contains("\"hook\":\"ProcessBuilder.start\"")) {
+        logged++;
+      }
+    }
+    assertEquals(2, logged, "one event per request: the repeat inside a request is suppressed, the next request logs");
+  }
+
+  @Test
+  void outsideARequestTheSameMonitoredCommandIsLoggedAgainAfterASecond() throws Exception {
+    Path log = Files.createTempFile("ohmyrasp-java8-background", ".jsonl");
+    Files.delete(log);
+    System.setProperty("ohmyrasp.java8.log", log.toString());
+    final ProcessBuilder command = new ProcessBuilder("sh", "-c", "cat /etc/shadow");
+    final java.lang.reflect.Field loggedAt =
+        io.ohmyrasp.agent.backport.BackportHooks.class.getDeclaredField("LAST_LOGGED_AT");
+    loggedAt.setAccessible(true);
+    // A background worker of its own: it never enters a servlet request.
+    final Throwable[] failure = new Throwable[1];
+    Thread worker = new Thread(new Runnable() {
+      public void run() {
+        try {
+          Java8RaspHooks.beforeProcessBuilderStart(command);
+          Java8RaspHooks.beforeProcessBuilderStart(command); // within the second: one event
+          // Two seconds later on this thread's clock, without sleeping for them.
+          long[] at = (long[]) ((ThreadLocal<?>) loggedAt.get(null)).get();
+          at[0] -= 2000000000L;
+          Java8RaspHooks.beforeProcessBuilderStart(command);
+        } catch (Throwable thrown) {
+          failure[0] = thrown;
+        }
+      }
+    }, "background-worker");
+    worker.start();
+    worker.join(30000L);
+    if (failure[0] != null) {
+      throw new AssertionError(failure[0]);
+    }
+
+    int logged = 0;
+    for (String line : Files.readAllLines(log, StandardCharsets.UTF_8)) {
+      if (line.contains("\"hook\":\"ProcessBuilder.start\"")) {
+        logged++;
+      }
+    }
+    assertEquals(2, logged, "an immediate repeat is one event; the same command a second later is logged again");
   }
 
   @Test
@@ -1401,16 +1482,16 @@ final class Java8RaspHooksTest {
     System.setProperty("ohmyrasp.java8.block", "true");
     final String spool = "/usr/local/tomcat/webapps/ROOT/events.jsp";
 
-    boolean entered = RaspRuntime.enterOwnIo();
+    boolean entered = OwnIoAccess.enterOwnIo();
     try {
       assertTrue(entered);
-      assertFalse(RaspRuntime.enterOwnIo(), "a nested mark leaves clearing to the outermost caller");
+      assertFalse(OwnIoAccess.enterOwnIo(), "a nested mark leaves clearing to the outermost caller");
       Java8RaspHooks.beforeFileWrite(spool);
       Java8RaspHooks.beforeNioFileWrite(spool);
     } finally {
-      RaspRuntime.exitOwnIo(entered);
+      OwnIoAccess.exitOwnIo(entered);
     }
-    assertFalse(RaspRuntime.inOwnIo());
+    assertFalse(OwnIoAccess.inOwnIo());
     assertFalse(Files.exists(log), "nothing reported");
 
     // The same write by the application is blocked.
@@ -1965,11 +2046,11 @@ final class Java8RaspHooksTest {
     Java8RaspHooks.afterArchiveEntryName("../notes/report.txt");
     // The agent's own control read or spool write opens a channel between the member's selection
     // and the application's own open of the destination.
-    boolean entered = RaspRuntime.enterOwnIo();
+    boolean entered = OwnIoAccess.enterOwnIo();
     try {
       Java8RaspHooks.beforeUnixChannelWrite(Paths.get("/tmp/ohmyrasp-events.jsonl"), -1, true);
     } finally {
-      RaspRuntime.exitOwnIo(entered);
+      OwnIoAccess.exitOwnIo(entered);
     }
     Java8RaspHooks.beforeFileWrite("/tmp/extract/../notes/report.txt");
 
@@ -2410,6 +2491,34 @@ final class Java8RaspHooksTest {
     assertTrue(text.contains("java.lang.Runtime.getRuntime().exec"));
   }
 
+  /**
+   * javac's own file objects (com.sun.tools.javac.file.PathFileObject, in a module that does not open its package)
+   * are the units a compilation of a file on disk hands to getTask. setAccessible on them fails on Java 17 and later,
+   * so the source is read through the public javax.tools.FileObject instead.
+   */
+  @Test
+  void readsTheSourceOfAJavacFileObject() throws Exception {
+    Path log = Files.createTempFile("ohmyrasp-java8-compile-file", ".jsonl");
+    Files.delete(log);
+    System.setProperty("ohmyrasp.java8.log", log.toString());
+    Path source = Files.createTempFile("EvilCompile", ".java");
+    Files.write(
+        source,
+        "public class EvilCompile { void run() throws Exception { java.lang.Runtime.getRuntime().exec(\"id\"); } }"
+            .getBytes(StandardCharsets.UTF_8));
+    javax.tools.JavaCompiler compiler = javax.tools.ToolProvider.getSystemJavaCompiler();
+    javax.tools.StandardJavaFileManager files = compiler.getStandardFileManager(null, null, null);
+    try {
+      Java8RaspHooks.beforeJavaCompilationUnits("javac", files.getJavaFileObjects(source.toFile()));
+    } finally {
+      files.close();
+    }
+
+    assertTrue(Files.exists(log), "the source of a javac file object was not read");
+    String text = new String(Files.readAllBytes(log), StandardCharsets.UTF_8);
+    assertTrue(text.contains("\"algorithm\":\"java8_java_compile_runtime_execution\""));
+  }
+
   @Test
   void blocksJavaCompilationProcessBuilderWhenBlockModeIsEnabled() throws Exception {
     Path log = Files.createTempFile("ohmyrasp-java8-compile-block", ".jsonl");
@@ -2798,7 +2907,7 @@ final class Java8RaspHooksTest {
     return calls.get();
   }
 
-  static final class JaxRsRequestStub {
+  public static final class JaxRsRequestStub {
     private final String method;
     private final URI requestUri;
     private final Map<String, String> headers = new HashMap<String, String>();

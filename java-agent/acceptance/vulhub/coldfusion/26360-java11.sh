@@ -9,7 +9,9 @@ protected_name="${OHMYRASP_VULHUB_COLDFUSION_26360_PROTECTED_NAME:-ohmyrasp-cold
 baseline_port="${OHMYRASP_VULHUB_COLDFUSION_26360_BASELINE_PORT:-19500}"
 protected_port="${OHMYRASP_VULHUB_COLDFUSION_26360_PROTECTED_PORT:-19501}"
 protected_debug_port="${OHMYRASP_VULHUB_COLDFUSION_26360_PROTECTED_DEBUG_PORT:-19505}"
-host_agent_jar="$(pwd)/agent-java11/build/libs/ohmyrasp-agent-java11.jar"
+# shellcheck source=acceptance/lib/agent-build.sh
+source acceptance/lib/agent-build.sh
+host_agent_jar="$(ohmyrasp_agent_jar "$(pwd)/agent-java11/build/libs/ohmyrasp-agent-java11.jar")"
 baseline_dir="logs/vulhub-coldfusion-2018.0.15-26360-java11-baseline"
 protected_dir="logs/vulhub-coldfusion-2018.0.15-26360-java11-protected"
 payload_dir="logs/vulhub-coldfusion-2018.0.15-26360-java11-payload"
@@ -198,8 +200,7 @@ run_protected() {
   fi
 }
 
-docker run --rm -v "$(pwd):/workspace" -w /workspace gradle:jdk25 \
-  gradle --no-daemon :agent-java11:agentJava11Jar >/dev/null
+ohmyrasp_build :agent-java11:agentJava11Jar >/dev/null
 
 rm -rf "$baseline_dir" "$protected_dir" "$payload_dir"
 mkdir -p "$baseline_dir" "$protected_dir" "$payload_dir"

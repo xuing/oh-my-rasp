@@ -6,10 +6,17 @@ use std::sync::Mutex;
 
 use serde::Serialize;
 
-use crate::model::AgentEvent;
+use crate::model::{AgentEvent, AgentInfo};
 use crate::util::now_rfc3339;
 
 const LATENCY_SAMPLES: usize = 2000;
+/// The most distinct labels `ignored_kinds` keeps; a line of any further kind is counted under
+/// [`OTHER_IGNORED`]. A spool producer that writes a new kind on every line cannot grow the map.
+const MAX_IGNORED_LABELS: usize = 32;
+/// The longest a label is, in characters, before it is used.
+const MAX_IGNORED_LABEL_CHARS: usize = 64;
+/// Where the kinds past [`MAX_IGNORED_LABELS`] are counted.
+pub const OTHER_IGNORED: &str = "(other)";
 
 pub struct EventStore {
     capacity: usize,
@@ -25,6 +32,8 @@ struct Inner {
     by_hook: HashMap<String, u64>,
     by_algorithm: HashMap<String, u64>,
     by_action: HashMap<String, u64>,
+    ignored_kinds: HashMap<String, u64>,
+    agent: Option<AgentInfo>,
     latencies: VecDeque<i64>,
     started_at: String,
     last_event_at: Option<String>,
@@ -59,6 +68,11 @@ pub struct StatsSnapshot {
     pub by_hook: Vec<Counter>,
     pub by_algorithm: Vec<Counter>,
     pub by_action: Vec<Counter>,
+    /// Lines of a `kind` the daemon does not know, by kind (or by `event:<event>` when the line
+    /// has no kind). Never counted as detections and never uploaded.
+    pub ignored_kinds: Vec<Counter>,
+    /// The agent as its last start line described it; absent until one was read.
+    pub agent: Option<AgentInfo>,
 }
 
 impl EventStore {
@@ -74,6 +88,8 @@ impl EventStore {
                 by_hook: HashMap::new(),
                 by_algorithm: HashMap::new(),
                 by_action: HashMap::new(),
+                ignored_kinds: HashMap::new(),
+                agent: None,
                 latencies: VecDeque::new(),
                 started_at: now_rfc3339(),
                 last_event_at: None,
@@ -134,6 +150,28 @@ impl EventStore {
         }
     }
 
+    /// Record an agent lifecycle (start) line: it updates the agent entry of the status view and
+    /// is otherwise invisible. It is not a detection, so it counts nowhere else.
+    pub fn record_lifecycle(&self, event: &AgentEvent) {
+        let mut inner = self.inner.lock().expect("store mutex");
+        inner.agent = Some(event.agent_info());
+    }
+
+    /// Count a line of a kind the daemon does not know. It is not retained, not counted as a
+    /// detection and not uploaded.
+    pub fn record_ignored(&self, event: &AgentEvent) {
+        let label = truncated_label(event.ignored_label());
+        tracing::debug!(%label, "ignoring an agent line of an unknown kind");
+        let mut inner = self.inner.lock().expect("store mutex");
+        let known = inner.ignored_kinds.contains_key(&label);
+        let key = if known || inner.ignored_kinds.len() < MAX_IGNORED_LABELS {
+            label
+        } else {
+            OTHER_IGNORED.to_string()
+        };
+        *inner.ignored_kinds.entry(key).or_default() += 1;
+    }
+
     /// Most-recent-first slice of retained events, optionally filtered.
     pub fn recent(
         &self,
@@ -167,7 +205,17 @@ impl EventStore {
             by_hook: top_counters(&inner.by_hook, 20),
             by_algorithm: top_counters(&inner.by_algorithm, 20),
             by_action: top_counters(&inner.by_action, 20),
+            ignored_kinds: top_counters(&inner.ignored_kinds, 20),
+            agent: inner.agent.clone(),
         }
+    }
+}
+
+/// The label cut to [`MAX_IGNORED_LABEL_CHARS`] characters.
+fn truncated_label(label: String) -> String {
+    match label.char_indices().nth(MAX_IGNORED_LABEL_CHARS) {
+        Some((end, _)) => label[..end].to_string(),
+        None => label,
     }
 }
 
@@ -238,6 +286,53 @@ mod tests {
             latency_us: latency,
             raw: json!({"hook": hook, "action": action}),
         }
+    }
+
+    fn ignored(seq: u64, kind: &str) -> AgentEvent {
+        AgentEvent {
+            kind: kind.into(),
+            ..event(seq, "h", "log", None)
+        }
+    }
+
+    /// A spool producer that writes a new kind on every line cannot grow the map: past the
+    /// limit the kinds are counted under `(other)`, and nothing is lost from the total.
+    #[test]
+    fn the_ignored_kinds_are_bounded_however_many_distinct_kinds_arrive() {
+        let store = EventStore::new(10);
+        for seq in 0..10_000u64 {
+            store.record_ignored(&ignored(seq, &format!("kind-{seq}")));
+        }
+        {
+            let inner = store.inner.lock().unwrap();
+            assert!(
+                inner.ignored_kinds.len() <= MAX_IGNORED_LABELS + 1,
+                "{} labels",
+                inner.ignored_kinds.len()
+            );
+            assert_eq!(inner.ignored_kinds.values().sum::<u64>(), 10_000);
+            assert_eq!(
+                inner.ignored_kinds[OTHER_IGNORED],
+                10_000 - MAX_IGNORED_LABELS as u64
+            );
+        }
+        // A kind that already has a label keeps counting under it.
+        store.record_ignored(&ignored(0, "kind-0"));
+        let stats = store.stats();
+        let kind0 = stats.ignored_kinds.iter().find(|c| c.key == "kind-0");
+        assert_eq!(kind0.map(|c| c.count), Some(2));
+    }
+
+    #[test]
+    fn an_ignored_label_is_cut_to_64_characters_before_it_is_used() {
+        let store = EventStore::new(10);
+        store.record_ignored(&ignored(1, &"k".repeat(10_000)));
+        // Multi-byte characters are cut on a character boundary.
+        store.record_ignored(&ignored(2, &"\u{e9}".repeat(100)));
+        let stats = store.stats();
+        let keys: Vec<&str> = stats.ignored_kinds.iter().map(|c| c.key.as_str()).collect();
+        assert!(keys.contains(&"k".repeat(64).as_str()), "{keys:?}");
+        assert!(keys.contains(&"\u{e9}".repeat(64).as_str()), "{keys:?}");
     }
 
     #[test]

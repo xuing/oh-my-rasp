@@ -6,13 +6,15 @@ baseline_name="${OHMYRASP_VULHUB_NEXUS_4956_BASELINE_NAME:-ohmyrasp-vulhub-nexus
 protected_name="${OHMYRASP_VULHUB_NEXUS_4956_PROTECTED_NAME:-ohmyrasp-vulhub-nexus4956-protected}"
 baseline_port="${OHMYRASP_VULHUB_NEXUS_4956_BASELINE_PORT:-18687}"
 protected_port="${OHMYRASP_VULHUB_NEXUS_4956_PROTECTED_PORT:-18688}"
-admin_password_file="${OHMYRASP_VULHUB_NEXUS_4956_ADMIN_PASSWORD_FILE:-/tmp/vulhub-ohmyrasp-20260603/nexus/CVE-2024-4956/admin.password}"
+admin_password_file="${OHMYRASP_VULHUB_NEXUS_4956_ADMIN_PASSWORD_FILE:-${OHMYRASP_VULHUB_ROOT:?set OHMYRASP_VULHUB_ROOT to a Vulhub checkout}/nexus/CVE-2024-4956/admin.password}"
 traversal_path="/%2F%2F%2F%2F%2F%2F%2F..%2F..%2F..%2F..%2F..%2F..%2F..%2Fetc%2Fpasswd"
 
 script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 repo_root="$(cd -- "${script_dir}/../../../.." && pwd)"
 agent_root="${repo_root}/java-agent"
-agent_jar="${agent_root}/agent-java8/build/libs/ohmyrasp-agent-java8.jar"
+# shellcheck source=acceptance/lib/agent-build.sh
+source "${agent_root}/acceptance/lib/agent-build.sh"
+agent_jar="$(ohmyrasp_agent_jar "${agent_root}/agent-java8/build/libs/ohmyrasp-agent-java8.jar")"
 work_dir="${OHMYRASP_VULHUB_NEXUS_4956_WORK_DIR:-/tmp/ohmyrasp-nexus4956}"
 baseline_response="${work_dir}/baseline-passwd.txt"
 protected_response="${work_dir}/protected-passwd.txt"
@@ -73,11 +75,7 @@ if [[ ! -f "${admin_password_file}" ]]; then
   exit 1
 fi
 
-docker run --rm \
-  -v "${agent_root}:/workspace" \
-  -w /workspace \
-  gradle:jdk25 \
-  gradle --no-daemon :agent-java8:agentJava8Jar >/dev/null
+ohmyrasp_build :agent-java8:agentJava8Jar >/dev/null
 
 rm -rf "${work_dir}"
 mkdir -p "${protected_logs}"

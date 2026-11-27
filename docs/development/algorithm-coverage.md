@@ -992,6 +992,7 @@ How some of these rules decide:
   rejects [form parsing](../detection.md#request-parameter-substring-correlation).
 - `xss_userinput`, `response_dataLeak` and `xss_echo`:
   [response-side data-leak detection](../detection.md#response-side-data-leak-detection).
+  `response_dataLeak` and `xss_echo` are defined and not wired: no hook module reaches them.
 - `command_reflect`: [process launches](../detection.md#process-launches).
 - `deleteFile_userinput`: [host file deletion](../detection.md#host-file-deletion).
 - `directory_userinput`: [host directory listings](../detection.md#host-directory-listings).
@@ -1141,8 +1142,7 @@ How some of these rules decide:
   records the real Vulhub Mojarra boundary: baseline Java 7u21/Mojarra 2.1.28
   accepts a ysoserial `Jdk7u21` ViewState payload and creates
   `/tmp/ohmyrasp-mojarra-viewstate-success`, while the current Java 8 LTS agent
-  cannot inject into that Java 7 runtime because it rejects classfile major
-  version 52.0.
+  cannot protect that Java 7 runtime: the agent prints its `unsupported-java` skip line and the JVM starts unprotected.
 - `request_default_credential` covers HTTP Basic or form login attempts that
   use known default Java management credentials on admin, manager, console,
   Jolokia/API, OAuth, CAS, or other control paths. This targets Tomcat Manager,
@@ -1156,8 +1156,7 @@ How some of these rules decide:
   `acceptance/vulhub/tomcat/tomcat8-manager-java7-legacy.sh` records the real
   Vulhub Tomcat8 Manager boundary: baseline OpenJDK 7u121/Tomcat 8.0.43 accepts
   `tomcat` / `tomcat`, deploys a WAR through `/manager/text/deploy`, and runs a
-  JSP marker, while the current Java 8 LTS agent cannot inject into that Java 7
-  runtime because it rejects classfile major version 52.0.
+  JSP marker, while the current Java 8 LTS agent cannot protect that Java 7 runtime: the agent prints its `unsupported-java` skip line and the JVM starts unprotected.
 - `request_empty_credential_bypass` covers control/admin endpoint requests that
   submit empty username and password parameters together with an account-state
   bypass flag such as `requirePasswordChange`. This targets OFBiz-style
@@ -1284,7 +1283,8 @@ How some of these rules decide:
   Metabase CVE-2023-38646 Vulhub acceptance verifies the real setup-token flow
   and lower-level `ScriptEngine.eval` block for the H2 setup-validation
   trigger.
-- `request_message_selector_expression` covers STOMP/SockJS-style message
+- `request_message_selector_expression` is defined and not wired on the primary agent
+  (its detector reads the request body, which the servlet entry does not capture). It covers STOMP/SockJS-style message
   frames where a message `selector:` header contains a runtime expression
   primitive instead of an ordinary selector predicate. This targets Spring
   Messaging CVE-2018-1270 selector SpEL injection while requiring message-frame
@@ -1399,7 +1399,8 @@ How some of these rules decide:
   Vulhub acceptance verifies the Freemarker-parsed `redirectUri` OGNL value,
   including the required trailing newline, with enforcement at the later
   `ProcessBuilder.start` sink.
-- `request_json_patch_expression` covers `application/json-patch+json` PATCH
+- `request_json_patch_expression` is defined and not wired on the primary agent
+  (its detector reads the request body, which the servlet entry does not capture). It covers `application/json-patch+json` PATCH
   request bodies whose JSON Patch `path` field carries a runtime expression
   payload. This targets Spring Data REST CVE-2017-8046 JSON Patch SpEL
   injection before the patch path is evaluated, while logging only inferred
@@ -1424,8 +1425,7 @@ How some of these rules decide:
   verifies the `/users?page=&size=5` binder flow with enforcement at the later
   process sink. The real Spring WebFlow Vulhub probe verifies the hotel
   booking confirm-state baseline RCE on OpenJDK 7u121 and records that current
-  Java 8+ LTS agents cannot inject into that legacy JVM because it rejects
-  classfile major version 52.0. The playground also includes
+  Java 8+ LTS agents cannot protect that legacy JVM: the agent prints its `unsupported-java` skip line and the JVM starts unprotected. The playground also includes
   `/example/HelloWorld.action` and
   `/index.action` parameter-name payloads for S2-003, S2-005, S2-016, and
   S2-032/CVE-2016-3081. The real Java 8 Struts2 S2-005 Vulhub acceptance
@@ -1494,7 +1494,8 @@ How some of these rules decide:
   `acceptance/vulhub/coldfusion/29300-java11.sh`: baseline reaches a
   host LDAP listener from ColdFusion 2018.0.15, while protected mode blocks the
   same WDDX POST at `HttpServlet.service` before the outbound LDAP connection.
-- `request_xml_polymorphic_gadget` covers XML request bodies that declare
+- `request_xml_polymorphic_gadget` is defined and not wired on the primary agent
+  (its detector reads the request body, which the servlet entry does not capture). It covers XML request bodies that declare
   dangerous Java polymorphic gadget types through XML class attributes, class
   elements, or fully qualified Java tag names before an XML object mapper
   unmarshals them. This targets Struts2 S2-052-style REST/XStream payloads
@@ -1567,8 +1568,7 @@ How some of these rules decide:
   `java11_file_sensitive_read` at `FileInputStream.open`, before
   `/proc/self/environ` is returned. The scripted ColdFusion CVE-2010-2861
   Vulhub probe proves the README-shaped `locale=.../etc/passwd%00en` baseline
-  disclosure, but the image runs Java 6u04 and rejects the Java 8 agent
-  classfile version, so it is tracked as a legacy runtime boundary rather than a
+  disclosure, but the image runs Java 6u04 and the Java 8 agent only prints its `unsupported-java` skip line there and the JVM starts unprotected, so it is tracked as a legacy runtime boundary rather than a
   protected LTS acceptance. The scripted Confluence CVE-2019-3396 Java 8 Vulhub
   setup-boundary probe confirms the image runtime is injectable in principle,
   but the uninitialized environment keeps the macro-preview `_template` request
@@ -1626,7 +1626,9 @@ How some of these rules decide:
   written, while requiring graph/query endpoint context and multiple plot
   markers.
 - `request_sql_sort_injection` and `request_sql_identifier_injection` are
-  selectable JSON metadata observations for report and GraphQL fields.
+  JSON metadata observations for report and GraphQL fields, defined and not wired
+  on the primary agent (they read the request body, which the servlet entry does
+  not capture).
   The [mapper and JDBC rules](../detection.md#mybatis-dynamic-sql) examine
   actual SQL. The SkyWalking DAO hook separately observes the identifier
   argument. The [Vulhub ledger](vulhub-coverage.md) records the historical
@@ -1755,8 +1757,7 @@ How some of these rules decide:
   while keeping the decision at the file API boundary rather than on endpoint
   names alone. The real WebLogic weak-password Vulhub legacy-boundary script
   proves the Java 6 baseline discloses `/etc/passwd` and that the current Java
-  8 agent cannot inject into that runtime because the JVM rejects classfile
-  major version 52.0.
+  8 agent cannot protect that runtime: the agent prints its `unsupported-java` skip line and the JVM starts unprotected.
 - `writeFile_config_path` covers runtime configuration persistence stacks that
   write to unsafe filesystem targets, such as RocketMQ NameServer
   CVE-2023-37582 `configStorePath` updates that redirect config persistence to
@@ -1896,7 +1897,7 @@ How some of these rules decide:
   Java 6 WebLogic CVE-2018-2628 Vulhub boundary in
   `acceptance/vulhub/weblogic/2628-java6-legacy.sh` proves the baseline
   JRMPClient2 replay reaches the JRMP listener and creates a marker, while the
-  current Java 8 agent cannot inject into the Java 6u45 runtime. The real Java
+  current Java 8 agent cannot protect the Java 6u45 runtime: the agent prints its `unsupported-java` skip line and the JVM starts unprotected. The real Java
   8 WebLogic CVE-2023-21839 Vulhub acceptance proves the baseline IIOP/JNDI
   replay reaches an outbound LDAP listener and protected mode blocks the same
   remote lookup with `java8_jndi_remote_lookup` before the listener is reached
@@ -1910,8 +1911,7 @@ How some of these rules decide:
   web-console `GET /admin/message.jsp` browse flow. The real ActiveMQ
   CVE-2015-5254 Vulhub probe verifies the jmet ROME `ObjectMessage` baseline
   on Oracle Java 7u21/ActiveMQ 5.11.1 and records that current Java 8+ LTS
-  agents cannot inject into that legacy JVM because it rejects classfile major
-  version 52.0.
+  agents cannot protect that legacy JVM: the agent prints its `unsupported-java` skip line and the JVM starts unprotected.
 - `deserialization_signed_object` covers `java.security.SignedObject`
   deserialization on remote CLI/remoting object-stream stacks. This targets
   Jenkins CVE-2017-1000353-style SignedObject blacklist-bypass payloads while
@@ -1947,8 +1947,7 @@ How some of these rules decide:
   [Vulhub ledger](vulhub-coverage.md) records historical Dubbo CVE-2019-17564 evidence.
   The real JBoss CVE-2017-12149 Vulhub probe verifies the
   `/invoker/readonly` CommonsCollections5 object-stream baseline on Java
-  7u221/JBoss AS 6.1.0 and records that current Java 8+ LTS agents cannot
-  inject into that legacy JVM because it rejects classfile major version 52.0.
+  7u221/JBoss AS 6.1.0 and records that current Java 8+ LTS agents cannot protect that legacy JVM: the agent prints its `unsupported-java` skip line and the JVM starts unprotected.
   The real JBoss JMXInvokerServlet Vulhub probe verifies the
   `/invoker/JMXInvokerServlet` CommonsCollections5 object-stream baseline on
   Java 7u221/JBoss AS 6.1.0 and records the same Java 7 runtime boundary for
@@ -1989,8 +1988,7 @@ How some of these rules decide:
   for the HertzBeat CVE-2024-42323 parser boundary. The real Jackson Vulhub
   probe verifies both the CVE-2017-7525 `TemplatesImpl` baseline and the
   CVE-2017-17485 Spring XML baseline on Java 7u21, then records that current
-  Java 8+ LTS agents cannot inject into that legacy JVM because it rejects
-  classfile major version 52.0.
+  Java 8+ LTS agents cannot protect that legacy JVM: the agent prints its `unsupported-java` skip line and the JVM starts unprotected.
 - `sql_h2_code_execution` covers H2 SQL statements that load remote scripts or
   define executable Java code through aliases, triggers, or similar code
   containers. This targets H2 console RCE flows such as CVE-2018-10054 without
@@ -2053,8 +2051,7 @@ How some of these rules decide:
   WebLogic UDDI Explorer SSRF where an `operator=` URL targets internal HTTP or
   Redis services, including CRLF-shaped Redis command payloads; the real Vulhub
   UDDI script proves the Java 6u45 baseline relay to a host listener, but records
-  the target as a legacy runtime boundary because the Java 6 JVM rejects the
-  Java 8 agent classfile version. Public external URLs that are not
+  the target as a legacy runtime boundary because the Java 8 agent cannot protect Java 6: it prints its `unsupported-java` skip line and the JVM starts unprotected. Public external URLs that are not
   request-controlled remain allowed.
 - `ssrf_protocol`, `ssrf_userinput`, and related SSRF algorithms also cover XML
   attachment resolvers that fall back from MTOM/XOP content IDs to URL loading.
@@ -2091,7 +2088,10 @@ How some of these rules decide:
   at the multipart filename hook. The playground declares a deployment freeze
   for its upload control. Historical MeterSphere and Flink results and their
   validation boundaries are recorded in the [Vulhub ledger](vulhub-coverage.md).
-- `fileUpload_webdav` covers WebDAV-style `MOVE`/`COPY` operations that produce
+- `fileUpload_webdav` is defined and not wired: no hook module reaches its entry
+  method, so the primary agent does not report it on a protected application
+  ([the list of such rules](../../java-agent/docs/DETECTION-COVERAGE.md#defined-not-wired)).
+  Its detector covers WebDAV-style `MOVE`/`COPY` operations that produce
   server-side script files or write to unsafe absolute filesystem destinations.
   This targets ActiveMQ fileserver CVE-2016-3088 shapes such as moving an
   uploaded file from `/fileserver/2.txt` to
@@ -2099,8 +2099,7 @@ How some of these rules decide:
   ignoring ordinary WebDAV renames inside the shared file area. The real
   ActiveMQ CVE-2016-3088 Vulhub probe verifies the PUT/MOVE webroot JSP write
   baseline on Oracle Java 7u21/ActiveMQ 5.11.1 and records that current Java
-  8+ LTS agents cannot inject into that legacy JVM because it rejects classfile
-  major version 52.0.
+  8+ LTS agents cannot protect that legacy JVM: the agent prints its `unsupported-java` skip line and the JVM starts unprotected.
 - `archive_traversal` covers archive extraction where the current archive entry
   contains parent-directory, absolute-path, or NUL-path traversal and the
   subsequent file write uses that unsafe entry as the output path. The Java
@@ -2123,7 +2122,7 @@ How some of these rules decide:
   `XMLDecoder` flow for CVE-2017-10271. The real Vulhub WebLogic
   CVE-2017-10271 script proves baseline Java 6u45 marker creation through
   `ProcessBuilder.start`, but records the environment as a legacy runtime
-  boundary because the Java 6 JVM rejects the Java 8 agent classfile version.
+  boundary because the Java 8 agent cannot protect Java 6: it prints its `unsupported-java` skip line and the JVM starts unprotected.
 - `xxe_external_entity_protocol` ignores trusted local framework metadata
   resources required for normal startup, including WebLogic's local
   `jar:file:/u01/oracle/wlserver/modules/com.oracle.weblogic.security.service.store.jar!/com/bea/common/security/store/data/package.jdo`

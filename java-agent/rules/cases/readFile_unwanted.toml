@@ -1,0 +1,64 @@
+[[case]]
+name = "passwd-read-outside-request"
+kind = "attack"
+via = "sink"
+op = "file.read"
+args = { path = "/etc/passwd" }
+
+[case.primary]
+effect = "none"
+why = "the primary decides sensitive host reads only inside an HTTP request"
+
+[case.backport]
+effect = "block"
+rule = "file_sensitive_read"
+
+[[case]]
+name = "passwd-read-in-request"
+kind = "attack"
+via = "request-sink"
+op = "file.read"
+args = { path = "/etc/passwd" }
+
+[case.request]
+method = "GET"
+uri = "/app/report"
+query = "id=7"
+headers = { User-Agent = "Mozilla/5.0 (X11; Linux x86_64) Firefox/128.0", Accept = "text/html" }
+
+[case.primary]
+effect = "block"
+rule = "readFile_unwanted"
+
+[case.backport]
+effect = "block"
+rule = "file_sensitive_read"
+
+[[case]]
+name = "benign-report-read"
+kind = "benign"
+via = "sink"
+op = "file.read"
+args = { path = "{tmp}/reports/weekly.txt" }
+setup = { files = ["{tmp}/reports/weekly.txt"] }
+
+[case.primary]
+effect = "none"
+
+[case.backport]
+effect = "none"
+
+[[case]]
+name = "passwd-read-nio"
+kind = "attack"
+via = "sink"
+op = "file.read"
+args = { path = "/etc/passwd", api = "Files.readAllBytes" }
+
+[case.primary]
+effect = "none"
+why = "the primary decides sensitive host reads only inside an HTTP request"
+
+[case.backport]
+effect = "block"
+rule = "file_sensitive_read"

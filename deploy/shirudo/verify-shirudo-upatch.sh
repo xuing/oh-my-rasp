@@ -1,6 +1,7 @@
 #!/bin/sh
 # Validate all OhMyRASP Beefiles (and staged JARs unless --beefile-only is passed)
-# against shirudo's exact Beefile parser and Java upatch JAR rules.
+# against shirudo's exact Beefile parser and Java upatch JAR rules. A JAR's Premain-Class must be
+# its launcher entry, the baked properties must appear once, and the universal JAR must hold all four lines.
 
 set -eu
 
@@ -51,17 +52,31 @@ ROOT = sys.argv[1]
 BEEFILE_ONLY = sys.argv[2] == "1"
 VERSION = sys.argv[3]
 
+LAUNCH = "io.ohmyrasp.agent.launch."
+
+# The classes of each agent line's entry point, as paths in a JAR. The universal JAR holds all four.
+LINE_ENTRIES = {
+    "primary": "io/ohmyrasp/agent/OhMyRaspAgent.class",
+    "java17": "io/ohmyrasp/agent/java17/OhMyRaspJava17Agent.class",
+    "java11": "io/ohmyrasp/agent/java11/OhMyRaspJava11Agent.class",
+    "java8": "io/ohmyrasp/agent/java8/OhMyRaspJava8Agent.class",
+}
+
+# (package, JAR may carry Boot-Class-Path, the Premain-Class its launcher entry names, the lines it must hold)
 PACKAGES = [
-    ("ohmyrasp-java8", False),
-    ("ohmyrasp-java11", True),
-    ("ohmyrasp-java17", True),
-    ("ohmyrasp-jdk21", True),
-    ("ohmyrasp-jdk25", True),
+    ("ohmyrasp", False, LAUNCH + "UniversalEntry", tuple(LINE_ENTRIES)),
+    ("ohmyrasp-java8", False, LAUNCH + "Java8Entry", ()),
+    ("ohmyrasp-java11", True, LAUNCH + "Java11Entry", ()),
+    ("ohmyrasp-java17", True, LAUNCH + "Java17Entry", ()),
+    ("ohmyrasp-jdk21", True, LAUNCH + "PrimaryEntry", ()),
+    ("ohmyrasp-jdk25", True, LAUNCH + "PrimaryEntry", ()),
 ]
 
 PKG_NAME_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,126}$")
 BARE_KEY_PART_RE = re.compile(r"^[A-Za-z0-9_-]+$")
 UPATCH_NAME_CHAR_RE = re.compile(r"^[A-Za-z0-9._-]+$")
+FIXES_MAX = 16
+FIXES_ID_RE = re.compile(r"^[A-Za-z0-9._:-]{1,255}$")
 UPATCH_FILE_MAX = 16 * 1024 * 1024
 JAR_MANIFEST_MAX = 1 << 20
 USTAR_NAME_LIMIT = 99
@@ -200,8 +215,9 @@ def upatch_base(source):
     return stem
 
 
-def validate_beefile(pkg_name):
-    beefile_path = os.path.join(ROOT, pkg_name, "Beefile")
+def validate_beefile(pkg_name, base=None):
+    """Check a package's Beefile (in `base`/<pkg_name>, default the package directory); returns its fixes or None."""
+    beefile_path = os.path.join(base or ROOT, pkg_name, "Beefile")
     if not os.path.isfile(beefile_path):
         fail(f"missing Beefile: {beefile_path}")
     with open(beefile_path, "r", encoding="utf-8") as fh:
@@ -324,6 +340,16 @@ def validate_beefile(pkg_name):
     if has_control_char(tree_id) or not upatch_name_valid(tree_id) or tree_id != base:
         fail(f"{beefile_path}: invalid [upatches.tree].id {tree_id!r} (expected {base!r})")
 
+    fixes = tree.get("fixes")
+    if fixes is not None:
+        if len(fixes) > FIXES_MAX:
+            fail(f"{beefile_path}: {len(fixes)} IDs in fixes, shirudo takes at most {FIXES_MAX}")
+        for advisory in fixes:
+            if not FIXES_ID_RE.match(advisory):
+                fail(f"{beefile_path}: fixes ID {advisory!r} is not 1 to 255 bytes of letters, digits, '.', '_', ':' and '-'")
+        if len(set(fixes)) != len(fixes):
+            fail(f"{beefile_path}: fixes lists an ID more than once")
+
     load_target = u.get("load_target", f"upatches/{base}.upatch")
     unload_target = u.get("unload_target", f"upatches/{base}.unload.upatch")
     members = [
@@ -340,7 +366,46 @@ def validate_beefile(pkg_name):
         if len(full) >= USTAR_NAME_LIMIT:
             fail(f"{beefile_path}: tar member path {full!r} is {len(full)} bytes (must be < {USTAR_NAME_LIMIT})")
 
-    print(f"OK beefile: {pkg_name} (name={name}, source={source}, tree.id={tree_id})")
+    listed = f", fixes={len(fixes)} IDs" if fixes is not None else ""
+    print(f"OK beefile: {pkg_name} (name={name}, source={source}, tree.id={tree_id}{listed})")
+    return fixes
+
+
+def zip_names(data):
+    """The name of every entry in the central directory, in order."""
+    at = len(data) - ZIP_END_LEN
+    low = at - ZIP_COMMENT_MAX if at > ZIP_COMMENT_MAX else 0
+    while at >= low and struct.unpack_from("<I", data, at)[0] != ZIP_END_SIG:
+        at -= 1
+    if at < low:
+        raise ValueError("zip end of central directory signature not found")
+    entries = struct.unpack_from("<H", data, at + 10)[0]
+    off = struct.unpack_from("<I", data, at + 16)[0]
+    names = []
+    for _ in range(entries):
+        if off + ZIP_ENTRY_LEN > len(data) or struct.unpack_from("<I", data, off)[0] != ZIP_ENTRY_SIG:
+            raise ValueError("corrupt central directory entry")
+        name_len, extra_len, comment_len = struct.unpack_from("<HHH", data, off + 28)
+        names.append(data[off + ZIP_ENTRY_LEN : off + ZIP_ENTRY_LEN + name_len].decode("utf-8", errors="replace"))
+        off += ZIP_ENTRY_LEN + name_len + extra_len + comment_len
+    return names
+
+
+def manifest_main_attribute(manifest_bytes, name):
+    """The value of one main-section attribute, or None. A line that starts with a space continues the one before."""
+    wanted = name.lower() + ":"
+    section = []
+    for raw in manifest_bytes.decode("utf-8", errors="replace").splitlines():
+        if not raw:
+            break
+        if raw.startswith(" ") and section:
+            section[-1] += raw[1:]
+        else:
+            section.append(raw)
+    for line in section:
+        if line.lower().startswith(wanted):
+            return line[len(wanted) :].strip()
+    return None
 
 
 def zip_find_entry(data, target_name):
@@ -426,7 +491,7 @@ def manifest_has_premain(manifest_bytes):
     return False
 
 
-def validate_jar(pkg_name, allow_boot_classpath):
+def validate_jar(pkg_name, allow_boot_classpath, premain_class, required_lines):
     jar_path = os.path.join(ROOT, pkg_name, f"{pkg_name}.jar")
     if not os.path.isfile(jar_path):
         fail(f"missing staged JAR: {jar_path}")
@@ -448,10 +513,25 @@ def validate_jar(pkg_name, allow_boot_classpath):
     if not manifest_has_premain(manifest_bytes):
         fail(f"{jar_path}: META-INF/MANIFEST.MF main section missing non-empty Premain-Class:")
 
+    premain = manifest_main_attribute(manifest_bytes, "Premain-Class")
+    if premain != premain_class:
+        fail(f"{jar_path}: Premain-Class is {premain!r}, expected the launcher entry {premain_class!r}")
+
     if not allow_boot_classpath:
         for line in manifest_bytes.splitlines():
             if line.lower().startswith(b"boot-class-path:"):
                 fail(f"{jar_path}: Java 8 JAR must not contain Boot-Class-Path: in MANIFEST.MF")
+
+    try:
+        names = zip_names(data)
+    except ValueError as exc:
+        fail(f"{jar_path}: {exc}")
+    baked = names.count("META-INF/ohmyrasp-shirudo.properties")
+    if baked != 1:
+        fail(f"{jar_path}: META-INF/ohmyrasp-shirudo.properties appears {baked} times, expected exactly once")
+    for line in required_lines:
+        if LINE_ENTRIES[line] not in names:
+            fail(f"{jar_path}: the {line} line is missing: no {LINE_ENTRIES[line]}")
 
     try:
         props_entry = zip_find_entry(data, "META-INF/ohmyrasp-shirudo.properties")
@@ -486,13 +566,59 @@ def validate_jar(pkg_name, allow_boot_classpath):
         if got != want:
             fail(f"{jar_path}: META-INF/ohmyrasp-shirudo.properties {k}={got!r}, expected {want!r}")
 
-    print(f"OK jar: {pkg_name}.jar ({size} bytes)")
+    held = f", lines: {' '.join(required_lines)}" if required_lines else ""
+    print(f"OK jar: {pkg_name}.jar ({size} bytes, Premain-Class {premain}{held})")
 
 
-for pkg_name, allow_boot_cp in PACKAGES:
-    validate_beefile(pkg_name)
+def baked_mode(pkg_name):
+    jar_path = os.path.join(ROOT, pkg_name, f"{pkg_name}.jar")
+    with open(jar_path, "rb") as fh:
+        data = fh.read()
+    entry = zip_find_entry(data, "META-INF/ohmyrasp-shirudo.properties")
+    for raw_line in zip_read_entry(data, entry).decode("utf-8", errors="replace").splitlines():
+        key, _, value = raw_line.partition("=")
+        if key.strip() == "mode":
+            return value.strip()
+    return None
+
+
+def validate_fixes_mode_pairing(pkg_name, tracked):
+    """`fixes` says the loaded agent blocks those advisories, which only a block build does.
+
+    A block JAR is packaged with the tracked Beefile, which must carry `fixes`. A monitor JAR is packaged with
+    the Beefile build.sh staged for it (stage/monitor/<pkg>), which must exist and carry none.
+    """
+    mode = baked_mode(pkg_name)
+    stage_root = os.path.join(ROOT, "stage", "monitor")
+    if mode == "block":
+        if not tracked:
+            fail(f"{pkg_name}: the JAR bakes mode=block but its Beefile lists no fixes")
+        if os.path.exists(os.path.join(stage_root, pkg_name)):
+            fail(f"{stage_root}/{pkg_name} is left from a monitor build but the staged JAR bakes mode=block; "
+                 "build again with build.sh (a block build removes the stage) or delete stage/")
+        print(f"OK pairing: {pkg_name} bakes mode=block and its Beefile lists {len(tracked)} fixes")
+    elif mode == "monitor":
+        staged = os.path.join(stage_root, pkg_name)
+        if not os.path.isfile(os.path.join(staged, "Beefile")):
+            fail(f"{pkg_name}: the JAR bakes mode=monitor but there is no staged Beefile without fixes at {staged}; "
+                 f"build it with {pkg_name}/build.sh --mode monitor")
+        if validate_beefile(pkg_name, stage_root) is not None:
+            fail(f"{staged}/Beefile lists fixes but the JAR bakes mode=monitor: a monitor build lists no fixes")
+        with open(os.path.join(staged, f"{pkg_name}.jar"), "rb") as staged_jar, \
+                open(os.path.join(ROOT, pkg_name, f"{pkg_name}.jar"), "rb") as built_jar:
+            if staged_jar.read() != built_jar.read():
+                fail(f"{staged}/{pkg_name}.jar is not the JAR in {pkg_name}/; build again with --mode monitor")
+        print(f"OK pairing: {pkg_name} bakes mode=monitor and is packaged from a Beefile without fixes")
+    else:
+        fail(f"{pkg_name}: the JAR bakes mode={mode!r}, expected block or monitor")
+
+
+for pkg_name, allow_boot_cp, premain_class, lines in PACKAGES:
+    fixes = validate_beefile(pkg_name)
     if not BEEFILE_ONLY:
-        validate_jar(pkg_name, allow_boot_cp)
+        validate_jar(pkg_name, allow_boot_cp, premain_class, lines)
+        if pkg_name == "ohmyrasp":
+            validate_fixes_mode_pairing(pkg_name, fixes)
 
 print("ALL CHECKS PASSED")
 PY

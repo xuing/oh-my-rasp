@@ -1,0 +1,117 @@
+[[case]]
+name = "runtime-exec-source-in-request"
+kind = "attack"
+via = "request-sink"
+op = "java.compile"
+args = { source = "public class Generated { public void run() throws Exception { Runtime.getRuntime().exec(\"id\"); } }" }
+
+[case.request]
+method = "GET"
+uri = "/app/report"
+query = "id=7"
+headers = { User-Agent = "Mozilla/5.0 (X11; Linux x86_64) Firefox/128.0", Accept = "text/html" }
+
+[case.primary]
+effect = "block"
+rule = "java_compile_runtime"
+
+[case.backport]
+effect = "block"
+rule = "java_compile_runtime_execution"
+
+[[case]]
+name = "request-supplied-source"
+kind = "attack"
+via = "request-sink"
+op = "java.compile"
+args = { source = "public class Generated { public void run() throws Exception { Runtime.getRuntime().exec(\"id\"); } }" }
+
+[case.request]
+method = "POST"
+uri = "/app/compile"
+query = "source=public%20class%20Generated%20%7B%20public%20void%20run%28%29%20throws%20Exception%20%7B%20Runtime.getRuntime%28%29.exec%28%22id%22%29%3B%20%7D%20%7D"
+headers = { User-Agent = "Mozilla/5.0 (X11; Linux x86_64) Firefox/128.0", Accept = "text/html" }
+
+[case.primary]
+effect = "block"
+rule = "java_compile_runtime"
+
+[case.backport]
+effect = "block"
+rule = "java_compile_runtime_execution"
+
+[[case]]
+name = "runtime-exec-source-outside-request"
+kind = "attack"
+via = "sink"
+op = "java.compile"
+args = { source = "public class Generated { public void run() throws Exception { Runtime.getRuntime().exec(\"id\"); } }" }
+
+[case.primary]
+effect = "none"
+why = "the primary decides compilation only inside an HTTP request"
+
+[case.backport]
+effect = "block"
+rule = "java_compile_runtime_execution"
+
+[[case]]
+name = "anonymous-source-class-in-request"
+kind = "attack"
+via = "request-sink"
+op = "java.compile"
+args = { source = "public class Generated { public void run() throws Exception { Runtime.getRuntime().exec(\"id\"); } }", api = "anonymous-class" }
+
+[case.request]
+method = "GET"
+uri = "/app/report"
+query = "id=7"
+headers = { User-Agent = "Mozilla/5.0 (X11; Linux x86_64) Firefox/128.0", Accept = "text/html" }
+
+[case.primary]
+effect = "block"
+rule = "java_compile_runtime"
+
+[case.backport]
+effect = "block"
+rule = "java_compile_runtime_execution"
+
+[[case]]
+name = "file-object-source-in-request"
+kind = "attack"
+via = "request-sink"
+op = "java.compile"
+args = { source = "public class Generated { public void run() throws Exception { Runtime.getRuntime().exec(\"id\"); } }", api = "file-object" }
+
+[case.request]
+method = "GET"
+uri = "/app/report"
+query = "id=7"
+headers = { User-Agent = "Mozilla/5.0 (X11; Linux x86_64) Firefox/128.0", Accept = "text/html" }
+
+[case.primary]
+effect = "block"
+rule = "java_compile_runtime"
+
+[case.backport]
+effect = "block"
+rule = "java_compile_runtime_execution"
+
+[[case]]
+name = "benign-source-in-request"
+kind = "benign"
+via = "request-sink"
+op = "java.compile"
+args = { source = "public class Generated { public String hello() { return \"hello\"; } }" }
+
+[case.request]
+method = "GET"
+uri = "/app/report"
+query = "id=7"
+headers = { User-Agent = "Mozilla/5.0 (X11; Linux x86_64) Firefox/128.0", Accept = "text/html" }
+
+[case.primary]
+effect = "none"
+
+[case.backport]
+effect = "none"

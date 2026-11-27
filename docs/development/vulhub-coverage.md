@@ -285,28 +285,28 @@ coverage, separate from the Java 25 behavioral replay suite:
   `acceptance/vulhub/weblogic/weak-password-java6-legacy.sh` starts
   `vulhub/weblogic:10.3.6.0-2017` with the Vulhub `/hello` WAR mounted. The
   baseline `GET /hello/file.jsp?path=/etc/passwd` discloses passwd content;
-  the image reports `java version "1.6.0_45"`, and the current Java 8 agent
-  cannot inject because the Java 6 JVM rejects classfile major version 52.0.
+  the image reports `java version "1.6.0_45"`, and the Java 8 agent cannot protect Java 6: attached to the image's Java 6 `-version`, it prints its `unsupported-java` skip line and the JVM exits 0 without it.
   This is recorded as a legacy runtime boundary rather than a protected LTS
-  acceptance. Evidence:
+  acceptance. Evidence, from before the agent skipped instead of aborting the JVM:
   `/tmp/ohmyrasp-weblogic-weak-password-java6-20260611004044.log`.
 - [x] Script the real Java 6 WebLogic CVE-2017-10271 WorkContext XMLDecoder
   legacy boundary: `acceptance/vulhub/weblogic/10271-java6-legacy.sh`
   starts `vulhub/weblogic:10.3.6.0-2017` on Java 6u45. The baseline
   README-shaped `/wls-wsat/CoordinatorPortType` SOAP `WorkContext` XMLDecoder
   payload reaches `ProcessBuilder.start` and creates
-  `/tmp/ohmyrasp-weblogic-10271-success`; the current Java 8 agent cannot inject
-  because the Java 6 JVM rejects classfile major version 52.0. This is recorded
-  as a legacy runtime boundary rather than a protected LTS acceptance. Evidence:
+  `/tmp/ohmyrasp-weblogic-10271-success`. The Java 8 agent cannot protect Java 6:
+  attached to the image's Java 6 `-version`, it prints its `unsupported-java`
+  skip line and the JVM exits 0 without it. This is recorded as a legacy runtime
+  boundary rather than a protected LTS acceptance. Evidence, from before the
+  agent skipped instead of aborting the JVM:
   `/tmp/ohmyrasp-weblogic-10271-java6-20260611023347.log`.
 - [x] Script the real Java 6 WebLogic CVE-2018-2628 T3/JRMPClient legacy
   boundary: `acceptance/vulhub/weblogic/2628-java6-legacy.sh` starts
   `vulhub/weblogic:10.3.6.0-2017` on Java 6u45 and uses the pinned
   `ysoserial-cve-2018-2628` JRMPClient2 payload plus the pinned T3 PoC source.
   The baseline T3 replay reaches the JRMP listener and creates
-  `/tmp/ohmyrasp-weblogic-2628-success`; the current Java 8 agent cannot inject
-  because the Java 6 JVM rejects classfile major version 52.0. This is recorded
-  as a legacy runtime boundary rather than a protected LTS acceptance. Evidence:
+  `/tmp/ohmyrasp-weblogic-2628-success`; the Java 8 agent cannot protect Java 6: attached to the image's Java 6 `-version`, it prints its `unsupported-java` skip line and the JVM exits 0 without it. This is recorded
+  as a legacy runtime boundary rather than a protected LTS acceptance. Evidence, from before the agent skipped instead of aborting the JVM:
   `/tmp/ohmyrasp-weblogic-2628-java6-20260611034352.log`.
 - [x] Script the real Java 6 WebLogic UDDI Explorer SSRF legacy boundary:
   `acceptance/vulhub/weblogic/uddi-ssrf-java6-legacy.sh` starts
@@ -314,19 +314,17 @@ coverage, separate from the Java 25 behavioral replay suite:
   Baseline first lets the on-demand UDDI application deploy, then the
   README-shaped `/uddiexplorer/SearchPublicRegistries.jsp` request relays
   `operator=http://host.docker.internal:<port>/...` to a host HTTP listener.
-  The current Java 8 agent cannot inject because the Java 6 JVM rejects
-  classfile major version 52.0. This is recorded as a legacy runtime boundary
-  rather than a protected LTS acceptance. Evidence:
+  The Java 8 agent cannot protect Java 6: attached to the image's Java 6 `-version`, it prints its `unsupported-java` skip line and the JVM exits 0 without it. This is recorded as a legacy runtime boundary
+  rather than a protected LTS acceptance. Evidence, from before the agent skipped instead of aborting the JVM:
   `/tmp/ohmyrasp-weblogic-uddi-ssrf-java6-20260611024442.log`.
 - [x] Script the real Java 6 Adobe ColdFusion CVE-2010-2861 legacy boundary:
   `acceptance/vulhub/coldfusion/2861-java6-legacy.sh` starts
   `vulhub/coldfusion:8.0.1` on Java 6u04. The baseline README-shaped
   `locale=../../../../../../../../../../etc/passwd%00en` request discloses
   passwd content; the image reports `java version "1.6.0_04"` from
-  `/opt/coldfusion8/runtime/jre/bin/java`, and the current Java 8 agent cannot
-  inject because the Java 6 JVM rejects classfile major version 52.0. This is
+  `/opt/coldfusion8/runtime/jre/bin/java`, and the Java 8 agent cannot protect Java 6: attached to the image's Java 6 `-version`, it prints its `unsupported-java` skip line and the JVM exits 0 without it. This is
   recorded as a legacy runtime boundary rather than a protected LTS acceptance.
-  Evidence: `/tmp/ohmyrasp-coldfusion-2861-java6-20260611022734.log`.
+  Evidence, from before the agent skipped instead of aborting the JVM: `/tmp/ohmyrasp-coldfusion-2861-java6-20260611022734.log`.
 - [x] Remove duplicate candidate rows for boundaries already represented in
   Covered Targets on 2026-06-11: Struts2 S2-003 and WebLogic CVE-2019-2725 are
   source-availability boundaries because the audited Vulhub snapshot has no
@@ -396,7 +394,7 @@ coverage, separate from the Java 25 behavioral replay suite:
   `acceptance/vulhub/weblogic/21839-java8.sh` passed with
   `weblogic_21839_rc=0`, and
   `acceptance/vulhub/weblogic/weak-password-java6-legacy.sh` passed
-  with `weblogic_weak_password_rc=0`. Full log:
+  with `weblogic_weak_password_rc=0`, before the agent skipped instead of aborting the JVM on Java 6. Full log:
   `/tmp/ohmyrasp-new-vulhub-scripts-rerun-20260611020716.log`.
 - [x] Re-run the Java 8/11/17 agent Gradle checks in a non-root container after
   restoring ownership of root-created generated directories and external Gradle
@@ -1432,8 +1430,7 @@ coverage, separate from the Java 25 behavioral replay suite:
   `vulhub/spring-webflow:2.4.4` on OpenJDK 7u121/Tomcat 8.0.43. The baseline
   logs in, enters the hotel booking WebFlow, submits the malicious field name
   on the `reviewBooking` confirm state that lacks an explicit `<binder>`, and
-  creates `/tmp/ohmyrasp-spring4971-success`; the current Java 8 LTS agent
-  cannot inject because the Java 7 JVM rejects classfile major version 52.0,
+  creates `/tmp/ohmyrasp-spring4971-success`; the Java 8 LTS agent cannot protect Java 7: the container started with it in `JAVA_TOOL_OPTIONS` prints its `unsupported-java` skip line and keeps serving the application unprotected,
   so this is recorded as a legacy runtime boundary rather than claimed as a
   protected LTS acceptance.
 - [x] Record the real Java 7 Jackson CVE-2017-7525/CVE-2017-17485 legacy
@@ -1445,26 +1442,24 @@ coverage, separate from the Java 25 behavioral replay suite:
   `FileSystemXmlApplicationContext` polymorphic JSON body for CVE-2017-17485,
   loads a temporary Spring XML document over HTTP, and creates
   `/tmp/ohmyrasp-jackson-17485-success` through `ProcessBuilder.start`. The
-  current Java 8 LTS agent cannot inject because the Java 7 JVM rejects
-  classfile major version 52.0, so this is recorded as a legacy runtime
-  boundary rather than claimed as a protected LTS acceptance.
+  Java 8 LTS agent cannot protect Java 7: the container started with it in
+  `JAVA_TOOL_OPTIONS` prints its `unsupported-java` skip line and keeps serving
+  the application unprotected, so this is recorded as a legacy runtime boundary
+  rather than claimed as a protected LTS acceptance.
 - [x] Record the real Java 7 Mojarra JSF ViewState deserialization legacy
   boundary:
   `acceptance/vulhub/mojarra/viewstate-java7-legacy.sh` starts
   `vulhub/mojarra:2.1.28` on Java 7u21/Mojarra 2.1.28. The baseline submits a
   gzip+Base64 `javax.faces.ViewState` value generated with ysoserial's
   `Jdk7u21` gadget to `/index.xhtml`, reaches JSF client-state
-  deserialization, and creates `/tmp/ohmyrasp-mojarra-viewstate-success`. The
-  current Java 8 LTS agent cannot inject because the Java 7 JVM rejects
-  classfile major version 52.0, so this is recorded as a legacy runtime
+  deserialization, and creates `/tmp/ohmyrasp-mojarra-viewstate-success`. The Java 8 LTS agent cannot protect Java 7: the container started with it in `JAVA_TOOL_OPTIONS` prints its `unsupported-java` skip line and keeps serving the application unprotected, so this is recorded as a legacy runtime
   boundary rather than claimed as a protected LTS acceptance.
 - [x] Record the real Java 7 JBoss CVE-2017-12149 legacy boundary:
   `acceptance/vulhub/jboss/12149-java7-legacy.sh` starts
   `vulhub/jboss:as-6.1.0` on Java 7u221/JBoss AS 6.1.0, posts a ysoserial
   CommonsCollections5 serialized body to `/invoker/readonly`, receives the
   expected JBoss 500 cast failure after deserialization, and creates
-  `/tmp/ohmyrasp-jboss12149-success`. The current Java 8 LTS agent cannot
-  inject because the Java 7 JVM rejects classfile major version 52.0, so this
+  `/tmp/ohmyrasp-jboss12149-success`. The Java 8 LTS agent cannot protect Java 7: the container started with it in `JAVA_TOOL_OPTIONS` prints its `unsupported-java` skip line and keeps serving the application unprotected, so this
   is recorded as a legacy runtime boundary rather than claimed as a protected
   LTS acceptance.
 - [x] Record the real Java 7 JBoss JMXInvokerServlet legacy boundary:
@@ -1472,8 +1467,7 @@ coverage, separate from the Java 25 behavioral replay suite:
   `vulhub/jboss:as-6.1.0` on Java 7u221/JBoss AS 6.1.0, posts a ysoserial
   CommonsCollections5 serialized body to `/invoker/JMXInvokerServlet`,
   receives the expected JBoss response after deserialization, and creates
-  `/tmp/ohmyrasp-jbossjmx-success`. The current Java 8 LTS agent cannot inject
-  because the Java 7 JVM rejects classfile major version 52.0, so this is
+  `/tmp/ohmyrasp-jbossjmx-success`. The Java 8 LTS agent cannot protect Java 7: the container started with it in `JAVA_TOOL_OPTIONS` prints its `unsupported-java` skip line and keeps serving the application unprotected, so this is
   recorded as a legacy runtime boundary rather than claimed as a protected LTS
   acceptance.
 - [x] Record the real Java 7 JBossMQ CVE-2017-7504 legacy boundary:
@@ -1482,8 +1476,7 @@ coverage, separate from the Java 25 behavioral replay suite:
   CommonsCollections5 serialized body to
   `/jbossmq-httpil/HTTPServerILServlet`, receives the expected serialized
   JBossMQ error response after deserialization, and creates
-  `/tmp/ohmyrasp-jboss7504-success`. The current Java 8 LTS agent cannot
-  inject because the Java 7 JVM rejects classfile major version 52.0, so this
+  `/tmp/ohmyrasp-jboss7504-success`. The Java 8 LTS agent cannot protect Java 7: the container started with it in `JAVA_TOOL_OPTIONS` prints its `unsupported-java` skip line and keeps serving the application unprotected, so this
   is recorded as a legacy runtime boundary rather than claimed as a protected
   LTS acceptance.
 - [x] Record the real Java 7 ActiveMQ CVE-2016-3088 legacy boundary:
@@ -1492,9 +1485,7 @@ coverage, separate from the Java 25 behavioral replay suite:
   baseline sends `PUT /fileserver/ohmyrasp-3088.txt`, then `MOVE` with
   `Destination: file:///opt/activemq/webapps/api/ohmyrasp-3088.jsp`; both
   requests return 204, the moved JSP is present, and authenticated
-  `/api/ohmyrasp-3088.jsp` renders `ohmyrasp-3088-proof`. The current Java 8
-  LTS agent cannot inject because the Java 7 JVM rejects classfile major
-  version 52.0, so this is recorded as a legacy runtime boundary rather than
+  `/api/ohmyrasp-3088.jsp` renders `ohmyrasp-3088-proof`. The Java 8 LTS agent cannot protect Java 7: the container started with it in `JAVA_TOOL_OPTIONS` prints its `unsupported-java` skip line and keeps serving the application unprotected, so this is recorded as a legacy runtime boundary rather than
   claimed as a protected LTS acceptance.
 - [x] Record the real Java 7 ActiveMQ CVE-2015-5254 legacy boundary:
   `acceptance/vulhub/activemq/5254-java7-legacy.sh` starts
@@ -1502,8 +1493,7 @@ coverage, separate from the Java 25 behavioral replay suite:
   uses jmet to send a ROME gadget JMS `ObjectMessage` to the `event` queue,
   authenticates to `/admin/browse.jsp?JMSDestination=event`, visits the
   discovered `message.jsp` detail link, and creates
-  `/tmp/ohmyrasp-activemq5254-success`. The current Java 8 LTS agent cannot
-  inject because the Java 7 JVM rejects classfile major version 52.0, so this
+  `/tmp/ohmyrasp-activemq5254-success`. The Java 8 LTS agent cannot protect Java 7: the container started with it in `JAVA_TOOL_OPTIONS` prints its `unsupported-java` skip line and keeps serving the application unprotected, so this
   is recorded as a legacy runtime boundary rather than claimed as a protected
   LTS acceptance.
 - [x] Record the real Java 7 Tomcat 7+/8 Manager weak-credential legacy
@@ -1512,9 +1502,7 @@ coverage, separate from the Java 25 behavioral replay suite:
   `context.xml` mounts on OpenJDK 7u121/Tomcat 8.0.43. The baseline
   authenticates to `/manager/html` with `tomcat` / `tomcat`, deploys a WAR via
   `/manager/text/deploy?path=/ohmyrasp-manager&update=true`, and verifies the
-  deployed JSP marker renders `ohmyrasp-tomcat8-manager:1.7.0_121`. The
-  current Java 8 LTS agent cannot inject because the Java 7 JVM rejects
-  classfile major version 52.0, so this is recorded as a legacy runtime
+  deployed JSP marker renders `ohmyrasp-tomcat8-manager:1.7.0_121`. The Java 8 LTS agent cannot protect Java 7: the container started with it in `CATALINA_OPTS` prints its `unsupported-java` skip line and keeps serving the application unprotected, so this is recorded as a legacy runtime
   boundary rather than claimed as a protected LTS acceptance.
 - [x] Extend Java 8/11/17 command hooks after the ActiveMQ CVE-2023-46604
   gap: process sinks reached during Spring `ApplicationContext` refresh and
@@ -1628,9 +1616,9 @@ coverage, separate from the Java 25 behavioral replay suite:
   classloaders: Felix, Eclipse OSGi, and Knopflerfish servlet classes now use a
   reflection-only JDK bytecode path with computed stack frames instead of a
   direct constant-pool reference to the agent hook class; the Java 8 agent jar
-  declares `Boot-Class-Path` for bootstrap sinks, while Java 11/17 continue to
-  append themselves from the system-loaded agent path to avoid premature module
-  resolution of optional JDK modules.
+  then declared `Boot-Class-Path` for bootstrap sinks (it now appends itself, as
+  the Java 11/17 JARs always did, from the system-loaded agent path to avoid
+  premature module resolution of optional JDK modules).
 - [x] Re-run the LTS Tomcat compatibility matrix after the Unomi
   expression-stack command refinement, OSGi servlet hook compatibility path, and
   Java 11/17 manifest correction on 2026-06-04: `acceptance/runtime/java17.sh`
@@ -2551,7 +2539,7 @@ The matrix indexes upstream README paths. Checked entries have a ledger or alias
 
 ### ColdFusion
 
-- [x] Adobe ColdFusion - CVE-2010-2861 locale traversal source (`request_coldfusion_locale_source_traversal`; real Java6 legacy boundary: `acceptance/vulhub/coldfusion/2861-java6-legacy.sh` proves baseline `/etc/passwd` disclosure and Java8 agent class-version mismatch on Java 6u04)
+- [x] Adobe ColdFusion - CVE-2010-2861 locale traversal source (`request_coldfusion_locale_source_traversal`; real Java6 legacy boundary: `acceptance/vulhub/coldfusion/2861-java6-legacy.sh` proves baseline `/etc/passwd` disclosure and the agent's `unsupported-java` skip line (the JVM starts unprotected) on Java 6u04)
 - [x] Adobe ColdFusion - CVE-2017-3066 AMF deserialization (`deserialization_coldfusion_amf`; real Java8 acceptance: `acceptance/vulhub/coldfusion/3066-java8.sh` blocks `java8_command_execution_exploit_primitive` from the AMF Java deserialization stack)
 - [x] Adobe ColdFusion - CVE-2023-26360 metadata classname source (`request_coldfusion_iedit_metadata_class_source`; real Java11 acceptance: `acceptance/vulhub/coldfusion/26360-java11.sh` blocks `java11_file_sensitive_read`)
 - [x] Adobe ColdFusion - CVE-2023-29300 WDDX `argumentCollection` typed payload (`request_typed_payload_deserialization`; real Java11 acceptance: `acceptance/vulhub/coldfusion/29300-java11.sh` blocks `java11_request_typed_payload_deserialization`)
@@ -2587,10 +2575,10 @@ The matrix indexes upstream README paths. Checked entries have a ledger or alias
 - [x] JBoss - CVE-2017-12149 ReadOnlyAccessFilter Java object stream (`deserialization_jboss_cve_2017_12149_readonly`; real Java7 legacy boundary: `acceptance/vulhub/jboss/12149-java7-legacy.sh`)
 - [x] JBoss - JMXInvokerServlet Java object stream (`deserialization_jboss_jmxinvoker`; real Java7 legacy boundary: `acceptance/vulhub/jboss/jmxinvoker-java7-legacy.sh`)
 - [x] JBossMQ - CVE-2017-7504 HTTPServerILServlet Java object stream (`deserialization_jboss_cve_2017_7504_httpil`; real Java7 legacy boundary: `acceptance/vulhub/jboss/7504-java7-legacy.sh`)
-- [x] WebLogic - weak password console login and JSP file read (`request_weblogic_weak_password_console_login`, `readFile_weblogic_weak_password_file_read`; real Java6 legacy boundary: `acceptance/vulhub/weblogic/weak-password-java6-legacy.sh` proves the Vulhub `/hello/file.jsp?path=/etc/passwd` file-read baseline and Java8 agent class-version mismatch on Java 6u45)
-- [x] WebLogic - UDDI Explorer SSRF shape (`ssrf_weblogic_uddi`; real Java6 legacy boundary: `acceptance/vulhub/weblogic/uddi-ssrf-java6-legacy.sh` proves baseline UDDI `operator=` SSRF to a host listener and Java8 agent class-version mismatch on Java 6u45)
-- [x] WebLogic - CVE-2017-10271 WorkContext XMLDecoder (`xml_decoder_runtime_weblogic_workcontext`; real Java6 legacy boundary: `acceptance/vulhub/weblogic/10271-java6-legacy.sh` proves baseline WorkContext XMLDecoder `ProcessBuilder.start` marker creation and Java8 agent class-version mismatch on Java 6u45)
-- [x] WebLogic - CVE-2018-2628 T3 JRMPClient deserialization replay (`deserialization_weblogic_cve_2018_2628_t3_jrmpclient`; real Java6 legacy boundary: `acceptance/vulhub/weblogic/2628-java6-legacy.sh` proves baseline JRMPClient2 marker creation and Java8 agent class-version mismatch on Java 6u45)
+- [x] WebLogic - weak password console login and JSP file read (`request_weblogic_weak_password_console_login`, `readFile_weblogic_weak_password_file_read`; real Java6 legacy boundary: `acceptance/vulhub/weblogic/weak-password-java6-legacy.sh` proves the Vulhub `/hello/file.jsp?path=/etc/passwd` file-read baseline and the agent's `unsupported-java` skip line (the JVM starts unprotected) on Java 6u45)
+- [x] WebLogic - UDDI Explorer SSRF shape (`ssrf_weblogic_uddi`; real Java6 legacy boundary: `acceptance/vulhub/weblogic/uddi-ssrf-java6-legacy.sh` proves baseline UDDI `operator=` SSRF to a host listener and the agent's `unsupported-java` skip line (the JVM starts unprotected) on Java 6u45)
+- [x] WebLogic - CVE-2017-10271 WorkContext XMLDecoder (`xml_decoder_runtime_weblogic_workcontext`; real Java6 legacy boundary: `acceptance/vulhub/weblogic/10271-java6-legacy.sh` proves baseline WorkContext XMLDecoder `ProcessBuilder.start` marker creation and the agent's `unsupported-java` skip line (the JVM starts unprotected) on Java 6u45)
+- [x] WebLogic - CVE-2018-2628 T3 JRMPClient deserialization replay (`deserialization_weblogic_cve_2018_2628_t3_jrmpclient`; real Java6 legacy boundary: `acceptance/vulhub/weblogic/2628-java6-legacy.sh` proves baseline JRMPClient2 marker creation and the agent's `unsupported-java` skip line (the JVM starts unprotected) on Java 6u45)
 - [x] WebLogic - CVE-2018-2894 WS_UTC Web Service Test Page JSP upload (`fileUpload_weblogic_cve_2018_2894_ws_utc_jsp`; real Java8 acceptance: `acceptance/vulhub/weblogic/2894-java8.sh` blocks Jersey multipart `ContentDisposition.getFileName` with `fileUpload_multipart_script` before JSP write)
 - [x] WebLogic - CVE-2020-14882 / CVE-2020-14883 console ShellSession handle (`request_weblogic_cve_2020_14883_console_shellsession`; real Java8 acceptance: `acceptance/vulhub/weblogic/14883-java8.sh` blocks `java8_request_path_confusion` before ShellSession execution)
 - [x] WebLogic - CVE-2019-2725 console FileSystemXmlApplicationContext handle (`request_weblogic_cve_2019_2725_console_filesystemxml`; current Vulhub snapshot has no `weblogic/CVE-2019-2725` environment, so this remains a source-availability boundary rather than real Vulhub acceptance)

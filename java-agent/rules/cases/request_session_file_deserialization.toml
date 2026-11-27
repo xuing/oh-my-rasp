@@ -1,0 +1,33 @@
+[[case]]
+name = "filesystem-shaped-session-id"
+kind = "attack"
+via = "request"
+
+[case.request]
+method = "GET"
+uri = "/"
+headers = { User-Agent = "Mozilla/5.0 (X11; Linux x86_64) Firefox/128.0", Accept = "text/html", Cookie = "JSESSIONID=.deserialize" }
+
+[case.primary]
+effect = "unreachable"
+why = "the primary decides session-file deserialization when the container loads the session, not at request entry"
+
+[case.backport]
+effect = "block"
+rule = "request_session_file_deserialization"
+
+[[case]]
+name = "benign-session-route-suffix"
+kind = "benign"
+via = "request"
+
+[case.request]
+method = "GET"
+uri = "/"
+headers = { User-Agent = "Mozilla/5.0 (X11; Linux x86_64) Firefox/128.0", Accept = "text/html", Cookie = "JSESSIONID=abc123.node1" }
+
+[case.primary]
+effect = "none"
+
+[case.backport]
+effect = "none"

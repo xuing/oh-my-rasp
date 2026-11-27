@@ -65,6 +65,8 @@ jobs:
             "$gradle_image" \
             gradle --no-daemon --no-problems-report clean check \
             :agent-jdk25:jdk21Jars \
+            :agent-all:agentAllJar \
+            :agent-all:shirudoUpatchJar \
             :agent-java8:shirudoUpatchJar \
             :agent-java11:shirudoUpatchJar \
             :agent-java17:shirudoUpatchJar \
@@ -77,6 +79,7 @@ jobs:
           mkdir -p dist
           tar -chzf dist/ohmyrasp-shirudo-upatches.tar.gz -C deploy/shirudo \
             README.md verify-shirudo-upatch.sh \
+            ohmyrasp/Beefile ohmyrasp/README.md ohmyrasp/build.sh ohmyrasp/ohmyrasp.jar \
             ohmyrasp-java8/Beefile ohmyrasp-java8/README.md ohmyrasp-java8/build.sh ohmyrasp-java8/ohmyrasp-java8.jar \
             ohmyrasp-java11/Beefile ohmyrasp-java11/README.md ohmyrasp-java11/build.sh ohmyrasp-java11/ohmyrasp-java11.jar \
             ohmyrasp-java17/Beefile ohmyrasp-java17/README.md ohmyrasp-java17/build.sh ohmyrasp-java17/ohmyrasp-java17.jar \
@@ -97,6 +100,8 @@ jobs:
             java-agent/agent-java11/build/libs/ohmyrasp-java11.jar
             java-agent/agent-java17/build/libs/ohmyrasp-java17.jar
             java-agent/agent-jdk25/build/libs/ohmyrasp-jdk25.jar
+            java-agent/agent-all/build/libs/ohmyrasp-agent-all.jar
+            java-agent/agent-all/build/libs/ohmyrasp.jar
             dist/ohmyrasp-shirudo-upatches.tar.gz
             dist/jdk21/ohmyrasp-jdk21-shirudo.tar.gz
           if-no-files-found: error
@@ -347,7 +352,7 @@ jobs:
           VERSION: ${{ needs.release.outputs.version }}
           REF: v${{ needs.release.outputs.version }}
           DIST_DIR: dist
-          EXPECTED_ASSETS: 15
+          EXPECTED_ASSETS: 17
           IMAGE_NAMESPACE: ${{ needs.release.outputs.namespace }}
           REGISTRY: ghcr.io
           EVENT_NAME: ${{ github.event_name }}

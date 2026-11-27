@@ -1,0 +1,49 @@
+[[case]]
+name = "hex-loopback-outside-request"
+kind = "attack"
+via = "sink"
+op = "net.open"
+args = { url = "http://0x7f000001:{port}/" }
+
+[case.primary]
+effect = "log"
+rule = "ssrf_obfuscate"
+why = "the primary blocks this only inside an HTTP request; outside one it logs"
+
+[case.backport]
+effect = "unreachable"
+why = "the backports do not check how an outbound host is written"
+
+[[case]]
+name = "hex-loopback-in-request"
+kind = "attack"
+via = "request-sink"
+op = "net.open"
+args = { url = "http://0x7f000001:{port}/" }
+
+[case.request]
+method = "GET"
+uri = "/app/report"
+query = "id=7"
+headers = { User-Agent = "Mozilla/5.0 (X11; Linux x86_64) Firefox/128.0", Accept = "text/html" }
+
+[case.primary]
+effect = "block"
+rule = "ssrf_obfuscate"
+
+[case.backport]
+effect = "unreachable"
+why = "the backports do not check how an outbound host is written"
+
+[[case]]
+name = "benign-dotted-loopback"
+kind = "benign"
+via = "sink"
+op = "net.open"
+args = { url = "http://127.0.0.1:{port}/" }
+
+[case.primary]
+effect = "none"
+
+[case.backport]
+effect = "none"

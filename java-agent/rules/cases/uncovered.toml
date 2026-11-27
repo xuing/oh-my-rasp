@@ -1,0 +1,103 @@
+# Rule ids that no case file covers yet, each group with the reason.
+#
+# An id is covered when some case file has an attack case that expects it to block or log on that
+# engine, and the same file has a benign case. java-agent/scripts/test_rule_cases.py fails for an id
+# listed here that is covered (take it off the list), and for an uncovered id that is not listed.
+# Backport ids are families, without the java8_/java11_/java17_ prefix.
+#
+# A primary id that no hook module can reach ("not_wired" in rules/general.json) is not listed here: its
+# reason lives in the catalogue, and scripts/rule_catalogue.py adds it to this list wherever the list is
+# read. Listing such an id here fails scripts/test_rule_cases.py.
+
+# ---- primary --------------------------------------------------------------------------------
+
+[[primary]]
+reason = "selected only by a loaded policy; the cases run with no policy"
+ids = ["command_reflect", "deserialization_http_object_stream", "directory_reflect", "directory_unwanted",
+       "readFile_outsideWebroot", "request_scanner", "xss_userinput"]
+
+[[primary]]
+reason = "decided from a Windows named data stream path and selected only by a loaded policy; the probes run on Linux with no policy"
+ids = ["writeFile_NTFS"]
+
+[[primary]]
+reason = "needs an expression engine on the driver's class path (EL, JEXL, Jiffle, OGNL, Groovy or MVEL, Spring Expression, Velocity); the JDK ships none of them"
+ids = ["el_runtime", "jexl_runtime", "jiffle_runtime", "ognl_blacklist", "ognl_length_limit",
+       "script_runtime", "spel_runtime", "template_runtime"]
+
+[[primary]]
+reason = "needs Rhino or a standalone Nashorn on the driver's class path; JDK 21 and 25 ship no JavaScript engine"
+ids = ["javascript_runtime"]
+
+[[primary]]
+reason = "decided from the frames of a specific product on the stack (RocketMQ filter server, Solr RunExecutableListener, Spring bean init, RocketMQ configuration persistence); needs that product's classes"
+ids = ["command_config_injection", "command_config_listener", "command_spring_remote_init", "writeFile_config_path"]
+
+[[primary]]
+reason = "decided from the frames of a deserializing transport on the stack (cluster messaging, JMS ObjectMessage, logging socket server, WebLogic-style remoting, signed-object remoting, Spring Web Flow state); needs that transport"
+ids = ["deserialization_cluster_message", "deserialization_jms_object_message", "deserialization_logging_message",
+       "deserialization_remoting_transport", "deserialization_signed_object", "deserialization_webflow_state"]
+
+[[primary]]
+reason = "needs a third-party library on the driver's class path whose classes the hook instruments (fastjson, Hessian, a polymorphic JSON or XML binder, ActiveMQ OpenWire, Apache XML-RPC, Spring remoting or Spring context, args4j, MyBatis, Spark or YARN, DataEase)"
+ids = ["deserialization_fastjson_resource_url", "deserialization_hessian_type", "deserialization_http_invoker",
+       "deserialization_polymorphic_type", "deserialization_protocol_class", "deserialization_xmlrpc_serialized",
+       "readFile_argument_expansion", "request_jwt_verification_failure", "request_remote_job_submission",
+       "spring_remote_config", "sql_identifier_injection"]
+
+[[primary]]
+reason = "decided when a servlet container loads a stored session; the stub request path has no session store"
+ids = ["deserialization_session_file"]
+
+[[primary]]
+reason = "decided from a multipart part's file name; the driver's stub request carries no multipart parts yet"
+ids = ["fileUpload_java_archive", "fileUpload_multipart_exe", "fileUpload_multipart_expression",
+       "fileUpload_multipart_html", "fileUpload_multipart_script", "fileUpload_path_traversal"]
+
+[[primary]]
+reason = "reachable with JDK classes, no case yet: needs an RMI registry on loopback and a bind or call through it, so the sun.rmi transport frames are on the stack"
+ids = ["deserialization_rmi_registry_bind", "deserialization_rmi_transport"]
+
+[[primary]]
+reason = "reachable with JDK classes, no case yet: needs a JAAS login configuration that names JndiLoginModule, and the per-rule switch the hook checks"
+ids = ["jndi_jaas_config"]
+
+[[primary]]
+reason = "reachable with JDK classes, no case yet: needs an MBean whose operation the rule lists, invoked through the platform MBean server inside a request"
+ids = ["jmx_file_write", "jmx_remote_config"]
+
+[[primary]]
+reason = "a host lookup the agent lets through outside a request would query DNS off the machine, and the probes send nothing off the machine"
+ids = ["dns_blacklist"]
+
+[[primary]]
+reason = "not triggered by a protocol-shaped path (file:/etc/passwd, http:/host/x) that a request parameter selects and FileInputStream opens (measured: no event on either engine); the read API that carries the protocol to this rule was not identified"
+ids = ["readFile_userinput_http", "readFile_userinput_unwanted"]
+
+# ---- backport -------------------------------------------------------------------------------
+
+[[backport]]
+reason = "decided from a multipart part's file name; the driver's stub request carries no multipart parts yet"
+ids = ["fileUpload_java_archive", "fileUpload_multipart_exe", "fileUpload_multipart_expression",
+       "fileUpload_multipart_html", "fileUpload_multipart_script", "fileUpload_path_traversal"]
+
+[[backport]]
+reason = "needs an expression engine on the driver's class path (a Unified EL implementation, Commons JEXL); the JDK ships neither"
+ids = ["el_runtime_execution", "jexl_runtime_execution"]
+
+[[backport]]
+reason = "needs a JSR-223 script engine: JDK 8 and 11 ship Nashorn, JDK 17 and 21 ship none, so one expectation cannot hold on every backport line"
+ids = ["script_engine_runtime_execution"]
+
+[[backport]]
+reason = "needs a third-party library on the driver's class path whose classes the hook instruments (fastjson, Hessian, ActiveMQ OpenWire, DataEase, Spark or YARN, SkyWalking or MyBatis)"
+ids = ["deserialization_fastjson_resource_url", "deserialization_hessian_type", "deserialization_protocol_class",
+       "request_jwt_verification_failure", "request_remote_job_submission", "sql_identifier_injection"]
+
+[[backport]]
+reason = "reachable with JDK classes, no case yet: needs a JAAS login configuration that names JndiLoginModule"
+ids = ["jaas_jndi_remote_provider"]
+
+[[backport]]
+reason = "reachable with JDK classes, no case yet: needs an MBean whose operation the rule lists, invoked through the platform MBean server"
+ids = ["jmx_remote_config_source", "jmx_script_file_write"]

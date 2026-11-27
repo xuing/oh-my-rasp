@@ -6,10 +6,11 @@ cd "$(dirname "$0")/../../.."
 image="${OHMYRASP_VULHUB_COLDFUSION_2861_IMAGE:-vulhub/coldfusion:8.0.1}"
 baseline_name="${OHMYRASP_VULHUB_COLDFUSION_2861_BASELINE_NAME:-ohmyrasp-coldfusion2861-baseline}"
 baseline_port="${OHMYRASP_VULHUB_COLDFUSION_2861_BASELINE_PORT:-19660}"
-host_agent_jar="$(pwd)/agent-java8/build/libs/ohmyrasp-agent-java8.jar"
+# shellcheck source=acceptance/lib/agent-build.sh
+source acceptance/lib/agent-build.sh
+host_agent_jar="$(ohmyrasp_agent_jar "$(pwd)/agent-java8/build/libs/ohmyrasp-agent-java8.jar")"
 baseline_dir="logs/vulhub-coldfusion-8.0.1-2861-java6-baseline"
 protected_dir="logs/vulhub-coldfusion-8.0.1-2861-java6-protected"
-gradle_cache_dir=""
 
 copy_artifacts() {
   mkdir -p "$baseline_dir"
@@ -24,9 +25,6 @@ copy_artifacts() {
 cleanup() {
   copy_artifacts
   docker rm -f -v "$baseline_name" >/dev/null 2>&1 || true
-  if [[ -n "${gradle_cache_dir:-}" ]]; then
-    rm -rf "${gradle_cache_dir}" >/dev/null 2>&1 || true
-  fi
 }
 trap cleanup EXIT
 
@@ -42,14 +40,7 @@ curl_status() {
 }
 
 build_java8_agent() {
-  gradle_cache_dir="$(mktemp -d "${TMPDIR:-/tmp}/ohmyrasp-gradle-cache-coldfusion2861.XXXXXX")"
-  docker run --rm -u "$(id -u):$(id -g)"   -e HOME=/tmp/gradle-home \
-    -e GRADLE_USER_HOME=/tmp/gradle-cache \
-    -v "${gradle_cache_dir}:/tmp/gradle-cache" \
-    -v "$(pwd):/workspace" \
-    -w /workspace \
-    gradle:jdk25 \
-    gradle --no-daemon :agent-java8:agentJava8Jar >/dev/null
+  ohmyrasp_build :agent-java8:agentJava8Jar >/dev/null
 }
 
 verify_java6_boundary() {
@@ -71,9 +62,22 @@ verify_java6_boundary() {
   local status="$?"
   set -e
   printf 'java8_agent_on_java6_status=%s\n' "$status" > "${protected_dir}/attempts.log"
-  if ! grep -Fq 'Unsupported major.minor version 52.0' "${protected_dir}/java8-agent-on-java6.log"; then
-    cat "${protected_dir}/java8-agent-on-java6.log" >&2 || true
-    echo "Java 6 ColdFusion did not reject the Java 8 agent with the expected class-version error" >&2
+  # The agent cannot protect Java 6. Its entry class (class-file version 49) loads, finds that the Java 8
+  # launcher cannot, prints one skip line and returns, so the JVM starts unprotected.
+  local log="${protected_dir}/java8-agent-on-java6.log"
+  if [[ "$status" != 0 ]] || ! grep -Fq 'java version "1.6.0_04"' "$log"; then
+    cat "$log" >&2 || true
+    echo "Java 6 ColdFusion did not start with the Java 8 agent attached (exit ${status})" >&2
+    exit 1
+  fi
+  if ! grep -Fq '{"event":"ohmyrasp-agent-skipped","reason":"unsupported-java","java_version":"1.6","entry":"io.ohmyrasp.agent.launch.Java8Entry"' "$log"; then
+    cat "$log" >&2 || true
+    echo "Java 6 ColdFusion did not print the agent's unsupported-java skip line" >&2
+    exit 1
+  fi
+  if grep -Fq 'FATAL ERROR in native method' "$log"; then
+    cat "$log" >&2 || true
+    echo "Java 6 ColdFusion still aborted on the Java 8 agent" >&2
     exit 1
   fi
 }

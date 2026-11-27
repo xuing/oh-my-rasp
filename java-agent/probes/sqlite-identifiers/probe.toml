@@ -1,0 +1,8 @@
+# The driver and its logging API are fetched once, in the build job, and read from disk by the
+# runtime rows. A row that downloaded them itself was rate-limited by Maven Central (HTTP 429)
+# once every probe ran twice per row.
+
+[[fixture]]
+flag = "--jar-dir"
+path = "build/runtime-probes"
+stage = ["--stage-dir", "{path}"]

@@ -3,13 +3,15 @@ set -euo pipefail
 
 cd "$(dirname "$0")/../../.."
 
-context="${OHMYRASP_VULHUB_STRUTS2_S2016_CONTEXT:-/tmp/vulhub-ohmyrasp-20260603/struts2/s2-016}"
+context="${OHMYRASP_VULHUB_STRUTS2_S2016_CONTEXT:-${OHMYRASP_VULHUB_ROOT:?set OHMYRASP_VULHUB_ROOT to a Vulhub checkout}/struts2/s2-016}"
 image="${OHMYRASP_VULHUB_STRUTS2_S2016_IMAGE:-ohmyrasp/vulhub-struts2:s2-016}"
 baseline_name="${OHMYRASP_VULHUB_STRUTS2_S2016_BASELINE_NAME:-ohmyrasp-vulhub-struts2-s2016-baseline}"
 protected_name="${OHMYRASP_VULHUB_STRUTS2_S2016_PROTECTED_NAME:-ohmyrasp-vulhub-struts2-s2016-protected}"
 baseline_port="${OHMYRASP_VULHUB_STRUTS2_S2016_BASELINE_PORT:-18572}"
 protected_port="${OHMYRASP_VULHUB_STRUTS2_S2016_PROTECTED_PORT:-18573}"
-host_agent_jar="$(pwd)/agent-java8/build/libs/ohmyrasp-agent-java8.jar"
+# shellcheck source=acceptance/lib/agent-build.sh
+source acceptance/lib/agent-build.sh
+host_agent_jar="$(ohmyrasp_agent_jar "$(pwd)/agent-java8/build/libs/ohmyrasp-agent-java8.jar")"
 baseline_dir="logs/vulhub-struts2-s2-016-java8-baseline"
 protected_dir="logs/vulhub-struts2-s2-016-java8-protected"
 protected_log="${protected_dir}/events.jsonl"
@@ -22,8 +24,7 @@ fi
 
 docker build -t "$image" "$context" >/dev/null
 
-docker run --rm -v "$(pwd):/workspace" -w /workspace gradle:jdk25 \
-  gradle --no-daemon :agent-java8:agentJava8Jar
+ohmyrasp_build :agent-java8:agentJava8Jar
 
 rm -rf "$baseline_dir" "$protected_dir"
 mkdir -p "$baseline_dir" "$protected_dir"

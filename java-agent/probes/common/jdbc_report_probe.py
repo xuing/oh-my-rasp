@@ -5,13 +5,12 @@ import os
 from pathlib import Path
 import subprocess
 import tempfile
-import zipfile
+
+import agent_track
 
 
 def check_reports(agent, fixture, libraries, scenario_count, selected_count, extra=()):
-    with zipfile.ZipFile(agent) as jar:
-        track = next((v for v in ("8", "11", "17") if
-                      f"io/ohmyrasp/agent/java{v}/Java{v}RaspHooks.class" in jar.namelist()), "main")
+    track = agent_track.track(agent) or "main"
     fixture_source, fixture = fixture, fixture.stem
     with tempfile.TemporaryDirectory(prefix="jdbc-receipts-") as tmp:
         work = Path(tmp)

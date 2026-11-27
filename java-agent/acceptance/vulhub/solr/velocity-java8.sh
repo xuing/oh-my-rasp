@@ -3,10 +3,11 @@ set -euo pipefail
 
 cd "$(dirname "$0")/../../.."
 
-host_agent_jar="$(pwd)/agent-java8/build/libs/ohmyrasp-agent-java8.jar"
+# shellcheck source=acceptance/lib/agent-build.sh
+source acceptance/lib/agent-build.sh
+host_agent_jar="$(ohmyrasp_agent_jar "$(pwd)/agent-java8/build/libs/ohmyrasp-agent-java8.jar")"
 
-docker run --rm -v "$(pwd):/workspace" -w /workspace gradle:jdk25 \
-  gradle --no-daemon :agent-java8:agentJava8Jar
+ohmyrasp_build :agent-java8:agentJava8Jar
 
 baseline_name="${OHMYRASP_VULHUB_SOLR17558_BASELINE_NAME:-ohmyrasp-vulhub-solr17558-baseline}"
 protected_name="${OHMYRASP_VULHUB_SOLR17558_PROTECTED_NAME:-ohmyrasp-vulhub-solr17558-protected}"

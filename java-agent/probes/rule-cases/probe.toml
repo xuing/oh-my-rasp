@@ -1,0 +1,5 @@
+# The driver's request paths call HttpServlet.service, so it compiles against the servlet API.
+[[fixture]]
+flag = "--api-dir"
+path = "build/servlet-probe"
+gradle = ":stageServletProbe"

@@ -330,7 +330,7 @@ cargo build --locked --release
 
 ## Regenerating generated docs
 
-These Markdown files (and the README "By the numbers" regions) are derived from source. Do not edit them by hand. `python3 scripts/check-docs.py` runs the `--check` mode of the detection-coverage and Shirudo README generators in CI and fails when they are stale; the false-positive report is regenerated with its script.
+These Markdown files (and the README "By the numbers" regions) are derived from source. Do not edit them by hand. `python3 scripts/check-docs.py` runs the `--check` mode of the detection-coverage, Shirudo README and rule-case generators in CI and fails when they are stale; the false-positive report is regenerated with its script.
 
 Hand-written docs must not restate release versions, pinned toolchain or image versions, or code-base counts; link to the fact's home instead. The rules and the full list of checks are in [AGENTS.md](AGENTS.md#documentation).
 
@@ -354,8 +354,15 @@ python3 scripts/gen-detection-coverage.py --check  # fails if stale
 **3. Shirudo upatch READMEs** (derived from `java-agent/` sources, `Beefile`s, and `FALSE-POSITIVE-REPORT.md`):
 
 ```bash
-python3 deploy/shirudo/gen-readmes.py              # writes deploy/shirudo/README.md and the per-package READMEs
+python3 deploy/shirudo/gen-readmes.py              # writes deploy/shirudo/README.md, the per-package READMEs and the fixes line of ohmyrasp/Beefile
 python3 deploy/shirudo/gen-readmes.py --check      # fails if stale (also run by verify-shirudo-upatch.sh)
+```
+
+**4. Rule-case summary** (derived from `java-agent/rules/cases/*.toml` alone; the `rule-cases` probe is what runs the cases):
+
+```bash
+python3 java-agent/scripts/gen-rule-cases.py          # writes java-agent/docs/RULE-CASES.md
+python3 java-agent/scripts/gen-rule-cases.py --check  # fails if stale
 ```
 
 Commit regenerated docs in the same PR as the code change that triggered them.
@@ -365,11 +372,12 @@ Commit regenerated docs in the same PR as the code change that triggered them.
 1. Implement the hook module under `java-agent/agent-jdk25/src/main/java/io/ohmyrasp/agent/asm/` and register it in `HookRegistry.defaults()`.
 2. Add the detector method to the class in `agent-jdk25/src/main/java/io/ohmyrasp/agent/detect/` that owns its family ([docs/detection.md](docs/detection.md#primary-agent-detector-layout) maps each kind of evidence to its class), or to a new `<Family>Detector` when none fits, and call that class from the hook. Only an HTTP request rule joins `DetectorEngine.detectRequest`, where its position in the first-match order is part of its behaviour.
 3. Write unit tests covering the new detection path in that class's `<Detector>Test` under `agent-jdk25/src/test/java/io/ohmyrasp/agent/detect/`.
+   Then give the rule id cases in `java-agent/rules/cases/<rule id>.toml`: an attack the packaged agent catches and a benign input it lets through, with what each engine does with them, or list the id in `java-agent/rules/cases/uncovered.toml` with the reason. [java-agent/AGENTS.md](java-agent/AGENTS.md#rules) ("A rule has cases") says how to run one file on one line and print what an engine did.
 4. Add or extend an acceptance scenario under `java-agent/acceptance/` (`vulhub/<component>/` for a Vulhub target, `runtime/` for the JDK-level suites).
 5. Update `docs/development/algorithm-coverage.md` and, if mapped to a Vulhub scenario, `docs/development/vulhub-coverage.md` in the same patch.
 6. Regenerate `java-agent/docs/DETECTION-COVERAGE.md`, `java-agent/docs/FALSE-POSITIVE-REPORT.md`, and `deploy/shirudo/` READMEs, and verify `bash java-agent/scripts/check-detector-parity.sh`.
 
-Update backport builds (`agent-java8`, `agent-java11`, `agent-java17`) when the hook applies to earlier JDKs. Their unit tests live once in `java-agent/backport-tests/src/test/java`, written against the java8 line and generated for the java11 and java17 lines at build time (see [java-agent/README.md](java-agent/README.md)): add the test there, and one test covers all three lines. See `docs/development/algorithm-coverage.md` for per-era capabilities.
+Update backport builds (`agent-java8`, `agent-java11`, `agent-java17`) when the hook applies to earlier JDKs. Their decisions live once, in `java-agent/shared/src/main/java/io/ohmyrasp/agent/backport/BackportHooks.java`; a new hook adds its transformer to each line and, when the transformers call a new method, a one-line delegate to each line's `Java<N>RaspHooks`. Their unit tests live once in `java-agent/backport-tests/src/test/java`, written against the java8 line and generated for the java11 and java17 lines at build time (see [java-agent/README.md](java-agent/README.md)): add the test there, and one test covers all three lines. See `docs/development/algorithm-coverage.md` for per-era capabilities.
 
 ## Console i18n expectations
 
@@ -397,7 +405,7 @@ Contributions that add detection rules or hook families should include runnable 
 - **Small and focused:** One logical change per PR. Avoid unrelated formatting or refactoring outside the PR scope.
 - **Tests pass:** Run the test suite for every component you touch (`go test ./...`, `npm test`, `gradle :agent-jdk25:check`, `cargo test --locked`, `verify-shirudo-upatch.sh`).
 - **Single source of truth & doc sync:** Keep each fact in one owning reference under `docs/` and link to source files and symbols rather than duplicating volatile lists. Update the owning doc in the same PR whenever behavior, flags, endpoints, or contracts change. Keep `docs/internal/` frozen as historical archive.
-- **Generated files committed:** Commit fresh outputs from `gen-detection-coverage.py`, `run-fp-report.sh`, and `deploy/shirudo/gen-readmes.py` whenever affected.
+- **Generated files committed:** Commit fresh outputs from `gen-detection-coverage.py`, `gen-hook-targets.py`, `run-fp-report.sh`, and `deploy/shirudo/gen-readmes.py` whenever affected.
 
 ## License
 

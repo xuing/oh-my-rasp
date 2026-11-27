@@ -10,13 +10,16 @@ acceptance scenarios are added. Re-run it after changing any of:
   * acceptance/vulhub/*/*.sh                                      (verified scenarios)
   * acceptance/runtime/jdk25.sh  (its required_algorithms array)
   * probes/*/                    (primary rules a packaged-agent probe names)
-  * rules/*.json                 (rule scope descriptions)
+  * rules/*.json                 (rule scope descriptions, and the "not_wired" ids)
 
 It also owns the "By the numbers" region of the root README.md and
 README.zh-CN.md, between these markers (one region per file):
 
   <!-- BEGIN GENERATED metrics (java-agent/scripts/gen-detection-coverage.py) ... -->
   <!-- END GENERATED metrics -->
+
+A primary rule id that no hook module can reach is "not wired" (rules/general.json, checked against the sources by
+scripts/test_rule_cases.py). No count here includes one; the report lists them in a section of their own.
 
 Hand-written docs must not restate these counts; link to this report instead.
 
@@ -70,12 +73,17 @@ def detector_capabilities() -> list[str]:
 
 
 @functools.cache
-def asserted_algorithms() -> list[str]:
-    """Rule ids the acceptance scripts assert: each catalogue id written in a script as a whole token."""
+def _named_in_scripts() -> frozenset[str]:
     algos: set[str] = set()
     for script in acceptance_scripts.runtime_and_vulhub_scripts(ACCEPTANCE):
         algos |= rule_catalogue.asserted(script.read_text(encoding="utf-8", errors="ignore"))
-    return sorted(algos)
+    return frozenset(algos)
+
+
+def asserted_algorithms() -> list[str]:
+    """Rule ids the acceptance scripts assert: each catalogue id written in a script as a whole token, except a
+    not wired one (a script that names it reaches it through the playground servlet, which calls its entry directly)."""
+    return sorted(_named_in_scripts() - rule_catalogue.not_wired().keys())
 
 
 ARRAY = "required_algorithms"
@@ -218,26 +226,23 @@ def rule_scope_tables() -> list[str]:
         raise ValueError(f"Primary rules missing a scope description: {sorted(missing)}")
 
     families: dict[str, list[str]] = {}
-    emitted: dict[str, set[str]] = {}
     for track, names in rule_catalogue.backport_findings().items():
         for name in sorted(names):
             family = name.removeprefix(track + "_")
-            emitted.setdefault(track, set()).add(family)
             names_of = families.setdefault(family, [])
             if name not in names_of:
                 names_of.append(name)
-    # The backport lines are separate source trees that must decide alike: a rule one line emits, all emit.
-    if gaps := {family: sorted(track for track, ids in emitted.items() if family not in ids)
-                for family in families if any(family not in ids for ids in emitted.values())}:
-        raise ValueError("Backport lines emit different rule ids. Missing: "
-                         + "; ".join(f"{family} in {', '.join(tracks)}" for family, tracks in sorted(gaps.items())))
+    # No check that the three backport lines emit the same rule ids: their decisions are one copy
+    # (shared/.../backport/BackportHooks.java) and rule_catalogue derives each line's ids from it, so the lists
+    # are equal by construction. A line's prefix is pinned by the backport tests (Java8RaspLineTest).
     documented = general["backports"].keys() | product["backports"].keys()
     if documented != families.keys():
         raise ValueError(f"Backport rule scope catalog differs from emitted families: {sorted(documented ^ families.keys())}")
 
+    not_wired = rule_catalogue.not_wired().keys()
     lines = []
     for track, title, identifiers in (
-        ("primary", "Primary agent", {key: [key] for key in primary}),
+        ("primary", "Primary agent", {key: [key] for key in primary if key not in not_wired}),
         ("backports", "Backport agents", families),
     ):
         lines.extend([f"### {title}", "", "| Algorithm identifier | Cross-product evidence | Product or component dependency |", "|---|---|---|"])
@@ -245,6 +250,37 @@ def rule_scope_tables() -> list[str]:
             ids = ", ".join(f"`{name}`" for name in names)
             lines.append(f"| {ids} | {general[track].get(family, '—')} | {product[track].get(family, '—')} |")
         lines.append("")
+    return lines
+
+
+def not_wired_section() -> list[str]:
+    """The "Defined, not wired" section: each primary rule id no hook module can reach, and why."""
+    rules = ROOT / "rules"
+    described = {}
+    for name in ("general.json", "product.json"):
+        for rule, text in json.loads((rules / name).read_text(encoding="utf-8"))["primary"].items():
+            described.setdefault(rule, []).append(text)
+    probes = probe_checked_rules()
+    lines = [
+        "## Defined, not wired",
+        "",
+        "These primary rule ids have a description in the catalog and code behind them, but no hook module injects a",
+        "call that reaches that code, so the packaged agent cannot report them on a protected application. Unit",
+        "tests call their detectors; the playground servlet and a probe's stub servlet call their `OhMyRaspHooks`",
+        "entry methods directly, which is how the suites in the last column reach them. No count in this report or in the README",
+        "includes them. The list is the `not_wired` object of the [general catalog](../rules/general.json), checked",
+        "against the sources by `scripts/test_rule_cases.py`.",
+        "",
+        "| Rule id | Why no hook reaches it | Scope | Exercised only through |",
+        "|---|---|---|---|",
+    ]
+    for rule, reason in sorted(rule_catalogue.not_wired().items(), key=lambda kv: kv[0].lower()):
+        through = []
+        if rule in _named_in_scripts():
+            through.append("the JDK 25 runtime suite, via the playground servlet")
+        through += [f"the [{p}](../probes/{p}/) probe" for p in probes.get(rule, [])]
+        lines.append(f"| `{rule}` | {reason} | {' '.join(described[rule])} | {', '.join(through) or '—'} |")
+    lines.append("")
     return lines
 
 
@@ -278,6 +314,7 @@ def render() -> str:
     w(f"| Algorithm signatures asserted in acceptance scripts | {len(algos)} |")
     w(f"| End-to-end vulnerability acceptance scenarios | {len(matrix)} |")
     w(f"| JDK lines exercised | {len([j for j in by_jdk if j != 'unknown'])} |")
+    w(f"| Primary rule ids defined, not wired (in none of the counts above) | {len(rule_catalogue.not_wired())} |")
     w("")
 
     w("## Hook families")
@@ -303,14 +340,25 @@ def render() -> str:
     for owner, names in detector_entry_points.by_class().items():
         w(f"| `{owner}` | " + " · ".join(f"`detect{n}`" for n in names) + " |")
     w("")
+    skipped = detector_entry_points.not_wired_by_class()
+    stubs = detector_entry_points.stubs_by_class()
+    w(f"Not counted: **{sum(len(names) for names in skipped.values())}** public `detect*` entry points that serve only rules")
+    w("[defined, not wired](#defined-not-wired): " + ", ".join(
+        f"`{owner}` " + " · ".join(f"`detect{n}`" for n in names) for owner, names in skipped.items()) + ".")
+    w("")
+    w(f"Also not counted: **{sum(len(names) for names in stubs.values())}** compatibility stubs whose every overload only returns an")
+    w("empty result, so they decide nothing (the rule each is named for is decided by another entry point): " + ", ".join(
+        f"`{owner}` " + " · ".join(f"`detect{n}`" for n in names) for owner, names in stubs.items()) + ".")
+    w("")
 
     w("## Rule scope")
     w("")
     w("The index covers literal detection IDs in the primary engine and hooks, reviewed computed IDs, and named findings in the Java backports. A row with both columns populated has distinct branches or a product-specific exclusion. General request indicators still need runtime evidence to establish an effect.")
     w("")
-    w("The descriptions live in the [general catalog](../rules/general.json) and [product-specific catalog](../rules/product.json). Scope describes applicability. Policy selection continues to use the exact event ID.")
+    w("The descriptions live in the [general catalog](../rules/general.json) and [product-specific catalog](../rules/product.json). Scope describes applicability. Policy selection continues to use the exact event ID. The primary table leaves out the rule ids that no hook reaches, which have their own section below.")
     w("")
     lines.extend(rule_scope_tables())
+    lines.extend(not_wired_section())
     w("## Algorithm signatures asserted in acceptance scripts")
     w("")
     w("Each rule id of the [catalog](../rules/) that a runtime or Vulhub acceptance script writes as a whole token:")
@@ -323,13 +371,21 @@ def render() -> str:
     w("")
 
     required = jdk25_required_algorithms()
+    not_wired = rule_catalogue.not_wired()
     w("## Rules the JDK 25 runtime suite requires")
     w("")
     w("[`acceptance/runtime/jdk25.sh`](../acceptance/runtime/jdk25.sh) fails unless the protected log of every Tomcat")
     w("line it runs holds a block event for each identifier in its `required_algorithms` array:")
     w("")
     for algorithm in required:
-        w(f"- `{algorithm}`")
+        if algorithm not in not_wired:
+            w(f"- `{algorithm}`")
+    w("")
+    skipped_required = [algorithm for algorithm in required if algorithm in not_wired]
+    w(f"The array also names {len(skipped_required)} rules [defined, not wired](#defined-not-wired). The suite reaches them")
+    w("through the playground servlet, which calls their hook entry methods itself, so a block event for one shows that")
+    w("the detector and the policy work, not that a hook reaches it: "
+      + ", ".join(f"`{a}`" for a in skipped_required) + ".")
     w("")
     w("### Other primary rules a probe checks")
     w("")
@@ -339,14 +395,14 @@ def render() -> str:
     w("| Rule | Probes |")
     w("|------|--------|")
     for name, probes in probe_checked_rules().items():
-        if name not in required:
+        if name not in required and name not in not_wired:
             w(f"| `{name}` | " + ", ".join(f"[{p}](../probes/{p}/)" for p in probes) + " |")
     w("")
 
     w("## Tested vulnerability matrix")
     w("")
     w("End-to-end acceptance scenarios that run a real vulnerable application under")
-    w("the agent and assert the expected detection/block. Counts by JDK line:")
+    w("the agent. Counts by JDK line:")
     w("")
     w("| JDK | Scenarios |")
     w("|-----|----------:|")
@@ -354,6 +410,14 @@ def render() -> str:
         if jdk in by_jdk:
             w(f"| {jdk} | {len(by_jdk[jdk])} |")
     w(f"| **total** | **{len(matrix)}** |")
+    w("")
+    scripts = acceptance_scripts.vulhub_scripts(ACCEPTANCE)
+    boundary = [s for s in scripts if acceptance_scripts.is_boundary(s, ACCEPTANCE)]
+    legacy = [s for s in boundary if "legacy" in s.name.lower()]
+    w(f"{len(scripts) - len(boundary)} of the {len(matrix)} scripts run the exploit against a JVM an agent line supports.")
+    w(f"The other {len(boundary)} show a boundary and no block: the {len(legacy)} `java6-legacy` and `java7-legacy`")
+    w("scripts show an agent line skipping on an old JVM, which then runs unprotected, and the setup or licence")
+    w("scripts show a payload held behind a setup state.")
     w("")
     w("Top application families by scenario count:")
     w("")
@@ -382,6 +446,7 @@ def render_metrics(lang: str) -> str:
     hooks = len(hook_families())
     capabilities = len(detector_capabilities())
     algos = len(asserted_algorithms())
+    unwired = len(rule_catalogue.not_wired())
     scenarios = len(vulnerability_matrix())
     transformers = sorted(set(backport_transformers().values()))
     roots, cves = vulhub_scope()
@@ -399,7 +464,7 @@ def render_metrics(lang: str) -> str:
             "| 维度 | 当前状态 | 依据 |",
             "|---|---|---|",
             f"| 插桩调用点家族 | {hooks} 个 ASM hook 模块（`agent-jdk25`）；回溯版（{tracks.replace(', ', ' / ')}）各 {per_backport} 个 ASM transformer | {coverage} |",
-            f"| 检测引擎 | {capabilities} 项检测能力，验收脚本中有 {algos} 个算法签名断言 | {coverage} |",
+            f"| 检测引擎 | {capabilities} 项检测能力，验收脚本中有 {algos} 个算法签名断言；另有 {unwired} 个规则 ID 已定义但未接入 hook，不计入 | {coverage} |",
             f"| 漏洞回放矩阵 | {scenarios} 个场景，覆盖 {roots} 个 [Vulhub](https://github.com/vulhub/vulhub) 组件根（追踪 {cves} 个 CVE） | {vulhub} |",
             f"| 正常语料误报率 | {categories} 类共 {inputs} 条真实构造正常输入，`{fps} / {inputs}` 误报 | {fp} |",
             f"| 运行时支持 | JDK 8、11、17 各有独立构建，21 和 25 共用主 Agent；兼容 `javax.servlet` 与 `jakarta.servlet` | {agent} |",
@@ -409,7 +474,7 @@ def render_metrics(lang: str) -> str:
             "| Metric | Value | Source |",
             "|---|---|---|",
             f"| Instrumented sink families | {hooks} ASM hook modules (`agent-jdk25`); {per_backport} ASM transformers per backport ({tracks}) | {coverage} |",
-            f"| Detection engine | {capabilities} detector capabilities, {algos} algorithm signatures asserted in acceptance scripts | {coverage} |",
+            f"| Detection engine | {capabilities} detector capabilities, {algos} algorithm signatures asserted in acceptance scripts; {unwired} rule ids are defined but not wired, and not counted | {coverage} |",
             f"| Exploit replay suite | {scenarios} scenarios across {roots} [Vulhub](https://github.com/vulhub/vulhub) roots ({cves} CVEs tracked) | {vulhub} |",
             f"| Benign corpus precision | `{fps} / {inputs}` false positives across {categories} categories | {fp} |",
             f"| Supported JVMs | Builds for JDK 8, 11, 17, and a shared JDK 21/25 build (`javax.servlet` & `jakarta.servlet`) | {agent} |",

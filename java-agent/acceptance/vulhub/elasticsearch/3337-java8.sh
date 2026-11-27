@@ -3,7 +3,7 @@ set -euo pipefail
 
 cd "$(dirname "$0")/../../.."
 
-vulhub_context="${OHMYRASP_VULHUB_ELASTICSEARCH_3337_CONTEXT:-/tmp/vulhub-ohmyrasp-20260603/elasticsearch/CVE-2015-3337}"
+vulhub_context="${OHMYRASP_VULHUB_ELASTICSEARCH_3337_CONTEXT:-${OHMYRASP_VULHUB_ROOT:?set OHMYRASP_VULHUB_ROOT to a Vulhub checkout}/elasticsearch/CVE-2015-3337}"
 image="${OHMYRASP_VULHUB_ELASTICSEARCH_3337_IMAGE:-ohmyrasp/vulhub-elasticsearch:3337}"
 baseline_name="${OHMYRASP_VULHUB_ELASTICSEARCH_3337_BASELINE_NAME:-ohmyrasp-vulhub-elasticsearch-3337-baseline}"
 protected_name="${OHMYRASP_VULHUB_ELASTICSEARCH_3337_PROTECTED_NAME:-ohmyrasp-vulhub-elasticsearch-3337-protected}"
@@ -11,14 +11,15 @@ baseline_port="${OHMYRASP_VULHUB_ELASTICSEARCH_3337_BASELINE_PORT:-18582}"
 protected_port="${OHMYRASP_VULHUB_ELASTICSEARCH_3337_PROTECTED_PORT:-18583}"
 baseline_cluster="${OHMYRASP_VULHUB_ELASTICSEARCH_3337_BASELINE_CLUSTER:-ohmyrasp-es3337-baseline}"
 protected_cluster="${OHMYRASP_VULHUB_ELASTICSEARCH_3337_PROTECTED_CLUSTER:-ohmyrasp-es3337-protected}"
-host_agent_jar="$(pwd)/agent-java8/build/libs/ohmyrasp-agent-java8.jar"
+# shellcheck source=acceptance/lib/agent-build.sh
+source acceptance/lib/agent-build.sh
+host_agent_jar="$(ohmyrasp_agent_jar "$(pwd)/agent-java8/build/libs/ohmyrasp-agent-java8.jar")"
 baseline_dir="logs/vulhub-elasticsearch-3337-java8-baseline"
 protected_dir="logs/vulhub-elasticsearch-3337-java8-protected"
 protected_log="${protected_dir}/events.jsonl"
 traversal_path="/_plugin/head/../../../../../../../../../etc/passwd"
 
-docker run --rm -v "$(pwd):/workspace" -w /workspace gradle:jdk25 \
-  gradle --no-daemon :agent-java8:agentJava8Jar
+ohmyrasp_build :agent-java8:agentJava8Jar
 
 if [[ ! -d "$vulhub_context" ]]; then
   echo "missing Vulhub Elasticsearch CVE-2015-3337 context: ${vulhub_context}" >&2

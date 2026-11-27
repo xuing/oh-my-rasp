@@ -1,0 +1,35 @@
+[[case]]
+name = "struts-redirect-name"
+kind = "attack"
+via = "request"
+
+[case.request]
+method = "GET"
+uri = "/index.action"
+query = "redirect:%24%7B%23a%3D%40java.lang.Runtime%40getRuntime%28%29.exec%28%27id%27%29%7D=1"
+headers = { User-Agent = "Mozilla/5.0 (X11; Linux x86_64) Firefox/128.0", Accept = "text/html" }
+
+[case.primary]
+effect = "block"
+rule = "request_expression_parameter_name"
+
+[case.backport]
+effect = "unreachable"
+why = "the backports have no request-entry rule for this input"
+
+[[case]]
+name = "benign-bracketed-name"
+kind = "benign"
+via = "request"
+
+[case.request]
+method = "POST"
+uri = "/users"
+query = "username%5Baddress%5D=main&note=%25%7Bprofile.displayName%7D"
+headers = { User-Agent = "Mozilla/5.0 (X11; Linux x86_64) Firefox/128.0", Accept = "text/html", Content-Type = "application/x-www-form-urlencoded" }
+
+[case.primary]
+effect = "none"
+
+[case.backport]
+effect = "none"

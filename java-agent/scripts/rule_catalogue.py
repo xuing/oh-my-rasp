@@ -5,6 +5,11 @@ backport rule family. A backport line emits a family as `<line>_<family>` (java8
 except for the few families its hooks emit unprefixed. Those are read from the hooks, so the set of
 ids is exactly what the agents can log.
 
+A primary id the agent can never report, because nothing the packaged agent runs reaches the code that
+would, is listed under "not_wired" beside "primary" and "backports", with the reason, in the file where its
+description lives. Counts of what the agent detects leave those ids out. test_rule_cases.py (WiringTest)
+checks the list against the sources, in both directions.
+
 A script asserts an id when the id appears in it as a whole token: not as part of a longer word, a
 file name, a path or a `key:value` pair.
 gen-detection-coverage.py builds its acceptance lists with this definition and scripts/check-docs.py
@@ -30,6 +35,39 @@ def _catalogue(section: str) -> set[str]:
             for key in json.loads((RULES / name).read_text(encoding="utf-8"))[section]}
 
 
+def not_wired() -> dict[str, str]:
+    """Primary rule id -> why no hook can report it. An id is described in one file and marked in the same one."""
+    found: dict[str, str] = {}
+    for name in ("general.json", "product.json"):
+        data = json.loads((RULES / name).read_text(encoding="utf-8"))
+        for rule, reason in data.get("not_wired", {}).items():
+            if rule not in data["primary"]:
+                raise ValueError(f"{name}: not_wired names {rule}, which is not one of its primary ids")
+            if not reason.strip():
+                raise ValueError(f"{name}: not_wired {rule} needs a reason")
+            found[rule] = reason
+    return found
+
+
+def wired_primary_ids() -> set[str]:
+    """Primary ids a hook can report: the catalogue's primary ids less the not wired ones."""
+    return primary_ids() - not_wired().keys()
+
+
+def with_not_wired(uncovered: dict[str, dict[str, str]]) -> dict[str, dict[str, str]]:
+    """rules/cases/uncovered.toml's lists plus the not wired primary ids, each with the catalogue's reason.
+
+    The reason of a not wired id has one home, the catalogue; listing the id in uncovered.toml too is an error.
+    """
+    merged = {engine: dict(ids) for engine, ids in uncovered.items()}
+    for rule, reason in not_wired().items():
+        if rule in merged["primary"]:
+            raise ValueError(f"uncovered.toml lists {rule}, which the catalogue marks not wired: "
+                             "take it off uncovered.toml, its reason is in rules/general.json")
+        merged["primary"][rule] = f"not wired: {reason.rstrip('.')}"
+    return merged
+
+
 def primary_ids() -> set[str]:
     return _catalogue("primary")
 
@@ -38,14 +76,23 @@ def backport_families() -> set[str]:
     return _catalogue("backports")
 
 
+# The decisions of the three backport lines, one copy: the hooks body and the classes beside it.
+BACKPORT_DECISIONS = ROOT / "shared/src/main/java/io/ohmyrasp/agent/backport"
+# `new Finding(rule("<family>")` is emitted as `<line>_<family>`; `new Finding("<id>"` as written.
+FINDING = re.compile(r'new Finding\(\s*(rule\(\s*)?"(\w+)"')
+
+
 def backport_findings() -> dict[str, list[str]]:
-    """Backport line -> the rule ids its hooks emit as `new Finding("<id>"`, in source order."""
-    found: dict[str, list[str]] = {}
-    for line in BACKPORT_LINES:
-        hooks = ROOT / f"agent-{line}" / "src/main/java/io/ohmyrasp/agent" / line / f"{line.capitalize()}RaspHooks.java"
-        names = re.findall(r'new Finding\(\s*"(\w+)"', hooks.read_text(encoding="utf-8"))
-        found[line] = list(dict.fromkeys(names))
-    return found
+    """Backport line -> the rule ids the shared backport decisions emit on it, in source order.
+
+    The three lists come from one copy of the decisions, so they hold the same families by construction; what
+    differs is the prefix, which BackportLine derives and the backport tests pin per line.
+    """
+    sources = sorted(BACKPORT_DECISIONS.glob("*.java"))
+    matches = [m for path in sources for m in FINDING.finditer(path.read_text(encoding="utf-8"))]
+    return {line: list(dict.fromkeys(f"{line}_{name}" if prefixed else name for prefixed, name in
+                                     ((m.group(1), m.group(2)) for m in matches)))
+            for line in BACKPORT_LINES}
 
 
 @functools.cache

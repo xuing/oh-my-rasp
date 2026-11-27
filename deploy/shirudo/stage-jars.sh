@@ -1,7 +1,9 @@
 #!/bin/sh
-# Stage the Gradle build outputs for packaging and check the JDK 21 download aliases.
+# Stage the Gradle build outputs for packaging (the universal package and one per line) and check the JDK 21 download aliases.
 set -eu
 cd "$(dirname "$0")/../.."
+
+cp java-agent/agent-all/build/libs/ohmyrasp.jar deploy/shirudo/ohmyrasp/
 
 for track in java8 java11 java17 jdk25; do
     cp "java-agent/agent-${track}/build/libs/ohmyrasp-${track}.jar" "deploy/shirudo/ohmyrasp-${track}/"

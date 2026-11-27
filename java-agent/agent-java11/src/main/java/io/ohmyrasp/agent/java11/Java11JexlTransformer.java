@@ -64,7 +64,6 @@ public final class Java11JexlTransformer implements ClassFileTransformer {
   private static boolean isTarget(String className) {
     return "org/apache/commons/jexl3/internal/Script".equals(className)
         || "org/apache/commons/jexl2/ExpressionImpl".equals(className)
-        || "org/apache/commons/jexl2/ScriptImpl".equals(className)
         || "org/apache/commons/jexl/ExpressionImpl".equals(className)
         || "org/apache/commons/jexl/Script".equals(className);
   }

@@ -9,10 +9,11 @@
 | Metric | Count |
 |--------|------:|
 | Hook families (instrumentation points) | 30 |
-| Detector capabilities (public `detect*` entry points) | 60 |
-| Algorithm signatures asserted in acceptance scripts | 190 |
+| Detector capabilities (public `detect*` entry points) | 42 |
+| Algorithm signatures asserted in acceptance scripts | 173 |
 | End-to-end vulnerability acceptance scenarios | 136 |
 | JDK lines exercised | 6 |
+| Primary rule ids defined, not wired (in none of the counts above) | 23 |
 
 ## Hook families
 
@@ -54,32 +55,38 @@ rewrites a family of risky call sites and routes them to a detector class.
 
 ## Detector capabilities
 
-The detector classes in `agent-jdk25/src/main/java/io/ohmyrasp/agent/detect/` expose **60**
+The detector classes in `agent-jdk25/src/main/java/io/ohmyrasp/agent/detect/` expose **42**
 distinct public `detect*` entry points. Hooks call the class that owns each one;
 `DetectorEngine.detectRequest` runs the request-level detectors in a fixed first-match order.
 
 | Class | Entry points |
 |-------|--------------|
 | `Base64DecodeDetector` | `detectBase64Decode` |
-| `CodeExecutionDetector` | `detectEval` · `detectExpression` · `detectJavaCompilation` · `detectLoadLibrary` · `detectOgnl` · `detectWebshellCallable` · `detectWebshellEval` |
+| `CodeExecutionDetector` | `detectExpression` · `detectJavaCompilation` · `detectOgnl` |
 | `CredentialDetector` | `detectJwtVerificationFailure` |
-| `DeserializationDetector` | `detectDeserialization` · `detectFastjsonClassResource` · `detectHessianAllocation` · `detectHessianType` · `detectHttpInvokerDeserialization` · `detectHttpObjectStreamDeserialization` · `detectOpenWireThrowable` · `detectPolymorphicType` · `detectProtocolClassInstantiation` · `detectRmiRegistryBind` · `detectSessionDeserialization` · `detectXmlDecoderExpression` · `detectXmlRpcSerializableValue` |
+| `DeserializationDetector` | `detectDeserialization` · `detectFastjsonClassResource` · `detectHessianAllocation` · `detectHttpInvokerDeserialization` · `detectHttpObjectStreamDeserialization` · `detectOpenWireThrowable` · `detectPolymorphicType` · `detectRmiRegistryBind` · `detectSessionDeserialization` · `detectXmlDecoderExpression` · `detectXmlRpcSerializableValue` |
 | `DetectorEngine` | `detectRequest` · `detectScannerUserAgent` |
-| `FileAccessDetector` | `detectArgumentFileExpansion` · `detectDirectoryList` · `detectFileRead` · `detectInclude` · `detectServletIncludeAttributes` |
-| `FileUploadDetector` | `detectFileUpload` · `detectWebdavUpload` |
-| `HostFileMutationDetector` | `detectArchiveExtraction` · `detectFileDelete` · `detectFileWrite` · `detectGeneratedScriptFileWrite` · `detectJmxFileWrite` · `detectLink` · `detectRename` · `detectWebshellFileWrite` · `detectWindowsStreamWrite` |
-| `JdbcDetector` | `detectJdbcUrl` · `detectSql` · `detectSqlException` · `detectSqlRegex` |
+| `FileAccessDetector` | `detectArgumentFileExpansion` · `detectDirectoryList` · `detectFileRead` · `detectServletIncludeAttributes` |
+| `FileUploadDetector` | `detectFileUpload` |
+| `HostFileMutationDetector` | `detectArchiveExtraction` · `detectFileDelete` · `detectFileWrite` · `detectGeneratedScriptFileWrite` · `detectJmxFileWrite` · `detectWindowsStreamWrite` |
+| `JdbcDetector` | `detectJdbcUrl` · `detectSql` |
 | `NetworkDestinationDetector` | `detectDns` · `detectUrl` · `detectXmlAttachmentReference` · `detectXxeEntity` |
-| `ProcessDetector` | `detectCommand` · `detectWebshellCommand` · `detectWebshellLdPreload` |
+| `ProcessDetector` | `detectCommand` |
 | `RemoteJobDetector` | `detectRemoteJob` |
-| `RemoteResourceDetector` | `detectClassLoaderUrl` · `detectJaasConfig` · `detectJmxMBeanInvoke` · `detectJndi` · `detectSpringConfigLocation` |
-| `ResponseContentDetector` | `detectMarkupParameter` · `detectResponseDataLeak` · `detectXssEcho` |
+| `RemoteResourceDetector` | `detectClassLoaderUrl` · `detectJmxMBeanInvoke` · `detectJndi` · `detectSpringConfigLocation` |
+| `ResponseContentDetector` | `detectMarkupParameter` |
+
+Not counted: **15** public `detect*` entry points that serve only rules
+[defined, not wired](#defined-not-wired): `CodeExecutionDetector` `detectEval` · `detectLoadLibrary` · `detectWebshellCallable` · `detectWebshellEval`, `FileAccessDetector` `detectInclude`, `FileUploadDetector` `detectWebdavUpload`, `HostFileMutationDetector` `detectLink` · `detectRename` · `detectWebshellFileWrite`, `JdbcDetector` `detectSqlException` · `detectSqlRegex`, `ProcessDetector` `detectWebshellCommand` · `detectWebshellLdPreload`, `ResponseContentDetector` `detectResponseDataLeak` · `detectXssEcho`.
+
+Also not counted: **3** compatibility stubs whose every overload only returns an
+empty result, so they decide nothing (the rule each is named for is decided by another entry point): `DeserializationDetector` `detectHessianType` · `detectProtocolClassInstantiation`, `RemoteResourceDetector` `detectJaasConfig`.
 
 ## Rule scope
 
 The index covers literal detection IDs in the primary engine and hooks, reviewed computed IDs, and named findings in the Java backports. A row with both columns populated has distinct branches or a product-specific exclusion. General request indicators still need runtime evidence to establish an effect.
 
-The descriptions live in the [general catalog](../rules/general.json) and [product-specific catalog](../rules/product.json). Scope describes applicability. Policy selection continues to use the exact event ID.
+The descriptions live in the [general catalog](../rules/general.json) and [product-specific catalog](../rules/product.json). Scope describes applicability. Policy selection continues to use the exact event ID. The primary table leaves out the rule ids that no hook reaches, which have their own section below.
 
 ### Primary agent
 
@@ -120,17 +127,12 @@ The descriptions live in the [general catalog](../rules/general.json) and [produ
 | `directory_userinput` | A request-selected directory is listed. The evidence distinguishes the protected target, a selected walk and a path-only policy. | — |
 | `dns_blacklist` | A DNS name matches a configured or built-in domain indicator. | — |
 | `el_runtime` | Runtime execution primitives occur in an expression or execution is observed under an evaluator. A library hook identifies the evaluation context. | — |
-| `eval_regex` | The operator supplies a pattern to match against evaluation input or SQL. | — |
-| `expression_runtime` | Runtime execution primitives occur in an expression or execution is observed under an evaluator. A library hook identifies the evaluation context. | — |
 | `fileUpload_java_archive` | The application declares deployment authorization and the request supplies an archive. Deployment-context metadata alone requires explicit policy. | — |
 | `fileUpload_multipart_exe` | A submitted filename suggests executable, script or active web content. Its suffix alone does not establish execution. | — |
 | `fileUpload_multipart_expression` | An upload filename contains expression-language indicators. | — |
 | `fileUpload_multipart_html` | A submitted filename suggests executable, script or active web content. Its suffix alone does not establish execution. | — |
 | `fileUpload_multipart_script` | A submitted filename suggests executable, script or active web content. Its suffix alone does not establish execution. | — |
 | `fileUpload_path_traversal` | The submitted filename contains path-escape indicators. | — |
-| `fileUpload_webdav` | A WebDAV-style operation targets a script or an unsafe filesystem destination. | — |
-| `include_protocol` | An include target is checked for an external protocol or request-derived path. | — |
-| `include_userinput` | An include target is checked for an external protocol or request-derived path. | — |
 | `java_compile_runtime` | Java source presented to the compiler contains runtime execution primitives. | — |
 | `javascript_runtime` | Runtime execution primitives occur in an expression or execution is observed under an evaluator. A library hook identifies the evaluation context. | — |
 | `jdbc_h2_init` | — | H2 connection initialization is interpreted using that driver’s URL semantics. |
@@ -141,18 +143,14 @@ The descriptions live in the [general catalog](../rules/general.json) and [produ
 | `jmx_remote_config` | A resolved JMX invocation carries a location expression with configuration indicators. | Compound broker configuration sources include XBean or Spring location expressions. |
 | `jndi_disable_all` | A lookup uses a URL scheme listed by the naming policy. Runtime events identify scheme selection or direct URL-provider lookup. | — |
 | `jndi_jaas_config` | The JDK JNDI login module performs a lookup for which the naming router selects a listed URL scheme. | — |
-| `link_webshell` | A link or rename selects a script-like destination. | — |
-| `loadLibrary_unc` | A native library load selects a network share. | — |
 | `ognl_blacklist` | — | The OGNL policy uses engine-specific syntax or a configured expression-length limit. |
 | `ognl_length_limit` | — | The OGNL policy uses engine-specific syntax or a configured expression-length limit. |
-| `ognl_runtime` | Runtime execution primitives occur in an expression or execution is observed under an evaluator. A library hook identifies the evaluation context. | — |
 | `readFile_argument_expansion` | — | The argument parser's file-expansion convention determines whether a request selected a file. |
 | `readFile_outsideWebroot` | File-read policies use location, remote address or request selection as evidence. | — |
 | `readFile_unwanted` | File-read policies use location, remote address or request selection as evidence. | — |
 | `readFile_userinput` | Request input selects a host-file read. Path-only matches require explicit policy. | — |
 | `readFile_userinput_http` | File-read policies use location, remote address or request selection as evidence. | — |
 | `readFile_userinput_unwanted` | File-read policies use location, remote address or request selection as evidence. | — |
-| `rename_webshell` | A link or rename selects a script-like destination. | — |
 | `request_debug_process_launch` | Request route, method and fields suggest a debug process-launch operation. No process receipt is required. | — |
 | `request_default_credential` | — | Known administrative credentials, encryption keys or signing secrets depend on the product and credential format. |
 | `request_default_crypto_cookie` | — | Known administrative credentials, encryption keys or signing secrets depend on the product and credential format. |
@@ -169,9 +167,7 @@ The descriptions live in the [general catalog](../rules/general.json) and [produ
 | `request_internal_resource` | Alternative interpretations of the request target expose protected web resources or ambiguous path structure. | — |
 | `request_java_bean_pollution` | A request binding name refers to Java class-loader metadata. | — |
 | `request_jndi_lookup` | Request text contains naming-lookup or XML entity syntax. Transport opening is unconfirmed. | — |
-| `request_json_patch_expression` | A JSON Patch path contains an expression indicator. | — |
 | `request_jwt_verification_failure` | — | The DataEase authentication filter hands the same request to its chain after its selected credential fails verification. |
-| `request_message_selector_expression` | A message-selector field contains runtime expression syntax. | — |
 | `request_ogc_filter_sql_injection` | An OGC filter argument contains SQL-control indicators. JDBC execution is unconfirmed. | — |
 | `request_path_confusion` | Alternative interpretations of the request target expose protected web resources or ambiguous path structure. | — |
 | `request_plot_command_injection` | A plotting parameter contains a plot-interpreter command directive. | — |
@@ -184,26 +180,20 @@ The descriptions live in the [general catalog](../rules/general.json) and [produ
 | `request_serialized_client_state` | Client state in a request contains a Java object stream. | — |
 | `request_server_side_script_put` | An HTTP PUT selects a script-like destination. | — |
 | `request_setup_state_reset` | — | The meaning of a bypass flag or setup-state field depends on the application's access-control contract. |
-| `request_sql_identifier_injection` | An explicitly selected policy inspects SQL-related request fields before any JDBC handoff. | — |
-| `request_sql_sort_injection` | An explicitly selected policy inspects SQL-related request fields before any JDBC handoff. | — |
 | `request_template_loader_enable` | — | Application configuration fields select executable scripts or enable a template loader. |
 | `request_template_parameter` | An HTTP field or path contains expression or template syntax. These are input indicators. | — |
 | `request_template_source` | Route and parameter conventions suggest an internal forward or an external template source. | — |
 | `request_typed_parameter_deserialization` | — | Typed binding syntax and known classes or gadget families determine the match. |
 | `request_typed_payload_deserialization` | — | Typed binding syntax and known classes or gadget families determine the match. |
 | `request_upload_filename_override` | — | Upload-binding field conventions determine whether a filename can be overridden. |
-| `request_xml_polymorphic_gadget` | — | Typed binding syntax and known classes or gadget families determine the match. |
 | `request_xxe_payload` | Request text contains naming-lookup or XML entity syntax. Transport opening is unconfirmed. | — |
-| `response_dataLeak` | An explicit response policy matches an identifier format in HTML, JSON or XML. The event records the identifier category. | — |
 | `script_runtime` | Runtime execution primitives occur in an expression or execution is observed under an evaluator. A library hook identifies the evaluation context. | — |
 | `spel_runtime` | Runtime execution primitives occur in an expression or execution is observed under an evaluator. A library hook identifies the evaluation context. | — |
 | `spring_remote_config` | — | A Spring configuration-loading mechanism receives a remote location. |
 | `sql_derby_code_execution` | — | Execution or deserialization depends on the selected database driver's options or SQL extensions. |
-| `sql_exception` | JDBC evidence includes an error, a configured SQL policy or request-correlated query structure, depending on the identifier. | — |
 | `sql_h2_code_execution` | — | Execution or deserialization depends on the selected database driver's options or SQL extensions. |
 | `sql_identifier_injection` | SQL control syntax is correlated with an identifier or mapper substitution. | The MyBatis branch requires substitution provenance at statement handoff. |
 | `sql_policy` | JDBC evidence includes an error, a configured SQL policy or request-correlated query structure, depending on the identifier. | — |
-| `sql_regex` | The operator supplies a pattern to match against evaluation input or SQL. | — |
 | `sql_userinput` | JDBC evidence includes an error, a configured SQL policy or request-correlated query structure, depending on the identifier. | — |
 | `ssrf_aws` | — | Cloud metadata endpoints have provider-specific address and path semantics. |
 | `ssrf_common` | Outbound connection evidence includes target, protocol, representation or request correlation. Some destination-only findings require explicit policy. | — |
@@ -211,11 +201,6 @@ The descriptions live in the [general catalog](../rules/general.json) and [produ
 | `ssrf_protocol` | Outbound connection evidence includes target, protocol, representation or request correlation. Some destination-only findings require explicit policy. | — |
 | `ssrf_userinput` | Outbound connection evidence includes target, protocol, representation or request correlation. Some destination-only findings require explicit policy. | — |
 | `template_runtime` | Runtime execution primitives occur in an expression or execution is observed under an evaluator. A library hook identifies the evaluation context. | — |
-| `webshell_callable` | The monitored operation involves a callable, command, evaluated text, file write or loader environment setting. The individual rule determines the required evidence. | — |
-| `webshell_command` | The monitored operation involves a callable, command, evaluated text, file write or loader environment setting. The individual rule determines the required evidence. | — |
-| `webshell_eval` | The monitored operation involves a callable, command, evaluated text, file write or loader environment setting. The individual rule determines the required evidence. | — |
-| `webshell_file_put_contents` | The monitored operation involves a callable, command, evaluated text, file write or loader environment setting. The individual rule determines the required evidence. | — |
-| `webshell_ld_preload` | The monitored operation involves a callable, command, evaluated text, file write or loader environment setting. The individual rule determines the required evidence. | — |
 | `writeFile_NTFS` | Explicit policy selects a writable Windows open of a named data stream. The unnamed default stream uses ordinary base-file policy. | — |
 | `writeFile_config_path` | — | RocketMQ configuration-persistence frames identify the file write. |
 | `writeFile_generated_script` | A file-write decision uses a stream name, dispatch stack, script suffix or generated interpreter content. | — |
@@ -224,7 +209,6 @@ The descriptions live in the [general catalog](../rules/general.json) and [produ
 | `xml_decoder_runtime` | JavaBeans XML decoding is correlated with runtime invocation or a script-file operation. | — |
 | `xml_decoder_webshell` | JavaBeans XML decoding is correlated with runtime invocation or a script-file operation. | — |
 | `xpath_runtime` | Runtime execution primitives occur in an expression or execution is observed under an evaluator. A library hook identifies the evaluation context. | — |
-| `xss_echo` | An explicit response policy matches verbatim request markup in content supplied to the HTML response hook. | — |
 | `xss_userinput` | An explicit policy can observe or deny markup indicators in submitted text before the application handles it. | — |
 | `xxe_file` | An XML external entity refers to a file. | — |
 | `xxe_protocol` | The XML parser selects an external protocol. At the instrumented transport boundary the agent can check local catalog provenance. | — |
@@ -286,6 +270,41 @@ The descriptions live in the [general catalog](../rules/general.json) and [produ
 | `java8_xml_decoder_script_file_write`, `java11_xml_decoder_script_file_write`, `java17_xml_decoder_script_file_write` | JavaBeans XML decoding is correlated with a runtime or script-file operation. | — |
 | `java8_xxe_external_entity_protocol`, `java11_xxe_external_entity_protocol`, `java17_xxe_external_entity_protocol` | The XML parser opens an external entity transport after resolver and input selection. | — |
 
+## Defined, not wired
+
+These primary rule ids have a description in the catalog and code behind them, but no hook module injects a
+call that reaches that code, so the packaged agent cannot report them on a protected application. Unit
+tests call their detectors; the playground servlet and a probe's stub servlet call their `OhMyRaspHooks`
+entry methods directly, which is how the suites in the last column reach them. No count in this report or in the README
+includes them. The list is the `not_wired` object of the [general catalog](../rules/general.json), checked
+against the sources by `scripts/test_rule_cases.py`.
+
+| Rule id | Why no hook reaches it | Scope | Exercised only through |
+|---|---|---|---|
+| `eval_regex` | No hook module injects a call to OhMyRaspHooks.beforeEval; only the playground servlet calls it. | The operator supplies a pattern to match against evaluation input or SQL. | the JDK 25 runtime suite, via the playground servlet |
+| `expression_runtime` | OhMyRaspHooks.beforeExpressionEvaluation reports it only for an engine name that has no id of its own, and every engine name ExpressionHookModule passes has one. | Runtime execution primitives occur in an expression or execution is observed under an evaluator. A library hook identifies the evaluation context. | — |
+| `fileUpload_webdav` | No hook module injects a call to OhMyRaspHooks.beforeWebdavUpload; only the playground servlet calls it. | A WebDAV-style operation targets a script or an unsafe filesystem destination. | the JDK 25 runtime suite, via the playground servlet |
+| `include_protocol` | No hook module injects a call to OhMyRaspHooks.beforeInclude; only the playground servlet calls it. | An include target is checked for an external protocol or request-derived path. | the JDK 25 runtime suite, via the playground servlet |
+| `include_userinput` | No hook module injects a call to OhMyRaspHooks.beforeInclude; only the playground servlet calls it. | An include target is checked for an external protocol or request-derived path. | the JDK 25 runtime suite, via the playground servlet |
+| `link_webshell` | No hook module injects a call to OhMyRaspHooks.beforeLink; only the playground servlet calls it. | A link or rename selects a script-like destination. | the JDK 25 runtime suite, via the playground servlet |
+| `loadLibrary_unc` | No hook module injects a call to OhMyRaspHooks.beforeLoadLibrary; only the playground servlet calls it. | A native library load selects a network share. | the JDK 25 runtime suite, via the playground servlet |
+| `ognl_runtime` | No code emits it: the OGNL path (CodeExecutionDetector.detectOgnl) reports ognl_blacklist or ognl_length_limit. | Runtime execution primitives occur in an expression or execution is observed under an evaluator. A library hook identifies the evaluation context. | — |
+| `rename_webshell` | No hook module injects a call to OhMyRaspHooks.beforeRename; only the playground servlet calls it. | A link or rename selects a script-like destination. | the JDK 25 runtime suite, via the playground servlet |
+| `request_json_patch_expression` | The request context the servlet entry builds has no body: no hook module reads the request input stream or reader, so a rule decided from the body alone never sees one (measured with the rule-cases probe: a body the handler reads through getInputStream() and through getReader() fires nothing on JDK 25 or Java 17). | A JSON Patch path contains an expression indicator. | the JDK 25 runtime suite, via the playground servlet |
+| `request_message_selector_expression` | The request context the servlet entry builds has no body: no hook module reads the request input stream or reader, so a rule decided from the body alone never sees one (measured with the rule-cases probe: a body the handler reads through getInputStream() and through getReader() fires nothing on JDK 25 or Java 17). | A message-selector field contains runtime expression syntax. | the JDK 25 runtime suite, via the playground servlet |
+| `request_sql_identifier_injection` | The request context the servlet entry builds has no body: no hook module reads the request input stream or reader, so a rule decided from the body alone never sees one (measured with the rule-cases probe: a body the handler reads through getInputStream() and through getReader() fires nothing on JDK 25 or Java 17); the rule is also selected only by a loaded policy. | An explicitly selected policy inspects SQL-related request fields before any JDBC handoff. | — |
+| `request_sql_sort_injection` | The request context the servlet entry builds has no body: no hook module reads the request input stream or reader, so a rule decided from the body alone never sees one (measured with the rule-cases probe: a body the handler reads through getInputStream() and through getReader() fires nothing on JDK 25 or Java 17); the rule is also selected only by a loaded policy. | An explicitly selected policy inspects SQL-related request fields before any JDBC handoff. | — |
+| `request_xml_polymorphic_gadget` | The request context the servlet entry builds has no body: no hook module reads the request input stream or reader, so a rule decided from the body alone never sees one (measured with the rule-cases probe: a body the handler reads through getInputStream() and through getReader() fires nothing on JDK 25 or Java 17). | Typed binding syntax and known classes or gadget families determine the match. | the JDK 25 runtime suite, via the playground servlet |
+| `response_dataLeak` | No hook module injects a call to OhMyRaspHooks.beforeResponseDataLeak; only the playground servlet and the servlet-admission probe's stub servlet call it. | An explicit response policy matches an identifier format in HTML, JSON or XML. The event records the identifier category. | the [servlet-admission](../probes/servlet-admission/) probe |
+| `sql_exception` | No hook module injects a call to OhMyRaspHooks.beforeSqlException; only the playground servlet calls it. | JDBC evidence includes an error, a configured SQL policy or request-correlated query structure, depending on the identifier. | the JDK 25 runtime suite, via the playground servlet |
+| `sql_regex` | No hook module injects a call to OhMyRaspHooks.beforeSqlRegex; only the playground servlet calls it. | The operator supplies a pattern to match against evaluation input or SQL. | the JDK 25 runtime suite, via the playground servlet |
+| `webshell_callable` | No hook module injects a call to OhMyRaspHooks.beforeWebshellCallable; only the playground servlet calls it. | The monitored operation involves a callable, command, evaluated text, file write or loader environment setting. The individual rule determines the required evidence. | the JDK 25 runtime suite, via the playground servlet |
+| `webshell_command` | No hook module injects a call to OhMyRaspHooks.beforeWebshellCommand; only the playground servlet calls it. | The monitored operation involves a callable, command, evaluated text, file write or loader environment setting. The individual rule determines the required evidence. | the JDK 25 runtime suite, via the playground servlet |
+| `webshell_eval` | No hook module injects a call to OhMyRaspHooks.beforeWebshellEval; only the playground servlet calls it. | The monitored operation involves a callable, command, evaluated text, file write or loader environment setting. The individual rule determines the required evidence. | the JDK 25 runtime suite, via the playground servlet |
+| `webshell_file_put_contents` | No hook module injects a call to OhMyRaspHooks.beforeWebshellFileWrite; only the playground servlet calls it. | The monitored operation involves a callable, command, evaluated text, file write or loader environment setting. The individual rule determines the required evidence. | the JDK 25 runtime suite, via the playground servlet |
+| `webshell_ld_preload` | No hook module injects a call to OhMyRaspHooks.beforeWebshellLdPreload; only the playground servlet calls it. | The monitored operation involves a callable, command, evaluated text, file write or loader environment setting. The individual rule determines the required evidence. | the JDK 25 runtime suite, via the playground servlet |
+| `xss_echo` | No hook module injects a call to OhMyRaspHooks.beforeXssEcho; only the playground servlet and the servlet-admission probe's stub servlet call it. | An explicit response policy matches verbatim request markup in content supplied to the HTML response hook. | the [servlet-admission](../probes/servlet-admission/) probe |
+
 ## Algorithm signatures asserted in acceptance scripts
 
 Each rule id of the [catalog](../rules/) that a runtime or Vulhub acceptance script writes as a whole token:
@@ -313,16 +332,12 @@ tracked in the [Vulhub coverage ledger](../../docs/development/vulhub-coverage.m
 - `directory_userinput`
 - `dns_blacklist`
 - `el_runtime`
-- `eval_regex`
 - `fileUpload_java_archive`
 - `fileUpload_multipart_exe`
 - `fileUpload_multipart_expression`
 - `fileUpload_multipart_html`
 - `fileUpload_multipart_script`
 - `fileUpload_path_traversal`
-- `fileUpload_webdav`
-- `include_protocol`
-- `include_userinput`
 - `java11_archive_entry_traversal_write`
 - `java11_command_execution_exploit_primitive`
 - `java11_command_execution_shell_meta`
@@ -407,8 +422,6 @@ tracked in the [Vulhub coverage ledger](../../docs/development/vulhub-coverage.m
 - `jiffle_runtime`
 - `jmx_remote_config`
 - `jndi_disable_all`
-- `link_webshell`
-- `loadLibrary_unc`
 - `ognl_blacklist`
 - `ognl_length_limit`
 - `readFile_argument_expansion`
@@ -416,7 +429,6 @@ tracked in the [Vulhub coverage ledger](../../docs/development/vulhub-coverage.m
 - `readFile_userinput`
 - `readFile_userinput_http`
 - `readFile_userinput_unwanted`
-- `rename_webshell`
 - `request_debug_process_launch`
 - `request_default_credential`
 - `request_default_crypto_cookie`
@@ -433,9 +445,7 @@ tracked in the [Vulhub coverage ledger](../../docs/development/vulhub-coverage.m
 - `request_internal_resource`
 - `request_java_bean_pollution`
 - `request_jndi_lookup`
-- `request_json_patch_expression`
 - `request_jwt_verification_failure`
-- `request_message_selector_expression`
 - `request_ogc_filter_sql_injection`
 - `request_path_confusion`
 - `request_plot_command_injection`
@@ -452,16 +462,13 @@ tracked in the [Vulhub coverage ledger](../../docs/development/vulhub-coverage.m
 - `request_typed_parameter_deserialization`
 - `request_typed_payload_deserialization`
 - `request_upload_filename_override`
-- `request_xml_polymorphic_gadget`
 - `request_xxe_payload`
 - `script_runtime`
 - `spel_runtime`
 - `spring_remote_config`
 - `sql_derby_code_execution`
-- `sql_exception`
 - `sql_h2_code_execution`
 - `sql_policy`
-- `sql_regex`
 - `sql_userinput`
 - `ssrf_aws`
 - `ssrf_common`
@@ -469,11 +476,6 @@ tracked in the [Vulhub coverage ledger](../../docs/development/vulhub-coverage.m
 - `ssrf_protocol`
 - `ssrf_userinput`
 - `template_runtime`
-- `webshell_callable`
-- `webshell_command`
-- `webshell_eval`
-- `webshell_file_put_contents`
-- `webshell_ld_preload`
 - `writeFile_config_path`
 - `writeFile_generated_script`
 - `writeFile_reflect`
@@ -502,18 +504,15 @@ line it runs holds a block event for each identifier in its `required_algorithms
 - `request_scheduler_shell_job`
 - `request_debug_process_launch`
 - `request_dynamic_script_config`
-- `request_message_selector_expression`
 - `request_expression_header`
 - `request_jndi_lookup`
 - `request_expression_parameter`
 - `request_ogc_filter_sql_injection`
-- `request_json_patch_expression`
 - `request_expression_parameter_name`
 - `request_expression_path`
 - `request_xxe_payload`
 - `request_typed_parameter_deserialization`
 - `request_typed_payload_deserialization`
-- `request_xml_polymorphic_gadget`
 - `request_template_parameter`
 - `request_template_loader_enable`
 - `request_template_source`
@@ -551,8 +550,6 @@ line it runs holds a block event for each identifier in its `required_algorithms
 - `jmx_remote_config`
 - `sql_userinput`
 - `sql_policy`
-- `sql_regex`
-- `sql_exception`
 - `sql_h2_code_execution`
 - `jdbc_h2_init`
 - `sql_derby_code_execution`
@@ -573,17 +570,12 @@ line it runs holds a block event for each identifier in its `required_algorithms
 - `xml_decoder_webshell`
 - `xxe_protocol`
 - `xxe_file`
-- `include_userinput`
-- `include_protocol`
 - `fileUpload_multipart_script`
 - `fileUpload_multipart_expression`
 - `fileUpload_path_traversal`
 - `fileUpload_multipart_html`
 - `fileUpload_multipart_exe`
 - `fileUpload_java_archive`
-- `fileUpload_webdav`
-- `rename_webshell`
-- `link_webshell`
 - `archive_traversal`
 - `ognl_blacklist`
 - `ognl_length_limit`
@@ -596,13 +588,10 @@ line it runs holds a block event for each identifier in its `required_algorithms
 - `xpath_runtime`
 - `java_compile_runtime`
 - `template_runtime`
-- `eval_regex`
-- `loadLibrary_unc`
-- `webshell_eval`
-- `webshell_command`
-- `webshell_file_put_contents`
-- `webshell_callable`
-- `webshell_ld_preload`
+
+The array also names 17 rules [defined, not wired](#defined-not-wired). The suite reaches them
+through the playground servlet, which calls their hook entry methods itself, so a block event for one shows that
+the detector and the policy work, not that a hook reaches it: `request_message_selector_expression`, `request_json_patch_expression`, `request_xml_polymorphic_gadget`, `sql_regex`, `sql_exception`, `include_userinput`, `include_protocol`, `fileUpload_webdav`, `rename_webshell`, `link_webshell`, `eval_regex`, `loadLibrary_unc`, `webshell_eval`, `webshell_command`, `webshell_file_put_contents`, `webshell_callable`, `webshell_ld_preload`.
 
 ### Other primary rules a probe checks
 
@@ -628,16 +617,14 @@ in its check; the probe runs against the built agent JAR.
 | `jndi_jaas_config` | [jndi-route](../probes/jndi-route/) |
 | `request_remote_job_submission` | [spark-submit](../probes/spark-submit/), [yarn-submit](../probes/yarn-submit/) |
 | `request_scanner` | [servlet-admission](../probes/servlet-admission/) |
-| `response_dataLeak` | [servlet-admission](../probes/servlet-admission/) |
 | `sql_identifier_injection` | [mybatis-mapping](../probes/mybatis-mapping/) |
 | `writeFile_NTFS` | [file-streams](../probes/file-streams/) |
-| `xss_echo` | [servlet-admission](../probes/servlet-admission/) |
 | `xss_userinput` | [servlet-admission](../probes/servlet-admission/) |
 
 ## Tested vulnerability matrix
 
 End-to-end acceptance scenarios that run a real vulnerable application under
-the agent and assert the expected detection/block. Counts by JDK line:
+the agent. Counts by JDK line:
 
 | JDK | Scenarios |
 |-----|----------:|
@@ -649,6 +636,11 @@ the agent and assert the expected detection/block. Counts by JDK line:
 | java6-legacy | 5 |
 | unknown | 1 |
 | **total** | **136** |
+
+120 of the 136 scripts run the exploit against a JVM an agent line supports.
+The other 16 show a boundary and no block: the 14 `java6-legacy` and `java7-legacy`
+scripts show an agent line skipping on an old JVM, which then runs unprotected, and the setup or licence
+scripts show a payload held behind a setup state.
 
 Top application families by scenario count:
 

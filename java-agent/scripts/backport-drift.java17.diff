@@ -1,0 +1,559 @@
+# Differences between agent-java8 and agent-java17, after replacing the version token with <N>.
+# Written by java-agent/scripts/check-backport-drift.py --update. Do not edit by hand.
+# "-" lines are agent-java8, "+" lines are agent-java17. A file with no entry is the same in both.
+
+== build.gradle.kts
+@@
++import java.io.ByteArrayInputStream
+@@
+-val otherLauncherEntries = listOf("UniversalEntry", "PrimaryEntry", "Java17Entry", "Java11Entry", "Java<N>Entry")
++val otherLauncherEntries = listOf("UniversalEntry", "PrimaryEntry", "Java<N>Entry", "Java11Entry", "Java8Entry")
+@@
+-    testImplementation("org.junit.jupiter:junit-jupiter:5.14.4")
++    testImplementation("org.junit.jupiter:junit-jupiter:6.1.3")
+@@
+-    testImplementation("org.junit.platform:junit-platform-launcher:1.14.4")
++    testImplementation("org.junit.platform:junit-platform-launcher:6.1.3")
+@@
+-    options.release.set(8)
++    options.release.set(17)
+@@
+-    description = "Verifies the Java <N> era agent jar emits Java <N> class files."
++    description = "Verifies the Java <N> era agent jar emits Java <N>-compatible class files."
+@@
+-                    require(major <= 52) {
+-                        "Expected Java <N>-compatible classfile major <= 52, got $major for ${entry.name}"
++                    require(major <= 61) {
++                        "Expected Java <N>-compatible classfile major <= 61, got $major for ${entry.name}"
+@@
+-tasks.assemble {
+-    dependsOn(agentJava<N>Jar)
+-}
++val shirudoMode = providers.gradleProperty("shirudoMode")
++    .map { it.trim() }
++    .orElse("block")
++    .get()
++    .ifEmpty { "block" }
++val shirudoLockConfig = providers.gradleProperty("shirudoLockConfig")
++    .map { it.trim() }
++    .orElse("true")
++    .get()
++    .ifEmpty { "true" }
++val shirudoConfigDir = layout.buildDirectory.dir("generated/shirudo-config")
+@@
+-val shirudoMode = providers.gradleProperty("shirudoMode").orElse("block")
+-val shirudoLockConfig = providers.gradleProperty("shirudoLockConfig").orElse("true")
+-
+-val generateShirudoProperties = tasks.register("generateShirudoProperties") {
++val generateShirudoConfig = tasks.register("generateShirudoConfig") {
+@@
+-    description = "Generates META-INF/ohmyrasp-shirudo.properties for the shirudo upatch jar."
+-    val outputDir = layout.buildDirectory.dir("generated/shirudo-resources")
++    description = "Generates META-INF/ohmyrasp-shirudo.properties for shirudo upatch jars."
+@@
+-    outputs.dir(outputDir)
++    outputs.dir(shirudoConfigDir)
+@@
+-        val propsFile = outputDir.get().file("META-INF/ohmyrasp-shirudo.properties").asFile
+-        propsFile.parentFile.mkdirs()
+-        propsFile.writeText(
+-            """
+-            standalone=true
+-            lock_config=${shirudoLockConfig.get()}
+-            mode=${shirudoMode.get()}
+-            control=none
+-            log=stderr
+-            latency_sample=0
+-            """.trimIndent() + "\n",
++        val metaInfDir = shirudoConfigDir.get().asFile.resolve("META-INF")
++        metaInfDir.mkdirs()
++        metaInfDir.resolve("ohmyrasp-shirudo.properties").writeText(
++            buildString {
++                appendLine("standalone=true")
++                appendLine("lock_config=$shirudoLockConfig")
++                appendLine("mode=$shirudoMode")
++                appendLine("control=none")
++                appendLine("log=stderr")
++                appendLine("latency_sample=0")
++            },
+@@
+-    description = "Builds the standalone shirudo upatch Java <N> era agent jar."
++    description = "Builds the standalone Java <N> shirudo upatch agent jar."
+@@
++    dependsOn(generateShirudoConfig)
+@@
+-            "Implementation-Title" to "OhMyRasp Java <N> Era Agent (shirudo upatch)",
++            "Implementation-Title" to "OhMyRasp Java <N> Era Agent",
+@@
+-    from(generateShirudoProperties)
++    from(shirudoConfigDir)
+@@
+-    description = "Verifies the standalone shirudo upatch Java <N> era agent jar."
++    description = "Verifies the Java <N> shirudo upatch jar size, manifest, baked config, and bytecode."
+@@
+-        val maxSizeBytes = 16L * 1024L * 1024L
+-        require(jarFile.length() > 0L && jarFile.length() < maxSizeBytes) {
+-            "Expected shirudo upatch jar size in (0, $maxSizeBytes), got ${jarFile.length()}"
++        val maxBytes = 16L * 1024L * 1024L
++        require(jarFile.length() in 1 until maxBytes) {
++            "Expected shirudo upatch jar size < 16 MiB, got ${jarFile.length()} bytes"
+@@
+-
+@@
+-            require(manifestEntry != null) {
+-                "Missing META-INF/MANIFEST.MF in ${jarFile.name}"
++                ?: error("Missing META-INF/MANIFEST.MF in ${jarFile.name}")
++            val manifestBytes = zip.getInputStream(manifestEntry).use { it.readBytes() }
++            val manifestText = manifestBytes.toString(Charsets.UTF_8)
++            val mainSection = manifestText.split(Regex("\\r?\\n\\r?\\n"), limit = 2).first()
++            require(mainSection.lineSequence().any { it.startsWith("Premain-Class:") }) {
++                "Expected Premain-Class: in main manifest section of ${jarFile.name}"
+@@
+-            val manifestText = zip.getInputStream(manifestEntry).bufferedReader(Charsets.UTF_8).use {
+-                it.readText()
++            val manifest = Manifest(ByteArrayInputStream(manifestBytes))
++            require(manifest.mainAttributes.getValue("Premain-Class") == "io.ohmyrasp.agent.launch.Java<N>Entry") {
++                "Unexpected Premain-Class in ${jarFile.name}"
+@@
+-            val mainSection = manifestText.split(Regex("\\r?\\n\\r?\\n"), limit = 2)[0]
+-            require(mainSection.contains("Premain-Class:")) {
+-                "Expected Premain-Class: in main manifest section"
++            require(manifest.mainAttributes.getValue("Agent-Class") == "io.ohmyrasp.agent.launch.Java<N>Entry") {
++                "Unexpected Agent-Class in ${jarFile.name}"
+@@
+-            require(!mainSection.contains("Boot-Class-Path:")) {
+-                "Boot-Class-Path: must NOT be present in shirudo upatch manifest"
+-            }
+-            val parsedManifest = zip.getInputStream(manifestEntry).use { Manifest(it) }
+-            val mainAttrs = parsedManifest.mainAttributes
+-            require(mainAttrs.getValue("Premain-Class") == "io.ohmyrasp.agent.launch.Java<N>Entry") {
+-                "Unexpected Premain-Class: ${mainAttrs.getValue("Premain-Class")}"
+-            }
+-            require(mainAttrs.getValue("Boot-Class-Path") == null) {
+-                "Boot-Class-Path attribute must NOT be present"
+-            }
+-            require(mainAttrs.getValue("OhMyRasp-Shirudo-Upatch") == "true") {
+-                "Expected OhMyRasp-Shirudo-Upatch=true in manifest"
++            require(manifest.mainAttributes.getValue("OhMyRasp-Shirudo-Upatch") == "true") {
++                "Missing OhMyRasp-Shirudo-Upatch: true in ${jarFile.name}"
+@@
+-            val propsEntry = zip.getEntry("META-INF/ohmyrasp-shirudo.properties")
+-            require(propsEntry != null) {
+-                "Missing META-INF/ohmyrasp-shirudo.properties in ${jarFile.name}"
+-            }
++            val configEntry = zip.getEntry("META-INF/ohmyrasp-shirudo.properties")
++                ?: error("Missing META-INF/ohmyrasp-shirudo.properties in ${jarFile.name}")
+@@
+-            zip.getInputStream(propsEntry).use { input ->
+-                props.load(input.reader(Charsets.UTF_8))
+-            }
+-            val expectedKeys = listOf("standalone", "lock_config", "mode", "control", "log", "latency_sample")
+-            expectedKeys.forEach { key ->
+-                val value = props.getProperty(key)
+-                require(!value.isNullOrBlank()) {
+-                    "Missing or blank key '$key' in META-INF/ohmyrasp-shirudo.properties"
+-                }
+-            }
++            zip.getInputStream(configEntry).use { props.load(it) }
+@@
+-            require(props.getProperty("lock_config") == shirudoLockConfig.get()) {
+-                "Expected lock_config=${shirudoLockConfig.get()}, got ${props.getProperty("lock_config")}"
++            require(props.getProperty("lock_config") == shirudoLockConfig) {
++                "Expected lock_config=$shirudoLockConfig, got ${props.getProperty("lock_config")}"
+@@
+-            require(props.getProperty("mode") == shirudoMode.get()) {
+-                "Expected mode=${shirudoMode.get()}, got ${props.getProperty("mode")}"
++            require(props.getProperty("mode") == shirudoMode) {
++                "Expected mode=$shirudoMode, got ${props.getProperty("mode")}"
++            }
++            require(props.getProperty("control") == "none") {
++                "Expected control=none, got ${props.getProperty("control")}"
++            }
++            require(props.getProperty("log") == "stderr") {
++                "Expected log=stderr, got ${props.getProperty("log")}"
++            }
++            require(props.getProperty("latency_sample") == "0") {
++                "Expected latency_sample=0, got ${props.getProperty("latency_sample")}"
+@@
+-                "No classes packaged in ${jarFile.name}"
++                "No Java <N> era agent classes were packaged in ${jarFile.name}."
+@@
+-                    require(major <= 52) {
+-                        "Expected Java <N>-compatible classfile major <= 52, got $major for ${entry.name}"
++                    require(major <= 61) {
++                        "Expected Java <N>-compatible classfile major <= 61, got $major for ${entry.name}"
+@@
++tasks.assemble {
++    dependsOn(agentJava<N>Jar, shirudoUpatchJar)
++}
++
+
+== src/main/java/io/ohmyrasp/agent/java<N>/Java<N>ArchiveTransformer.java
+@@
+-      ClassReader reader = new ClassReader(classfileBuffer);
+-      ClassWriter writer = new ClassWriter(reader, ClassWriter.COMPUTE_MAXS);
++      var reader = new ClassReader(classfileBuffer);
++      var writer = new ClassWriter(reader, ClassWriter.COMPUTE_MAXS);
+
+== src/main/java/io/ohmyrasp/agent/java<N>/Java<N>Base64Transformer.java
+@@
+-      ClassReader reader = new ClassReader(classfileBuffer);
+-      ClassWriter writer = new ClassWriter(reader, ClassWriter.COMPUTE_MAXS);
++      var reader = new ClassReader(classfileBuffer);
++      var writer = new ClassWriter(reader, ClassWriter.COMPUTE_MAXS);
+
+== src/main/java/io/ohmyrasp/agent/java<N>/Java<N>ClassLoaderTransformer.java
+@@
+-      ClassReader reader = new ClassReader(classfileBuffer);
+-      ClassWriter writer = new ClassWriter(reader, ClassWriter.COMPUTE_MAXS);
++      var reader = new ClassReader(classfileBuffer);
++      var writer = new ClassWriter(reader, ClassWriter.COMPUTE_MAXS);
+
+== src/main/java/io/ohmyrasp/agent/java<N>/Java<N>ElTransformer.java
+@@
+-      ClassReader reader = new ClassReader(classfileBuffer);
++      var reader = new ClassReader(classfileBuffer);
+@@
+-      Label start = new Label();
+-      Label end = new Label();
+-      Label invocationTargetHandler = new Label();
+-      Label throwableHandler = new Label();
+-      Label done = new Label();
++      var start = new Label();
++      var end = new Label();
++      var invocationTargetHandler = new Label();
++      var throwableHandler = new Label();
++      var done = new Label();
+@@
+-      Label notRuntimeException = new Label();
++      var notRuntimeException = new Label();
+@@
+-      Label notError = new Label();
++      var notError = new Label();
+
+== src/main/java/io/ohmyrasp/agent/java<N>/Java<N>FastjsonTransformer.java
+@@
+-      ClassReader reader = new ClassReader(classfileBuffer);
+-      ClassWriter writer = new ClassWriter(reader, ClassWriter.COMPUTE_MAXS);
++      var reader = new ClassReader(classfileBuffer);
++      var writer = new ClassWriter(reader, ClassWriter.COMPUTE_MAXS);
+@@
+-            // Original stack: [ClassLoader, resource]. Inspect a copy and leave
+-            // the original operands untouched for getResourceAsStream.
+
+== src/main/java/io/ohmyrasp/agent/java<N>/Java<N>FileTransformer.java
+@@
+-      ClassReader reader = new ClassReader(classfileBuffer);
+-      ClassWriter writer = new ClassWriter(reader, PlotWriteVisitor.OWNER.equals(className) ? ClassWriter.COMPUTE_FRAMES : ClassWriter.COMPUTE_MAXS);
++      var reader = new ClassReader(classfileBuffer);
++      var writer = new ClassWriter(reader, PlotWriteVisitor.OWNER.equals(className) ? ClassWriter.COMPUTE_FRAMES : ClassWriter.COMPUTE_MAXS);
+
+== src/main/java/io/ohmyrasp/agent/java<N>/Java<N>JavaBeansTransformer.java
+@@
+-      ClassReader reader = new ClassReader(classfileBuffer);
+-      ClassWriter writer = new ClassWriter(reader, ClassWriter.COMPUTE_MAXS);
++      var reader = new ClassReader(classfileBuffer);
++      var writer = new ClassWriter(reader, ClassWriter.COMPUTE_MAXS);
+
+== src/main/java/io/ohmyrasp/agent/java<N>/Java<N>JavaCompilationTransformer.java
+@@
+-      ClassReader reader = new ClassReader(classfileBuffer);
+-      ClassWriter writer = new ClassWriter(reader, ClassWriter.COMPUTE_MAXS);
++      var reader = new ClassReader(classfileBuffer);
++      var writer = new ClassWriter(reader, ClassWriter.COMPUTE_MAXS);
+
+== src/main/java/io/ohmyrasp/agent/java<N>/Java<N>JdbcTransformer.java
+@@
+-      ClassReader reader = new ClassReader(classfileBuffer);
++      var reader = new ClassReader(classfileBuffer);
+@@
+-      ClassWriter writer = new ClassWriter(reader, ClassWriter.COMPUTE_MAXS);
++      var writer = new ClassWriter(reader, ClassWriter.COMPUTE_MAXS);
+
+== src/main/java/io/ohmyrasp/agent/java<N>/Java<N>JexlTransformer.java
+@@
+-      ClassReader reader = new ClassReader(classfileBuffer);
+-      ClassWriter writer = new ClassWriter(reader, ClassWriter.COMPUTE_MAXS);
++      var reader = new ClassReader(classfileBuffer);
++      var writer = new ClassWriter(reader, ClassWriter.COMPUTE_MAXS);
+@@
+-      Label start = new Label();
+-      Label end = new Label();
+-      Label invocationTargetHandler = new Label();
+-      Label throwableHandler = new Label();
+-      Label done = new Label();
++      var start = new Label();
++      var end = new Label();
++      var invocationTargetHandler = new Label();
++      var throwableHandler = new Label();
++      var done = new Label();
+@@
+-      Label notRuntimeException = new Label();
++      var notRuntimeException = new Label();
+@@
+-      Label notError = new Label();
++      var notError = new Label();
+
+== src/main/java/io/ohmyrasp/agent/java<N>/Java<N>JmxTransformer.java
+@@
+-      ClassReader reader = new ClassReader(classfileBuffer);
+-      ClassWriter writer = new ClassWriter(reader, ClassWriter.COMPUTE_MAXS);
++      var reader = new ClassReader(classfileBuffer);
++      var writer = new ClassWriter(reader, ClassWriter.COMPUTE_MAXS);
+
+== src/main/java/io/ohmyrasp/agent/java<N>/Java<N>JndiTransformer.java
+@@
+-      ClassReader reader = new ClassReader(classfileBuffer);
+-      ClassWriter writer = new ClassWriter(reader, ClassWriter.COMPUTE_MAXS);
++      var reader = new ClassReader(classfileBuffer);
++      var writer = new ClassWriter(reader, ClassWriter.COMPUTE_MAXS);
+
+== src/main/java/io/ohmyrasp/agent/java<N>/Java<N>JwtTransformer.java
+@@
+-      ClassReader reader = new ClassReader(classfileBuffer);
+-      ClassWriter writer = new ClassWriter(reader, ClassWriter.COMPUTE_MAXS);
++      var reader = new ClassReader(classfileBuffer);
++      var writer = new ClassWriter(reader, ClassWriter.COMPUTE_MAXS);
+
+== src/main/java/io/ohmyrasp/agent/java<N>/Java<N>MultipartUploadTransformer.java
+@@
+-      ClassReader reader = new ClassReader(bytes);
++      var reader = new ClassReader(bytes);
+@@
+-      ClassWriter writer = new ClassWriter(reader, ClassWriter.COMPUTE_MAXS);
++      var writer = new ClassWriter(reader, ClassWriter.COMPUTE_MAXS);
+
+== src/main/java/io/ohmyrasp/agent/java<N>/Java<N>ProcessTransformer.java
+@@
+-      ClassReader reader = new ClassReader(classfileBuffer);
+-      ClassWriter writer = new ClassWriter(reader, ClassWriter.COMPUTE_MAXS);
++      var reader = new ClassReader(classfileBuffer);
++      var writer = new ClassWriter(reader, ClassWriter.COMPUTE_MAXS);
+
+== src/main/java/io/ohmyrasp/agent/java<N>/Java<N>RaspLine.java
+@@
+-    super("8");
++    super("17");
+
+== src/main/java/io/ohmyrasp/agent/java<N>/Java<N>ScriptEngineTransformer.java
+@@
+-      ClassReader reader = new ClassReader(classfileBuffer);
+-      ClassWriter writer = new ClassWriter(reader, ClassWriter.COMPUTE_MAXS);
++      var reader = new ClassReader(classfileBuffer);
++      var writer = new ClassWriter(reader, ClassWriter.COMPUTE_MAXS);
+
+== src/main/java/io/ohmyrasp/agent/java<N>/Java<N>ServletTransformer.java
+@@
+-      ClassReader reader = new ClassReader(classfileBuffer);
++      var reader = new ClassReader(classfileBuffer);
+@@
+-      Label start = new Label();
+-      Label end = new Label();
+-      Label invocationTargetHandler = new Label();
+-      Label throwableHandler = new Label();
+-      Label done = new Label();
++      var start = new Label();
++      var end = new Label();
++      var invocationTargetHandler = new Label();
++      var throwableHandler = new Label();
++      var done = new Label();
+@@
+-      Label notRuntimeException = new Label();
++      var notRuntimeException = new Label();
+@@
+-      Label notError = new Label();
++      var notError = new Label();
+@@
+-
+
+== src/main/java/io/ohmyrasp/agent/java<N>/Java<N>SparkRestTransformer.java
+@@
+-      ClassReader reader = new ClassReader(classfileBuffer);
+-      ClassWriter writer = new ClassWriter(reader, ClassWriter.COMPUTE_MAXS);
++      var reader = new ClassReader(classfileBuffer);
++      var writer = new ClassWriter(reader, ClassWriter.COMPUTE_MAXS);
+
+== src/main/java/io/ohmyrasp/agent/java<N>/Java<N>UrlTransformer.java
+@@
+-      ClassReader reader = new ClassReader(classfileBuffer);
+-      ClassWriter writer = new ClassWriter(reader, ClassWriter.COMPUTE_MAXS);
++      var reader = new ClassReader(classfileBuffer);
++      var writer = new ClassWriter(reader, ClassWriter.COMPUTE_MAXS);
+
+== src/main/java/io/ohmyrasp/agent/java<N>/Java<N>XxeTransformer.java
+@@
++  private static final Type XML_INPUT_SOURCE =
++      Type.getObjectType("com/sun/org/apache/xerces/internal/xni/parser/XMLInputSource");
+@@
+-      ClassReader reader = new ClassReader(classfileBuffer);
+-      ClassWriter writer = new ClassWriter(reader, ClassWriter.COMPUTE_MAXS);
++      var reader = new ClassReader(classfileBuffer);
++      var writer = new ClassWriter(reader, ClassWriter.COMPUTE_MAXS);
+
+== src/main/java/io/ohmyrasp/agent/java<N>/Java<N>YarnRestTransformer.java
+@@
+-      ClassReader reader = new ClassReader(classfileBuffer);
+-      ClassWriter writer = new ClassWriter(reader, ClassWriter.COMPUTE_MAXS);
++      var reader = new ClassReader(classfileBuffer);
++      var writer = new ClassWriter(reader, ClassWriter.COMPUTE_MAXS);
+
+== src/main/java/io/ohmyrasp/agent/java<N>/OhMyRaspJava<N>Agent.java
+@@
++import java.io.FileInputStream;
++import java.io.FileOutputStream;
+@@
++import java.io.ObjectInputStream;
++import java.io.RandomAccessFile;
+@@
++import java.net.URLClassLoader;
+@@
++import java.util.zip.ZipEntry;
+@@
+-  private static String startupMessage(
+-      String mode, String agentArgs, Instrumentation instrumentation) {
+-    return "{"
+-        + "\"event\":\"ohmyrasp-java<N>-agent-start\","
+-        + "\"mode\":\"" + json(mode) + "\","
+-        + "\"java_version\":\"" + json(System.getProperty("java.version", "unknown")) + "\","
+-        + "\"java_vendor\":\"" + json(System.getProperty("java.vendor", "unknown")) + "\","
+-        + "\"agent_args\":\"" + json(agentArgs == null ? "" : agentArgs) + "\","
+-        + "\"request_hook\":\"installed\","
+-        + "\"remote_job_hook\":\"installed\","
+-        + "\"command_hook\":\"installed\","
+-        + "\"jndi_hook\":\"installed\","
+-        + "\"deserialization_hook\":\"installed\","
+-        + "\"hessian_hook\":\"installed\","
+-        + "\"file_hook\":\"installed\","
+-        + "\"upload_hook\":\"installed\","
+-        + "\"url_hook\":\"installed\","
+-        + "\"archive_hook\":\"installed\","
+-        + "\"jdbc_hook\":\"installed\","
+-        + "\"sql_identifier_hook\":\"installed\","
+-        + "\"sql_statement_hook\":\"installed\","
+-        + "\"base64_hook\":\"installed\","
+-        + "\"classloader_hook\":\"installed\","
+-        + "\"script_hook\":\"installed\","
+-        + "\"jexl_hook\":\"installed\","
+-        + "\"el_hook\":\"installed\","
+-        + "\"java_compile_hook\":\"installed\","
+-        + "\"jaas_hook\":\"installed\","
+-        + "\"jmx_hook\":\"installed\","
+-        + "\"jwt_hook\":\"installed\","
+-        + "\"java_beans_hook\":\"installed\","
+-        + "\"xxe_hook\":\"installed\","
+-        + "\"instrumentation\":\"" + (instrumentation == null ? "missing" : "available") + "\""
+-        + "}";
+-  }
+-
+@@
++  private static String startupMessage(
++      String mode, String agentArgs, Instrumentation instrumentation) {
++    return "{"
++        + "\"event\":\"ohmyrasp-java<N>-agent-start\","
++        + "\"mode\":\"" + json(mode) + "\","
++        + "\"java_version\":\"" + json(System.getProperty("java.version", "unknown")) + "\","
++        + "\"java_vendor\":\"" + json(System.getProperty("java.vendor", "unknown")) + "\","
++        + "\"agent_args\":\"" + json(agentArgs == null ? "" : agentArgs) + "\","
++        + "\"startup_probe\":\"installed\","
++        + "\"request_hook\":\"installed\","
++        + "\"remote_job_hook\":\"installed\","
++        + "\"command_hook\":\"installed\","
++        + "\"jndi_hook\":\"installed\","
++        + "\"deserialization_hook\":\"installed\","
++        + "\"hessian_hook\":\"installed\","
++        + "\"file_hook\":\"installed\","
++        + "\"upload_hook\":\"installed\","
++        + "\"archive_hook\":\"installed\","
++        + "\"url_hook\":\"installed\","
++        + "\"classloader_hook\":\"installed\","
++        + "\"jdbc_hook\":\"installed\","
++        + "\"sql_identifier_hook\":\"installed\","
++        + "\"sql_statement_hook\":\"installed\","
++        + "\"base64_hook\":\"installed\","
++        + "\"script_hook\":\"installed\","
++        + "\"jexl_hook\":\"installed\","
++        + "\"el_hook\":\"installed\","
++        + "\"java_compile_hook\":\"installed\","
++        + "\"jaas_hook\":\"installed\","
++        + "\"jmx_hook\":\"installed\","
++        + "\"jwt_hook\":\"installed\","
++        + "\"java_beans_hook\":\"installed\","
++        + "\"xxe_hook\":\"installed\","
++        + "\"instrumentation\":\"" + (instrumentation == null ? "missing" : "available") + "\""
++        + "}";
++  }
++
+@@
++    register(instrumentation, registered, new Java<N>ArchiveTransformer(), canRetransform);
+@@
+-    register(instrumentation, registered, new Java<N>ArchiveTransformer(), canRetransform);
++    register(instrumentation, registered, new Java<N>ClassLoaderTransformer(), canRetransform);
+@@
+-    register(instrumentation, registered, new Java<N>ClassLoaderTransformer(), canRetransform);
+@@
+-    retransform(instrumentation, java.io.ObjectInputStream.class);
++    retransform(instrumentation, ObjectInputStream.class);
+@@
+-    retransform(instrumentation, java.io.FileInputStream.class);
+-    retransform(instrumentation, java.io.FileOutputStream.class);
+-    retransform(instrumentation, java.io.RandomAccessFile.class);
++    retransform(instrumentation, File.class);
++    retransform(instrumentation, FileInputStream.class);
++    retransform(instrumentation, FileOutputStream.class);
++    retransform(instrumentation, RandomAccessFile.class);
+@@
+-    retransform(instrumentation, java.net.URL.class);
+-    retransform(instrumentation, java.util.zip.ZipEntry.class);
++    retransform(instrumentation, ZipEntry.class);
++    retransform(instrumentation, URL.class);
++    retransform(instrumentation, URLClassLoader.class);
+@@
+-    retransform(instrumentation, java.net.URLClassLoader.class);
+@@
++    retransformByName(instrumentation, "com.sun.tools.javac.api.JavacTool");
++    // Janino loaded before a dynamic attach: its compiler base class is hooked like javac.
++    retransformByName(instrumentation, "org.codehaus.commons.compiler.Cookable");
+@@
+-    // The bootstrap provider can load while another transformer is running, after
+-    // the loaded-class snapshot. Revisit the platform owner outside that transform.
+-    retransformByName(instrumentation, java.io.File.separatorChar == '/'
+-        ? "sun.nio.fs.UnixFileSystemProvider" : "sun.nio.fs.WindowsFileSystemProvider");
+-    retransformByName(instrumentation, "com.sun.tools.javac.api.JavacTool");
+-    // Janino loaded before a dynamic attach: its compiler base class is hooked like javac.
+-    retransformByName(instrumentation, "org.codehaus.commons.compiler.Cookable");
+@@
+-    StringBuilder builder = new StringBuilder(value.length() + 16);
++    var builder = new StringBuilder(value.length() + 16);
+@@
+-        case '"':
+-          builder.append("\\\"");
+-          break;
+-        case '\\':
+-          builder.append("\\\\");
+-          break;
+-        case '\b':
+-          builder.append("\\b");
+-          break;
+-        case '\f':
+-          builder.append("\\f");
+-          break;
+-        case '\n':
+-          builder.append("\\n");
+-          break;
+-        case '\r':
+-          builder.append("\\r");
+-          break;
+-        case '\t':
+-          builder.append("\\t");
+-          break;
+-        default:
++        case '"' -> builder.append("\\\"");
++        case '\\' -> builder.append("\\\\");
++        case '\b' -> builder.append("\\b");
++        case '\f' -> builder.append("\\f");
++        case '\n' -> builder.append("\\n");
++        case '\r' -> builder.append("\\r");
++        case '\t' -> builder.append("\\t");
++        default -> {
+@@
++        }

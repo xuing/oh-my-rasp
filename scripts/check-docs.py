@@ -68,14 +68,18 @@ RELEASE_RUNBOOK = "docs/runbooks/release.md"
 # listed here, so a stray banner or marker cannot exempt hand-written text.
 GENERATORS = {
     "java-agent/scripts/gen-detection-coverage.py": ["python3", "java-agent/scripts/gen-detection-coverage.py", "--check"],
+    "java-agent/scripts/gen-hook-targets.py": ["python3", "java-agent/scripts/gen-hook-targets.py", "--check"],
     "deploy/shirudo/gen-readmes.py": ["python3", "deploy/shirudo/gen-readmes.py", "--check"],
+    "java-agent/scripts/gen-rule-cases.py": ["python3", "java-agent/scripts/gen-rule-cases.py", "--check"],
 }
 GENERATED_FILES = {
     "java-agent/docs/DETECTION-COVERAGE.md",  # gen-detection-coverage.py
+    "java-agent/docs/HOOK-TARGETS.md",  # gen-hook-targets.py
     "java-agent/docs/FALSE-POSITIVE-REPORT.md",  # run-fp-report.sh (needs Docker; not re-run here)
+    "java-agent/docs/RULE-CASES.md",  # gen-rule-cases.py (from the case files; the rule-cases probe runs them)
     "deploy/shirudo/README.md",  # gen-readmes.py
 }
-GENERATED_FILE_PATTERNS = [re.compile(r"deploy/shirudo/ohmyrasp-[a-z0-9]+/README\.md")]  # gen-readmes.py
+GENERATED_FILE_PATTERNS = [re.compile(r"deploy/shirudo/ohmyrasp(-[a-z0-9]+)?/README\.md")]  # gen-readmes.py
 GENERATED_REGIONS = {"metrics": ("README.md", "README.zh-CN.md")}  # gen-detection-coverage.py
 
 VULHUB_LEDGER = "docs/development/vulhub-coverage.md"
@@ -115,7 +119,7 @@ COUNT_ZH = re.compile(
 COUNT_NOUN_CELL = re.compile(rf"(?:{COUNT_NOUNS})|场景|检测能力|算法签名|组件根", re.I)
 NUMBER_CELL = re.compile(r"^[*_]*\d+[*_]*$")
 
-ASSET_NAME = re.compile(r"ohmyrasp-[a-z0-9<>.*-]*?\.(?:jar|tar\.gz|tgz)")
+ASSET_NAME = re.compile(r"ohmyrasp(?:-[a-z0-9<>.*-]*?)?\.(?:jar|tar\.gz|tgz)")
 VERSION_VAR = re.compile(
     r"\$\{\{\s*(?:steps|needs)\.release\.outputs\.version\s*\}\}|\$\{VERSION\}|\$VERSION\b")
 INLINE_LINK = re.compile(r"\]\((?:<([^>\n]+)>|([^)\s]+))(?:\s+\"[^\"]*\")?\)")  # <a b.md> may hold spaces
@@ -556,7 +560,7 @@ def check_release_runbook(problems: list[str]) -> None:
         return
     if re.search(r"\d", section.group(1)):
         problems.append(f"assets: {RELEASE_RUNBOOK}: the asset list heading states a count; EXPECTED_ASSETS owns it")
-    listed = re.findall(r"`((?:ohmyrasp-|SHA256SUMS)[^`]*)`", section.group(2))
+    listed = re.findall(r"`((?:ohmyrasp[-.]|SHA256SUMS)[^`]*)`", section.group(2))
     dupes = sorted({n for n in listed if listed.count(n) > 1})
     if dupes:
         problems.append(f"assets: {RELEASE_RUNBOOK}: lists {', '.join(dupes)} more than once")

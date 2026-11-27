@@ -1,0 +1,95 @@
+[[case]]
+name = "shell-reads-passwd-outside-request"
+kind = "attack"
+via = "sink"
+op = "process.exec"
+args = { argv = ["sh", "-c", "cat /etc/passwd"] }
+
+[case.primary]
+effect = "log"
+rule = "command_common"
+why = "the primary blocks this only inside an HTTP request; outside one it logs"
+
+[case.backport]
+effect = "block"
+rule = "command_execution_exploit_primitive"
+
+[[case]]
+name = "shell-reads-passwd-in-request"
+kind = "attack"
+via = "request-sink"
+op = "process.exec"
+args = { argv = ["sh", "-c", "cat /etc/passwd"] }
+
+[case.request]
+method = "GET"
+uri = "/app/report"
+query = "id=7"
+headers = { User-Agent = "Mozilla/5.0 (X11; Linux x86_64) Firefox/128.0", Accept = "text/html" }
+
+[case.primary]
+effect = "block"
+rule = "command_common"
+
+[case.backport]
+effect = "block"
+rule = "command_execution_exploit_primitive"
+
+[[case]]
+name = "benign-shell-echo"
+kind = "benign"
+via = "sink"
+op = "process.exec"
+args = { argv = ["sh", "-c", "echo rule-case"] }
+
+[case.primary]
+effect = "none"
+
+[case.backport]
+effect = "none"
+
+[[case]]
+name = "benign-echo-argv"
+kind = "benign"
+via = "sink"
+op = "process.exec"
+args = { argv = ["echo", "rule-case"] }
+
+[case.primary]
+effect = "none"
+
+[case.backport]
+effect = "none"
+
+[[case]]
+name = "reverse-shell-shape"
+kind = "attack"
+via = "sink"
+op = "process.exec"
+args = { argv = ["/nonexistent/rule-case/sh", "-c", "bash -i >& /dev/tcp/127.0.0.1/9 0>&1"] }
+completes_with = ["IOException"]
+
+[case.primary]
+effect = "log"
+rule = "command_common"
+why = "the primary blocks this only inside an HTTP request; outside one it logs"
+
+[case.backport]
+effect = "block"
+rule = "command_execution_exploit_primitive"
+
+[[case]]
+name = "runtime-exec-reads-passwd"
+kind = "attack"
+via = "sink"
+op = "process.exec"
+args = { argv = ["sh", "-c", "cat /etc/passwd"], api = "Runtime.exec" }
+
+[case.primary]
+effect = "log"
+rule = "command_common"
+why = "the primary blocks this only inside an HTTP request; outside one it logs"
+
+[case.backport]
+effect = "block"
+rule = "command_execution_exploit_primitive"

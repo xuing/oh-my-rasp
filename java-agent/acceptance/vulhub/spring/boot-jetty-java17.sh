@@ -8,13 +8,14 @@ baseline_name="${OHMYRASP_VULHUB_SPRING_BOOT_JETTY_BASELINE_NAME:-ohmyrasp-vulhu
 protected_name="${OHMYRASP_VULHUB_SPRING_BOOT_JETTY_PROTECTED_NAME:-ohmyrasp-vulhub-spring41242-protected}"
 baseline_port="${OHMYRASP_VULHUB_SPRING_BOOT_JETTY_BASELINE_PORT:-18720}"
 protected_port="${OHMYRASP_VULHUB_SPRING_BOOT_JETTY_PROTECTED_PORT:-18721}"
-host_agent_jar="$(pwd)/agent-java17/build/libs/ohmyrasp-agent-java17.jar"
+# shellcheck source=acceptance/lib/agent-build.sh
+source acceptance/lib/agent-build.sh
+host_agent_jar="$(ohmyrasp_agent_jar "$(pwd)/agent-java17/build/libs/ohmyrasp-agent-java17.jar")"
 baseline_dir="logs/vulhub-spring-boot-jetty-3.2.4-java17-baseline"
 protected_dir="logs/vulhub-spring-boot-jetty-3.2.4-java17-protected"
 protected_log="${protected_dir}/events.jsonl"
 
-docker run --rm -v "$(pwd):/workspace" -w /workspace gradle:jdk25 \
-  gradle --no-daemon :agent-java17:agentJava17Jar
+ohmyrasp_build :agent-java17:agentJava17Jar
 
 rm -rf "$baseline_dir" "$protected_dir"
 mkdir -p "$baseline_dir" "$protected_dir"

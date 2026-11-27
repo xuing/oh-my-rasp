@@ -1,0 +1,63 @@
+[[case]]
+name = "jsp-in-webroot-outside-request"
+kind = "attack"
+via = "sink"
+op = "file.write"
+args = { path = "{tmp}/webapps/ROOT/shell.jsp", content = "<%= 1 %>" }
+
+[case.primary]
+effect = "none"
+why = "the primary decides script writes only inside an HTTP request"
+
+[case.backport]
+effect = "block"
+rule = "file_script_write"
+
+[[case]]
+name = "jsp-in-webroot-in-request"
+kind = "attack"
+via = "request-sink"
+op = "file.write"
+args = { path = "{tmp}/webapps/ROOT/shell.jsp", content = "<%= 1 %>" }
+
+[case.request]
+method = "GET"
+uri = "/app/report"
+query = "id=7"
+headers = { User-Agent = "Mozilla/5.0 (X11; Linux x86_64) Firefox/128.0", Accept = "text/html" }
+
+[case.primary]
+effect = "block"
+rule = "writeFile_script"
+
+[case.backport]
+effect = "block"
+rule = "file_script_write"
+
+[[case]]
+name = "benign-text-in-webroot"
+kind = "benign"
+via = "sink"
+op = "file.write"
+args = { path = "{tmp}/webapps/ROOT/notes.txt", content = "weekly notes" }
+
+[case.primary]
+effect = "none"
+
+[case.backport]
+effect = "none"
+
+[[case]]
+name = "jsp-in-webroot-nio"
+kind = "attack"
+via = "sink"
+op = "file.write"
+args = { path = "{tmp}/webapps/ROOT/shell.jsp", content = "<%= 1 %>", api = "Files.write" }
+
+[case.primary]
+effect = "none"
+why = "the primary decides script writes only inside an HTTP request"
+
+[case.backport]
+effect = "block"
+rule = "file_script_write"

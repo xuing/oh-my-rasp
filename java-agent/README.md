@@ -4,10 +4,13 @@ OhMyRASP is a Java-native Runtime Application Self-Protection agent. It uses ASM
 
 The runtime tracks below ship from this directory with ASM relocated to `io.ohmyrasp.agent.shaded.asm`:
 
+- `agent-all`: the universal JARs (`ohmyrasp-agent-all.jar`, `ohmyrasp.jar`), every track in one file; start here
 - `agent-jdk25`: primary JDK 21 and 25 track, compiled with `--release 21` (`ohmyrasp-agent.jar`, `ohmyrasp-jdk25.jar`; `:agent-jdk25:jdk21Jars` copies them to `build/jdk21/ohmyrasp-agent-jdk21.jar` and `build/jdk21/ohmyrasp-jdk21.jar`)
 - `agent-java17`: Java 17 track (`ohmyrasp-agent-java17.jar`, `ohmyrasp-java17.jar`)
 - `agent-java11`: Java 11 track (`ohmyrasp-agent-java11.jar`, `ohmyrasp-java11.jar`)
 - `agent-java8`: Java 8 track (`ohmyrasp-agent-java8.jar`, `ohmyrasp-java8.jar`)
+
+Use the universal JAR on any supported Java: its launcher starts the track that fits the running JVM. Any agent JAR on a JVM it does not fit, a second OhMyRASP JAR in the same JVM, and a track that fails while starting each print one JSON line to `stderr` and let the application start; [`../docs/agent.md`](../docs/agent.md#which-jar-to-attach) lists the lines and the version ranges.
 
 See [`../docs/agent.md`](../docs/agent.md) for full architecture, runtime modes, and configuration keys, [`../docs/detection.md`](../docs/detection.md) for the detection pipeline, [`../daemon/README.md`](../daemon/README.md) for the companion host daemon, and [`../deploy/shirudo/README.md`](../deploy/shirudo/README.md) for daemonless Shirudo Java upatch packaging.
 
@@ -36,6 +39,10 @@ Built with Gradle in the JDK 25 builder image pinned in [`Dockerfile`](Dockerfil
 ```bash
 GRADLE_IMAGE="$(awk '$1 == "FROM" && $2 ~ /^gradle:/ { print $2; exit }' Dockerfile)"
 
+# Universal agent jars -> agent-all/build/libs/ohmyrasp-agent-all.jar and ohmyrasp.jar
+docker run --rm -v "$PWD":/workspace -w /workspace "$GRADLE_IMAGE" \
+  gradle --no-daemon :agent-all:agentAllJar :agent-all:shirudoUpatchJar
+
 # Primary agent jar -> agent-jdk25/build/libs/ohmyrasp-agent.jar
 docker run --rm -v "$PWD":/workspace -w /workspace "$GRADLE_IMAGE" \
   gradle --no-daemon :agent-jdk25:agentJar
@@ -58,13 +65,13 @@ docker run --rm -v "$PWD":/workspace -w /workspace "$GRADLE_IMAGE" \
 Daemon-managed or local control-file mode (polls `/tmp/ohmyrasp-control.json`, writes NDJSON spool asynchronously):
 
 ```bash
-java -javaagent:/opt/ohmyrasp/ohmyrasp-agent.jar=mode=monitor \
+java -javaagent:/opt/ohmyrasp/ohmyrasp-agent-all.jar=mode=monitor \
      -Dohmyrasp.log=/var/log/ohmyrasp/events.jsonl \
      -jar your-app.jar
 echo '{"mode":"block"}' > /tmp/ohmyrasp-control.json
 ```
 
-For Shirudo locked daemonless JARs (`ohmyrasp-{java8,java11,java17,jdk25}.jar`), `META-INF/ohmyrasp-shirudo.properties` bakes in `standalone=true`, `lock_config=true`, `mode=block`, `control=none`, `log=stderr`, and `latency_sample=0`.
+For Shirudo locked daemonless JARs (`ohmyrasp.jar` and `ohmyrasp-{java8,java11,java17,jdk25}.jar`), `META-INF/ohmyrasp-shirudo.properties` bakes in `standalone=true`, `lock_config=true`, `mode=block`, `control=none`, `log=stderr`, and `latency_sample=0`.
 
 ## Acceptance and false-positive suites
 
@@ -91,8 +98,9 @@ java-agent/
 │   │   ├── policy/                   local AgentPolicy evaluation
 │   │   └── control/                  legacy direct-cloud client (off by default)
 │   └── src/test/                     unit tests
-├── agent-java8 / -java11 / -java17   self-contained backport builds
-├── shared/                           Java 8 sources compiled into every agent line
+├── agent-java8 / -java11 / -java17   backport builds: entry classes, transformers, per-line hooks delegates
+├── agent-all/                        universal JARs: every line, started by the launcher
+├── shared/                           :shared, compiled once for Java 8: shared classes, the backport decisions and runtime, the launcher
 ├── backport-tests/                   the one shared unit-test tree for the three backport builds
 ├── probes/                           packaged-agent probes, one directory each; run.py runs them
 ├── rules/                            rule scope descriptions (general.json, product.json)

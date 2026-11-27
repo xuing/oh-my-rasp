@@ -8,9 +8,11 @@ Each release (`v<MAJOR>.<MINOR>.<PATCH>` or `v<MAJOR>.<MINOR>.<PATCH>-<pre>.<n>`
 
 **GitHub Release assets**:
 - Standard Java agents: `ohmyrasp-agent-java8.jar`, `ohmyrasp-agent-java11.jar`, `ohmyrasp-agent-java17.jar`, `ohmyrasp-agent-jdk21.jar`, `ohmyrasp-agent.jar`
-- Standalone daemonless shirudo Java upatch JARs: `ohmyrasp-java8.jar`, `ohmyrasp-java11.jar`, `ohmyrasp-java17.jar`, `ohmyrasp-jdk21.jar`, `ohmyrasp-jdk25.jar`
+- Universal agent JAR, every Java line behind one launcher: `ohmyrasp-agent-all.jar`
+- Universal standalone daemonless shirudo Java upatch JAR, the default for a shirudo host: `ohmyrasp.jar`
+- Standalone daemonless shirudo Java upatch JARs, one per line: `ohmyrasp-java8.jar`, `ohmyrasp-java11.jar`, `ohmyrasp-java17.jar`, `ohmyrasp-jdk21.jar`, `ohmyrasp-jdk25.jar`
 - JDK 21 Shirudo package ready to sign: `ohmyrasp-jdk21-shirudo.tar.gz`
-- shirudo Beefile bundle: `ohmyrasp-shirudo-upatches-<version>.tar.gz` (the package directories, `Beefile`s, `README.md`s, `build.sh`, and staged JARs)
+- shirudo Beefile bundle: `ohmyrasp-shirudo-upatches-<version>.tar.gz` (the universal `ohmyrasp` package and the per-line package directories, with their `Beefile`s, `README.md`s, `build.sh` and staged JARs)
 - Rust host daemon: `ohmyrasp-daemon-linux-amd64.tar.gz`
 - Helm chart archive: `ohmyrasp-control-<version>.tgz`
 - Checksums: `SHA256SUMS.txt`
@@ -61,6 +63,14 @@ python3 scripts/check-docs.py
 deploy/scripts/validate-helm-manifests.sh
 deploy/scripts/validate-observability-assets.sh
 ```
+
+Before a release that changes agent code, replay the advisories the `ohmyrasp` package lists in `fixes` against the universal JAR. This is a manual step: it needs Docker, network to pull the `vulhub/*` images, and a Vulhub checkout.
+
+```bash
+OHMYRASP_VULHUB_ROOT=<vulhub-checkout> deploy/shirudo/replay-fixes.sh
+```
+
+When every advisory passes, set `replayed` to the UTC date of the run on each entry of `deploy/shirudo/fixes.toml`, run `python3 deploy/shirudo/gen-readmes.py`, and commit the result. An advisory that fails stays out of `fixes.toml` until it passes. Only a block build lists `fixes`: `deploy/shirudo/ohmyrasp/build.sh --mode monitor` builds from a Beefile without it.
 
 If you have already staged the `ohmyrasp-<track>.jar` files under `deploy/shirudo/ohmyrasp-<track>/`, omit `--beefile-only` on `./deploy/shirudo/verify-shirudo-upatch.sh` (pass `--version <version>` if checking non-default Beefile versions) to validate the JAR manifests and `META-INF/ohmyrasp-shirudo.properties` as well.
 

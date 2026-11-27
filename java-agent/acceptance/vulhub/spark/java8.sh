@@ -3,10 +3,11 @@ set -euo pipefail
 
 cd "$(dirname "$0")/../../.."
 
-host_agent_jar="$(pwd)/agent-java8/build/libs/ohmyrasp-agent-java8.jar"
+# shellcheck source=acceptance/lib/agent-build.sh
+source acceptance/lib/agent-build.sh
+host_agent_jar="$(ohmyrasp_agent_jar "$(pwd)/agent-java8/build/libs/ohmyrasp-agent-java8.jar")"
 
-docker run --rm -v "$(pwd):/workspace" -w /workspace gradle:jdk25 \
-  gradle --no-daemon :agent-java8:agentJava8Jar
+ohmyrasp_build :agent-java8:agentJava8Jar
 
 image="${OHMYRASP_VULHUB_SPARK_IMAGE:-vulhub/spark:2.3.1}"
 jar_image="${OHMYRASP_VULHUB_SPARK_JAR_IMAGE:-python:3-alpine}"
@@ -44,7 +45,7 @@ payload_dir = Path(os.environ["PAYLOAD_DIR"])
     "}\n",
     encoding="utf-8")
 PY
-  docker run --rm -v "${payload_dir}:/work" -w /work gradle:jdk25 \
+  docker run --rm -v "${payload_dir}:/work" -w /work "$(ohmyrasp_gradle_image)" \
     bash -lc 'javac --release 8 -d classes src/OhMyRaspSparkPayload.java && jar --create --file ohmyrasp-spark-payload.jar -C classes .'
 }
 
