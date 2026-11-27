@@ -320,6 +320,75 @@ final class HookMissesTest {
     assertEquals("b.jar", origin.name);
   }
 
+  @Test
+  void theManifestVersionIsReadUnderTheOwnIoMarkAndBoundedBySize() throws Exception {
+    java.nio.file.Path dir = java.nio.file.Files.createTempDirectory("hook-miss-origin");
+    try {
+      final List<String> marks = new ArrayList<String>();
+      HookMissSink sink = new HookMissSink() {
+        @Override public void write(String diagnostic, String fields) {}
+
+        @Override public boolean enterOwnIo() {
+          marks.add("enter");
+          return true;
+        }
+
+        @Override public void exitOwnIo(boolean entered) {
+          marks.add("exit " + entered);
+        }
+      };
+      java.io.File small = jarWithManifest(dir.resolve("small-1.2.3.jar"), "Implementation-Version: 1.2.3\n");
+      assertEquals("1.2.3", originOf(small).version(sink));
+      assertEquals(Arrays.asList("enter", "exit true"), marks, "the mark is set before the first file call and cleared after");
+
+      marks.clear();
+      StringBuilder padding = new StringBuilder("Implementation-Version: 9.9.9\n");
+      for (int i = 0; i < HookMisses.MAX_MANIFEST_BYTES / 20 + 10; i++) {
+        padding.append("X-Padding-").append(i).append(": ").append("0123456789012345678901234").append("\n");
+      }
+      java.io.File large = jarWithManifest(dir.resolve("large-9.9.9.jar"), padding.toString());
+      assertNull(originOf(large).version(sink), "a manifest past the limit is not read for a version");
+
+      marks.clear();
+      assertNull(originOf(new java.io.File(dir.toFile(), "missing.jar")).version(sink), "no such file");
+      assertEquals(Arrays.asList("enter", "exit true"), marks, "the mark covers the check that the file exists too");
+
+      marks.clear();
+      HookMisses.Origin directory = HookMisses.Origin.of(new ProtectionDomain(
+          new CodeSource(dir.toUri().toURL(), (Certificate[]) null), null));
+      assertNull(directory.version(sink), "a class directory has no manifest read");
+      assertEquals(new ArrayList<String>(), marks, "and no file call to mark");
+    } finally {
+      deleteTree(dir);
+    }
+  }
+
+  private static HookMisses.Origin originOf(java.io.File file) throws Exception {
+    return HookMisses.Origin.of(new ProtectionDomain(new CodeSource(file.toURI().toURL(), (Certificate[]) null), null));
+  }
+
+  private static java.io.File jarWithManifest(java.nio.file.Path file, String attributes) throws Exception {
+    java.util.zip.ZipOutputStream zip = new java.util.zip.ZipOutputStream(java.nio.file.Files.newOutputStream(file));
+    try {
+      zip.putNextEntry(new java.util.zip.ZipEntry("META-INF/MANIFEST.MF"));
+      zip.write(("Manifest-Version: 1.0\n" + attributes + "\n").getBytes(StandardCharsets.UTF_8));
+      zip.closeEntry();
+    } finally {
+      zip.close();
+    }
+    return file.toFile();
+  }
+
+  private static void deleteTree(java.nio.file.Path root) throws Exception {
+    java.io.File[] children = root.toFile().listFiles();
+    if (children != null) {
+      for (java.io.File child : children) {
+        child.delete();
+      }
+    }
+    root.toFile().delete();
+  }
+
   private static HookMissSink recorder(final List<String> written) {
     return new HookMissSink() {
       @Override public void write(String diagnostic, String fields) {
