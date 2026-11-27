@@ -7,6 +7,7 @@ import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import io.ohmyrasp.agent.hook.HookActivation;
 import java.io.ByteArrayOutputStream;
 import java.io.File;
 import java.io.IOException;
@@ -17,6 +18,7 @@ import org.apache.catalina.core.StandardHost;
 import org.apache.catalina.loader.WebappClassLoaderBase;
 import org.apache.catalina.startup.ContextConfig;
 import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.function.Executable;
 import org.objectweb.asm.ClassReader;
@@ -37,10 +39,32 @@ final class ScriptFileWriteTomcatTest {
   private static final String DOC_BASE = APP_BASE + "/app";
   private static final String OUTPUT_DIR = "/opt/tomcat/work/Catalina/localhost/ROOT/org/apache/jsp/";
 
+  @BeforeEach
+  void hooksOn() {
+    HookActivation.activate();
+  }
+
   @AfterEach
   void clear() {
+    HookActivation.deactivate();
     DeploymentWork.body = DeploymentWork.DECIDE;
     System.clearProperty("catalina.base");
+  }
+
+  /** Before a start commits and after a failed one, the calls a rewritten Tomcat class makes open no scope. */
+  @Test
+  void whileTheHooksAreOffAnUnpackOpensNoScope() throws Exception {
+    HookActivation.deactivate();
+    final String jsp = DOC_BASE + "/index.jsp";
+    DeploymentWork.body = new DeploymentWork.Body() {
+      @Override public String run(String path) {
+        return String.valueOf(ContainerDeployment.covers(path));
+      }
+    };
+    assertEquals("false", unpack(new Container(getClass().getClassLoader()), "app", jsp));
+
+    HookActivation.activate();
+    assertEquals("true", unpack(new Container(getClass().getClassLoader()), "app", jsp), "the control: hooks on");
   }
 
   @Test

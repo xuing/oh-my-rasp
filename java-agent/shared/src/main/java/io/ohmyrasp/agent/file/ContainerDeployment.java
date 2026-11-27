@@ -1,5 +1,6 @@
 package io.ohmyrasp.agent.file;
 
+import io.ohmyrasp.agent.hook.HookActivation;
 import java.io.File;
 import java.util.Locale;
 
@@ -26,6 +27,9 @@ import java.util.Locale;
  * it, with a class from a loader that passes the same test. Anything else, a reflection failure included, enters a
  * scope without a root, which also hides an outer scope's root while it runs. {@link ScriptFileWrite} reads only the
  * innermost scope of the current thread ({@link #covers}), so a thread the operation starts has no root.
+ *
+ * <p>The three entries injected code calls do nothing while the hooks are off ({@link HookActivation}). The hooks
+ * turn on once and off once, so a pair split by either change leaves at most a scope nothing reads again.
  *
  * <p>Java 8 source with no lambdas: the backport lines carry it. No method throws.
  */
@@ -71,6 +75,7 @@ public final class ContainerDeployment {
 
   /** On entry to {@code ExpandWar.expand(host, war, pathname)}; {@code owner} is the instrumented class. */
   public static void enterWarExpand(Class<?> owner, Object host, String pathname) {
+    if (HookActivation.inactive()) return;
     String[] roots;
     try {
       roots = warRoots(owner, host, pathname);
@@ -82,6 +87,7 @@ public final class ContainerDeployment {
 
   /** On entry to {@code Compiler.compile(boolean, boolean)}; {@code compiler} is its receiver. */
   public static void enterJspCompile(Class<?> owner, Object compiler) {
+    if (HookActivation.inactive()) return;
     String[] roots;
     try {
       roots = compileRoots(owner, compiler);
@@ -93,6 +99,7 @@ public final class ContainerDeployment {
 
   /** On every way out of an instrumented operation. */
   public static void exit() {
+    if (HookActivation.inactive()) return;
     try {
       Scope top = SCOPES.get();
       if (top == null) {
