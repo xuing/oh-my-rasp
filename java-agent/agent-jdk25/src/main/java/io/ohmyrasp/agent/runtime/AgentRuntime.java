@@ -146,6 +146,8 @@ public final class AgentRuntime {
   private volatile Integer argLatencySample;
 
   private Path controlPath;
+  // The control-file poller, while one runs: stop interrupts it.
+  private volatile Thread poller;
   private final AtomicBoolean started = new AtomicBoolean();
 
   private AgentRuntime(ShirudoDefaults defaults) {
@@ -192,15 +194,19 @@ public final class AgentRuntime {
     }
   }
 
-  /** Initialise from configuration and start the control-file poller (idempotent). */
-  public void start(String agentArgs) {
-    start(agentArgs, this.defaults);
+  /**
+   * Initialise from configuration and start the control-file poller (idempotent).
+   *
+   * @return true when this call started the runtime, false when it had been started before
+   */
+  public boolean start(String agentArgs) {
+    return start(agentArgs, this.defaults);
   }
 
   /** Initialise from configuration and explicit {@link ShirudoDefaults} (idempotent). */
-  void start(String agentArgs, ShirudoDefaults defaults) {
+  boolean start(String agentArgs, ShirudoDefaults defaults) {
     if (!started.compareAndSet(false, true)) {
-      return;
+      return false;
     }
     ShirudoDefaults activeDefaults = defaults == null ? ShirudoDefaults.absent() : defaults;
     this.defaults = activeDefaults;
@@ -274,12 +280,13 @@ public final class AgentRuntime {
 
     if (disableControl) {
       controlPath = null;
-      return;
+      return true;
     }
 
     controlPath = Path.of(controlSetting != null ? controlSetting : DEFAULT_CONTROL);
     reloadIfChanged();
     startPoller(pollIntervalMillis(agentArgs));
+    return true;
   }
 
   public boolean isStandalone() {
@@ -379,6 +386,18 @@ public final class AgentRuntime {
     return state.policy();
   }
 
+  /**
+   * Stops the control-file poller this runtime started, if any. The mode and the policy stay as the last read left
+   * them. For a start that fails after the runtime started: the JVM goes on without a thread of ours.
+   */
+  public void stop() {
+    Thread running = poller;
+    poller = null;
+    if (running != null) {
+      running.interrupt();
+    }
+  }
+
   private void startPoller(long intervalMillis) {
     Thread poller =
         new Thread(
@@ -397,6 +416,7 @@ public final class AgentRuntime {
             },
             "ohmyrasp-control-poller");
     poller.setDaemon(true);
+    this.poller = poller;
     poller.start();
   }
 

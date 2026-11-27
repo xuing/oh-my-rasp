@@ -123,6 +123,8 @@ public final class JsonEventLogger {
   private final PrintStream customOut;
   private final PrintStream customErr;
   private final Thread writer;
+  // The JVM shutdown hook that flushes the queue; null when there is no writer.
+  private final Thread shutdownHook;
   private volatile boolean running = true;
   // Set by shutdown once the writer is gone or given up on: from then on events are written on
   // the caller's thread, and writes wait only a bounded time for the write lock.
@@ -204,11 +206,13 @@ public final class JsonEventLogger {
       writer.setDaemon(true);
       this.writer = writer;
       writer.start();
-      Runtime.getRuntime()
-          .addShutdownHook(new Thread(this::shutdown, "ohmyrasp-event-writer-shutdown"));
+      Thread hook = new Thread(this::shutdown, "ohmyrasp-event-writer-shutdown");
+      this.shutdownHook = hook;
+      Runtime.getRuntime().addShutdownHook(hook);
     } else {
       this.queue = null;
       this.writer = null;
+      this.shutdownHook = null;
     }
   }
 
@@ -488,6 +492,22 @@ public final class JsonEventLogger {
   }
 
   private void shutdown() {
+    shutdown(SHUTDOWN_JOIN_MILLIS);
+  }
+
+  /**
+   * Stops the writer thread, flushes what is queued and removes the shutdown hook, for a start that fails after the
+   * logger started. An event after this is written on the caller's thread. Does nothing without a writer.
+   */
+  public void stop() {
+    if (writer == null) {
+      return;
+    }
+    try {
+      Runtime.getRuntime().removeShutdownHook(shutdownHook);
+    } catch (IllegalStateException shuttingDown) {
+      // The JVM is already exiting; the hook runs and flushes.
+    }
     shutdown(SHUTDOWN_JOIN_MILLIS);
   }
 
