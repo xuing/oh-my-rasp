@@ -2,7 +2,7 @@
 
 > **Generated** by `deploy/shirudo/gen-readmes.py` from `java-agent/` sources.
 
-The `ohmyrasp-java8` package installs the `ohmyrasp-java8` Java upatch: a standalone, daemonless OhMyRASP runtime self-protection agent targeting **Java 8** JVMs (classfile version `<= 52`). It covers **24 ASM transformer families** and **45 detection algorithms**, validated against **95** Vulhub scripts that run the exploit on `java8`.
+The `ohmyrasp-java8` package installs the `ohmyrasp-java8` Java upatch: a standalone, daemonless OhMyRASP runtime self-protection agent targeting **Java 8** JVMs (classfile version `<= 52`). It covers **25 ASM transformer families** and **45 detection algorithms**, validated against **95** Vulhub scripts that run the exploit on `java8`.
 
 This package is for hosts pinned to one Java version; the universal package [`ohmyrasp`](../ohmyrasp/README.md) starts the line that fits each JVM of a mixed host. It starts its line on **Java 8 only**; on any other Java it writes one `ohmyrasp-agent-skipped` JSON line to stderr and the JVM starts without this agent.
 
@@ -18,6 +18,7 @@ This package is for hosts pinned to one Java version; the universal package [`oh
 | **HTTP Request, Path Confusion, Auth & SSRF** | Six-form URI path-confusion decoding (Shiro, GlassFish, Jetty, Spring), weak/default JWT HMAC secret checks, Shiro default `rememberMe` AES detection, forged internal identities, and cloud-metadata / loopback-admin / obfuscated-IP SSRF guards. | `Java8ServletTransformer`, `Java8UrlTransformer`, `Java8JwtTransformer` |
 | **File I/O, Uploads & Archive Traversal** | Guards sensitive reads (`/etc/passwd`, `/proc/self/environ`, SSH keys), webroot script writes, ZipSlip archive traversal (`ZipEntry` / 7z), multipart upload path traversal, and `.gnuplot` command injection. | `Java8FileTransformer`, `Java8MultipartUploadTransformer`, `Java8ArchiveTransformer` |
 | **Expression Engines, Scripting, ClassLoading & JMX** | Inspects Nashorn/Rhino `ScriptEngine`, JEXL, Jakarta/JSP EL, `JavacTool`/Janino compilation, remote `URLClassLoader`/`RMIClassLoader` codebases, and mutating JMX MBean invocations. | `Java8ClassLoaderTransformer`, `Java8ScriptEngineTransformer`, `Java8JexlTransformer`, `Java8ElTransformer`, `Java8JavaCompilationTransformer`, `Java8JmxTransformer` |
+| **Other / Newly Added** | Additional ASM instrumentation hooks detected in agent sources. | `Java8RequestBodyTransformer` |
 
 <details><summary>All detection algorithm IDs (45)</summary>
 

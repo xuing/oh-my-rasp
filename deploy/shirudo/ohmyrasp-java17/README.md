@@ -2,7 +2,7 @@
 
 > **Generated** by `deploy/shirudo/gen-readmes.py` from `java-agent/` sources.
 
-The `ohmyrasp-java17` package installs the `ohmyrasp-java17` Java upatch: a standalone, daemonless OhMyRASP runtime self-protection agent targeting **Java 17 and Java 21** JVMs (classfile version `<= 61`). It covers **24 ASM transformer families** and **45 detection algorithms**, validated against **12** Vulhub scripts that run the exploit on `java17` plus **3** on `java21`.
+The `ohmyrasp-java17` package installs the `ohmyrasp-java17` Java upatch: a standalone, daemonless OhMyRASP runtime self-protection agent targeting **Java 17 and Java 21** JVMs (classfile version `<= 61`). It covers **25 ASM transformer families** and **45 detection algorithms**, validated against **12** Vulhub scripts that run the exploit on `java17` plus **3** on `java21`.
 
 This package is for hosts pinned to one Java version; the universal package [`ohmyrasp`](../ohmyrasp/README.md) starts the line that fits each JVM of a mixed host. It starts its line on **Java 17 and later**; on any other Java it writes one `ohmyrasp-agent-skipped` JSON line to stderr and the JVM starts without this agent.
 
@@ -18,6 +18,7 @@ This package is for hosts pinned to one Java version; the universal package [`oh
 | **HTTP Request, Path Confusion, Auth & SSRF** | Six-form URI path-confusion decoding (Shiro, GlassFish, Jetty, Spring), weak/default JWT HMAC secret checks, Shiro default `rememberMe` AES detection, forged internal identities, and cloud-metadata / loopback-admin / obfuscated-IP SSRF guards. | `Java17ServletTransformer`, `Java17UrlTransformer`, `Java17JwtTransformer` |
 | **File I/O, Uploads & Archive Traversal** | Guards sensitive reads (`/etc/passwd`, `/proc/self/environ`, SSH keys), webroot script writes, ZipSlip archive traversal (`ZipEntry` / 7z), multipart upload path traversal, and `.gnuplot` command injection. | `Java17FileTransformer`, `Java17MultipartUploadTransformer`, `Java17ArchiveTransformer` |
 | **Expression Engines, Scripting, ClassLoading & JMX** | Inspects Nashorn/Rhino `ScriptEngine`, JEXL, Jakarta/JSP EL, `JavacTool`/Janino compilation, remote `URLClassLoader`/`RMIClassLoader` codebases, and mutating JMX MBean invocations. | `Java17ClassLoaderTransformer`, `Java17ScriptEngineTransformer`, `Java17JexlTransformer`, `Java17ElTransformer`, `Java17JavaCompilationTransformer`, `Java17JmxTransformer` |
+| **Other / Newly Added** | Additional ASM instrumentation hooks detected in agent sources. | `Java17RequestBodyTransformer` |
 
 <details><summary>All detection algorithm IDs (45)</summary>
 

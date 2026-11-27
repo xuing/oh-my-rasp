@@ -72,8 +72,8 @@ effect = "block"
 rule = "command_userinput"
 
 [case.backport]
-effect = "none"
-why = "the same input blocks as a query parameter but passes as a JSON body: the agent's request context has no body (no hook reads the input stream or the reader), so body fields are never read"
+effect = "block"
+rule = "command_execution_shell_meta"
 
 [[case]]
 name = "request-shell-syntax-in-json-body-via-reader"
@@ -94,8 +94,8 @@ effect = "block"
 rule = "command_userinput"
 
 [case.backport]
-effect = "none"
-why = "the backport lines record no request body yet, so a body value never reaches the sink correlation"
+effect = "block"
+rule = "command_execution_shell_meta"
 
 [[case]]
 name = "request-shell-syntax-split-across-reads"
@@ -117,8 +117,8 @@ effect = "block"
 rule = "command_userinput"
 
 [case.backport]
-effect = "none"
-why = "the backport lines record no request body yet, so a body value never reaches the sink correlation"
+effect = "block"
+rule = "command_execution_shell_meta"
 
 [[case]]
 name = "request-shell-syntax-with-multibyte-character-split-across-reads"
@@ -140,8 +140,8 @@ effect = "block"
 rule = "command_userinput"
 
 [case.backport]
-effect = "none"
-why = "the backport lines record no request body yet, so a body value never reaches the sink correlation"
+effect = "block"
+rule = "command_execution_shell_meta"
 
 [[case]]
 name = "request-shell-syntax-in-form-body-read-by-the-handler"
@@ -162,8 +162,8 @@ effect = "block"
 rule = "command_userinput"
 
 [case.backport]
-effect = "none"
-why = "the backport lines record no request body yet, so a body value never reaches the sink correlation"
+effect = "block"
+rule = "command_execution_shell_meta"
 
 [[case]]
 name = "request-shell-syntax-past-the-body-cap"

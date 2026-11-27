@@ -29,9 +29,9 @@ A second OhMyRASP package on the same host is harmless. One line starts per JVM,
 | Package | Starts on | Upatch / JAR | Instrumentation | Detection Scope | Vulhub Replay |
 |---|---|---|---|---|---|
 | `ohmyrasp` | Java 8 to 25, the line that fits | `ohmyrasp.jar` | every line below | every line below | 120 Vulhub scripts on supported JVMs |
-| `ohmyrasp-java8` | Java 8 only (classfile `<= 52`) | `ohmyrasp-java8.jar` | 24 ASM transformers | 45 algorithms | 95 (java8) |
-| `ohmyrasp-java11` | Java 11 and later (classfile `<= 55`) | `ohmyrasp-java11.jar` | 24 ASM transformers | 45 algorithms | 10 (java11) |
-| `ohmyrasp-java17` | Java 17 and later (classfile `<= 61`) | `ohmyrasp-java17.jar` | 24 ASM transformers | 45 algorithms | 12 (java17) + 3 (java21) |
+| `ohmyrasp-java8` | Java 8 only (classfile `<= 52`) | `ohmyrasp-java8.jar` | 25 ASM transformers | 45 algorithms | 95 (java8) |
+| `ohmyrasp-java11` | Java 11 and later (classfile `<= 55`) | `ohmyrasp-java11.jar` | 25 ASM transformers | 45 algorithms | 10 (java11) |
+| `ohmyrasp-java17` | Java 17 and later (classfile `<= 61`) | `ohmyrasp-java17.jar` | 25 ASM transformers | 45 algorithms | 12 (java17) + 3 (java21) |
 | `ohmyrasp-jdk21` | Java 21 and later (classfile `<= 65`) | `ohmyrasp-jdk21.jar` | 31 ASM hook modules | 42 `detect*` capabilities | 120 Vulhub scripts on supported JVMs |
 | `ohmyrasp-jdk25` | Java 21 and later (classfile `<= 65`) | `ohmyrasp-jdk25.jar` | 31 ASM hook modules | 42 `detect*` capabilities | 120 Vulhub scripts on supported JVMs |
 
@@ -88,7 +88,7 @@ Each package injects ASM bytecode hooks at JVM class-load / retransform time acr
 | **HTTP Request, Path Confusion, Auth & SSRF** | Six-form URI path-confusion decoding (Shiro, GlassFish, Jetty, Spring), weak/default JWT HMAC secret checks, Shiro default `rememberMe` AES detection, forged internal identities, and cloud-metadata / loopback-admin / obfuscated-IP SSRF guards. | `Java*ServletTransformer`, `Java*UrlTransformer`, `Java*JwtTransformer` | `JwtHookModule`, `NetworkHookModule`, `ServletHookModule` |
 | **File I/O, Uploads & Archive Traversal** | Guards sensitive reads (`/etc/passwd`, `/proc/self/environ`, SSH keys), webroot script writes, ZipSlip archive traversal (`ZipEntry` / 7z), multipart upload path traversal, and `.gnuplot` command injection. | `Java*FileTransformer`, `Java*MultipartUploadTransformer`, `Java*ArchiveTransformer` | `ArchiveHookModule`, `FileHookModule`, `MultipartUploadHookModule` |
 | **Expression Engines, Scripting, ClassLoading & JMX** | Inspects Nashorn/Rhino `ScriptEngine`, JEXL, Jakarta/JSP EL, `JavacTool`/Janino compilation, remote `URLClassLoader`/`RMIClassLoader` codebases, and mutating JMX MBean invocations. | `Java*ClassLoaderTransformer`, `Java*ScriptEngineTransformer`, `Java*JexlTransformer`, `Java*ElTransformer`, `Java*JavaCompilationTransformer`, `Java*JmxTransformer` | `ClassLoaderHookModule`, `ExpressionHookModule`, `JavaCompilationHookModule`, `JmxHookModule`, `SpringConfigHookModule` |
-| **Other / Newly Added** | Additional ASM instrumentation hooks detected in agent sources. | - | `RequestBodyHookModule`, `SparkSubmitHookModule`, `YarnSubmitHookModule` |
+| **Other / Newly Added** | Additional ASM instrumentation hooks detected in agent sources. | `Java*RequestBodyTransformer` | `RequestBodyHookModule`, `SparkSubmitHookModule`, `YarnSubmitHookModule` |
 
 ### Blocking Semantics Across Tracks
 

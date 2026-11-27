@@ -216,6 +216,7 @@ public final class OhMyRaspJava11Agent {
     register(instrumentation, registered, new Java11HessianTransformer(), canRetransform);
     register(instrumentation, registered, new Java11FileTransformer(), canRetransform);
     register(instrumentation, registered, new Java11MultipartUploadTransformer(), canRetransform);
+    register(instrumentation, registered, new Java11RequestBodyTransformer(), canRetransform);
     register(instrumentation, registered, new Java11ArchiveTransformer(), canRetransform);
     register(instrumentation, registered, new Java11UrlTransformer(), canRetransform);
     register(instrumentation, registered, new Java11ClassLoaderTransformer(), canRetransform);
@@ -298,6 +299,7 @@ public final class OhMyRaspJava11Agent {
           || io.ohmyrasp.agent.rules.product.spark.SparkSubmitVisitor.OWNER.equals(internalName)
           || io.ohmyrasp.agent.rules.product.dataease.FilterVerificationVisitor.OWNER.equals(internalName)
           || multipartOwners.contains(loaded) || io.ohmyrasp.agent.http.MultipartFilenameVisitor.known(internalName, true)
+          || io.ohmyrasp.agent.http.RequestBodyVisitor.loadedTarget(loaded)
           || io.ohmyrasp.agent.file.DirectoryListVisitor.matches(internalName) || io.ohmyrasp.agent.xml.AttachmentFileVisitor.matches(internalName) || XmlEntityOpenVisitor.matches(internalName) || MyBatisSqlVisitor.matches(internalName)
           || (HttpTransportVisitor.matches(internalName) && !"java/net/URL".equals(internalName))
           || JdbcSqlMethod.isJdbcImplementation(loaded)) {

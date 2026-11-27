@@ -2,7 +2,7 @@
 
 > **Generated** by `deploy/shirudo/gen-readmes.py` from `java-agent/` sources.
 
-The `ohmyrasp-java11` package installs the `ohmyrasp-java11` Java upatch: a standalone, daemonless OhMyRASP runtime self-protection agent targeting **Java 11** JVMs (classfile version `<= 55`). It covers **24 ASM transformer families** and **45 detection algorithms**, validated against **10** Vulhub scripts that run the exploit on `java11`.
+The `ohmyrasp-java11` package installs the `ohmyrasp-java11` Java upatch: a standalone, daemonless OhMyRASP runtime self-protection agent targeting **Java 11** JVMs (classfile version `<= 55`). It covers **25 ASM transformer families** and **45 detection algorithms**, validated against **10** Vulhub scripts that run the exploit on `java11`.
 
 This package is for hosts pinned to one Java version; the universal package [`ohmyrasp`](../ohmyrasp/README.md) starts the line that fits each JVM of a mixed host. It starts its line on **Java 11 and later**; on any other Java it writes one `ohmyrasp-agent-skipped` JSON line to stderr and the JVM starts without this agent.
 
@@ -18,6 +18,7 @@ This package is for hosts pinned to one Java version; the universal package [`oh
 | **HTTP Request, Path Confusion, Auth & SSRF** | Six-form URI path-confusion decoding (Shiro, GlassFish, Jetty, Spring), weak/default JWT HMAC secret checks, Shiro default `rememberMe` AES detection, forged internal identities, and cloud-metadata / loopback-admin / obfuscated-IP SSRF guards. | `Java11ServletTransformer`, `Java11UrlTransformer`, `Java11JwtTransformer` |
 | **File I/O, Uploads & Archive Traversal** | Guards sensitive reads (`/etc/passwd`, `/proc/self/environ`, SSH keys), webroot script writes, ZipSlip archive traversal (`ZipEntry` / 7z), multipart upload path traversal, and `.gnuplot` command injection. | `Java11FileTransformer`, `Java11MultipartUploadTransformer`, `Java11ArchiveTransformer` |
 | **Expression Engines, Scripting, ClassLoading & JMX** | Inspects Nashorn/Rhino `ScriptEngine`, JEXL, Jakarta/JSP EL, `JavacTool`/Janino compilation, remote `URLClassLoader`/`RMIClassLoader` codebases, and mutating JMX MBean invocations. | `Java11ClassLoaderTransformer`, `Java11ScriptEngineTransformer`, `Java11JexlTransformer`, `Java11ElTransformer`, `Java11JavaCompilationTransformer`, `Java11JmxTransformer` |
+| **Other / Newly Added** | Additional ASM instrumentation hooks detected in agent sources. | `Java11RequestBodyTransformer` |
 
 <details><summary>All detection algorithm IDs (45)</summary>
 

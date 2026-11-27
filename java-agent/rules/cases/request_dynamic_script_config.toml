@@ -51,5 +51,5 @@ effect = "block"
 rule = "request_dynamic_script_config"
 
 [case.backport]
-effect = "none"
-why = "the same input blocks as a query parameter but passes as a JSON body: the agent's request context has no body (no hook reads the input stream or the reader), so body fields are never read"
+effect = "unreachable"
+why = "the backports have no request-entry rule for this input"

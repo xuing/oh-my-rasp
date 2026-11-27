@@ -252,6 +252,11 @@ public final class RequestBody {
     return version;
   }
 
+  /** The servlet request the outermost dispatch of this request was entered with (null for a container hook's). */
+  public Object servletRequest() {
+    return servletRequest;
+  }
+
   public boolean truncated() {
     return truncated;
   }
