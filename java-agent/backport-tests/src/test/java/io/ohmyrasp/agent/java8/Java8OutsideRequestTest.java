@@ -130,6 +130,27 @@ final class Java8OutsideRequestTest {
     }
   }
 
+  /**
+   * Under log only, a launch that Solr's configured listener, a Groovy script or a database routine makes is still
+   * stopped when its arguments are an exploit's: the intrinsic finding is not hidden by the context-dependent one.
+   * An ordinary command from a Groovy script follows the setting and logs.
+   */
+  @Test
+  void anExploitShapedLaunchUnderAContextDependentStackBlocksWithLogOnly() throws Exception {
+    control("{\"outside_request\":\"log\"}");
+
+    assertThrows(Java8RaspBlockException.class,
+        () -> org.apache.solr.core.RunExecutableListener.invokeJava8ReverseShell());
+    assertThrows(Java8RaspBlockException.class,
+        () -> groovy.lang.standin.GroovyScriptStandIn.launch("sh", "-c", "cat /etc/passwd"));
+    assertThrows(Java8RaspBlockException.class,
+        () -> org.apache.derby.impl.sql.execute.DerbyRoutineCommandProbe.invokeJava8PasswdCommand());
+    assertTrue(events().contains("\"decision_basis\":\"command_arguments\""), events());
+
+    groovy.lang.standin.GroovyScriptStandIn.launch("ls", "-l", "/srv/reports");
+    assertTrue(events().contains("\"decision_basis\":\"script_evaluation\""), events());
+  }
+
   /** The YARN handler holds the HTTP request: a denial is inside a request with no servlet frame tracked. */
   @Test
   void aHookThatHoldsTheRequestDecidesInsideARequestWithoutAServletFrame() throws Exception {

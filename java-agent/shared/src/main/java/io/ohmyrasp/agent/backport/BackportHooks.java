@@ -1487,14 +1487,7 @@ public final class BackportHooks {
       return null;
     }
     StackTraceElement[] stack = Thread.currentThread().getStackTrace();
-    if (SolrExecutableListener.onStack(stack)) {
-      return new Finding(
-          rule("command_execution_exploit_primitive"),
-          93,
-          "Solr RunExecutableListener reached a " + line().displayName + " process sink",
-          "command",
-          joined, "configured_listener");
-    }
+    // Intrinsic stack evidence decides at once: an expression language or a deserializer reaching the process API.
     if (isExpressionLanguageRuntimeStack(stack)) {
       return new Finding(
           rule("command_execution_exploit_primitive"),
@@ -1503,15 +1496,6 @@ public final class BackportHooks {
           "command",
           joined, "expression_evaluation");
     }
-    if (isGroovyScriptStack(stack)) {
-      // A general-purpose script engine starts processes on purpose too: script_evaluation follows outside_request.
-      return new Finding(
-          rule("command_execution_exploit_primitive"),
-          93,
-          "Script evaluation reached a " + line().displayName + " process sink",
-          "command",
-          joined, "script_evaluation");
-    }
     if (isJiffleRuntimeCommandStack(stack)) {
       return new Finding(
           rule("command_execution_exploit_primitive"),
@@ -1519,14 +1503,6 @@ public final class BackportHooks {
           "Jiffle runtime reached a " + line().displayName + " process sink",
           "command",
           joined, "expression_evaluation");
-    }
-    if (isDatabaseJavaRoutineCommandStack(stack)) {
-      return new Finding(
-          rule("command_execution_exploit_primitive"),
-          93,
-          "Database Java routine reached a " + line().displayName + " process sink",
-          "command",
-          joined, "database_stack");
     }
     if (isJavaDeserializationCommandStack(stack)) {
       return new Finding(
@@ -1544,11 +1520,37 @@ public final class BackportHooks {
           "command",
           joined, "xml_deserialization");
     }
+    // Context-dependent stack evidence (Solr's configured listener, a Groovy script, a database routine, a scheduled
+    // shell job) is held: exploit-shaped arguments on the same launch are intrinsic and win, so log only cannot let
+    // them through.
     String executable = command[0] == null ? "" : command[0].trim();
     boolean shell = SHELL.matcher(executable).matches();
     String firstArgument = command.length > 1 ? command[1] : "";
-    if (shell && isSchedulerScriptExecutionStack(stack) && isScriptFilePath(firstArgument)) {
-      return new Finding(
+    Finding held = null;
+    if (SolrExecutableListener.onStack(stack)) {
+      held = new Finding(
+          rule("command_execution_exploit_primitive"),
+          93,
+          "Solr RunExecutableListener reached a " + line().displayName + " process sink",
+          "command",
+          joined, "configured_listener");
+    } else if (isGroovyScriptStack(stack)) {
+      // A general-purpose script engine starts processes on purpose too: script_evaluation follows outside_request.
+      held = new Finding(
+          rule("command_execution_exploit_primitive"),
+          93,
+          "Script evaluation reached a " + line().displayName + " process sink",
+          "command",
+          joined, "script_evaluation");
+    } else if (isDatabaseJavaRoutineCommandStack(stack)) {
+      held = new Finding(
+          rule("command_execution_exploit_primitive"),
+          93,
+          "Database Java routine reached a " + line().displayName + " process sink",
+          "command",
+          joined, "database_stack");
+    } else if (shell && isSchedulerScriptExecutionStack(stack) && isScriptFilePath(firstArgument)) {
+      held = new Finding(
           rule("command_execution_shell_meta"),
           90,
           "Scheduler script job reached a " + line().displayName + " shell script process sink",
@@ -1565,6 +1567,9 @@ public final class BackportHooks {
           "Suspicious command execution reached a " + line().displayName + " process sink",
           "command",
           joined, "command_arguments");
+    }
+    if (held != null) {
+      return held;
     }
     if (posix != null) {
       RequestSnapshot request = currentRequest();

