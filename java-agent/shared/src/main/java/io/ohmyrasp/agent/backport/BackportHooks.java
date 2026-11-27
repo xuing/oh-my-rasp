@@ -1,5 +1,6 @@
 package io.ohmyrasp.agent.backport;
 
+import io.ohmyrasp.agent.hook.HookActivation;
 import io.ohmyrasp.agent.http.ServletContracts;
 import io.ohmyrasp.agent.file.EscapingPath;
 import io.ohmyrasp.agent.file.ArchiveEntryContext;
@@ -4496,12 +4497,15 @@ public final class BackportHooks {
   }
 
   /**
-   * True until the runtime has started. Every hook entry returns at once while it is true, doing nothing and
-   * throwing nothing: an instrumented class, or code that reaches these classes before the line's entry class has
-   * started them, must never see an exception from the agent.
+   * True until the line's start has committed (its entry class turns {@link HookActivation} on after the start line
+   * is written), and again from the first step of undoing a start that failed. Every hook entry returns at once while
+   * it is true, doing nothing and throwing nothing: an instrumented class, or code that reaches these classes before
+   * the line's entry class has started them, must never see an exception from the agent. The runtime is always
+   * started before the flag turns on, and its configuration stays readable after an undo stopped it, so a hook that
+   * passed this check while an undo runs finishes with the configuration it started with.
    */
   private static boolean inactive() {
-    return !RaspRuntime.isStarted();
+    return HookActivation.inactive();
   }
 
   /**

@@ -129,6 +129,16 @@ final class Java8RaspLineTest {
       System.setProperty("ohmyrasp.java8.block", "true");
       System.setProperty("ohmyrasp.java8.log", "none");
       try {
+        // A started runtime is not enough: the hooks act only once the start has committed and turned them on.
+        processStart.invoke(null, attack);
+      } finally {
+        System.clearProperty("ohmyrasp.java8.block");
+        System.clearProperty("ohmyrasp.java8.log");
+      }
+      Class.forName("io.ohmyrasp.agent.hook.HookActivation", true, fresh).getMethod("activate").invoke(null);
+      System.setProperty("ohmyrasp.java8.block", "true");
+      System.setProperty("ohmyrasp.java8.log", "none");
+      try {
         InvocationTargetException blocked =
             assertThrows(InvocationTargetException.class, () -> processStart.invoke(null, attack));
         assertEquals(Java8RaspBlockException.class.getName(), blocked.getCause().getClass().getName(),

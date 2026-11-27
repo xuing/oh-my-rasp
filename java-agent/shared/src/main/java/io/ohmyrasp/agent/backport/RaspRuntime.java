@@ -422,6 +422,14 @@ public final class RaspRuntime {
   }
 
   private static final Object START_LOCK = new Object();
+  // The line's one start per JVM, whichever entry makes it: NONE until an entry claims it, then STARTING, then
+  // STARTED or FAILED for good. Guarded by START_LOCK. This class is defined once, by the bootstrap loader (the entry
+  // checks it), so the claim holds for every entry: premain, agentmain, the launcher's and a direct one.
+  private static final int CLAIM_NONE = 0;
+  private static final int CLAIM_STARTING = 1;
+  private static final int CLAIM_STARTED = 2;
+  private static final int CLAIM_FAILED = 3;
+  private static int claim = CLAIM_NONE;
   // At JVM exit, how long the hook-miss report may take to hand its pending lines to the spool before it drains.
   private static final long DIAGNOSTIC_HANDOFF_MILLIS = 500;
   // Guarded by START_LOCK: set once the shutdown hook has run; then no start succeeds.
@@ -444,6 +452,31 @@ public final class RaspRuntime {
   /** Whether {@link #start} has completed. The hook entries do nothing until it has. */
   static boolean isStarted() {
     return started != null;
+  }
+
+  /**
+   * Claims the line's one start in this JVM for the calling entry. Throws, and changes nothing, when an entry already
+   * claimed it: one that is starting, one that started, or one whose start failed (a failed start is not retried; its
+   * undo cannot take out the calls its transformers already injected). The entry class calls it once the agent JAR
+   * is on the bootstrap search and this class is the bootstrap one, before it starts or registers anything, and
+   * {@link #endClaim} when its start has ended.
+   */
+  public static void claimStart() {
+    synchronized (START_LOCK) {
+      if (claim != CLAIM_NONE) {
+        throw new IllegalStateException("[OHMYRASP] the backport line was already "
+            + (claim == CLAIM_STARTING ? "being started" : claim == CLAIM_STARTED ? "started" : "started once and failed")
+            + " in this JVM: this start does nothing");
+      }
+      claim = CLAIM_STARTING;
+    }
+  }
+
+  /** Ends the claim of {@link #claimStart}: the start committed, or it failed and was undone. */
+  public static void endClaim(boolean committed) {
+    synchronized (START_LOCK) {
+      claim = committed ? CLAIM_STARTED : CLAIM_FAILED;
+    }
   }
 
   /**
