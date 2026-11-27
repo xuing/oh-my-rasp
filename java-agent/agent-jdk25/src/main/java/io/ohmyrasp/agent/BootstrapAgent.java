@@ -7,6 +7,7 @@ import io.ohmyrasp.agent.control.ControlPlaneClient;
 import io.ohmyrasp.agent.control.ControlPlaneConfig;
 import io.ohmyrasp.agent.hook.OhMyRaspHooks;
 import io.ohmyrasp.agent.hook.Warmup;
+import io.ohmyrasp.agent.hookmiss.HookMisses;
 import io.ohmyrasp.agent.log.JsonEventLogger;
 import io.ohmyrasp.agent.model.RequestContext;
 import io.ohmyrasp.agent.runtime.AgentRuntime;
@@ -28,8 +29,10 @@ public final class BootstrapAgent {
    * hook or transformer loads one for the first time inside an instrumented call, where loading can re-enter the
    * hook. A missing list or JAR, a class that is not there or fails to initialise, and any failure after the
    * transformer was registered fail the start: the transformer is removed and what this call started (the
-   * control-file poller, the event writer, the control-plane client) is stopped, so the launcher's start-failed
-   * report holds and the JVM goes on with no hook added by this start and no thread of ours.
+   * control-file poller, the event writer, the control-plane client, the hook-miss report) is stopped, so the
+   * launcher's start-failed report holds and the JVM goes on with no hook added by this start and no thread of ours.
+   * The start commits when {@code begin} returns: only then may the hook-miss report start its writer thread for
+   * what classes loaded during the start reported.
    */
   public static void start(String agentArgs, Instrumentation instrumentation, java.io.File agentJar) {
     if (agentJar == null) {
@@ -49,12 +52,16 @@ public final class BootstrapAgent {
       started.undo(instrumentation, failure);
       throw failure;
     }
+    if (started.hookMisses) {
+      HookMisses.release();
+    }
   }
 
   /** What one start did that a failed start must undo. */
   private static final class Started {
     boolean runtime;
     boolean logger;
+    boolean hookMisses;
     ControlPlaneClient controlPlane;
     Thread.UncaughtExceptionHandler handlerBefore;
     boolean handlerReplaced;
@@ -64,6 +71,13 @@ public final class BootstrapAgent {
       if (transformer != null) {
         try {
           instrumentation.removeTransformer(transformer);
+        } catch (RuntimeException | Error other) {
+          failure.addSuppressed(other);
+        }
+      }
+      if (hookMisses) {
+        try {
+          HookMisses.stop();
         } catch (RuntimeException | Error other) {
           failure.addSuppressed(other);
         }
@@ -131,7 +145,7 @@ public final class BootstrapAgent {
     // compares against. AgentRuntime was initialised and started above.
     started.logger = started.runtime;
     JsonEventLogger.get();
-    io.ohmyrasp.agent.log.HookMissLines.start();
+    started.hookMisses = io.ohmyrasp.agent.log.HookMissLines.start();
     initialize(OhMyRaspHooks.class);
     initialize(RequestContext.class);
     initialize(DetectionMode.class);

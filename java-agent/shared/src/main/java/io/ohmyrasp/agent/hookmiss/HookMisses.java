@@ -57,6 +57,8 @@ public final class HookMisses {
   private static final Set<HookExpectation> SEEN = new HashSet<HookExpectation>();
   private static final List<Candidate> PENDING = new ArrayList<Candidate>();
   private static boolean draining;
+  // Misses are queued but the worker does not start until release(): a start that can still fail holds the report.
+  private static boolean held;
   private static int written;
   private static boolean suppressed;
 
@@ -72,14 +74,47 @@ public final class HookMisses {
    * that reports the miss and what the writer throws reaches that thread, for tests and the hook-targets probe.
    */
   public static void start(HookExpectations expectations, HookMissSink target, boolean writeInline) {
+    start(expectations, target, writeInline, false);
+  }
+
+  /**
+   * As {@link #start(HookExpectations, HookMissSink)}, for a start that can still fail after its transformer is
+   * added: misses are marked and queued as usual, but no worker thread starts, and nothing is written, until
+   * {@link #release}. The start calls {@link #release} once it can no longer fail, and {@link #stop} when it fails,
+   * which drops what was queued: a failed start leaves no thread and writes no line.
+   */
+  public static void startHeld(HookExpectations expectations, HookMissSink target) {
+    start(expectations, target, false, true);
+  }
+
+  private static void start(HookExpectations expectations, HookMissSink target, boolean writeInline, boolean hold) {
     synchronized (LOCK) {
       SEEN.clear();
       PENDING.clear();
       written = 0;
       suppressed = false;
       inline = writeInline;
+      held = hold;
       sink = target;
       table = expectations;
+    }
+  }
+
+  /** Ends the hold of {@link #startHeld}: the worker starts now when misses were queued during it. */
+  public static void release() {
+    boolean startWorker = false;
+    synchronized (LOCK) {
+      if (!held) {
+        return;
+      }
+      held = false;
+      if (sink != null && !PENDING.isEmpty() && !draining) {
+        draining = true;
+        startWorker = true;
+      }
+    }
+    if (startWorker) {
+      startWorker();
     }
   }
 
@@ -88,6 +123,7 @@ public final class HookMisses {
     synchronized (LOCK) {
       table = null;
       sink = null;
+      held = false;
       PENDING.clear();
     }
   }
@@ -128,7 +164,7 @@ public final class HookMisses {
         target = sink;
       } else {
         PENDING.add(candidate);
-        if (!draining) {
+        if (!draining && !held) {
           draining = true;
           startWorker = true;
         }

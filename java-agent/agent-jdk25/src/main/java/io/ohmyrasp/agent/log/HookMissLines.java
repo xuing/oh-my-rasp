@@ -18,14 +18,16 @@ public final class HookMissLines implements HookMissSink {
   }
 
   /**
-   * Turns the report on with the primary table, before the transformer is added. A table that cannot be read
-   * leaves the report off and the agent starts as before: the diagnostic must not cost the protection.
+   * Turns the report on with the primary table, before the transformer is added, held: what a class loaded during
+   * the start reports is queued and written only after {@link HookMisses#release}, which the start calls once it
+   * has committed ({@link HookMisses#stop} drops it when the start fails). A table that cannot be read leaves the
+   * report off and the agent starts as before: the diagnostic must not cost the protection.
    *
    * @return whether the report is on
    */
   public static boolean start() {
     try {
-      HookMisses.start(HookExpectations.load("primary"), new HookMissLines(JsonEventLogger.get()));
+      HookMisses.startHeld(HookExpectations.load("primary"), new HookMissLines(JsonEventLogger.get()));
       return true;
     } catch (Throwable unavailable) {
       if (Boolean.getBoolean("ohmyrasp.debug")) {

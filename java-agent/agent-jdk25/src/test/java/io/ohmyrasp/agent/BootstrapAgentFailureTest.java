@@ -23,7 +23,9 @@ import org.junit.jupiter.api.io.TempDir;
  * A start of the primary line that fails leaves no transformer registered and no thread of ours behind, whichever
  * step failed: the launcher reports the failure and the JVM goes on as if the agent had not been attached.
  * Each scenario starts the line in a JVM of its own (see {@link BootstrapAgentFailureMain}); "started" is the control
- * that shows the check can see a transformer and the threads when the start succeeds.
+ * that shows the check can see a transformer and the threads when the start succeeds. No thread whose name starts
+ * with {@code ohmyrasp-} may outlive a failed start, the hook-miss writer included, and a failed start leaves the
+ * hook-miss report off and writes no hook-miss line, even when a class loaded during it was one.
  */
 final class BootstrapAgentFailureTest {
   private static final String LIST = "META-INF/ohmyrasp/preload/" + BootstrapAgent.MODULE + ".txt";
@@ -38,6 +40,20 @@ final class BootstrapAgentFailureTest {
     assertEquals(1, result.transformers);
     assertTrue(result.threads.contains("ohmyrasp-control-poller"), result.threads);
     assertTrue(result.threads.contains("ohmyrasp-event-writer"), result.threads);
+  }
+
+  @Test
+  void aHookMissDuringAStartThatSucceedsIsWrittenOnceTheStartCommitted() throws Exception {
+    Result result = run("miss-then-starts", jarWith(List.of()));
+    assertEquals("started", result.ended);
+    assertTrue(result.hookMissWritten, "the hook miss loaded during the start was not written after it");
+    assertTrue(result.reportOn);
+  }
+
+  @Test
+  void aHookMissDuringAStartThatFailsIsDroppedWithTheReportAndLeavesNoThread() throws Exception {
+    Result result = run("miss-then-fails", jarWith(List.of()));
+    assertFails(result, "the JVM refuses to list its classes");
   }
 
   @Test
@@ -82,6 +98,8 @@ final class BootstrapAgentFailureTest {
     assertTrue(result.ended.contains(reason), "expected '" + reason + "' in: " + result.ended);
     assertEquals(0, result.transformers, "a transformer is still registered after a failed start");
     assertEquals("", result.threads, "threads of ours are still alive after a failed start");
+    assertFalse(result.hookMissWritten, "a failed start wrote a hook-miss line");
+    assertFalse(result.reportOn, "the hook-miss report is still on after a failed start");
     assertFalse(result.ended.contains("Unable to start"), result.ended);
   }
 
@@ -111,7 +129,7 @@ final class BootstrapAgentFailureTest {
     jar.closeEntry();
   }
 
-  private record Result(String ended, int transformers, String threads) {}
+  private record Result(String ended, int transformers, String threads, boolean hookMissWritten, boolean reportOn) {}
 
   private Result run(String scenario, File jar) throws Exception {
     Path java = Path.of(System.getProperty("java.home"), "bin", "java");
@@ -133,7 +151,8 @@ final class BootstrapAgentFailureTest {
     for (String line : text.split("\n")) {
       if (line.startsWith("RESULT\t")) {
         String[] parts = line.split("\t", -1);
-        return new Result(parts[1], Integer.parseInt(parts[2]), parts[3]);
+        return new Result(parts[1], Integer.parseInt(parts[2]), parts[3], Boolean.parseBoolean(parts[4]),
+            Boolean.parseBoolean(parts[5]));
       }
     }
     throw new AssertionError("no RESULT line from the JVM: " + text);
