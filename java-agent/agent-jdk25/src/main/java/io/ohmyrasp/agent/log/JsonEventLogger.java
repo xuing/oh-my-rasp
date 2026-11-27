@@ -97,11 +97,12 @@ public final class JsonEventLogger {
 
   /**
    * One queued record: either a security {@code detection} (with its measured
-   * in-hook latencies) or a periodic latency {@code telemetryHook} sample that
-   * feeds the daemon's business-impact panel without being a detection.
+   * in-hook latencies), a periodic latency {@code telemetryHook} sample that
+   * feeds the daemon's business-impact panel without being a detection, or an agent
+   * {@code diagnostic} line written as it is.
    */
   private record Sample(
-      Detection detection, String telemetryHook, long latencyUs, long ruleEvaluationUs) {}
+      Detection detection, String telemetryHook, long latencyUs, long ruleEvaluationUs, String diagnostic) {}
 
   private enum LogTarget {
     FILE,
@@ -271,7 +272,7 @@ public final class JsonEventLogger {
     if (detection == null) {
       return;
     }
-    submit(new Sample(detection, null, latencyUs, ruleEvaluationUs));
+    submit(new Sample(detection, null, latencyUs, ruleEvaluationUs, null));
   }
 
   /**
@@ -288,7 +289,22 @@ public final class JsonEventLogger {
     if (latencySampleRate > 1 && sampleCounter.incrementAndGet() % latencySampleRate != 0) {
       return;
     }
-    submit(new Sample(null, hook == null ? "" : hook, latencyUs, -1));
+    submit(new Sample(null, hook == null ? "" : hook, latencyUs, -1, null));
+  }
+
+  /**
+   * Record an agent diagnostic, not a detection: {@code {"timestamp":...,"kind":"diagnostic","diagnostic":<name>,
+   * <fields>}}, where {@code fields} is JSON members without braces. It goes where detections go (the spool, or the
+   * console in standalone mode) and never to the direct-cloud client. The hook-miss report is its only writer.
+   */
+  public void recordDiagnostic(String diagnostic, String fields) {
+    var builder = new StringBuilder(64 + fields.length());
+    builder.append('{');
+    field(builder, "timestamp", java.time.Instant.now().toString()).append(',');
+    field(builder, "kind", "diagnostic").append(',');
+    field(builder, "diagnostic", diagnostic).append(',');
+    builder.append(fields).append('}');
+    submit(new Sample(null, null, -1, -1, builder.toString()));
   }
 
   private void submit(Sample sample) {
@@ -369,14 +385,16 @@ public final class JsonEventLogger {
         continue;
       }
       String json =
-          sample.detection() == null
-              ? telemetryJson(sample.telemetryHook(), sample.latencyUs())
-              : toJson(sample.detection(), sample.latencyUs());
+          sample.diagnostic() != null
+              ? sample.diagnostic()
+              : sample.detection() == null
+                  ? telemetryJson(sample.telemetryHook(), sample.latencyUs())
+                  : toJson(sample.detection(), sample.latencyUs());
       if (fileBuffer != null) {
         fileBuffer.append(json).append(separator);
       }
       // Telemetry is high-volume and uninteresting on the console; keep it off stdout/stderr.
-      if (consoleBuffer != null && sample.detection() != null) {
+      if (consoleBuffer != null && (sample.detection() != null || sample.diagnostic() != null)) {
         consoleBuffer.append("[OHMYRASP] ").append(json).append(separator);
       }
     }

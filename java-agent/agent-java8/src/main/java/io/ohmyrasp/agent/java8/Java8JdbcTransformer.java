@@ -13,7 +13,7 @@ import org.objectweb.asm.Type;
 import org.objectweb.asm.commons.AdviceAdapter;
 import org.objectweb.asm.commons.Method;
 
-public final class Java8JdbcTransformer implements ClassFileTransformer {
+public final class Java8JdbcTransformer implements ClassFileTransformer, io.ohmyrasp.agent.hookmiss.NamedTargets {
   private static final Type HOOKS = Type.getType(Java8RaspHooks.class);
   private static final Method BEFORE_JDBC_CONNECTION =
       Method.getMethod("void beforeJdbcConnection(java.lang.String)");
@@ -57,6 +57,12 @@ public final class Java8JdbcTransformer implements ClassFileTransformer {
       }
       return null;
     }
+  }
+
+  /** The hook-miss report checks the classes chosen by name; a JDBC implementation is chosen by its interfaces. */
+  @Override
+  public boolean selectsByName(String className) {
+    return isJdbcClass(className);
   }
 
   private static boolean isJdbcClass(String className) {

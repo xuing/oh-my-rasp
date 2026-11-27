@@ -5,7 +5,7 @@
 > `hook-targets` probe records a new map; `--check` fails CI when this file is stale.
 
 A hook aimed at a library matches a class name and a method. When a release renames the method,
-the hook stops applying and nothing says so. The `hook-targets` probe runs each packaged agent over
+the hook stops applying silently. The `hook-targets` probe runs each packaged agent over
 every class of real library JARs and records which methods come out calling back into the agent.
 This page summarises those recorded maps; the full rows are in
 [`recorded/primary.txt`](../probes/hook-targets/recorded/primary.txt) and
@@ -36,6 +36,26 @@ A backport transformer counts only when its entry class constructs it and passes
 `Instrumentation.addTransformer`, and the backport map is the chained run in registration order, as
 production runs it. A class on which a transformer adds something else after its predecessors than on the
 original bytes is a `# chain:` line in the recorded map and is listed below.
+
+## At run time
+
+Each agent JAR carries a table derived from these maps: per hook unit, the classes it hooks on some
+recorded version and the methods it hooks there. A running agent writes one diagnostic line when it
+loads such a class and the unit hooks none of those methods, so a version the probe never saw is
+reported where it runs ([docs/agent.md](../../docs/agent.md#hooks-that-did-not-apply)). The probe
+runs the agent with that report on over the libraries below and fails on a version that the unit does
+not hook unless [`hook-miss.toml`](../probes/hook-targets/hook-miss.toml) explains it:
+
+| Unit | Class | Check | Why |
+|---|---|---|---|
+| `ExpressionHookModule` | `org/apache/velocity/runtime/RuntimeInstance` | absent | RuntimeInstance.evaluate came with Velocity 1.6; on 1.5 the Velocity and VelocityEngine evaluate methods, which the module hooks there, do the work. |
+| `Java{N}FastjsonTransformer` | `com/alibaba/fastjson/parser/ParserConfig` | never | The hook guards the class-resource read that checkAutoType gained in fastjson 1.2.68; 1.2.24 has no checkAutoType and 1.2.47 has one without that read, and fastjson 1.x ended with 1.2.83. |
+| `Java{N}JdbcTransformer` | `org/apache/ibatis/builder/SqlSourceBuilder` | absent | SqlSourceBuilder.removeExtraWhitespaces came with MyBatis 3.5.0 (shrinkWhitespacesInSql); before it nothing compacts the SQL text. |
+| `PolymorphicDeserializationHookModule` | `com/alibaba/fastjson/parser/ParserConfig` | absent | ParserConfig.checkAutoType came with fastjson 1.2.25; on 1.2.24 TypeUtils.loadClass, which the module hooks there, resolves the type. |
+| `SqlHookModule` | `org/apache/ibatis/builder/SqlSourceBuilder` | absent | SqlSourceBuilder.removeExtraWhitespaces came with MyBatis 3.5.0 (shrinkWhitespacesInSql); before it nothing compacts the SQL text. |
+
+`absent`: not reported when the class declares no method of a name the unit looks for (a release from
+before the hooked code existed). `never`: not reported.
 
 ## Hooked methods per library version
 
@@ -169,7 +189,7 @@ original bytes is a `# chain:` line in the recorded map and is listed below.
 | `args4j:args4j` | 2.0.31 | 1 | 0 |
 | `args4j:args4j` | 2.33 | 1 | 0 |
 | `args4j:args4j` | 2.37 | 1 | 0 |
-| `org.mybatis:mybatis` | 3.2.8 | 12 | 12 |
+| `org.mybatis:mybatis` | 3.2.8 | 13 | 13 |
 | `org.mybatis:mybatis` | 3.4.6 | 14 | 14 |
 | `org.mybatis:mybatis` | 3.5.6 | 15 | 15 |
 | `org.mybatis:mybatis` | 3.5.19 | 18 | 18 |
@@ -347,7 +367,7 @@ signature); each is a place to check that the hook still covers what it did.
 | `org.eclipse.jetty:jetty-server` | 9.4.57.v20241219 10.0.26 11.0.26 | 12.0.41 | `org/eclipse/jetty/server/MultiParts$MultiPartsHttpParser.getPart`<br>`org/eclipse/jetty/server/MultiParts$MultiPartsHttpParser.getParts`<br>`org/eclipse/jetty/server/MultiParts$MultiPartsUtilParser.getPart`<br>`org/eclipse/jetty/server/MultiParts$MultiPartsUtilParser.getParts`<br>and 4 more |
 | `org.elasticsearch:elasticsearch` | 8.19.23 | 7.17.29 | `org/elasticsearch/common/settings/LocallyMountedSecrets.getFile` |
 | `org.glassfish:jakarta.el` | 3.0.4 | 4.0.2 | `javax/el/ELProcessor.eval`<br>`javax/el/ELProcessor.getValue`<br>`javax/el/ELProcessor.setValue` |
-| `org.mybatis:mybatis` | 3.4.6 3.5.6 3.5.19 3.6.0 | 3.2.8 | `org/apache/ibatis/executor/statement/BaseStatementHandler.prepare`<br>`org/apache/ibatis/executor/statement/SimpleStatementHandler.queryCursor` |
+| `org.mybatis:mybatis` | 3.4.6 3.5.6 3.5.19 3.6.0 | 3.2.8 | `org/apache/ibatis/executor/statement/SimpleStatementHandler.queryCursor` |
 | `org.mybatis:mybatis` | 3.5.19 3.6.0 | 3.2.8 3.4.6 3.5.6 | `org/apache/ibatis/scripting/xmltags/TrimSqlNode$FilteredDynamicContext.lambda$applyPrefix$0`<br>`org/apache/ibatis/scripting/xmltags/TrimSqlNode$FilteredDynamicContext.lambda$applySuffix$1`<br>`org/apache/ibatis/scripting/xmltags/TrimSqlNode$FilteredDynamicContext.lambda$applySuffix$2` |
 | `org.mybatis:mybatis` | 3.5.6 3.5.19 3.6.0 | 3.2.8 3.4.6 | `org/apache/ibatis/builder/SqlSourceBuilder.removeExtraWhitespaces` |
 | `org.springframework:spring-beans` | 3.2.18.RELEASE 4.3.30.RELEASE | 5.3.39 6.2.19 7.1.0 | `org/springframework/beans/factory/support/AbstractAutowireCapableBeanFactory$8.run` |
@@ -389,7 +409,7 @@ signature); each is a place to check that the hook still covers what it did.
 | `org.eclipse.jetty:jetty-server` | 9.4.57.v20241219 | 10.0.26 11.0.26 12.0.41 | `org/eclipse/jetty/server/Request.getPushBuilder`<br>`org/eclipse/jetty/server/Request.mergeQueryParameters` |
 | `org.eclipse.jetty:jetty-server` | 9.4.57.v20241219 10.0.26 11.0.26 | 12.0.41 | `org/eclipse/jetty/server/MultiParts$MultiPartsHttpParser.getPart`<br>`org/eclipse/jetty/server/MultiParts$MultiPartsHttpParser.getParts`<br>`org/eclipse/jetty/server/MultiParts$MultiPartsHttpParser.setNonComplianceViolationsOnRequest`<br>`org/eclipse/jetty/server/MultiParts$MultiPartsUtilParser.getPart`<br>and 13 more |
 | `org.elasticsearch:elasticsearch` | 8.19.23 | 7.17.29 | `org/elasticsearch/common/settings/LocallyMountedSecrets.getFile` |
-| `org.mybatis:mybatis` | 3.4.6 3.5.6 3.5.19 3.6.0 | 3.2.8 | `org/apache/ibatis/executor/statement/BaseStatementHandler.prepare`<br>`org/apache/ibatis/executor/statement/SimpleStatementHandler.queryCursor` |
+| `org.mybatis:mybatis` | 3.4.6 3.5.6 3.5.19 3.6.0 | 3.2.8 | `org/apache/ibatis/executor/statement/SimpleStatementHandler.queryCursor` |
 | `org.mybatis:mybatis` | 3.5.19 3.6.0 | 3.2.8 3.4.6 3.5.6 | `org/apache/ibatis/scripting/xmltags/TrimSqlNode$FilteredDynamicContext.lambda$applyPrefix$0`<br>`org/apache/ibatis/scripting/xmltags/TrimSqlNode$FilteredDynamicContext.lambda$applySuffix$1`<br>`org/apache/ibatis/scripting/xmltags/TrimSqlNode$FilteredDynamicContext.lambda$applySuffix$2` |
 | `org.mybatis:mybatis` | 3.5.6 3.5.19 3.6.0 | 3.2.8 3.4.6 | `org/apache/ibatis/builder/SqlSourceBuilder.removeExtraWhitespaces` |
 | `org.springframework:spring-beans` | 3.2.18.RELEASE 4.3.30.RELEASE | 5.3.39 6.2.19 7.1.0 | `org/springframework/beans/factory/support/AbstractAutowireCapableBeanFactory$8.run` |

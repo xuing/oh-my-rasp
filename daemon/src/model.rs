@@ -29,6 +29,14 @@
 //! (`"event":"ohmyrasp-detection"`), no `kind` and a numeric epoch-millisecond
 //! `timestamp`, and a start line (`"event":"ohmyrasp-java8-agent-start"`) that is
 //! not a detection. See [`EventClass`] for how a line is classified.
+//!
+//! An agent also reports, as a diagnostic line, a hook that was meant to instrument a loaded
+//! library class and did not apply (a library release renamed or changed a hooked method). The
+//! primary agent writes `"kind":"diagnostic"` with a `diagnostic` member (`hook_miss`, or
+//! `hook_miss_suppressed` once its per-JVM limit is reached); the backport agents have no `kind`
+//! and say it with `event` (`ohmyrasp-hook-miss`, `ohmyrasp-hook-miss-suppressed`).
+//! [`AgentEvent::hook_miss`] reads the first as a bounded, typed [`HookMiss`]. A diagnostic is
+//! not a detection: it stays in the local status view and the daemon log.
 
 use serde::Serialize;
 use serde_json::{Map, Value, json};
@@ -43,10 +51,50 @@ pub enum EventClass {
     Telemetry,
     /// An agent lifecycle line (the start line): the agent entry of the local status view only.
     Lifecycle,
-    /// Any other `kind` (a later agent version adds diagnostic kinds), or a line that says
-    /// nothing the daemon can classify: counted per kind, never recorded as a detection, never
-    /// uploaded.
+    /// An agent diagnostic: a hook that did not apply. The local status view and the daemon log
+    /// only; never recorded as a detection, never uploaded.
+    Diagnostic,
+    /// Any other `kind` (a later agent version may add more), or a line that says nothing the
+    /// daemon can classify: counted per kind, never recorded as a detection, never uploaded.
     Ignored,
+}
+
+/// The most characters of a string member the typed view of a diagnostic keeps.
+pub const MAX_DIAGNOSTIC_CHARS: usize = 512;
+/// The most entries of a list member (`looked_for`, `found`) the typed view of a diagnostic keeps.
+pub const MAX_DIAGNOSTIC_LIST: usize = 16;
+
+/// Which writer produced a diagnostic line: the primary agent names it in a `diagnostic` member
+/// next to `"kind":"diagnostic"`; a backport agent has no `kind` and names it in `event`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "lowercase")]
+pub enum DiagnosticFormat {
+    Primary,
+    Backport,
+}
+
+/// A hook that did not apply to a loaded library class, as the agent reported it. Every string is
+/// cut to [`MAX_DIAGNOSTIC_CHARS`] characters and every list to [`MAX_DIAGNOSTIC_LIST`] entries,
+/// so a malformed line cannot make the daemon keep an arbitrary amount of it.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct HookMiss {
+    /// Which writer produced the line.
+    pub format: DiagnosticFormat,
+    /// The hook unit: a hook module of the primary agent, a transformer of a backport agent.
+    pub unit: String,
+    /// The library class the hook was meant for.
+    pub class: String,
+    /// `no_agent_call`, `not_transformed` or `transform_failed`; empty when the line has none.
+    pub reason: String,
+    /// The exception text, when the reason is `transform_failed`.
+    pub exception: Option<String>,
+    /// The method descriptors the hook looks for.
+    pub looked_for: Vec<String>,
+    /// The method descriptors the class has instead.
+    pub found: Vec<String>,
+    pub code_source: Option<String>,
+    pub code_source_path: Option<String>,
+    pub implementation_version: Option<String>,
 }
 
 /// One ingested agent event.
@@ -57,7 +105,7 @@ pub struct AgentEvent {
     /// RFC3339 timestamp of when the daemon ingested the line.
     pub received_at: String,
     /// The line's `kind`; when it has none, the kind inferred from its `event` member and fields:
-    /// `"detection"`, `"lifecycle"`, or `"unknown"`. Any value is kept as written.
+    /// `"detection"`, `"lifecycle"`, `"diagnostic"`, or `"unknown"`. Any value is kept as written.
     pub kind: String,
     pub timestamp: String,
     pub hook: String,
@@ -104,8 +152,76 @@ impl AgentEvent {
             "detection" => EventClass::Detection,
             "telemetry" => EventClass::Telemetry,
             "lifecycle" => EventClass::Lifecycle,
+            "diagnostic" => EventClass::Diagnostic,
             _ => EventClass::Ignored,
         }
+    }
+
+    /// Which diagnostic this line is, when it is one: the writer and the name (`hook_miss` or
+    /// `hook_miss_suppressed`). The primary agent's line is named by its `diagnostic` member, a
+    /// backport agent's by `event`; a line with a `kind` is never read through `event`.
+    fn diagnostic_name(&self) -> Option<(DiagnosticFormat, &'static str)> {
+        if self.kind != "diagnostic" {
+            return None;
+        }
+        if self.raw.get("kind").is_some() {
+            match self.raw.get("diagnostic").and_then(Value::as_str) {
+                Some("hook_miss") => Some((DiagnosticFormat::Primary, "hook_miss")),
+                Some("hook_miss_suppressed") => {
+                    Some((DiagnosticFormat::Primary, "hook_miss_suppressed"))
+                }
+                _ => None,
+            }
+        } else {
+            match str_field(&self.raw, "event").as_deref() {
+                Some(HOOK_MISS_EVENT) => Some((DiagnosticFormat::Backport, "hook_miss")),
+                Some(HOOK_MISS_SUPPRESSED_EVENT) => {
+                    Some((DiagnosticFormat::Backport, "hook_miss_suppressed"))
+                }
+                _ => None,
+            }
+        }
+    }
+
+    /// The typed view of a hook-miss line; `None` for any other line, including the suppressed
+    /// line (see [`is_hook_miss_suppressed`](Self::is_hook_miss_suppressed)). A member the line
+    /// lacks reads as empty (or `None` for the optional ones): the daemon does not reject a line
+    /// for missing structure.
+    pub fn hook_miss(&self) -> Option<HookMiss> {
+        let (format, name) = self.diagnostic_name()?;
+        if name != "hook_miss" {
+            return None;
+        }
+        let text = |key: &str| str_field(&self.raw, key).map(|v| truncate_chars(&v));
+        let list = |key: &str| -> Vec<String> {
+            self.raw
+                .get(key)
+                .and_then(Value::as_array)
+                .into_iter()
+                .flatten()
+                .filter_map(Value::as_str)
+                .take(MAX_DIAGNOSTIC_LIST)
+                .map(truncate_chars)
+                .collect()
+        };
+        Some(HookMiss {
+            format,
+            unit: text("unit").unwrap_or_default(),
+            class: text("class").unwrap_or_default(),
+            reason: text("reason").unwrap_or_default(),
+            exception: text("exception"),
+            looked_for: list("looked_for"),
+            found: list("found"),
+            code_source: text("code_source"),
+            code_source_path: text("code_source_path"),
+            implementation_version: text("implementation_version"),
+        })
+    }
+
+    /// True for the line an agent writes once, after its per-JVM limit of hook-miss lines, to say
+    /// that further ones are not written.
+    pub fn is_hook_miss_suppressed(&self) -> bool {
+        matches!(self.diagnostic_name(), Some((_, "hook_miss_suppressed")))
     }
 
     /// True when this event is a security detection: not telemetry, not a lifecycle line and
@@ -238,12 +354,33 @@ pub struct CloudIdentity {
     pub policy_version: i64,
 }
 
+/// The `event` of a backport agent's hook-miss line.
+const HOOK_MISS_EVENT: &str = "ohmyrasp-hook-miss";
+/// The `event` of a backport agent's line saying that further hook-miss lines are suppressed.
+const HOOK_MISS_SUPPRESSED_EVENT: &str = "ohmyrasp-hook-miss-suppressed";
+
+/// `text` cut to [`MAX_DIAGNOSTIC_CHARS`] characters, on a character boundary.
+fn truncate_chars(text: &str) -> String {
+    match text.char_indices().nth(MAX_DIAGNOSTIC_CHARS) {
+        Some((end, _)) => text[..end].to_string(),
+        None => text.to_string(),
+    }
+}
+
 /// The kind of a line that has no `kind`. The backport agents write a start line
-/// (`ohmyrasp-<line>-agent-start`) and detections with `"event":"ohmyrasp-detection"`; an older
+/// (`ohmyrasp-<line>-agent-start`), hook-miss diagnostics (`ohmyrasp-hook-miss`,
+/// `ohmyrasp-hook-miss-suppressed`) and detections with `"event":"ohmyrasp-detection"`; an older
 /// primary agent wrote detections with neither. A line with an `algorithm` and an `action` is a
-/// detection; anything else says nothing the daemon can classify.
+/// detection; anything else says nothing the daemon can classify. A diagnostic is decided first,
+/// so it is never a detection whatever else it carries.
 fn infer_kind(raw: &Value) -> &'static str {
     let event = str_field(raw, "event");
+    if matches!(
+        event.as_deref(),
+        Some(HOOK_MISS_EVENT | HOOK_MISS_SUPPRESSED_EVENT)
+    ) {
+        return "diagnostic";
+    }
     if let Some(event) = &event
         && event.starts_with("ohmyrasp-")
         && event.ends_with("-agent-start")
@@ -408,15 +545,118 @@ mod tests {
     #[test]
     fn an_unknown_kind_is_not_a_detection_even_when_it_looks_like_one() {
         let line =
-            r#"{"kind":"diagnostic","hook":"h","algorithm":"a","action":"block","confidence":99}"#;
+            r#"{"kind":"profile","hook":"h","algorithm":"a","action":"block","confidence":99}"#;
         let ev = parse(line);
-        assert_eq!(ev.kind, "diagnostic");
+        assert_eq!(ev.kind, "profile");
         assert_eq!(ev.class(), EventClass::Ignored);
         assert!(!ev.is_detection());
-        assert_eq!(ev.ignored_label(), "diagnostic");
+        assert_eq!(ev.ignored_label(), "profile");
         // The kind decides: a detection-shaped `event` does not override it.
-        let ev = parse(r#"{"kind":"diagnostic","event":"ohmyrasp-detection"}"#);
+        let ev = parse(r#"{"kind":"profile","event":"ohmyrasp-detection"}"#);
         assert_eq!(ev.class(), EventClass::Ignored);
+    }
+
+    #[test]
+    fn a_diagnostic_is_never_a_detection_even_when_it_looks_like_one() {
+        // By kind, and by the backport `event`, checked before the detection inference.
+        for line in [
+            r#"{"kind":"diagnostic","diagnostic":"hook_miss","hook":"h","algorithm":"a","action":"block"}"#,
+            r#"{"event":"ohmyrasp-hook-miss","hook":"h","algorithm":"a","action":"block"}"#,
+            r#"{"event":"ohmyrasp-hook-miss-suppressed","algorithm":"a","action":"block"}"#,
+            r#"{"kind":"diagnostic","event":"ohmyrasp-detection","algorithm":"a","action":"block"}"#,
+        ] {
+            let ev = parse(line);
+            assert_eq!(ev.kind, "diagnostic", "{line}");
+            assert_eq!(ev.class(), EventClass::Diagnostic, "{line}");
+            assert!(!ev.is_detection(), "{line}");
+        }
+        // A non-string kind is still ignored, not read through the other members.
+        let ev = parse(r#"{"kind":5,"event":"ohmyrasp-hook-miss"}"#);
+        assert_eq!(ev.class(), EventClass::Ignored);
+        assert!(ev.hook_miss().is_none());
+    }
+
+    #[test]
+    fn the_two_writers_hook_miss_lines_read_the_same() {
+        let members = r#""unit":"U","class":"a.B","reason":"transform_failed","exception":"boom","looked_for":["m()V"],"found":["n()V","o()V"],"code_source":"x.jar","implementation_version":"1.2""#;
+        let primary = parse(&format!(
+            r#"{{"kind":"diagnostic","diagnostic":"hook_miss",{members}}}"#
+        ));
+        let backport = parse(&format!(r#"{{"event":"ohmyrasp-hook-miss",{members}}}"#));
+        let (p, b) = (primary.hook_miss().unwrap(), backport.hook_miss().unwrap());
+        assert_eq!(p.format, DiagnosticFormat::Primary);
+        assert_eq!(b.format, DiagnosticFormat::Backport);
+        assert_eq!(
+            HookMiss {
+                format: b.format,
+                ..p.clone()
+            },
+            b
+        );
+        assert_eq!((p.unit.as_str(), p.class.as_str()), ("U", "a.B"));
+        assert_eq!(p.reason, "transform_failed");
+        assert_eq!(p.exception.as_deref(), Some("boom"));
+        assert_eq!(p.looked_for, ["m()V"]);
+        assert_eq!(p.found, ["n()V", "o()V"]);
+        assert_eq!(p.code_source.as_deref(), Some("x.jar"));
+        assert_eq!(p.code_source_path, None);
+        assert_eq!(p.implementation_version.as_deref(), Some("1.2"));
+        assert!(!primary.is_hook_miss_suppressed());
+    }
+
+    #[test]
+    fn the_suppressed_line_is_told_apart_from_a_hook_miss() {
+        for line in [
+            r#"{"kind":"diagnostic","diagnostic":"hook_miss_suppressed","limit":32}"#,
+            r#"{"event":"ohmyrasp-hook-miss-suppressed","limit":32}"#,
+        ] {
+            let ev = parse(line);
+            assert_eq!(ev.class(), EventClass::Diagnostic);
+            assert!(ev.is_hook_miss_suppressed(), "{line}");
+            assert!(ev.hook_miss().is_none(), "{line}");
+        }
+        // A diagnostic of another name is a diagnostic that is neither.
+        let other = parse(r#"{"kind":"diagnostic","diagnostic":"later_one"}"#);
+        assert_eq!(other.class(), EventClass::Diagnostic);
+        assert!(other.hook_miss().is_none() && !other.is_hook_miss_suppressed());
+    }
+
+    #[test]
+    fn a_hook_miss_is_bounded_and_tolerates_missing_members() {
+        let long = "\u{e9}".repeat(10_000);
+        let many: Vec<String> = (0..100).map(|i| format!("m{i}()V")).collect();
+        let line = json!({
+            "kind": "diagnostic", "diagnostic": "hook_miss",
+            "unit": long, "class": long, "exception": long, "code_source": long,
+            "looked_for": many, "found": [long, 5, null, "x"],
+        })
+        .to_string();
+        let miss = parse(&line).hook_miss().unwrap();
+        let cut = "\u{e9}".repeat(MAX_DIAGNOSTIC_CHARS);
+        assert_eq!(miss.unit, cut);
+        assert_eq!(miss.class, cut);
+        assert_eq!(miss.exception.as_deref(), Some(cut.as_str()));
+        assert_eq!(miss.code_source.as_deref(), Some(cut.as_str()));
+        assert_eq!(miss.looked_for.len(), MAX_DIAGNOSTIC_LIST);
+        assert_eq!(miss.looked_for[0], "m0()V");
+        assert_eq!(
+            miss.found,
+            [cut, "x".to_string()],
+            "non-strings are skipped"
+        );
+
+        let bare = parse(r#"{"kind":"diagnostic","diagnostic":"hook_miss"}"#)
+            .hook_miss()
+            .unwrap();
+        assert_eq!(
+            (
+                bare.unit.as_str(),
+                bare.class.as_str(),
+                bare.reason.as_str()
+            ),
+            ("", "", "")
+        );
+        assert!(bare.looked_for.is_empty() && bare.exception.is_none());
     }
 
     #[test]

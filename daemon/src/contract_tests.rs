@@ -15,7 +15,7 @@ use std::path::{Path, PathBuf};
 use serde_json::Value;
 
 use crate::control::{ControlState, Controller, Mode};
-use crate::model::{AgentEvent, CloudIdentity, EventClass};
+use crate::model::{AgentEvent, CloudIdentity, DiagnosticFormat, EventClass};
 use crate::store::EventStore;
 
 /// What `updated_at` is replaced with in a golden control document.
@@ -398,7 +398,7 @@ struct Expect {
 
 #[rustfmt::skip]
 fn expectations() -> Vec<Expect> {
-    use EventClass::{Detection, Lifecycle, Telemetry};
+    use EventClass::{Detection, Diagnostic, Lifecycle, Telemetry};
     let e = |file, kind, hook, algorithm, action, confidence, latency_us, timestamp, severity, class| Expect {
         file, kind, hook, algorithm, action, confidence, latency_us, timestamp, severity, class,
     };
@@ -417,6 +417,12 @@ fn expectations() -> Vec<Expect> {
         e("backport/agent-start-java8.json", "lifecycle", "", "", "", 0, None, "", "low", Lifecycle),
         e("backport/agent-start-java11.json", "lifecycle", "", "", "", 0, None, "", "low", Lifecycle),
         e("backport/agent-start-java17.json", "lifecycle", "", "", "", 0, None, "", "low", Lifecycle),
+        // A hook that did not apply, and the line that says no more are written: no `algorithm` or
+        // `action`, so neither is a detection. The backports name them in `event`, not `kind`.
+        e("primary/diagnostic-hook-miss.json", "diagnostic", "", "", "", 0, None, at, "low", Diagnostic),
+        e("primary/diagnostic-hook-miss-suppressed.json", "diagnostic", "", "", "", 0, None, at, "low", Diagnostic),
+        e("backport/hook-miss.json", "diagnostic", "", "", "", 0, None, at, "low", Diagnostic),
+        e("backport/hook-miss-suppressed.json", "diagnostic", "", "", "", 0, None, at, "low", Diagnostic),
     ]
 }
 
@@ -584,8 +590,9 @@ fn every_golden_detection_uploads_the_body_the_daemon_builds() {
 }
 
 /// What the pipeline does with each golden line: a detection is recorded and offered to the
-/// uploader once; telemetry feeds the latency panel; a start line only describes the agent. A
-/// start line is never a detection, so it is not counted and not uploaded.
+/// uploader once; telemetry feeds the latency panel; a start line only describes the agent; a
+/// diagnostic is kept in the local status view. A start line or a diagnostic is never a
+/// detection, so it is not counted and not uploaded.
 #[test]
 fn only_golden_detections_are_recorded_and_offered_to_the_uploader() {
     let expectations = expectations();
@@ -621,6 +628,25 @@ fn only_golden_detections_are_recorded_and_offered_to_the_uploader() {
             "{name} telemetry"
         );
         assert!(stats.ignored_kinds.is_empty(), "{name} is a known kind");
+        // A diagnostic is counted in the status view; the suppressed line only sets the flag.
+        let is_diagnostic = want.class == EventClass::Diagnostic;
+        let suppressed = name.contains("suppressed");
+        assert_eq!(
+            stats.diagnostics,
+            u64::from(is_diagnostic),
+            "{name} diagnostics"
+        );
+        assert_eq!(
+            stats.hook_misses.len(),
+            usize::from(is_diagnostic && !suppressed),
+            "{name} hook_misses"
+        );
+        assert_eq!(
+            stats.hook_misses_suppressed,
+            is_diagnostic && suppressed,
+            "{name} hook_misses_suppressed"
+        );
+        assert_eq!(stats.hook_misses_dropped, 0, "{name} hook_misses_dropped");
         if want.class == EventClass::Lifecycle {
             let agent = stats
                 .agent
@@ -638,6 +664,58 @@ fn only_golden_detections_are_recorded_and_offered_to_the_uploader() {
                 "{name}: only a start line describes the agent"
             );
         }
+    }
+}
+
+/// The two writers' hook-miss lines say the same thing to the daemon, apart from the unit's line
+/// token (`SqlHookModule` on the primary agent, `JavaNJdbcTransformer` on a backport agent), and
+/// the suppressed lines are told apart from them.
+#[test]
+fn the_two_writers_hook_miss_lines_read_the_same() {
+    let events: std::collections::BTreeMap<String, String> = golden_events().into_iter().collect();
+    let read = |name: &str| {
+        AgentEvent::parse_line(7, RECEIVED_AT.into(), &events[name])
+            .unwrap_or_else(|| panic!("{name}: the daemon rejects the line"))
+    };
+    let primary = read("primary/diagnostic-hook-miss.json");
+    let backport = read("backport/hook-miss.json");
+    let (p, b) = (primary.hook_miss().unwrap(), backport.hook_miss().unwrap());
+    assert_eq!(p.format, DiagnosticFormat::Primary);
+    assert_eq!(b.format, DiagnosticFormat::Backport);
+    assert_eq!(p.unit, "SqlHookModule");
+    assert_eq!(b.unit, "JavaNJdbcTransformer");
+    for miss in [&p, &b] {
+        assert_eq!(
+            miss.class,
+            "org.apache.ibatis.executor.statement.BaseStatementHandler"
+        );
+        assert_eq!(miss.reason, "no_agent_call");
+        assert_eq!(miss.exception, None);
+        assert_eq!(
+            miss.looked_for,
+            ["prepare(Ljava/sql/Connection;Ljava/lang/Integer;)Ljava/sql/Statement;"]
+        );
+        assert_eq!(
+            miss.found,
+            ["prepare(Ljava/sql/Connection;Ljava/time/Duration;)Ljava/sql/Statement;"]
+        );
+        assert_eq!(miss.code_source.as_deref(), Some("mybatis-9.9.9.jar"));
+        assert_eq!(
+            miss.code_source_path.as_deref(),
+            Some("/opt/app/lib/mybatis-9.9.9.jar")
+        );
+        assert_eq!(miss.implementation_version.as_deref(), Some("9.9.9"));
+    }
+    assert!(!primary.is_hook_miss_suppressed() && !backport.is_hook_miss_suppressed());
+
+    for name in [
+        "primary/diagnostic-hook-miss-suppressed.json",
+        "backport/hook-miss-suppressed.json",
+    ] {
+        let event = read(name);
+        assert!(event.is_hook_miss_suppressed(), "{name}");
+        assert!(event.hook_miss().is_none(), "{name}");
+        assert_eq!(event.raw["limit"], 32, "{name} limit");
     }
 }
 

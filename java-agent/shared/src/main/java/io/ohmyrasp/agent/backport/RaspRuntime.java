@@ -403,6 +403,8 @@ public final class RaspRuntime {
       // every detectionOff() and is otherwise loaded only once a mode has been read.
       new Event("", "");
       BackportLine.initialise(Mode.class);
+      // The hook-miss writer, which the entry class turns on next; its worker writes through this runtime.
+      BackportLine.initialise(BackportHookMisses.class);
       if (state.controlPath != null) {
         state.control.poll(state.controlPath);
       }

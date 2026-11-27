@@ -36,8 +36,10 @@ public final class MyBatisSqlVisitor {
 
   public static MethodVisitor wrap(final String owner, MethodVisitor delegate, int access,
       String name, String desc, final String hooks) {
+    // prepare(Connection, Integer transactionTimeout) since 3.4.0; prepare(Connection) before, the same steps.
     if ((BASE_HANDLER.equals(owner) && name.equals("prepare")
-          && desc.equals("(Ljava/sql/Connection;Ljava/lang/Integer;)Ljava/sql/Statement;"))
+          && (desc.equals("(Ljava/sql/Connection;Ljava/lang/Integer;)Ljava/sql/Statement;")
+            || desc.equals("(Ljava/sql/Connection;)Ljava/sql/Statement;")))
         || (SIMPLE_HANDLER.equals(owner) && desc.startsWith("(Ljava/sql/Statement;")
           && (name.equals("batch") || name.equals("query") || name.equals("queryCursor") || name.equals("update")))) {
       return new ScopedMethodAdvice(Opcodes.ASM9, delegate, access, name, desc) {
