@@ -119,16 +119,20 @@ final class HookMissLifecycleTest {
   }
 
   /**
-   * The worker is reading the origin of a miss (inside the sink's own-I/O mark) when the report is stopped, and
-   * the stop does not wait for it beyond its bound: the line it was building is not written once it goes on.
+   * The worker is reading the manifest version of the JAR a miss came from (inside the sink's own-I/O mark, the one
+   * step of a line left to the worker now that the class-loading thread copies the methods and the location) when
+   * the report is stopped, and the stop does not wait for it beyond its bound: the line it was building is not
+   * written once it goes on.
    */
   @Test
   void aLineInProgressWhenTheReportStopsIsNotWritten() throws Exception {
-    final CountDownLatch inOrigin = new CountDownLatch(1);
+    final CountDownLatch inManifestRead = new CountDownLatch(1);
     final CountDownLatch goOn = new CountDownLatch(1);
+    final Thread[] reader = new Thread[1];
     Recorder recorder = new Recorder() {
       @Override public boolean enterOwnIo() {
-        inOrigin.countDown();
+        reader[0] = Thread.currentThread();
+        inManifestRead.countDown();
         awaitUninterruptibly(goOn);
         return false;
       }
@@ -136,9 +140,11 @@ final class HookMissLifecycleTest {
     HookMisses.startHeld(TABLE, recorder);
     miss("a/B", new ProtectionDomain(new CodeSource(new URL("file:/nonexistent/library-1.0.jar"),
         (Certificate[]) null), null));
+    assertEquals(1, inManifestRead.getCount(), "the class-loading thread read the JAR: it only copies strings");
     HookMisses.release();
     Thread worker = HookMisses.workerThread();
-    assertTrue(inOrigin.await(5, TimeUnit.SECONDS), "the worker did not reach the origin");
+    assertTrue(inManifestRead.await(5, TimeUnit.SECONDS), "the worker did not reach the manifest read");
+    assertSame(worker, reader[0], "the manifest was read on another thread than the worker");
 
     long began = System.nanoTime();
     HookMisses.stop();
