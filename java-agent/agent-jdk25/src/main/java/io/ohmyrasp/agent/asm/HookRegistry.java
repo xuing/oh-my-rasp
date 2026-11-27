@@ -15,6 +15,7 @@ public final class HookRegistry {
               new Base64HookModule(),
               new ElasticLz4HookModule(),
               new FileHookModule(),
+              new ContainerDeploymentHookModule(),
               new ArchiveHookModule(),
               new NetworkHookModule(),
               new JndiHookModule(),

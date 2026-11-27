@@ -55,7 +55,7 @@ All paths from [openapi.yaml](../api/api/openapi.yaml) are listed below by domai
 | `POST` | `/api/v1/applications/{appID}/environments` | Bearer (`admin`, `security_engineer`) | Create environment under an application (`201`) |
 | `GET` | `/api/v1/applications/{appID}/settings` | Bearer | Read effective application settings |
 | `PUT` | `/api/v1/applications/{appID}/settings` | Bearer (`admin`, `security_engineer`) | Upsert application settings |
-| `GET` | `/api/v1/applications/{appID}/environments/{envID}/settings` | Bearer | Read effective environment override settings |
+| `GET` | `/api/v1/applications/{appID}/environments/{envID}/settings` | Bearer | Read effective environment override settings; `inherited` names the members a setting takes from the application's (today `protection.hardening`'s `outside_request`) |
 | `PUT` | `/api/v1/applications/{appID}/environments/{envID}/settings` | Bearer (`admin`, `security_engineer`) | Upsert environment settings |
 | `POST` | `/api/v1/applications/{appID}/secret/rotate` | Bearer (`admin`, `security_engineer`) | Rotate application secret |
 

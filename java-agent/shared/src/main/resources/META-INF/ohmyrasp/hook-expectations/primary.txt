@@ -4,6 +4,8 @@
 # of the class, calling from it one of the agent methods named after the = (see io.ohmyrasp.agent.hookmiss.HookExpectations).
 #! family primary
 ArgumentParserHookModule org/kohsuke/args4j/CmdLineParser report expandAtFiles([Ljava/lang/String;)[Ljava/lang/String;=beforeArgumentFileExpansion
+ContainerDeploymentHookModule org/apache/catalina/startup/ExpandWar report expand(Lorg/apache/catalina/Host;Ljava/net/URL;Ljava/lang/String;)Ljava/lang/String;=enterWarExpand,exit
+ContainerDeploymentHookModule org/apache/jasper/compiler/Compiler report compile(ZZ)V=enterJspCompile,exit
 ElasticLz4HookModule org/elasticsearch/transport/Lz4TransportDecompressor report decodeBlock(Lorg/elasticsearch/common/bytes/BytesReference;)I=decode,enforceElasticLz4Bounds
 ExpressionHookModule com/opensymphony/xwork2/ognl/OgnlUtil report getValue(Ljava/lang/String;Ljava/util/Map;Ljava/lang/Object;)Ljava/lang/Object;=beforeExpressionEvaluation getValue(Ljava/lang/String;Ljava/util/Map;Ljava/lang/Object;Ljava/lang/Class;)Ljava/lang/Object;=beforeExpressionEvaluation setValue(Ljava/lang/String;Ljava/util/Map;Ljava/lang/Object;Ljava/lang/Object;)V=beforeExpressionEvaluation setValue(Ljava/lang/String;Ljava/util/Map;Ljava/lang/Object;Ljava/lang/Object;Z)V=beforeExpressionEvaluation
 ExpressionHookModule com/sun/el/ExpressionFactoryImpl report createMethodExpression(Ljakarta/el/ELContext;Ljava/lang/String;Ljava/lang/Class;[Ljava/lang/Class;)Ljakarta/el/MethodExpression;=beforeExpressionEvaluation createMethodExpression(Ljavax/el/ELContext;Ljava/lang/String;Ljava/lang/Class;[Ljava/lang/Class;)Ljavax/el/MethodExpression;=beforeExpressionEvaluation createValueExpression(Ljakarta/el/ELContext;Ljava/lang/String;Ljava/lang/Class;)Ljakarta/el/ValueExpression;=beforeExpressionEvaluation createValueExpression(Ljavax/el/ELContext;Ljava/lang/String;Ljava/lang/Class;)Ljavax/el/ValueExpression;=beforeExpressionEvaluation
@@ -261,4 +263,4 @@ XxeHookModule org/apache/xerces/impl/XMLEntityManager report endEntity()V=enter 
 XxeHookModule org/apache/xerces/util/EntityResolver2Wrapper report resolveEntity(Lorg/apache/xerces/xni/XMLResourceIdentifier;)Lorg/apache/xerces/xni/parser/XMLInputSource;=resolved
 XxeHookModule org/apache/xerces/util/EntityResolverWrapper report resolveEntity(Lorg/apache/xerces/xni/XMLResourceIdentifier;)Lorg/apache/xerces/xni/parser/XMLInputSource;=resolved
 YarnSubmitHookModule org/apache/hadoop/yarn/server/resourcemanager/webapp/RMWebServices report submitApplication(Lorg/apache/hadoop/yarn/server/resourcemanager/webapp/dao/ApplicationSubmissionContextInfo;Ljavax/servlet/http/HttpServletRequest;)Ljavax/ws/rs/core/Response;=afterYarnSubmitPrepared
-#! end rows=258 sha256=a13b845581949c283965c72dda76084c1548970899a48b4e4ef514f9fee3b342
+#! end rows=260 sha256=eaf101197477249ed259b0012f5d51016b76b33f65cfde0ada2e393608483e5d

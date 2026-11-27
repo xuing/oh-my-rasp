@@ -2,14 +2,15 @@ package io.ohmyrasp.agent.rules;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import org.junit.jupiter.api.Test;
 
 /**
  * The block-scope classes both engines decide with (docs/detection.md, "Outside an HTTP request", has the table):
- * which findings block outside a request whatever {@code outside_request} says, which log whatever it says, and which
- * follow it.
+ * which findings block outside a request whatever {@code outside_request} says, which follow it, and which block only
+ * inside a request.
  */
 final class OutsideRequestScopeTest {
   @Test
@@ -47,23 +48,74 @@ final class OutsideRequestScopeTest {
     }
   }
 
+  /**
+   * A remote class, a remote Spring configuration, a remote DTD or entity and the cloud metadata address follow the
+   * setting, as the backports blocked them on main: a queued message or a worker can choose each of them.
+   */
   @Test
-  void anOperationOnlyFindingIsOperationOnBothEngines() {
-    String[][] operation = {
+  void aRemoteResourceAndTheMetadataAddressFollowTheSettingOnBothEngines() {
+    String[][] context = {
       {"ssrf_aws", null},
+      {"ssrf_aws", "http_transport_acquire"},
       {"ssrf_cloud_metadata", null},
-      {"ssrf_protocol", null},
-      {"ssrf_obfuscate", null},
-      {"ssrf_userinput", "destination_only"},
       {"xxe_protocol", "parser_url_open"},
       {"xxe_external_entity_protocol", null},
       {"classloader_remote", "url_class_definition"},
+      {"classloader_remote", "rmi_codebase_loader_selection"},
       {"classloader_remote_codebase", null},
       {"spring_remote_config", null},
     };
-    for (String[] row : operation) {
-      assertEquals(OutsideRequest.OPERATION, OutsideRequest.scope(row[0], row[1]), row[0] + "/" + row[1]);
+    for (String[] row : context) {
+      assertEquals(OutsideRequest.CONTEXT, OutsideRequest.scope(row[0], row[1]), row[0] + "/" + row[1]);
     }
+  }
+
+  /** The primary's request-defined SSRF rules, which have no backport counterpart, log outside a request. */
+  @Test
+  void thePrimarysRequestDefinedSsrfRulesAreRequestOnly() {
+    String[][] requestOnly = {
+      {"ssrf_protocol", null},
+      {"ssrf_obfuscate", null},
+      {"ssrf_userinput", null},
+      {"ssrf_userinput", "destination_only"},
+    };
+    for (String[] row : requestOnly) {
+      assertEquals(OutsideRequest.REQUEST_ONLY, OutsideRequest.scope(row[0], row[1]), row[0] + "/" + row[1]);
+    }
+  }
+
+  /** A frame of a listed SDK class, or of a class nested in one, names the client; a longer name does not. */
+  @Test
+  void aCloudMetadataClientIsAListedSdkClassOnTheStack() {
+    assertEquals("software.amazon.awssdk.auth.credentials.InstanceProfileCredentialsProvider",
+        OutsideRequest.cloudMetadataClient(stack("java.net.URL", "com.acme.Worker",
+            "software.amazon.awssdk.auth.credentials.InstanceProfileCredentialsProvider", "java.lang.Thread")));
+    assertEquals("com.amazonaws.internal.EC2ResourceFetcher",
+        OutsideRequest.cloudMetadataClient(stack("com.amazonaws.internal.EC2ResourceFetcher$1")));
+    assertEquals("software.amazon.awssdk.imds.internal.DefaultEc2MetadataClient",
+        OutsideRequest.cloudMetadataClient(stack("software.amazon.awssdk.imds.internal.DefaultEc2MetadataClient")));
+    assertEquals("com.google.auth.oauth2.ComputeEngineCredentials",
+        OutsideRequest.cloudMetadataClient(stack("com.google.auth.oauth2.ComputeEngineCredentials")));
+    assertNull(OutsideRequest.cloudMetadataClient(
+        stack("software.amazon.awssdk.auth.credentials.InstanceProfileCredentialsProviderShim")));
+    assertNull(OutsideRequest.cloudMetadataClient(stack("com.acme.MetadataReader", "java.lang.Thread")));
+    assertNull(OutsideRequest.cloudMetadataClient(null));
+  }
+
+  /** From a plain thread, with no SDK class on its stack, the metadata address follows the setting. */
+  @Test
+  void withoutAnSdkFrameTheMetadataAddressStaysContextDependent() {
+    assertEquals(OutsideRequest.CONTEXT, OutsideRequest.scopeHere("ssrf_aws", null, false));
+    assertEquals(OutsideRequest.CONTEXT, OutsideRequest.scopeHere("ssrf_cloud_metadata", null, false));
+    assertEquals(OutsideRequest.INTRINSIC, OutsideRequest.scopeHere("jndi_remote_lookup", null, false));
+  }
+
+  private static StackTraceElement[] stack(String... classes) {
+    StackTraceElement[] stack = new StackTraceElement[classes.length];
+    for (int i = 0; i < classes.length; i++) {
+      stack[i] = new StackTraceElement(classes[i], "run", null, -1);
+    }
+    return stack;
   }
 
   @Test
@@ -98,12 +150,12 @@ final class OutsideRequestScopeTest {
 
   @Test
   void requestEvidenceAlwaysPermitsAndOutsideTheClassDecides() {
-    for (int scope : new int[] {OutsideRequest.CONTEXT, OutsideRequest.INTRINSIC, OutsideRequest.OPERATION}) {
+    for (int scope : new int[] {OutsideRequest.CONTEXT, OutsideRequest.INTRINSIC, OutsideRequest.REQUEST_ONLY}) {
       assertTrue(OutsideRequest.mayBlock(scope, true, false), "inside a request, scope " + scope);
       assertTrue(OutsideRequest.mayBlock(scope, true, true), "inside a request, scope " + scope);
     }
     assertTrue(OutsideRequest.mayBlock(OutsideRequest.INTRINSIC, false, false), "intrinsic with log");
-    assertFalse(OutsideRequest.mayBlock(OutsideRequest.OPERATION, false, true), "operation with block");
+    assertFalse(OutsideRequest.mayBlock(OutsideRequest.REQUEST_ONLY, false, true), "request-only with block");
     assertTrue(OutsideRequest.mayBlock(OutsideRequest.CONTEXT, false, true));
     assertFalse(OutsideRequest.mayBlock(OutsideRequest.CONTEXT, false, false));
   }

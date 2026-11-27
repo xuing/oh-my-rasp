@@ -1923,11 +1923,17 @@ func openAPIApplicationSetting(setting control.ApplicationSetting) generated.App
 	if setting.UpdatedBy != "" {
 		updatedBy = &setting.UpdatedBy
 	}
+	var inherited *[]string
+	if len(setting.Inherited) > 0 {
+		names := append([]string(nil), setting.Inherited...)
+		inherited = &names
+	}
 	return generated.ApplicationSetting{
 		ApplicationId: setting.ApplicationID,
 		EnvironmentId: environmentID,
 		Key:           setting.Key,
 		Value:         copyStringAnyMap(setting.Value),
+		Inherited:     inherited,
 		UpdatedBy:     updatedBy,
 		UpdatedAt:     setting.UpdatedAt,
 	}

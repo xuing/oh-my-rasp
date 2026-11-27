@@ -1,14 +1,21 @@
 package org.apache.catalina.startup;
 
-/** A stand-in with Tomcat's name and method: unpacking a WAR runs {@code write}. */
+import io.ohmyrasp.agent.file.DeploymentWork;
+import java.net.URL;
+import org.apache.catalina.Host;
+
+/**
+ * A stand-in with Tomcat's name and the descriptor of its WAR unpack. Tomcat writes the WAR's entries under
+ * {@code new File(host.getAppBaseFile(), pathname)}; this one writes the file {@code war} names.
+ */
 public final class ExpandWar {
   private ExpandWar() {}
 
-  public static void expand(Runnable write) {
-    write.run();
+  public static String expand(Host host, URL war, String pathname) throws Exception {
+    return DeploymentWork.inside(war.getPath());
   }
 
-  public static void copy(Runnable write) {
-    write.run();
+  public static String copy(Host host, URL war, String pathname) throws Exception {
+    return DeploymentWork.inside(war.getPath());
   }
 }

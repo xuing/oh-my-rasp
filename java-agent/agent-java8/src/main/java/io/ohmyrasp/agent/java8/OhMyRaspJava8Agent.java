@@ -349,6 +349,7 @@ public final class OhMyRaspJava8Agent {
           || io.ohmyrasp.agent.rules.product.dataease.FilterVerificationVisitor.OWNER.equals(internalName)
           || multipartOwners.contains(loaded) || io.ohmyrasp.agent.http.MultipartFilenameVisitor.known(internalName, true)
           || io.ohmyrasp.agent.http.RequestBodyVisitor.loadedTarget(loaded)
+          || io.ohmyrasp.agent.file.ContainerDeploymentVisitor.matches(internalName)
           || io.ohmyrasp.agent.file.DirectoryListVisitor.matches(internalName) || io.ohmyrasp.agent.xml.AttachmentFileVisitor.matches(internalName) || XmlEntityOpenVisitor.matches(internalName) || MyBatisSqlVisitor.matches(internalName)
           || (HttpTransportVisitor.matches(internalName) && !"java/net/URL".equals(internalName))
           || JdbcSqlMethod.isJdbcImplementation(loaded)) {

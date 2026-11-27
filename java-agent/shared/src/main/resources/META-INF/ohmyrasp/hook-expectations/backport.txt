@@ -25,6 +25,8 @@ Java{N}ElTransformer org/apache/el/ValueExpressionImpl report getType(Ljakarta/e
 Java{N}ElTransformer org/jboss/el/MethodExpressionImpl report invoke(Ljavax/el/ELContext;[Ljava/lang/Object;)Ljava/lang/Object;=beforeElExpression
 Java{N}ElTransformer org/jboss/el/ValueExpressionImpl report getType(Ljavax/el/ELContext;)Ljava/lang/Class;=beforeElExpression getValue(Ljavax/el/ELContext;)Ljava/lang/Object;=beforeElExpression isReadOnly(Ljavax/el/ELContext;)Z=beforeElExpression setValue(Ljavax/el/ELContext;Ljava/lang/Object;)V=beforeElExpression
 Java{N}ElasticLz4Transformer org/elasticsearch/transport/Lz4TransportDecompressor report decodeBlock(Lorg/elasticsearch/common/bytes/BytesReference;)I=decode,enforceElasticLz4Bounds
+Java{N}FileTransformer org/apache/catalina/startup/ExpandWar report expand(Lorg/apache/catalina/Host;Ljava/net/URL;Ljava/lang/String;)Ljava/lang/String;=enterWarExpand,exit
+Java{N}FileTransformer org/apache/jasper/compiler/Compiler report compile(ZZ)V=enterJspCompile,exit
 Java{N}HessianTransformer com/alibaba/com/caucho/hessian/io/BeanDeserializer report instantiate()Ljava/lang/Object;=beforeHessianAllocation
 Java{N}HessianTransformer com/alibaba/com/caucho/hessian/io/CollectionDeserializer report createList()Ljava/util/Collection;=beforeHessianAllocation
 Java{N}HessianTransformer com/alibaba/com/caucho/hessian/io/JavaDeserializer report instantiate()Ljava/lang/Object;=beforeHessianAllocation
@@ -224,4 +226,4 @@ Java{N}XxeTransformer org/apache/xerces/impl/XMLEntityManager report endEntity()
 Java{N}XxeTransformer org/apache/xerces/util/EntityResolver2Wrapper report resolveEntity(Lorg/apache/xerces/xni/XMLResourceIdentifier;)Lorg/apache/xerces/xni/parser/XMLInputSource;=resolved
 Java{N}XxeTransformer org/apache/xerces/util/EntityResolverWrapper report resolveEntity(Lorg/apache/xerces/xni/XMLResourceIdentifier;)Lorg/apache/xerces/xni/parser/XMLInputSource;=resolved
 Java{N}YarnRestTransformer org/apache/hadoop/yarn/server/resourcemanager/webapp/RMWebServices report submitApplication(Lorg/apache/hadoop/yarn/server/resourcemanager/webapp/dao/ApplicationSubmissionContextInfo;Ljavax/servlet/http/HttpServletRequest;)Ljavax/ws/rs/core/Response;=afterYarnSubmitPrepared
-#! end rows=221 sha256=bed1d42c320a077bee63191011f127e0ab333d723f83137aa3a47bc9a622c870
+#! end rows=223 sha256=eec3a9bb1ac8e9ccef44af07312aa2b9b43362c85b64896dd90bf1763d68c07c

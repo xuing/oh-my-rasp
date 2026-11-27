@@ -1562,14 +1562,7 @@ public final class BackportHooks {
       return null;
     }
     StackTraceElement[] stack = Thread.currentThread().getStackTrace();
-    if (SolrExecutableListener.onStack(stack)) {
-      return new Finding(
-          rule("command_execution_exploit_primitive"),
-          93,
-          "Solr RunExecutableListener reached a " + line().displayName + " process sink",
-          "command",
-          joined, "configured_listener");
-    }
+    // Intrinsic stack evidence decides at once: an expression language or a deserializer reaching the process API.
     if (isExpressionLanguageRuntimeStack(stack)) {
       return new Finding(
           rule("command_execution_exploit_primitive"),
@@ -1578,15 +1571,6 @@ public final class BackportHooks {
           "command",
           joined, "expression_evaluation");
     }
-    if (isGroovyScriptStack(stack)) {
-      // A general-purpose script engine starts processes on purpose too: script_evaluation follows outside_request.
-      return new Finding(
-          rule("command_execution_exploit_primitive"),
-          93,
-          "Script evaluation reached a " + line().displayName + " process sink",
-          "command",
-          joined, "script_evaluation");
-    }
     if (isJiffleRuntimeCommandStack(stack)) {
       return new Finding(
           rule("command_execution_exploit_primitive"),
@@ -1594,14 +1578,6 @@ public final class BackportHooks {
           "Jiffle runtime reached a " + line().displayName + " process sink",
           "command",
           joined, "expression_evaluation");
-    }
-    if (isDatabaseJavaRoutineCommandStack(stack)) {
-      return new Finding(
-          rule("command_execution_exploit_primitive"),
-          93,
-          "Database Java routine reached a " + line().displayName + " process sink",
-          "command",
-          joined, "database_stack");
     }
     if (isJavaDeserializationCommandStack(stack)) {
       return new Finding(
@@ -1619,11 +1595,37 @@ public final class BackportHooks {
           "command",
           joined, "xml_deserialization");
     }
+    // Context-dependent stack evidence (Solr's configured listener, a Groovy script, a database routine, a scheduled
+    // shell job) is held: exploit-shaped arguments on the same launch are intrinsic and win, so log only cannot let
+    // them through.
     String executable = command[0] == null ? "" : command[0].trim();
     boolean shell = SHELL.matcher(executable).matches();
     String firstArgument = command.length > 1 ? command[1] : "";
-    if (shell && isSchedulerScriptExecutionStack(stack) && isScriptFilePath(firstArgument)) {
-      return new Finding(
+    Finding held = null;
+    if (SolrExecutableListener.onStack(stack)) {
+      held = new Finding(
+          rule("command_execution_exploit_primitive"),
+          93,
+          "Solr RunExecutableListener reached a " + line().displayName + " process sink",
+          "command",
+          joined, "configured_listener");
+    } else if (isGroovyScriptStack(stack)) {
+      // A general-purpose script engine starts processes on purpose too: script_evaluation follows outside_request.
+      held = new Finding(
+          rule("command_execution_exploit_primitive"),
+          93,
+          "Script evaluation reached a " + line().displayName + " process sink",
+          "command",
+          joined, "script_evaluation");
+    } else if (isDatabaseJavaRoutineCommandStack(stack)) {
+      held = new Finding(
+          rule("command_execution_exploit_primitive"),
+          93,
+          "Database Java routine reached a " + line().displayName + " process sink",
+          "command",
+          joined, "database_stack");
+    } else if (shell && isSchedulerScriptExecutionStack(stack) && isScriptFilePath(firstArgument)) {
+      held = new Finding(
           rule("command_execution_shell_meta"),
           90,
           "Scheduler script job reached a " + line().displayName + " shell script process sink",
@@ -1640,6 +1642,9 @@ public final class BackportHooks {
           "Suspicious command execution reached a " + line().displayName + " process sink",
           "command",
           joined, "command_arguments");
+    }
+    if (held != null) {
+      return held;
     }
     if (posix != null) {
       RequestSnapshot request = currentRequest();
@@ -4599,13 +4604,14 @@ public final class BackportHooks {
    * engines use ({@link OutsideRequest}). It has request evidence when the thread serves an HTTP request or
    * {@code heldRequest}: the hook carries the request that started the operation onto this thread (an HTTP client
    * exchange, a walk a request selected) or holds the HTTP request itself (Spark, YARN, DataEase, servlet entry).
-   * Outside a request its class decides: intrinsic blocks, operation-only logs, context-dependent follows
-   * {@code outside_request}.
+   * Outside a request its class decides ({@link OutsideRequest#scopeHere}): intrinsic blocks, request-only logs,
+   * context-dependent follows {@code outside_request}.
    */
   private static boolean shouldBlock(Finding finding, boolean heldRequest) {
+    boolean requestEvidence = heldRequest || DISPATCH.inRequest();
     int scope = finding == null ? OutsideRequest.CONTEXT
-        : OutsideRequest.scope(OutsideRequest.family(finding.algorithm), finding.decisionBasis);
-    return RaspRuntime.findingBlocks(RaspRuntime.legacyBlockFlag(), heldRequest || DISPATCH.inRequest(), scope);
+        : OutsideRequest.scopeHere(OutsideRequest.family(finding.algorithm), finding.decisionBasis, requestEvidence);
+    return RaspRuntime.findingBlocks(RaspRuntime.legacyBlockFlag(), requestEvidence, scope);
   }
 
   /**
@@ -4641,7 +4647,10 @@ public final class BackportHooks {
     if (RaspRuntime.detectionOff()) {
       return;
     }
-    finding = publicFinding(finding);
+    // The credentials of a URL in the detail (a JDBC URL a pool configured) are removed first, from the text as the
+    // application built it, then the body's text (publicFinding): a body value equal to a credential's name would
+    // otherwise be renamed before the redaction looks for that name, and the value after it would stay.
+    finding = publicFinding(withoutUrlCredentials(finding));
     if (finding.extra != null) resolvedAddress = null; // derived from an operand a body may have supplied
     String logPath = RaspRuntime.resolveLogPath();
     String event =
@@ -4668,8 +4677,7 @@ public final class BackportHooks {
             + "\"details\":{\""
             + json(finding.detailKey)
             + "\":\""
-            // The credentials of a URL in the detail (a JDBC URL a pool configured) never reach the spool.
-            + json(io.ohmyrasp.agent.util.Redaction.redactedUrls(finding.detailValue))
+            + json(finding.detailValue)
             + "\""
             + extraDetails(finding.extra)
             + (argc < 0 ? "" : ",\"process_operation\":\"ProcessImpl.start\",\"argument_count\":\"" + argc + "\"")
@@ -4681,6 +4689,14 @@ public final class BackportHooks {
             + "}"
             + "}";
     RaspRuntime.writeEvent(logPath, event);
+  }
+
+  /** The finding with the credentials of every URL in its detail removed (Redaction.redactedUrls). */
+  private static Finding withoutUrlCredentials(Finding finding) {
+    String detail = io.ohmyrasp.agent.util.Redaction.redactedUrls(finding.detailValue);
+    if (detail == null || detail.equals(finding.detailValue)) return finding;
+    return new Finding(finding.algorithm, finding.confidence, finding.message, finding.detailKey, detail,
+        finding.decisionBasis, finding.policyDigest);
   }
 
   /**

@@ -8,4 +8,8 @@ public final class DerbyRoutineCommandProbe {
   public static void invokeJava8IdCommand() {
     Java8RaspHooks.beforeRuntimeExecString("id");
   }
+
+  public static void invokeJava8PasswdCommand() {
+    Java8RaspHooks.beforeRuntimeExecArray(new String[] {"sh", "-c", "cat /etc/passwd"});
+  }
 }

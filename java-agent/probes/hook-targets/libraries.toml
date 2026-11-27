@@ -358,6 +358,12 @@ versions = ["9.0.124", "10.1.62", "11.0.29"]
 why = "The Tomcat that Spring Boot embeds (2.x on 9.0, 3.x on 10.1, 4.x on 11.0): the request-body hook names its CoyoteInputStream and CoyoteReader."
 
 [[library]]
+group = "org.apache.tomcat"
+artifact = "tomcat-jasper"
+versions = ["9.0.124", "10.1.62", "11.0.29"]
+why = "Tomcat's JSP compiler, one per supported Tomcat line: the script-write rule observes its Compiler.compile(boolean, boolean) to leave the classes it writes into a JSP's output directory alone."
+
+[[library]]
 group = "org.apache.shiro"
 artifact = "shiro-web"
 versions = ["1.2.4", "1.13.0", "2.0.6", "3.0.2"]

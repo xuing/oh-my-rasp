@@ -18,8 +18,8 @@ import org.junit.jupiter.api.io.TempDir;
 
 /**
  * Block scope on the backport lines, as on the primary (OutsideRequestTest there): a finding with request evidence
- * blocks wherever it runs; outside a request an intrinsic finding blocks whatever {@code outside_request} says, an
- * operation-only finding logs whatever it says, and a context-dependent one follows it (block by default).
+ * blocks wherever it runs; outside a request an intrinsic finding blocks whatever {@code outside_request} says, and a
+ * context-dependent one follows it (block by default). The backports have none of the primary's request-only rules.
  */
 final class Java8OutsideRequestTest {
   private static final String RMI = "rmi://127.0.0.1:1099/Exploit";
@@ -87,19 +87,68 @@ final class Java8OutsideRequestTest {
     assertTrue(events().contains("\"action\":\"block\""));
   }
 
-  /** A cloud SDK reads instance metadata at start-up: outside a request that is logged whatever the setting. */
+  /**
+   * The cloud metadata address outside a request follows the setting, as on main: it blocks by default and logs
+   * under log only; inside a request it blocks.
+   */
   @Test
-  void anOperationOnlyFindingLogsOutsideARequestAndBlocksInsideOne() throws Exception {
-    Java8RaspHooks.beforeUrlOpen(new URL(METADATA));
+  void theMetadataAddressFollowsTheSettingOutsideARequest() throws Exception {
+    assertThrows(Java8RaspBlockException.class, () -> Java8RaspHooks.beforeUrlOpen(new URL(METADATA)));
     assertTrue(events().contains("\"algorithm\":\"java8_ssrf_cloud_metadata\""));
-    assertTrue(events().contains("\"action\":\"log\""));
+    assertTrue(events().contains("\"action\":\"block\""));
 
+    control("{\"outside_request\":\"log\"}");
+    Java8RaspHooks.beforeUrlOpen(new URL(METADATA + "ami-id"));
+    assertTrue(events().contains("\"action\":\"log\""));
     Java8RaspHooks.beforeHttpRequest(new Java8RaspHooksTest.RequestStub("GET", "/reports", "id=7"));
     try {
-      assertThrows(Java8RaspBlockException.class, () -> Java8RaspHooks.beforeUrlOpen(new URL(METADATA)));
+      assertThrows(Java8RaspBlockException.class, () -> Java8RaspHooks.beforeUrlOpen(new URL(METADATA + "hostname")));
     } finally {
       Java8RaspHooks.afterHttpRequest();
     }
+  }
+
+  /**
+   * A cloud provider's own credential client reading the metadata address outside a request is logged, not blocked
+   * (a stand-in with the AWS SDK 2.x class name: the name is the evidence, the documented trust boundary). The same
+   * read by application code blocks, and so does the SDK's read inside a request.
+   */
+  @Test
+  void aCloudSdkCredentialClientReadingMetadataOutsideARequestLogs() throws Exception {
+    final URL credentials = new URL(METADATA + "iam/security-credentials/");
+    software.amazon.awssdk.auth.credentials.InstanceProfileCredentialsProvider.read(credentials);
+    assertTrue(events().contains("\"action\":\"log\""), events());
+    assertFalse(events().contains("\"action\":\"block\""), events());
+
+    assertThrows(Java8RaspBlockException.class, () -> Java8RaspHooks.beforeUrlOpen(new URL(METADATA + "iam/info")));
+    Java8RaspHooks.beforeHttpRequest(new Java8RaspHooksTest.RequestStub("GET", "/reports", "id=7"));
+    try {
+      assertThrows(Java8RaspBlockException.class, () -> software.amazon.awssdk.auth.credentials
+          .InstanceProfileCredentialsProvider.read(new URL(METADATA + "iam/security-credentials/role")));
+    } finally {
+      Java8RaspHooks.afterHttpRequest();
+    }
+  }
+
+  /**
+   * Under log only, a launch that Solr's configured listener, a Groovy script or a database routine makes is still
+   * stopped when its arguments are an exploit's: the intrinsic finding is not hidden by the context-dependent one.
+   * An ordinary command from a Groovy script follows the setting and logs.
+   */
+  @Test
+  void anExploitShapedLaunchUnderAContextDependentStackBlocksWithLogOnly() throws Exception {
+    control("{\"outside_request\":\"log\"}");
+
+    assertThrows(Java8RaspBlockException.class,
+        () -> org.apache.solr.core.RunExecutableListener.invokeJava8ReverseShell());
+    assertThrows(Java8RaspBlockException.class,
+        () -> groovy.lang.standin.GroovyScriptStandIn.launch("sh", "-c", "cat /etc/passwd"));
+    assertThrows(Java8RaspBlockException.class,
+        () -> org.apache.derby.impl.sql.execute.DerbyRoutineCommandProbe.invokeJava8PasswdCommand());
+    assertTrue(events().contains("\"decision_basis\":\"command_arguments\""), events());
+
+    groovy.lang.standin.GroovyScriptStandIn.launch("ls", "-l", "/srv/reports");
+    assertTrue(events().contains("\"decision_basis\":\"script_evaluation\""), events());
   }
 
   /** The YARN handler holds the HTTP request: a denial is inside a request with no servlet frame tracked. */

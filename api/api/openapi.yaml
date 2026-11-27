@@ -2316,6 +2316,13 @@ components:
         value:
           type: object
           additionalProperties: true
+        inherited:
+          type: array
+          description: >-
+            Members of value that an environment's setting takes from the application's instead of its
+            own row (protection.hardening's outside_request). Read-only: send null for a member to
+            inherit it again. Absent when nothing is inherited, and never part of the policy's config.
+          items: { type: string }
         updated_by: { type: string }
         updated_at: { type: string, format: date-time }
     ApplicationSettingUpdate:

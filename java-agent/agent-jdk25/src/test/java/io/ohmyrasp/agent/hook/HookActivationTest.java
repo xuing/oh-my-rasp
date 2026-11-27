@@ -165,13 +165,13 @@ final class HookActivationTest {
     OhMyRaspHooks.reportTo(JsonEventLogger.newForTesting(null, log.toString(), 0, true, console, console));
     System.setProperty("ohmyrasp.block", "true");
     URL metadata = new URL("http://169.254.169.254/latest/meta-data/");
-    // The control: with the hooks on, the same calls are detections that are written, and a remote JNDI name blocks
-    // outside a request too (an intrinsic finding; a metadata destination alone only logs there).
+    // The control: with the hooks on, the same calls are detections that are written and block outside a request
+    // (a remote JNDI name is intrinsic; a metadata destination follows outside_request, block by default).
     assertThrows(OhMyRaspBlockException.class,
         () -> OhMyRaspHooks.beforeJndiLookup("ldap://attacker.example/Exploit"));
     assertTrue(Files.size(log) > 0, "the control detection was not written");
     Files.delete(log);
-    OhMyRaspHooks.beforeUrlOpen(metadata);
+    assertThrows(OhMyRaspBlockException.class, () -> OhMyRaspHooks.beforeUrlOpen(metadata));
     assertTrue(Files.exists(log) && Files.size(log) > 0, "the metadata control was not written");
     Files.delete(log);
 
