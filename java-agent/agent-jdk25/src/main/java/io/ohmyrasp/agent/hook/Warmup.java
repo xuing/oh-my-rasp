@@ -32,8 +32,9 @@ import java.util.Map;
  * <p>No side effect on the application or anything outside the agent: it runs on a thread of its own, which ends
  * with it, so no thread-local the hooks set survives it; the hooks act for that thread alone before the start
  * commits ({@link HookActivation}); the body it records is the request's own, which the request's end overwrites,
- * on that thread; every report goes to a logger that writes nothing ({@link
- * JsonEventLogger#discarding}: no event, no telemetry, no cloud error, no stderr line); each input is a constant held
+ * on that thread; every report of that thread goes to a logger that writes nothing ({@link
+ * JsonEventLogger#discarding}: no event, no telemetry, no cloud error, no stderr line), whatever else is reporting
+ * and however long a stalled step lasts; each input is a constant held
  * in memory, and no entry called here reads a file, opens a socket or starts a process. With detection off the
  * entries return at once, and the warm-up does nothing. A failure is ignored: the warm-up is an optimisation, not a
  * condition of starting. Run it before the transformer is registered, so no instrumented call can reach it.
@@ -46,51 +47,91 @@ public final class Warmup {
 
   static final int STEPS = 4;
 
+  /** One step of the pass; a test substitutes its own to stall or fail one. */
+  interface Steps {
+    void run(int step) throws Throwable;
+  }
+
   /**
-   * Runs the warm-up on its own thread and waits for it; never throws.
+   * Runs the warm-up on its own thread and waits for it; never throws. Nothing process-wide is swapped for the
+   * run: the worker alone sees the discarding logger ({@link OhMyRaspHooks#events}) and the hooks' activation
+   * exception ({@link HookActivation}). When the wait ends before the worker does (the time is up, or this thread is
+   * interrupted) the worker is cancelled: its exception ends, and it stops before its next step.
    *
    * @return how many of the {@value #STEPS} steps returned normally
    */
   public static int run() {
-    JsonEventLogger previous = OhMyRaspHooks.reportingTo();
-    OhMyRaspHooks.reportTo(JsonEventLogger.discarding());
-    final int[] completed = new int[1];
-    Thread thread = new Thread(new Runnable() {
-      @Override public void run() {
-        completed[0] = runHere();
-      }
-    }, "ohmyrasp-warmup");
-    thread.setDaemon(true);
+    return run(JOIN_MILLIS, Warmup::call);
+  }
+
+  static int run(long joinMillis, Steps steps) {
+    Worker worker = null;
     try {
-      thread.start();
-      thread.join(JOIN_MILLIS);
+      worker = new Worker(steps);
+      worker.start();
+      worker.join(joinMillis);
     } catch (InterruptedException e) {
       Thread.currentThread().interrupt();
     } catch (Throwable ignored) {
       // No thread for the warm-up: the first request does this work.
     } finally {
+      if (worker != null) {
+        worker.cancel();
+      }
       HookActivation.endWarmUp();
-      OhMyRaspHooks.reportTo(previous);
     }
-    return thread.isAlive() ? 0 : completed[0];
+    return worker != null && !worker.isAlive() ? worker.completed : 0;
   }
 
-  private static int runHere() {
-    HookActivation.beginWarmUp();
-    int completed = 0;
-    try {
-      for (int step = 0; step < STEPS; step++) {
-        try {
-          call(step);
-          completed++;
-        } catch (Throwable ignored) {
-          // Nothing to report: the hook did what it would for any input, and the start goes on.
+  /**
+   * The warm-up's thread: a daemon that inherits no thread-local of the thread that starts it (the application's
+   * own, when an agent attaches late), and whose logger is the one that writes nothing.
+   */
+  static final class Worker extends Thread {
+    private final Steps steps;
+    private final JsonEventLogger sink = JsonEventLogger.discarding();
+    private volatile boolean cancelled;
+    private volatile int completed;
+
+    Worker(Steps steps) {
+      super(null, null, "ohmyrasp-warmup", 0, false);
+      this.steps = steps;
+      setDaemon(true);
+    }
+
+    /** The logger that writes nothing, for the hooks this thread runs. */
+    JsonEventLogger sink() {
+      return sink;
+    }
+
+    /** Ends the thread's activation exception now, and stops it before its next step. */
+    void cancel() {
+      cancelled = true;
+    }
+
+    @Override public void run() {
+      HookActivation.beginWarmUp();
+      // The starter ends the exception after it cancels; one that cancelled before the line above ran ended it
+      // before it was granted, so it is ended here.
+      if (cancelled) {
+        HookActivation.endWarmUp();
+        return;
+      }
+      try {
+        for (int step = 0; step < STEPS && !cancelled; step++) {
+          try {
+            steps.run(step);
+            completed++;
+          } catch (Throwable ignored) {
+            // Nothing to report: the hook did what it would for any input, and the start goes on.
+          }
+        }
+      } finally {
+        if (!cancelled) {
+          HookActivation.endWarmUp();
         }
       }
-    } finally {
-      HookActivation.endWarmUp();
     }
-    return completed;
   }
 
   private static void call(int step) {
