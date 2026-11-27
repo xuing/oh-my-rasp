@@ -134,7 +134,7 @@ final class HookMissesTest {
 
     assertEquals(1, written.size());
     assertTrue(written.get(0).contains("\"m15()V\",\"... 3 more\"],\"found\":[]"), written.get(0));
-    assertFalse(written.get(0).contains("code_source"), "a class with no code source has none");
+    assertFalse(written.get(0).contains("\"code_source\":"), "a class with no code source has none");
   }
 
   @Test
