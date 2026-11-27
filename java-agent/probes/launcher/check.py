@@ -100,6 +100,22 @@ class Run:
         return self
 
 
+# The module whose preload list each line reads from the JAR it was started from.
+PRELOAD_MODULES = {agent_track.PRIMARY: "agent-jdk25", "17": "agent-java17", "11": "agent-java11", "8": "agent-java8"}
+
+
+def jar_without(source, entry, destination):
+    """A copy of the JAR without one entry."""
+    with zipfile.ZipFile(source) as original, zipfile.ZipFile(destination, "w", zipfile.ZIP_DEFLATED) as copy:
+        names = original.namelist()
+        if entry not in names:
+            raise SystemExit(f"{source.name} has no {entry}")
+        for name in names:
+            if name != entry:
+                copy.writestr(original.getinfo(name), original.read(name))
+    return destination
+
+
 def failing_entry_jar(universal, track, work):
     """The real launcher and universal entry, with a line entry for `track` whose premain throws."""
     package, _, name = LINE_ENTRIES[track].rpartition(".")
@@ -223,6 +239,18 @@ def main():
                 agent_track.LINE_NAMES[expected], "java.lang.NoClassDefFoundError", FAILURE_MESSAGE,
                 "inactive or incomplete"):
             run.fail(f"unexpected failure details {line}")
+        # A line reads the list of the classes it must load before it registers a transformer from the JAR it was
+        # started from. Without it the start fails before any transformer is registered: the launcher says so, the
+        # JVM runs, and no hook is active.
+        for jar, line in ((agent, tested), (universal, expected)):
+            entry = f"META-INF/ohmyrasp/preload/{PRELOAD_MODULES[line]}.txt"
+            stripped = jar_without(jar, entry, work / f"no-list-{line}-{jar.name}")
+            run = probe.run(f"{jar.name} without its preload list fails the start cleanly", AGENT_OPTIONS,
+                            [stripped], [])
+            run.expect([], False, [FAILED])
+            failure = run.launcher[0]
+            if failure["line"] != agent_track.LINE_NAMES[line] or entry not in failure["message"]:
+                run.fail(f"unexpected failure details {failure}")
         probe.run("after a failed start, a later JAR starts no line", AGENT_OPTIONS, [failing, universal], []) \
             .expect([], None, [FAILED, EARLIER_FAILED])
 
