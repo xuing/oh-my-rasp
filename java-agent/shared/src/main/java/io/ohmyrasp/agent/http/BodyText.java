@@ -13,7 +13,8 @@ import java.nio.charset.StandardCharsets;
  * one the JVM knows, else UTF-8, and with ISO-8859-1 when the bytes are malformed in that encoding. The bytes
  * are always decoded from the first one, so a character whose bytes arrived in two reads decodes whole. An
  * incomplete sequence at the very end is left out while more can come (or the cap cut the body inside a
- * character); in a body known to be complete it is malformed input.
+ * character); in a body known to be complete it is malformed input. A byte-order mark at the start is not part
+ * of the text: a JSON body that starts with one reads as JSON.
  */
 public final class BodyText {
   private BodyText() {}
@@ -35,6 +36,7 @@ public final class BodyText {
     }
     // UNDERFLOW with bytes left: the last character is not complete yet. Leave it out.
     out.flip();
+    if (out.hasRemaining() && out.get(out.position()) == '\uFEFF') out.position(out.position() + 1);
     return out.toString();
   }
 

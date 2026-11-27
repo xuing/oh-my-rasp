@@ -17,8 +17,8 @@
 # on the thread that threw it: on the same curl connection a benign request is served (the blocked response was
 # complete, whether the server kept the connection or closed it), a benign body passes with no event, and the same
 # attack is blocked again (the thread's recorder started clean). The status a block gives: the primary redirects to
-# its block page (302) before it throws, which the container then only logs; a backport throws, and the container
-# (or Spring's error page) answers 500.
+# its block page before it throws: Tomcat then answers its own 500 error page in place of the redirect, Jetty and
+# Undertow send the redirect (302); a backport throws, and the container (or Spring's error page) answers 500.
 #
 # Tomcat runs from Apache's release tarballs (checked against Apache's SHA-512) inside the eclipse-temurin
 # images, which keeps the versions those of probes/hook-targets/libraries.toml. Downloads are kept in
@@ -156,9 +156,22 @@ send() {
   response=$(cat "$out" 2>/dev/null || true)
 }
 
-# The text of the bodies below that no event may carry: the canary password and pieces of the attacks' values.
+# The text of the bodies below that no event's message or details may carry: the canary password and pieces of the
+# attacks' values. (The request's own headers, the Host header among them, are not body text.)
 leaked() {
-  grep -o -E 'hunter2-Secret|127\.0\.0\.1|getRuntime' <<<"$1" | head -1 || true
+  python3 -c '
+import json, re, sys
+for line in sys.stdin:
+    if not line.strip():
+        continue
+    event = json.loads(line)
+    texts = [event.get("message", "")] + [v for v in (event.get("details") or {}).values() if isinstance(v, str)]
+    for text in texts:
+        found = re.search(r"hunter2-Secret|127\.0\.0\.1|getRuntime", text)
+        if found:
+            print(found.group(0))
+            sys.exit()
+' <<<"$1"
 }
 
 expect_runs() {  # the request is served and the injected command ran (no agent)
@@ -247,11 +260,11 @@ patch_benign='[{"op":"replace","path":"/lastname","value":"vulhub"}]'
 # name tomcat-version war jdk-image agent-jar command-rule body-only-rule block-status
 tomcat_scenarios=(
   "tomcat9-baseline 9.0.124 $javax_war eclipse-temurin:21 - - - -"
-  "tomcat9-primary 9.0.124 $javax_war eclipse-temurin:21 $primary_jar command_userinput request_json_patch_expression 302"
+  "tomcat9-primary 9.0.124 $javax_war eclipse-temurin:21 $primary_jar command_userinput request_json_patch_expression 500"
   "tomcat9-java17 9.0.124 $javax_war eclipse-temurin:17 $java17_jar java17_command_execution_shell_meta - 500"
-  "tomcat10-primary 10.1.62 $jakarta_war eclipse-temurin:21 $primary_jar command_userinput request_json_patch_expression 302"
+  "tomcat10-primary 10.1.62 $jakarta_war eclipse-temurin:21 $primary_jar command_userinput request_json_patch_expression 500"
   "tomcat10-java17 10.1.62 $jakarta_war eclipse-temurin:17 $java17_jar java17_command_execution_shell_meta - 500"
-  "tomcat11-primary 11.0.29 $jakarta_war eclipse-temurin:21 $primary_jar command_userinput request_json_patch_expression 302"
+  "tomcat11-primary 11.0.29 $jakarta_war eclipse-temurin:21 $primary_jar command_userinput request_json_patch_expression 500"
   "tomcat11-java17 11.0.29 $jakarta_war eclipse-temurin:17 $java17_jar java17_command_execution_shell_meta - 500"
 )
 port=$port_base
@@ -280,7 +293,7 @@ done
 # name server jdk-image agent-jar command-rule line-prefix block-status
 spring_scenarios=(
   "spring-baseline tomcat eclipse-temurin:21 - - - -"
-  "spring-primary tomcat eclipse-temurin:21 $primary_jar command_userinput - 302"
+  "spring-primary tomcat eclipse-temurin:21 $primary_jar command_userinput - 500"
   "spring-java17 tomcat eclipse-temurin:17 $java17_jar java17_command_execution_shell_meta java17_ 500"
   "spring-jetty-primary jetty eclipse-temurin:21 $primary_jar command_userinput - 302"
   "spring-jetty-java17 jetty eclipse-temurin:17 $java17_jar java17_command_execution_shell_meta java17_ 500"

@@ -461,4 +461,13 @@ class RequestBodyTest {
     assertTrue(read(text, text.length - 1, 1));
     assertEquals(text.length, body.snapshot().text().length(), "the complete body always gets its snapshot");
   }
+
+  @Test
+  void aByteOrderMarkDoesNotHideAJsonBody() {
+    byte[] json = "\uFEFF{\"exePath\":\"id\"}".getBytes(StandardCharsets.UTF_8);
+    RequestBody body = request(null, null, json.length);
+    assertTrue(read(json, 0, json.length));
+    assertEquals("{\"exePath\":\"id\"}", body.snapshot().text());
+    assertEquals(Collections.singletonList("id"), body.snapshot().values().parameters().get("exePath"));
+  }
 }

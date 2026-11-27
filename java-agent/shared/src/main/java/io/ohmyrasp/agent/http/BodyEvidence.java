@@ -94,8 +94,9 @@ public final class BodyEvidence {
 
   /**
    * A rule's message without the body's text: as {@link #scrub}, but pieces shorter than
-   * {@link #MIN_FRAGMENT_CHARS} are not matched against the body's values, so that the rule's own words (which
-   * share four letters with many values) stay readable.
+   * {@link #MIN_FRAGMENT_CHARS} are not matched against the body's values and a name is marked only when it is
+   * longer than {@link #MAX_NAME_CHARS}, so that the rule's own words (which share four letters with many values,
+   * or equal a key such as "path") stay readable.
    */
   public String scrubMessage(String text) {
     return scrub(text, false);
@@ -140,7 +141,9 @@ public final class BodyEvidence {
     }
     List<int[]> nameIntervals = new ArrayList<int[]>();
     for (String name : values.names()) {
-      if (name.length() >= MIN_EMBEDDED_CHARS && !requestNames.contains(name)) {
+      // In a rule's message a name is the rule's own word ("JSON Patch path"): only a long one is cut there.
+      int least = valuePieces ? MIN_EMBEDDED_CHARS : MAX_NAME_CHARS + 1;
+      if (name.length() >= least && !requestNames.contains(name)) {
         occurrences(text, name, fieldName(name), nameIntervals, replacements);
       }
     }

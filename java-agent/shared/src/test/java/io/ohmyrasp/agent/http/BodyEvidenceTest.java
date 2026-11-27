@@ -75,4 +75,15 @@ class BodyEvidenceTest {
   void aRequestParameterOfTheSameNameIsNotMarked() {
     assertEquals("cmd", BodyEvidence.scrub("cmd", BODY, Collections.singleton("cmd"), null));
   }
+
+  @Test
+  void aRulesMessageKeepsItsOwnWords() {
+    RequestBodySnapshot patch = RequestBodySnapshot.of(
+        "[{\"op\":\"replace\",\"path\":\"T(java.lang.Runtime).getRuntime().exec('id')/x\",\"value\":\"v\"}]",
+        "application/json-patch+json");
+    BodyEvidence evidence = BodyEvidence.of(patch, null, null);
+    assertEquals("JSON Patch path carries a runtime expression payload",
+        evidence.scrubMessage("JSON Patch path carries a runtime expression payload"));
+    assertEquals("body:path", evidence.scrub("path"), "a detail that is the key is still marked");
+  }
 }
