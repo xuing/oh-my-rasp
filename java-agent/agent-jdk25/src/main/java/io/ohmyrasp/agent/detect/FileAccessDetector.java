@@ -164,6 +164,11 @@ public final class FileAccessDetector {
               Map.of("path", location)));
     }
     if (!request.active()) {
+      // Outside a request every line decides with the protected host files of the backport rule.
+      if (HostReadPath.isProtectedHostFile(location) && HostReadPath.confirmsLocation(path)) {
+        return Optional.of(Detection.log(
+            "readFile", "readFile_unwanted", 85, "Sensitive local file read detected", request, Map.of("path", location)));
+      }
       return Optional.empty();
     }
     String protocol = protocolOf(path);

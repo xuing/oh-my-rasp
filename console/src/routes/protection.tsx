@@ -126,19 +126,31 @@ function HardeningCard({ t, value, onSave, saving, disabled }: { t: TFn; value: 
   const [mode, setMode] = useState((value.mode as string) ?? "monitor");
   const [reflection, setReflection] = useState((value.block_reflection_abuse as boolean) ?? true);
   const [process, setProcess] = useState((value.block_process_execution as boolean) ?? true);
+  const [outside, setOutside] = useState((value.outside_request as string) ?? "block");
   useEffect(() => {
     setMode((value.mode as string) ?? "monitor");
     setReflection((value.block_reflection_abuse as boolean) ?? true);
     setProcess((value.block_process_execution as boolean) ?? true);
+    setOutside((value.outside_request as string) ?? "block");
   }, [value]);
-  const dirty = mode !== ((value.mode as string) ?? "monitor") || reflection !== ((value.block_reflection_abuse as boolean) ?? true) || process !== ((value.block_process_execution as boolean) ?? true);
+  const dirty =
+    mode !== ((value.mode as string) ?? "monitor") ||
+    reflection !== ((value.block_reflection_abuse as boolean) ?? true) ||
+    process !== ((value.block_process_execution as boolean) ?? true) ||
+    outside !== ((value.outside_request as string) ?? "block");
 
   return (
-    <CardShell t={t} icon={<ShieldHalf className="h-3.5 w-3.5" />} eyebrow={t("Runtime")} title={t("Hardening")} section="hardening" disabled={disabled} saving={saving} dirty={dirty} onSave={() => onSave({ mode, block_reflection_abuse: reflection, block_process_execution: process })}>
+    <CardShell t={t} icon={<ShieldHalf className="h-3.5 w-3.5" />} eyebrow={t("Runtime")} title={t("Hardening")} section="hardening" disabled={disabled} saving={saving} dirty={dirty} onSave={() => onSave({ mode, block_reflection_abuse: reflection, block_process_execution: process, outside_request: outside })}>
       <Field label={t("Mode")}>
         <SelectInput value={mode} disabled={disabled} onChange={(e) => setMode(e.target.value)}>
           <option value="monitor">{t("Monitor — log only")}</option>
           <option value="enforce">{t("Enforce — block")}</option>
+        </SelectInput>
+      </Field>
+      <Field label={t("Outside an HTTP request")} hint={t("Findings on scheduled jobs, message consumers, background threads and start-up code. Every agent line applies it.")}>
+        <SelectInput value={outside} disabled={disabled} onChange={(e) => setOutside(e.target.value)}>
+          <option value="block">{t("Block — as inside a request")}</option>
+          <option value="log">{t("Log only — record and let it run")}</option>
         </SelectInput>
       </Field>
       <Toggle label={t("Block reflection abuse")} checked={reflection} onChange={setReflection} disabled={disabled} />

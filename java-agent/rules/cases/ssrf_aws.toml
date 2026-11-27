@@ -6,9 +6,8 @@ op = "net.open"
 args = { url = "http://169.254.169.254/latest/meta-data/" }
 
 [case.primary]
-effect = "log"
+effect = "block"
 rule = "ssrf_aws"
-why = "the primary blocks this only inside an HTTP request; outside one it logs"
 
 [case.backport]
 effect = "block"
@@ -47,3 +46,43 @@ effect = "none"
 
 [case.backport]
 effect = "none"
+
+[[case]]
+name = "metadata-address-outside-request-log-only"
+kind = "attack"
+via = "sink"
+op = "net.open"
+args = { url = "http://169.254.169.254/latest/meta-data/" }
+control = { outside_request = "log" }
+
+[case.primary]
+effect = "log"
+rule = "ssrf_aws"
+why = "outside_request is log: outside a request the finding is logged and the operation runs"
+
+[case.backport]
+effect = "log"
+rule = "ssrf_cloud_metadata"
+why = "outside_request is log: outside a request the finding is logged and the operation runs"
+
+[[case]]
+name = "metadata-address-in-request-log-only"
+kind = "attack"
+via = "request-sink"
+op = "net.open"
+args = { url = "http://169.254.169.254/latest/meta-data/" }
+control = { outside_request = "log" }
+
+[case.request]
+method = "GET"
+uri = "/app/report"
+query = "id=7"
+headers = { User-Agent = "Mozilla/5.0 (X11; Linux x86_64) Firefox/128.0", Accept = "text/html" }
+
+[case.primary]
+effect = "block"
+rule = "ssrf_aws"
+
+[case.backport]
+effect = "block"
+rule = "ssrf_cloud_metadata"

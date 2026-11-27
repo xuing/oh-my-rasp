@@ -102,8 +102,8 @@ The stack runs the daemon with `--default-mode=block`, so a fresh volume starts 
 | `GET /metrics` | Prometheus text exposition (`ohmyrasp_cloud_enabled`, `ohmyrasp_cloud_connected`, `ohmyrasp_cloud_registered`, `ohmyrasp_cloud_policy_version`, `ohmyrasp_control_write_refused`, `ohmyrasp_events_pending`, `ohmyrasp_events_uploaded_total`, `ohmyrasp_events_failed_total`, `ohmyrasp_events_dropped_total`) |
 | `GET /api/events?limit=&hook=&action=` | Recent retained detections, newest first (`limit` clamped to `1..2000`, default `200`), preserving raw JSON in `raw` |
 | `GET /api/stats` | Event counters (`ignored_kinds` counts lines of an unknown kind), the agent's start line (`agent`), the hooks an agent reported as not applied (`diagnostics` counts every diagnostic line; `hook_misses` lists the distinct unit, class and code source pairs with the library's version, what the hook looked for and what the class has instead, when first read and how many lines named it, bounded; `hook_misses_dropped` counts pairs past that bound; `hook_misses_suppressed` is true once an agent stopped writing them), latency percentiles (`p50_us`, `p95_us`, `p99_us`, `max_us`, `avg_us` over up to 2000 samples), cloud status, control state, `control_status` (set when a control write was refused for size, or the file found at start-up was larger than the agents read), paths, and daemon version. The control state and `control_status` come from one snapshot taken under the controller's lock |
-| `GET /api/control` | Current `ControlState` (`mode`, `algorithms`, `policy`, `revision`, `updated_at`) |
-| `POST /api/control` | Update `mode` (`off`, `monitor`, `block`) and/or `algorithms` toggles (`{ "mode": "block", "algorithms": { "sqli": false } }`); `409` when the resulting document would be larger than the agents read |
+| `GET /api/control` | Current `ControlState` (`mode`, `outside_request`, `algorithms`, `policy`, `revision`, `updated_at`) |
+| `POST /api/control` | Update `mode` (`off`, `monitor`, `block`), `outside_request` (`block`, `log`) and/or `algorithms` toggles (`{ "mode": "block", "outside_request": "log", "algorithms": { "sqli": false } }`); `400` for a word it does not accept, `409` when the resulting document would be larger than the agents read |
 
 ## Contract with the Agent and File Permissions
 
@@ -114,11 +114,12 @@ Example files for both formats, tested by the agents and by this daemon, are in 
 **Control in (`control.json`)**: written by `Controller` (`src/control.rs`) and polled by the agent:
 
 ```json
-{ "mode": "monitor", "algorithms": { "sql_userinput": false }, "revision": 3, "updated_at": "..." }
+{ "mode": "monitor", "outside_request": "block", "algorithms": { "sql_userinput": false }, "revision": 3, "updated_at": "..." }
 ```
 
 - `mode`: `off` (detection disabled), `monitor` (detect and record without blocking), `block` (detect, record, and block active-request attacks).
   The daemon writes these three words. When an operator edits the file by hand it also reads every spelling both agent engines accept (`disabled`, `none`, `record`, `observe`, `log`, `blocking`, `protect`, in any letter case) and writes the canonical word the next time it writes the file; see [the fixtures' README](../java-agent/contracts/agent-daemon/README.md#spellings-of-the-mode).
+- `outside_request`: `block` (the default) or `log`. Whether every agent line blocks a finding made on a thread that serves no HTTP request, or only logs it; see [Outside an HTTP request](../docs/detection.md#outside-an-http-request). Set from the console (`POST /api/control`, or the switch beside the mode), or from the cloud: a newly pulled policy whose `config.hardening` carries `outside_request` (the control plane's per-application or per-environment `protection.hardening` setting) sets it, so a console change stands until the cloud assigns a different policy. A value nobody accepts in a hand-edited file is written back as `block`, keeping the rest of the document.
 - `algorithms`: per-algorithm enable flags; absent entries default to enabled.
 - `policy`: optional raw policy JSON pulled from `/api/v1/agents/{id}/policy`.
 - `revision`: monotonic counter incremented on state changes.

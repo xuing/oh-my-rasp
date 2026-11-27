@@ -277,6 +277,8 @@ test("application management and environment-scoped protection use real API cont
   await page.goto("/protection");
   const hardening = page.locator("section").filter({ hasText: "Hardening" });
   await hardening.getByLabel("Mode").selectOption("enforce");
+  await expect(hardening.getByLabel("Outside an HTTP request")).toHaveValue("block");
+  await hardening.getByLabel("Outside an HTTP request").selectOption("log");
   await hardening.getByRole("button", { name: "Save" }).click();
   await expect(page.getByText("Settings are scoped to the selected environment.")).toBeVisible();
 
@@ -285,7 +287,8 @@ test("application management and environment-scoped protection use real API cont
       (request) =>
         request.method === "PUT" &&
         request.path === "/applications/app_main/environments/env_prod/settings" &&
-        (request.body as { value?: { mode?: string } }).value?.mode === "enforce"
+        (request.body as { value?: { mode?: string; outside_request?: string } }).value?.mode === "enforce" &&
+        (request.body as { value?: { outside_request?: string } }).value?.outside_request === "log"
     )
   ).toBeTruthy();
 });

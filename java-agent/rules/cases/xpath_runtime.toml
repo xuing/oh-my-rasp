@@ -7,9 +7,8 @@ args = { expression = "rt:exec(rt:getRuntime(), 'id')" }
 completes_with = ["XPathExpressionException"]
 
 [case.primary]
-effect = "log"
+effect = "block"
 rule = "xpath_runtime"
-why = "the primary blocks this only inside an HTTP request; outside one it logs"
 
 [case.backport]
 effect = "unreachable"

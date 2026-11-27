@@ -6,9 +6,8 @@ op = "jdbc.connect"
 args = { url = "jdbc:h2:mem:test;INIT=RUNSCRIPT FROM 'http://127.0.0.1:{port}/init.sql'" }
 
 [case.primary]
-effect = "log"
+effect = "block"
 rule = "jdbc_h2_init"
-why = "the primary blocks this only inside an HTTP request; outside one it logs"
 
 [case.backport]
 effect = "block"
@@ -47,3 +46,43 @@ effect = "none"
 
 [case.backport]
 effect = "none"
+
+[[case]]
+name = "h2-init-runscript-outside-request-log-only"
+kind = "attack"
+via = "sink"
+op = "jdbc.connect"
+args = { url = "jdbc:h2:mem:test;INIT=RUNSCRIPT FROM 'http://127.0.0.1:{port}/init.sql'" }
+control = { outside_request = "log" }
+
+[case.primary]
+effect = "log"
+rule = "jdbc_h2_init"
+why = "outside_request is log: outside a request the finding is logged and the operation runs"
+
+[case.backport]
+effect = "log"
+rule = "jdbc_h2_code_execution"
+why = "outside_request is log: outside a request the finding is logged and the operation runs"
+
+[[case]]
+name = "h2-init-runscript-in-request-log-only"
+kind = "attack"
+via = "request-sink"
+op = "jdbc.connect"
+args = { url = "jdbc:h2:mem:test;INIT=RUNSCRIPT FROM 'http://127.0.0.1:{port}/init.sql'" }
+control = { outside_request = "log" }
+
+[case.request]
+method = "GET"
+uri = "/app/report"
+query = "id=7"
+headers = { User-Agent = "Mozilla/5.0 (X11; Linux x86_64) Firefox/128.0", Accept = "text/html" }
+
+[case.primary]
+effect = "block"
+rule = "jdbc_h2_init"
+
+[case.backport]
+effect = "block"
+rule = "jdbc_h2_code_execution"

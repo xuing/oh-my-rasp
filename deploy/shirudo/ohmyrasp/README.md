@@ -56,18 +56,18 @@ Each advisory is backed by a Vulhub acceptance script that exploits an unprotect
 
 | Advisory | Acceptance script (under `java-agent/`) | Last replayed |
 |---|---|---|
-| CVE-2021-44228 | `acceptance/vulhub/log4j/solr-java8.sh` | 2026-11-26 with `ohmyrasp-agent-all.jar` |
-| CVE-2022-22965 | `acceptance/vulhub/spring/java11.sh` | 2026-11-26 with `ohmyrasp-agent-all.jar` |
-| CVE-2022-22963 | `acceptance/vulhub/spring/function-java8.sh` | 2026-11-26 with `ohmyrasp-agent-all.jar` |
-| CVE-2022-22947 | `acceptance/vulhub/spring/gateway-java8.sh` | 2026-11-26 with `ohmyrasp-agent-all.jar` |
-| CVE-2017-5638 | `acceptance/vulhub/struts2/s2045-java8.sh`, `acceptance/vulhub/struts2/s2046-java8.sh` | 2026-11-26 with `ohmyrasp-agent-all.jar` |
-| CVE-2020-17530 | `acceptance/vulhub/struts2/s2061-java8.sh` | 2026-11-26 with `ohmyrasp-agent-all.jar` |
-| CVE-2017-18349 | `acceptance/vulhub/fastjson/java8.sh` | 2026-11-26 with `ohmyrasp-agent-all.jar` |
-| CVE-2016-4437 | `acceptance/vulhub/shiro/4437-java8.sh` | 2026-11-26 with `ohmyrasp-agent-all.jar` |
-| CVE-2020-14882 | `acceptance/vulhub/weblogic/14883-java8.sh` | 2026-11-26 with `ohmyrasp-agent-all.jar` |
-| CVE-2017-12615 | `acceptance/vulhub/tomcat/12615-java8.sh` | 2026-11-26 with `ohmyrasp-agent-all.jar` |
-| CVE-2019-17558 | `acceptance/vulhub/solr/velocity-java8.sh` | 2026-11-26 with `ohmyrasp-agent-all.jar` |
-| CVE-2023-21839 | `acceptance/vulhub/weblogic/21839-java8.sh` | 2026-11-26 with `ohmyrasp-agent-all.jar` |
+| CVE-2021-44228 | `acceptance/vulhub/log4j/solr-java8.sh` | 2026-11-27 with `ohmyrasp-agent-all.jar` |
+| CVE-2022-22965 | `acceptance/vulhub/spring/java11.sh` | 2026-11-27 with `ohmyrasp-agent-all.jar` |
+| CVE-2022-22963 | `acceptance/vulhub/spring/function-java8.sh` | 2026-11-27 with `ohmyrasp-agent-all.jar` |
+| CVE-2022-22947 | `acceptance/vulhub/spring/gateway-java8.sh` | 2026-11-27 with `ohmyrasp-agent-all.jar` |
+| CVE-2017-5638 | `acceptance/vulhub/struts2/s2045-java8.sh`, `acceptance/vulhub/struts2/s2046-java8.sh` | 2026-11-27 with `ohmyrasp-agent-all.jar` |
+| CVE-2020-17530 | `acceptance/vulhub/struts2/s2061-java8.sh` | 2026-11-27 with `ohmyrasp-agent-all.jar` |
+| CVE-2017-18349 | `acceptance/vulhub/fastjson/java8.sh` | 2026-11-27 with `ohmyrasp-agent-all.jar` |
+| CVE-2016-4437 | `acceptance/vulhub/shiro/4437-java8.sh` | 2026-11-27 with `ohmyrasp-agent-all.jar` |
+| CVE-2020-14882 | `acceptance/vulhub/weblogic/14883-java8.sh` | 2026-11-27 with `ohmyrasp-agent-all.jar` |
+| CVE-2017-12615 | `acceptance/vulhub/tomcat/12615-java8.sh` | 2026-11-27 with `ohmyrasp-agent-all.jar` |
+| CVE-2019-17558 | `acceptance/vulhub/solr/velocity-java8.sh` | 2026-11-27 with `ohmyrasp-agent-all.jar` |
+| CVE-2023-21839 | `acceptance/vulhub/weblogic/21839-java8.sh` | 2026-11-27 with `ohmyrasp-agent-all.jar` |
 
 ## Limits
 

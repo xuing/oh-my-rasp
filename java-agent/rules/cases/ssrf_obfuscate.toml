@@ -8,7 +8,7 @@ args = { url = "http://0x7f000001:{port}/" }
 [case.primary]
 effect = "log"
 rule = "ssrf_obfuscate"
-why = "the primary blocks this only inside an HTTP request; outside one it logs"
+why = "the primary blocks this only inside an HTTP request: ssrf_obfuscate is one of the rules too broad to block without a request that supplied the input, on every line that has it"
 
 [case.backport]
 effect = "unreachable"

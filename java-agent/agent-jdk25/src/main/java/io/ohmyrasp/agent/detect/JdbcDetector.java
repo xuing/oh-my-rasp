@@ -151,13 +151,17 @@ public final class JdbcDetector {
               request,
               Map.of("url", abbreviate(url))));
     }
-    if (mysqlJdbcDeserializationUrl(url, request)) {
+    if (mysqlJdbcDeserializationUrl(url)) {
+      // Decided whoever chose the URL, as on the backport lines; a request that carries it raises the confidence.
+      boolean requestControlled = request.active() && request.hasParameterIn(url);
       return Optional.of(
           Detection.log(
               "jdbc",
               "jdbc_mysql_deserialization",
-              95,
-              "Request-controlled MySQL JDBC URL enables connector deserialization behavior",
+              requestControlled ? 95 : 92,
+              requestControlled
+                  ? "Request-controlled MySQL JDBC URL enables connector deserialization behavior"
+                  : "MySQL JDBC URL enables connector deserialization behavior",
               request,
               Map.of("url", abbreviate(url), "driver", mysqlJdbcDriver(normalized))));
     }
@@ -247,10 +251,7 @@ public final class JdbcDetector {
         || (H2_CODE_CONTAINER.matcher(value).find() && H2_CODE_PRIMITIVE.matcher(value).find());
   }
 
-  private static boolean mysqlJdbcDeserializationUrl(String url, RequestContext request) {
-    if (!request.active() || !request.hasParameterIn(url)) {
-      return false;
-    }
+  private static boolean mysqlJdbcDeserializationUrl(String url) {
     String normalized = lower(url);
     if (!normalized.startsWith("jdbc:mysql:") && !normalized.startsWith("jdbc:mariadb:")) {
       return false;

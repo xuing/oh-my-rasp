@@ -12,6 +12,7 @@ import io.ohmyrasp.agent.file.EscapingPath;
 import io.ohmyrasp.agent.file.HostDelete;
 import io.ohmyrasp.agent.file.WindowsDataStream;
 import io.ohmyrasp.agent.jmx.JmxWriteScope;
+import io.ohmyrasp.agent.file.ScriptFileWrite;
 import io.ohmyrasp.agent.model.Detection;
 import io.ohmyrasp.agent.model.RequestContext;
 import java.nio.file.Path;
@@ -95,7 +96,8 @@ public final class HostFileMutationDetector {
                   "path", normalized,
                   "persistence", abbreviate(configPersistence.orElseThrow()))));
     }
-    if (request.active() && SCRIPT_FILE.matcher(normalized).matches()) {
+    // Outside a request every line decides with the script-write rule of the backports.
+    if (request.active() ? SCRIPT_FILE.matcher(normalized).matches() : ScriptFileWrite.protectedWrite(path)) {
       return Optional.of(
           Detection.log(
               "writeFile",

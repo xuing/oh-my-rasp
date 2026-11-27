@@ -4,6 +4,7 @@ import io.ohmyrasp.agent.http.ServletContracts;
 import io.ohmyrasp.agent.file.EscapingPath;
 import io.ohmyrasp.agent.file.ArchiveEntryContext;
 import io.ohmyrasp.agent.file.HostReadPath;
+import io.ohmyrasp.agent.file.ScriptFileWrite;
 import io.ohmyrasp.agent.file.HostDirectory;
 import io.ohmyrasp.agent.jmx.JmxDispatch;
 import io.ohmyrasp.agent.naming.LookupRoute;
@@ -84,12 +85,6 @@ public final class BackportHooks {
       Pattern.compile("(?is)\\b(ldap|ldaps|rmi|iiop|corbaname|corbaloc)://[^\\s\"'<>\\u0000]{1,2048}");
   private static final Pattern TYPED_PAYLOAD_H2_INIT =
       Pattern.compile("(?is)jdbc:h2:[^\\s\"'<>]{0,4096}\\bINIT\\s*=");
-  private static final Pattern SENSITIVE_FILE_READ =
-      Pattern.compile(
-          "^/(?:etc/(?:passwd|shadow|issue)|proc/self/(?:environ|cmdline)|root/\\.ssh/(?:id_rsa|authorized_keys)|home/[^/]+/\\.ssh/id_rsa)$");
-  private static final Pattern SCRIPT_FILE_WRITE =
-      Pattern.compile(
-          "(?i).+\\.(?:jsp|jspx|jspf|war|class|jar|php|asp|aspx|ashx|cer|asa|sh|bash|cmd|bat|ps1)$");
   private static final Pattern MULTIPART_SCRIPT_UPLOAD_FILE =
       Pattern.compile(
           "(?i)(?:.+\\.(?:jsp|jspx|jspf|php|asp|aspx|ashx|cer|asa)|(?:^|.*/)(?:\\.htaccess|\\.user\\.ini))$");
@@ -102,9 +97,6 @@ public final class BackportHooks {
           "(?is)(?:%\\{|\\$\\{|#(?:context|application|session|request|response)|\\b(?:ognl|freemarker|execute)\\b|\\x00)");
   private static final Pattern MULTIPART_TRAVERSAL_UPLOAD_FILE =
       Pattern.compile("(?i)(?:^|/|%2f|%5c)\\.\\.(?:/|$|%2f|%5c)");
-  private static final Pattern WEBROOT_PATH =
-      Pattern.compile(
-          "(?i)(?:^|/)(?:webapps?|webroot|ROOT|www|wwwroot|htdocs|html|public|static|uploads?)(?:/|$)");
   private static final Pattern LOOPBACK_ADMIN_PATH =
       Pattern.compile(
           "(?i)(?:^|/)(?:actuator|jolokia|manager|host-manager|admin|console|webtools|solr/admin|_cat|debug|server-status)(?:[/?#;]|$)");
@@ -558,9 +550,6 @@ public final class BackportHooks {
     String entry = ARCHIVE_ENTRY.take();
     if (entry != null) {
       emitFileFinding(classifyArchiveWrite(entry, rawPath, null), LAST_LOGGED_ARCHIVE, "ArchiveEntry.write");
-    }
-    if (isTomcatWarExpansionStack() || isTomcatJspCompilationStack()) {
-      return;
     }
     Finding finding = classifyFileWrite(normalizedPath);
     emitFileFinding(finding, LAST_LOGGED_FILE_WRITE, "FileOutputStream.open");
@@ -1117,7 +1106,7 @@ public final class BackportHooks {
 
   private static void inspectJmxFileWrite(String path, String operation) {
     JmxWriteScope scope = JmxWriteScope.current();
-    if (RaspRuntime.detectionOff() || !SCRIPT_FILE_WRITE.matcher(normalizePath(path)).matches() || !scope.selects(path)) return;
+    if (RaspRuntime.detectionOff() || !ScriptFileWrite.isScriptFile(normalizePath(path)) || !scope.selects(path)) return;
     Finding finding = new Finding(rule("jmx_script_file_write"), 90,
         "A managed operation opens its selected script destination for writing", "path", path, "selected_write_open");
     boolean block = shouldBlock();
@@ -1448,7 +1437,7 @@ public final class BackportHooks {
     if (value == null) {
       return false;
     }
-    return SCRIPT_FILE_WRITE.matcher(value.trim().replace('\\', '/')).matches();
+    return ScriptFileWrite.isScriptFile(value.trim().replace('\\', '/'));
   }
 
   private static Finding classifyJndiLookup(String lookup, String operation) {
@@ -1497,7 +1486,7 @@ public final class BackportHooks {
     String normalized = HostReadPath.location(path);
     if (normalized.isEmpty()) return null;
     boolean hosts = HostReadPath.isHostsFile(normalized);
-    if (!hosts && SENSITIVE_FILE_READ.matcher(normalized).matches() && HostReadPath.confirmsLocation(path)) {
+    if (!hosts && HostReadPath.isProtectedHostFile(normalized) && HostReadPath.confirmsLocation(path)) {
       return new Finding(rule("file_sensitive_read"), fileReadConfidence(normalized),
           "Sensitive file read reached a " + line().displayName + " file sink", "path", normalized,
           path.equals(normalized) ? null : "normalized_read_location");
@@ -1509,7 +1498,7 @@ public final class BackportHooks {
           "Request selected the system hosts file", "path", normalized, "request_selected_hosts");
     }
     String resolved = links.resolvedLocation(path);
-    if (resolved.equals(normalized) || !(SENSITIVE_FILE_READ.matcher(resolved).matches() || HostReadPath.isHostsFile(resolved))) {
+    if (resolved.equals(normalized) || !(HostReadPath.isProtectedHostFile(resolved) || HostReadPath.isHostsFile(resolved))) {
       return null;
     }
     return new Finding(rule("file_sensitive_read"), fileReadConfidence(resolved),
@@ -1518,19 +1507,7 @@ public final class BackportHooks {
 
   private static Finding classifyFileWrite(String path) {
     String normalized = normalizePath(path);
-    if (normalized.length() == 0 || !SCRIPT_FILE_WRITE.matcher(normalized).matches()) {
-      return null;
-    }
-    if (isWebInfDeploymentArtifact(normalized)) {
-      return null;
-    }
-    if (isTeamCityPluginStartupWrite(normalized)) {
-      return null;
-    }
-    if (isMavenRepositoryArtifactWrite(normalized)) {
-      return null;
-    }
-    if (!WEBROOT_PATH.matcher(normalized).find() && normalized.indexOf("../") < 0) {
+    if (!ScriptFileWrite.protectedWrite(normalized)) {
       return null;
     }
     return new Finding(
@@ -2004,7 +1981,7 @@ public final class BackportHooks {
     if (writerConstruction) {
       for (String argument : safeArguments) {
         String path = normalizePath(argument);
-        if (SCRIPT_FILE_WRITE.matcher(path).matches()) {
+        if (ScriptFileWrite.isScriptFile(path)) {
           return new Finding(
               rule("xml_decoder_script_file_write"),
               95,
@@ -2777,7 +2754,7 @@ public final class BackportHooks {
       if (PROTECTED_WEB_RESOURCE_PATH.matcher(normalized).find()) {
         return normalized;
       }
-      if (SCRIPT_FILE_WRITE.matcher(normalized).matches()) {
+      if (ScriptFileWrite.isScriptFile(normalized)) {
         return normalized;
       }
       if (hasConfusingDotSegment(normalized) || (i < decodedCount && hasPathControlCharacter(normalized))) {
@@ -3404,64 +3381,6 @@ public final class BackportHooks {
       return 92;
     }
     return 90;
-  }
-
-  private static boolean isWebInfDeploymentArtifact(String path) {
-    String normalized = normalizePath(path);
-    String lower = lower(normalized);
-    if (!(lower.indexOf("/web-inf/classes/") >= 0
-        || lower.indexOf("/web-inf/cfclasses/") >= 0
-        || lower.indexOf("/web-inf/lib/") >= 0)) {
-      return false;
-    }
-    return lower.endsWith(".class") || lower.endsWith(".jar");
-  }
-
-  private static boolean isMavenRepositoryArtifactWrite(String path) {
-    String lower = lower(normalizePath(path));
-    return lower.indexOf("/.m2/repository/") >= 0
-        && lower.indexOf("../") < 0
-        && lower.endsWith(".jar");
-  }
-
-  private static boolean isTeamCityPluginStartupWrite(String path) {
-    String lowerPath = lower(normalizePath(path));
-    if (!isTeamCityPluginStartupWritePath(lowerPath)) {
-      return false;
-    }
-    boolean startupStack = false;
-    boolean bundledPluginUnpackStack = false;
-    boolean pluginResourceUnpackStack = false;
-    StackTraceElement[] stack = Thread.currentThread().getStackTrace();
-    for (StackTraceElement element : stack) {
-      String className = element.getClassName();
-      if ("jetbrains.buildServer.plugins.files.PluginFilesUtil".equals(className)
-          || className.startsWith("jetbrains.buildServer.web.plugins.files.")) {
-        bundledPluginUnpackStack = true;
-      }
-      if ("jetbrains.buildServer.util.ArchiveUtil".equals(className)
-          || "jetbrains.buildServer.web.impl.Unpacker".equals(className)
-          || "jetbrains.buildServer.web.impl.WatchingResourceUnpackerState".equals(className)
-          || "jetbrains.buildServer.web.impl.InitializingResourceUnpacker".equals(className)
-          || "jetbrains.buildServer.web.impl.WebResourcesUnpacker".equals(className)) {
-        pluginResourceUnpackStack = true;
-      }
-      if ("jetbrains.buildServer.web.impl.BuildServerConfigurator".equals(className)
-          || "jetbrains.buildServer.serverSide.impl.BuildServerLifecycleProcessor"
-              .equals(className)
-          || className.startsWith("jetbrains.buildServer.maintenance.StartupProcessor")) {
-        startupStack = true;
-      }
-    }
-    return startupStack && (bundledPluginUnpackStack || pluginResourceUnpackStack);
-  }
-
-  private static boolean isTeamCityPluginStartupWritePath(String lowerPath) {
-    if (lowerPath.endsWith(".jar") && lowerPath.indexOf("/web-inf/plugins/.unpacked/") >= 0) {
-      return true;
-    }
-    return lowerPath.indexOf("/webapps/root/plugins/") >= 0
-        && SCRIPT_FILE_WRITE.matcher(lowerPath).matches();
   }
 
   private static boolean isMutatingJmxOperation(String operationName) {
@@ -4118,28 +4037,6 @@ public final class BackportHooks {
     return 90;
   }
 
-  private static boolean isTomcatWarExpansionStack() {
-    StackTraceElement[] stack = Thread.currentThread().getStackTrace();
-    for (int i = 0; i < stack.length; i++) {
-      if ("org.apache.catalina.startup.ExpandWar".equals(stack[i].getClassName())) {
-        return true;
-      }
-    }
-    return false;
-  }
-
-  private static boolean isTomcatJspCompilationStack() {
-    StackTraceElement[] stack = Thread.currentThread().getStackTrace();
-    for (int i = 0; i < stack.length; i++) {
-      String className = stack[i].getClassName();
-      if ("org.apache.jasper.compiler.Compiler".equals(className)
-          || "org.apache.jasper.compiler.JDTCompiler".equals(className)) {
-        return true;
-      }
-    }
-    return false;
-  }
-
   private static boolean nioOptionsContainWrite(Object options) {
     if (options == null) {
       return false;
@@ -4303,12 +4200,12 @@ public final class BackportHooks {
 
   public static Object jmxAttributeDisplayReceiver(Object value) {
     if (inactive()) return value;
-    return io.ohmyrasp.agent.jmx.JmxAttributeDisplay.receiver(value, shouldBlock());
+    return io.ohmyrasp.agent.jmx.JmxAttributeDisplay.receiver(value, repairEnabled());
   }
 
   public static boolean enforceElasticLz4Bounds() {
     if (inactive()) return false;
-    return shouldBlock();
+    return repairEnabled();
   }
 
   /** The line's id of a rule family: {@code java8_} and the family on the Java 8 line. */
@@ -4339,7 +4236,19 @@ public final class BackportHooks {
     return !RaspRuntime.isStarted();
   }
 
+  /**
+   * Whether a finding blocks: blocking is allowed, and the thread serves an HTTP request or the
+   * control setting {@code outside_request} says block (the default).
+   */
   private static boolean shouldBlock() {
+    return RaspRuntime.findingBlocks(RaspRuntime.legacyBlockFlag(), DISPATCH.inRequest());
+  }
+
+  /**
+   * Whether a runtime repair (a bounds check, a safe display) applies: whenever blocking is
+   * allowed. A repair is no finding, so {@code outside_request} does not apply to it.
+   */
+  private static boolean repairEnabled() {
     return RaspRuntime.blockingAllowed(RaspRuntime.legacyBlockFlag());
   }
 

@@ -699,8 +699,9 @@ final class DeserializationDetectorTest {
     assertTrue(result.isEmpty());
   }
 
+  /** Outside a request the rule decides as the backport lines do. */
   @Test
-  void ignoresBackgroundXmlDecoderRuntime() {
+  void detectsBackgroundXmlDecoderRuntime() {
     var result =
         DeserializationDetector.detectXmlDecoderExpression(
             "java.lang.ProcessBuilder",
@@ -709,7 +710,17 @@ final class DeserializationDetectorTest {
             RequestContext.empty(),
             xmlDecoderStack());
 
-    assertTrue(result.isEmpty());
+    assertEquals("xml_decoder_runtime", result.orElseThrow().algorithm());
+  }
+
+  /** Outside a request the script files are the backport rule's, which include archives and class files. */
+  @Test
+  void detectsBackgroundXmlDecoderWriterForTheBackportScriptFiles() {
+    var result =
+        DeserializationDetector.detectXmlDecoderExpression(
+            "java.io.FileOutputStream", "new", List.of("/srv/app/WEB-INF/lib/x.jar"), RequestContext.empty(), xmlDecoderStack());
+
+    assertEquals("xml_decoder_webshell", result.orElseThrow().algorithm());
   }
 
   private static List<String> rmiRegistryStack() {

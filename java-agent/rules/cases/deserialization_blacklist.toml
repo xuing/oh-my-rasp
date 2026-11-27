@@ -7,9 +7,8 @@ args = { class = "com.sun.org.apache.xalan.internal.xsltc.trax.TemplatesImpl" }
 completes_with = ["UnsupportedOperationException", "EOFException"]
 
 [case.primary]
-effect = "log"
+effect = "block"
 rule = "deserialization_blacklist"
-why = "the primary blocks this only inside an HTTP request; outside one it logs"
 
 [case.backport]
 effect = "block"
@@ -59,9 +58,8 @@ op = "deserialize"
 args = { class = "com.sun.rowset.JdbcRowSetImpl" }
 
 [case.primary]
-effect = "log"
+effect = "block"
 rule = "deserialization_blacklist"
-why = "the primary blocks this only inside an HTTP request; outside one it logs"
 
 [case.backport]
 effect = "block"
@@ -81,3 +79,45 @@ why = "neither engine lists BadAttributeValueExpException by itself; they list t
 [case.backport]
 effect = "none"
 why = "neither engine lists BadAttributeValueExpException by itself; they list the classes a gadget chain wraps in it"
+
+[[case]]
+name = "templates-impl-outside-request-log-only"
+kind = "attack"
+via = "sink"
+op = "deserialize"
+args = { class = "com.sun.org.apache.xalan.internal.xsltc.trax.TemplatesImpl" }
+completes_with = ["UnsupportedOperationException", "EOFException"]
+control = { outside_request = "log" }
+
+[case.primary]
+effect = "log"
+rule = "deserialization_blacklist"
+why = "outside_request is log: outside a request the finding is logged and the operation runs"
+
+[case.backport]
+effect = "log"
+rule = "deserialization_gadget_class"
+why = "outside_request is log: outside a request the finding is logged and the operation runs"
+
+[[case]]
+name = "templates-impl-in-request-log-only"
+kind = "attack"
+via = "request-sink"
+op = "deserialize"
+args = { class = "com.sun.org.apache.xalan.internal.xsltc.trax.TemplatesImpl" }
+completes_with = ["UnsupportedOperationException", "EOFException"]
+control = { outside_request = "log" }
+
+[case.request]
+method = "GET"
+uri = "/app/report"
+query = "id=7"
+headers = { User-Agent = "Mozilla/5.0 (X11; Linux x86_64) Firefox/128.0", Accept = "text/html" }
+
+[case.primary]
+effect = "block"
+rule = "deserialization_blacklist"
+
+[case.backport]
+effect = "block"
+rule = "deserialization_gadget_class"

@@ -70,7 +70,7 @@ This package is for hosts pinned to one Java version; the universal package [`oh
 ## Runtime Behavior
 
 - **Standalone and daemonless**: Built with `standalone=true`, `lock_config=true`, `control=none` and `log=stderr`. No control-file poller is started, `cloud_direct` is forced off, and `/tmp/ohmyrasp-control.json` or `OHMYRASP_MODE=off` is ignored. No background event-writer thread is started unless a log override names a file at start-up.
-- **Blocking enforcement** uses `mode=block`. Enforcement outside an HTTP request depends on the hook evidence and the active rule. Monitor decisions emit structured events to `stderr`. [Detection policies](../../../docs/detection.md#deserialization-defenses)
+- **Blocking enforcement** uses `mode=block`. A finding outside an HTTP request blocks as one inside a request does, as on the Java 8, 11 and 17 tracks. Monitor decisions emit structured events to `stderr`. [Outside an HTTP request](../../../docs/detection.md#outside-an-http-request)
 - **Logging**: Emits structured JSON detection events directly to `stderr` (`log=stderr`, `latency_sample=0`) with no `/tmp/ohmyrasp-events.jsonl` file output and no `hook_latency` telemetry.
 
 ## Deployment and Limits

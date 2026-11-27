@@ -1,5 +1,6 @@
 {
   "mode": "block",
+  "outside_request": "block",
   "algorithms": {},
   "policy": "{\"version\":5,\"status\":\"active\",\"rules\":[{\"algorithm\":\"sql_userinput\",\"action\":\"log\",\"note\":\"a \\\"quote\\\", back\\\\slash,\\nnew line,\\ttab,\\u0001 control, café 😀\"}]}",
   "revision": 2,

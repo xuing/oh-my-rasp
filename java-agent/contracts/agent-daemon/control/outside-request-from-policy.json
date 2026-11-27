@@ -1,0 +1,8 @@
+{
+  "mode": "block",
+  "outside_request": "log",
+  "algorithms": {},
+  "policy": "{\"version\":6,\"status\":\"active\",\"rules\":[],\"config\":{\"hardening\":{\"mode\":\"monitor\",\"outside_request\":\"log\"}}}",
+  "revision": 2,
+  "updated_at": "2026-01-01T00:00:00Z"
+}

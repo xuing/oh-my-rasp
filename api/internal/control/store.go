@@ -2319,6 +2319,10 @@ func (s *MemoryStore) UpsertApplicationSetting(_ context.Context, actorID string
 	if setting.Value == nil {
 		return ApplicationSetting{}, fmt.Errorf("%w: setting value is required", ErrInvalid)
 	}
+	setting.Value = copyStringAnyMap(setting.Value)
+	if err := ValidateApplicationSettingValue(setting.Key, setting.Value); err != nil {
+		return ApplicationSetting{}, err
+	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if _, ok := s.applications[setting.ApplicationID]; !ok {
@@ -2641,7 +2645,7 @@ func DefaultApplicationSettingValue(key string) map[string]any {
 	case "protection.allowlist":
 		return map[string]any{"enabled": false, "mode": "monitor", "entries": []string{}}
 	case "protection.hardening":
-		return map[string]any{"mode": "monitor", "block_reflection_abuse": true, "block_process_execution": true}
+		return map[string]any{"mode": "monitor", "block_reflection_abuse": true, "block_process_execution": true, "outside_request": "block"}
 	default:
 		return map[string]any{}
 	}
@@ -2661,6 +2665,27 @@ func valueForApplicationConfig(settings map[string]ApplicationSetting, key strin
 		return copyStringAnyMap(setting.Value)
 	}
 	return DefaultApplicationSettingValue(key)
+}
+
+// ValidateApplicationSettingValue checks the members of an application setting that the hosts read
+// and normalises them. protection.hardening's outside_request, which every agent line reads from
+// the control file the daemon writes, is block or log (any case, stored lowercase): whether a
+// finding on a thread that serves no HTTP request blocks or is only logged.
+func ValidateApplicationSettingValue(key string, value map[string]any) error {
+	if normalizeSettingKey(key) != "protection.hardening" {
+		return nil
+	}
+	raw, ok := value["outside_request"]
+	if !ok {
+		return nil
+	}
+	text, isString := raw.(string)
+	normalized := strings.ToLower(strings.TrimSpace(text))
+	if !isString || (normalized != "block" && normalized != "log") {
+		return fmt.Errorf("%w: protection.hardening outside_request must be block or log", ErrInvalid)
+	}
+	value["outside_request"] = normalized
+	return nil
 }
 
 func isApplicationScopedSetting(key string) bool {

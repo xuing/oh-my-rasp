@@ -498,7 +498,9 @@ def render_top_readme(
     w("")
     w(f"- **`{UNIVERSAL_PKG}`** blocks as the line it starts does: the Java 8, 11 and 17 lines on those JVMs, the primary line on Java 21 and later.")
     w("- **`ohmyrasp-java8`, `ohmyrasp-java11`, `ohmyrasp-java17`**: With baked-in `mode=block`, exploit-grade sink detections (command execution, sensitive file reads/script writes, remote JNDI, deserialization gadgets, SQLi/JDBC, XXE, SSRF, Base64 CVE-2026-114938, and servlet path/JWT/cookie checks) throw `Java*RaspBlockException` both inside HTTP requests and in standalone JVMs.")
-    w("- **`ohmyrasp-jdk21`, `ohmyrasp-jdk25`** use the evidence available at the hook and the active policy to decide whether to block. Some rules can enforce outside an HTTP request, including class checks on an XML-RPC object stream. [Detection policies](../../docs/detection.md#deserialization-defenses)")
+    w("- **`ohmyrasp-jdk21`, `ohmyrasp-jdk25`** use the evidence available at the hook and the active policy to decide whether to block.")
+    w("- **Every track** blocks a finding outside an HTTP request (a scheduled job, a consumer, start-up code) as inside one; a few rules too broad to block without request input block only inside one. "
+      f"`{UNIVERSAL_PKG}` bakes `outside_request` (`--outside-request log` at build time records those findings and lets the operation run). [Outside an HTTP request](../../docs/detection.md#outside-an-http-request)")
     w("")
     w("## Standalone Profile (`META-INF/ohmyrasp-shirudo.properties`)")
     w("")
@@ -751,9 +753,9 @@ def render_primary_readme(jdk25: dict[str, object], bf: dict[str, str], vulhub: 
         "at start-up."
     )
     w(
-        "- **Blocking enforcement** uses `mode=block`. Enforcement outside an HTTP request depends on "
-        "the hook evidence and the active rule. Monitor decisions emit structured events to `stderr`. "
-        "[Detection policies](../../../docs/detection.md#deserialization-defenses)"
+        "- **Blocking enforcement** uses `mode=block`. A finding outside an HTTP request blocks as one inside "
+        "a request does, as on the Java 8, 11 and 17 tracks. Monitor decisions emit structured events to `stderr`. "
+        "[Outside an HTTP request](../../../docs/detection.md#outside-an-http-request)"
     )
     w(
         "- **Logging**: Emits structured JSON detection events directly to `stderr` "

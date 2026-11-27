@@ -14,7 +14,7 @@ use std::path::{Path, PathBuf};
 
 use serde_json::Value;
 
-use crate::control::{ControlState, Controller, Mode};
+use crate::control::{ControlState, Controller, Mode, OutsideRequest};
 use crate::model::{AgentEvent, CloudIdentity, DiagnosticFormat, EventClass};
 use crate::store::EventStore;
 
@@ -23,6 +23,10 @@ const FIXED_UPDATED_AT: &str = "2026-01-01T00:00:00Z";
 
 /// A cloud policy as the control plane serves it: JSON text the daemon passes through verbatim.
 const POLICY: &str = r#"{"version":4,"status":"active","canary_percent":100,"rules":[{"algorithm":"sql_userinput","action":"block"}]}"#;
+
+/// A cloud policy whose `config` carries the control plane's `protection.hardening` setting with
+/// `outside_request` set to log, as `GetAgentPolicy` serves it.
+const POLICY_OUTSIDE_LOG: &str = r#"{"version":6,"status":"active","rules":[],"config":{"hardening":{"mode":"monitor","outside_request":"log"}}}"#;
 
 /// A policy whose text needs every kind of JSON string escape once it is carried as a string
 /// member of the control file: quotes, backslash, newline, tab, a control character, and non-ASCII
@@ -119,6 +123,28 @@ fn control_documents() -> Vec<(&'static str, String, ControlState)> {
     let ctrl = Controller::load_or_init(&path, Mode::Block).unwrap();
     assert!(ctrl.set_policy(Some(ESCAPED_POLICY.to_string())).unwrap());
     docs.push(("policy-escaped", normalized_control(&path), ctrl.snapshot()));
+
+    // Findings outside a request logged instead of blocked: set on the console, then by the cloud.
+    let path = dir.path().join("outside.json");
+    let ctrl = Controller::load_or_init(&path, Mode::Block).unwrap();
+    ctrl.update_with(None, Some(OutsideRequest::Log), None)
+        .unwrap();
+    docs.push((
+        "outside-request-log",
+        normalized_control(&path),
+        ctrl.snapshot(),
+    ));
+    let path = dir.path().join("outside-policy.json");
+    let ctrl = Controller::load_or_init(&path, Mode::Block).unwrap();
+    assert!(
+        ctrl.set_policy(Some(POLICY_OUTSIDE_LOG.to_string()))
+            .unwrap()
+    );
+    docs.push((
+        "outside-request-from-policy",
+        normalized_control(&path),
+        ctrl.snapshot(),
+    ));
     docs
 }
 
@@ -163,6 +189,11 @@ fn assert_manifest(document: &str, state: &ControlState) {
             .unwrap_or_default()
     };
     assert_eq!(get("mode"), state.mode.as_str(), "{document} mode");
+    assert_eq!(
+        get("outside_request"),
+        state.outside_request.as_str(),
+        "{document} outside_request"
+    );
     assert_eq!(
         get("revision"),
         state.revision.to_string(),
@@ -244,6 +275,10 @@ fn the_daemon_reloads_its_own_golden_documents_unchanged() {
 
         let reloaded = ctrl.snapshot();
         assert_eq!(reloaded.mode, state.mode, "{name} mode");
+        assert_eq!(
+            reloaded.outside_request, state.outside_request,
+            "{name} outside_request"
+        );
         assert_eq!(reloaded.algorithms, state.algorithms, "{name} switches");
         assert_eq!(reloaded.policy, state.policy, "{name} policy");
         assert_eq!(reloaded.revision, state.revision, "{name} revision");
@@ -350,12 +385,29 @@ fn the_daemon_reads_the_hand_edited_control_documents_and_writes_the_canonical_m
                 .collect();
             assert_eq!(held, listed, "{name} {field} switches");
         }
-        // Rewritten with the canonical word and nothing else changed.
+        // `outside_request`: a word the agents accept is written back canonical; absent, or a
+        // value nobody accepts (the agents keep what they had), is written as the default.
+        let outside = &manifest[&format!("{name}.outside_request")];
+        let canonical = if outside == "unknown" {
+            "block"
+        } else {
+            outside.as_str()
+        };
+        assert_eq!(
+            state.outside_request.as_str(),
+            canonical,
+            "{name} outside_request"
+        );
+        // Rewritten with the canonical words and nothing else changed.
         let written: Value = serde_json::from_str(&fs::read_to_string(&path).unwrap()).unwrap();
         assert_eq!(
             written["mode"],
             manifest[&format!("{name}.mode")].as_str(),
             "{name} rewritten mode"
+        );
+        assert_eq!(
+            written["outside_request"], canonical,
+            "{name} rewritten outside_request"
         );
         for field in ["algorithms", "revision", "updated_at"] {
             assert_eq!(written[field], original[field], "{name} {field} kept");

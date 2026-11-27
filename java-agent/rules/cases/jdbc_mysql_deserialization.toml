@@ -6,8 +6,8 @@ op = "jdbc.connect"
 args = { url = "jdbc:mysql://127.0.0.1:3306/test?autoDeserialize=true&queryInterceptors=com.mysql.cj.jdbc.interceptors.ServerStatusDiffInterceptor" }
 
 [case.primary]
-effect = "none"
-why = "the primary flags this URL only when a request parameter carries it; outside a request there is none"
+effect = "block"
+rule = "jdbc_mysql_deserialization"
 
 [case.backport]
 effect = "block"
@@ -27,8 +27,8 @@ query = "id=7"
 headers = { User-Agent = "Mozilla/5.0 (X11; Linux x86_64) Firefox/128.0", Accept = "text/html" }
 
 [case.primary]
-effect = "none"
-why = "the primary flags this URL only when a request parameter carries it; this request does not"
+effect = "block"
+rule = "jdbc_mysql_deserialization"
 
 [case.backport]
 effect = "block"
@@ -58,6 +58,46 @@ args = { url = "jdbc:mysql://127.0.0.1:3306/test?autoDeserialize=true&queryInter
 method = "POST"
 uri = "/app/datasource/test"
 query = "url=jdbc%3Amysql%3A%2F%2F127.0.0.1%3A3306%2Ftest%3FautoDeserialize%3Dtrue%26queryInterceptors%3Dcom.mysql.cj.jdbc.interceptors.ServerStatusDiffInterceptor"
+headers = { User-Agent = "Mozilla/5.0 (X11; Linux x86_64) Firefox/128.0", Accept = "text/html" }
+
+[case.primary]
+effect = "block"
+rule = "jdbc_mysql_deserialization"
+
+[case.backport]
+effect = "block"
+rule = "jdbc_mysql_deserialization"
+
+[[case]]
+name = "mysql-autodeserialize-outside-request-log-only"
+kind = "attack"
+via = "sink"
+op = "jdbc.connect"
+args = { url = "jdbc:mysql://127.0.0.1:3306/test?autoDeserialize=true&queryInterceptors=com.mysql.cj.jdbc.interceptors.ServerStatusDiffInterceptor" }
+control = { outside_request = "log" }
+
+[case.primary]
+effect = "log"
+rule = "jdbc_mysql_deserialization"
+why = "outside_request is log: outside a request the finding is logged and the operation runs"
+
+[case.backport]
+effect = "log"
+rule = "jdbc_mysql_deserialization"
+why = "outside_request is log: outside a request the finding is logged and the operation runs"
+
+[[case]]
+name = "mysql-autodeserialize-in-request-log-only"
+kind = "attack"
+via = "request-sink"
+op = "jdbc.connect"
+args = { url = "jdbc:mysql://127.0.0.1:3306/test?autoDeserialize=true&queryInterceptors=com.mysql.cj.jdbc.interceptors.ServerStatusDiffInterceptor" }
+control = { outside_request = "log" }
+
+[case.request]
+method = "GET"
+uri = "/app/report"
+query = "id=7"
 headers = { User-Agent = "Mozilla/5.0 (X11; Linux x86_64) Firefox/128.0", Accept = "text/html" }
 
 [case.primary]

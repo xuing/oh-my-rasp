@@ -146,11 +146,86 @@ impl Mode {
     }
 }
 
+/// Whether an agent blocks a finding made on a thread that serves no HTTP request (a scheduled
+/// job, a message consumer, start-up code), on every agent line. Inside a request nothing changes.
+///
+/// Read as `block` or `log` in any letter case with characters up to U+0020 around the word
+/// ignored, as both agent engines read it (`OutsideRequest.parse`), and written as the lowercase
+/// word. Absent or null means the default, `block`. A value nobody accepts is kept out of the
+/// daemon's state: the agents ignore it and keep what they had, and the daemon, which cannot
+/// carry it, writes `block` instead of reinitialising the whole document as it does for an
+/// unknown `mode` (that would reset the mode too).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize)]
+#[serde(rename_all = "lowercase")]
+pub enum OutsideRequest {
+    /// Block outside a request as inside one (the default).
+    #[default]
+    Block,
+    /// Record the finding with the action `log` and let the operation run.
+    Log,
+}
+
+impl OutsideRequest {
+    pub fn parse(value: &str) -> Option<Self> {
+        match value
+            .trim_matches(|c: char| c <= ' ')
+            .to_lowercase()
+            .as_str()
+        {
+            "block" => Some(Self::Block),
+            "log" => Some(Self::Log),
+            _ => None,
+        }
+    }
+
+    #[cfg(test)]
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Block => "block",
+            Self::Log => "log",
+        }
+    }
+
+    /// The setting a cloud policy carries, in `config.hardening.outside_request` (the
+    /// per-application `protection.hardening` setting of the control plane), if it carries one
+    /// the agents accept.
+    pub fn of_policy(policy: &str) -> Option<Self> {
+        let value: serde_json::Value = serde_json::from_str(policy).ok()?;
+        Self::parse(
+            value
+                .get("config")?
+                .get("hardening")?
+                .get("outside_request")?
+                .as_str()?,
+        )
+    }
+}
+
+fn outside_request_or_default<'de, D: serde::Deserializer<'de>>(
+    deserializer: D,
+) -> Result<OutsideRequest, D::Error> {
+    let value = serde_json::Value::deserialize(deserializer)?;
+    Ok(match &value {
+        serde_json::Value::Null => OutsideRequest::Block,
+        serde_json::Value::String(text) => OutsideRequest::parse(text).unwrap_or_else(|| {
+            tracing::warn!(value = %text, "unknown outside_request in the control file; writing block");
+            OutsideRequest::Block
+        }),
+        other => {
+            tracing::warn!(value = %other, "outside_request in the control file is not a word; writing block");
+            OutsideRequest::Block
+        }
+    })
+}
+
 /// Serializable control document — exactly what is written to the control file
 /// and what the agent parses.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ControlState {
     pub mode: Mode,
+    /// Whether a finding outside an HTTP request blocks; see [`OutsideRequest`].
+    #[serde(default, deserialize_with = "outside_request_or_default")]
+    pub outside_request: OutsideRequest,
     /// Per-algorithm enable flags. An algorithm absent from this map is treated
     /// as enabled by the agent; a present `false` disables it.
     #[serde(default)]
@@ -172,6 +247,7 @@ impl ControlState {
     fn initial(mode: Mode) -> Self {
         Self {
             mode,
+            outside_request: OutsideRequest::Block,
             algorithms: BTreeMap::new(),
             policy: None,
             revision: 1,
@@ -254,15 +330,31 @@ impl Controller {
     /// Apply a partial update from the console. Any field left `None` is kept. When the
     /// resulting document would be larger than the agents read, nothing changes and the error is
     /// a [`ControlTooLarge`].
+    #[cfg(test)]
     pub fn update(
         &self,
         mode: Option<Mode>,
+        algorithms: Option<BTreeMap<String, bool>>,
+    ) -> Result<ControlState> {
+        self.update_with(mode, None, algorithms)
+    }
+
+    /// Apply a partial update from the console: the mode, `outside_request` and per-algorithm
+    /// switches. Any field left `None` is kept. When the resulting document would be larger than
+    /// the agents read, nothing changes and the error is a [`ControlTooLarge`].
+    pub fn update_with(
+        &self,
+        mode: Option<Mode>,
+        outside_request: Option<OutsideRequest>,
         algorithms: Option<BTreeMap<String, bool>>,
     ) -> Result<ControlState> {
         let mut guard = self.state.lock().expect("control mutex");
         let mut next = guard.clone();
         if let Some(mode) = mode {
             next.mode = mode;
+        }
+        if let Some(outside_request) = outside_request {
+            next.outside_request = outside_request;
         }
         if let Some(updates) = algorithms {
             for (name, enabled) in updates {
@@ -293,6 +385,11 @@ impl Controller {
     ///
     /// When the policy asked for is the one installed, the refusal of an earlier policy no
     /// longer applies and is cleared.
+    ///
+    /// A new policy that carries `config.hardening.outside_request` sets the document's
+    /// `outside_request` too (see [`OutsideRequest::of_policy`]). It is applied when the policy
+    /// changes, like the policy itself: a later console change stands until the cloud assigns a
+    /// different policy, and a withdrawn policy, or one without the setting, leaves it as it is.
     pub fn set_policy_assigned(
         &self,
         policy: Option<String>,
@@ -307,6 +404,9 @@ impl Controller {
             .as_deref()
             .map(|text| policy_identity(text, assignment));
         let mut next = guard.clone();
+        if let Some(outside_request) = policy.as_deref().and_then(OutsideRequest::of_policy) {
+            next.outside_request = outside_request;
+        }
         next.policy = policy;
         next.revision += 1;
         next.updated_at = now_rfc3339();
@@ -597,6 +697,7 @@ mod tests {
     fn state_of_size(bytes: usize) -> ControlState {
         let mut state = ControlState {
             mode: Mode::Monitor,
+            outside_request: OutsideRequest::Block,
             algorithms: BTreeMap::new(),
             policy: Some(String::new()),
             revision: 2,
@@ -1027,5 +1128,102 @@ mod tests {
         let ctrl = Controller::load_or_init(&path, Mode::Monitor).unwrap();
         assert_eq!(ctrl.snapshot().mode, Mode::Monitor);
         assert_eq!(ctrl.snapshot().revision, 1);
+    }
+
+    #[test]
+    fn outside_request_reads_block_and_log_in_any_case_and_nothing_else() {
+        for (text, want) in [
+            ("block", Some(OutsideRequest::Block)),
+            (" LOG\t", Some(OutsideRequest::Log)),
+            ("Log", Some(OutsideRequest::Log)),
+            ("monitor", None),
+            ("off", None),
+            ("", None),
+        ] {
+            assert_eq!(OutsideRequest::parse(text), want, "{text:?}");
+        }
+        assert_eq!(OutsideRequest::default(), OutsideRequest::Block);
+    }
+
+    /// An unknown `outside_request` in a hand-edited file keeps the rest of the document (an
+    /// unknown mode would reinitialise it, resetting the mode too) and is written as block.
+    #[test]
+    fn an_unknown_outside_request_is_written_as_block_and_keeps_the_document() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("control.json");
+        for found in [r#""sometimes""#, "true", "7"] {
+            std::fs::write(
+                &path,
+                format!(r#"{{"mode":"block","outside_request":{found},"revision":7}}"#),
+            )
+            .unwrap();
+            let ctrl = Controller::load_or_init(&path, Mode::Monitor).unwrap();
+            let state = ctrl.snapshot();
+            assert_eq!(state.mode, Mode::Block, "{found}: not reinitialised");
+            assert_eq!(state.revision, 7, "{found}");
+            assert_eq!(state.outside_request, OutsideRequest::Block, "{found}");
+            let written: serde_json::Value =
+                serde_json::from_str(&std::fs::read_to_string(&path).unwrap()).unwrap();
+            assert_eq!(written["outside_request"], "block", "{found}");
+        }
+    }
+
+    /// A file written before the setting existed has none: it means block, and the daemon writes it.
+    #[test]
+    fn a_document_without_outside_request_means_block() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("control.json");
+        std::fs::write(&path, r#"{"mode":"monitor","revision":3}"#).unwrap();
+        let ctrl = Controller::load_or_init(&path, Mode::Off).unwrap();
+        assert_eq!(ctrl.snapshot().outside_request, OutsideRequest::Block);
+        assert_eq!(ctrl.snapshot().mode, Mode::Monitor);
+    }
+
+    /// The cloud's setting travels in the policy's `config.hardening` and is applied when the policy
+    /// changes. A console change stands until the cloud assigns a different policy; withdrawing the
+    /// policy, or a policy without the setting, leaves it.
+    #[test]
+    fn the_policy_sets_outside_request_when_it_changes() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("control.json");
+        let ctrl = Controller::load_or_init(&path, Mode::Block).unwrap();
+        let log = r#"{"version":1,"config":{"hardening":{"outside_request":"log"}}}"#;
+        assert!(ctrl.set_policy(Some(log.into())).unwrap());
+        assert_eq!(ctrl.snapshot().outside_request, OutsideRequest::Log);
+
+        ctrl.update_with(None, Some(OutsideRequest::Block), None)
+            .unwrap();
+        assert!(
+            !ctrl.set_policy(Some(log.into())).unwrap(),
+            "unchanged policy"
+        );
+        assert_eq!(
+            ctrl.snapshot().outside_request,
+            OutsideRequest::Block,
+            "the console change stands while the policy is unchanged"
+        );
+
+        let log_again = r#"{"version":2,"config":{"hardening":{"outside_request":" Log "}}}"#;
+        assert!(ctrl.set_policy(Some(log_again.into())).unwrap());
+        assert_eq!(ctrl.snapshot().outside_request, OutsideRequest::Log);
+
+        for silent in [
+            r#"{"version":3}"#,
+            r#"{"version":4,"config":{"hardening":{"outside_request":"sometimes"}}}"#,
+            "not json",
+        ] {
+            assert!(ctrl.set_policy(Some(silent.into())).unwrap());
+            assert_eq!(
+                ctrl.snapshot().outside_request,
+                OutsideRequest::Log,
+                "{silent}"
+            );
+        }
+        assert!(ctrl.set_policy(None).unwrap());
+        assert_eq!(
+            ctrl.snapshot().outside_request,
+            OutsideRequest::Log,
+            "withdrawn"
+        );
     }
 }
