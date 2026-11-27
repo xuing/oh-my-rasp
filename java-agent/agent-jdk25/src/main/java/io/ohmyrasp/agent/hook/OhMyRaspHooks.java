@@ -404,6 +404,7 @@ public final class OhMyRaspHooks {
   // that block again, and a read whose recording completes a body state with a blocking finding throws it.
 
   public static Object enterBodyRead(Object source) {
+    if (HookActivation.inactive()) return null;
     try {
       return RequestBodyCapture.enter(source);
     } catch (OhMyRaspBlockException blocked) {
@@ -414,6 +415,7 @@ public final class OhMyRaspHooks {
   }
 
   public static Object enterBodyRead(Object source, java.nio.Buffer buffer) {
+    if (HookActivation.inactive()) return null;
     try {
       return RequestBodyCapture.enter(source, buffer);
     } catch (OhMyRaspBlockException blocked) {
@@ -424,6 +426,7 @@ public final class OhMyRaspHooks {
   }
 
   public static void abortBodyRead(Object token) {
+    if (HookActivation.inactive()) return;
     try {
       RequestBodyCapture.abort(token);
     } catch (Throwable ignored) {

@@ -61,9 +61,14 @@ final class HookActivationTest {
     OhMyRaspHooks.reportTo(JsonEventLogger.newForTesting(null, log.toString(), 0, true, console, console));
     System.setProperty("ohmyrasp.block", "true");
     URL metadata = new URL("http://169.254.169.254/latest/meta-data/");
-    // The control: with the hooks on, the same call is a detection that blocks and is written.
-    assertThrows(OhMyRaspBlockException.class, () -> OhMyRaspHooks.beforeUrlOpen(metadata));
+    // The control: with the hooks on, the same calls are detections that are written, and a remote JNDI name blocks
+    // outside a request too (an intrinsic finding; a metadata destination alone only logs there).
+    assertThrows(OhMyRaspBlockException.class,
+        () -> OhMyRaspHooks.beforeJndiLookup("ldap://attacker.example/Exploit"));
     assertTrue(Files.size(log) > 0, "the control detection was not written");
+    Files.delete(log);
+    OhMyRaspHooks.beforeUrlOpen(metadata);
+    assertTrue(Files.exists(log) && Files.size(log) > 0, "the metadata control was not written");
     Files.delete(log);
 
     HookActivation.deactivate();
@@ -81,7 +86,10 @@ final class HookActivationTest {
     Object request = new Request();
     assertTrue(OhMyRaspHooks.admitServletRequest(request, null), "an inactive admission admits");
     assertFalse(OhMyRaspHooks.currentRequest().active(), "an inactive admission opened a request");
-    assertNull(OhMyRaspHooks.enterBodyRead(), "an inactive body read records nothing");
+    assertNull(OhMyRaspHooks.enterBodyRead(new Object()), "an inactive body read records nothing");
+    assertNull(OhMyRaspHooks.enterBodyRead(new Object(), java.nio.ByteBuffer.allocate(4)),
+        "an inactive buffer read records nothing");
+    OhMyRaspHooks.abortBodyRead(new Object()); // inert: a token the recorder never gave is not even looked at
     assertNull(OhMyRaspHooks.beginGeneratedLines(Path.of("/tmp/x.sh")));
     Object value = new Object();
     assertSame(value, OhMyRaspHooks.jmxAttributeDisplayReceiver(value));
