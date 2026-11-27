@@ -204,7 +204,7 @@
     "lambda": 1
    },
    "io/ohmyrasp/agent/hook/OhMyRaspHooks": {
-    "lambda": 22
+    "lambda": 24
    },
    "io/ohmyrasp/agent/log/JsonEventLogger": {
     "lambda": 2
@@ -216,7 +216,10 @@
     "record": 3
    },
    "io/ohmyrasp/agent/model/RequestContext": {
-    "lambda": 2
+    "lambda": 3
+   },
+   "io/ohmyrasp/agent/model/RequestContext$Inputs": {
+    "record": 3
    },
    "io/ohmyrasp/agent/policy/AgentPolicy": {
     "lambda": 2
@@ -235,7 +238,7 @@
     "record": 3
    },
    "io/ohmyrasp/agent/runtime/AgentRuntime": {
-    "lambda": 5
+    "lambda": 6
    }
   }
  }
