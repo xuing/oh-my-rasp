@@ -115,13 +115,79 @@ final class JsonEventLoggerDiagnosticTest {
   }
 
   @Test
-  void aDiagnosticAfterTheLoggerStoppedIsDroppedNotWritten(@TempDir Path dir) throws Exception {
+  void aDiagnosticAfterTheLoggerShutDownIsDroppedNotWritten(@TempDir Path dir) throws Exception {
     Path log = dir.resolve("events.jsonl");
     JsonEventLogger logger = JsonEventLogger.newForTesting(null, log.toString(), 0, false, quiet(), quiet());
 
-    logger.stop();
+    logger.shutdown(TimeUnit.SECONDS.toMillis(BOUND_SECONDS));
     logger.recordDiagnostic("hook_miss", FIELDS);
 
+    assertEquals(1, logger.diagnosticsDroppedCount());
+    assertFalse(Files.exists(log) && Files.readString(log).contains("diagnostic"), "nothing written");
+  }
+
+  /** A start that failed cancels the logger: a diagnostic after that is dropped and counted, on every target. */
+  @Test
+  void aDiagnosticAfterTheLoggerWasCancelledIsDroppedNotWritten(@TempDir Path dir) throws Exception {
+    Path log = dir.resolve("events.jsonl");
+    JsonEventLogger file = JsonEventLogger.newForTesting(null, log.toString(), 0, false, quiet(), quiet());
+    ByteArrayOutputStream err = new ByteArrayOutputStream();
+    JsonEventLogger console = JsonEventLogger.newForTesting(null, "stderr", 0, true, quiet(), new PrintStream(err));
+
+    file.cancel();
+    console.cancel();
+    file.recordDiagnostic("hook_miss", FIELDS);
+    console.recordDiagnostic("hook_miss", FIELDS);
+
+    assertEquals(1, file.diagnosticsDroppedCount());
+    assertEquals(1, console.diagnosticsDroppedCount());
+    assertFalse(Files.exists(log), "nothing written to the spool");
+    assertEquals("", err.toString(StandardCharsets.UTF_8), "nothing printed");
+  }
+
+  /**
+   * Before {@link JsonEventLogger#start} nothing is written: the primary starts the logger before its commit, and a
+   * logger nobody started (a start that failed before it, or one that never ran) writes no diagnostic either.
+   */
+  @Test
+  void aDiagnosticBeforeTheLoggerStartedIsDroppedNotWritten(@TempDir Path dir) throws Exception {
+    Path log = dir.resolve("events.jsonl");
+    JsonEventLogger file = JsonEventLogger.unstartedForTesting(log.toString(), quiet(), quiet());
+    ByteArrayOutputStream err = new ByteArrayOutputStream();
+    JsonEventLogger console = JsonEventLogger.unstartedForTesting("stderr", quiet(), new PrintStream(err));
+
+    file.recordDiagnostic("hook_miss", FIELDS);
+    console.recordDiagnostic("hook_miss", FIELDS);
+
+    assertEquals(1, file.diagnosticsDroppedCount());
+    assertEquals(1, console.diagnosticsDroppedCount());
+    assertFalse(Files.exists(log), "nothing written to the spool");
+    assertEquals("", err.toString(StandardCharsets.UTF_8), "nothing printed");
+
+    console.start();
+    console.recordDiagnostic("hook_miss", FIELDS);
+    assertTrue(err.toString(StandardCharsets.UTF_8).contains("\"kind\":\"diagnostic\""), "written once started");
+    assertEquals(1, console.diagnosticsDroppedCount());
+  }
+
+  /** A cancel that comes while the line waits for the write lock still leaves the spool without it. */
+  @Test
+  void aCancelWhileTheDiagnosticWaitsForTheLockWritesNothing(@TempDir Path dir) throws Exception {
+    Path log = dir.resolve("events.jsonl");
+    JsonEventLogger logger = JsonEventLogger.newForTesting(null, log.toString(), 0, true, quiet(), quiet());
+    Thread worker;
+    logger.writeLock.lock();
+    try {
+      worker = new Thread(() -> logger.recordDiagnostic("hook_miss", FIELDS), "ohmyrasp-test-hook-miss");
+      worker.start();
+      awaitQueuedOn(logger.writeLock);
+      logger.cancel();
+    } finally {
+      logger.writeLock.unlock();
+    }
+    worker.join(TimeUnit.SECONDS.toMillis(BOUND_SECONDS));
+
+    assertFalse(worker.isAlive());
     assertEquals(1, logger.diagnosticsDroppedCount());
     assertFalse(Files.exists(log) && Files.readString(log).contains("diagnostic"), "nothing written");
   }

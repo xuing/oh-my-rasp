@@ -147,6 +147,9 @@ public final class JsonEventLogger {
   private volatile boolean closed;
   // Set by cancel, for a start that failed: every event from then on is dropped, and nothing is written.
   private volatile boolean cancelled;
+  // Set by start, for every target (a console or none target has no writer to show it): a diagnostic is written
+  // only by a logger that started and was not cancelled. Written under lifecycle.
+  private volatile boolean started;
   private volatile ControlPlaneClient controlPlaneClient;
 
   private JsonEventLogger() {
@@ -227,15 +230,19 @@ public final class JsonEventLogger {
    * Starts the writer thread of a file target and registers the JVM shutdown hook that flushes its queue, on the
    * start thread before any hook acts. The hook is registered first: when the JVM is already shutting down that
    * throws and nothing is started. Synchronised with the shutdown hook, which then waits for a start in progress
-   * and closes a logger that is fully started; a start after the hook has begun throws. A logger without a queue,
-   * a started one and a cancelled one start nothing more.
+   * and closes a logger that is fully started; a start after the hook has begun throws. A logger without a queue
+   * only records that it started; a started one and a cancelled one start nothing more.
    */
   public void start() {
-    if (queue == null) {
-      return;
-    }
     synchronized (lifecycle) {
-      if (writer != null || cancelled) {
+      if (cancelled) {
+        return;
+      }
+      if (queue == null) {
+        started = true;
+        return;
+      }
+      if (writer != null) {
         return;
       }
       if (shutdownBegan) {
@@ -257,6 +264,7 @@ public final class JsonEventLogger {
       }
       shutdownHook = hook;
       writer = thread;
+      started = true;
     }
   }
 
@@ -370,13 +378,14 @@ public final class JsonEventLogger {
    * <p>A diagnostic has a path of its own and never shares the detections': it does not take a slot of the detection
    * queue, it is not part of a detection batch (so a line that could not be encoded cannot make a batch with
    * detections fail), and it waits at most 100 ms for a lock and is dropped, and counted
-   * in {@link #diagnosticsDroppedCount}, when the logger is closing, the lock stays busy or the write fails. It goes
+   * in {@link #diagnosticsDroppedCount}, when the logger has not started or was cancelled (a start that failed),
+   * when it is closing, the lock stays busy or the write fails. It goes
    * to the spool file, or, for a console target, to the console under a lock of its own. It is never mirrored to the
    * console of a file target (it names source paths) and never goes to the direct-cloud client.
    */
   public void recordDiagnostic(String diagnostic, String fields) {
     try {
-      if (!running || closed || target == LogTarget.NONE) {
+      if (!started || cancelled || !running || closed || target == LogTarget.NONE) {
         diagnosticsDropped.incrementAndGet();
         return;
       }
@@ -412,6 +421,9 @@ public final class JsonEventLogger {
       return false;
     }
     try {
+      if (cancelled) {
+        return false; // cancelled while this line waited for the lock: a failed start writes nothing
+      }
       Path parent = logPath.getParent();
       if (parent != null) {
         Files.createDirectories(parent);
@@ -440,6 +452,9 @@ public final class JsonEventLogger {
       return false;
     }
     try {
+      if (cancelled) {
+        return false; // cancelled while this line waited for the lock: a failed start writes nothing
+      }
       String line = "[OHMYRASP] " + json + System.lineSeparator();
       if (target == LogTarget.STDERR) {
         errStream().print(line);
