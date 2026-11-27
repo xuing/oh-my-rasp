@@ -1,5 +1,6 @@
 package io.ohmyrasp.agent.java17;
 
+import io.ohmyrasp.agent.file.ContainerDeploymentVisitor;
 import io.ohmyrasp.agent.file.UnixDeleteVisitor;
 import io.ohmyrasp.agent.file.UnixReadVisitor;
 import io.ohmyrasp.agent.file.DirectoryListVisitor;
@@ -48,6 +49,7 @@ public final class Java17FileTransformer implements ClassFileTransformer {
 
   private static boolean isTarget(String className) {
     return UnixReadVisitor.FACTORY.equals(className) || DirectoryListVisitor.matches(className)
+        || ContainerDeploymentVisitor.matches(className)
         || "java/io/FileInputStream".equals(className)
         || "java/io/FileOutputStream".equals(className)
         || "java/io/RandomAccessFile".equals(className)
@@ -68,6 +70,9 @@ public final class Java17FileTransformer implements ClassFileTransformer {
       MethodVisitor methodVisitor = super.visitMethod(access, name, descriptor, signature, exceptions);
       if (methodVisitor == null) {
         return methodVisitor;
+      }
+      if (ContainerDeploymentVisitor.matches(className)) {
+        return ContainerDeploymentVisitor.wrap(className, methodVisitor, access, name, descriptor);
       }
       if (PlotWriteVisitor.OWNER.equals(className))
         methodVisitor = PlotWriteVisitor.wrap(methodVisitor, access, name, descriptor, HOOKS);

@@ -8,7 +8,7 @@
 
 | Metric | Count |
 |--------|------:|
-| Hook families (instrumentation points) | 31 |
+| Hook families (instrumentation points) | 32 |
 | Detector capabilities (public `detect*` entry points) | 42 |
 | Algorithm signatures asserted in acceptance scripts | 176 |
 | End-to-end vulnerability acceptance scenarios | 136 |
@@ -26,6 +26,7 @@ rewrites a family of risky call sites and routes them to a detector class.
 | ArgumentParser | `ArgumentParserHookModule` |
 | Base64 | `Base64HookModule` |
 | ClassLoader | `ClassLoaderHookModule` |
+| ContainerDeployment | `ContainerDeploymentHookModule` |
 | ElasticLz4 | `ElasticLz4HookModule` |
 | Expression | `ExpressionHookModule` |
 | File | `FileHookModule` |

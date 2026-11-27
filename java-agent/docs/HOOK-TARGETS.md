@@ -223,15 +223,18 @@ before the hooked code existed). `never`: not reported.
 | `jakarta.servlet:jakarta.servlet-api` | 5.0.0 | 6 | 6 |
 | `jakarta.servlet:jakarta.servlet-api` | 6.0.0 | 6 | 6 |
 | `jakarta.servlet:jakarta.servlet-api` | 6.1.0 | 6 | 6 |
-| `org.apache.tomcat:tomcat-catalina` | 7.0.109 | 17 | 26 |
-| `org.apache.tomcat:tomcat-catalina` | 8.5.100 | 15 | 25 |
-| `org.apache.tomcat:tomcat-catalina` | 9.0.124 | 15 | 25 |
-| `org.apache.tomcat:tomcat-catalina` | 10.0.27 | 15 | 25 |
-| `org.apache.tomcat:tomcat-catalina` | 10.1.62 | 15 | 25 |
-| `org.apache.tomcat:tomcat-catalina` | 11.0.29 | 15 | 25 |
-| `org.apache.tomcat.embed:tomcat-embed-core` | 9.0.124 | 24 | 34 |
-| `org.apache.tomcat.embed:tomcat-embed-core` | 10.1.62 | 24 | 34 |
-| `org.apache.tomcat.embed:tomcat-embed-core` | 11.0.29 | 24 | 34 |
+| `org.apache.tomcat:tomcat-catalina` | 7.0.109 | 18 | 27 |
+| `org.apache.tomcat:tomcat-catalina` | 8.5.100 | 16 | 26 |
+| `org.apache.tomcat:tomcat-catalina` | 9.0.124 | 16 | 26 |
+| `org.apache.tomcat:tomcat-catalina` | 10.0.27 | 16 | 26 |
+| `org.apache.tomcat:tomcat-catalina` | 10.1.62 | 16 | 26 |
+| `org.apache.tomcat:tomcat-catalina` | 11.0.29 | 16 | 26 |
+| `org.apache.tomcat.embed:tomcat-embed-core` | 9.0.124 | 25 | 35 |
+| `org.apache.tomcat.embed:tomcat-embed-core` | 10.1.62 | 25 | 35 |
+| `org.apache.tomcat.embed:tomcat-embed-core` | 11.0.29 | 25 | 35 |
+| `org.apache.tomcat:tomcat-jasper` | 9.0.124 | 1 | 1 |
+| `org.apache.tomcat:tomcat-jasper` | 10.1.62 | 1 | 1 |
+| `org.apache.tomcat:tomcat-jasper` | 11.0.29 | 1 | 1 |
 | `org.apache.shiro:shiro-web` | 1.2.4 | 0 | 1 |
 | `org.apache.shiro:shiro-web` | 1.13.0 | 0 | 1 |
 | `org.apache.shiro:shiro-web` | 2.0.6 | 0 | 1 |
@@ -321,7 +324,6 @@ Hook families that rewrite no method of any listed library, from
 |---|---|
 | `Java{N}Base64Transformer` | JDK-only: rewrites java.util.Base64$Decoder. |
 | `Java{N}ClassLoaderTransformer` | JDK-only: rewrites java.net.URLClassLoader, sun.rmi.server.LoaderHandler and URLClassPath loaders. |
-| `Java{N}FileTransformer` | JDK-only: rewrites java.io and java.nio.file classes. |
 | `Java{N}JavaBeansTransformer` | JDK-only: rewrites java.beans.Expression and Statement and com.sun.beans.decoder.DocumentHandler. |
 | `Java{N}JmxTransformer` | JDK-only: rewrites the JDK's DefaultMBeanServerInterceptor and BadAttributeValueExpException. |
 | `Java{N}JndiTransformer` | JDK-only: rewrites javax.naming.InitialContext and com.sun.jndi URL contexts. |
