@@ -25,16 +25,16 @@ import java.util.Set;
  * <li>in any other text (a command, an SQL statement, a path or URL that a sink assembled, a rule's composite
  *     detail): each body value at least {@link #MIN_EMBEDDED_CHARS} long is replaced by {@code [body:<field>]},
  *     then, where no value was, each body name that long by {@code body:<name>} cut, and then every run of text
- *     that still matches a body value over at least {@link #MIN_VALUE_FRAGMENT_CHARS} characters, or the body's
- *     text over at least {@link #MIN_FRAGMENT_CHARS}, by {@code [body]}.</li>
+ *     that still matches a body value over at least {@link #MIN_VALUE_FRAGMENT_CHARS} characters by
+ *     {@code [body]}. Pieces of the body's keys and syntax are not matched: names may be shown.</li>
  * </ul>
  * A value shorter than {@link #MIN_EMBEDDED_CHARS} inside a longer text is not replaced: one or two characters
  * cannot be told from the text's own. Text equal to one of {@code kept} (the request's own method, URI and query,
  * which an event carries anyway) is left as it is, and so are the values of {@link #RULE_CONSTANTS}, which the
  * engines do not pass here.
  *
- * <p>Cost: only a finding made while a body is recorded is scrubbed. The body's 8-character fragments are
- * hashed once per scrubber (at most {@link RequestBody#MAX_UNITS} of them), then each text costs a pass per body
+ * <p>Cost: only a finding made while a body is recorded is scrubbed. The pieces of the body's values are hashed
+ * once per scrubber (fewer than {@link RequestBody#MAX_UNITS} of them), then each text costs a pass per body
  * value and name and one hash lookup per character.
  */
 public final class BodyEvidence {
@@ -59,8 +59,8 @@ public final class BodyEvidence {
   private final RequestBodySnapshot body;
   private final Collection<String> requestNames;
   private final Collection<String> kept;
-  private Set<String> fragments;
-  private Set<String> valueFragments;
+  private Set<String> fragments;      // MIN_FRAGMENT_CHARS pieces of the values, for messages
+  private Set<String> valueFragments; // MIN_VALUE_FRAGMENT_CHARS pieces of the values, for details
 
   private BodyEvidence(RequestBodySnapshot body, Collection<String> requestNames, Collection<String> kept) {
     this.body = body;
@@ -151,11 +151,12 @@ public final class BodyEvidence {
     List<int[]> taken = new ArrayList<int[]>();
     take(valueIntervals, covered, taken);
     take(nameIntervals, covered, taken);
-    // What is left that still matches a body value over MIN_VALUE_FRAGMENT_CHARS characters, or the body's
-    // text (keys and syntax included) over MIN_FRAGMENT_CHARS.
+    // What is left that still matches a body value over MIN_VALUE_FRAGMENT_CHARS characters (over
+    // MIN_FRAGMENT_CHARS in a rule's message). Pieces of the body's keys and syntax are not matched: a name may be
+    // shown, and the rule's own words often share a key ("template", "path").
     boolean[] fragment = new boolean[text.length()];
-    if (valuePieces) mark(text, valueFragments(), MIN_VALUE_FRAGMENT_CHARS, covered, fragment);
-    mark(text, fragments(), MIN_FRAGMENT_CHARS, covered, fragment);
+    int piece = valuePieces ? MIN_VALUE_FRAGMENT_CHARS : MIN_FRAGMENT_CHARS;
+    mark(text, valueFragments(piece), piece, covered, fragment);
     if (taken.isEmpty()) {
       boolean any = false;
       for (boolean f : fragment) any |= f;
@@ -212,28 +213,16 @@ public final class BodyEvidence {
     }
   }
 
-  /** Every MIN_VALUE_FRAGMENT_CHARS-character piece of the body's values, made once per scrubber. */
-  private Set<String> valueFragments() {
-    Set<String> grams = valueFragments;
+  /** Every {@code size}-character piece of the body's values, made once per scrubber and size. */
+  private Set<String> valueFragments(int size) {
+    Set<String> grams = size == MIN_VALUE_FRAGMENT_CHARS ? valueFragments : fragments;
     if (grams != null) return grams;
     grams = new HashSet<String>();
     for (String value : body.values().values()) {
-      for (int i = 0; i + MIN_VALUE_FRAGMENT_CHARS <= value.length(); i++) {
-        grams.add(value.substring(i, i + MIN_VALUE_FRAGMENT_CHARS));
-      }
+      for (int i = 0; i + size <= value.length(); i++) grams.add(value.substring(i, i + size));
     }
-    valueFragments = grams;
-    return grams;
-  }
-
-  /** Every MIN_FRAGMENT_CHARS-character piece of the body's text, made once per scrubber. */
-  private Set<String> fragments() {
-    Set<String> grams = fragments;
-    if (grams != null) return grams;
-    String raw = body.text();
-    grams = new HashSet<String>(Math.max(16, raw.length() * 2));
-    for (int i = 0; i + MIN_FRAGMENT_CHARS <= raw.length(); i++) grams.add(raw.substring(i, i + MIN_FRAGMENT_CHARS));
-    fragments = grams;
+    if (size == MIN_VALUE_FRAGMENT_CHARS) valueFragments = grams;
+    else fragments = grams;
     return grams;
   }
 

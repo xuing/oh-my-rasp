@@ -15,7 +15,7 @@ because it does not exist until its call site first runs; those are counted per 
 fail a case only on the lines in ENFORCED_HIDDEN (none of the primary's: it still has lambdas and method references).
 
 A case with a request body is also broken when a detection's message or details (but the keys that hold a rule's
-own constants) carry text of that body: a string value of a JSON body three characters or longer, a value of a form
+own constants, and the body:<name> and [body:<field>] markers that name a body field) carry text of that body: a string value of a JSON body three characters or longer, a value of a form
 body, an eight-character piece of any other body, or the canary password the JSON cases carry. An event names the
 body field its evidence came from, never the value.
 
@@ -67,6 +67,9 @@ CANARY = "hunter2-Secret"
 RULE_CONSTANTS = {"decision_basis", "policy_basis", "process_operation", "argument_count", "multipart_source",
                   "archive_policy_sha256", "method"}
 PLACEHOLDER = re.compile(r"\{\w+\}")
+# What an event shows of a body by design: a field's name (body:<name>) and the marker of a value ([body:<field>]).
+# A name may contain text that is also a value ("v.template.custom" and "custom"): it is left out of the check.
+BODY_MARKERS = re.compile(r"\[body(?::[^\]]*)?\]|body:[^\s,\]\"]+")
 
 
 def body_texts(body: str, content_type: str) -> list[str]:
@@ -112,6 +115,7 @@ def body_text_in_events(case: rule_cases.Case, events: list[dict]) -> str | None
         fields += [(key, value) for key, value in (event.get("details") or {}).items()
                    if key not in RULE_CONSTANTS and isinstance(value, str)]
         for key, value in fields:
+            value = BODY_MARKERS.sub(" ", value)
             for text in texts:
                 if text in value:
                     return f"{event.get('algorithm')}: {key} carries {text[:24]!r}"

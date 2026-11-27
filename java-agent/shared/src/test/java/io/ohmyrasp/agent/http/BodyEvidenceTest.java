@@ -86,4 +86,15 @@ class BodyEvidenceTest {
         evidence.scrubMessage("JSON Patch path carries a runtime expression payload"));
     assertEquals("body:path", evidence.scrub("path"), "a detail that is the key is still marked");
   }
+
+  @Test
+  void aKeyThatHoldsAValueOrARuleWordIsShownAsAName() {
+    RequestBodySnapshot solr = RequestBodySnapshot.of(
+        "{\"wt\":\"velocity\",\"v.template\":\"custom\",\"v.template.custom\":\"#set($x='')\"}", "application/json");
+    BodyEvidence evidence = BodyEvidence.of(solr, null, null);
+    assertEquals("Request parameter carries a runtime template payload",
+        evidence.scrubMessage("Request parameter carries a runtime template payload"), "a word the body has as a key");
+    assertEquals("body:v.template.custom", evidence.scrub("v.template.custom"));
+    assertEquals("[body:wt]", evidence.scrub("velocity"));
+  }
 }
