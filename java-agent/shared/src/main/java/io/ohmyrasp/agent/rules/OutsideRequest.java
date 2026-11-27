@@ -195,6 +195,27 @@ public final class OutsideRequest {
     return null;
   }
 
+  private static final String[] POLICY_PATH = {"config", "hardening", CONTROL_KEY};
+
+  /**
+   * Whether the cloud's policy permits blocking outside a request: false when its {@code config.hardening} sets
+   * {@value #CONTROL_KEY} to {@code log}, true otherwise (absent, null, {@code block}, a value nobody accepts, a
+   * policy that is not a JSON object, or no policy). Blocking outside a request needs both this and the host's
+   * setting, as blocking a hardening finding needs both the top-level {@code mode} and the policy's
+   * {@code hardening.mode}: withdrawing the policy withdraws its setting with it.
+   */
+  public static boolean policyPermitsBlocking(String policy) {
+    if (policy == null) {
+      return true;
+    }
+    try {
+      Object value = io.ohmyrasp.agent.util.ControlDocument.valueAt(policy, POLICY_PATH);
+      return !(value instanceof String) || !Boolean.FALSE.equals(parse((String) value));
+    } catch (IllegalArgumentException malformed) {
+      return true;
+    }
+  }
+
   private static boolean contains(String[] values, String value) {
     for (int i = 0; i < values.length; i++) {
       if (values[i].equals(value)) {

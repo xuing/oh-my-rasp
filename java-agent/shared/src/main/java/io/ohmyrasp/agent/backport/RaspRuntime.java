@@ -244,15 +244,26 @@ public final class RaspRuntime {
    */
   static final class Settings {
     final Mode mode; // null = unset -> legacy behavior
+    // The host's outside_request: the document's top-level member, or the start-up value.
+    final boolean hostOutsideRequestBlocks;
+    // Whether the installed cloud policy permits blocking outside a request (its config.hardening).
+    final boolean policyPermitsOutsideBlock;
+    // Whether a context-dependent finding outside a request blocks: both the host and the policy say so.
     final boolean outsideRequestBlocks;
 
-    Settings(Mode mode, boolean outsideRequestBlocks) {
+    Settings(Mode mode, boolean hostOutsideRequestBlocks) {
+      this(mode, hostOutsideRequestBlocks, true);
+    }
+
+    Settings(Mode mode, boolean hostOutsideRequestBlocks, boolean policyPermitsOutsideBlock) {
       this.mode = mode;
-      this.outsideRequestBlocks = outsideRequestBlocks;
+      this.hostOutsideRequestBlocks = hostOutsideRequestBlocks;
+      this.policyPermitsOutsideBlock = policyPermitsOutsideBlock;
+      this.outsideRequestBlocks = hostOutsideRequestBlocks && policyPermitsOutsideBlock;
     }
   }
 
-  private static final String[] CONTROL_KEYS = {"mode", OutsideRequest.CONTROL_KEY};
+  private static final String[] CONTROL_KEYS = {"mode", OutsideRequest.CONTROL_KEY, "policy"};
 
   /**
    * The detection mode, whether a finding outside a request blocks, and the control file that
@@ -337,19 +348,21 @@ public final class RaspRuntime {
       Settings now = current;
       // An unrecognised mode changes nothing.
       Mode parsed = values[0] instanceof String ? parseMode((String) values[0]) : null;
-      current = new Settings(parsed != null ? parsed : now.mode, outsideRequest(values[1], now));
+      // The cloud's outside_request travels in the policy and leaves with it; a document without a policy has none.
+      boolean policyPermits = OutsideRequest.policyPermitsBlocking(values[2] instanceof String ? (String) values[2] : null);
+      current = new Settings(parsed != null ? parsed : now.mode, outsideRequest(values[1], now), policyPermits);
     }
 
     /**
-     * The {@code outside_request} a document sets: absent or null returns the start-up value, a
-     * value nobody accepts changes nothing, as an unrecognised mode does.
+     * The host's {@code outside_request} a document sets: absent or null returns the start-up value,
+     * a value nobody accepts changes nothing, as an unrecognised mode does.
      */
     private boolean outsideRequest(Object value, Settings now) {
       if (value == null) {
-        return startup.outsideRequestBlocks;
+        return startup.hostOutsideRequestBlocks;
       }
       Boolean parsed = value instanceof String ? OutsideRequest.parse((String) value) : null;
-      return parsed != null ? parsed.booleanValue() : now.outsideRequestBlocks;
+      return parsed != null ? parsed.booleanValue() : now.hostOutsideRequestBlocks;
     }
 
     private void restoreStartup() {

@@ -144,6 +144,39 @@ final class OutsideRequestTest {
     return failure != null;
   }
 
+  /**
+   * The cloud's setting travels in the policy (config.hardening.outside_request) through the managed path, beside a
+   * rule that blocks the finding: log in the policy makes it log outside a request, and withdrawing the policy (a
+   * document without one) withdraws the setting with it. Blocking needs both the host's member and the policy's.
+   */
+  @Test
+  void theCloudsSettingTravelsInThePolicyAndLeavesWithIt() {
+    String rule = "\"rules\":[{\"algorithm\":\"readFile_unwanted\",\"action\":\"block\"}]";
+    String logPolicy = "{\"version\":7,\"status\":\"active\"," + rule
+        + ",\"config\":{\"hardening\":{\"outside_request\":\"log\"}}}";
+    assertTrue(AgentRuntime.get().apply("{\"mode\":\"block\",\"policy\":" + quoted(logPolicy) + "}"));
+    assertFalse(AgentRuntime.get().state().outsideRequestBlocks(), "the policy says log");
+    assertTrue(AgentRuntime.get().state().hostOutsideRequestBlocks(), "the host's start-up value is untouched");
+    assertDoesNotThrow(() -> OhMyRaspHooks.beforeFileRead(PASSWD));
+
+    assertTrue(AgentRuntime.get().apply(
+        "{\"mode\":\"block\",\"outside_request\":\"block\",\"policy\":" + quoted(logPolicy) + "}"));
+    assertDoesNotThrow(() -> OhMyRaspHooks.beforeFileRead(PASSWD), "the host's block does not override the cloud's log");
+
+    String blockPolicy = "{\"version\":8,\"status\":\"active\"," + rule + "}";
+    assertTrue(AgentRuntime.get().apply("{\"mode\":\"block\",\"policy\":" + quoted(blockPolicy) + "}"));
+    assertThrows(OhMyRaspBlockException.class, () -> OhMyRaspHooks.beforeFileRead(PASSWD), "a policy without it");
+
+    assertTrue(AgentRuntime.get().apply("{\"mode\":\"block\",\"policy\":" + quoted(logPolicy) + "}"));
+    assertTrue(AgentRuntime.get().apply("{\"mode\":\"block\",\"revision\":9}"));
+    assertTrue(AgentRuntime.get().state().outsideRequestBlocks(), "withdrawn");
+    assertThrows(OhMyRaspBlockException.class, () -> OhMyRaspHooks.beforeFileRead(PASSWD), "withdrawn");
+  }
+
+  private static String quoted(String json) {
+    return "\"" + json.replace("\\", "\\\\").replace("\"", "\\\"") + "\"";
+  }
+
   @Test
   void anAbsentOrNullMemberMeansTheStartUpValueAndAValueNobodyAcceptsChangesNothing() {
     AgentRuntime runtime = AgentRuntime.newForTesting();

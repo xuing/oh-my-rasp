@@ -113,10 +113,17 @@ public final class AgentRuntime {
     }
 
     /**
-     * Whether a finding on a thread that serves no HTTP request blocks (when blocking is permitted
-     * and the finding asks for it): the control setting {@code outside_request}, block by default.
+     * Whether a context-dependent finding with no request evidence blocks (when blocking is permitted and the finding
+     * asks for it): both the host's {@code outside_request} ({@link #hostOutsideRequestBlocks}) and the installed
+     * policy's {@code config.hardening.outside_request} allow it. Either one set to {@code log} makes it log, as either
+     * the top-level mode or the policy's hardening mode stops a hardening finding from blocking.
      */
     public boolean outsideRequestBlocks() {
+      return outsideRequestBlocks && policy.permitsOutsideRequestBlock();
+    }
+
+    /** The host's {@code outside_request}: the control document's top-level member, or the start-up value. */
+    public boolean hostOutsideRequestBlocks() {
       return outsideRequestBlocks;
     }
 
