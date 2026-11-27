@@ -81,12 +81,13 @@ public final class OhMyRaspHooks {
       StackWalker.getInstance(
           Set.of(StackWalker.Option.RETAIN_CLASS_REFERENCE, StackWalker.Option.SHOW_REFLECT_FRAMES));
 
-  // The logger emit reports to in place of the shared one; tests set it, and Warmup while it runs.
+  // The logger emit reports to in place of the shared one; tests set it. The warm-up's thread needs none: events()
+  // gives it a logger of its own that writes nothing.
   private static volatile JsonEventLogger reporter;
 
   private OhMyRaspHooks() {}
 
-  /** Makes emit report to {@code logger}, or to the shared logger again when it is null. Tests and Warmup. */
+  /** Makes emit report to {@code logger}, or to the shared logger again when it is null. Tests. */
   static void reportTo(JsonEventLogger logger) {
     reporter = logger;
   }
@@ -96,7 +97,14 @@ public final class OhMyRaspHooks {
     return reporter;
   }
 
-  private static JsonEventLogger events() {
+  /**
+   * The logger this thread's reports go to: the discarding one of the warm-up's own thread (and of that thread
+   * only, whenever it still runs), else the replacement a test set, else the shared logger.
+   */
+  static JsonEventLogger events() {
+    if (Thread.currentThread() instanceof Warmup.Worker warmUp) {
+      return warmUp.sink();
+    }
     JsonEventLogger replaced = reporter;
     return replaced != null ? replaced : JsonEventLogger.get();
   }
@@ -2754,7 +2762,7 @@ public final class OhMyRaspHooks {
     return URLEncoder.encode(value == null ? "" : value, StandardCharsets.UTF_8);
   }
 
-  private static void quiet(String hook, Throwable throwable) {
+  static void quiet(String hook, Throwable throwable) {
     JsonEventLogger events = events();
     if (events.discards()) {
       return; // the warm-up's logger: nothing is reported anywhere

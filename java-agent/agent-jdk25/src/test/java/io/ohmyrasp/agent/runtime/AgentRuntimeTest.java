@@ -471,6 +471,19 @@ final class AgentRuntimeTest {
     assertEquals(DetectionMode.BLOCK, runtime.mode(), "a poll after stop changed the state");
   }
 
+  /** The direct-cloud client's install into a runtime whose start was undone is refused. */
+  @Test
+  void aStoppedRuntimeInstallsNoDirectPolicy() {
+    AgentRuntime runtime = AgentRuntime.newForTesting();
+    runtime.installDirectPolicy(AgentPolicy.parse("{\"version\":3}"), "before");
+    runtime.stop();
+
+    runtime.installDirectPolicy(AgentPolicy.parse("{\"version\":9}"), "after");
+
+    assertEquals(3, runtime.policy().version(), "a stopped runtime published a cloud policy");
+    assertEquals("before", runtime.state().policyAgentKey());
+  }
+
   /** A stop that runs before start reaches its poller keeps the poller from starting at all. */
   @Test
   void aStopBeforeThePollerStartsKeepsItFromStarting(@TempDir Path dir) {
