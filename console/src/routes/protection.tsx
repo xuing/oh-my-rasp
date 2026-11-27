@@ -35,6 +35,8 @@ function ProtectionBody({ appId }: { appId: string }) {
   const privileged = isPrivileged();
 
   const byKey = (key: string): Json => settings.data?.find((s) => s.key === key)?.value ?? {};
+  // Only an environment's setting can inherit; the application's own card has nothing to inherit from.
+  const outsideInherited = Boolean(scope.environmentId) && Boolean(settings.data?.find((s) => s.key === "protection.hardening")?.inherited?.includes("outside_request"));
 
   const save = useMutation({
     mutationFn: (v: { key: string; value: Json }) => api.updateApplicationSetting(appId, v.key, v.value, scope.environmentId),
@@ -44,7 +46,7 @@ function ProtectionBody({ appId }: { appId: string }) {
   return (
     <QueryState isLoading={settings.isLoading} isError={settings.isError} error={settings.error}>
       <Grid className="lg:grid-cols-2">
-        <HardeningCard t={t} value={byKey("protection.hardening")} disabled={!privileged} onSave={(value) => save.mutate({ key: "protection.hardening", value })} saving={save.isPending} />
+        <HardeningCard t={t} value={byKey("protection.hardening")} environment={Boolean(scope.environmentId)} outsideInherited={outsideInherited} disabled={!privileged} onSave={(value) => save.mutate({ key: "protection.hardening", value })} saving={save.isPending} />
         <AllowlistCard t={t} value={byKey("protection.allowlist")} disabled={!privileged} onSave={(value) => save.mutate({ key: "protection.allowlist", value })} saving={save.isPending} />
         <AlarmCard t={t} value={byKey("alerts.delivery")} disabled={!privileged} onSave={(value) => save.mutate({ key: "alerts.delivery", value })} saving={save.isPending} />
         <DependencyCard t={t} value={byKey("dependency.vulnerability_policy")} disabled={!privileged} onSave={(value) => save.mutate({ key: "dependency.vulnerability_policy", value })} saving={save.isPending} />
@@ -122,37 +124,49 @@ function Toggle({ label, checked, onChange, disabled }: { label: string; checked
   );
 }
 
-function HardeningCard({ t, value, onSave, saving, disabled }: { t: TFn; value: Json; onSave: (v: Json) => void; saving: boolean; disabled: boolean }) {
+// The select value that hands outside_request back to the application: saved as null, which the API
+// treats as "no member in this environment's row".
+const INHERIT = "inherit";
+
+function HardeningCard({ t, value, environment, outsideInherited, onSave, saving, disabled }: { t: TFn; value: Json; environment: boolean; outsideInherited: boolean; onSave: (v: Json) => void; saving: boolean; disabled: boolean }) {
+  // An environment whose row has no outside_request shows the application's value as inherited, and
+  // keeps it inherited on save unless the user picks block or log.
+  const savedOutside = outsideInherited ? INHERIT : ((value.outside_request as string) ?? "block");
   const [mode, setMode] = useState((value.mode as string) ?? "monitor");
   const [reflection, setReflection] = useState((value.block_reflection_abuse as boolean) ?? true);
   const [process, setProcess] = useState((value.block_process_execution as boolean) ?? true);
-  const [outside, setOutside] = useState((value.outside_request as string) ?? "block");
+  const [outside, setOutside] = useState(savedOutside);
   useEffect(() => {
     setMode((value.mode as string) ?? "monitor");
     setReflection((value.block_reflection_abuse as boolean) ?? true);
     setProcess((value.block_process_execution as boolean) ?? true);
-    setOutside((value.outside_request as string) ?? "block");
-  }, [value]);
+    setOutside(savedOutside);
+  }, [value, savedOutside]);
   const dirty =
     mode !== ((value.mode as string) ?? "monitor") ||
     reflection !== ((value.block_reflection_abuse as boolean) ?? true) ||
     process !== ((value.block_process_execution as boolean) ?? true) ||
-    outside !== ((value.outside_request as string) ?? "block");
+    outside !== savedOutside;
+  const inheritedValue = (value.outside_request as string) ?? "block";
 
   return (
-    <CardShell t={t} icon={<ShieldHalf className="h-3.5 w-3.5" />} eyebrow={t("Runtime")} title={t("Hardening")} section="hardening" disabled={disabled} saving={saving} dirty={dirty} onSave={() => onSave({ mode, block_reflection_abuse: reflection, block_process_execution: process, outside_request: outside })}>
+    <CardShell t={t} icon={<ShieldHalf className="h-3.5 w-3.5" />} eyebrow={t("Runtime")} title={t("Hardening")} section="hardening" disabled={disabled} saving={saving} dirty={dirty} onSave={() => onSave({ mode, block_reflection_abuse: reflection, block_process_execution: process, outside_request: outside === INHERIT ? null : outside })}>
       <Field label={t("Mode")}>
         <SelectInput value={mode} disabled={disabled} onChange={(e) => setMode(e.target.value)}>
           <option value="monitor">{t("Monitor — log only")}</option>
           <option value="enforce">{t("Enforce — block")}</option>
         </SelectInput>
       </Field>
-      <Field label={t("Outside an HTTP request")} hint={t("Findings with no HTTP request behind them: scheduled jobs, message consumers, background threads, start-up code. Every agent line applies it. Log only does not stop findings whose argument is the exploit itself (a remote JNDI name, a gadget class in a stream); findings that only show an operation happened (a cloud metadata address, a remote DTD) are logged there either way. A host can also choose log on its own console; blocking needs both.")}>
+      <Field label={t("Outside an HTTP request")} hint={t("Findings with no HTTP request behind them: scheduled jobs, message consumers, background threads, start-up code. Every agent line applies it. Log only does not stop findings whose argument is the exploit itself (a remote JNDI name, a gadget class in a stream). A cloud provider's own credential client reading the instance metadata address is logged, not blocked, when no request is behind it. A host can also choose log on its own console; blocking needs both.")}>
         <SelectInput value={outside} disabled={disabled} onChange={(e) => setOutside(e.target.value)}>
+          {environment && <option value={INHERIT}>{t("Inherit from the application")}</option>}
           <option value="block">{t("Block — as inside a request")}</option>
           <option value="log">{t("Log only — record and let it run")}</option>
         </SelectInput>
       </Field>
+      {outsideInherited && outside === INHERIT && (
+        <p className="text-[12px] text-faint">{t("Inherited from the application: {value}. A change to the application setting applies here.", { value: inheritedValue === "log" ? t("Log only — record and let it run") : t("Block — as inside a request") })}</p>
+      )}
       <Toggle label={t("Block reflection abuse")} checked={reflection} onChange={setReflection} disabled={disabled} />
       <Toggle label={t("Block process execution")} checked={process} onChange={setProcess} disabled={disabled} />
     </CardShell>

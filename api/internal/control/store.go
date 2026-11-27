@@ -2385,9 +2385,12 @@ func (s *MemoryStore) effectiveApplicationSettingLocked(appID string, environmen
 		if setting, ok := s.applicationSettings[applicationSettingMapKey(appID, environmentID, key)]; ok {
 			setting.Value = copyStringAnyMap(setting.Value)
 			if normalizeSettingKey(key) == "protection.hardening" {
-				setting.Value = InheritHardeningMembers(setting.Value, application.Value)
+				setting.Value, setting.Inherited = InheritHardeningMembers(setting.Value, application.Value)
 			}
 			return setting
+		}
+		if normalizeSettingKey(key) == "protection.hardening" {
+			application.Inherited = InheritableHardeningMembers()
 		}
 	}
 	return application
@@ -2721,23 +2724,33 @@ func ParseOutsideRequest(text string) string {
 // InheritHardeningMembers fills the members of an environment's protection.hardening that its row
 // does not carry from the application's value (or the default): an environment row stored before
 // outside_request existed, or saved without it, inherits the application's setting instead of
-// silently meaning block. It returns env, changed in place.
-func InheritHardeningMembers(env map[string]any, application map[string]any) map[string]any {
+// silently meaning block. It returns env, changed in place, and the names of the members it filled
+// in (ApplicationSetting.Inherited), so a reader can tell an inherited value from the row's own.
+func InheritHardeningMembers(env map[string]any, application map[string]any) (map[string]any, []string) {
 	if env == nil {
-		return env
+		return env, nil
 	}
+	var inheritedNames []string
 	if _, ok := env["outside_request"]; !ok {
 		if inherited, ok := application["outside_request"]; ok {
 			env["outside_request"] = inherited
+			inheritedNames = append(inheritedNames, "outside_request")
 		}
 	}
-	return env
+	return env, inheritedNames
+}
+
+// InheritableHardeningMembers lists the members of protection.hardening an environment can inherit.
+// An environment with no row of its own inherits all of them.
+func InheritableHardeningMembers() []string {
+	return []string{"outside_request"}
 }
 
 // DefaultHardeningMembers fills an application's protection.hardening members its row does not
 // carry with the defaults: a row stored before outside_request existed means the default, block.
 func DefaultHardeningMembers(application map[string]any) map[string]any {
-	return InheritHardeningMembers(application, DefaultApplicationSettingValue("protection.hardening"))
+	filled, _ := InheritHardeningMembers(application, DefaultApplicationSettingValue("protection.hardening"))
+	return filled
 }
 
 func isApplicationScopedSetting(key string) bool {

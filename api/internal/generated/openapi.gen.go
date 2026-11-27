@@ -1134,12 +1134,15 @@ type ApplicationList struct {
 
 // ApplicationSetting defines model for ApplicationSetting.
 type ApplicationSetting struct {
-	ApplicationId string         `json:"application_id"`
-	EnvironmentId *string        `json:"environment_id,omitempty"`
-	Key           string         `json:"key"`
-	UpdatedAt     time.Time      `json:"updated_at"`
-	UpdatedBy     *string        `json:"updated_by,omitempty"`
-	Value         map[string]any `json:"value"`
+	ApplicationId string  `json:"application_id"`
+	EnvironmentId *string `json:"environment_id,omitempty"`
+
+	// Inherited Members of value that an environment's setting takes from the application's instead of its own row (protection.hardening's outside_request). Read-only: send null for a member to inherit it again. Absent when nothing is inherited, and never part of the policy's config.
+	Inherited *[]string      `json:"inherited,omitempty"`
+	Key       string         `json:"key"`
+	UpdatedAt time.Time      `json:"updated_at"`
+	UpdatedBy *string        `json:"updated_by,omitempty"`
+	Value     map[string]any `json:"value"`
 }
 
 // ApplicationSettingList defines model for ApplicationSettingList.

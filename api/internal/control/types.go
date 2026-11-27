@@ -426,8 +426,12 @@ type ApplicationSetting struct {
 	EnvironmentID string         `json:"environment_id,omitempty"`
 	Key           string         `json:"key"`
 	Value         map[string]any `json:"value"`
-	UpdatedBy     string         `json:"updated_by,omitempty"`
-	UpdatedAt     time.Time      `json:"updated_at"`
+	// Inherited names the members of Value an environment's setting takes from the application's
+	// instead of its own row. It is read-only metadata for the console: it is never stored, and
+	// ApplicationConfig (what the hosts download) carries Value alone.
+	Inherited []string  `json:"inherited,omitempty"`
+	UpdatedBy string    `json:"updated_by,omitempty"`
+	UpdatedAt time.Time `json:"updated_at"`
 }
 
 type ApplicationConfig struct {

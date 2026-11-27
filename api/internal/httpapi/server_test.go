@@ -2177,3 +2177,77 @@ func containsWorkloadInjection(items []any, workloadID string, status string) bo
 	}
 	return false
 }
+
+// The settings response says which members an environment inherits; the policy the hosts download
+// carries the resolved value and no marker.
+func TestHardeningSettingsReportInheritedOutsideRequest(t *testing.T) {
+	client := newTestClient(t)
+	token := client.login(t)
+	appAuth := defaultAppHeaders()
+	agent := client.requestWithHeaders(t, http.MethodPost, "/api/v1/agents/register", appAuth, map[string]any{
+		"environment_id": "env_default", "hostname": "scheduler-2", "runtime": "java", "version": "1.0.0",
+	})
+	agentID := stringValue(t, agent, "id")
+	const envPath = "/api/v1/applications/app_default/environments/env_default/settings"
+	put := func(path string, value map[string]any) {
+		client.request(t, http.MethodPut, path, token, map[string]any{"key": "protection.hardening", "value": value})
+	}
+	environmentSetting := func() map[string]any {
+		t.Helper()
+		for _, item := range arrayValue(t, client.request(t, http.MethodGet, envPath, token, nil), "items") {
+			if setting, ok := item.(map[string]any); ok && setting["key"] == "protection.hardening" {
+				return setting
+			}
+		}
+		t.Fatal("no protection.hardening setting")
+		return nil
+	}
+	check := func(label string, want string, inherited bool) {
+		t.Helper()
+		setting := environmentSetting()
+		if got := objectValue(t, setting, "value")["outside_request"]; got != want {
+			t.Fatalf("%s: expected outside_request %q, got %#v", label, want, setting)
+		}
+		marker, marked := setting["inherited"].([]any)
+		if inherited != (marked && len(marker) == 1 && marker[0] == "outside_request") {
+			t.Fatalf("%s: expected inherited=%v, got %#v", label, inherited, setting["inherited"])
+		}
+		if !inherited && setting["inherited"] != nil {
+			t.Fatalf("%s: expected no inherited member, got %#v", label, setting["inherited"])
+		}
+		pulled := client.requestWithHeaders(t, http.MethodGet, "/api/v1/agents/"+agentID+"/policy", appAuth, nil)
+		hardening := objectValue(t, objectValue(t, pulled, "config"), "hardening")
+		if hardening["outside_request"] != want {
+			t.Fatalf("%s: expected the agent policy to carry %q, got %#v", label, want, hardening)
+		}
+		if _, leaked := hardening["inherited"]; leaked {
+			t.Fatalf("%s: the inherited marker reached the agent policy: %#v", label, hardening)
+		}
+		if _, leaked := pulled["inherited"]; leaked {
+			t.Fatalf("%s: the inherited marker reached the agent policy: %#v", label, pulled)
+		}
+	}
+
+	check("environment without a row", "block", true)
+	put("/api/v1/applications/app_default/settings", map[string]any{"mode": "monitor", "outside_request": "log"})
+	check("application log", "log", true)
+	// The fixed console sends null for an inherited member; older clients omitted it. Both inherit.
+	put(envPath, map[string]any{"mode": "enforce", "block_reflection_abuse": false, "outside_request": nil})
+	check("saved another member with null", "log", true)
+	put(envPath, map[string]any{"mode": "enforce"})
+	check("saved another member without the member", "log", true)
+	put("/api/v1/applications/app_default/settings", map[string]any{"mode": "monitor", "outside_request": "block"})
+	check("application switched to block", "block", true)
+	put(envPath, map[string]any{"mode": "enforce", "outside_request": "log"})
+	check("explicit environment value", "log", false)
+	put("/api/v1/applications/app_default/settings", map[string]any{"mode": "monitor", "outside_request": "block"})
+	check("explicit value after an application save", "log", false)
+	put(envPath, map[string]any{"mode": "enforce", "outside_request": nil})
+	check("null after explicit", "block", true)
+
+	for _, item := range arrayValue(t, client.request(t, http.MethodGet, "/api/v1/applications/app_default/settings", token, nil), "items") {
+		if setting, ok := item.(map[string]any); ok && setting["inherited"] != nil {
+			t.Fatalf("an application setting inherits nothing, got %#v", setting)
+		}
+	}
+}
