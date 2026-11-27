@@ -22,6 +22,43 @@ import java.util.concurrent.atomic.AtomicReference;
 import org.junit.jupiter.api.Test;
 
 final class ControlPlaneClientTest {
+  /**
+   * The client's requests are the agent's own I/O: on the thread that connects (where the JDK asks the proxy selector,
+   * and where the URL, DNS and socket hooks run) the hooks neither report nor block. Registration, the first request.
+   */
+  @Test
+  void theClientsRequestsAreTheAgentsOwnIo() throws Exception {
+    HttpServer server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+    // Registration, heartbeat and the policy pull: each answered, so start() makes all three.
+    server.createContext("/api/v1/",
+        exchange -> respond(exchange, 200, "{\"id\":\"agt_test\",\"policy_id\":\"\",\"policy_version\":0}"));
+    server.start();
+    java.net.ProxySelector original = java.net.ProxySelector.getDefault();
+    List<Boolean> marked = java.util.Collections.synchronizedList(new ArrayList<>());
+    java.net.ProxySelector.setDefault(new java.net.ProxySelector() {
+      @Override public List<java.net.Proxy> select(java.net.URI uri) {
+        marked.add(io.ohmyrasp.agent.runtime.AgentOwnIo.active());
+        return List.of(java.net.Proxy.NO_PROXY);
+      }
+
+      @Override public void connectFailed(java.net.URI uri, java.net.SocketAddress address, IOException failure) {}
+    });
+    try {
+      ControlPlaneConfig config = new ControlPlaneConfig("http://127.0.0.1:" + server.getAddress().getPort(),
+          "app_test", "secret_test", "env_test", "node-test", "java", "1.0.0");
+      try (ControlPlaneClient client = ControlPlaneClient.start(config)) {
+        long deadline = System.nanoTime() + 5_000_000_000L;
+        while (marked.size() < 3 && System.nanoTime() < deadline) Thread.sleep(10);
+      }
+    } finally {
+      java.net.ProxySelector.setDefault(original);
+      server.stop(0);
+    }
+    assertTrue(marked.size() >= 3, "register, heartbeat and policy pull connected: " + marked);
+    assertTrue(marked.stream().allMatch(Boolean::booleanValue), "every connect marked: " + marked);
+    assertFalse(io.ohmyrasp.agent.runtime.AgentOwnIo.active(), "the test thread is not marked");
+  }
+
   @Test
   void registersAndUploadsDetection() throws Exception {
     List<String> requests = new ArrayList<>();
