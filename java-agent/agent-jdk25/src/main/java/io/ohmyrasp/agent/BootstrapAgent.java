@@ -6,6 +6,7 @@ import io.ohmyrasp.agent.asm.OhMyRaspTransformer;
 import io.ohmyrasp.agent.control.ControlPlaneClient;
 import io.ohmyrasp.agent.control.ControlPlaneConfig;
 import io.ohmyrasp.agent.hook.OhMyRaspHooks;
+import io.ohmyrasp.agent.hook.Warmup;
 import io.ohmyrasp.agent.log.JsonEventLogger;
 import io.ohmyrasp.agent.model.RequestContext;
 import io.ohmyrasp.agent.runtime.AgentRuntime;
@@ -136,6 +137,9 @@ public final class BootstrapAgent {
     // Then every other class of ours that a hook or the transformer can use, from the JAR's list. The classes
     // above came first because they read the settings AgentRuntime resolved from the agent arguments.
     Preload.load(preload, agentJar, BootstrapAgent.class.getClassLoader());
+    // And one pass of the hooks every request runs, so what only running code does (linking lambdas, the JDK's
+    // stream classes) happens here and not on the first request's thread.
+    Warmup.run();
     ClassFileTransformer transformer = new OhMyRaspTransformer(hookRegistry);
     instrumentation.addTransformer(transformer, true);
     started.transformer = transformer;
