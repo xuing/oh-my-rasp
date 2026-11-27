@@ -140,6 +140,7 @@ op = "beans.decode"
 args = { document = "<?xml version=\"1.0\"?><java><new class=\"java.io.PrintWriter\"><string>{tmp}/webapps/ROOT/d.jsp</string><method name=\"println\"><string>&lt;%= 1 %&gt;</string></method><method name=\"close\"/></new></java>", witness = "{tmp}/webapps/ROOT/d.jsp" }
 setup = { files = ["{tmp}/webapps/ROOT/index.html", "{tmp}/reports/index.txt"] }
 control = { outside_request = "log" }
+rule_events = 1
 
 [case.primary]
 effect = "log"
