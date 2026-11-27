@@ -1,5 +1,6 @@
 package io.ohmyrasp.agent.control;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -18,6 +19,9 @@ import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 import org.junit.jupiter.api.Test;
 
@@ -227,6 +231,89 @@ final class ControlPlaneClientTest {
         new ControlPlaneConfig("http://127.0.0.1:9", "a", "s", "e", "n", "java", "1"), (policy, key) -> installed.set(policy));
     closed.close();
     assertThrowsRejected(closed);
+  }
+
+  /**
+   * The policy response is parsed and its install has begun when close is called: close does not return until that
+   * install is over, so none can follow a close that has returned. (Before, close returned at once and the
+   * install went on.)
+   */
+  @Test
+  void closeWaitsForAPolicyInstallThatHasBegun() throws Exception {
+    HttpServer server = policyServer(null);
+    AtomicInteger installed = new AtomicInteger();
+    CountDownLatch installing = new CountDownLatch(1);
+    CountDownLatch release = new CountDownLatch(1);
+    try {
+      ControlPlaneClient client = ControlPlaneClient.start(config(server), (policy, key) -> {
+        installing.countDown();
+        try {
+          release.await();
+        } catch (InterruptedException e) {
+          Thread.currentThread().interrupt();
+          return;
+        }
+        installed.incrementAndGet();
+      });
+      assertTrue(installing.await(10, TimeUnit.SECONDS), "the policy install never began");
+      Thread closer = new Thread(client::close, "test-closer");
+      closer.start();
+      closer.join(500);
+      assertTrue(closer.isAlive(), "close returned while a policy install was in progress");
+      release.countDown();
+      closer.join(10_000);
+      assertFalse(closer.isAlive(), "close did not return once the install ended");
+      assertEquals(1, installed.get(), "the install in progress was abandoned");
+    } finally {
+      release.countDown();
+      server.stop(0);
+    }
+  }
+
+  /** A policy response that arrives after close is not installed. */
+  @Test
+  void aPolicyThatArrivesAfterCloseIsNotInstalled() throws Exception {
+    CountDownLatch answer = new CountDownLatch(1);
+    HttpServer server = policyServer(answer);
+    AtomicInteger installed = new AtomicInteger();
+    try {
+      ControlPlaneClient client = ControlPlaneClient.start(config(server), (policy, key) -> installed.incrementAndGet());
+      Thread.sleep(300);
+      client.close();
+      answer.countDown();
+      Thread.sleep(300);
+      assertEquals(0, installed.get(), "a policy fetched before close was installed after it");
+    } finally {
+      answer.countDown();
+      server.stop(0);
+    }
+  }
+
+  private static ControlPlaneConfig config(HttpServer server) {
+    return new ControlPlaneConfig(
+        "http://127.0.0.1:" + server.getAddress().getPort(),
+        "app_test", "secret_test", "env_test", "node-test", "java", "1.0.0");
+  }
+
+  /** A control plane that registers, accepts heartbeats and serves a policy, after {@code gate} opens when given. */
+  private static HttpServer policyServer(CountDownLatch gate) throws IOException {
+    HttpServer server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+    server.createContext("/api/v1/", exchange -> {
+      if (exchange.getRequestURI().getPath().endsWith("/policy")) {
+        if (gate != null) {
+          try {
+            gate.await(10, TimeUnit.SECONDS);
+          } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+          }
+        }
+        respond(exchange, 200, "{\"version\":9}");
+      } else {
+        respond(exchange, 200, "{\"id\":\"agt_close\",\"policy_id\":\"\",\"policy_version\":0}");
+      }
+    });
+    server.start();
+    return server;
   }
 
   private static void assertThrowsRejected(ControlPlaneClient closed) {

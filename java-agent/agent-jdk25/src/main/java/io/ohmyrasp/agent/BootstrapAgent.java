@@ -106,7 +106,7 @@ public final class BootstrapAgent {
   }
 
   /** What one start did that a failed start must undo, recorded before each step can fail. */
-  private static final class Started {
+  static final class Started {
     AgentRuntime runtime;
     JsonEventLogger logger;
     boolean hookMisses;
@@ -120,24 +120,47 @@ public final class BootstrapAgent {
      */
     void commit() {
       HookActivation.activate();
-      if (hookMisses) {
-        HookMisses.release();
+      // The hooks are on: nothing below may throw out of start, which the launcher would report as a failed start
+      // with hooks active.
+      try {
+        if (hookMisses) {
+          HookMisses.release();
+        }
+        if (controlPlane != null) {
+          startCloudReporting();
+        }
+      } catch (Throwable ignored) {
+        // Whatever failed here is not the start's.
       }
-      if (controlPlane != null) {
+    }
+
+    private void startCloudReporting() {
+      try {
+        // The logger sees the client only once its I/O is scheduled; a refused start leaves the logger without it.
+        controlPlane.startReporting();
+        logger.setControlPlaneClient(controlPlane);
+      } catch (Throwable refused) {
         try {
-          logger.setControlPlaneClient(controlPlane);
-          controlPlane.startReporting();
-        } catch (RuntimeException | Error refused) {
           logger.setControlPlaneClient(null);
-          controlPlane.close();
-          System.err.println("[OHMYRASP] direct cloud reporting did not start: " + refused);
-          return;
+        } catch (Throwable ignored) {
+          // Nothing more to undo.
         }
         try {
-          installCrashReporter(controlPlane);
-        } catch (RuntimeException | Error refused) {
-          // Crashes are not reported to the cloud; everything else is.
+          controlPlane.close();
+        } catch (Throwable ignored) {
+          // Closed as far as it can be.
         }
+        try {
+          System.err.println("[OHMYRASP] direct cloud reporting did not start: " + refused);
+        } catch (Throwable ignored) {
+          // A console the application broke does not fail a start that committed.
+        }
+        return;
+      }
+      try {
+        installCrashReporter(controlPlane);
+      } catch (Throwable refused) {
+        // Crashes are not reported to the cloud; everything else is.
       }
     }
 

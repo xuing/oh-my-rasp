@@ -206,10 +206,14 @@ public final class AgentRuntime {
   /**
    * Installs a policy from the direct-cloud client. The last source to install a policy owns it:
    * a later control-file policy replaces this one, and removing the control file leaves it in
-   * place, because the control file did not install it.
+   * place, because the control file did not install it. A stopped runtime installs nothing: the start that owned
+   * it failed and was undone.
    */
   public void installDirectPolicy(AgentPolicy policy, String agentKey) {
     synchronized (stateLock) {
+      if (stopped) {
+        return;
+      }
       ControlState current = state;
       state =
           new ControlState(
