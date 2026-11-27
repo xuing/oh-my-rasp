@@ -13,7 +13,12 @@
 // line's classes. The rule-cases probe fails when a class of ours loads during an operation.
 import java.util.zip.ZipFile
 
-/** The classes a class file names in its constant pool, by internal name. An object, so the task action captures no script. */
+/**
+ * The classes a class file names in its constant pool, by internal name: class entries, the types in field and method
+ * descriptors (of member references, invokedynamic sites and method types), and string constants that spell an agent
+ * class's name (a class loaded by name, or the owner a visitor writes into the code it injects). An object, so the
+ * task action captures no script.
+ */
 object PreloadClassRefs {
     fun of(bytes: ByteArray): Set<String> {
         val input = java.io.DataInputStream(bytes.inputStream())
@@ -22,12 +27,15 @@ object PreloadClassRefs {
         val utf8 = arrayOfNulls<String>(count)
         val classIndexes = mutableListOf<Int>()
         val descriptorIndexes = mutableListOf<Int>()
+        val stringIndexes = mutableListOf<Int>()
         var i = 1
         while (i < count) {
             when (val tag = input.readUnsignedByte()) {
                 1 -> utf8[i] = input.readUTF()
                 7 -> classIndexes += input.readUnsignedShort()
-                8, 16, 19, 20 -> input.skipBytes(2)
+                8 -> stringIndexes += input.readUnsignedShort()
+                16 -> descriptorIndexes += input.readUnsignedShort()
+                19, 20 -> input.skipBytes(2)
                 3, 4 -> input.skipBytes(4)
                 5, 6 -> { input.skipBytes(8); i++ }
                 9, 10, 11, 17, 18 -> input.skipBytes(4)
@@ -40,6 +48,9 @@ object PreloadClassRefs {
         val names = mutableSetOf<String>()
         for (index in classIndexes) utf8[index]?.let { names += it.trimStart('[').removePrefix("L").removeSuffix(";") }
         for (index in descriptorIndexes) utf8[index]?.let { d -> Regex("L([^;]+);").findAll(d).forEach { names += it.groupValues[1] } }
+        for (index in stringIndexes) utf8[index]?.let { text ->
+            if (Regex("io[./]ohmyrasp[./]agent[./][A-Za-z0-9_$./]+").matches(text)) names += text.replace('.', '/')
+        }
         return names
     }
 }
