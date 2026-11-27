@@ -12,6 +12,7 @@ function json(route: Route, data: unknown, status = 200) {
 
 async function setupConsole(page: Page, roles: string[] = ["admin"]) {
   const requests: RequestRecord[] = [];
+  const savedSettings: Record<string, Record<string, unknown>> = {};
   const state = {
     applications: [
       {
@@ -175,13 +176,17 @@ async function setupConsole(page: Page, roles: string[] = ["admin"]) {
       state.applications[0].environment_ids.push("env_stage");
       return json(route, { id: "env_stage", application_id: "app_main", ...(body as object) });
     }
+    // Settings keep what a PUT stored, so a test can read a saved value back.
     if (request.method() === "GET" && path === "/applications/app_main/settings") {
-      return json(route, { items: [{ application_id: "app_main", key: "protection.hardening", value: { mode: "monitor" } }] });
+      return json(route, { items: [{ application_id: "app_main", key: "protection.hardening", value: savedSettings[path] ?? { mode: "monitor" } }] });
     }
     if (request.method() === "GET" && path === "/applications/app_main/environments/env_prod/settings") {
-      return json(route, { items: [{ application_id: "app_main", environment_id: "env_prod", key: "protection.hardening", value: { mode: "monitor" } }] });
+      return json(route, { items: [{ application_id: "app_main", environment_id: "env_prod", key: "protection.hardening", value: savedSettings[path] ?? { mode: "monitor" } }] });
     }
-    if (request.method() === "PUT" && path.includes("/settings")) return json(route, { application_id: "app_main", ...(body as object) });
+    if (request.method() === "PUT" && path.includes("/settings")) {
+      savedSettings[path] = (body as { value?: Record<string, unknown> }).value ?? {};
+      return json(route, { application_id: "app_main", ...(body as object) });
+    }
 
     if (request.method() === "GET" && path === "/agents") return json(route, { items: state.agents });
     if (request.method() === "POST" && path === "/agents/register") {
@@ -291,6 +296,12 @@ test("application management and environment-scoped protection use real API cont
         (request.body as { value?: { outside_request?: string } }).value?.outside_request === "log"
     )
   ).toBeTruthy();
+
+  // Read back: a reload fetches the stored setting and shows what was saved.
+  await page.reload();
+  const reloaded = page.locator("section").filter({ hasText: "Hardening" });
+  await expect(reloaded.getByLabel("Mode")).toHaveValue("enforce");
+  await expect(reloaded.getByLabel("Outside an HTTP request")).toHaveValue("log");
 });
 
 test("instances expose onboarding, artifacts, mobile nav, and RBAC correctly", async ({ page }) => {

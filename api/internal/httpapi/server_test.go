@@ -1662,6 +1662,16 @@ func TestHardeningOutsideRequestTravelsInTheAgentPolicy(t *testing.T) {
 		t.Fatalf("expected the agent policy to carry outside_request log, got %#v", pulled)
 	}
 
+	// An environment row without the member inherits the application's value instead of meaning block.
+	client.request(t, http.MethodPut, "/api/v1/applications/app_default/environments/env_default/settings", token, map[string]any{
+		"key":   "protection.hardening",
+		"value": map[string]any{"mode": "enforce"},
+	})
+	pulled = client.requestWithHeaders(t, http.MethodGet, "/api/v1/agents/"+agentID+"/policy", appAuth, nil)
+	if got := hardening(pulled)["outside_request"]; got != "log" {
+		t.Fatalf("expected the environment to inherit outside_request log, got %#v", pulled)
+	}
+
 	// An environment's own setting wins over the application's.
 	client.request(t, http.MethodPut, "/api/v1/applications/app_default/environments/env_default/settings", token, map[string]any{
 		"key":   "protection.hardening",
@@ -1672,7 +1682,46 @@ func TestHardeningOutsideRequestTravelsInTheAgentPolicy(t *testing.T) {
 		t.Fatalf("expected the environment's outside_request block, got %#v", pulled)
 	}
 
-	for _, bad := range []any{"sometimes", true, 1} {
+	// Null removes the member: the environment inherits again; the application takes the default.
+	cleared := client.request(t, http.MethodPut, "/api/v1/applications/app_default/environments/env_default/settings", token, map[string]any{
+		"key":   "protection.hardening",
+		"value": map[string]any{"mode": "monitor", "outside_request": nil},
+	})
+	if _, stored := objectValue(t, cleared, "value")["outside_request"]; stored {
+		t.Fatalf("expected null to remove the stored member, got %#v", cleared)
+	}
+	pulled = client.requestWithHeaders(t, http.MethodGet, "/api/v1/agents/"+agentID+"/policy", appAuth, nil)
+	if got := hardening(pulled)["outside_request"]; got != "log" {
+		t.Fatalf("expected a cleared environment member to inherit the application's log, got %#v", pulled)
+	}
+	client.request(t, http.MethodPut, "/api/v1/applications/app_default/settings", token, map[string]any{
+		"key":   "protection.hardening",
+		"value": map[string]any{"mode": "monitor", "outside_request": nil},
+	})
+	pulled = client.requestWithHeaders(t, http.MethodGet, "/api/v1/agents/"+agentID+"/policy", appAuth, nil)
+	if got := hardening(pulled)["outside_request"]; got != "block" {
+		t.Fatalf("expected the default block once both are cleared, got %#v", pulled)
+	}
+
+	// The agents' grammar: characters up to U+0020 around the word are ignored, nothing else is.
+	accepted := client.request(t, http.MethodPut, "/api/v1/applications/app_default/settings", token, map[string]any{
+		"key":   "protection.hardening",
+		"value": map[string]any{"mode": "monitor", "outside_request": "\tLoG\u0001"},
+	})
+	if got := objectValue(t, accepted, "value")["outside_request"]; got != "log" {
+		t.Fatalf("expected padding up to U+0020 to be ignored, got %#v", accepted)
+	}
+
+	// The Kelvin sign lowercases to k in Java, Rust and Go alike: the four readers agree on it.
+	kelvin := client.request(t, http.MethodPut, "/api/v1/applications/app_default/settings", token, map[string]any{
+		"key":   "protection.hardening",
+		"value": map[string]any{"mode": "monitor", "outside_request": "BLOC\u212a"},
+	})
+	if got := objectValue(t, kelvin, "value")["outside_request"]; got != "block" {
+		t.Fatalf("expected the Kelvin sign to read as k, got %#v", kelvin)
+	}
+
+	for _, bad := range []any{"sometimes", true, 1, "\u00a0log", "log\u2003", "lo\u0261"} {
 		resp := client.raw(t, http.MethodPut, "/api/v1/applications/app_default/settings", token, nil, map[string]any{
 			"key":   "protection.hardening",
 			"value": map[string]any{"mode": "monitor", "outside_request": bad},

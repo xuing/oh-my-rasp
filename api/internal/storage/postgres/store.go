@@ -2743,23 +2743,31 @@ func (s *Store) validateApplicationSettingScope(ctx context.Context, q queryer, 
 }
 
 func (s *Store) effectiveApplicationSetting(ctx context.Context, q queryer, appID string, environmentID string, key string) (control.ApplicationSetting, error) {
+	hardening := normalizeSettingKey(key) == "protection.hardening"
+	application, err := s.applicationSettingByScope(ctx, q, appID, "", key)
+	switch {
+	case err == nil:
+		if hardening {
+			application.Value = control.DefaultHardeningMembers(application.Value)
+		}
+	case errors.Is(err, sql.ErrNoRows):
+		application = control.DefaultApplicationSetting(appID, environmentID, key, s.now().UTC())
+	default:
+		return control.ApplicationSetting{}, err
+	}
 	if environmentID != "" {
 		setting, err := s.applicationSettingByScope(ctx, q, appID, environmentID, key)
 		if err == nil {
+			if hardening {
+				setting.Value = control.InheritHardeningMembers(setting.Value, application.Value)
+			}
 			return setting, nil
 		}
 		if !errors.Is(err, sql.ErrNoRows) {
 			return control.ApplicationSetting{}, err
 		}
 	}
-	setting, err := s.applicationSettingByScope(ctx, q, appID, "", key)
-	if err == nil {
-		return setting, nil
-	}
-	if errors.Is(err, sql.ErrNoRows) {
-		return control.DefaultApplicationSetting(appID, environmentID, key, s.now().UTC()), nil
-	}
-	return control.ApplicationSetting{}, err
+	return application, nil
 }
 
 func (s *Store) applicationSettingByScope(ctx context.Context, q queryer, appID string, environmentID string, key string) (control.ApplicationSetting, error) {

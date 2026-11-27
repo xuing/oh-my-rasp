@@ -147,7 +147,7 @@ function HardeningCard({ t, value, onSave, saving, disabled }: { t: TFn; value: 
           <option value="enforce">{t("Enforce — block")}</option>
         </SelectInput>
       </Field>
-      <Field label={t("Outside an HTTP request")} hint={t("Findings on scheduled jobs, message consumers, background threads and start-up code. Every agent line applies it.")}>
+      <Field label={t("Outside an HTTP request")} hint={t("Findings with no HTTP request behind them: scheduled jobs, message consumers, background threads, start-up code. Every agent line applies it. Log only does not stop findings whose argument is the exploit itself (a remote JNDI name, a gadget class in a stream); findings that only show an operation happened (a cloud metadata address, a remote DTD) are logged there either way. A host can also choose log on its own console; blocking needs both.")}>
         <SelectInput value={outside} disabled={disabled} onChange={(e) => setOutside(e.target.value)}>
           <option value="block">{t("Block — as inside a request")}</option>
           <option value="log">{t("Log only — record and let it run")}</option>
