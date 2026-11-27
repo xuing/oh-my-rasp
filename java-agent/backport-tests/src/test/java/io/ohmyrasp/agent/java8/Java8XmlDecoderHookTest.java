@@ -3,22 +3,31 @@ package io.ohmyrasp.agent.java8;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import io.ohmyrasp.agent.backport.ControlAccess;
+import io.ohmyrasp.agent.hook.HookActivation;
+import java.beans.Expression;
+import java.beans.Statement;
 import java.io.ByteArrayOutputStream;
 import java.io.InputStream;
+import java.io.PrintStream;
 import java.io.PrintWriter;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collections;
+import java.util.Iterator;
 import java.util.List;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.function.Executable;
+import org.junit.jupiter.api.io.TempDir;
 import org.objectweb.asm.ClassReader;
 import org.objectweb.asm.ClassVisitor;
 import org.objectweb.asm.MethodVisitor;
@@ -35,10 +44,18 @@ final class Java8XmlDecoderHookTest {
   private static final String INVOKE = "sun/reflect/misc/MethodUtil.invoke"
       + "(Ljava/lang/reflect/Method;Ljava/lang/Object;[Ljava/lang/Object;)Ljava/lang/Object;";
 
+  private static final List<String> DECODER_STACK =
+      Arrays.asList("java.beans.XMLDecoder", "com.sun.beans.decoder.DocumentHandler");
+
+  @TempDir Path dir;
+
   @AfterEach
   void clearProperties() {
+    HookActivation.activate();
+    ControlAccess.poll(dir.resolve("no-control-file.json"));
     System.clearProperty("ohmyrasp.java8.log");
     System.clearProperty("ohmyrasp.java8.block");
+    System.clearProperty("ohmyrasp.debug");
   }
 
   @Test
@@ -96,11 +113,195 @@ final class Java8XmlDecoderHookTest {
     assertFalse(Files.exists(log));
   }
 
+  @Test
+  void anOperationNoRuleCanMatchNeverTouchesItsArguments() throws Exception {
+    Path log = blockMode();
+    Watched watched = new Watched();
+    List<Object> bean = new ArrayList<Object>();
+    Java8RaspHooks.beforeXmlDecoderInvoke(new Object[] {watched}, ArrayList.class.getMethod("add", Object.class), bean);
+    Java8RaspHooks.beforeXmlDecoderNew(StringBuilder.class, new Object[] {watched});
+    Java8RaspHooks.beforeJavaBeansStatement(new Statement(bean, "add", new Object[] {watched}), DECODER_STACK);
+    Java8RaspHooks.beforeJavaBeansStatement(new Expression(bean, "add", new Object[] {watched}));
+    assertEquals(new ArrayList<String>(), watched.calls);
+    assertFalse(Files.exists(log));
+  }
+
+  @Test
+  void aCandidateWithAnEndlessIterableArgumentReturns() throws Exception {
+    blockMode();
+    final Endless endless = new Endless();
+    blocked(new Executable() {
+      @Override public void execute() throws Throwable {
+        Java8RaspHooks.beforeXmlDecoderInvoke(
+            new Object[] {endless}, Runtime.class.getMethod("exec", String[].class), Runtime.getRuntime());
+      }
+    });
+    assertTrue(endless.taken <= 64, "elements taken: " + endless.taken);
+  }
+
+  @Test
+  void withTheHooksOffAnEntryReturnsItsArgumentsAndDoesNothing() throws Exception {
+    Path log = blockMode();
+    Watched watched = new Watched();
+    Object[] arguments = {watched};
+    HookActivation.deactivate();
+    assertSame(arguments, Java8RaspHooks.beforeXmlDecoderInvoke(
+        arguments, ProcessBuilder.class.getMethod("start"), new ProcessBuilder("sh", "-c", "id")));
+    Java8RaspHooks.beforeXmlDecoderNew(PrintWriter.class, new Object[] {"/tmp/webapps/ROOT/shell.jsp", watched});
+    HookActivation.activate();
+    assertEquals(new ArrayList<String>(), watched.calls);
+    assertFalse(Files.exists(log));
+  }
+
+  @Test
+  void aNullArgumentsArrayIsPassedOnAndTheTargetStillDecides() throws Exception {
+    final Path log = blockMode();
+    assertNull(Java8RaspHooks.beforeXmlDecoderInvoke(
+        null, Integer.class.getMethod("valueOf", String.class), Integer.class));
+    Java8RaspHooks.beforeXmlDecoderNew(PrintWriter.class, null);
+    assertFalse(Files.exists(log));
+    blocked(new Executable() {
+      @Override public void execute() throws Throwable {
+        Java8RaspHooks.beforeXmlDecoderInvoke(
+            null, ProcessBuilder.class.getMethod("start"), new ProcessBuilder("sh", "-c", "id"));
+      }
+    });
+  }
+
+  @Test
+  void anInternalFailureReturnsAndItsReportCannotThrow() throws Exception {
+    blockMode();
+    System.setProperty("ohmyrasp.debug", "true");
+    PrintStream err = System.err;
+    System.setErr(new PrintStream(new ByteArrayOutputStream(), true));
+    try {
+      Object[] arguments = {new Failing()};
+      assertSame(arguments, Java8RaspHooks.beforeXmlDecoderInvoke(
+          arguments, Runtime.class.getMethod("exec", String[].class), Runtime.getRuntime()));
+      Java8RaspHooks.beforeXmlDecoderNew(PrintWriter.class, new Object[] {new Failing()});
+      Java8RaspHooks.beforeJavaBeansStatement(
+          new Statement(Runtime.getRuntime(), "exec", new Object[] {new Failing()}), DECODER_STACK);
+    } finally {
+      System.setErr(err);
+    }
+  }
+
+  @Test
+  void withDetectionOffAnEntryClassifiesNothingAndLeavesTheRepeatStateAlone() throws Exception {
+    Path log = logMode();
+    ProcessBuilder target = new ProcessBuilder("sh", "-c", "detection-off");
+    control("{\"mode\":\"off\"}");
+    Watched watched = new Watched();
+    Java8RaspHooks.beforeXmlDecoderInvoke(new Object[] {watched}, ProcessBuilder.class.getMethod("start"), target);
+    Java8RaspHooks.beforeJavaBeansStatement(new Statement(target, "start", new Object[] {watched}), DECODER_STACK);
+    Java8RaspHooks.beforeXmlDecoderNew(PrintWriter.class, new Object[] {"/tmp/webapps/ROOT/off.jsp", watched});
+    assertEquals(new ArrayList<String>(), watched.calls);
+    assertFalse(Files.exists(log));
+
+    // Back to the start-up settings (log): the same operations are logged, not taken for repeats of unlogged ones.
+    ControlAccess.poll(dir.resolve("no-control-file.json"));
+    Java8RaspHooks.beforeXmlDecoderInvoke(new Object[0], ProcessBuilder.class.getMethod("start"), target);
+    Java8RaspHooks.beforeJavaBeansStatement(new Statement(target, "start", new Object[0]), DECODER_STACK);
+    assertEquals(2, occurrences(read(log), "java.lang.ProcessBuilder start sh -c detection-off"), read(log));
+  }
+
+  @Test
+  void aFindingAtAnElementDoesNotSuppressTheSameOneAtAStatement() throws Exception {
+    Path log = logMode();
+    ProcessBuilder target = new ProcessBuilder("sh", "-c", "two-paths");
+    Java8RaspHooks.beforeXmlDecoderInvoke(new Object[0], ProcessBuilder.class.getMethod("start"), target);
+    Java8RaspHooks.beforeJavaBeansStatement(new Statement(target, "start", new Object[0]), DECODER_STACK);
+    // The same path again is a repeat.
+    Java8RaspHooks.beforeJavaBeansStatement(new Statement(target, "start", new Object[0]), DECODER_STACK);
+    assertEquals(2, occurrences(read(log), "java.lang.ProcessBuilder start sh -c two-paths"), read(log));
+  }
+
+  private void control(String json) throws Exception {
+    Path file = dir.resolve("control.json");
+    Files.write(file, json.getBytes(StandardCharsets.UTF_8));
+    ControlAccess.poll(file);
+  }
+
+  private static String read(Path log) throws Exception {
+    return Files.exists(log) ? new String(Files.readAllBytes(log), StandardCharsets.UTF_8) : "";
+  }
+
+  private static int occurrences(String text, String part) {
+    int count = 0;
+    for (int at = text.indexOf(part); at >= 0; at = text.indexOf(part, at + part.length())) {
+      count++;
+    }
+    return count;
+  }
+
+  /** An argument that records any call the agent makes on it. */
+  private static final class Watched implements Iterable<Object> {
+    final List<String> calls = new ArrayList<String>();
+
+    @Override public Iterator<Object> iterator() {
+      calls.add("iterator");
+      return Collections.emptyIterator();
+    }
+
+    @Override public String toString() {
+      calls.add("toString");
+      return "watched";
+    }
+  }
+
+  /** Hands out nulls and blanks for ever; gives up after 100000, so a test without a bound fails instead of hanging. */
+  private static final class Endless implements Iterable<Object> {
+    int taken;
+
+    @Override public Iterator<Object> iterator() {
+      return new Iterator<Object>() {
+        @Override public boolean hasNext() {
+          return true;
+        }
+
+        @Override public Object next() {
+          if (++taken > 100000) {
+            throw new IllegalStateException("not bounded");
+          }
+          return taken % 2 == 0 ? null : " ";
+        }
+
+        @Override public void remove() {
+          throw new UnsupportedOperationException();
+        }
+      };
+    }
+  }
+
+  /** A failure whose own description throws, as an application's exception may. */
+  private static final class Unprintable extends RuntimeException {
+    private static final long serialVersionUID = 1L;
+
+    @Override public String getMessage() {
+      throw new IllegalStateException("getMessage");
+    }
+
+    @Override public String toString() {
+      throw new IllegalStateException("toString");
+    }
+  }
+
+  private static final class Failing implements Iterable<Object> {
+    @Override public Iterator<Object> iterator() {
+      throw new Unprintable();
+    }
+  }
+
   private static Path blockMode() throws Exception {
+    Path log = logMode();
+    System.setProperty("ohmyrasp.java8.block", "true");
+    return log;
+  }
+
+  private static Path logMode() throws Exception {
     Path log = Files.createTempFile("ohmyrasp-java8-xml-decoder-elements", ".jsonl");
     Files.delete(log);
     System.setProperty("ohmyrasp.java8.log", log.toString());
-    System.setProperty("ohmyrasp.java8.block", "true");
     return log;
   }
 
