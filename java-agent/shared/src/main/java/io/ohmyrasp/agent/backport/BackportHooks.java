@@ -328,10 +328,12 @@ public final class BackportHooks {
   /**
    * Decides the request rules on a body state this dispatch has not decided: the rules that read parameters read
    * the body's names and values with the request's own (and the body's alone, so that a parameter's match does
-   * not hide a body field's), as on the primary line. Every new finding is reported once per request; one the
-   * parameters give without the body is the servlet entry's and is not reported again. The event names the body
-   * field the evidence came from, never its value (see writeDetection). A block throws from here, and every later
-   * read of the request's body throws it again.
+   * not hide a body field's), as on the primary line. Every new finding is reported once per request and
+   * dispatch; the one finding the servlet entry reported for the request without its body is not reported again.
+   * A state counts as decided once its evaluation completed (or blocked); one that failed is decided again at the
+   * next hook, within the request's budget of {@link RequestBody#MAX_EVALUATIONS} evaluations. The event is built
+   * from structured evidence only (see publicFinding). A block throws from here, and every later read of the
+   * request's body stream throws it again.
    */
   private static void settleBody() {
     RequestBody body = RequestBodyCapture.current();
@@ -339,22 +341,34 @@ public final class BackportHooks {
     RequestSnapshot request = CURRENT_REQUEST.get();
     if (request == null) return;
     RequestBodySnapshot snapshot = body.snapshot();
-    if (snapshot == null || snapshot.version() == request.bodyDecided) return;
-    request.bodyDecided = snapshot.version();
+    int decided = request.bodyDecided;
+    if (snapshot == null || snapshot.version() == decided) return;
     if (RaspRuntime.detectionOff()) return;
-    Object servletRequest = DISPATCH.servletRequest() != null ? DISPATCH.servletRequest() : body.servletRequest();
-    BodyState state = BodyState.of(body);
-    Map<Object, Object> merged = BackportRequestBody.withParameters(request.entryParameters, snapshot.values());
-    Map<Object, Object> bodyOnly = BackportRequestBody.withParameters(null, snapshot.values());
-    for (Finding finding : bodyFindings(servletRequest, merged, bodyOnly, request.entryParameters)) {
-      if (!state.reported.add(finding.algorithm + '\0' + finding.detailValue)) continue;
-      String action = shouldBlock(finding) ? "block" : "log";
-      appendEvent(finding, "HttpServlet.requestBody", action);
-      if ("block".equals(action)) {
-        RuntimeException block = line().block("OhMyRASP " + line().displayName + " blocked a suspicious request body");
-        RequestBodyCapture.deny(block);
-        throw block;
+    // In progress: a hook that this evaluation reaches does not start it again.
+    request.bodyDecided = snapshot.version();
+    if (!body.evaluate()) return;
+    try {
+      Object servletRequest = DISPATCH.servletRequest() != null ? DISPATCH.servletRequest() : body.servletRequest();
+      BodyState state = BodyState.of(body);
+      Map<Object, Object> merged = BackportRequestBody.withParameters(request.entryParameters, snapshot.values());
+      Map<Object, Object> bodyOnly = BackportRequestBody.withParameters(null, snapshot.values());
+      for (Finding finding : bodyFindings(servletRequest, merged, bodyOnly, request.admitted)) {
+        String once = finding.algorithm + '\0' + finding.detailValue + '\0' + System.identityHashCode(request);
+        if (state.reported.contains(once)) continue;
+        String action = shouldBlock(finding) ? "block" : "log";
+        appendEvent(finding, "HttpServlet.requestBody", action);
+        state.reported.add(once);
+        if ("block".equals(action)) {
+          RuntimeException block = line().block("OhMyRASP " + line().displayName + " blocked a suspicious request body");
+          RequestBodyCapture.deny(block);
+          throw block;
+        }
       }
+    } catch (RuntimeException failure) {
+      if (line().isBlock(failure)) throw failure;
+      request.bodyDecided = decided; // not decided: the next hook decides it again, within the budget
+    } catch (Throwable failure) {
+      request.bodyDecided = decided;
     }
   }
 
@@ -375,21 +389,20 @@ public final class BackportHooks {
 
   /**
    * The findings of the request rules that read parameters, on the request's parameters with the body's and on
-   * the body's alone, in the chain's order, without one that the same rule gives on the parameters alone.
+   * the body's alone, in the chain's order, without the one the servlet entry reported ({@code admitted}).
    * The rules that read only the request line, cookies or headers decided at the servlet entry.
    */
-  private static List<Finding> bodyFindings(Object request, Map<?, ?> merged, Map<?, ?> bodyOnly, Map<?, ?> entry) {
+  private static List<Finding> bodyFindings(Object request, Map<?, ?> merged, Map<?, ?> bodyOnly, Finding admitted) {
     List<Finding> found = new ArrayList<Finding>(2);
     if (request == null) return found;
     String uri = requestUri(request);
     if (uri.length() == 0) return found;
     String query = requestQuery(request);
     for (int rule = 0; rule < PARAMETER_RULES; rule++) {
-      Finding before = parameterRule(rule, request, uri, query, entry);
       Finding withBody = parameterRule(rule, request, uri, query, merged);
-      if (withBody != null && !sameFinding(before, withBody)) found.add(withBody);
+      if (withBody != null && !sameFinding(admitted, withBody)) found.add(withBody);
       Finding ofBody = parameterRule(rule, request, uri, query, bodyOnly);
-      if (ofBody != null && !sameFinding(before, ofBody) && !sameFinding(withBody, ofBody)) found.add(ofBody);
+      if (ofBody != null && !sameFinding(admitted, ofBody) && !sameFinding(withBody, ofBody)) found.add(ofBody);
     }
     return found;
   }
@@ -456,7 +469,11 @@ public final class BackportHooks {
         && requestHeader(request, "Content-Type").trim().regionMatches(true, 0, "multipart/", 0, 10);
     Object raw = deferMultipart ? null : invokeServlet(request, "getParameterMap");
     Map<?, ?> parameters = raw instanceof Map<?, ?> ? (Map<?, ?>) raw : ServletQueryParameters.parse(requestQuery(request));
-    CURRENT_REQUEST.set(new RequestSnapshot(parameters));
+    RequestSnapshot snapshot = new RequestSnapshot(parameters);
+    snapshot.formBody = raw instanceof Map<?, ?> && formContent(stringValue(invokeServlet(request, "getMethod")),
+        requestHeader(request, "Content-Type"))
+        && parsedFromBody(parameters, requestQuery(request));
+    CURRENT_REQUEST.set(snapshot);
     captureRequestControlledUrls(parameters);
     Finding finding = classifyHttpRequest(request, parameters);
     if (finding == null) {
@@ -468,10 +485,31 @@ public final class BackportHooks {
       return;
     }
     LAST_LOGGED_REQUEST.set(finding.detailValue);
+    snapshot.admitted = finding;
     appendEvent(finding, "HttpServlet.service", action);
     if ("block".equals(action)) {
       throw line().block("OhMyRASP " + line().displayName + " blocked suspicious request path");
     }
+  }
+
+  /** Whether a container parses this request's body into parameters: a form or multipart body, not on GET or HEAD. */
+  private static boolean formContent(String method, String contentType) {
+    if ("GET".equalsIgnoreCase(method) || "HEAD".equalsIgnoreCase(method) || contentType == null) return false;
+    String type = contentType.trim().toLowerCase(Locale.ROOT);
+    return type.startsWith("application/x-www-form-urlencoded") || type.startsWith("multipart/");
+  }
+
+  /** Whether the container's parameters hold any name or value the query string does not: a parsed body's. */
+  private static boolean parsedFromBody(Map<?, ?> parameters, String query) {
+    if (parameters == null || parameters.isEmpty()) return false;
+    Map<String, List<String>> fromQuery = ServletQueryParameters.parse(query);
+    for (Map.Entry<?, ?> parameter : parameters.entrySet()) {
+      List<String> inQuery = fromQuery.get(String.valueOf(parameter.getKey()));
+      List<String> values = new ArrayList<String>();
+      collectParameterValues(values, parameter.getValue());
+      if (inQuery == null || values.size() > inQuery.size()) return true;
+    }
+    return false;
   }
 
   public static void afterHttpRequest() {
@@ -861,9 +899,11 @@ public final class BackportHooks {
     if (RaspRuntime.detectionOff()) return;
     List<String> urls = requestUrls();
     // A submission inside a request carries that request onto the thread that runs the exchange, whether or not
-    // the request supplied a URL, as on the primary: the exchange's finding is then inside a request.
-    HTTP_SUBMISSIONS.capture(exchange, urls != null ? urls
-        : DISPATCH.inRequest() ? java.util.Collections.<String>emptyList() : null);
+    // the request supplied a URL, as on the primary: the exchange's finding is then inside a request. One from a
+    // request with a body carries that too (BodyOrigin), so the exchange's event is built as on the request.
+    List<String> origin = urls != null ? urls : DISPATCH.inRequest() ? java.util.Collections.<String>emptyList() : null;
+    if (origin != null && requestHasBody()) origin = new BodyOrigin(origin);
+    HTTP_SUBMISSIONS.capture(exchange, origin);
     if (urls != null && uri != null && urls.contains(urlParts(uri).comparisonKey)) {
       HttpTransportObservation.selectedSubmission(exchange, uri);
     }
@@ -896,9 +936,33 @@ public final class BackportHooks {
   private static void inspectHttpExchange(Object exchange, java.net.URI uri, String peer) {
     List<String> origin = HTTP_SUBMISSIONS.origin(exchange);
     Finding finding = classifyUrlOpen(uri, origin, peer, HttpTransportObservation.changedOrigin(exchange, uri));
+    if (finding == null) return;
     // An exchange submitted inside a request carries it (origin): inside a request on whatever thread runs it.
-    if (finding != null) emitHttpDestination(finding, "HTTP.acquireExchange",
-        peer == null ? "http_exchange_acquire" : "http_resolved_route", shouldBlock(finding, origin != null), peer);
+    boolean carried = origin instanceof BodyOrigin && CARRIED_BODY.get() == null;
+    if (carried) CARRIED_BODY.set(Boolean.TRUE);
+    try {
+      emitHttpDestination(finding, "HTTP.acquireExchange",
+          peer == null ? "http_exchange_acquire" : "http_resolved_route", shouldBlock(finding, origin != null), peer);
+    } finally {
+      if (carried) CARRIED_BODY.remove();
+    }
+  }
+
+  /** Whether the request this thread serves has a body, recorded or parsed by the container. */
+  private static boolean requestHasBody() {
+    RequestBody body = RequestBodyCapture.current();
+    if (body != null && body.version() > 0) return true;
+    RequestSnapshot request = CURRENT_REQUEST.get();
+    return request != null && request.formBody;
+  }
+
+  /** The URLs a request with a body supplied, carried with an operation it submitted to another thread. */
+  private static final class BodyOrigin extends ArrayList<String> {
+    private static final long serialVersionUID = 1L;
+
+    BodyOrigin(List<String> urls) {
+      super(urls);
+    }
   }
 
   public static void beforeUrlConnectionFactory(URL url) {
@@ -1138,7 +1202,8 @@ public final class BackportHooks {
     RequestSnapshot snapshot = currentRequest();
     boolean structural = statement.hasTruncatedLiteral()
         || (statement.hasConstantDisjunction()
-            && (snapshot == null || !anySubmittedConsoleSelect(statement, snapshot.sqlInputs())));
+            // The H2 console's exemption reads the request parameters it submits through, not body fields.
+            && (snapshot == null || !anySubmittedConsoleSelect(statement, snapshot.sqlInputs)));
     if (!structural && !statement.matchesSinkPolicy()
         && (snapshot == null || !anyStructureFrom(statement, snapshot.sqlInputs()))) {
       return null;
@@ -1408,7 +1473,9 @@ public final class BackportHooks {
         throw (RuntimeException) throwable;
       }
       if (Boolean.getBoolean("ohmyrasp.debug")) {
-        System.err.println(line().logPrefix + " JavaBeans hook failed: " + throwable);
+        // On a request with a body, the exception's message may quote it: its class alone.
+        System.err.println(line().logPrefix + " JavaBeans hook failed: "
+            + (requestHasBody() ? throwable.getClass().getName() : String.valueOf(throwable)));
       }
     }
   }
@@ -4345,6 +4412,10 @@ public final class BackportHooks {
 
   private static final class RequestSnapshot {
     String lastUpload;
+    // The container parsed some of the parameters from the request's body (a form or multipart body).
+    boolean formBody;
+    // The finding the servlet entry reported for the request, or null.
+    Finding admitted;
     // The version of the body state this dispatch decided last (one snapshot per dispatch: a state decided under
     // an include is decided again for the route it returns to).
     int bodyDecided;
@@ -4488,7 +4559,7 @@ public final class BackportHooks {
   public static void initialise() {
     BackportLine.initialise(
         Finding.class, RequestSnapshot.class, UrlParts.class, IncludeAttributes.class, TypedPayloadMatch.class,
-        BackportRequestBody.class, BodyState.class);
+        BackportRequestBody.class, BodyState.class, BodyOrigin.class);
   }
 
   /** The installed line. Read where used, not while this class initialises: a hook may run before the line starts. */
@@ -4561,6 +4632,7 @@ public final class BackportHooks {
       return;
     }
     finding = publicFinding(finding);
+    if (finding.extra != null) resolvedAddress = null; // derived from an operand a body may have supplied
     String logPath = RaspRuntime.resolveLogPath();
     String event =
         "{"
@@ -4589,6 +4661,7 @@ public final class BackportHooks {
             // The credentials of a URL in the detail (a JDBC URL a pool configured) never reach the spool.
             + json(io.ohmyrasp.agent.util.Redaction.redactedUrls(finding.detailValue))
             + "\""
+            + extraDetails(finding.extra)
             + (argc < 0 ? "" : ",\"process_operation\":\"ProcessImpl.start\",\"argument_count\":\"" + argc + "\"")
             + (resolvedAddress == null ? "" : ",\"resolved_address\":\"" + json(resolvedAddress) + "\"")
             + (finding.policyDigest != null && DISPATCH.deliveredPart(MultipartFilename.receiver())
@@ -4601,30 +4674,66 @@ public final class BackportHooks {
   }
 
   /**
-   * The finding as an event carries it: without the text of the body the request has read (see BodyEvidence):
-   * the field a value came from is named, the value is not. When this fails, the detail and message are dropped.
+   * The finding as an event carries it. On a request with a body (recorded, or a form the container parsed) or
+   * an operation carried from one, it is built from an allow-list (see BodyEvidence): the rule's fields and
+   * decision basis, a fixed message, the one input field it matched with its value, and its detail as a kind and a
+   * length; any other finding is as the rule made it. When this fails, the detail and message are dropped.
    */
   private static Finding publicFinding(Finding finding) {
     try {
       RequestBody body = RequestBodyCapture.current();
-      RequestBodySnapshot snapshot = body == null ? null : body.lastSnapshot();
-      if (snapshot == null) return finding;
       RequestSnapshot request = CURRENT_REQUEST.get();
-      Set<String> names = new HashSet<String>();
-      if (request != null && request.entryParameters != null) {
-        for (Object name : request.entryParameters.keySet()) names.add(String.valueOf(name));
+      boolean bodied = (body != null && body.version() > 0) || (request != null && request.formBody)
+          || CARRIED_BODY.get() != null;
+      if (!bodied) return finding;
+      Map<?, ?> fields = null;
+      if (request != null) {
+        RequestBodySnapshot snapshot = body == null ? null : body.lastSnapshot();
+        fields = snapshot == null ? request.entryParameters
+            : BackportRequestBody.withParameters(request.entryParameters, snapshot.values());
       }
-      BodyEvidence evidence = BodyEvidence.of(snapshot, names, null);
-      String detail = evidence.scrub(finding.detailValue);
-      String message = evidence.scrubMessage(finding.message);
-      if (detail.equals(finding.detailValue) && message.equals(finding.message)) return finding;
-      return new Finding(finding.algorithm, finding.confidence, message, finding.detailKey, detail,
-          finding.decisionBasis, finding.policyDigest);
+      String named = namedParameter(finding.detailValue, fields);
+      List<String> operands = finding.detailValue == null ? Collections.<String>emptyList()
+          : Collections.singletonList(finding.detailValue);
+      String[] input = BodyEvidence.matched(fields, named, operands);
+      String[] extra = input == null ? new String[0] : input[1] == null
+          ? new String[] {BodyEvidence.INPUT_FIELD, input[0]}
+          : new String[] {BodyEvidence.INPUT_FIELD, input[0], BodyEvidence.INPUT_VALUE, input[1]};
+      String operand = BodyEvidence.operand(finding.detailKey, operands);
+      return new Finding(finding.algorithm, finding.confidence, BodyEvidence.fixedMessage(finding.algorithm),
+          BodyEvidence.OPERAND, operand == null ? "" : operand, finding.decisionBasis, finding.policyDigest, extra);
     } catch (Throwable failure) {
-      return new Finding(finding.algorithm, finding.confidence, "", finding.detailKey, "", finding.decisionBasis,
-          finding.policyDigest);
+      return new Finding(finding.algorithm, finding.confidence, BodyEvidence.fixedMessage(finding.algorithm),
+          BodyEvidence.OPERAND, "", finding.decisionBasis, finding.policyDigest, new String[0]);
     }
   }
+
+  /** The field a request rule names in its composite detail ("... parameter=NAME ..."), when it is an input's. */
+  private static String namedParameter(String detail, Map<?, ?> fields) {
+    if (detail == null || fields == null) return null;
+    int at = detail.indexOf(" parameter=");
+    if (at < 0) return null;
+    int from = at + " parameter=".length();
+    int end = detail.indexOf(' ', from);
+    String name = detail.substring(from, end < 0 ? detail.length() : end);
+    return fields.containsKey(name) ? name : null;
+  }
+
+  /** The extra detail pairs of a public finding, as JSON members after the first. */
+  private static String extraDetails(String[] extra) {
+    if (extra == null || extra.length == 0) return "";
+    StringBuilder out = new StringBuilder();
+    for (int i = 0; i + 1 < extra.length; i += 2) {
+      out.append(",\"").append(json(extra[i])).append("\":\"").append(json(extra[i + 1])).append('"');
+    }
+    return out.toString();
+  }
+
+  /**
+   * Set while a finding of an operation carried from a request with a body is recorded on another thread (an HTTP
+   * exchange a request submitted): its event is built as on that request.
+   */
+  private static final ThreadLocal<Object> CARRIED_BODY = new ThreadLocal<Object>();
 
   private static boolean hasText(String value) {
     return value != null && value.trim().length() > 0;
@@ -4685,6 +4794,7 @@ public final class BackportHooks {
     final String detailValue;
     final String decisionBasis;
     final String policyDigest;
+    final String[] extra;
 
     Finding(String algorithm, int confidence, String message, String detailKey, String detailValue) {
       this(algorithm, confidence, message, detailKey, detailValue, null);
@@ -4697,6 +4807,13 @@ public final class BackportHooks {
 
     Finding(String algorithm, int confidence, String message, String detailKey, String detailValue,
         String decisionBasis, String policyDigest) {
+      this(algorithm, confidence, message, detailKey, detailValue, decisionBasis, policyDigest, null);
+    }
+
+    /** {@code extra}: more detail pairs, name then value, set only on a public finding (see publicFinding). */
+    Finding(String algorithm, int confidence, String message, String detailKey, String detailValue,
+        String decisionBasis, String policyDigest, String[] extra) {
+      this.extra = extra;
       this.policyDigest = policyDigest;
       this.decisionBasis = decisionBasis;
       this.algorithm = algorithm;

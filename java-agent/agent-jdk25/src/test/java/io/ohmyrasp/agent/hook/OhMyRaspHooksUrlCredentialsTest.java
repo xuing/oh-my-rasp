@@ -58,7 +58,8 @@ final class OhMyRaspHooksUrlCredentialsTest {
    * credential.
    */
   @Test
-  void aBodyValueInsideAUrlWithCredentialsIsNamedAndTheCredentialsAreStillRemoved(@TempDir Path dir) throws Exception {
+  void aUrlWithCredentialsOnARequestWithABodyIsWithheldWholeAndTheMatchedFieldIsNamed(@TempDir Path dir)
+      throws Exception {
     Path log = dir.resolve("events.jsonl");
     OhMyRaspHooks.reportTo(logger(log));
     System.setProperty("ohmyrasp.block", "true");
@@ -73,24 +74,23 @@ final class OhMyRaspHooksUrlCredentialsTest {
 
       OhMyRaspBlockException blocked = assertThrows(OhMyRaspBlockException.class, () -> OhMyRaspHooks.beforeUrlOpen(url));
 
-      String expected = "http://[redacted]@[body:host]/hook?password=[redacted]";
+      // The URL is an operand: withheld whole, credentials and all; the event names the body field it matched.
       String spooled = Files.readString(log);
-      assertTrue(spooled.contains("\"url\":\"" + expected + "\""), spooled);
+      assertTrue(spooled.contains("\"input_field\":\"host\""), spooled);
+      assertTrue(spooled.contains("\"input_value\":\"" + host + "\""), spooled);
       assertFalse(spooled.contains(SENTINEL), spooled);
-      assertFalse(spooled.contains(host), spooled);
-      assertEquals(expected, blocked.detection().details().get("url"), "the block carries what the event carries");
+      assertFalse(spooled.contains("/hook"), spooled);
       String shown = blocked.detection().details() + " " + blocked.getMessage();
       assertFalse(shown.contains(SENTINEL), shown);
-      assertFalse(shown.contains(host), shown);
+      assertFalse(shown.contains("/hook"), shown);
 
       // The same in a JDBC URL whose script URL the body's host is inside, as the backports test it.
       Files.delete(log);
       assertThrows(OhMyRaspBlockException.class, () -> OhMyRaspHooks.beforeJdbcConnect("jdbc:h2:mem:reports;PASSWORD="
           + SENTINEL + ";INIT=RUNSCRIPT FROM 'http://loader:" + SENTINEL + "@" + host + "/init.sql'"));
       spooled = Files.readString(log);
-      assertTrue(spooled.contains("RUNSCRIPT FROM 'http://[redacted]@[body:host]/init.sql'"), spooled);
+      assertFalse(spooled.contains("RUNSCRIPT"), spooled);
       assertFalse(spooled.contains(SENTINEL), spooled);
-      assertFalse(spooled.contains(host), spooled);
     } finally {
       OhMyRaspHooks.exitHttpRequest();
     }

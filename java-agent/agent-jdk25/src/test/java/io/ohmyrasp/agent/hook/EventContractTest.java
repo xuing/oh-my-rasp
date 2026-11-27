@@ -89,7 +89,9 @@ final class EventContractTest {
       headers.put("user-agent", "contract-test/1.0");
       headers.put("authorization", "Bearer eyJhbGciOiJIUzI1NiJ9.contract.signature");
       headers.put("cookie", "JSESSIONID=0123456789ABCDEF");
-      headers.put("content-type", "application/x-www-form-urlencoded");
+      // Not a form: the parameters beyond the query string are then not a body the container parsed, and the event
+      // shows the request's parameters, redacted (a form body's would be withheld: see BodyEvidence).
+      headers.put("content-type", "application/json");
     }
 
     public String getMethod() {

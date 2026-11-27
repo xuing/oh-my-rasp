@@ -92,10 +92,14 @@ final class Java8RequestBodyTest {
         () -> Java8RaspHooks.beforeProcessBuilderStart(new ProcessBuilder("sh", "-c", "echo 127.0.0.1; id")));
     String recorded = read(log);
     assertTrue(recorded.contains("java8_command_execution_shell_meta"), recorded);
-    assertFalse(recorded.contains("hunter2-Secret"), "the event carries the body: " + recorded);
-    assertFalse(recorded.contains("127.0.0.1; id"), "the event carries a body value: " + recorded);
-    assertFalse(recorded.contains("127.0.0.1"), "the event carries a piece of a body value: " + recorded);
-    assertTrue(recorded.contains("[body:cmd]"), "the event names the field the evidence came from: " + recorded);
+    // The one field the finding matched, with its value (the payload), and nothing else of the body.
+    assertTrue(recorded.contains("\"input_field\":\"cmd\""), recorded);
+    assertTrue(recorded.contains("\"input_value\":\"127.0.0.1; id\""), recorded);
+    assertTrue(recorded.contains("\"operand\":\"command, "), "the command as a kind and a length: " + recorded);
+    assertFalse(recorded.contains("echo"), "the command as executed: " + recorded);
+    for (String secret : new String[] {"hunter2", "Secret", "username", "password"}) {
+      assertFalse(recorded.contains(secret), "the event carries " + secret + ": " + recorded);
+    }
   }
 
   @Test

@@ -67,7 +67,7 @@ final class Java8UrlCredentialsTest {
    * (OhMyRaspHooksUrlCredentialsTest). The host of the script URL came from the request body.
    */
   @Test
-  void aBodyValueInsideAUrlWithCredentialsIsNamedAndTheCredentialsAreStillRemoved() throws Exception {
+  void aUrlWithCredentialsOnARequestWithABodyIsWithheldWholeAndTheMatchedFieldIsNamed() throws Exception {
     for (int i = 0; i < 1024; i++) Java8RaspHooks.afterHttpRequest();
     io.ohmyrasp.agent.http.RequestBodyCapture.dispatchExited(true);
     String host = "10.20.30.40";
@@ -83,9 +83,10 @@ final class Java8UrlCredentialsTest {
       Java8RaspHooks.afterHttpRequest();
     }
     String spooled = Files.exists(log) ? new String(Files.readAllBytes(log), StandardCharsets.UTF_8) : "";
-    assertTrue(spooled.contains("\"jdbc_url\":\"jdbc:h2:mem:reports;PASSWORD=[redacted];INIT=RUNSCRIPT FROM "
-        + "'http://[redacted]@[body:host]/init.sql'\""), spooled);
+    // The JDBC URL is an operand: withheld whole, credentials and all; the event names the body field it matched.
+    assertTrue(spooled.contains("\"operand\":\"jdbc_url, "), spooled);
+    assertTrue(spooled.contains("\"input_field\":\"host\",\"input_value\":\"" + host + "\""), spooled);
+    assertFalse(spooled.contains("RUNSCRIPT"), spooled);
     assertFalse(spooled.contains(SENTINEL), spooled);
-    assertFalse(spooled.contains(host), spooled);
   }
 }

@@ -1,235 +1,170 @@
 package io.ohmyrasp.agent.http;
 
-import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
 import java.util.Collections;
-import java.util.Comparator;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 
 /**
- * Takes the text of a request body out of what leaves a rule: the detail values, the message and anything else
- * an event, a log line, an exception or telemetry would carry. A rule decides on the body's values; what it
- * reports names the body field the evidence came from, never the field's value or a fragment of the body.
- * For one text ({@link #scrub}):
+ * What an event shows of a finding made on a request whose body the agent recorded, or whose parameters the
+ * container parsed from a body, or of an operation carried from such a request: built from an allow-list, never
+ * by taking body text out of what a rule wrote. Both engines build it the same way:
  * <ul>
- * <li>a text that is a body field's name (a JSON key, or a form name that is not also a request parameter), or a
- *     part of one at least {@link #MIN_FRAGMENT_CHARS} long, becomes {@code body:<name>}, cut to
- *     {@link #MAX_NAME_CHARS} characters;</li>
- * <li>a text that is a body value, a part of one at least {@link #MIN_VALUE_FRAGMENT_CHARS} long, or a part of
- *     the body's text at least {@link #MIN_FRAGMENT_CHARS} long, becomes {@code [body:<field>]} ({@code [body]}
- *     for text of no field);</li>
- * <li>in any other text (a command, an SQL statement, a path or URL that a sink assembled, a rule's composite
- *     detail): each body value at least {@link #MIN_EMBEDDED_CHARS} long is replaced by {@code [body:<field>]},
- *     then, where no value was, each body name that long by {@code body:<name>} cut, and then every run of text
- *     that still matches a body value over at least {@link #MIN_VALUE_FRAGMENT_CHARS} characters by
- *     {@code [body]}. Pieces of the body's keys and syntax are not matched: names may be shown.</li>
+ * <li>the rule id, category, action and hook as the rule set them, and a fixed message made from the rule id
+ *     ({@link #fixedMessage});</li>
+ * <li>the detail values of {@link #RULE_CONSTANTS}, which are a rule's own vocabulary;</li>
+ * <li>for a finding that names the input it decided on (a request rule's {@code parameter}) or whose operand
+ *     contains an input value (a sink rule that correlates request input), the name of that one input field cut
+ *     to {@link #MAX_NAME_CHARS} characters ({@link #INPUT_FIELD}) and its value cut to {@link #MAX_VALUE_CHARS}
+ *     ({@link #INPUT_VALUE}): the attacker's payload, which the attacker supplied;</li>
+ * <li>every other detail (the command, SQL, path or URL as executed, a class name, a count) only as the hook's
+ *     kind and the length of the longest one ({@link #OPERAND}, {@code "command, 37 chars"}).</li>
  * </ul>
- * A value shorter than {@link #MIN_EMBEDDED_CHARS} inside a longer text is not replaced: one or two characters
- * cannot be told from the text's own. Text equal to one of {@code kept} (the request's own method, URI and query,
- * which an event carries anyway) is left as it is, and so are the values of {@link #RULE_CONSTANTS}, which the
- * engines do not pass here.
- *
- * <p>Cost: only a finding made while a body is recorded is scrubbed. The pieces of the body's values are hashed
- * once per scrubber (fewer than {@link RequestBody#MAX_UNITS} of them), then each text costs a pass per body
- * value and name and one hash lookup per character.
+ * No other field's name or value, no operand, no exception message and no part of the body's text is shown.
  */
 public final class BodyEvidence {
   public static final int MAX_NAME_CHARS = 64;
-  public static final int MIN_EMBEDDED_CHARS = 3;
-  public static final int MIN_FRAGMENT_CHARS = 8;
-  public static final int MIN_VALUE_FRAGMENT_CHARS = 4;
+  public static final int MAX_VALUE_CHARS = 256;
+  public static final String INPUT_FIELD = "input_field";
+  public static final String INPUT_VALUE = "input_value";
+  public static final String OPERAND = "operand";
+  /** The detail a request rule names the input it decided on with. */
+  public static final String PARAMETER = "parameter";
 
-  /** Detail keys whose values are a rule's own constants, never request text: left as they are. */
+  /** Detail keys whose values are a rule's own constants, never request text: shown as they are. */
   public static final Set<String> RULE_CONSTANTS = Collections.unmodifiableSet(new HashSet<String>(Arrays.asList(
       "decision_basis", "policy_basis", "process_operation", "argument_count", "multipart_source",
-      "archive_policy_sha256", "method")));
+      "archive_policy_sha256", "kind")));
 
-  // A nested class, not a lambda: backport hooks reach this.
-  private static final Comparator<int[]> BY_START_THEN_LONGEST = new Comparator<int[]>() {
-    @Override public int compare(int[] left, int[] right) {
-      if (left[0] != right[0]) return left[0] - right[0];
-      return (right[1] - right[0]) - (left[1] - left[0]);
-    }
-  };
+  private BodyEvidence() {}
 
-  private final RequestBodySnapshot body;
-  private final Collection<String> requestNames;
-  private final Collection<String> kept;
-  private Set<String> fragments;      // MIN_FRAGMENT_CHARS pieces of the values, for messages
-  private Set<String> valueFragments; // MIN_VALUE_FRAGMENT_CHARS pieces of the values, for details
-
-  private BodyEvidence(RequestBodySnapshot body, Collection<String> requestNames, Collection<String> kept) {
-    this.body = body;
-    this.requestNames = requestNames == null ? Collections.<String>emptySet() : requestNames;
-    this.kept = kept == null ? Collections.<String>emptySet() : kept;
+  /** The message of a finding on such a request: the rule id and nothing a request can change. */
+  public static String fixedMessage(String rule) {
+    return "Rule " + (rule == null ? "" : rule) + " matched a request that has a body; its operands are withheld";
   }
 
   /**
-   * A scrubber for texts of one finding made while {@code body} was recorded. {@code requestNames} are the
-   * request's own parameter names (a body name equal to one is not marked); {@code kept} texts are left alone.
+   * The one input field a finding matched, as {name, value} cut, or null. {@code fields} are the request's
+   * inputs (name to values: a String, a String[] or a collection of them); {@code parameter} the field a request
+   * rule named, or null; {@code operands} the finding's other detail values. A named field is that field, with
+   * the first of its values an operand contains (else its first value). Otherwise the field whose value of two
+   * or more characters an operand contains, ignoring case, the longest such value first; else the first field
+   * whose name of eight or more characters, with a character other than a letter, digit, '_' or '-', an operand
+   * contains (the request input matching of the primary's {@code hasParameterIn}). Null when none.
    */
-  public static BodyEvidence of(RequestBodySnapshot body, Collection<String> requestNames, Collection<String> kept) {
-    return new BodyEvidence(body, requestNames, kept);
-  }
-
-  /** {@link #scrub(String)} with a scrubber of its own. */
-  public static String scrub(String text, RequestBodySnapshot body, Collection<String> requestNames,
-      Collection<String> kept) {
-    return body == null ? text : of(body, requestNames, kept).scrub(text);
-  }
-
-  /** How an event names a body field: {@code body:} and the name, cut. */
-  public static String fieldName(String name) {
-    return "body:" + cut(name == null ? "" : name);
-  }
-
-  /** The marker that stands where a body value was. */
-  public static String marker(String field) {
-    return field == null || field.isEmpty() ? "[body]" : "[body:" + cut(field) + "]";
-  }
-
-  /**
-   * A rule's message without the body's text: as {@link #scrub}, but pieces shorter than
-   * {@link #MIN_FRAGMENT_CHARS} are not matched against the body's values and a name is marked only when it is
-   * longer than {@link #MAX_NAME_CHARS}, so that the rule's own words (which share four letters with many values,
-   * or equal a key such as "path") stay readable.
-   */
-  public String scrubMessage(String text) {
-    return scrub(text, false);
-  }
-
-  /** {@code text} without the body's text, as described above; {@code text} itself when it holds none. */
-  public String scrub(String text) {
-    return scrub(text, true);
-  }
-
-  private String scrub(String text, boolean valuePieces) {
-    if (text == null || text.isEmpty() || kept.contains(text)) return text;
-    BodyValues values = body.values();
-    Map<String, List<String>> fields = values.parameters();
-    for (String name : values.names()) {
-      if (name.isEmpty() || requestNames.contains(name)) continue;
-      if (text.equals(name)) return fieldName(name);
-      if (text.length() >= MIN_FRAGMENT_CHARS && name.contains(text)) return fieldName(text);
-    }
-    for (Map.Entry<String, List<String>> field : fields.entrySet()) {
-      for (String value : field.getValue()) {
-        if (value.isEmpty()) continue;
-        if (text.equals(value)) return marker(field.getKey());
-        if (text.length() >= MIN_VALUE_FRAGMENT_CHARS && value.contains(text)) return marker(field.getKey());
+  public static String[] matched(Map<?, ?> fields, String parameter, Collection<String> operands) {
+    String[] lowered = lowered(operands);
+    if (parameter != null) {
+      List<String> values = fields == null ? null : values(fields.get(parameter));
+      String chosen = null;
+      if (values != null) {
+        for (String value : values) {
+          if (value != null && value.length() >= 2 && within(value, lowered)) {
+            chosen = value;
+            break;
+          }
+        }
+        if (chosen == null) {
+          for (String value : values) {
+            if (value != null && !value.isEmpty()) {
+              chosen = value;
+              break;
+            }
+          }
+        }
       }
+      return new String[] {cutName(parameter), chosen == null ? null : cutValue(chosen)};
     }
-    if (text.length() >= MIN_FRAGMENT_CHARS && body.text().contains(text)) return marker(null);
-    return scrubInside(text, values, fields, valuePieces);
-  }
-
-  /** Replaces the body's values, long names and remaining fragments inside a longer text. */
-  private String scrubInside(String text, BodyValues values, Map<String, List<String>> fields, boolean valuePieces) {
-    // Intervals [start, end, index into replacements]: the values first, then names where no value is.
-    List<String> replacements = new ArrayList<String>();
-    List<int[]> valueIntervals = new ArrayList<int[]>();
-    for (Map.Entry<String, List<String>> field : fields.entrySet()) {
-      for (String value : field.getValue()) {
-        if (value.length() >= MIN_EMBEDDED_CHARS) {
-          occurrences(text, value, marker(field.getKey()), valueIntervals, replacements);
+    if (fields == null || lowered.length == 0) return null;
+    String bestName = null;
+    String bestValue = null;
+    for (Map.Entry<?, ?> field : fields.entrySet()) {
+      for (String value : values(field.getValue())) {
+        if (value == null || value.length() < 2 || (bestValue != null && value.length() <= bestValue.length())) continue;
+        if (within(value, lowered)) {
+          bestName = String.valueOf(field.getKey());
+          bestValue = value;
         }
       }
     }
-    List<int[]> nameIntervals = new ArrayList<int[]>();
-    for (String name : values.names()) {
-      // In a rule's message a name is the rule's own word ("JSON Patch path"): only a long one is cut there.
-      int least = valuePieces ? MIN_EMBEDDED_CHARS : MAX_NAME_CHARS + 1;
-      if (name.length() >= least && !requestNames.contains(name)) {
-        occurrences(text, name, fieldName(name), nameIntervals, replacements);
+    if (bestValue != null) return new String[] {cutName(bestName), cutValue(bestValue)};
+    for (Map.Entry<?, ?> field : fields.entrySet()) {
+      String name = String.valueOf(field.getKey());
+      if (significantName(name) && within(name, lowered)) {
+        List<String> values = values(field.getValue());
+        String first = values.isEmpty() ? null : values.get(0);
+        return new String[] {cutName(name), first == null ? null : cutValue(first)};
       }
     }
-    boolean[] covered = new boolean[text.length()];
-    List<int[]> taken = new ArrayList<int[]>();
-    take(valueIntervals, covered, taken);
-    take(nameIntervals, covered, taken);
-    // What is left that still matches a body value over MIN_VALUE_FRAGMENT_CHARS characters (over
-    // MIN_FRAGMENT_CHARS in a rule's message). Pieces of the body's keys and syntax are not matched: a name may be
-    // shown, and the rule's own words often share a key ("template", "path").
-    boolean[] fragment = new boolean[text.length()];
-    int piece = valuePieces ? MIN_VALUE_FRAGMENT_CHARS : MIN_FRAGMENT_CHARS;
-    mark(text, valueFragments(piece), piece, covered, fragment);
-    if (taken.isEmpty()) {
-      boolean any = false;
-      for (boolean f : fragment) any |= f;
-      if (!any) return text;
+    return null;
+  }
+
+  /** The operands as an event shows them: the hook's kind and the length of the longest, or null for none. */
+  public static String operand(String kind, Collection<String> operands) {
+    if (operands == null || operands.isEmpty()) return null;
+    int longest = 0;
+    for (String operand : operands) {
+      if (operand != null) longest = Math.max(longest, operand.length());
     }
-    StringBuilder out = new StringBuilder(text.length());
-    int next = 0; // the next taken interval
-    Collections.sort(taken, BY_START_THEN_LONGEST);
-    for (int i = 0; i < text.length();) {
-      if (next < taken.size() && taken.get(next)[0] == i) {
-        out.append(replacements.get(taken.get(next)[2]));
-        i = taken.get(next)[1];
-        next++;
-      } else if (fragment[i]) {
-        out.append(marker(null));
-        while (i < text.length() && fragment[i]) i++;
-      } else {
-        out.append(text.charAt(i));
-        i++;
+    return (kind == null || kind.isEmpty() ? "operand" : kind) + ", " + longest + " chars";
+  }
+
+  public static String cutName(String name) {
+    return cut(name == null ? "" : name, MAX_NAME_CHARS);
+  }
+
+  public static String cutValue(String value) {
+    return cut(value == null ? "" : value, MAX_VALUE_CHARS);
+  }
+
+  private static String cut(String text, int most) {
+    if (text.length() <= most) return text;
+    int end = most;
+    if (Character.isHighSurrogate(text.charAt(end - 1))) end--;
+    return text.substring(0, end);
+  }
+
+  private static String[] lowered(Collection<String> operands) {
+    if (operands == null) return new String[0];
+    String[] lowered = new String[operands.size()];
+    int i = 0;
+    for (String operand : operands) lowered[i++] = operand == null ? "" : operand.toLowerCase(Locale.ROOT);
+    return lowered;
+  }
+
+  private static boolean within(String text, String[] lowered) {
+    String needle = text.toLowerCase(Locale.ROOT);
+    for (String operand : lowered) {
+      if (operand.contains(needle)) return true;
+    }
+    return false;
+  }
+
+  private static boolean significantName(String name) {
+    if (name == null || name.length() < 8) return false;
+    for (int i = 0; i < name.length(); i++) {
+      char ch = name.charAt(i);
+      if (!Character.isLetterOrDigit(ch) && ch != '_' && ch != '-') return true;
+    }
+    return false;
+  }
+
+  /** The values of one input field, whatever the map holds for it. */
+  @SuppressWarnings("unchecked")
+  private static List<String> values(Object held) {
+    if (held == null) return Collections.<String>emptyList();
+    if (held instanceof String) return Collections.singletonList((String) held);
+    if (held instanceof String[]) return Arrays.asList((String[]) held);
+    if (held instanceof List<?>) {
+      for (Object item : (List<?>) held) {
+        if (item != null && !(item instanceof String)) return Collections.<String>emptyList();
       }
+      return (List<String>) held;
     }
-    return out.toString();
-  }
-
-  /** Takes the earliest, longest of {@code intervals} that overlap nothing taken yet. */
-  private static void take(List<int[]> intervals, boolean[] covered, List<int[]> taken) {
-    Collections.sort(intervals, BY_START_THEN_LONGEST);
-    for (int[] interval : intervals) {
-      boolean free = true;
-      for (int i = interval[0]; i < interval[1] && free; i++) free = !covered[i];
-      if (!free) continue;
-      for (int i = interval[0]; i < interval[1]; i++) covered[i] = true;
-      taken.add(interval);
-    }
-  }
-
-  private static void occurrences(String text, String part, String replacement, List<int[]> found,
-      List<String> replacements) {
-    int at = text.indexOf(part);
-    if (at < 0) return;
-    int index = replacements.size();
-    replacements.add(replacement);
-    while (at >= 0) {
-      found.add(new int[] {at, at + part.length(), index});
-      at = text.indexOf(part, at + part.length());
-    }
-  }
-
-  private static void mark(String text, Set<String> grams, int size, boolean[] covered, boolean[] fragment) {
-    for (int i = 0; i + size <= text.length(); i++) {
-      if (grams.contains(text.substring(i, i + size))) {
-        for (int j = i; j < i + size; j++) if (!covered[j]) fragment[j] = true;
-      }
-    }
-  }
-
-  /** Every {@code size}-character piece of the body's values, made once per scrubber and size. */
-  private Set<String> valueFragments(int size) {
-    Set<String> grams = size == MIN_VALUE_FRAGMENT_CHARS ? valueFragments : fragments;
-    if (grams != null) return grams;
-    grams = new HashSet<String>();
-    for (String value : body.values().values()) {
-      for (int i = 0; i + size <= value.length(); i++) grams.add(value.substring(i, i + size));
-    }
-    if (size == MIN_VALUE_FRAGMENT_CHARS) valueFragments = grams;
-    else fragments = grams;
-    return grams;
-  }
-
-  private static String cut(String name) {
-    if (name.length() <= MAX_NAME_CHARS) return name;
-    int end = MAX_NAME_CHARS;
-    if (Character.isHighSurrogate(name.charAt(end - 1))) end--;
-    return name.substring(0, end) + "...";
+    return Collections.singletonList(String.valueOf(held));
   }
 }
