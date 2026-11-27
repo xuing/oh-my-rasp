@@ -189,7 +189,7 @@ before the hooked code existed). `never`: not reported.
 | `args4j:args4j` | 2.0.31 | 1 | 0 |
 | `args4j:args4j` | 2.33 | 1 | 0 |
 | `args4j:args4j` | 2.37 | 1 | 0 |
-| `org.mybatis:mybatis` | 3.2.8 | 12 | 12 |
+| `org.mybatis:mybatis` | 3.2.8 | 13 | 13 |
 | `org.mybatis:mybatis` | 3.4.6 | 14 | 14 |
 | `org.mybatis:mybatis` | 3.5.6 | 15 | 15 |
 | `org.mybatis:mybatis` | 3.5.19 | 18 | 18 |
@@ -367,7 +367,7 @@ signature); each is a place to check that the hook still covers what it did.
 | `org.eclipse.jetty:jetty-server` | 9.4.57.v20241219 10.0.26 11.0.26 | 12.0.41 | `org/eclipse/jetty/server/MultiParts$MultiPartsHttpParser.getPart`<br>`org/eclipse/jetty/server/MultiParts$MultiPartsHttpParser.getParts`<br>`org/eclipse/jetty/server/MultiParts$MultiPartsUtilParser.getPart`<br>`org/eclipse/jetty/server/MultiParts$MultiPartsUtilParser.getParts`<br>and 4 more |
 | `org.elasticsearch:elasticsearch` | 8.19.23 | 7.17.29 | `org/elasticsearch/common/settings/LocallyMountedSecrets.getFile` |
 | `org.glassfish:jakarta.el` | 3.0.4 | 4.0.2 | `javax/el/ELProcessor.eval`<br>`javax/el/ELProcessor.getValue`<br>`javax/el/ELProcessor.setValue` |
-| `org.mybatis:mybatis` | 3.4.6 3.5.6 3.5.19 3.6.0 | 3.2.8 | `org/apache/ibatis/executor/statement/BaseStatementHandler.prepare`<br>`org/apache/ibatis/executor/statement/SimpleStatementHandler.queryCursor` |
+| `org.mybatis:mybatis` | 3.4.6 3.5.6 3.5.19 3.6.0 | 3.2.8 | `org/apache/ibatis/executor/statement/SimpleStatementHandler.queryCursor` |
 | `org.mybatis:mybatis` | 3.5.19 3.6.0 | 3.2.8 3.4.6 3.5.6 | `org/apache/ibatis/scripting/xmltags/TrimSqlNode$FilteredDynamicContext.lambda$applyPrefix$0`<br>`org/apache/ibatis/scripting/xmltags/TrimSqlNode$FilteredDynamicContext.lambda$applySuffix$1`<br>`org/apache/ibatis/scripting/xmltags/TrimSqlNode$FilteredDynamicContext.lambda$applySuffix$2` |
 | `org.mybatis:mybatis` | 3.5.6 3.5.19 3.6.0 | 3.2.8 3.4.6 | `org/apache/ibatis/builder/SqlSourceBuilder.removeExtraWhitespaces` |
 | `org.springframework:spring-beans` | 3.2.18.RELEASE 4.3.30.RELEASE | 5.3.39 6.2.19 7.1.0 | `org/springframework/beans/factory/support/AbstractAutowireCapableBeanFactory$8.run` |
@@ -409,7 +409,7 @@ signature); each is a place to check that the hook still covers what it did.
 | `org.eclipse.jetty:jetty-server` | 9.4.57.v20241219 | 10.0.26 11.0.26 12.0.41 | `org/eclipse/jetty/server/Request.getPushBuilder`<br>`org/eclipse/jetty/server/Request.mergeQueryParameters` |
 | `org.eclipse.jetty:jetty-server` | 9.4.57.v20241219 10.0.26 11.0.26 | 12.0.41 | `org/eclipse/jetty/server/MultiParts$MultiPartsHttpParser.getPart`<br>`org/eclipse/jetty/server/MultiParts$MultiPartsHttpParser.getParts`<br>`org/eclipse/jetty/server/MultiParts$MultiPartsHttpParser.setNonComplianceViolationsOnRequest`<br>`org/eclipse/jetty/server/MultiParts$MultiPartsUtilParser.getPart`<br>and 13 more |
 | `org.elasticsearch:elasticsearch` | 8.19.23 | 7.17.29 | `org/elasticsearch/common/settings/LocallyMountedSecrets.getFile` |
-| `org.mybatis:mybatis` | 3.4.6 3.5.6 3.5.19 3.6.0 | 3.2.8 | `org/apache/ibatis/executor/statement/BaseStatementHandler.prepare`<br>`org/apache/ibatis/executor/statement/SimpleStatementHandler.queryCursor` |
+| `org.mybatis:mybatis` | 3.4.6 3.5.6 3.5.19 3.6.0 | 3.2.8 | `org/apache/ibatis/executor/statement/SimpleStatementHandler.queryCursor` |
 | `org.mybatis:mybatis` | 3.5.19 3.6.0 | 3.2.8 3.4.6 3.5.6 | `org/apache/ibatis/scripting/xmltags/TrimSqlNode$FilteredDynamicContext.lambda$applyPrefix$0`<br>`org/apache/ibatis/scripting/xmltags/TrimSqlNode$FilteredDynamicContext.lambda$applySuffix$1`<br>`org/apache/ibatis/scripting/xmltags/TrimSqlNode$FilteredDynamicContext.lambda$applySuffix$2` |
 | `org.mybatis:mybatis` | 3.5.6 3.5.19 3.6.0 | 3.2.8 3.4.6 | `org/apache/ibatis/builder/SqlSourceBuilder.removeExtraWhitespaces` |
 | `org.springframework:spring-beans` | 3.2.18.RELEASE 4.3.30.RELEASE | 5.3.39 6.2.19 7.1.0 | `org/springframework/beans/factory/support/AbstractAutowireCapableBeanFactory$8.run` |

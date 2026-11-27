@@ -68,7 +68,7 @@ Java{N}JdbcTransformer com/github/pagehelper/dialect/rowbounds/PostgreSqlRowBoun
 Java{N}JdbcTransformer com/github/pagehelper/dialect/rowbounds/SqlServer2012RowBoundsDialect report getPageSql(Ljava/lang/String;Lorg/apache/ibatis/session/RowBounds;Lorg/apache/ibatis/cache/CacheKey;)Ljava/lang/String;
 Java{N}JdbcTransformer com/github/pagehelper/dialect/rowbounds/XuguRowBoundsDialect report getPageSql(Ljava/lang/String;Lorg/apache/ibatis/session/RowBounds;Lorg/apache/ibatis/cache/CacheKey;)Ljava/lang/String;
 Java{N}JdbcTransformer org/apache/ibatis/builder/SqlSourceBuilder absent removeExtraWhitespaces(Ljava/lang/String;)Ljava/lang/String;
-Java{N}JdbcTransformer org/apache/ibatis/executor/statement/BaseStatementHandler report prepare(Ljava/sql/Connection;Ljava/lang/Integer;)Ljava/sql/Statement;
+Java{N}JdbcTransformer org/apache/ibatis/executor/statement/BaseStatementHandler report prepare(Ljava/sql/Connection;)Ljava/sql/Statement; prepare(Ljava/sql/Connection;Ljava/lang/Integer;)Ljava/sql/Statement;
 Java{N}JdbcTransformer org/apache/ibatis/executor/statement/SimpleStatementHandler report batch(Ljava/sql/Statement;)V query(Ljava/sql/Statement;Lorg/apache/ibatis/session/ResultHandler;)Ljava/util/List; queryCursor(Ljava/sql/Statement;)Lorg/apache/ibatis/cursor/Cursor; update(Ljava/sql/Statement;)I
 Java{N}JdbcTransformer org/apache/ibatis/mapping/BoundSql report <init>(Lorg/apache/ibatis/session/Configuration;Ljava/lang/String;Ljava/util/List;Ljava/lang/Object;)V getSql()Ljava/lang/String;
 Java{N}JdbcTransformer org/apache/ibatis/parsing/GenericTokenParser report parse(Ljava/lang/String;)Ljava/lang/String;
