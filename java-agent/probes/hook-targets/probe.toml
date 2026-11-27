@@ -2,3 +2,25 @@
 flag = "--libs"
 path = "build/hook-targets"
 gradle = ":stageHookTargets"
+
+# JARs that only resolve classes rewritten library classes need and no staged JAR has, so that HookVerify can verify
+# them: Undertow's servlet streams (XNIO, undertow-core) and Jetty 9.4's HttpInput (jetty-io, jetty-http). Pinned in check.py.
+[[fixture]]
+flag = "--verify-dependency"
+path = "build/runtime-probes/hook-verify-undertow-core-2.2.39.Final.jar"
+stage = ["--download-dependency", "io.undertow:undertow-core:2.2.39.Final", "{path}"]
+
+[[fixture]]
+flag = "--verify-dependency"
+path = "build/runtime-probes/hook-verify-jetty-http-9.4.57.v20241219.jar"
+stage = ["--download-dependency", "org.eclipse.jetty:jetty-http:9.4.57.v20241219", "{path}"]
+
+[[fixture]]
+flag = "--verify-dependency"
+path = "build/runtime-probes/hook-verify-jetty-io-9.4.57.v20241219.jar"
+stage = ["--download-dependency", "org.eclipse.jetty:jetty-io:9.4.57.v20241219", "{path}"]
+
+[[fixture]]
+flag = "--verify-dependency"
+path = "build/runtime-probes/hook-verify-xnio-api-3.8.16.Final.jar"
+stage = ["--download-dependency", "org.jboss.xnio:xnio-api:3.8.16.Final", "{path}"]
