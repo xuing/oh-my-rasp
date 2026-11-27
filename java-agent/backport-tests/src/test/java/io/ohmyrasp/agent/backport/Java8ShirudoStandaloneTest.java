@@ -985,7 +985,9 @@ final class Java8ShirudoStandaloneTest {
     assertEquals(writers + 1, threadsNamed(WRITER_THREAD));
 
     call(runtime, "stop");
-    assertEquals(Boolean.FALSE, call(runtime, "isStarted"), "the hooks are inactive after a stop");
+    assertEquals(Boolean.FALSE, call(runtime, "isRunning"), "the runtime still runs after a stop");
+    // What it resolved stays readable, for a hook that was already running: the hooks' on and off is HookActivation's.
+    assertEquals(Boolean.TRUE, call(runtime, "isStarted"));
     assertEquals(pollers, threadsNamed(CONTROL_THREAD), "the poller stopped");
     assertEquals(writers, threadsNamed(WRITER_THREAD), "the writer stopped");
 
@@ -995,7 +997,7 @@ final class Java8ShirudoStandaloneTest {
     } finally {
       System.clearProperty("ohmyrasp.control");
     }
-    assertEquals(Boolean.TRUE, call(runtime, "isStarted"));
+    assertEquals(Boolean.TRUE, call(runtime, "isRunning"));
     call(runtime, "stop");
   }
 
@@ -1060,7 +1062,7 @@ final class Java8ShirudoStandaloneTest {
     hook.join(10000L);
     IllegalStateException refused = assertThrows(IllegalStateException.class, () -> call(runtime, "start"));
     assertTrue(refused.getMessage().contains("shutting down"), refused.getMessage());
-    assertEquals(Boolean.FALSE, call(runtime, "isStarted"));
+    assertEquals(Boolean.FALSE, call(runtime, "isRunning"));
   }
 
   /** System properties for an isolated runtime: async writes, no control file. */

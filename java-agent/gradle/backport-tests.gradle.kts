@@ -70,3 +70,13 @@ if (line == "8") {
         java.srcDir(files(layout.buildDirectory.dir("generated/backport-tests/java")).builtBy(generate))
     }
 }
+
+// The real-JVM start tests (Java8RealJvmStartTest) start the line from its own agent JAR in a JVM of their own,
+// with the JVM's Instrumentation, as an attach does: the entry class appends that JAR to the bootstrap search.
+tasks.named<Test>("test") {
+    dependsOn("agentJava${line}Jar")
+    val agentJar = layout.buildDirectory.file("libs/ohmyrasp-agent-java$line.jar")
+    jvmArgumentProviders.add(CommandLineArgumentProvider {
+        listOf("-Dohmyrasp.test.agentJar=${agentJar.get().asFile.absolutePath}")
+    })
+}
