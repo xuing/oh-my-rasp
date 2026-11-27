@@ -4647,10 +4647,11 @@ public final class BackportHooks {
     if (RaspRuntime.detectionOff()) {
       return;
     }
-    // The credentials of a URL in the detail (a JDBC URL a pool configured) are removed first, from the detail as the
-    // rule wrote it, which is all a request without a body needs. On a request with a body publicFinding then
-    // replaces the detail with an allow-list; the one input value it shows has its own URL credentials removed.
-    finding = publicFinding(withoutUrlCredentials(finding));
+    // The public finding first, then the URL credentials in its detail (a JDBC URL a pool configured). Without a
+    // body the detail is as the rule wrote it and the credentials are removed from it. With a body publicFinding
+    // matches the operand to the inputs as the application built it and replaces the detail with an allow-list;
+    // BodyEvidence removes the credentials from the one name and value it shows, before it cuts them.
+    finding = withoutUrlCredentials(publicFinding(finding));
     if (finding.extra != null) resolvedAddress = null; // derived from an operand a body may have supplied
     String logPath = RaspRuntime.resolveLogPath();
     String event =
@@ -4696,7 +4697,7 @@ public final class BackportHooks {
     String detail = io.ohmyrasp.agent.util.Redaction.redactedUrls(finding.detailValue);
     if (detail == null || detail.equals(finding.detailValue)) return finding;
     return new Finding(finding.algorithm, finding.confidence, finding.message, finding.detailKey, detail,
-        finding.decisionBasis, finding.policyDigest);
+        finding.decisionBasis, finding.policyDigest, finding.extra);
   }
 
   /**

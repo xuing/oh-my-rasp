@@ -32,6 +32,29 @@ final class RedactionTest {
     }
   }
 
+  /** A {@code ;} ends the authority of a JDBC URL, where properties follow it, and of no other URL. */
+  @Test
+  void aSemicolonIsPartOfUserInformationOutsideJdbc() {
+    assertEquals("https://" + M + "@example.test/x", Redaction.redactedUrls("https://u:hun;ter2@example.test/x"));
+    assertEquals("curl https://" + M + "@example.test/x -o y",
+        Redaction.redactedUrls("curl https://u:hun;ter2@example.test/x -o y"));
+    assertEquals("jdbc:sqlserver://db:1433;user=sa;password=" + M + ";mail=a@b",
+        Redaction.redactedUrls("jdbc:sqlserver://db:1433;user=sa;password=hunter2;mail=a@b"));
+    String plain = "wget http://host.example/a;echo done";
+    assertSame(plain, Redaction.redactedUrls(plain));
+  }
+
+  @Test
+  void aCredentialsNameIsReadAsATokenOfAFieldName() {
+    for (String name : new String[] {"password", "user[password]", "login.api-key", "%70assword", "X-Api-Key",
+        "access_token", "AUTH"}) {
+      assertEquals(true, Redaction.namesCredential(name), name);
+    }
+    for (String name : new String[] {"passwordless", "cmd", "author", "tokens", "", null}) {
+      assertEquals(false, Redaction.namesCredential(name), String.valueOf(name));
+    }
+  }
+
   @Test
   void textWithoutCredentialsComesBackAsItWas() {
     for (String text : new String[] {

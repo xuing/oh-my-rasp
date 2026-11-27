@@ -2703,15 +2703,16 @@ public final class OhMyRaspHooks {
   }
 
   /**
-   * {@code event} as it leaves the agent, in the event and in the block exception: without URL credentials
-   * ({@link #withoutUrlCredentials}), then as its public view ({@link #publicView}), and without the evidence a
-   * response finding must not carry. The credentials go first, from the details as the rule wrote them, which is
-   * all a request without a body needs. On a request with a body the public view then replaces the details with
-   * an allow-list; the one input value it shows has its own URL credentials removed ({@link BodyEvidence}).
+   * {@code event} as it leaves the agent, in the event and in the block exception: as its public view
+   * ({@link #publicView}), then without the URL credentials in its details ({@link #withoutUrlCredentials}), and
+   * without the evidence a response finding must not carry. On a request without a body the view keeps the
+   * details as the rule wrote them, and the credentials are removed from those. On a request with a body the view
+   * matches the operands to the inputs as the application built them and replaces the details with an allow-list;
+   * {@link BodyEvidence} removes the credentials from the one name and value it shows, before it cuts them.
    */
   private static Detection reportable(Detection event) {
     java.util.function.UnaryOperator<Detection> replaced = scrubberForTesting;
-    Detection recorded = replaced != null ? replaced.apply(event) : publicView(withoutUrlCredentials(event));
+    Detection recorded = replaced != null ? replaced.apply(event) : withoutUrlCredentials(publicView(event));
     if ("response_dataLeak".equals(recorded.algorithm()) || "xss_echo".equals(recorded.algorithm())) {
       Map<String, String> evidence = "response_dataLeak".equals(recorded.algorithm())
           ? Map.of("kind", recorded.details().get("kind")) : Map.of("decision_basis", "verbatim_request_markup");

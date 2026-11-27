@@ -53,6 +53,29 @@ public final class Redaction {
   }
 
   /**
+   * Whether {@code name}, or what it decodes to, holds a credential's name as a token: {@code password},
+   * {@code user[password]}, {@code login.api-key} and {@code %70assword} do, {@code passwordless} does not. The rule
+   * a URL's parameters are read with ({@link #redactedUrls}), for a field name that is not in a URL.
+   */
+  public static boolean namesCredential(String name) {
+    if (name == null) {
+      return false;
+    }
+    String current = name;
+    for (int round = 0; ; round++) {
+      String lower = asciiLowerCase(current);
+      if (holdsToken(lower, false, true) || holdsToken(lower, true, true)) {
+        return true;
+      }
+      String next = percentDecode(current);
+      if (next.equals(current) || round == MAX_DECODE_ROUNDS) {
+        return false;
+      }
+      current = next;
+    }
+  }
+
+  /**
    * The query string with every piece that names a sensitive parameter carrying the marker in place of its value.
    * The query is split once, left to right, on {@code &} only, and the separators stay: a {@code ;} is part of its
    * piece, as Tomcat reads it, so {@code password=alpha;omega} is one value. A piece is sensitive when it, or what it
@@ -162,7 +185,8 @@ public final class Redaction {
    * One URL: the user information of each authority (after {@code //}, before the last {@code @} preceding the path),
    * and the credential parameters of what follows the first {@code ?}, {@code #} or {@code ;}, split on {@code &}
    * and {@code ;}. {@code properties} is {@code ;} for a JDBC URL, whose driver properties may start right after the
-   * database name, and {@code ?} for any other URL.
+   * host or the database name and so end its authority, and {@code ?} for any other URL, where a {@code ;} is a
+   * character user information may hold ({@code http://user:pass;word@host/}).
    */
   private static String redactedUrl(String url, char properties) {
     String current = url;
@@ -170,7 +194,8 @@ public final class Redaction {
     if (slashes >= 0) {
       int authorityStart = slashes + 2;
       int authorityEnd = authorityStart;
-      while (authorityEnd < current.length() && "/?#;".indexOf(current.charAt(authorityEnd)) < 0
+      while (authorityEnd < current.length() && "/?#".indexOf(current.charAt(authorityEnd)) < 0
+          && !(properties == ';' && current.charAt(authorityEnd) == ';')
           && !endsUrl(current.charAt(authorityEnd))) {
         authorityEnd++;
       }
@@ -216,19 +241,7 @@ public final class Redaction {
     if (equals <= 0 || equals + 1 == piece.length()) {
       return piece;
     }
-    String name = piece.substring(0, equals);
-    String current = name;
-    for (int round = 0; ; round++) {
-      String lower = asciiLowerCase(current);
-      if (holdsToken(lower, false, true) || holdsToken(lower, true, true)) {
-        return piece.substring(0, equals + 1) + MARKER;
-      }
-      String next = percentDecode(current);
-      if (next.equals(current) || round == MAX_DECODE_ROUNDS) {
-        return piece;
-      }
-      current = next;
-    }
+    return namesCredential(piece.substring(0, equals)) ? piece.substring(0, equals + 1) + MARKER : piece;
   }
 
   /** The piece itself when nothing in it is sensitive, so the caller can tell by identity. */

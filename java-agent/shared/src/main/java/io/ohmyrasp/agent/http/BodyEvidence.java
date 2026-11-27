@@ -21,10 +21,10 @@ import java.util.Set;
  * <li>for a finding that names the input it decided on (a request rule's {@code parameter}) or whose operand
  *     contains an input value (a sink rule that correlates request input), the name of that one input field cut
  *     to {@link #MAX_NAME_CHARS} characters ({@link #INPUT_FIELD}) and its value cut to {@link #MAX_VALUE_CHARS}
- *     ({@link #INPUT_VALUE}): the attacker's payload, which the attacker supplied. Two things in it are not shown,
- *     as nowhere else in an event: the value of a field that names a credential ({@code password}, {@code token}:
- *     {@link Redaction#isCredentialName}), which is the marker alone, and the credentials of a URL in the value
- *     ({@link Redaction#redactedUrls});</li>
+ *     ({@link #INPUT_VALUE}): the attacker's payload, which the attacker supplied. Two things in them are not
+ *     shown: the value of a field whose name holds a credential's name ({@code password}, {@code user[token]}:
+ *     {@link Redaction#namesCredential}), which is the marker alone, and the credentials of a URL in the name or
+ *     the value ({@link Redaction#redactedUrls}), removed before the cut;</li>
  * <li>every other detail (the command, SQL, path or URL as executed, a class name, a count) only as the hook's
  *     kind and the length of the longest one ({@link #OPERAND}, {@code "command, 37 chars"}).</li>
  * </ul>
@@ -81,7 +81,7 @@ public final class BodyEvidence {
           }
         }
       }
-      return new String[] {cutName(parameter), shown(parameter, chosen)};
+      return new String[] {shownName(parameter), shown(parameter, chosen)};
     }
     if (fields == null || lowered.length == 0) return null;
     String bestName = null;
@@ -95,13 +95,13 @@ public final class BodyEvidence {
         }
       }
     }
-    if (bestValue != null) return new String[] {cutName(bestName), shown(bestName, bestValue)};
+    if (bestValue != null) return new String[] {shownName(bestName), shown(bestName, bestValue)};
     for (Map.Entry<?, ?> field : fields.entrySet()) {
       String name = String.valueOf(field.getKey());
       if (significantName(name) && within(name, lowered)) {
         List<String> values = values(field.getValue());
         String first = values.isEmpty() ? null : values.get(0);
-        return new String[] {cutName(name), shown(name, first)};
+        return new String[] {shownName(name), shown(name, first)};
       }
     }
     return null;
@@ -125,15 +125,41 @@ public final class BodyEvidence {
     return cut(value == null ? "" : value, MAX_VALUE_CHARS);
   }
 
+  /** The name of an input as an event shows it: without the credentials of a URL in it, cut. */
+  private static String shownName(String name) {
+    return cutName(withoutUrlCredentials(name == null ? "" : name));
+  }
+
   /**
-   * The value of the input {@code name} as an event shows it, or null for none: the marker alone when the name is
-   * a credential's, else the value without the credentials of a URL in it, cut. The URL is read before the cut, so
-   * a credential the cut would have split is removed whole.
+   * The value of the input {@code name} as an event shows it, or null for none: the marker alone when the name
+   * holds a credential's name, else the value without the credentials of a URL in it, cut. The URL is read before
+   * the cut, so a credential the cut would have split is removed whole.
    */
   private static String shown(String name, String value) {
     if (value == null) return null;
-    if (Redaction.isCredentialName(name)) return Redaction.MARKER;
-    return cutValue(Redaction.redactedUrls(value));
+    if (Redaction.namesCredential(name)) return Redaction.MARKER;
+    return cutValue(withoutUrlCredentials(value));
+  }
+
+  /**
+   * {@code text} without the credentials of the URLs in it. A text as long as {@link BodyValues#MAX_VALUE_CHARS}
+   * may be one the body's extraction cut: when its last URL's authority is still open at the end (no {@code /},
+   * {@code ?}, {@code #}, {@code @} or end of URL after {@code ://}), the {@code @} that would have marked user
+   * information may be in the part that was cut off, so that authority is replaced by the marker.
+   */
+  private static String withoutUrlCredentials(String text) {
+    String redacted = Redaction.redactedUrls(text);
+    if (text.length() < BodyValues.MAX_VALUE_CHARS) return redacted;
+    int authority = redacted.lastIndexOf("://");
+    if (authority < 0) return redacted;
+    for (int i = authority + 3; i < redacted.length(); i++) {
+      char ch = redacted.charAt(i);
+      if (ch == '/' || ch == '?' || ch == '#' || ch == '@' || ch <= ' ' || ch == '"' || ch == '\'' || ch == '<'
+          || ch == '>' || ch == '`') {
+        return redacted;
+      }
+    }
+    return redacted.substring(0, authority + 3) + Redaction.MARKER;
   }
 
   private static String cut(String text, int most) {

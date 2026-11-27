@@ -28,8 +28,9 @@ import java.util.Locale;
  * scope without a root, which also hides an outer scope's root while it runs. {@link ScriptFileWrite} reads only the
  * innermost scope of the current thread ({@link #covers}), so a thread the operation starts has no root.
  *
- * <p>The three entries injected code calls do nothing while the hooks are off ({@link HookActivation}). The hooks
- * turn on once and off once, so a pair split by either change leaves at most a scope nothing reads again.
+ * <p>The three entries injected code calls do nothing while the hooks are off ({@link HookActivation}), and
+ * {@link #covers} then grants nothing. The hooks turn on once and off once: an operation that was running when
+ * they turned off never pops its scope, and that scope is never read again.
  *
  * <p>Java 8 source with no lambdas: the backport lines carry it. No method throws.
  */
@@ -121,6 +122,7 @@ public final class ContainerDeployment {
    * {@code .class} or {@code .java} file.
    */
   static boolean covers(String resolved) {
+    if (HookActivation.inactive()) return false;
     Scope scope = SCOPES.get();
     if (scope == null || scope.roots == null || resolved == null) {
       return false;

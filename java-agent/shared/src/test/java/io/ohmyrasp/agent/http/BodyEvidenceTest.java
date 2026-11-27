@@ -76,19 +76,60 @@ class BodyEvidenceTest {
         BodyEvidence.matched(body, "password", Collections.<String>emptyList()));
   }
 
+  /** A credential's name is read as a token of the field's name, as in a URL's parameters. */
+  @Test
+  void aFieldWhoseNameHoldsACredentialsNameShowsNoValue() {
+    for (String name : new String[] {"user[password]", "login.api-key", "%70assword", "access_token", "Auth"}) {
+      assertArrayEquals(new String[] {name, Redaction.MARKER},
+          BodyEvidence.matched(fields(name, "SENTINEL-value"), null, Collections.singletonList("x SENTINEL-value y")),
+          name);
+    }
+    assertArrayEquals(new String[] {"passwordless", "SENTINEL-value"},
+        BodyEvidence.matched(fields("passwordless", "SENTINEL-value"), null,
+            Collections.singletonList("x SENTINEL-value y")), "a longer word is another name");
+  }
+
+  /** A JSON key can be any text: one that is a URL is shown without its credentials too. */
+  @Test
+  void aFieldNameThatIsAUrlShowsNoCredential() {
+    String[] shown = BodyEvidence.matched(fields("https://u:SENTINEL@example.test/", "alpha-value"), null,
+        Collections.singletonList("echo alpha-value"));
+    assertArrayEquals(new String[] {"https://" + Redaction.MARKER + "@example.test/", "alpha-value"}, shown);
+  }
+
   /** The URL is read before the value is cut: a credential the cut would split does not leave its first half. */
   @Test
   void aCredentialTheCutWouldSplitIsRemovedWhole() {
     StringBuilder user = new StringBuilder();
     for (int i = 0; i < BodyEvidence.MAX_VALUE_CHARS - 20; i++) user.append('u');
-    String url = "http://" + user + ":SENTINEL-first-half-SENTINEL-second-half@host.example/x";
-    Map<String, List<String>> body = new LinkedHashMap<String, List<String>>();
-    body.put("callback", Collections.singletonList(url));
+    StringBuilder path = new StringBuilder();
+    for (int i = 0; i < 2 * BodyEvidence.MAX_VALUE_CHARS; i++) path.append('p');
+    String url = "http://" + user + ":SENTINEL-first-half-SENTINEL-second-half@host.example/" + path;
 
-    String[] shown = BodyEvidence.matched(body, "callback", Collections.<String>emptyList());
+    String[] shown = BodyEvidence.matched(fields("callback", url), "callback", Collections.<String>emptyList());
 
-    assertFalse(shown[1].contains("SENTINEL"), shown[1]);
-    assertTrue(shown[1].length() <= BodyEvidence.MAX_VALUE_CHARS);
+    String whole = "http://" + Redaction.MARKER + "@host.example/" + path;
+    assertEquals(whole.substring(0, BodyEvidence.MAX_VALUE_CHARS), shown[1]);
+  }
+
+  /**
+   * The body's extraction cuts a value at BodyValues.MAX_VALUE_CHARS, which can take the {@code @} that ends a
+   * URL's user information: what is left of that authority is not shown. A URL whose authority ended before the
+   * cut is unaffected.
+   */
+  @Test
+  void aUrlWhoseAuthorityTheExtractionCutIsNotShown() {
+    StringBuilder open = new StringBuilder("https://u:SENTINEL");
+    while (open.length() < BodyValues.MAX_VALUE_CHARS) open.append('x');
+    String[] cut = BodyEvidence.matched(fields("callback", open.toString()), "callback",
+        Collections.<String>emptyList());
+    assertEquals("https://" + Redaction.MARKER, cut[1]);
+
+    StringBuilder closed = new StringBuilder("https://host.example/SENTINEL-is-a-path-here/");
+    while (closed.length() < BodyValues.MAX_VALUE_CHARS) closed.append('x');
+    String[] kept = BodyEvidence.matched(fields("callback", closed.toString()), "callback",
+        Collections.<String>emptyList());
+    assertEquals(closed.substring(0, BodyEvidence.MAX_VALUE_CHARS), kept[1]);
   }
 
   @Test

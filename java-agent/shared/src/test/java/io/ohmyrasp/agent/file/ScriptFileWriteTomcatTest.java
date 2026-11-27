@@ -67,6 +67,39 @@ final class ScriptFileWriteTomcatTest {
     assertEquals("true", unpack(new Container(getClass().getClassLoader()), "app", jsp), "the control: hooks on");
   }
 
+  /**
+   * The hooks turn off while a verified unpack runs (a stop): its exit no longer pops its scope, and nothing reads
+   * that scope while they are off. On a thread of its own, since the scope stays on the thread.
+   */
+  @Test
+  void anUnpackTheHooksTurnedOffUnderGrantsNothingAfterwards() throws Exception {
+    final String jsp = DOC_BASE + "/index.jsp";
+    final String[] seen = new String[2];
+    final Throwable[] failure = new Throwable[1];
+    Thread thread = new Thread(new Runnable() {
+      @Override public void run() {
+        try {
+          DeploymentWork.body = new DeploymentWork.Body() {
+            @Override public String run(String path) {
+              String during = String.valueOf(ContainerDeployment.covers(path));
+              HookActivation.deactivate();
+              return during;
+            }
+          };
+          seen[0] = unpack(new Container(ScriptFileWriteTomcatTest.class.getClassLoader()), "app", jsp);
+          seen[1] = String.valueOf(ContainerDeployment.covers(jsp));
+        } catch (Throwable thrown) {
+          failure[0] = thrown;
+        }
+      }
+    });
+    thread.start();
+    thread.join();
+    if (failure[0] != null) throw new AssertionError(failure[0]);
+    assertEquals("true", seen[0], "inside the unpack, while the hooks were on");
+    assertEquals("false", seen[1], "after it, with the hooks off");
+  }
+
   @Test
   void aWarUnpackedIntoAnExternalAppBaseIsLeftAlone() throws Exception {
     // A Host whose appBase lies outside catalina.base: the docBase the unpack writes is all the evidence needed.
