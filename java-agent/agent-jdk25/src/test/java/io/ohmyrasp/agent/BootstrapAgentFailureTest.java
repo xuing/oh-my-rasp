@@ -30,12 +30,14 @@ import org.junit.jupiter.api.io.TempDir;
 final class BootstrapAgentFailureTest {
   private static final String LIST = "META-INF/ohmyrasp/preload/" + BootstrapAgent.MODULE + ".txt";
   private static final String EXPLODING = BootstrapAgentFailureMain.ExplodingInit.class.getName();
+  // A class every list holds; an empty list fails the start.
+  private static final String LISTED = io.ohmyrasp.agent.runtime.DetectionMode.class.getName();
 
   @TempDir Path work;
 
   @Test
   void aStartThatSucceedsRegistersOneTransformerAndStartsTheThreads() throws Exception {
-    Result result = run("started", jarWith(List.of()));
+    Result result = run("started", jarWith(List.of(LISTED)));
     assertTrue(result.ended.equals("started"), result.ended);
     assertEquals(1, result.transformers);
     assertTrue(result.threads.contains("ohmyrasp-control-poller"), result.threads);
@@ -44,7 +46,7 @@ final class BootstrapAgentFailureTest {
 
   @Test
   void aHookMissDuringAStartThatSucceedsIsWrittenOnceTheStartCommitted() throws Exception {
-    Result result = run("miss-then-starts", jarWith(List.of()));
+    Result result = run("miss-then-starts", jarWith(List.of(LISTED)));
     assertEquals("started", result.ended);
     assertTrue(result.hookMissWritten, "the hook miss loaded during the start was not written after it");
     assertTrue(result.reportOn);
@@ -52,7 +54,7 @@ final class BootstrapAgentFailureTest {
 
   @Test
   void aHookMissDuringAStartThatFailsIsDroppedWithTheReportAndLeavesNoThread() throws Exception {
-    Result result = run("miss-then-fails", jarWith(List.of()));
+    Result result = run("miss-then-fails", jarWith(List.of(LISTED)));
     assertFails(result, "the JVM refuses to list its classes");
   }
 
@@ -60,6 +62,12 @@ final class BootstrapAgentFailureTest {
   void aJarWithoutAListFailsBeforeAnythingStarts() throws Exception {
     Result result = run("no-list", jarWith(null));
     assertFails(result, "has no META-INF/ohmyrasp/preload/agent-jdk25.txt");
+  }
+
+  @Test
+  void aJarWithAnEmptyListFailsBeforeAnythingStarts() throws Exception {
+    Result result = run("empty-list", jarWith(List.of()));
+    assertFails(result, "has an empty META-INF/ohmyrasp/preload/agent-jdk25.txt");
   }
 
   @Test
@@ -77,7 +85,7 @@ final class BootstrapAgentFailureTest {
 
   @Test
   void noJarToStartFromFailsBeforeAnythingStarts() throws Exception {
-    Result result = run("no-jar", jarWith(List.of()));
+    Result result = run("no-jar", jarWith(List.of(LISTED)));
     assertFails(result, "not on the bootstrap search");
   }
 
@@ -89,7 +97,7 @@ final class BootstrapAgentFailureTest {
 
   @Test
   void aFailureAfterTheTransformerIsRegisteredRemovesItAndStopsWhatTheStartStarted() throws Exception {
-    Result result = run("fails-after-transformer", jarWith(List.of()));
+    Result result = run("fails-after-transformer", jarWith(List.of(LISTED)));
     assertFails(result, "the JVM refuses to list its classes");
   }
 
