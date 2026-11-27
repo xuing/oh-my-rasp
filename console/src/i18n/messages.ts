@@ -203,6 +203,11 @@ const zh: Table = {
   "Block — enforce": "阻断——强制执行",
   "Block reflection abuse": "阻断反射滥用",
   "Block process execution": "阻断进程执行",
+  "Outside an HTTP request": "HTTP 请求之外",
+  "Findings on scheduled jobs, message consumers, background threads and start-up code. Every agent line applies it.":
+    "定时任务、消息消费者、后台线程与启动代码中的检测结果。所有 Agent 版本线都应用此设置。",
+  "Block — as inside a request": "阻断——与请求内相同",
+  "Log only — record and let it run": "仅记录——记录事件并放行",
   Bypass: "放行",
   Allowlist: "白名单",
   "Allowlist enabled": "启用白名单",
@@ -607,6 +612,11 @@ const ja: Table = {
   "Block — enforce": "ブロック——強制",
   "Block reflection abuse": "リフレクション悪用をブロック",
   "Block process execution": "プロセス実行をブロック",
+  "Outside an HTTP request": "HTTP リクエスト外",
+  "Findings on scheduled jobs, message consumers, background threads and start-up code. Every agent line applies it.":
+    "スケジュールジョブ、メッセージコンシューマー、バックグラウンドスレッド、起動コードでの検出。すべてのエージェントラインに適用されます。",
+  "Block — as inside a request": "ブロック——リクエスト内と同じ",
+  "Log only — record and let it run": "記録のみ——記録して実行を許可",
   Bypass: "バイパス",
   Allowlist: "許可リスト",
   "Allowlist enabled": "許可リストを有効化",

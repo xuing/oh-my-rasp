@@ -2654,6 +2654,9 @@ func (s *Store) UpsertApplicationSetting(ctx context.Context, actorID string, se
 	if setting.Value == nil {
 		return control.ApplicationSetting{}, fmt.Errorf("%w: setting value is required", control.ErrInvalid)
 	}
+	if err := control.ValidateApplicationSettingValue(setting.Key, setting.Value); err != nil {
+		return control.ApplicationSetting{}, err
+	}
 	body, err := json.Marshal(setting.Value)
 	if err != nil {
 		return control.ApplicationSetting{}, err

@@ -1628,6 +1628,61 @@ func TestSystemSettingsAreListedAndAudited(t *testing.T) {
 	}
 }
 
+// The outside_request member of protection.hardening travels to the hosts in the policy's config: the
+// daemon writes it to the control file, where every agent line reads it.
+func TestHardeningOutsideRequestTravelsInTheAgentPolicy(t *testing.T) {
+	client := newTestClient(t)
+	token := client.login(t)
+	appAuth := defaultAppHeaders()
+	agent := client.requestWithHeaders(t, http.MethodPost, "/api/v1/agents/register", appAuth, map[string]any{
+		"environment_id": "env_default",
+		"hostname":       "scheduler-1",
+		"runtime":        "java",
+		"version":        "1.0.0",
+	})
+	agentID := stringValue(t, agent, "id")
+	hardening := func(pulled map[string]any) map[string]any {
+		return objectValue(t, objectValue(t, pulled, "config"), "hardening")
+	}
+
+	pulled := client.requestWithHeaders(t, http.MethodGet, "/api/v1/agents/"+agentID+"/policy", appAuth, nil)
+	if got := hardening(pulled)["outside_request"]; got != "block" {
+		t.Fatalf("expected the default outside_request block, got %#v", got)
+	}
+
+	updated := client.request(t, http.MethodPut, "/api/v1/applications/app_default/settings", token, map[string]any{
+		"key":   "protection.hardening",
+		"value": map[string]any{"mode": "monitor", "block_reflection_abuse": true, "block_process_execution": true, "outside_request": " LOG "},
+	})
+	if got := objectValue(t, updated, "value")["outside_request"]; got != "log" {
+		t.Fatalf("expected outside_request stored as log, got %#v", updated)
+	}
+	pulled = client.requestWithHeaders(t, http.MethodGet, "/api/v1/agents/"+agentID+"/policy", appAuth, nil)
+	if got := hardening(pulled)["outside_request"]; got != "log" {
+		t.Fatalf("expected the agent policy to carry outside_request log, got %#v", pulled)
+	}
+
+	// An environment's own setting wins over the application's.
+	client.request(t, http.MethodPut, "/api/v1/applications/app_default/environments/env_default/settings", token, map[string]any{
+		"key":   "protection.hardening",
+		"value": map[string]any{"mode": "monitor", "outside_request": "block"},
+	})
+	pulled = client.requestWithHeaders(t, http.MethodGet, "/api/v1/agents/"+agentID+"/policy", appAuth, nil)
+	if got := hardening(pulled)["outside_request"]; got != "block" {
+		t.Fatalf("expected the environment's outside_request block, got %#v", pulled)
+	}
+
+	for _, bad := range []any{"sometimes", true, 1} {
+		resp := client.raw(t, http.MethodPut, "/api/v1/applications/app_default/settings", token, nil, map[string]any{
+			"key":   "protection.hardening",
+			"value": map[string]any{"mode": "monitor", "outside_request": bad},
+		})
+		if resp.Code != http.StatusBadRequest {
+			t.Fatalf("expected 400 for outside_request %#v, got %d %s", bad, resp.Code, resp.Body.String())
+		}
+	}
+}
+
 func TestMaintenanceCleanupCanPreviewAndPurgeOperationalData(t *testing.T) {
 	client := newTestClient(t)
 	token := client.login(t)
