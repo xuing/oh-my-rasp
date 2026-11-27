@@ -10,6 +10,29 @@ class PlotWriteTest {
     return PlotWrite.bytes(owner, bytes, 0, bytes.length);
   }
 
+  /**
+   * The backport file transformers call these from FileOutputStream. While the hooks are off (before a start commits,
+   * or after a failed one left the calls behind) a write is not scanned and an open or close changes no stream.
+   */
+  @Test void whileTheHooksAreOffAWriteIsNeitherRegisteredNorScanned() {
+    Object registered = new Object();
+    Object openedWhileOff = new Object();
+    String directive = "set xrange [system(0)]\n";
+    PlotWrite.opened(registered, "chart.plot", false);
+    io.ohmyrasp.agent.hook.HookActivation.deactivate();
+    try {
+      PlotWrite.opened(openedWhileOff, "chart.plot", false);
+      assertNull(prepare(registered, directive), "a write was scanned while the hooks were off");
+      assertNull(PlotWrite.single(registered, 's'), "a single-byte write was scanned while the hooks were off");
+      PlotWrite.exposed(registered);
+      PlotWrite.closed(registered);
+    } finally {
+      io.ohmyrasp.agent.hook.HookActivation.activate();
+    }
+    assertNull(prepare(openedWhileOff, directive), "an open while the hooks were off registered the stream");
+    assertTrue(prepareAndCommit(registered, directive), "a close while the hooks were off forgot the stream");
+  }
+
   @Test void commitOnlySuccessfulBytesAndRecoverAfterAnUncertainWrite() {
     Object owner = new Object();
     PlotWrite.opened(owner, "chart.plot", false);

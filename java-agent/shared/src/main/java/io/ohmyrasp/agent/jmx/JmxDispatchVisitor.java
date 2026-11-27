@@ -55,11 +55,15 @@ public final class JmxDispatchVisitor {
           // The JDK can call application exception-formatting code after the delegate throws.
           for (AbstractInsnNode handler : handlers) instructions.insertBefore(handler, clearArguments());
         }
-        accept(new ScopedMethodAdvice(Opcodes.ASM9, visitor, access, name, desc) {
-          @Override protected void enterDispatch() { scope("enter"); }
-          @Override protected void exitDispatch() { scope("exit"); }
-          private void scope(String method) {
-            mv.visitMethodInsn(Opcodes.INVOKESTATIC, Type.getInternalName(JmxWriteScope.class), method, "()V", false);
+        accept(new ScopedMethodAdvice(Opcodes.ASM9, visitor, access, name, desc, true) {
+          @Override protected void enterDispatch() {
+            mv.visitMethodInsn(Opcodes.INVOKESTATIC, Type.getInternalName(JmxWriteScope.class), "enter",
+                "()Ljava/lang/Object;", false);
+          }
+          @Override protected void exitDispatch() {
+            loadToken();
+            mv.visitMethodInsn(Opcodes.INVOKESTATIC, Type.getInternalName(JmxWriteScope.class), "exit",
+                "(Ljava/lang/Object;)V", false);
           }
         });
       }

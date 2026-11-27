@@ -14,35 +14,35 @@ class AttachmentFileReadTest {
     var origin = new Object();
     var selected = new Object();
     var ordinary = new Object();
-    AttachmentFileRead.beginReference(report.toUri().toString(), origin);
+    Object local = AttachmentFileRead.beginReference(report.toUri().toString(), origin);
     try {
       AttachmentFileRead.created(selected, url);
-      AttachmentFileRead.beginReference("cid:weekly", origin);
+      Object content = AttachmentFileRead.beginReference("cid:weekly", origin);
       try {
         AttachmentFileRead.created(ordinary, url);
       } finally {
-        AttachmentFileRead.endReference();
+        AttachmentFileRead.endReference(content);
       }
     } finally {
-      AttachmentFileRead.endReference();
+      AttachmentFileRead.endReference(local);
     }
     CompletableFuture.runAsync(() -> {
-      AttachmentFileRead.beginRead(selected);
+      Object read = AttachmentFileRead.beginRead(selected);
       try {
         assertTrue(AttachmentFileRead.selected(report.toString()));
         assertSame(origin, AttachmentFileRead.origin());
         assertFalse(AttachmentFileRead.selected(report + ".other"));
         assertFalse(AttachmentFileRead.repeated());
         assertTrue(AttachmentFileRead.repeated());
-        AttachmentFileRead.beginRead(ordinary);
+        Object other = AttachmentFileRead.beginRead(ordinary);
         try {
           assertFalse(AttachmentFileRead.selected(report.toString()));
         } finally {
-          AttachmentFileRead.endRead();
+          AttachmentFileRead.endRead(other);
         }
         assertTrue(AttachmentFileRead.selected(report.toString()));
       } finally {
-        AttachmentFileRead.endRead();
+        AttachmentFileRead.endRead(read);
       }
       assertNull(AttachmentFileRead.origin());
     }).join();

@@ -1,5 +1,7 @@
 package io.ohmyrasp.agent.naming;
 
+import io.ohmyrasp.agent.hook.HookActivation;
+
 /** Connect the JDK's routing operand and the provider handoff within one lookup. */
 public final class LookupRoute {
   public static final String LOGIN_LOOKUP = "JndiLoginModule.lookup";
@@ -23,31 +25,43 @@ public final class LookupRoute {
     return operation.startsWith("URLContext.") ? "provider_root_lookup" : "url_scheme_selection";
   }
 
-  public static void enter(Object initial, Object name, String operation) {
+  /** Opens the frame of one lookup; returns it as the token {@link #exit} takes, or null while the hooks are off. */
+  public static Object enter(Object initial, Object name, String operation) {
+    if (HookActivation.inactive()) return null;
     LookupRoute caller = CURRENT.get();
     // An operation-less parent marks the exact receiver and operand supplied by the login module.
     if (caller != null && caller.operation == null && caller.initial == initial && caller.name == name)
       operation = LOGIN_LOOKUP;
-    CURRENT.set(new LookupRoute(caller, initial, name, operation));
+    LookupRoute frame = new LookupRoute(caller, initial, name, operation);
+    CURRENT.set(frame);
+    return frame;
   }
 
-  /** Keep the call site attached only to the matching lookup, including on exceptional return. */
+  /**
+   * Stands in for the login module's {@code context.lookup(url)}: keeps the call site attached only to the matching
+   * lookup, including on exceptional return. While the hooks are off it is that lookup alone.
+   */
   public static Object loginLookup(javax.naming.InitialContext context, String url) throws javax.naming.NamingException {
-    CURRENT.set(new LookupRoute(CURRENT.get(), context, url, null));
+    if (HookActivation.inactive()) return context.lookup(url);
+    LookupRoute frame = new LookupRoute(CURRENT.get(), context, url, null);
+    CURRENT.set(frame);
     try {
       return context.lookup(url);
     } finally {
-      exit();
+      exit(frame);
     }
   }
 
-  public static void exit() {
-    LookupRoute frame = CURRENT.get();
-    if (frame == null || frame.parent == null) CURRENT.remove();
-    else CURRENT.set(frame.parent);
+  /** Closes the frame {@code token} opened: the thread's frame is its parent again. Null opened none. */
+  public static void exit(Object token) {
+    if (token == null) return;
+    LookupRoute parent = ((LookupRoute) token).parent;
+    if (parent == null) CURRENT.remove();
+    else CURRENT.set(parent);
   }
 
   public static String selecting(String url, String scheme, Object initial, Object name) {
+    if (HookActivation.inactive()) return null;
     LookupRoute frame = CURRENT.get();
     if (frame == null || frame.initial != initial || frame.name != name || scheme == null
         || !url.regionMatches(scheme.length(), "://", 0, 3)) return null;
@@ -56,6 +70,7 @@ public final class LookupRoute {
   }
 
   public static void dispatch(Object provider, Object name) {
+    if (HookActivation.inactive()) return;
     LookupRoute frame = CURRENT.get();
     if (frame != null && frame.name == name) frame.provider = provider;
   }

@@ -25,19 +25,25 @@ public final class HostReadPath {
     Facade(String path, Facade parent) { this.path = path; this.parent = parent; }
   }
 
-  public static void beginFacade(Object path) {
+  /**
+   * Enters one Files facade operation; returns the facade it opened, as the token {@link #endFacade} takes, or null
+   * when it opened none. The hook entry that calls it asks the activation first.
+   */
+  public static Object beginFacade(Object path) {
     Facade parent = FACADES.get();
     boolean fallback = needsFacadeRead(path);
-    if (fallback || parent != null) {
-      FACADES.set(new Facade(fallback ? String.valueOf(path) : null, parent));
-    }
+    if (!fallback && parent == null) return null;
+    Facade facade = new Facade(fallback ? String.valueOf(path) : null, parent);
+    FACADES.set(facade);
+    return facade;
   }
 
-  public static void endFacade() {
-    Facade current = FACADES.get();
-    if (current == null) return;
-    if (current.parent == null) FACADES.remove();
-    else FACADES.set(current.parent);
+  /** Leaves the operation {@code token} entered: the thread's facade is its parent again. Null entered none. */
+  public static void endFacade(Object token) {
+    if (token == null) return;
+    Facade parent = ((Facade) token).parent;
+    if (parent == null) FACADES.remove();
+    else FACADES.set(parent);
   }
 
   /** Only suppress a repeated log inside the same still-active facade operation. */

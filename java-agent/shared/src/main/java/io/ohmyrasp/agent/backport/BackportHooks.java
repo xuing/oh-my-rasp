@@ -684,9 +684,10 @@ public final class BackportHooks {
     HostDirectory.submitted(walker, inputs, HostDirectory.selected(path.toString(), inputs, false));
   }
 
-  public static void beginDirectoryVisit(Object walker, java.nio.file.Path path) {
-    if (inactive()) return;
-    HostDirectory.visiting(walker, path, CURRENT_REQUEST.get() != null);
+  /** Returns the visit it opened, the token the walker's exit passes to HostDirectory.visited, or null. */
+  public static Object beginDirectoryVisit(Object walker, java.nio.file.Path path) {
+    if (inactive()) return null;
+    return HostDirectory.visiting(walker, path, CURRENT_REQUEST.get() != null);
   }
 
   public static void afterFileList(String[] entries, String path) {
@@ -816,18 +817,22 @@ public final class BackportHooks {
     }
   }
 
-  public static void beginNioRead(Object path) {
-    if (inactive()) return;
-    HostReadPath.beginFacade(path);
+  /** Returns the facade it opened, the token the facade's exit passes to HostReadPath.endFacade, or null. */
+  public static Object beginNioRead(Object path) {
+    if (inactive()) return null;
+    Object facade = HostReadPath.beginFacade(path);
     try { beforeNioFileRead(path); }
-    catch (RuntimeException | Error failure) { HostReadPath.endFacade(); throw failure; }
+    catch (RuntimeException | Error failure) { HostReadPath.endFacade(facade); throw failure; }
+    return facade;
   }
 
-  public static void beginNioChannel(Object path, Object options) {
-    if (inactive()) return;
-    HostReadPath.beginFacade(path);
+  /** Returns the facade it opened, the token the facade's exit passes to HostReadPath.endFacade, or null. */
+  public static Object beginNioChannel(Object path, Object options) {
+    if (inactive()) return null;
+    Object facade = HostReadPath.beginFacade(path);
     try { beforeNioByteChannelOpen(path, options); }
-    catch (RuntimeException | Error failure) { HostReadPath.endFacade(); throw failure; }
+    catch (RuntimeException | Error failure) { HostReadPath.endFacade(facade); throw failure; }
+    return facade;
   }
 
   public static void beforeNioFileRead(Object path) {
@@ -1427,9 +1432,10 @@ public final class BackportHooks {
     }
   }
 
-  public static void beginAttachmentReference(String id) {
-    if (inactive()) return;
-    io.ohmyrasp.agent.xml.AttachmentFileRead.beginReference(RaspRuntime.detectionOff() ? null : id, null);
+  /** Returns the scope it opened, the token the reader's exit passes to AttachmentFileRead.endReference, or null. */
+  public static Object beginAttachmentReference(String id) {
+    if (inactive()) return null;
+    return io.ohmyrasp.agent.xml.AttachmentFileRead.beginReference(RaspRuntime.detectionOff() ? null : id, null);
   }
 
   public static void beforeXmlEntity(String name, Object source) {

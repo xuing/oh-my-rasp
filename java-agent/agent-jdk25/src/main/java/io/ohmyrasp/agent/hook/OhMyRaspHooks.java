@@ -1324,9 +1324,10 @@ public final class OhMyRaspHooks {
     }
   }
 
-  public static void beginDirectoryVisit(Object walker, java.nio.file.Path path) {
-    if (HookActivation.inactive()) return;
-    HostDirectory.visiting(walker, path, currentRequest().active());
+  /** Returns the visit it opened, the token the walker's exit passes to HostDirectory.visited, or null. */
+  public static Object beginDirectoryVisit(Object walker, java.nio.file.Path path) {
+    if (HookActivation.inactive()) return null;
+    return HostDirectory.visiting(walker, path, currentRequest().active());
   }
 
   public static void beforeDirectoryList(Object file) {
@@ -1500,15 +1501,17 @@ public final class OhMyRaspHooks {
     }
   }
 
-  public static void beginNioRead(Object path) {
-    if (HookActivation.inactive()) return;
-    HostReadPath.beginFacade(path);
+  /** Returns the facade it opened, the token the facade's exit passes to HostReadPath.endFacade, or null. */
+  public static Object beginNioRead(Object path) {
+    if (HookActivation.inactive()) return null;
+    Object facade = HostReadPath.beginFacade(path);
     try {
       if (!detectionDisabled() && HostReadPath.needsFacadeRead(path)) inspectFileRead(pathFrom(path), HostReadPath.OpenPolicy.PATH_ONLY, null);
     } catch (RuntimeException | Error failure) {
-      HostReadPath.endFacade();
+      HostReadPath.endFacade(facade);
       throw failure;
     }
+    return facade;
   }
 
   public static void beforePathRead(Object path) {
@@ -1716,9 +1719,10 @@ public final class OhMyRaspHooks {
     }
   }
 
-  public static void beginAttachmentReference(String id) {
-    if (HookActivation.inactive()) return;
-    io.ohmyrasp.agent.xml.AttachmentFileRead.beginReference(detectionDisabled() ? null : id, currentRequest());
+  /** Returns the scope it opened, the token the reader's exit passes to AttachmentFileRead.endReference, or null. */
+  public static Object beginAttachmentReference(String id) {
+    if (HookActivation.inactive()) return null;
+    return io.ohmyrasp.agent.xml.AttachmentFileRead.beginReference(detectionDisabled() ? null : id, currentRequest());
   }
 
   public static void beforeUrlDataSource(Object url) {

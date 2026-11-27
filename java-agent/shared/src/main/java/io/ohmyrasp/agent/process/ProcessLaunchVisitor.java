@@ -90,13 +90,14 @@ public final class ProcessLaunchVisitor {
     final boolean stringMethod = ("(Ljava/lang/String;" + EXEC_TAIL).equals(descriptor);
     if ("java/lang/Runtime".equals(owner) && "exec".equals(name)
         && (stringMethod || ("([Ljava/lang/String;" + EXEC_TAIL).equals(descriptor))) {
-      return new ScopedMethodAdvice(Opcodes.ASM9, visitor, access, name, descriptor) {
+      return new ScopedMethodAdvice(Opcodes.ASM9, visitor, access, name, descriptor, true) {
         @Override protected void enterDispatch() {
           push(stringMethod);
-          invokeStatic(SCOPE, Method.getMethod("void enter(boolean)"));
+          invokeStatic(SCOPE, Method.getMethod("Object enter(boolean)"));
         }
         @Override protected void exitDispatch() {
-          invokeStatic(SCOPE, Method.getMethod("void exit()"));
+          loadToken();
+          invokeStatic(SCOPE, Method.getMethod("void exit(Object)"));
         }
       };
     }

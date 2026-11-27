@@ -226,15 +226,16 @@ public final class HttpTransportVisitor {
           }
         }
         if (acquires) {
-          accept(new ScopedMethodAdvice(Opcodes.ASM9, visitor, access, name, descriptor) {
+          accept(new ScopedMethodAdvice(Opcodes.ASM9, visitor, access, name, descriptor, true) {
             @Override protected void enterDispatch() {
               loadThis();
               mv.visitMethodInsn(INVOKESTATIC, Type.getInternalName(HttpTransportObservation.class),
-                  "enterAcquisition", "(Ljava/lang/Object;)V", false);
+                  "enterAcquisition", "(Ljava/lang/Object;)Ljava/lang/Object;", false);
             }
             @Override protected void exitDispatch() {
+              loadToken();
               mv.visitMethodInsn(INVOKESTATIC, Type.getInternalName(HttpTransportObservation.class),
-                  "exitAcquisition", "()V", false);
+                  "exitAcquisition", "(Ljava/lang/Object;)V", false);
             }
           });
         } else {

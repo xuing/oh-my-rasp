@@ -13,7 +13,7 @@ public final class JdbcObservationAdvice extends ScopedMethodAdvice {
   private final boolean isStatic;
 
   public JdbcObservationAdvice(MethodVisitor mv, int access, String name, String descriptor) {
-    super(Opcodes.ASM9, mv, access, name, descriptor);
+    super(Opcodes.ASM9, mv, access, name, descriptor, true);
     isStatic = (access & Opcodes.ACC_STATIC) != 0;
   }
 
@@ -21,10 +21,11 @@ public final class JdbcObservationAdvice extends ScopedMethodAdvice {
     if (isStatic) visitInsn(Opcodes.ACONST_NULL);
     else loadThis();
     loadArg(0);
-    invokeStatic(SCOPE, Method.getMethod("void enter(Object, String)"));
+    invokeStatic(SCOPE, Method.getMethod("Object enter(Object, String)"));
   }
 
   @Override protected void exitDispatch() {
-    invokeStatic(SCOPE, Method.getMethod("void exit()"));
+    loadToken();
+    invokeStatic(SCOPE, Method.getMethod("void exit(Object)"));
   }
 }

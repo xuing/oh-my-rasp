@@ -1,5 +1,6 @@
 package io.ohmyrasp.agent.http;
 
+import io.ohmyrasp.agent.hook.HookActivation;
 import java.lang.ref.WeakReference;
 import io.ohmyrasp.agent.util.WeakOwners;
 import java.util.Collections;
@@ -87,6 +88,7 @@ public final class MultipartFilename {
   }
 
   public static void wrapped(Object wrapper, Object request) {
+    if (HookActivation.inactive()) return;
     if (request == null || wrapper == request) WRAPPED.remove(wrapper);
     else WRAPPED.put(wrapper, new WeakReference<Object>(request));
   }
@@ -120,10 +122,15 @@ public final class MultipartFilename {
     Scope(Scope parent, Object receiver, int kind) { this.parent = parent; this.receiver = receiver; this.kind = kind; }
   }
 
-  public static void enter(Object receiver, int kind) {
+  /** Enters one filename getter; returns the scope it opened, as the token {@link #exit} takes, or null when none. */
+  public static Object enter(Object receiver, int kind) {
+    if (HookActivation.inactive()) return null;
     boolean eligible = kind == KNOWN || (contracts(receiver.getClass()) & kind) != 0;
     Scope parent = CURRENT.get();
-    if (eligible || parent != null) CURRENT.set(new Scope(parent, eligible ? receiver : null, kind));
+    if (!eligible && parent == null) return null;
+    Scope scope = new Scope(parent, eligible ? receiver : null, kind);
+    CURRENT.set(scope);
+    return scope;
   }
 
   public static boolean eligible() {
@@ -141,11 +148,12 @@ public final class MultipartFilename {
     return scope == null ? 0 : scope.kind;
   }
 
-  public static void exit() {
-    Scope scope = CURRENT.get();
-    if (scope == null) return;
-    if (scope.parent == null) CURRENT.remove();
-    else CURRENT.set(scope.parent);
+  /** Leaves the getter {@code token} entered: the thread's scope is its parent again. Null entered none. */
+  public static void exit(Object token) {
+    if (token == null) return;
+    Scope parent = ((Scope) token).parent;
+    if (parent == null) CURRENT.remove();
+    else CURRENT.set(parent);
   }
 
   /** A delegate and its wrapper may expose the same decision. Each denial still evaluates live. */
