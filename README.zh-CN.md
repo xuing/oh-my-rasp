@@ -74,6 +74,7 @@ OhMyRASP 不在网络边界对 HTTP 报文做正则猜谜，而是直接把检�
 - **真实密码学验签/解密：** 对可疑默认密钥 Bearer JWT 执行真实 HMAC 校验，对 Shiro `rememberMe` Cookie 用已知默认密钥解密并检查 Java 序列化魔数头。
 - **Java2Shell 零分配算术快路径（CVE-2026-114938）：** 在 `java.util.Base64$Decoder.decode0` 入口执行纯算术条件检查（`length >= 65`、`1 <= (length & 63) <= 3`、`1 <= padding <= 2`、`padding <= remainder`、严格 Base64 字符集、`!isMIME`），在本地 AVX-512 stub 越界写发生前阻断恶意输入，脱离 HTTP 请求上下文也可生效，且仅记录长度等元数据。
 - **Fastjson 1.2.83 类资源边界拦截：** 仅在 `ParserConfig.checkAutoType` 调用栈内拦截 `ClassLoader.getResourceAsStream`，阻断 `http(s)://`、`jar:http(s)://` 及 `jar:file:/proc/self/fd/` 等外部资源加载，放行正常 classpath 与 Spring Boot `jar:nested:`。
+- **各 Java 版本相同的阻断范围：** 阻断模式下，不在处理 HTTP 请求的线程（定时任务、消息消费者、启动代码）上的检测结果与请求内一样被阻断，所有 Agent 版本线行为一致。将 `outside_request` 设为 `log`（在控制台“防护配置”页按应用或环境设置、在主机控制台设置，或烘焙进独立 JAR）后，这些检测结果只记录、操作照常执行。[请求之外](docs/detection.md#outside-an-http-request)
 - **热路径非阻塞写盘：** 告警异步进入本地 NDJSON spool（shirudo 独立模式下直接写 `stderr`），运行模式（`off` / `monitor` / `block`）可热切换而无需重启 JVM。
 
 完整技术细节见 [docs/detection.md](docs/detection.md)。
@@ -101,6 +102,7 @@ JDK 21 的标准 Agent 下载名为 `ohmyrasp-agent-jdk21.jar`，Shirudo 包使�
 
 - **零后台线程**：不启动控制文件轮询线程与本地写盘线程。
 - **防配置降级**：`lock_config=true` 只从已签名 JAR 内部加载，目标机上的 `/tmp/ohmyrasp-control.json` 或 `OHMYRASP_MODE=off` 等环境变量均无法关闭阻断。
+- **请求之外同样阻断**：HTTP 请求之外的检测结果与请求内一样被阻断。通用包 `ohmyrasp.jar` 还会烘焙 `outside_request`（默认 `block`，构建时加 `--outside-request log` 则为 `log`）。
 - **零落盘噪声**：结构化 JSON 检测事件直接输出到 JVM `stderr`，不在 `/tmp` 生成 `ohmyrasp-events.jsonl`，也不打印 `hook_latency` 采样。
 
 你可以从 [GitHub Releases](https://github.com/xuing/oh-my-rasp/releases) 直接下载预构建的 `ohmyrasp-shirudo-upatches-<version>.tar.gz`，或在本地构建并运行实机容器冒烟测试：
