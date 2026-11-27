@@ -153,6 +153,29 @@ fn route(event: AgentEvent, store: &EventStore, offer: impl FnOnce(AgentEvent)) 
         EventClass::Telemetry => store.record_latency(&event),
         // The start line: the agent entry of the status view only.
         EventClass::Lifecycle => store.record_lifecycle(&event),
+        // A hook that did not apply: the status view and the log only, never the attack log, the
+        // detection counters or the cloud (the cloud has no channel for agent health).
+        EventClass::Diagnostic => {
+            let new = store.record_diagnostic(&event);
+            match event.hook_miss() {
+                Some(miss) if new => tracing::warn!(
+                    unit = ?miss.unit,
+                    class = ?miss.class,
+                    code_source = ?miss.code_source,
+                    implementation_version = ?miss.implementation_version,
+                    reason = ?miss.reason,
+                    looked_for = ?miss.looked_for,
+                    found = ?miss.found,
+                    "a hook did not apply to a library class, so its protection is off for it; \
+                     report the library and its version"
+                ),
+                None if event.is_hook_miss_suppressed() => tracing::warn!(
+                    "an agent stopped reporting hooks that did not apply; further ones in its \
+                     JVM are not listed"
+                ),
+                _ => {}
+            }
+        }
         EventClass::Ignored => store.record_ignored(&event),
     }
 }
@@ -199,7 +222,7 @@ mod tests {
         let store = EventStore::new(10);
         let mut offered = 0;
         let line =
-            r#"{"kind":"diagnostic","hook":"h","algorithm":"a","action":"block","confidence":99}"#;
+            r#"{"kind":"profile","hook":"h","algorithm":"a","action":"block","confidence":99}"#;
         for seq in 1..=2 {
             let event = AgentEvent::parse_line(seq, "t".into(), line).unwrap();
             route(event, &store, |_| offered += 1);
@@ -209,7 +232,39 @@ mod tests {
         assert_eq!((stats.total, stats.detections, stats.blocks), (0, 0, 0));
         assert_eq!(stats.retained, 0, "not in the attack log");
         assert_eq!(stats.ignored_kinds.len(), 1);
-        assert_eq!(stats.ignored_kinds[0].key, "diagnostic");
+        assert_eq!(stats.ignored_kinds[0].key, "profile");
+        assert_eq!(stats.diagnostics, 0);
         assert_eq!(stats.ignored_kinds[0].count, 2);
+    }
+
+    #[test]
+    fn a_diagnostic_line_is_counted_locally_and_never_recorded_or_uploaded() {
+        let store = EventStore::new(10);
+        let mut offered = 0;
+        let lines = [
+            r#"{"kind":"diagnostic","diagnostic":"hook_miss","unit":"U","class":"a.B","reason":"no_agent_call","algorithm":"a","action":"block"}"#,
+            r#"{"event":"ohmyrasp-hook-miss","unit":"U","class":"a.B","reason":"no_agent_call"}"#,
+            r#"{"kind":"diagnostic","diagnostic":"hook_miss_suppressed","limit":32}"#,
+        ];
+        for (seq, line) in lines.iter().enumerate() {
+            let event = AgentEvent::parse_line(seq as u64 + 1, "t".into(), line).unwrap();
+            route(event, &store, |_| offered += 1);
+        }
+        let stats = store.stats();
+        assert_eq!(offered, 0, "not offered to the uploader");
+        assert_eq!(stats.diagnostics, 3);
+        assert_eq!(
+            stats.hook_misses.len(),
+            1,
+            "one unit and class, two writers"
+        );
+        assert_eq!(stats.hook_misses[0].count, 2);
+        assert!(stats.hook_misses_suppressed);
+        assert_eq!((stats.total, stats.detections, stats.blocks), (0, 0, 0));
+        assert_eq!(stats.retained, 0, "not in the attack log");
+        assert!(
+            stats.ignored_kinds.is_empty(),
+            "a diagnostic is a known kind"
+        );
     }
 }
