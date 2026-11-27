@@ -184,21 +184,50 @@ public class RuleCaseDriver extends HttpServlet {
   /** The request the handler was given: the stub servlet request, which carries the case's body when it has one. */
   private static HttpServletRequest current;
 
-  /** The handler reads the case's request body the way an application does: from the input stream or the reader. */
+  /**
+   * The handler reads the case's request body the way an application does: from the input stream or the reader,
+   * one unit at a time, or with array reads when the case sets a chunk; to end of stream, exactly Content-Length
+   * bytes (never asking past them, as a JSON parser that knows the length does), or not at all.
+   */
   private static void readBody() {
     if (!SPEC.containsKey("request.body") || current == null) return;
+    String mode = SPEC.containsKey("request.bodyRead") ? SPEC.get("request.bodyRead") : "all";
+    if ("none".equals(mode)) {
+      RESULT.put("body", "not read");
+      return;
+    }
+    boolean arrays = SPEC.containsKey("request.bodyChunk") || "content-length".equals(mode);
+    long read = 0;
     try {
-      int read = 0;
       if ("reader".equals(SPEC.get("request.bodyApi"))) {
         BufferedReader reader = current.getReader();
-        while (reader.read() >= 0) read++;
+        if (arrays) {
+          char[] buffer = new char[64];
+          for (int n; (n = reader.read(buffer, 0, buffer.length)) >= 0; ) read += n;
+        } else {
+          while (reader.read() >= 0) read++;
+        }
       } else {
         InputStream in = current.getInputStream();
-        while (in.read() >= 0) read++;
+        long limit = "content-length".equals(mode) ? current.getContentLengthLong() : Long.MAX_VALUE;
+        if (arrays) {
+          byte[] buffer = new byte[4096];
+          while (read < limit) {
+            int n = in.read(buffer, 0, (int) Math.min(buffer.length, limit - read));
+            if (n < 0) break;
+            read += n;
+          }
+        } else {
+          while (in.read() >= 0) read++;
+        }
       }
       RESULT.put("body", "read " + read);
     } catch (IOException unreadable) {
       RESULT.put("body", "unreadable");
+    } catch (RuntimeException thrown) {
+      // The agent's exception from inside the application's read: the application does not catch it.
+      if (blockedBy(thrown)) RESULT.put("body", "blocked after " + read + " read");
+      throw thrown;
     }
   }
 
@@ -468,6 +497,7 @@ public class RuleCaseDriver extends HttpServlet {
     final Map<String, String[]> headerNames = multimap("header");
     final String body = SPEC.containsKey("request.body") ? spec("request.body") : "";
     final byte[] bodyBytes = body.getBytes(StandardCharsets.UTF_8);
+    final int chunk = SPEC.containsKey("request.bodyChunk") ? Integer.parseInt(SPEC.get("request.bodyChunk")) : 0;
     InvocationHandler handler = new InvocationHandler() {
       @Override public Object invoke(Object proxy, Method m, Object[] a) {
         String name = m.getName();
@@ -517,8 +547,12 @@ public class RuleCaseDriver extends HttpServlet {
         if ("setAttribute".equals(name)) { attributes.put((String) a[0], a[1]); return null; }
         if ("removeAttribute".equals(name)) { attributes.remove((String) a[0]); return null; }
         if ("getCookies".equals(name)) return cookies(headers.get("Cookie"));
-        if ("getInputStream".equals(name)) return bodyStream(bodyBytes);
-        if ("getReader".equals(name)) return new BufferedReader(new StringReader(body));
+        if ("getInputStream".equals(name)) return bodyStream(bodyBytes, chunk);
+        // A reader over the input stream, as Jetty and Undertow serve getReader(); Tomcat's own reader is covered
+        // by the real-container acceptance script, not here.
+        if ("getReader".equals(name)) {
+          return new BufferedReader(new InputStreamReader(bodyStream(bodyBytes, chunk), StandardCharsets.UTF_8));
+        }
         if ("getDispatcherType".equals(name)) return DispatcherType.REQUEST;
         if ("getLocale".equals(name)) return Locale.US;
         if ("getLocales".equals(name)) return Collections.enumeration(Collections.singletonList(Locale.US));
@@ -568,10 +602,19 @@ public class RuleCaseDriver extends HttpServlet {
     return cookies.toArray(new Cookie[0]);
   }
 
-  private static ServletInputStream bodyStream(final byte[] bytes) {
+  /** The body as a servlet input stream that returns at most {@code chunk} bytes per array read (0: no limit). */
+  private static ServletInputStream bodyStream(final byte[] bytes, final int chunk) {
     return new ServletInputStream() {
       private int position;
       @Override public int read() { return position < bytes.length ? bytes[position++] & 0xff : -1; }
+      @Override public int read(byte[] buffer, int offset, int length) {
+        if (length == 0) return 0;
+        if (position >= bytes.length) return -1;
+        int n = Math.min(Math.min(length, bytes.length - position), chunk > 0 ? chunk : length);
+        System.arraycopy(bytes, position, buffer, offset, n);
+        position += n;
+        return n;
+      }
       @Override public boolean isFinished() { return position >= bytes.length; }
       @Override public boolean isReady() { return true; }
       @Override public void setReadListener(ReadListener listener) { }

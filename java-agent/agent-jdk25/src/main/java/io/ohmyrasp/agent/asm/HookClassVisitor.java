@@ -8,18 +8,27 @@ final class HookClassVisitor extends ClassVisitor {
   private final HookRegistry registry;
   private final boolean jdbcImplementation;
   private final HookMissProbe probe;
+  private final boolean bodyHooks;
+  private String superName;
 
   HookClassVisitor(String className, HookRegistry registry, ClassVisitor delegate, boolean jdbcImplementation) {
-    this(className, registry, delegate, jdbcImplementation, null);
+    this(className, registry, delegate, jdbcImplementation, true, null);
   }
 
   HookClassVisitor(String className, HookRegistry registry, ClassVisitor delegate, boolean jdbcImplementation,
-      HookMissProbe probe) {
+      boolean bodyHooks, HookMissProbe probe) {
     super(OhMyRaspTransformer.api(), delegate);
     this.className = className;
     this.registry = registry;
     this.jdbcImplementation = jdbcImplementation;
     this.probe = probe;
+    this.bodyHooks = bodyHooks;
+  }
+
+  @Override
+  public void visit(int version, int access, String name, String signature, String superName, String[] interfaces) {
+    this.superName = superName;
+    super.visit(version, access, name, signature, superName, interfaces);
   }
 
   @Override
@@ -29,6 +38,6 @@ final class HookClassVisitor extends ClassVisitor {
     if (methodVisitor == null) {
       return null;
     }
-    return registry.visitMethod(className, methodVisitor, access, name, descriptor, jdbcImplementation, probe);
+    return registry.visitMethod(className, superName, bodyHooks, methodVisitor, access, name, descriptor, jdbcImplementation, probe);
   }
 }

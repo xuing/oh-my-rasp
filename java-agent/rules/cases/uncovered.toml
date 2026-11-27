@@ -14,7 +14,8 @@
 [[primary]]
 reason = "selected only by a loaded policy; the cases run with no policy"
 ids = ["command_reflect", "deserialization_http_object_stream", "directory_reflect", "directory_unwanted",
-       "readFile_outsideWebroot", "request_scanner", "xss_userinput"]
+       "readFile_outsideWebroot", "request_scanner", "request_sql_identifier_injection", "request_sql_sort_injection",
+       "xss_userinput"]
 
 [[primary]]
 reason = "decided from a Windows named data stream path and selected only by a loaded policy; the probes run on Linux with no policy"

@@ -65,7 +65,7 @@ public final class JdbcDetector {
 
   private static Optional<Detection> classifySql(SqlStatement statement, RequestContext request) {
     String query = statement.source();
-    if (request.parameters().values().stream().flatMap(List::stream)
+    if (request.inputParameters().values().stream().flatMap(List::stream)
             .anyMatch(value -> statement.hasCommentFrom(value) || statement.matchesStructureFrom(value))
         || requestBodyControlsSql(statement, request)) {
       return Optional.of(
@@ -103,7 +103,7 @@ public final class JdbcDetector {
                   "requestControlled", String.valueOf(requestControlled))));
     }
     boolean structuralSqlInjection = statement.hasTruncatedLiteral()
-        || (statement.hasConstantDisjunction() && request.parameters().values().stream()
+        || (statement.hasConstantDisjunction() && request.inputParameters().values().stream()
             .flatMap(List::stream).noneMatch(statement::isSubmittedConsoleSelect));
     if (structuralSqlInjection || statement.matchesSinkPolicy()) {
       return Optional.of(

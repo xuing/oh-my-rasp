@@ -348,8 +348,14 @@ why = "One per Jakarta servlet spec."
 [[library]]
 group = "org.apache.tomcat"
 artifact = "tomcat-catalina"
-versions = ["7.0.109", "8.5.100", "9.0.124", "10.1.62", "11.0.29"]
-why = "One per Tomcat line; 7.0.109 is the last 7.0."
+versions = ["7.0.109", "8.5.100", "9.0.124", "10.0.27", "10.1.62", "11.0.29"]
+why = "One per Tomcat line; 7.0.109 is the last 7.0, 10.0.27 the last 10.0 (the first jakarta line, which the Java 8 runtime suite runs)."
+
+[[library]]
+group = "org.apache.tomcat.embed"
+artifact = "tomcat-embed-core"
+versions = ["9.0.124", "10.1.62", "11.0.29"]
+why = "The Tomcat that Spring Boot embeds (2.x on 9.0, 3.x on 10.1, 4.x on 11.0): the request-body hook names its CoyoteInputStream and CoyoteReader."
 
 [[library]]
 group = "org.apache.shiro"

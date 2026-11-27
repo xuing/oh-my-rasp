@@ -190,6 +190,23 @@ Java{N}ProcessTransformer org/springframework/beans/factory/support/AbstractBean
 Java{N}ProcessTransformer org/springframework/beans/factory/xml/BeanDefinitionParserDelegate report parseBeanDefinitionAttributes(Lorg/w3c/dom/Element;Ljava/lang/String;Lorg/springframework/beans/factory/config/BeanDefinition;Lorg/springframework/beans/factory/support/AbstractBeanDefinition;)Lorg/springframework/beans/factory/support/AbstractBeanDefinition; parseBeanDefinitionElement(Lorg/w3c/dom/Element;Ljava/lang/String;Lorg/springframework/beans/factory/config/BeanDefinition;)Lorg/springframework/beans/factory/support/AbstractBeanDefinition;
 Java{N}ProcessTransformer org/springframework/beans/factory/xml/XmlBeanDefinitionReader report doLoadBeanDefinitions(Lorg/xml/sax/InputSource;Lorg/springframework/core/io/Resource;)I
 Java{N}ProcessTransformer org/springframework/core/io/UrlResource report getInputStream()Ljava/io/InputStream;
+Java{N}RequestBodyTransformer io/undertow/servlet/spec/ServletInputStreamImpl report read()I read([B)I read([BII)I
+Java{N}RequestBodyTransformer io/undertow/servlet/spec/UpgradeServletInputStream report read()I read([B)I read([BII)I
+Java{N}RequestBodyTransformer org/apache/catalina/connector/CoyoteInputStream report read()I read(Ljava/nio/ByteBuffer;)I read([B)I read([BII)I readLine([BII)I
+Java{N}RequestBodyTransformer org/apache/catalina/connector/CoyoteReader report read()I read([C)I read([CII)I readLine()Ljava/lang/String;
+Java{N}RequestBodyTransformer org/apache/coyote/http11/upgrade/UpgradeServletInputStream report read()I read([BII)I readLine([BII)I
+Java{N}RequestBodyTransformer org/eclipse/jetty/ee10/servlet/HttpInput report read()I read(Ljava/nio/ByteBuffer;)I read([BII)I
+Java{N}RequestBodyTransformer org/eclipse/jetty/ee10/servlet/util/ServletInputStreamWrapper report read()I read([B)I read([BII)I
+Java{N}RequestBodyTransformer org/eclipse/jetty/ee11/servlet/HttpInput report read()I read(Ljava/nio/ByteBuffer;)I read([BII)I
+Java{N}RequestBodyTransformer org/eclipse/jetty/ee11/servlet/util/ServletInputStreamWrapper report read()I read([B)I read([BII)I
+Java{N}RequestBodyTransformer org/eclipse/jetty/ee8/nested/HttpInput report read()I read(Ljava/nio/ByteBuffer;)I read([BII)I
+Java{N}RequestBodyTransformer org/eclipse/jetty/ee9/nested/HttpInput report read()I read(Ljava/nio/ByteBuffer;)I read([BII)I
+Java{N}RequestBodyTransformer org/eclipse/jetty/server/HttpInput report read()I read(Ljava/nio/ByteBuffer;)I read([BII)I
+Java{N}RequestBodyTransformer org/spark_project/jetty/server/HttpInput report read()I read([BII)I
+Java{N}RequestBodyTransformer org/sparkproject/jetty/server/HttpInput report read()I read([BII)I
+Java{N}RequestBodyTransformer org/springframework/mock/web/DelegatingServletInputStream report read()I
+Java{N}RequestBodyTransformer org/springframework/web/filter/AbstractRequestLoggingFilter$RequestCachingRequestWrapper$RequestCachingInputStream report read()I
+Java{N}RequestBodyTransformer org/springframework/web/util/ContentCachingRequestWrapper$ContentCachingInputStream report read()I read([B)I read([BII)I readLine([BII)I
 Java{N}ScriptEngineTransformer org/codehaus/groovy/jsr223/GroovyScriptEngineImpl report compile(Ljava/lang/String;)Ljavax/script/CompiledScript; eval(Ljava/lang/String;Ljavax/script/ScriptContext;)Ljava/lang/Object;
 Java{N}ScriptEngineTransformer org/mozilla/javascript/Context report compileFunction(Lorg/mozilla/javascript/Scriptable;Ljava/lang/String;Ljava/lang/String;ILjava/lang/Object;)Lorg/mozilla/javascript/Function; compileFunction(Lorg/mozilla/javascript/Scriptable;Ljava/lang/String;Lorg/mozilla/javascript/Evaluator;Lorg/mozilla/javascript/ErrorReporter;Ljava/lang/String;ILjava/lang/Object;)Lorg/mozilla/javascript/Function; compileString(Ljava/lang/String;Ljava/lang/String;ILjava/lang/Object;)Lorg/mozilla/javascript/Script; compileString(Ljava/lang/String;Lorg/mozilla/javascript/Evaluator;Lorg/mozilla/javascript/ErrorReporter;Ljava/lang/String;ILjava/lang/Object;)Lorg/mozilla/javascript/Script; compileString(Ljava/lang/String;Lorg/mozilla/javascript/Evaluator;Lorg/mozilla/javascript/ErrorReporter;Ljava/lang/String;ILjava/lang/Object;Ljava/util/function/Consumer;)Lorg/mozilla/javascript/Script; evaluateString(Lorg/mozilla/javascript/Scriptable;Ljava/lang/String;Ljava/lang/String;ILjava/lang/Object;)Ljava/lang/Object;
 Java{N}ServletTransformer jakarta/servlet/http/HttpServlet report service(Ljakarta/servlet/ServletRequest;Ljakarta/servlet/ServletResponse;)V service(Ljakarta/servlet/http/HttpServletRequest;Ljakarta/servlet/http/HttpServletResponse;)V

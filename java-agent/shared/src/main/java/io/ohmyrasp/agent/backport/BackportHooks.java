@@ -18,6 +18,9 @@ import io.ohmyrasp.agent.rules.general.PlotWrite;
 import io.ohmyrasp.agent.jmx.JmxWriteScope;
 import io.ohmyrasp.agent.file.HostDelete;
 import io.ohmyrasp.agent.http.ArchiveUploadPolicy;
+import io.ohmyrasp.agent.http.RequestBody;
+import io.ohmyrasp.agent.http.RequestBodyCapture;
+import io.ohmyrasp.agent.http.RequestBodySnapshot;
 import io.ohmyrasp.agent.http.PercentEncodedText;
 import io.ohmyrasp.agent.http.MultipartFilename;
 import io.ohmyrasp.agent.http.ServletDispatchScope;
@@ -179,12 +182,15 @@ public final class BackportHooks {
 
   private static void beforeHttpRequest(Object request, boolean beforeServlet) {
     long started = System.nanoTime();
-    if (!DISPATCH.inRequest()) forgetLoggedValues();
+    boolean outermost = !DISPATCH.inRequest();
+    if (outermost) forgetLoggedValues();
     DISPATCH.enter(beforeServlet ? null : request);
+    RequestBodyCapture.dispatchEntered();
     try {
       try {
         beforeHttpRequestImpl(request, beforeServlet);
         DISPATCH.enteredApplication();
+        RequestBodyCapture.applicationEntered(outermost, request, !RaspRuntime.detectionOff());
       } finally {
         RaspRuntime.sampleLatency((System.nanoTime() - started) / 1000L);
       }
@@ -197,7 +203,99 @@ public final class BackportHooks {
   /** Leaves one servlet dispatch; leaving the outermost one forgets what this thread logged during the request. */
   private static void exitRequest() {
     DISPATCH.exit();
-    if (!DISPATCH.inRequest()) forgetLoggedValues();
+    boolean ended = !DISPATCH.inRequest();
+    RequestBodyCapture.dispatchExited(ended);
+    if (ended) forgetLoggedValues();
+  }
+
+  // ---- request body: what the application's own read calls returned (RequestBodyVisitor injects these) ----
+
+  public static Object enterBodyRead() {
+    return inactive() ? null : RequestBodyCapture.enter();
+  }
+
+  public static void exitBodyRead(int result, Object token) {
+    if (RequestBodyCapture.exitByte(result, token)) bodyCompleted();
+  }
+
+  public static void exitBodyRead(int result, Object token, byte[] buffer, int offset) {
+    if (RequestBodyCapture.exitBytes(result, token, buffer, offset)) bodyCompleted();
+  }
+
+  public static void exitBodyRead(int result, Object token, java.nio.ByteBuffer buffer) {
+    if (RequestBodyCapture.exitBuffer(result, token, buffer)) bodyCompleted();
+  }
+
+  public static void exitBodyRead(byte[] result, Object token, boolean toEnd) {
+    if (RequestBodyCapture.exitAll(result, token, toEnd)) bodyCompleted();
+  }
+
+  public static void exitBodyChars(int result, Object token) {
+    if (RequestBodyCapture.exitChar(result, token)) bodyCompleted();
+  }
+
+  public static void exitBodyChars(int result, Object token, char[] buffer, int offset) {
+    if (RequestBodyCapture.exitChars(result, token, buffer, offset)) bodyCompleted();
+  }
+
+  public static void exitBodyChars(int result, Object token, java.nio.CharBuffer buffer) {
+    if (RequestBodyCapture.exitCharBuffer(result, token, buffer)) bodyCompleted();
+  }
+
+  public static void exitBodyLine(String result, Object token) {
+    if (RequestBodyCapture.exitLine(result, token)) bodyCompleted();
+  }
+
+  /** The read completed the body: decide the request rules on it, inside the application's read call. */
+  private static void bodyCompleted() {
+    try {
+      settleBody();
+    } catch (RuntimeException failure) {
+      if (line().isBlock(failure)) throw failure;
+    } catch (Throwable ignored) {
+      // Recording and deciding never fail the application's read.
+    }
+  }
+
+  /** The URLs the current request supplies, its body's included, after deciding a body state no decision has seen. */
+  private static List<String> requestUrls() {
+    settleBody();
+    return CURRENT_REQUEST_URLS.get();
+  }
+
+  /** The request input of the current request, after deciding a body state no decision has seen yet. */
+  private static RequestSnapshot currentRequest() {
+    settleBody();
+    return CURRENT_REQUEST.get();
+  }
+
+  /**
+   * Decides the request rules on a body state no decision has seen: the rules read the body's names and values
+   * where they read parameters, as on the primary line. A finding the parameters alone give is the servlet
+   * entry's, and is not reported again; the event carries the rule's own detail, never the body.
+   */
+  private static void settleBody() {
+    RequestBody body = RequestBodyCapture.current();
+    if (body == null || !body.pending()) return;
+    RequestBodySnapshot snapshot = body.snapshot();
+    RequestSnapshot request = CURRENT_REQUEST.get();
+    body.markDecided();
+    if (snapshot == null || request == null || RaspRuntime.detectionOff()) return;
+    Map<Object, Object> parameters = BackportRequestBody.withParameters(request.entryParameters, snapshot.values());
+    List<String> urls = requestControlledUrls(parameters);
+    if (!urls.isEmpty()) CURRENT_REQUEST_URLS.set(urls);
+    Object servletRequest = DISPATCH.servletRequest() != null ? DISPATCH.servletRequest() : body.servletRequest();
+    Finding finding = classifyHttpRequest(servletRequest, parameters);
+    if (finding == null) return;
+    Finding entry = classifyHttpRequest(servletRequest, request.entryParameters);
+    if (entry != null && entry.algorithm.equals(finding.algorithm) && entry.detailValue.equals(finding.detailValue)) return;
+    String action = shouldBlock() ? "block" : "log";
+    if (!"block".equals(action) && repeats(finding.detailValue, LAST_LOGGED_REQUEST.get())) return;
+    LAST_LOGGED_REQUEST.set(finding.detailValue);
+    appendEvent(finding, "HttpServlet.requestBody", action);
+    if ("block".equals(action)) {
+      throw line().block("OhMyRASP " + line().displayName + " blocked a suspicious request body");
+    }
   }
 
   /**
@@ -462,9 +560,9 @@ public final class BackportHooks {
 
   public static void captureDirectoryWalk(Object walker, java.nio.file.Path path) {
     if (inactive()) return;
-    RequestSnapshot request = CURRENT_REQUEST.get();
+    RequestSnapshot request = currentRequest();
     if (RaspRuntime.detectionOff() || request == null || path == null || !HostReadPath.isHostPath(path)) return;
-    List<String> inputs = request.parameterValues == null ? java.util.Collections.<String>emptyList() : request.parameterValues;
+    List<String> inputs = request.inputValues() == null ? java.util.Collections.<String>emptyList() : request.inputValues();
     HostDirectory.submitted(walker, inputs, HostDirectory.selected(path.toString(), inputs, false));
   }
 
@@ -488,8 +586,8 @@ public final class BackportHooks {
   @SuppressWarnings("unchecked")
   private static void inspectListedDirectory(String path, java.nio.file.DirectoryStream<?> opened, boolean relative, HostDirectory.Walk walk) {
     if (RaspRuntime.detectionOff()) return;
-    RequestSnapshot request = CURRENT_REQUEST.get();
-    List<String> inputs = walk != null ? (List<String>) walk.origin : request != null ? request.parameterValues : null;
+    RequestSnapshot request = currentRequest();
+    List<String> inputs = walk != null ? (List<String>) walk.origin : request != null ? request.inputValues() : null;
     boolean direct = HostDirectory.selected(path, inputs, relative);
     if (!direct && (walk == null || !walk.selected)) return;
     String root = HostDirectory.protectedRoot(path, opened, relative);
@@ -516,10 +614,10 @@ public final class BackportHooks {
   private static void inspectDelete(java.nio.file.Path path, java.nio.file.SecureDirectoryStream<java.nio.file.Path> directory,
       int directoryFd, boolean removeDirectory) {
     if (RaspRuntime.detectionOff()) return;
-    RequestSnapshot request = CURRENT_REQUEST.get();
-    if (request == null || request.parameterValues == null) return;
+    RequestSnapshot request = currentRequest();
+    if (request == null || request.inputValues() == null) return;
     HostDelete entry = new HostDelete(path, directoryFd, directory != null, true);
-    for (String input : request.parameterValues) {
+    for (String input : request.inputValues()) {
       if (entry.match(input) != HostDelete.Basis.ESCAPING_ENTRY) continue;
       if (directory != null && !HostDelete.hasEntry(directory, path, removeDirectory)) return;
       Finding finding = new Finding("deleteFile_userinput", 85, "Request selected an entry outside the base directory",
@@ -642,7 +740,7 @@ public final class BackportHooks {
   public static void captureHttpSubmission(Object exchange, java.net.URI uri) {
     if (inactive()) return;
     if (RaspRuntime.detectionOff()) return;
-    List<String> urls = CURRENT_REQUEST_URLS.get();
+    List<String> urls = requestUrls();
     HTTP_SUBMISSIONS.capture(exchange, urls);
     if (urls != null && uri != null && urls.contains(urlParts(uri).comparisonKey)) {
       HttpTransportObservation.selectedSubmission(exchange, uri);
@@ -687,7 +785,7 @@ public final class BackportHooks {
   public static void captureHttpRedirect(Object connection, URL to, URL from) {
     if (inactive()) return;
     if (RaspRuntime.detectionOff() || !HttpTransportObservation.isHttp(from) || !HttpTransportObservation.isHttp(to)) return;
-    List<String> inputs = CURRENT_REQUEST_URLS.get();
+    List<String> inputs = requestUrls();
     HttpTransportObservation.selectedRedirect(connection, from, to, inputs != null && inputs.contains(urlComparisonKey(from)));
   }
 
@@ -719,7 +817,7 @@ public final class BackportHooks {
 
   private static void inspectHttpTransport(Object connection, URL url, boolean write, String peer, String basis, boolean redirected) {
     if (RaspRuntime.detectionOff()) return;
-    Finding finding = classifyUrlOpen(url, CURRENT_REQUEST_URLS.get(), peer, redirected);
+    Finding finding = classifyUrlOpen(url, requestUrls(), peer, redirected);
     if (finding == null) return;
     boolean block = shouldBlock();
     if (!block && HttpTransportObservation.repeated(connection, url, CURRENT_REQUEST.get(), finding.algorithm, write)) return;
@@ -912,12 +1010,12 @@ public final class BackportHooks {
           "A raw mapper substitution introduced SQL control at JDBC",
           "identifier", "source=MyBatis reason=" + mapperControl, "mapper_substitution_at_jdbc");
     }
-    RequestSnapshot snapshot = CURRENT_REQUEST.get();
+    RequestSnapshot snapshot = currentRequest();
     boolean structural = statement.hasTruncatedLiteral()
         || (statement.hasConstantDisjunction()
-            && (snapshot == null || !anySubmittedConsoleSelect(statement, snapshot.sqlInputs)));
+            && (snapshot == null || !anySubmittedConsoleSelect(statement, snapshot.sqlInputs())));
     if (!structural && !statement.matchesSinkPolicy()
-        && (snapshot == null || !anyStructureFrom(statement, snapshot.sqlInputs))) {
+        && (snapshot == null || !anyStructureFrom(statement, snapshot.sqlInputs()))) {
       return null;
     }
     return new Finding(
@@ -1336,16 +1434,16 @@ public final class BackportHooks {
           joined, "command_arguments");
     }
     if (posix != null) {
-      RequestSnapshot request = CURRENT_REQUEST.get();
+      RequestSnapshot request = currentRequest();
       ShellControlSource source = ShellControlSource.classify(
-          posix, request == null ? null : request.parameterValues, stack);
+          posix, request == null ? null : request.inputValues(), stack);
       if (source != null) {
         return new Finding(rule("command_execution_shell_meta"), 85, source.message,
             "command", joined, source.basis);
       }
     } else if (windows != null) {
-      RequestSnapshot request = CURRENT_REQUEST.get();
-      if (request != null && windows.controlsFrom(request.parameterValues)) {
+      RequestSnapshot request = currentRequest();
+      if (request != null && windows.controlsFrom(request.inputValues())) {
         return new Finding(rule("command_execution_shell_meta"), 85,
             "Request input matches control syntax in the inline command", "command", joined, "request_shell_syntax");
       }
@@ -1491,8 +1589,8 @@ public final class BackportHooks {
           "Sensitive file read reached a " + line().displayName + " file sink", "path", normalized,
           path.equals(normalized) ? null : "normalized_read_location");
     }
-    RequestSnapshot request = CURRENT_REQUEST.get();
-    if (request == null || !HostReadPath.selected(path, request.parameterValues)) return null;
+    RequestSnapshot request = currentRequest();
+    if (request == null || !HostReadPath.selected(path, request.inputValues())) return null;
     if (hosts && HostReadPath.confirmsLocation(path)) {
       return new Finding(rule("file_sensitive_read"), fileReadConfidence(normalized),
           "Request selected the system hosts file", "path", normalized, "request_selected_hosts");
@@ -3822,7 +3920,7 @@ public final class BackportHooks {
   }
 
   private static Finding classifyUrlOpen(Object url) {
-    return classifyUrlOpen(url, CURRENT_REQUEST_URLS.get(), null, false);
+    return classifyUrlOpen(url, requestUrls(), null, false);
   }
 
   private static Finding classifyUrlOpen(Object url, List<String> requestUrls, String peer, boolean redirected) {
@@ -4115,10 +4213,45 @@ public final class BackportHooks {
 
   private static final class RequestSnapshot {
     String lastUpload;
+    final Map<?, ?> entryParameters;
     final List<String> sqlInputs;
     final List<String> parameterValues;
+    // The parameter values with the body's added, for the body state of bodyVersion.
+    private int bodyVersion = -1;
+    private List<String> inputs;
+    private List<String> sqlInputsWithBody;
+
+    /** The parameter values, and the values of the body the request has read so far. */
+    List<String> inputValues() {
+      refresh();
+      return inputs == null ? parameterValues : inputs;
+    }
+
+    /** The inputs that may carry SQL structure, from the parameters and the body. */
+    List<String> sqlInputs() {
+      refresh();
+      return sqlInputsWithBody == null ? sqlInputs : sqlInputsWithBody;
+    }
+
+    private void refresh() {
+      RequestBodySnapshot body = BackportRequestBody.current();
+      if (body == null) {
+        inputs = null;
+        sqlInputsWithBody = null;
+        bodyVersion = -1;
+        return;
+      }
+      if (body.version() == bodyVersion) return;
+      bodyVersion = body.version();
+      inputs = BackportRequestBody.withValues(parameterValues, body.values());
+      sqlInputsWithBody = new ArrayList<String>(sqlInputs);
+      for (String value : body.values().values()) {
+        if (SqlStatement.mayControlStructure(value)) sqlInputsWithBody.add(value);
+      }
+    }
 
     RequestSnapshot(Map<?, ?> parameters) {
+      entryParameters = parameters;
       sqlInputs = new ArrayList<String>();
       if (parameters != null) {
         // Snapshot values at request entry. Framework-owned parameter arrays can change later.
@@ -4219,7 +4352,8 @@ public final class BackportHooks {
    */
   public static void initialise() {
     BackportLine.initialise(
-        Finding.class, RequestSnapshot.class, UrlParts.class, IncludeAttributes.class, TypedPayloadMatch.class);
+        Finding.class, RequestSnapshot.class, UrlParts.class, IncludeAttributes.class, TypedPayloadMatch.class,
+        BackportRequestBody.class);
   }
 
   /** The installed line. Read where used, not while this class initialises: a hook may run before the line starts. */

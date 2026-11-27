@@ -184,6 +184,23 @@ ProcessHookModule org/springframework/beans/factory/support/AbstractBeanDefiniti
 ProcessHookModule org/springframework/beans/factory/xml/BeanDefinitionParserDelegate report parseBeanDefinitionAttributes(Lorg/w3c/dom/Element;Ljava/lang/String;Lorg/springframework/beans/factory/config/BeanDefinition;Lorg/springframework/beans/factory/support/AbstractBeanDefinition;)Lorg/springframework/beans/factory/support/AbstractBeanDefinition; parseBeanDefinitionElement(Lorg/w3c/dom/Element;Ljava/lang/String;Lorg/springframework/beans/factory/config/BeanDefinition;)Lorg/springframework/beans/factory/support/AbstractBeanDefinition;
 ProcessHookModule org/springframework/beans/factory/xml/XmlBeanDefinitionReader report doLoadBeanDefinitions(Lorg/xml/sax/InputSource;Lorg/springframework/core/io/Resource;)I
 ProcessHookModule org/springframework/core/io/UrlResource report getInputStream()Ljava/io/InputStream;
+RequestBodyHookModule io/undertow/servlet/spec/ServletInputStreamImpl report read()I read([B)I read([BII)I
+RequestBodyHookModule io/undertow/servlet/spec/UpgradeServletInputStream report read()I read([B)I read([BII)I
+RequestBodyHookModule org/apache/catalina/connector/CoyoteInputStream report read()I read(Ljava/nio/ByteBuffer;)I read([B)I read([BII)I readLine([BII)I
+RequestBodyHookModule org/apache/catalina/connector/CoyoteReader report read()I read([C)I read([CII)I readLine()Ljava/lang/String;
+RequestBodyHookModule org/apache/coyote/http11/upgrade/UpgradeServletInputStream report read()I read([BII)I readLine([BII)I
+RequestBodyHookModule org/eclipse/jetty/ee10/servlet/HttpInput report read()I read(Ljava/nio/ByteBuffer;)I read([BII)I
+RequestBodyHookModule org/eclipse/jetty/ee10/servlet/util/ServletInputStreamWrapper report read()I read([B)I read([BII)I
+RequestBodyHookModule org/eclipse/jetty/ee11/servlet/HttpInput report read()I read(Ljava/nio/ByteBuffer;)I read([BII)I
+RequestBodyHookModule org/eclipse/jetty/ee11/servlet/util/ServletInputStreamWrapper report read()I read([B)I read([BII)I
+RequestBodyHookModule org/eclipse/jetty/ee8/nested/HttpInput report read()I read(Ljava/nio/ByteBuffer;)I read([BII)I
+RequestBodyHookModule org/eclipse/jetty/ee9/nested/HttpInput report read()I read(Ljava/nio/ByteBuffer;)I read([BII)I
+RequestBodyHookModule org/eclipse/jetty/server/HttpInput report read()I read(Ljava/nio/ByteBuffer;)I read([BII)I
+RequestBodyHookModule org/spark_project/jetty/server/HttpInput report read()I read([BII)I
+RequestBodyHookModule org/sparkproject/jetty/server/HttpInput report read()I read([BII)I
+RequestBodyHookModule org/springframework/mock/web/DelegatingServletInputStream report read()I
+RequestBodyHookModule org/springframework/web/filter/AbstractRequestLoggingFilter$RequestCachingRequestWrapper$RequestCachingInputStream report read()I
+RequestBodyHookModule org/springframework/web/util/ContentCachingRequestWrapper$ContentCachingInputStream report read()I read([B)I read([BII)I readLine([BII)I
 ServletHookModule jakarta/servlet/http/HttpServlet report service(Ljakarta/servlet/ServletRequest;Ljakarta/servlet/ServletResponse;)V service(Ljakarta/servlet/http/HttpServletRequest;Ljakarta/servlet/http/HttpServletResponse;)V
 ServletHookModule javax/servlet/http/HttpServlet report service(Ljavax/servlet/ServletRequest;Ljavax/servlet/ServletResponse;)V service(Ljavax/servlet/http/HttpServletRequest;Ljavax/servlet/http/HttpServletResponse;)V
 SessionHookModule org/apache/catalina/session/FileStore report load(Ljava/lang/String;)Lorg/apache/catalina/Session;

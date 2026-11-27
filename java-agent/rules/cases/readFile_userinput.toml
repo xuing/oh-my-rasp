@@ -89,9 +89,9 @@ body = "{\"file\":\"/etc/hosts\"}"
 body_api = "stream"
 
 [case.primary]
-effect = "none"
-why = "the same input blocks as a query parameter but passes as a JSON body: the agent's request context has no body (no hook reads the input stream or the reader), so body fields are never read"
+effect = "block"
+rule = "readFile_userinput"
 
 [case.backport]
-effect = "none"
-why = "the same input blocks as a query parameter but passes as a JSON body: the agent's request context has no body (no hook reads the input stream or the reader), so body fields are never read"
+effect = "block"
+rule = "file_sensitive_read"

@@ -93,10 +93,10 @@ public final class ProcessDetector {
     PosixShellCommand shell = PosixShellCommand.from(command);
     WindowsShellCommand windows = WindowsShellCommand.from(command);
     boolean requestSyntax = shell != null && shell.hasOperator()
-        && (request.parameters().values().stream().anyMatch(values -> RequestShellSyntax.matches(shell, values))
+        && (request.inputParameters().values().stream().anyMatch(values -> RequestShellSyntax.matches(shell, values))
             || bodyHasSinkValue(request, shell.source()));
     boolean windowsSyntax = windows != null && windows.hasControl()
-        && (request.parameters().values().stream().anyMatch(windows::controlsFrom) || bodyHasSinkValue(request, windows.source()));
+        && (request.inputParameters().values().stream().anyMatch(windows::controlsFrom) || bodyHasSinkValue(request, windows.source()));
     if (requestSyntax || windowsSyntax) {
       return Optional.of(
           Detection.log(

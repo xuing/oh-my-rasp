@@ -11,12 +11,12 @@ body = "[\"SUBSCRIBE\\nid:sub-0\\ndestination:/topic/greetings\\nselector:T(java
 body_api = "stream"
 
 [case.primary]
-effect = "none"
-why = "the agent's request context has no body (no hook reads the input stream or the reader), so a rule decided from the body alone cannot fire"
+effect = "block"
+rule = "request_message_selector_expression"
 
 [case.backport]
-effect = "none"
-why = "the agent's request context has no body (no hook reads the input stream or the reader), so a rule decided from the body alone cannot fire"
+effect = "unreachable"
+why = "the backports have no rule that decides from the request body alone"
 
 [[case]]
 name = "stomp-selector-expression-via-reader"
@@ -31,12 +31,12 @@ body = "[\"SUBSCRIBE\\nid:sub-0\\ndestination:/topic/greetings\\nselector:T(java
 body_api = "reader"
 
 [case.primary]
-effect = "none"
-why = "the agent's request context has no body (no hook reads the input stream or the reader), so a rule decided from the body alone cannot fire"
+effect = "block"
+rule = "request_message_selector_expression"
 
 [case.backport]
-effect = "none"
-why = "the agent's request context has no body (no hook reads the input stream or the reader), so a rule decided from the body alone cannot fire"
+effect = "unreachable"
+why = "the backports have no rule that decides from the request body alone"
 
 [[case]]
 name = "benign-stomp-selector"

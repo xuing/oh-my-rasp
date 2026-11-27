@@ -215,7 +215,7 @@ public final class FileAccessDetector {
               Map.of("path", location)));
     }
     if ((includeLocationPolicy || links != HostReadPath.OpenPolicy.PATH_ONLY) && protocol.isEmpty()
-        && (request.parameters().values().stream().anyMatch(values -> HostReadPath.selected(path, values))
+        && (request.inputParameters().values().stream().anyMatch(values -> HostReadPath.selected(path, values))
         || (isAbsolutePathLike(path) && bodyHasSinkValue(request, path)))) {
       String resolved = links.resolvedLocation(path);
       if (!resolved.isEmpty() && !resolved.equals(location)
@@ -258,7 +258,7 @@ public final class FileAccessDetector {
   }
 
   public static boolean requestSelectsDirectory(String path, RequestContext request, boolean descriptorRelative) {
-    return request.active() && (request.parameters().values().stream()
+    return request.active() && (request.inputParameters().values().stream()
         .anyMatch(values -> HostDirectory.selected(path, values, descriptorRelative)) || bodyHasSinkValue(request, path));
   }
 

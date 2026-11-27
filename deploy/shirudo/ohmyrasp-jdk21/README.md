@@ -2,7 +2,7 @@
 
 > **Generated** by `deploy/shirudo/gen-readmes.py` from `java-agent/` sources.
 
-The `ohmyrasp-jdk21` package installs the `ohmyrasp-jdk21` Java upatch: a standalone, daemonless OhMyRASP runtime self-protection agent targeting **Java 21 and Java 25** JVMs (classfile version `<= 65`). It registers **30 ASM hook modules** and **42 detector capabilities**, backed by **120** end-to-end Vulhub acceptance scripts that run the exploit on a supported JVM.
+The `ohmyrasp-jdk21` package installs the `ohmyrasp-jdk21` Java upatch: a standalone, daemonless OhMyRASP runtime self-protection agent targeting **Java 21 and Java 25** JVMs (classfile version `<= 65`). It registers **31 ASM hook modules** and **42 detector capabilities**, backed by **120** end-to-end Vulhub acceptance scripts that run the exploit on a supported JVM.
 
 This package is for hosts pinned to one Java version; the universal package [`ohmyrasp`](../ohmyrasp/README.md) starts the line that fits each JVM of a mixed host. It starts its line on **Java 21 and later**; on any other Java it writes one `ohmyrasp-agent-skipped` JSON line to stderr and the JVM starts without this agent.
 
@@ -18,7 +18,7 @@ This package is for hosts pinned to one Java version; the universal package [`oh
 | **HTTP Request, Path Confusion, Auth & SSRF** | Six-form URI path-confusion decoding (Shiro, GlassFish, Jetty, Spring), weak/default JWT HMAC secret checks, Shiro default `rememberMe` AES detection, forged internal identities, and cloud-metadata / loopback-admin / obfuscated-IP SSRF guards. | `JwtHookModule`, `NetworkHookModule`, `ServletHookModule` |
 | **File I/O, Uploads & Archive Traversal** | Guards sensitive reads (`/etc/passwd`, `/proc/self/environ`, SSH keys), webroot script writes, ZipSlip archive traversal (`ZipEntry` / 7z), multipart upload path traversal, and `.gnuplot` command injection. | `ArchiveHookModule`, `FileHookModule`, `MultipartUploadHookModule` |
 | **Expression Engines, Scripting, ClassLoading & JMX** | Inspects Nashorn/Rhino `ScriptEngine`, JEXL, Jakarta/JSP EL, `JavacTool`/Janino compilation, remote `URLClassLoader`/`RMIClassLoader` codebases, and mutating JMX MBean invocations. | `ClassLoaderHookModule`, `ExpressionHookModule`, `JavaCompilationHookModule`, `JmxHookModule`, `SpringConfigHookModule` |
-| **Other / Newly Added** | Additional ASM instrumentation hooks detected in agent sources. | `SparkSubmitHookModule`, `YarnSubmitHookModule` |
+| **Other / Newly Added** | Additional ASM instrumentation hooks detected in agent sources. | `RequestBodyHookModule`, `SparkSubmitHookModule`, `YarnSubmitHookModule` |
 
 <details><summary>All detector capabilities (42)</summary>
 

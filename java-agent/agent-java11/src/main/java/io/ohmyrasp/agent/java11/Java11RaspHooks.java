@@ -26,6 +26,42 @@ public final class Java11RaspHooks {
     BackportHooks.afterHttpRequest();
   }
 
+  public static Object enterBodyRead() {
+    return BackportHooks.enterBodyRead();
+  }
+
+  public static void exitBodyRead(int result, Object token) {
+    BackportHooks.exitBodyRead(result, token);
+  }
+
+  public static void exitBodyRead(int result, Object token, byte[] buffer, int offset) {
+    BackportHooks.exitBodyRead(result, token, buffer, offset);
+  }
+
+  public static void exitBodyRead(int result, Object token, java.nio.ByteBuffer buffer) {
+    BackportHooks.exitBodyRead(result, token, buffer);
+  }
+
+  public static void exitBodyRead(byte[] result, Object token, boolean toEnd) {
+    BackportHooks.exitBodyRead(result, token, toEnd);
+  }
+
+  public static void exitBodyChars(int result, Object token) {
+    BackportHooks.exitBodyChars(result, token);
+  }
+
+  public static void exitBodyChars(int result, Object token, char[] buffer, int offset) {
+    BackportHooks.exitBodyChars(result, token, buffer, offset);
+  }
+
+  public static void exitBodyChars(int result, Object token, java.nio.CharBuffer buffer) {
+    BackportHooks.exitBodyChars(result, token, buffer);
+  }
+
+  public static void exitBodyLine(String result, Object token) {
+    BackportHooks.exitBodyLine(result, token);
+  }
+
   public static void afterMultipartAccess(Object source, Object result, boolean iterator) {
     BackportHooks.afterMultipartAccess(source, result, iterator);
   }

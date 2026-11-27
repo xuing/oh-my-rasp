@@ -37,12 +37,20 @@ final class RequestDecoding {
     }
   }
 
+  /**
+   * The value, its percent-decoding and that decoding's, each once: a decoding that changes nothing is not
+   * repeated (every caller stops at the first variant that matches, so a repeat only redid the same scan).
+   */
   static List<String> decodedVariants(String value) {
     if (value == null || value.isBlank()) {
       return List.of();
     }
     String decoded = percentDecode(value);
-    return List.of(value, decoded, percentDecode(decoded));
+    if (decoded.equals(value)) {
+      return List.of(value);
+    }
+    String twice = percentDecode(decoded);
+    return twice.equals(decoded) ? List.of(value, decoded) : List.of(value, decoded, twice);
   }
 
   static String stripWrappingQuotes(String value) {

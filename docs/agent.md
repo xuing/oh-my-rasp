@@ -184,6 +184,10 @@ What an attach does to a running application:
 
 A few hooks ask an application object for text through reflection: the source of a Java compilation unit (`getCharContent(true)`), the text of an expression object, the system id of an XML source, the request URI of a wrapped servlet request. The call is made on the hook's thread, on a public type of the object's hierarchy, so it runs application code. For a compilation unit the consequence is that the agent reads the source once before javac does: a file object that fetches its source lazily blocks the hook until it has it, and a one-shot supplier is consumed before the compiler reads it. Neither the primary agent nor the backports guard against this, and none is planned: reading the text is how the rule sees the source.
 
+### Request bodies
+
+Every line records what the application's own read calls return from a request body (the servlet input stream, and Tomcat's reader) and never reads the body itself, so a body the application does not read is not inspected. One cap per request, the first 8192 bytes or characters; binary, multipart and content-encoded bodies are not recorded; a read on a thread other than the one that entered the servlet (a `ReadListener`, an `AsyncContext.start` worker) is not recorded; non-servlet stacks such as Netty or WebFlux are not covered. What is hooked, extracted and decided, and the full list of limits: [request bodies](detection.md#request-bodies) and [known limitations](detection.md#known-limitations).
+
 ## Hooks that did not apply
 
 Many hooks target a library class by name and a method by name and descriptor. When a library release renames that method or changes its descriptor, the hook stops applying and the attack it guards passes with no detection. Offline, the [`hook-targets` probe](../java-agent/docs/HOOK-TARGETS.md) catches this for the library versions it records. At run time every line reports it too, for the library versions that are actually loaded: one diagnostic line per hook unit and class per JVM.

@@ -47,6 +47,11 @@ final class RequestConfigurationDetector {
   private static final Pattern REQUEST_JNDI_LOOKUP =
       Pattern.compile("(?is)\\$\\{[^\\r\\n]{0,512}?jndi\\s*:\\s*([a-z][a-z0-9.+-]{0,20})://");
 
+  // Log4j lookup obfuscations, compiled once: ${::-j}, ${lower:j}, ${env:X:-j} stand for the letter.
+  private static final Pattern LOG4J_DEFAULT_LOOKUP = Pattern.compile("\\$\\{\\s*::-\\s*([a-z0-9])\\s*}");
+  private static final Pattern LOG4J_CASE_LOOKUP = Pattern.compile("\\$\\{\\s*(?:lower|upper)\\s*:\\s*([a-z0-9])\\s*}");
+  private static final Pattern LOG4J_ENV_LOOKUP = Pattern.compile("\\$\\{\\s*env\\s*:[^}:]{1,80}\\s*:-\\s*([a-z0-9])\\s*}");
+
   private static final Pattern SCHEDULER_JOB_CONTROL_PATH =
       Pattern.compile(
           "(?i)(?:^|/)(?:run|execute|trigger|executor|executors|job|jobs|scheduler|schedule|task|tasks)(?:[;/]|/|$)");
@@ -962,6 +967,10 @@ final class RequestConfigurationDetector {
     if (value == null || value.isBlank()) {
       return "";
     }
+    // Every variant below needs "${": only a '$' or a percent escape of one can supply it.
+    if (value.indexOf('$') < 0 && value.indexOf('%') < 0) {
+      return "";
+    }
     var variants = new ArrayList<String>();
     variants.add(value);
     String decoded = percentDecode(value);
@@ -1043,13 +1052,9 @@ final class RequestConfigurationDetector {
   private static String deobfuscateLog4jLookup(String value) {
     String normalized = lower(value);
     for (int i = 0; i < 3; i++) {
-      normalized =
-          normalized.replaceAll("\\$\\{\\s*::-\\s*([a-z0-9])\\s*}", "$1");
-      normalized =
-          normalized.replaceAll("\\$\\{\\s*(?:lower|upper)\\s*:\\s*([a-z0-9])\\s*}", "$1");
-      normalized =
-          normalized.replaceAll(
-              "\\$\\{\\s*env\\s*:[^}:]{1,80}\\s*:-\\s*([a-z0-9])\\s*}", "$1");
+      normalized = LOG4J_DEFAULT_LOOKUP.matcher(normalized).replaceAll("$1");
+      normalized = LOG4J_CASE_LOOKUP.matcher(normalized).replaceAll("$1");
+      normalized = LOG4J_ENV_LOOKUP.matcher(normalized).replaceAll("$1");
     }
     return normalized;
   }

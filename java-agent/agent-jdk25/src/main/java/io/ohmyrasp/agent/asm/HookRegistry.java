@@ -40,7 +40,8 @@ public final class HookRegistry {
               new YarnSubmitHookModule(),
               new MultipartUploadHookModule(),
               new XmlAttachmentHookModule(),
-              new XxeHookModule()));
+              new XxeHookModule(),
+              new RequestBodyHookModule()));
 
   private final List<HookModule> modules;
   private final Map<String, HookModule> byName = new HashMap<>();
@@ -84,15 +85,19 @@ public final class HookRegistry {
       int access,
       String methodName,
       String descriptor, boolean jdbcImplementation) {
-    return visitMethod(className, methodVisitor, access, methodName, descriptor, jdbcImplementation, null);
+    return visitMethod(className, null, true, methodVisitor, access, methodName, descriptor, jdbcImplementation, null);
   }
 
   /**
-   * The first module that wraps the method wins. With a hook-miss {@code probe}, the modules are handed a counting
-   * visitor instead of {@code methodVisitor}, and the winner's visitor is counted on both sides.
+   * The first module that wraps the method wins. {@code superName} is the class's direct superclass; {@code
+   * bodyHooks} is false for a class whose loader cannot see the agent (see RequestBodyVisitor.loaderSeesAgent), which
+   * the request-body module leaves alone. With a hook-miss {@code probe}, the modules are handed a counting visitor
+   * instead of {@code methodVisitor}, and the winner's visitor is counted on both sides.
    */
   MethodVisitor visitMethod(
       String className,
+      String superName,
+      boolean bodyHooks,
       MethodVisitor methodVisitor,
       int access,
       String methodName,
@@ -100,6 +105,12 @@ public final class HookRegistry {
     io.ohmyrasp.agent.hookmiss.AgentCalls.Counter output = probe == null ? null : probe.output(methodVisitor);
     MethodVisitor target = output == null ? methodVisitor : output;
     for (HookModule module : modules) {
+      if (module instanceof RequestBodyHookModule) {
+        if (!bodyHooks || !module.matchesClass(className, superName)) continue;
+        MethodVisitor next = module.visitMethod(className, target, access, methodName, descriptor);
+        if (next != target) return output == null ? next : probe.watch(module, next, output);
+        continue;
+      }
       boolean jdbcMethod = jdbcImplementation && module instanceof SqlHookModule
           && (access & Opcodes.ACC_STATIC) == 0
           && (JdbcSqlMethod.preparesSql(methodName, descriptor) || JdbcSqlMethod.executesSql(methodName, descriptor));

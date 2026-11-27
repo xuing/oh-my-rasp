@@ -141,7 +141,7 @@ public final class HostFileMutationDetector {
   public static Optional<Detection> detectFileDelete(HostDelete entry, RequestContext request, boolean explicitPathPolicy) {
     if (!request.active()) return Optional.empty();
     HostDelete.Basis basis = HostDelete.Basis.NONE;
-    for (List<String> values : request.parameters().values()) {
+    for (List<String> values : request.inputParameters().values()) {
       for (String value : values) {
         HostDelete.Basis match = entry.match(value);
         if (match.ordinal() > basis.ordinal()) basis = match;
@@ -291,7 +291,7 @@ public final class HostFileMutationDetector {
       if (quote != 0 || comment || escape) continue;
       String operation = content.substring(start, end);
       String argument = generatedOperationArgument(content, start, end);
-      for (List<String> values : request.parameters().values()) {
+      for (List<String> values : request.inputParameters().values()) {
         for (String value : values) {
           if (value == null || value.isBlank()) continue;
           if (value.equals(argument)) return true;

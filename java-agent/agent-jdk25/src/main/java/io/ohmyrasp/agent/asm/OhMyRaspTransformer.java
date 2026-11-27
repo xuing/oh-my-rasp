@@ -45,7 +45,8 @@ public final class OhMyRaspTransformer implements ClassFileTransformer {
         System.err.println("[OHMYRASP] transforming hook target " + className);
       }
       ClassWriter writer = new ClassWriter(reader, ClassWriter.COMPUTE_MAXS);
-      ClassVisitor visitor = new HookClassVisitor(className, registry, writer, jdbc, probe);
+      ClassVisitor visitor = new HookClassVisitor(className, registry, writer, jdbc,
+          io.ohmyrasp.agent.http.RequestBodyVisitor.loaderSeesAgent(loader), probe);
       if (multipartCaller) visitor = new io.ohmyrasp.agent.http.MultipartCollectionVisitor(visitor,
           org.objectweb.asm.Type.getObjectType("io/ohmyrasp/agent/hook/OhMyRaspHooks"));
       visitor = new SqlCallsiteClassVisitor(reader, visitor);

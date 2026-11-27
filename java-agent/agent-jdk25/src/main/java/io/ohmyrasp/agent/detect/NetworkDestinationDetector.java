@@ -273,7 +273,7 @@ public final class NetworkDestinationDetector {
     if (request == null || !request.active() || destination == null) return false;
     String path = destination.getRawPath();
     if (path == null || !path.startsWith("/")) return false;
-    return request.parameters().values().stream().anyMatch(values -> values.contains(path))
+    return request.inputParameters().values().stream().anyMatch(values -> values.contains(path))
         || bodyHasSinkValue(request, path);
   }
 
@@ -281,7 +281,7 @@ public final class NetworkDestinationDetector {
     if (request == null || !request.active() || (host.isEmpty() && (destination == null || destination.getRawAuthority() == null))) {
       return false;
     }
-    for (var parameter : request.parameters().entrySet()) {
+    for (var parameter : request.inputParameters().entrySet()) {
       for (String value : parameter.getValue()) {
         if (value == null || value.isBlank()) {
           continue;
@@ -387,7 +387,7 @@ public final class NetworkDestinationDetector {
     }
     // A fixed application path can be opened by URL APIs during a request.
     // Check whether a request value actually supplies the local URL or base.
-    for (List<String> values : request.parameters().values()) {
+    for (List<String> values : request.inputParameters().values()) {
       for (String value : values) {
         if (value == null || !value.regionMatches(true, 0, "file:", 0, 5)) {
           continue;

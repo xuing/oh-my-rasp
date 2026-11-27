@@ -11,12 +11,12 @@ body = "[{\"op\":\"replace\",\"path\":\"T(java.lang.Runtime).getRuntime().exec(n
 body_api = "stream"
 
 [case.primary]
-effect = "none"
-why = "the agent's request context has no body (no hook reads the input stream or the reader), so a rule decided from the body alone cannot fire"
+effect = "block"
+rule = "request_json_patch_expression"
 
 [case.backport]
-effect = "none"
-why = "the agent's request context has no body (no hook reads the input stream or the reader), so a rule decided from the body alone cannot fire"
+effect = "unreachable"
+why = "the backports have no rule that decides from the request body alone"
 
 [[case]]
 name = "json-patch-path-expression-via-reader"
@@ -31,12 +31,12 @@ body = "[{\"op\":\"replace\",\"path\":\"T(java.lang.Runtime).getRuntime().exec(n
 body_api = "reader"
 
 [case.primary]
-effect = "none"
-why = "the agent's request context has no body (no hook reads the input stream or the reader), so a rule decided from the body alone cannot fire"
+effect = "block"
+rule = "request_json_patch_expression"
 
 [case.backport]
-effect = "none"
-why = "the agent's request context has no body (no hook reads the input stream or the reader), so a rule decided from the body alone cannot fire"
+effect = "unreachable"
+why = "the backports have no rule that decides from the request body alone"
 
 [[case]]
 name = "benign-json-patch"
@@ -53,6 +53,65 @@ body_api = "stream"
 [case.primary]
 effect = "none"
 
+
+[case.backport]
+effect = "none"
+
+[[case]]
+name = "json-patch-path-expression-read-to-content-length"
+kind = "attack"
+via = "request"
+
+[case.request]
+method = "PATCH"
+uri = "/customers/1"
+headers = { "User-Agent" = "Mozilla/5.0 (X11; Linux x86_64) Firefox/128.0", "Content-Type" = "application/json-patch+json" }
+body = "[{\"op\":\"replace\",\"path\":\"T(java.lang.Runtime).getRuntime().exec(new java.lang.String(new byte[]{105,100}))/lastname\",\"value\":\"vulhub\"}]"
+body_api = "stream"
+body_read = "content-length"
+
+[case.primary]
+effect = "block"
+rule = "request_json_patch_expression"
+
+[case.backport]
+effect = "unreachable"
+why = "the backports have no rule that decides from the request body alone"
+
+[[case]]
+name = "json-patch-path-expression-never-read"
+kind = "attack"
+via = "request"
+
+[case.request]
+method = "PATCH"
+uri = "/customers/1"
+headers = { "User-Agent" = "Mozilla/5.0 (X11; Linux x86_64) Firefox/128.0", "Content-Type" = "application/json-patch+json" }
+body = "[{\"op\":\"replace\",\"path\":\"T(java.lang.Runtime).getRuntime().exec(new java.lang.String(new byte[]{105,100}))/lastname\",\"value\":\"vulhub\"}]"
+body_read = "none"
+
+[case.primary]
+effect = "none"
+why = "the handler never reads the body and the agent does not read it either: a body the application does not read is never inspected"
+
+[case.backport]
+effect = "unreachable"
+why = "the backports have no rule that decides from the request body alone"
+
+[[case]]
+name = "benign-ordinary-json-with-urls-paths-sql-and-shell-text"
+kind = "benign"
+via = "request"
+
+[case.request]
+method = "POST"
+uri = "/api/notes"
+headers = { "User-Agent" = "Mozilla/5.0 (X11; Linux x86_64) Firefox/128.0", "Content-Type" = "application/json; charset=UTF-8" }
+body = "{\"title\":\"Deploy notes\",\"links\":[\"https://example.com/docs?page=2&lang=en\",\"http://localhost:8080/health\"],\"paths\":[\"/var/log/app/server.log\",\"C:\\\\Users\\\\me\\\\notes.txt\",\"../shared/readme.md\"],\"sql\":\"SELECT id, name FROM users WHERE id = 1 ORDER BY name DESC\",\"shell\":\"cd /srv/app && ./gradlew build | tee build.log; echo $?\",\"op\":\"replace\",\"path\":\"/lastname\",\"tags\":{\"café\":\"中文\"}}"
+body_api = "stream"
+
+[case.primary]
+effect = "none"
 
 [case.backport]
 effect = "none"
