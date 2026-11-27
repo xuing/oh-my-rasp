@@ -3,11 +3,14 @@ package io.ohmyrasp.agent.log;
 import io.ohmyrasp.agent.control.ControlPlaneClient;
 import io.ohmyrasp.agent.model.Detection;
 import io.ohmyrasp.agent.model.RequestContext;
+import io.ohmyrasp.agent.util.Redaction;
 import io.ohmyrasp.agent.runtime.AgentOwnIo;
 import io.ohmyrasp.agent.runtime.AgentRuntime;
 import io.ohmyrasp.agent.runtime.ShirudoDefaults;
 import java.io.IOException;
 import java.io.PrintStream;
+import java.nio.ByteBuffer;
+import java.nio.channels.FileChannel;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -27,23 +30,26 @@ import java.util.concurrent.locks.ReentrantLock;
  * Writes security events to the local NDJSON spool the daemon tails, and to
  * stdout.
  *
- * <p>All I/O happens on a dedicated background daemon thread fed by a bounded
- * queue, so the protected request never blocks on a file write, a {@code
- * System.out.println}, or a control-plane upload. The blocking/allow decision is
- * still made synchronously in the hook (see {@code OhMyRaspHooks}); only the
- * reporting is asynchronous. If the queue is full (a sustained event storm) the
- * event is dropped and counted rather than stalling business logic.
+ * <p>For a file target, all output of a detection happens on a dedicated background daemon thread fed by a bounded
+ * queue, so the protected request never blocks on a file write, a {@code System.out.println}, or a control-plane
+ * upload (sync mode, for acceptance runs, writes on the caller's thread; so does a console target). The
+ * blocking/allow decision is still made synchronously in the hook (see {@code OhMyRaspHooks}); only the reporting
+ * is asynchronous. If the queue is full (a sustained event storm) the event is dropped and counted rather than
+ * stalling business logic. At JVM exit the shutdown hook writes nothing itself: it lets that thread drain the queue
+ * for a bounded time. Diagnostics take a path of their own ({@link #recordDiagnostic}).
  */
 public final class JsonEventLogger {
   private static final JsonEventLogger INSTANCE = new JsonEventLogger();
-  // The shutdown hook waits this long for the writer to finish the batch it holds.
+  // At JVM exit, how long the shutdown hook lets the writer drain what was queued before the hook returns. The hook
+  // does no output itself: what the writer has not taken by then is dropped and counted.
   private static final long SHUTDOWN_JOIN_MILLIS = 2000;
+  // cancel waits at most this long for the writer to end; a writer stuck in an output call is left to it.
+  private static final long CANCEL_JOIN_MILLIS = 1000;
+  // At JVM exit, how long the hook-miss report may take to finish a line it is writing before its admission closes.
+  private static final long DIAGNOSTIC_HANDOFF_MILLIS = 500;
   // Once shutdown has begun, a write waits this long for the write lock and then gives up.
   private static final long SHUTDOWN_LOCK_MILLIS = 1000;
   private static final String REDACTED = "[redacted]";
-  // A query longer than this is not scanned: it is replaced by the marker as a whole.
-  private static final int MAX_REDACTED_QUERY_LENGTH = 8192;
-  private static final int MAX_QUERY_DECODE_ROUNDS = 8;
   private static final Set<String> SENSITIVE_HEADER_NAMES =
       Set.of(
           "authorization",
@@ -55,53 +61,14 @@ public final class JsonEventLogger {
           "access-token",
           "refresh-token",
           "id-token");
-  private static final Set<String> SENSITIVE_PARAMETER_NAMES =
-      Set.of(
-          "authorization",
-          "password",
-          "passwd",
-          "pwd",
-          "pass",
-          "token",
-          "accesstoken",
-          "refreshtoken",
-          "idtoken",
-          "secret",
-          "apikey",
-          "xapikey",
-          "auth",
-          "credential",
-          "credentials");
-  private static final Set<String> EXECUTABLE_SOURCE_PARAMETER_NAMES =
-      Set.of(
-          "gluesource",
-          "executorparams",
-          "script",
-          "source",
-          "command",
-          "commandline",
-          "cmd",
-          "shell",
-          "code",
-          "payload",
-          "dataconfig",
-          "routeconfig",
-          "routedefinition",
-          "gatewayroute",
-          "filterconfig",
-          "scriptfields",
-          "scriptfield",
-          "scriptconfig",
-          "template",
-          "expression");
 
   /**
    * One queued record: either a security {@code detection} (with its measured
    * in-hook latencies) or a periodic latency {@code telemetryHook} sample that
-   * feeds the daemon's business-impact panel without being a detection.
+   * feeds the daemon's business-impact panel without being a detection. An agent
+   * diagnostic never uses this queue: see {@link #recordDiagnostic}.
    */
-  private record Sample(
-      Detection detection, String telemetryHook, long latencyUs, long ruleEvaluationUs) {}
+  private record Sample(Detection detection, String telemetryHook, long latencyUs, long ruleEvaluationUs) {}
 
   private enum LogTarget {
     FILE,
@@ -115,18 +82,38 @@ public final class JsonEventLogger {
   private final Path logPath;
   private final BlockingQueue<Sample> queue;
   private final AtomicLong dropped = new AtomicLong();
+  private final AtomicLong diagnosticsDropped = new AtomicLong();
   private final AtomicLong sampleCounter = new AtomicLong();
-  // Serialises file and console output, so concurrent writers never interleave a line.
+  // Serialises detection output to the file and the console, so concurrent writers never interleave a line. A
+  // diagnostic never takes it (see recordDiagnostic).
   final ReentrantLock writeLock = new ReentrantLock();
+  // How a diagnostic line reaches the spool file: one append, on the hook-miss worker's thread. Tests replace it.
+  volatile DiagnosticOutput diagnosticOutput = FileAppend.INSTANCE;
   private final boolean syncWrites;
   private final int latencySampleRate;
   private final PrintStream customOut;
   private final PrintStream customErr;
-  private final Thread writer;
+  // Guards the start against the shutdown hook and cancel: writer, shutdownHook and shutdownBegan.
+  private final Object lifecycle = new Object();
+  // The writer thread and the JVM shutdown hook that flushes the queue, once start ran; null before, and
+  // always for a target without a queue. Guarded by lifecycle; written once.
+  private volatile Thread writer;
+  private Thread shutdownHook;
+  // Set by the writer when it ends: an event queued after that would never be taken.
+  private volatile boolean writerDone;
+  // Guarded by lifecycle: the shutdown hook has begun, so no start succeeds any more.
+  private boolean shutdownBegan;
+  // Cleared when the JVM's exit begins: the writer drains what is queued and ends.
   private volatile boolean running = true;
-  // Set by shutdown once the writer is gone or given up on: from then on events are written on
-  // the caller's thread, and writes wait only a bounded time for the write lock.
+  // The admission, closed when the JVM's exit begins: from then on an event for the queue is dropped and counted
+  // (a sync-mode or console write still happens on the caller's thread), no diagnostic is written, and writes wait
+  // only a bounded time for the write lock.
   private volatile boolean closed;
+  // Set by cancel, for a start that failed: every event from then on is dropped, and nothing is written.
+  private volatile boolean cancelled;
+  // Set by start, for every target (a console or none target has no writer to show it): a diagnostic is written
+  // only by a logger that started and was not cancelled. Written under lifecycle.
+  private volatile boolean started;
   private volatile ControlPlaneClient controlPlaneClient;
 
   private JsonEventLogger() {
@@ -198,25 +185,70 @@ public final class JsonEventLogger {
               : intSetting("ohmyrasp.latency_sample", "OHMYRASP_LATENCY_SAMPLE", defaultSampleRate);
     }
 
-    if (this.target == LogTarget.FILE) {
-      this.queue = new ArrayBlockingQueue<>(queueCapacity());
-      Thread writer = new Thread(this::drainLoop, "ohmyrasp-event-writer");
-      writer.setDaemon(true);
-      this.writer = writer;
-      writer.start();
-      Runtime.getRuntime()
-          .addShutdownHook(new Thread(this::shutdown, "ohmyrasp-event-writer-shutdown"));
-    } else {
-      this.queue = null;
-      this.writer = null;
+    // Construction starts no thread and registers no shutdown hook (start does), so creating the logger, which
+    // the shared one does in its class initialiser, cannot fail half-way or leave a thread behind.
+    this.queue = this.target == LogTarget.FILE ? new ArrayBlockingQueue<>(queueCapacity()) : null;
+  }
+
+  /**
+   * Starts the writer thread of a file target and registers the JVM shutdown hook that flushes its queue, on the
+   * start thread before any hook acts. The hook is registered first: when the JVM is already shutting down that
+   * throws and nothing is started. Synchronised with the shutdown hook, which then waits for a start in progress
+   * and closes a logger that is fully started; a start after the hook has begun throws. A logger without a queue
+   * only records that it started; a started one and a cancelled one start nothing more.
+   */
+  public void start() {
+    synchronized (lifecycle) {
+      if (cancelled) {
+        return;
+      }
+      if (queue == null) {
+        started = true;
+        return;
+      }
+      if (started) {
+        return;
+      }
+      if (shutdownBegan) {
+        throw new IllegalStateException("the JVM is shutting down: the event writer does not start");
+      }
+      Thread hook = new Thread(this::shutdownForExit, "ohmyrasp-event-writer-shutdown");
+      Thread thread = new Thread(this::drainLoop, "ohmyrasp-event-writer");
+      thread.setDaemon(true);
+      // Both handles are recorded before either is registered or started, so cancel(), the undo of a failed start,
+      // removes and stops whichever of them got that far, whatever step below fails.
+      shutdownHook = hook;
+      writer = thread;
+      Runtime.getRuntime().addShutdownHook(hook);
+      try {
+        thread.start();
+      } catch (RuntimeException | Error failure) {
+        try {
+          Runtime.getRuntime().removeShutdownHook(hook);
+        } catch (IllegalStateException shuttingDown) {
+          // The hook runs and finds no writer to wait for.
+        }
+        throw failure;
+      }
+      started = true;
     }
+  }
+
+  /** A logger that writes nothing anywhere and reports nothing to a cloud client: the warm-up's. */
+  public static JsonEventLogger discarding() {
+    return new JsonEventLogger(ShirudoDefaults.absent(), null, "none", 0, true, null, null);
+  }
+
+  /** Whether this logger drops every event and error report. */
+  public boolean discards() {
+    return target == LogTarget.NONE && controlPlaneClient == null;
   }
 
   public static JsonEventLogger get() {
     return INSTANCE;
   }
 
-  /** Creates an isolated logger for unit tests without touching {@link #INSTANCE}. */
+  /** Creates an isolated, started logger for unit tests without touching {@link #INSTANCE}. */
   public static JsonEventLogger newForTesting(
       ShirudoDefaults defaults,
       String targetOverride,
@@ -224,13 +256,22 @@ public final class JsonEventLogger {
       boolean syncWrites,
       PrintStream out,
       PrintStream err) {
-    return new JsonEventLogger(
-        defaults, null, targetOverride, latencySampleOverride, syncWrites, out, err);
+    JsonEventLogger logger =
+        new JsonEventLogger(defaults, null, targetOverride, latencySampleOverride, syncWrites, out, err);
+    logger.start();
+    return logger;
   }
 
-  /** Creates an isolated logger for unit tests from a started {@code runtime}'s settings. */
+  /** Creates an isolated, started logger for unit tests from a started {@code runtime}'s settings. */
   public static JsonEventLogger newForTesting(AgentRuntime runtime, PrintStream out, PrintStream err) {
-    return new JsonEventLogger(runtime.shirudoDefaults(), runtime, null, null, false, out, err);
+    JsonEventLogger logger = new JsonEventLogger(runtime.shirudoDefaults(), runtime, null, null, false, out, err);
+    logger.start();
+    return logger;
+  }
+
+  /** Creates an isolated logger for unit tests that is not started: no writer thread, no shutdown hook. */
+  static JsonEventLogger unstartedForTesting(String targetOverride, PrintStream out, PrintStream err) {
+    return new JsonEventLogger(ShirudoDefaults.absent(), null, targetOverride, 0, false, out, err);
   }
 
   public String logTarget() {
@@ -252,6 +293,14 @@ public final class JsonEventLogger {
   /** Number of events dropped because the async queue was saturated. */
   public long droppedCount() {
     return dropped.get();
+  }
+
+  /**
+   * Number of diagnostic lines dropped: the logger was closing, a lock stayed busy, the target is {@code none}, or
+   * the write failed. Counted apart from {@link #droppedCount}, which is detections.
+   */
+  public long diagnosticsDroppedCount() {
+    return diagnosticsDropped.get();
   }
 
   /** Asynchronously record a detection with no measured latency. */
@@ -287,7 +336,117 @@ public final class JsonEventLogger {
     submit(new Sample(null, hook == null ? "" : hook, latencyUs, -1));
   }
 
+  /**
+   * Record an agent diagnostic, not a detection: {@code {"timestamp":...,"kind":"diagnostic","diagnostic":<name>,
+   * <fields>}}, where {@code fields} is JSON members without braces. The hook-miss report is its only writer, and
+   * calls this on its own worker thread.
+   *
+   * <p>A diagnostic shares nothing with the detections that could make one of them wait: not their queue, not their
+   * batch (so a line that could not be encoded cannot make a batch fail), not their write lock, not their console
+   * stream. A file target gets the line as one UTF-8 append of its own, one write call (a detection batch is one
+   * write call too, so neither splits the other's lines). A console or {@code none} target gets nothing: a
+   * diagnostic stalled in the stream the detections are written to would hold them up. The line is also dropped when
+   * the logger has not started, was cancelled (a start that failed), or is closing at JVM exit, checked again just
+   * before the output call, and when the write fails. Each dropped line is counted in
+   * {@link #diagnosticsDroppedCount}. It never goes to the direct-cloud client.
+   */
+  public void recordDiagnostic(String diagnostic, String fields) {
+    try {
+      if (!started || cancelled || closed || target != LogTarget.FILE) {
+        diagnosticsDropped.incrementAndGet();
+        return;
+      }
+      var builder = new StringBuilder(64 + fields.length());
+      builder.append('{');
+      field(builder, "timestamp", java.time.Instant.now().toString()).append(',');
+      field(builder, "kind", "diagnostic").append(',');
+      field(builder, "diagnostic", diagnostic).append(',');
+      builder.append(fields).append('}');
+      byte[] line = (withoutUnpairedSurrogates(builder.toString()) + System.lineSeparator())
+          .getBytes(StandardCharsets.UTF_8);
+      boolean ownIo = AgentOwnIo.enter();
+      try {
+        Path parent = logPath.getParent();
+        if (parent != null) {
+          Files.createDirectories(parent);
+        }
+        if (cancelled || closed) {
+          diagnosticsDropped.incrementAndGet(); // a failed start or the JVM's exit came first: nothing more is written
+          return;
+        }
+        diagnosticOutput.append(logPath, line);
+      } catch (IOException e) {
+        diagnosticsDropped.incrementAndGet();
+      } finally {
+        AgentOwnIo.exit(ownIo);
+      }
+    } catch (RuntimeException | Error failure) {
+      diagnosticsDropped.incrementAndGet();
+    }
+  }
+
+  /** How a diagnostic line reaches its file. */
+  interface DiagnosticOutput {
+    void append(Path path, byte[] line) throws IOException;
+  }
+
+  /** One append to the file, as {@link #appendBytes} makes it. */
+  private static final class FileAppend implements DiagnosticOutput {
+    static final FileAppend INSTANCE = new FileAppend();
+
+    @Override
+    public void append(Path path, byte[] line) throws IOException {
+      appendBytes(path, line);
+    }
+  }
+
+  /**
+   * One append of {@code bytes} to {@code path}: a file opened with O_APPEND and one channel write of the whole array,
+   * which the JDK hands to one write call, so what another writer appends at the same time lands before or after it,
+   * never inside it.
+   */
+  static void appendBytes(Path path, byte[] bytes) throws IOException {
+    try (FileChannel channel = FileChannel.open(path, StandardOpenOption.CREATE, StandardOpenOption.WRITE,
+        StandardOpenOption.APPEND)) {
+      ByteBuffer buffer = ByteBuffer.wrap(bytes);
+      while (buffer.hasRemaining()) {
+        channel.write(buffer);
+      }
+    }
+  }
+
+  /** {@code text} with each unpaired UTF-16 surrogate replaced by U+FFFD, so that it encodes to UTF-8 without error. */
+  static String withoutUnpairedSurrogates(String text) {
+    StringBuilder out = null;
+    for (int i = 0; i < text.length(); i++) {
+      char ch = text.charAt(i);
+      boolean unpaired;
+      if (Character.isHighSurrogate(ch)) {
+        unpaired = i + 1 >= text.length() || !Character.isLowSurrogate(text.charAt(i + 1));
+        if (!unpaired) {
+          if (out != null) {
+            out.append(ch).append(text.charAt(i + 1));
+          }
+          i++;
+          continue;
+        }
+      } else {
+        unpaired = Character.isLowSurrogate(ch);
+      }
+      if (unpaired && out == null) {
+        out = new StringBuilder(text.length()).append(text, 0, i);
+      }
+      if (out != null) {
+        out.append(unpaired ? '\uFFFD' : ch);
+      }
+    }
+    return out == null ? text : out.toString();
+  }
+
   private void submit(Sample sample) {
+    if (cancelled) {
+      return;
+    }
     if (target != LogTarget.FILE) {
       if (target == LogTarget.NONE && controlPlaneClient == null) {
         return;
@@ -295,16 +454,21 @@ public final class JsonEventLogger {
       flush(List.of(sample));
       return;
     }
-    if (syncWrites || closed) {
+    if (syncWrites) {
       flush(List.of(sample));
+      return;
+    }
+    if (closed) {
+      dropped.incrementAndGet(); // the JVM's exit closed the queue: its writer takes nothing more
       return;
     }
     if (!queue.offer(sample)) {
       dropped.incrementAndGet();
+      return;
     }
-    if (closed) {
-      // Shutdown may have drained the queue before this event arrived: write what is left.
-      flushRest();
+    if (closed && writerDone && queue.remove(sample)) {
+      // The admission closed while this event was queued, and the writer has already ended.
+      dropped.incrementAndGet();
     }
   }
 
@@ -323,26 +487,35 @@ public final class JsonEventLogger {
     }
   }
 
+  /**
+   * The writer: every file and console output of a queued event happens here. Ends when the logger is cancelled, or
+   * once the JVM's exit has begun and the queue is empty; until then it drains what was queued.
+   */
   private void drainLoop() {
     List<Sample> batch = new ArrayList<>(64);
-    // Stops once shutdown begins; the shutdown hook writes what is still queued.
-    while (running) {
-      try {
-        Sample first = queue.poll(200, TimeUnit.MILLISECONDS);
-        if (first == null) {
-          continue;
+    try {
+      while (!cancelled && (running || !queue.isEmpty())) {
+        try {
+          Sample first = queue.poll(200, TimeUnit.MILLISECONDS);
+          if (first == null) {
+            continue;
+          }
+          batch.clear();
+          batch.add(first);
+          queue.drainTo(batch, 511);
+          if (cancelled) {
+            return; // a failed start: what was queued is dropped, nothing is written
+          }
+          flush(batch);
+        } catch (InterruptedException e) {
+          // cancel() interrupts, and the loop condition ends the writer; nothing else ends it while events can come.
+        } catch (RuntimeException e) {
+          // Never let the writer thread die from a transient failure.
+          errStream().println("[OHMYRASP] event writer error: " + e);
         }
-        batch.clear();
-        batch.add(first);
-        queue.drainTo(batch, 511);
-        flush(batch);
-      } catch (InterruptedException e) {
-        Thread.currentThread().interrupt();
-        return;
-      } catch (RuntimeException e) {
-        // Never let the writer thread die from a transient failure.
-        errStream().println("[OHMYRASP] event writer error: " + e);
       }
+    } finally {
+      writerDone = true;
     }
   }
 
@@ -381,20 +554,20 @@ public final class JsonEventLogger {
     // One lock for both outputs, so concurrent writers never interleave a line.
     if ((fileOutput || consoleOutput) && lockWrites()) {
       try {
+        if (cancelled) {
+          return; // cancelled while this batch waited for the lock: a failed start writes nothing
+        }
         if (fileOutput) {
           try {
             Path parent = logPath.getParent();
             if (parent != null) {
               Files.createDirectories(parent);
             }
-            Files.writeString(
-                logPath,
-                fileBuffer.toString(),
-                StandardCharsets.UTF_8,
-                StandardOpenOption.CREATE,
-                StandardOpenOption.APPEND);
+            appendBytes(logPath, fileBuffer.toString().getBytes(StandardCharsets.UTF_8));
           } catch (IOException e) {
-            errStream().println("[OHMYRASP] failed to write event log: " + e);
+            if (!cancelled) {
+              errStream().println("[OHMYRASP] failed to write event log: " + e);
+            }
           }
         }
         if (consoleOutput) {
@@ -487,37 +660,105 @@ public final class JsonEventLogger {
     return standalone ? "stderr" : "/tmp/ohmyrasp-events.jsonl";
   }
 
-  private void shutdown() {
+  /**
+   * The JVM shutdown hook's work. It writes nothing itself and holds no lock while it waits, so a stalled file or
+   * console cannot hold up the JVM's exit beyond its two bounded waits. Under the lifecycle lock, briefly, first: a
+   * start in progress finishes and no start succeeds afterwards. Then the hook-miss report gets
+   * {@value #DIAGNOSTIC_HANDOFF_MILLIS} ms to finish a line it is writing on its own thread and is closed, so no
+   * diagnostic is written afterwards; then the queue is closed and drained by the writer as {@link #shutdown(long)}
+   * says, within {@value #SHUTDOWN_JOIN_MILLIS} ms.
+   */
+  void shutdownForExit() {
+    synchronized (lifecycle) {
+      shutdownBegan = true;
+    }
+    try {
+      io.ohmyrasp.agent.hookmiss.HookMisses.awaitIdle(DIAGNOSTIC_HANDOFF_MILLIS);
+      io.ohmyrasp.agent.hookmiss.HookMisses.close();
+    } catch (Throwable ignored) {
+      // A diagnostic never holds up the events.
+    }
     shutdown(SHUTDOWN_JOIN_MILLIS);
   }
 
   /**
-   * Stops the writer, waits up to {@code joinMillis} for it to finish the batch it holds, then
-   * writes what is still queued, waiting a bounded time for the write lock, so events queued at
-   * exit still reach the spool. An event submitted after that is written on the caller's thread.
-   * Each event leaves the queue once, so none is written twice. A batch the writer still holds
-   * when the wait ends, because it is stalled in an output call, can be lost.
+   * Undoes {@link #start} for a start that failed, without writing anything: every event queued or submitted from
+   * now on is dropped, the shutdown hook is removed, and the writer is told to stop and waited for at most
+   * {@value #CANCEL_JOIN_MILLIS} ms. It never takes the write lock and never waits on a file or the console: a
+   * writer stuck in an output call (a full pipe) is left to finish it on its own and then ends, dropping the rest.
+   */
+  public void cancel() {
+    Thread current;
+    Thread hook;
+    synchronized (lifecycle) {
+      cancelled = true;
+      current = writer;
+      hook = shutdownHook;
+    }
+    running = false;
+    if (queue != null) {
+      queue.clear();
+    }
+    if (hook != null) {
+      try {
+        Runtime.getRuntime().removeShutdownHook(hook);
+      } catch (IllegalStateException shuttingDown) {
+        // The JVM is exiting: the hook runs and finds the queue empty.
+      }
+    }
+    if (current != null && current != Thread.currentThread()) {
+      boolean interrupted = Thread.interrupted();
+      try {
+        current.interrupt();
+        current.join(CANCEL_JOIN_MILLIS);
+      } catch (InterruptedException e) {
+        interrupted = true;
+      } finally {
+        if (interrupted) {
+          Thread.currentThread().interrupt();
+        }
+      }
+    }
+    if (queue != null) {
+      queue.clear();
+    }
+  }
+
+  /** The writer thread once started, else null. Tests only. */
+  Thread writerThread() {
+    return writer;
+  }
+
+  /**
+   * Closes the admission, so what is queued now is the writer's last work, and waits up to {@code joinMillis} for
+   * the writer, a daemon thread, to write it and end. It writes nothing and takes no lock itself: what the writer has
+   * not taken from the queue by then is dropped and counted, and a writer stalled in an output call is left to it.
+   * An event submitted afterwards is dropped and counted, except in sync mode or for a console target, which write
+   * on the caller's thread as always. Each event leaves the queue once, so none is written twice.
    */
   void shutdown(long joinMillis) {
+    closed = true;
     running = false;
-    Thread current = writer;
+    Thread current;
+    synchronized (lifecycle) {
+      current = writer;
+    }
     if (current != null && current != Thread.currentThread()) {
+      boolean interrupted = Thread.interrupted();
       try {
         current.join(joinMillis);
       } catch (InterruptedException e) {
-        Thread.currentThread().interrupt();
+        interrupted = true;
+      } finally {
+        if (interrupted) {
+          Thread.currentThread().interrupt();
+        }
       }
     }
-    closed = true;
-    flushRest();
-  }
-
-  /** Writes everything still queued. */
-  private void flushRest() {
-    List<Sample> remaining = new ArrayList<>();
-    queue.drainTo(remaining);
-    if (!remaining.isEmpty()) {
-      flush(remaining);
+    if (queue != null) {
+      List<Sample> left = new ArrayList<>();
+      queue.drainTo(left);
+      dropped.addAndGet(left.size());
     }
   }
 
@@ -736,224 +977,12 @@ public final class JsonEventLogger {
 
   /** The one name rule for {@code parameters} and for the parameters inside {@code query}. */
   private static boolean isRedactedParameterName(String name) {
-    String normalized = normalizeName(name);
-    return SENSITIVE_PARAMETER_NAMES.contains(normalized)
-        || EXECUTABLE_SOURCE_PARAMETER_NAMES.contains(normalized);
+    return Redaction.isRedactedParameterName(name);
   }
 
-  /**
-   * The query string with every piece that names a sensitive parameter carrying the marker in
-   * place of its value. The query is split once, left to right, on {@code &} only, and the
-   * separators stay: a {@code ;} is part of its piece, as Tomcat reads it, so
-   * {@code password=alpha;omega} is one value. A piece is sensitive when it, or what it decodes to
-   * (percent escapes and {@code +}, repeated until the text stops changing, at most
-   * {@value #MAX_QUERY_DECODE_ROUNDS} rounds; a piece still changing after that is sensitive),
-   * holds a name {@link #isRedactedParameterName} names as a token: a run of ASCII
-   * letters, digits and underscores, or of those and hyphens, so {@code amp;password},
-   * {@code user[password]}, {@code {"password":"x"}} and {@code next=/cb?token=abc} match and
-   * {@code passwordless} does not. A sensitive piece keeps its text up to and including the first
-   * {@code =} and gets the marker as its value, as long as that text is a plain parameter name;
-   * a piece with no {@code =}, or whose text before it holds punctuation that could carry the
-   * secret ({@code {"password":"a=b"}}), is replaced as a whole. A parameter with an empty value
-   * has nothing to hide and stays. A query longer than {@value #MAX_REDACTED_QUERY_LENGTH}
-   * characters is not scanned and becomes the marker. Runs on the event-writing path: plain
-   * loops over ASCII comparisons, no regular expression, no lambda and no Unicode tables.
-   */
+  /** The query string with the values of sensitive parameters redacted: see {@link Redaction#redactedQuery}. */
   static String redactedQuery(String query) {
-    if (query == null || query.isEmpty()) {
-      return query;
-    }
-    int length = query.length();
-    if (length > MAX_REDACTED_QUERY_LENGTH) {
-      return REDACTED;
-    }
-    var out = new StringBuilder(length + 16);
-    boolean changed = false;
-    int start = 0;
-    for (int i = 0; i <= length; i++) {
-      if (i < length && query.charAt(i) != '&') {
-        continue;
-      }
-      String piece = query.substring(start, i);
-      String written = redactedPiece(piece);
-      changed |= written != piece;
-      out.append(written);
-      if (i < length) {
-        out.append(query.charAt(i));
-      }
-      start = i + 1;
-    }
-    return changed ? out.toString() : query;
-  }
-
-  /** The piece itself when nothing in it is sensitive, so the caller can tell by identity. */
-  private static String redactedPiece(String piece) {
-    if (piece.isEmpty() || !holdsRedactedName(piece)) {
-      return piece;
-    }
-    int equals = piece.indexOf('=');
-    if (equals < 0 || !isPlainParameterName(piece.substring(0, equals))) {
-      return REDACTED;
-    }
-    if (equals + 1 == piece.length()) {
-      return piece;
-    }
-    return piece.substring(0, equals + 1) + REDACTED;
-  }
-
-  /**
-   * Whether the text, or any of its decodings, holds a redacted parameter name as a token. Text
-   * that is still changing after {@link #MAX_QUERY_DECODE_ROUNDS} rounds counts as holding one: a
-   * name could be behind the next layer.
-   */
-  private static boolean holdsRedactedName(String text) {
-    String current = text;
-    for (int round = 0; ; round++) {
-      String lower = asciiLowerCase(current);
-      if (holdsRedactedToken(lower, false) || holdsRedactedToken(lower, true)) {
-        return true;
-      }
-      String next = percentDecode(current);
-      if (next.equals(current)) {
-        return false;
-      }
-      if (round == MAX_QUERY_DECODE_ROUNDS) {
-        return true;
-      }
-      current = next;
-    }
-  }
-
-  /**
-   * Whether a token of {@code lower} is a redacted name. A token is a maximal run of ASCII
-   * letters, digits and underscores, or, with {@code hyphenJoins}, of those and hyphens, which
-   * keeps {@code api-key} and {@code access-token} one name.
-   */
-  private static boolean holdsRedactedToken(String lower, boolean hyphenJoins) {
-    int length = lower.length();
-    int from = 0;
-    while (from < length) {
-      while (from < length && !isTokenChar(lower.charAt(from), hyphenJoins)) {
-        from++;
-      }
-      int to = from;
-      while (to < length && isTokenChar(lower.charAt(to), hyphenJoins)) {
-        to++;
-      }
-      if (to > from && isRedactedParameterName(lower.substring(from, to))) {
-        return true;
-      }
-      from = to;
-    }
-    return false;
-  }
-
-  private static boolean isTokenChar(char ch, boolean hyphenJoins) {
-    return (ch >= 'a' && ch <= 'z')
-        || (ch >= 'A' && ch <= 'Z')
-        || (ch >= '0' && ch <= '9')
-        || ch == '_'
-        || (hyphenJoins && ch == '-');
-  }
-
-  /**
-   * Whether the text before the first {@code =} is only a parameter name once decoded: letters,
-   * digits, {@code _ - . [ ]}, spaces and non-ASCII characters. Quotes, braces, colons, slashes
-   * and a {@code %} left over after the decoding rounds could carry a secret.
-   */
-  private static boolean isPlainParameterName(String rawKey) {
-    String current = rawKey;
-    for (int round = 0; round < MAX_QUERY_DECODE_ROUNDS; round++) {
-      String next = percentDecode(current);
-      if (next.equals(current)) {
-        break;
-      }
-      current = next;
-    }
-    for (int i = 0; i < current.length(); i++) {
-      char ch = current.charAt(i);
-      boolean plain =
-          isTokenChar(ch, true) || ch == '.' || ch == '[' || ch == ']' || ch == ' ' || ch > 0x7f;
-      if (!plain) {
-        return false;
-      }
-    }
-    return true;
-  }
-
-  /**
-   * ASCII lower-casing, with the two characters whose Unicode lower case is ASCII ({@code U+212A}
-   * Kelvin sign, {@code U+0130} dotted capital I) mapped by hand, so a server that folds case
-   * with Unicode rules still reads {@code to\u212Aen} as {@code token}. The same string comes
-   * back when nothing changes.
-   */
-  private static String asciiLowerCase(String text) {
-    char[] chars = null;
-    for (int i = 0; i < text.length(); i++) {
-      char ch = text.charAt(i);
-      char lower = ch;
-      if (ch >= 'A' && ch <= 'Z') {
-        lower = (char) (ch + ('a' - 'A'));
-      } else if (ch == '\u212A') {
-        lower = 'k';
-      } else if (ch == '\u0130') {
-        lower = 'i';
-      }
-      if (lower != ch) {
-        if (chars == null) {
-          chars = text.toCharArray();
-        }
-        chars[i] = lower;
-      }
-    }
-    return chars == null ? text : new String(chars);
-  }
-
-  /** URL-decodes a query component: {@code %XX} as UTF-8 bytes, {@code +} as a space. */
-  private static String percentDecode(String value) {
-    if (value.indexOf('%') < 0 && value.indexOf('+') < 0) {
-      return value;
-    }
-    int length = value.length();
-    var out = new StringBuilder(length);
-    byte[] run = new byte[length];
-    int runLength = 0;
-    for (int i = 0; i < length; i++) {
-      char ch = value.charAt(i);
-      int high = ch == '%' && i + 2 < length ? hexValue(value.charAt(i + 1)) : -1;
-      int low = high < 0 ? -1 : hexValue(value.charAt(i + 2));
-      if (low >= 0) {
-        run[runLength++] = (byte) (high * 16 + low);
-        i += 2;
-        continue;
-      }
-      if (runLength > 0) {
-        out.append(new String(run, 0, runLength, StandardCharsets.UTF_8));
-        runLength = 0;
-      }
-      out.append(ch == '+' ? ' ' : ch);
-    }
-    if (runLength > 0) {
-      out.append(new String(run, 0, runLength, StandardCharsets.UTF_8));
-    }
-    return out.toString();
-  }
-
-  private static int hexValue(char ch) {
-    if (ch >= '0' && ch <= '9') {
-      return ch - '0';
-    }
-    if (ch >= 'a' && ch <= 'f') {
-      return ch - 'a' + 10;
-    }
-    if (ch >= 'A' && ch <= 'F') {
-      return ch - 'A' + 10;
-    }
-    return -1;
-  }
-
-  private static String normalizeName(String name) {
-    return name == null ? "" : name.replace("_", "").replace("-", "").toLowerCase(Locale.ROOT);
+    return Redaction.redactedQuery(query);
   }
 
   private static String escape(String value) {

@@ -9,7 +9,7 @@ completes_with = ["ConnectException"]
 [case.primary]
 effect = "log"
 rule = "ssrf_protocol"
-why = "the primary blocks this only inside an HTTP request; outside one it logs"
+why = "the primary blocks this only inside an HTTP request: ssrf_protocol is one of the rules too broad to block without a request that supplied the input, on every line that has it"
 
 [case.backport]
 effect = "unreachable"

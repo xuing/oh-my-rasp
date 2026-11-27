@@ -29,48 +29,106 @@ public final class OhMyRaspJava8Agent {
 
   private static void install(String mode, String agentArgs, Instrumentation instrumentation) {
     Class<?>[] outsideJavaBase = null;
+    File agentJar = null;
+    boolean claimed = false;
     if (instrumentation != null) {
       // The transformers inject calls that the bootstrap loader resolves: without the JAR on its search the start
       // fails here, before any transformer is registered, and the launcher reports it.
-      File agentJar = appendSelfToBootstrap(instrumentation);
+      agentJar = appendSelfToBootstrap(instrumentation);
       requireBootstrapDefined("io.ohmyrasp.agent.java8.Java8RaspLine", "io.ohmyrasp.agent.backport.BackportLine",
           "io.ohmyrasp.agent.backport.RaspRuntime", "io.ohmyrasp.agent.backport.BackportHooks",
-          "io.ohmyrasp.agent.java8.Java8RaspHooks", "io.ohmyrasp.agent.util.Preload");
-      // Every class of ours a hook or a transformer can use, loaded and initialised now, not inside a hooked call.
-      try {
-        io.ohmyrasp.agent.util.Preload.classes(agentJar, "agent-java8", null);
-      } catch (IOException e) {
-        throw new IllegalStateException("cannot read the preload list of " + agentJar, e);
-      }
-      outsideJavaBase = typesOutsideJavaBase();
+          "io.ohmyrasp.agent.java8.Java8RaspHooks", "io.ohmyrasp.agent.util.Preload",
+          "io.ohmyrasp.agent.hook.HookActivation");
+      // One start per JVM, whichever entry makes it (premain, agentmain, the launcher's or a direct one): the claim
+      // lives in the bootstrap-defined runtime, so a second entry throws here and touches nothing. A start without
+      // an Instrumentation (only tests make one) registers nothing and claims nothing.
+      RaspRuntime.claimStart();
+      claimed = true;
     }
-    // Installs the line and starts the shared runtime here, before any transformer, so no hook does it on an app
-    // thread. What can fail without a trace is done above; a failure from here on undoes the start.
-    boolean startedHere = Java8RaspLine.start();
-    List<ClassFileTransformer> registered = new ArrayList<ClassFileTransformer>();
+    boolean committed = false;
     try {
-      String logPath = RaspRuntime.resolveLogPath();
-      io.ohmyrasp.agent.xml.SystemArchiveOrigins.initialize(instrumentation);
-      installTransformer(instrumentation, outsideJavaBase, registered);
-      RaspRuntime.writeStartupLine(logPath, startupMessage(mode, agentArgs, instrumentation));
-    } catch (RuntimeException | Error failure) {
-      undo(instrumentation, registered, startedHere, failure);
-      throw failure;
+      if (instrumentation != null) {
+        // Every class of ours a hook or a transformer can use, loaded and initialised now, not inside a hooked call.
+        try {
+          io.ohmyrasp.agent.util.Preload.classes(agentJar, "agent-java8", null);
+        } catch (IOException e) {
+          throw new IllegalStateException("cannot read the preload list of " + agentJar, e);
+        }
+        outsideJavaBase = typesOutsideJavaBase();
+      }
+      begin(mode, agentArgs, instrumentation, outsideJavaBase, claimed);
+      committed = true;
+    } finally {
+      if (claimed) {
+        RaspRuntime.endClaim(committed);
+      }
     }
   }
 
   /**
-   * After a failure that follows the line's start: removes the transformers this start registered and, when this
-   * call started the runtime, stops it, so the launcher's start-failed holds (no thread, no transformer, hooks
-   * inactive). A failure on the way is added to {@code failure} as suppressed.
+   * Starts the line's runtime, registers the transformers and writes the start line, the commit. The hooks the
+   * transformers inject do nothing until then: {@link io.ohmyrasp.agent.hook.HookActivation} turns on only after the
+   * start line is written, and nothing after it can fail the start. A failure before it undoes everything this call
+   * did; what was recorded is undone, so each step records what it is about to do before it does it.
    */
-  private static void undo(Instrumentation instrumentation, List<ClassFileTransformer> registered, boolean startedHere,
-      Throwable failure) {
-    for (int i = registered.size() - 1; i >= 0; i--) {
+  private static void begin(String mode, String agentArgs, Instrumentation instrumentation, Class<?>[] outsideJavaBase,
+      boolean claimed) {
+    List<ClassFileTransformer> registered = null;
+    boolean startedHere = false;
+    boolean hookMisses = false;
+    try {
+      registered = new ArrayList<ClassFileTransformer>();
+      // Installs the line and starts the shared runtime here, before any transformer, so no hook does it on an app
+      // thread. What can fail without a trace is done above; a failure from here on undoes the start.
+      startedHere = Java8RaspLine.start();
+      if (claimed && !startedHere) {
+        throw new IllegalStateException(
+            "[OHMYRASP-JAVA8] the backport runtime was started before this start: nothing is installed");
+      }
+      String logPath = RaspRuntime.resolveLogPath();
+      io.ohmyrasp.agent.xml.SystemArchiveOrigins.initialize(instrumentation);
+      // The hook-miss report reads its table here, before any transformer: register() wraps each one in it. It is
+      // held: misses of classes loaded during the start are queued, and its worker thread is created only once the
+      // start has committed, below.
+      hookMisses = io.ohmyrasp.agent.backport.BackportHookMisses.start();
+      installTransformer(instrumentation, outsideJavaBase, registered);
+      RaspRuntime.writeStartupLine(logPath, startupMessage(mode, agentArgs, instrumentation));
+    } catch (RuntimeException | Error failure) {
+      undo(instrumentation, registered, claimed, startedHere, hookMisses, failure);
+      throw failure;
+    }
+    // Committed: nothing from here on can fail the start. The hooks act from now on, then the report's worker starts.
+    io.ohmyrasp.agent.hook.HookActivation.activate();
+    io.ohmyrasp.agent.hookmiss.HookMisses.release();
+  }
+
+  /**
+   * After a failure that follows the line's start: keeps the hooks off (a claimed start turns them off again, first),
+   * turns the hook-miss report off (no miss is taken any more, what was queued is dropped and it never starts a
+   * worker), removes the transformers this start registered and, when this call started the runtime, stops it, so
+   * the launcher's start-failed holds (no thread, no transformer, hooks inactive). A hook that an application thread
+   * entered before that never acted: the hooks turn on only at the commit. A failure on the way is added to
+   * {@code failure} as suppressed.
+   */
+  private static void undo(Instrumentation instrumentation, List<ClassFileTransformer> registered, boolean claimed,
+      boolean startedHere, boolean hookMisses, Throwable failure) {
+    if (claimed) {
+      io.ohmyrasp.agent.hook.HookActivation.deactivate();
+    }
+    if (hookMisses) {
       try {
-        instrumentation.removeTransformer(registered.get(i));
+        io.ohmyrasp.agent.hookmiss.HookMisses.stop();
       } catch (RuntimeException | Error other) {
         failure.addSuppressed(other);
+      }
+    }
+    if (registered != null) {
+      for (int i = registered.size() - 1; i >= 0; i--) {
+        try {
+          instrumentation.removeTransformer(registered.get(i));
+        } catch (RuntimeException | Error other) {
+          failure.addSuppressed(other);
+        }
       }
     }
     if (startedHere) {
@@ -99,8 +157,10 @@ public final class OhMyRaspJava8Agent {
 
   private static void register(Instrumentation instrumentation, List<ClassFileTransformer> registered,
       ClassFileTransformer transformer, boolean canRetransform) {
-    instrumentation.addTransformer(transformer, canRetransform);
-    registered.add(transformer);
+    ClassFileTransformer watched = io.ohmyrasp.agent.hookmiss.HookMissWatch.wrap(transformer);
+    // Recorded first: the undo removes it whether or not the add returned.
+    registered.add(watched);
+    instrumentation.addTransformer(watched, canRetransform);
   }
 
   private static String startupMessage(
@@ -209,6 +269,7 @@ public final class OhMyRaspJava8Agent {
     register(instrumentation, registered, new Java8HessianTransformer(), canRetransform);
     register(instrumentation, registered, new Java8FileTransformer(), canRetransform);
     register(instrumentation, registered, new Java8MultipartUploadTransformer(), canRetransform);
+    register(instrumentation, registered, new Java8RequestBodyTransformer(), canRetransform);
     register(instrumentation, registered, new Java8UrlTransformer(), canRetransform);
     register(instrumentation, registered, new Java8ArchiveTransformer(), canRetransform);
     register(instrumentation, registered, new Java8JdbcTransformer(), canRetransform);
@@ -287,6 +348,8 @@ public final class OhMyRaspJava8Agent {
           || io.ohmyrasp.agent.rules.product.spark.SparkSubmitVisitor.OWNER.equals(internalName)
           || io.ohmyrasp.agent.rules.product.dataease.FilterVerificationVisitor.OWNER.equals(internalName)
           || multipartOwners.contains(loaded) || io.ohmyrasp.agent.http.MultipartFilenameVisitor.known(internalName, true)
+          || io.ohmyrasp.agent.http.RequestBodyVisitor.loadedTarget(loaded)
+          || io.ohmyrasp.agent.file.ContainerDeploymentVisitor.matches(internalName)
           || io.ohmyrasp.agent.file.DirectoryListVisitor.matches(internalName) || io.ohmyrasp.agent.xml.AttachmentFileVisitor.matches(internalName) || XmlEntityOpenVisitor.matches(internalName) || MyBatisSqlVisitor.matches(internalName)
           || (HttpTransportVisitor.matches(internalName) && !"java/net/URL".equals(internalName))
           || JdbcSqlMethod.isJdbcImplementation(loaded)) {

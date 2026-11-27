@@ -51,10 +51,10 @@ Every hook, detector, and Vulhub replay script lives in this repository and runs
 <!-- BEGIN GENERATED metrics (java-agent/scripts/gen-detection-coverage.py) — do not edit between markers -->
 | Metric | Value | Source |
 |---|---|---|
-| Instrumented sink families | 30 ASM hook modules (`agent-jdk25`); 24 ASM transformers per backport (`java8`, `java11`, `java17`) | [DETECTION-COVERAGE.md](java-agent/docs/DETECTION-COVERAGE.md) |
-| Detection engine | 42 detector capabilities, 173 algorithm signatures asserted in acceptance scripts; 23 rule ids are defined but not wired, and not counted | [DETECTION-COVERAGE.md](java-agent/docs/DETECTION-COVERAGE.md) |
+| Instrumented sink families | 32 ASM hook modules (`agent-jdk25`); 25 ASM transformers per backport (`java8`, `java11`, `java17`) | [DETECTION-COVERAGE.md](java-agent/docs/DETECTION-COVERAGE.md) |
+| Detection engine | 42 detector capabilities, 176 algorithm signatures asserted in acceptance scripts; 18 rule ids are defined but not wired, and not counted | [DETECTION-COVERAGE.md](java-agent/docs/DETECTION-COVERAGE.md) |
 | Exploit replay suite | 136 scenarios across 53 [Vulhub](https://github.com/vulhub/vulhub) roots (130 CVEs tracked) | [vulhub-coverage.md](docs/development/vulhub-coverage.md) |
-| Benign corpus precision | `0 / 194` false positives across 26 categories | [FALSE-POSITIVE-REPORT.md](java-agent/docs/FALSE-POSITIVE-REPORT.md) |
+| Benign corpus precision | `0 / 206` false positives across 27 categories | [FALSE-POSITIVE-REPORT.md](java-agent/docs/FALSE-POSITIVE-REPORT.md) |
 | Supported JVMs | Builds for JDK 8, 11, 17, and a shared JDK 21/25 build (`javax.servlet` & `jakarta.servlet`) | [docs/agent.md](docs/agent.md) |
 <!-- END GENERATED metrics -->
 
@@ -74,6 +74,7 @@ OhMyRASP intercepts execution inside JDK sinks rather than matching regexes on H
 - **Cryptographic token checks:** Default-secret JWTs are verified by real HMAC execution, and Shiro `rememberMe` cookies are decrypted under known default keys to check for Java serialization magic bytes.
 - **Zero-allocation Java2Shell guard (CVE-2026-114938):** Instruments `java.util.Base64$Decoder.decode0` with a pure arithmetic boundary check (`length >= 65`, `1 <= (length & 63) <= 3`, `1 <= padding <= 2`, `padding <= remainder`, strict Base64 alphabet, `!isMIME`) before the native x86-64 AVX-512 stub can write out of bounds. Fires even outside HTTP requests and logs metadata only.
 - **Fastjson 1.2.83 class-resource boundary:** Hooks `ClassLoader.getResourceAsStream` inside `ParserConfig.checkAutoType` to block remote (`http(s)://`, `jar:http(s)://`) and `jar:file:/proc/self/fd/` gadgets while keeping normal classpath and Spring Boot `jar:nested:` loads quiet.
+- **Same block scope on every Java version:** Every agent line decides the same way whether a finding is inside an HTTP request, including work a request handed to another thread, and what it shows outside one. A finding whose argument is the exploit itself (a remote JNDI name, a gadget class in a stream) blocks everywhere in block mode; the rest, a remote class, a remote DTD and the cloud metadata address included, blocks outside a request by default, except a cloud provider's own credential client reading instance metadata, which is logged. Setting `outside_request` to `log` (on the console's Protection page per application or environment, on the host console, or baked into a standalone JAR) records those findings and lets the operation run. [Outside an HTTP request](docs/detection.md#outside-an-http-request)
 - **Non-blocking hot path:** Findings queue asynchronously to a local NDJSON spool (`stderr` in shirudo standalone mode). Runtime mode switches (`off` / `monitor` / `block`) apply without restarting the JVM.
 
 Full specification: [docs/detection.md](docs/detection.md).
@@ -102,6 +103,7 @@ Each shirudo JAR embeds `META-INF/ohmyrasp-shirudo.properties` (`standalone=true
 - Starts **zero background threads** (no control-file poller, no spool writer).
 - Ignores `/tmp/ohmyrasp-control.json` and hostile `OHMYRASP_MODE` / `OHMYRASP_CONTROL` overrides (`lock_config=true` is read strictly from the signed JAR).
 - Emits structured JSON detections directly to `stderr` without creating `/tmp/ohmyrasp-events.jsonl` or `hook_latency` noise.
+- Blocks findings outside an HTTP request as inside one, except a cloud provider's own credential client reading instance metadata and a few request-defined rules of the primary line ([Outside an HTTP request](docs/detection.md#outside-an-http-request)). The universal `ohmyrasp.jar` also bakes `outside_request` (`block`, or `log` when built with `--outside-request log`).
 
 Build and sign all `.bee` packages from source, or grab `ohmyrasp-shirudo-upatches-<version>.tar.gz` from [GitHub Releases](https://github.com/xuing/oh-my-rasp/releases):
 

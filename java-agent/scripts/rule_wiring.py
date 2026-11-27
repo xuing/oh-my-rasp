@@ -7,7 +7,8 @@ hook module injects a call to an OhMyRaspHooks entry method. The map is read, no
   `invokeHook("name", ...)` or `visitMethodInsn(INVOKESTATIC, hooks, "name", ...)`, so the name is a
   string literal under asm/ or shared/, alone or as the signature `void name(Type)` of a Method), and every
   method of the agent classes outside OhMyRaspHooks, detect/ and asm/ (the policy, control and runtime
-  classes the hooks call back into, and the classes the agent installs itself, such as DeserializationGuard);
+  classes the hooks call back into, and the classes the agent installs itself, such as DeserializationGuard),
+  except the classes of NOT_HOOK_EVIDENCE, which call hook entries at start and are neither roots nor walked into;
 * the edges are the calls in a method body, matched by name and by number of arguments: `Type.name(`,
   `new Type(`, `Type::name`, `name(` in the same class or a superclass, and `x.name(` where the declared
   type of `x` is a parameter, local variable or field of the same class (or `var x = new Type(`): it reaches
@@ -20,7 +21,8 @@ outer class is taken for an unqualified call it cannot find in the class itself.
 reachable, so a rule it calls unreachable is unreachable. It cannot see a branch inside a reachable method
 that no input takes (expression_runtime has its own check, engine_names_without_an_id), a call the agent
 makes by reflection under a name it builds at run time (a name written as a literal is read, so the EL,
-JEXL and OSGi servlet paths count), or a value only a hook supplies (the request body: see BODY_ONLY).
+JEXL and OSGi servlet paths count), or a value only a hook supplies (the request body: see BODY_ONLY, which
+counts a body as supplied when a reachable method hands one to a RequestContext).
 
 Used by test_rule_cases.py (WiringTest); the catalogue marks the ids it finds as not wired ("not_wired" in
 rules/general.json and product.json).
@@ -38,6 +40,12 @@ AGENT = ROOT / "agent-jdk25" / "src" / "main" / "java" / "io" / "ohmyrasp" / "ag
 SHARED = ROOT / "shared" / "src" / "main" / "java"
 ASM = AGENT / "asm"
 HOOKS_CLASS = "OhMyRaspHooks"
+# Agent classes that call OhMyRaspHooks entries without being a hook: a call from one is no evidence that a module
+# injects that entry, so they are neither roots nor walked into (BootstrapAgent, a root, calls Warmup.run()).
+NOT_HOOK_EVIDENCE = {
+    "Warmup": "calls the request, SQL and deserialization hooks once at start on constant input, before the "
+              "transformer is registered; a hook it calls is reached only when a module injects that call",
+}
 
 _KEYWORDS = {"if", "for", "while", "switch", "catch", "synchronized", "try", "return", "new", "else", "do",
              "throw", "assert", "super", "this"}
@@ -357,12 +365,13 @@ def reachable_methods() -> frozenset[tuple[str, str, int]]:
     """Method keys (class, name, number of parameters) that can run once some module has injected a call."""
     by_key, _, _ = _graph()
     roots = {m.key for m in _agent_methods() if m.owner == HOOKS_CLASS and m.name in named_in_emitters()}
-    roots |= {m.key for m in _agent_methods() if m.owner != HOOKS_CLASS and m.package not in ("detect", "asm")}
+    roots |= {m.key for m in _agent_methods() if m.owner != HOOKS_CLASS and m.package not in ("detect", "asm")
+              and m.owner not in NOT_HOOK_EVIDENCE}
     seen: set[tuple[str, str, int]] = set()
     todo = [k for k in roots if k in by_key]
     while todo:
         key = todo.pop()
-        if key in seen:
+        if key in seen or key[0] in NOT_HOOK_EVIDENCE:
             continue
         seen.add(key)
         for method in by_key[key]:
@@ -430,21 +439,23 @@ def engine_names_without_an_id() -> set[str]:
     return pushed - cases
 
 
-_BODY_ARGUMENT = re.compile(r"new RequestContext\([^;]*,\s*body\s*\)")
+_BODY_ARGUMENT = re.compile(r"new RequestContext\([^;]*,\s*body\s*\)|\.observeBody\(")
 
 
 def request_body_sources() -> set[tuple[str, str, int]]:
-    """Reachable methods outside detect/ that build a RequestContext from a `body` they were given: the only way a
-    request body enters the detectors (the others copy the body a context already has). The servlet entry
-    (buildRequestContext) builds its context without one, and no hook module reads a servlet input stream or reader."""
+    """Reachable methods outside detect/ that give a RequestContext a request body: one built from a `body` they
+    were given, or one that hands a context the body the application has read (`observeBody`, which the
+    request-body hooks reach: RequestBodyVisitor injects the exitBody* calls into servlet input streams and
+    Tomcat's reader). The others copy the body a context already has, and the servlet entry builds its context
+    without one."""
     reach = reachable_methods()
     return {m.key for m in _agent_methods()
             if m.key in reach and m.package != "detect" and _BODY_ARGUMENT.search(m.body)}
 
 
 # Rules whose decision reads only the request body (`request.body()` blank means no finding): the detectors are
-# reached, but with an empty body unless some reachable method supplies one. The rule-cases probe measured it:
-# a request body the handler reads through getInputStream() and through getReader() does not fire them.
+# reached, but with an empty body unless some reachable method supplies one. The request-body hooks supply it
+# (measured with the rule-cases probe: a body the handler reads through getInputStream() or getReader() fires them).
 BODY_ONLY = {
     "request_json_patch_expression": "RequestExpressionDetector.jsonPatchExpression",
     "request_message_selector_expression": "RequestConfigurationDetector.messageSelectorExpression",

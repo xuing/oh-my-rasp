@@ -41,6 +41,62 @@ final class Java8LibraryHookTargetsTest {
     assertNull(transformer.transform(null, "org/apache/commons/jexl2/ScriptImpl", null, null, expression));
   }
 
+  /**
+   * commons-jexl3's Script is a class file with stack map frames (version 52): the hook at the start of execute
+   * gives its own branches frames, and a frame of the method's own at its first instruction stays where it was.
+   * Before, the rewritten class failed verification ("Expecting a stackmap frame at branch target").
+   */
+  @Test
+  void aJexl3ScriptWithStackMapFramesStillVerifiesAfterTheHook() throws Exception {
+    final String name = "org/apache/commons/jexl3/internal/Script";
+    org.objectweb.asm.ClassWriter writer = new org.objectweb.asm.ClassWriter(org.objectweb.asm.ClassWriter.COMPUTE_FRAMES) {
+      @Override protected String getCommonSuperClass(String left, String right) {
+        return "java/lang/Object";
+      }
+    };
+    writer.visit(org.objectweb.asm.Opcodes.V1_8, org.objectweb.asm.Opcodes.ACC_PUBLIC | org.objectweb.asm.Opcodes.ACC_SUPER,
+        name, null, "java/lang/Object", null);
+    org.objectweb.asm.MethodVisitor init = writer.visitMethod(org.objectweb.asm.Opcodes.ACC_PUBLIC, "<init>", "()V", null, null);
+    init.visitCode();
+    init.visitVarInsn(org.objectweb.asm.Opcodes.ALOAD, 0);
+    init.visitMethodInsn(org.objectweb.asm.Opcodes.INVOKESPECIAL, "java/lang/Object", "<init>", "()V", false);
+    init.visitInsn(org.objectweb.asm.Opcodes.RETURN);
+    init.visitMaxs(0, 0);
+    init.visitEnd();
+    // execute(Object context): while (context == null) context = "none"; return context; -- a frame at offset 0.
+    org.objectweb.asm.MethodVisitor execute = writer.visitMethod(org.objectweb.asm.Opcodes.ACC_PUBLIC, "execute",
+        "(Ljava/lang/Object;)Ljava/lang/Object;", null, null);
+    execute.visitCode();
+    org.objectweb.asm.Label top = new org.objectweb.asm.Label();
+    org.objectweb.asm.Label done = new org.objectweb.asm.Label();
+    execute.visitLabel(top);
+    execute.visitVarInsn(org.objectweb.asm.Opcodes.ALOAD, 1);
+    execute.visitJumpInsn(org.objectweb.asm.Opcodes.IFNONNULL, done);
+    execute.visitLdcInsn("none");
+    execute.visitVarInsn(org.objectweb.asm.Opcodes.ASTORE, 1);
+    execute.visitJumpInsn(org.objectweb.asm.Opcodes.GOTO, top);
+    execute.visitLabel(done);
+    execute.visitVarInsn(org.objectweb.asm.Opcodes.ALOAD, 1);
+    execute.visitInsn(org.objectweb.asm.Opcodes.ARETURN);
+    execute.visitMaxs(0, 0);
+    execute.visitEnd();
+    writer.visitEnd();
+
+    final byte[] hooked = new Java8JexlTransformer().transform(
+        Java8LibraryHookTargetsTest.class.getClassLoader(), name, null, null, writer.toByteArray());
+    assertNotNull(hooked);
+    Class<?> script = new ClassLoader(Java8LibraryHookTargetsTest.class.getClassLoader()) {
+      Class<?> define() {
+        return defineClass(name.replace('/', '.'), hooked, 0, hooked.length);
+      }
+    }.define();
+    script.getDeclaredConstructors(); // links the class: a VerifyError is thrown here
+    Object instance = script.getConstructor().newInstance();
+    java.lang.reflect.Method run = script.getMethod("execute", Object.class);
+    assertEquals("x", run.invoke(instance, "x"));
+    assertEquals("none", run.invoke(instance, (Object) null));
+  }
+
   @Test
   void janinoCookableHooksOnlyTheTwoStringMethodAndAtItsSourceArgument() throws Exception {
     // Cookable is org.codehaus.commons.compiler.Cookable (commons-compiler), not org.codehaus.janino.Cookable.

@@ -1,5 +1,6 @@
 package io.ohmyrasp.agent.control;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -18,10 +19,50 @@ import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 import org.junit.jupiter.api.Test;
 
 final class ControlPlaneClientTest {
+  /**
+   * The client's requests are the agent's own I/O: on the thread that connects (where the JDK asks the proxy selector,
+   * and where the URL, DNS and socket hooks run) the hooks neither report nor block. Registration, the first request.
+   */
+  @Test
+  void theClientsRequestsAreTheAgentsOwnIo() throws Exception {
+    HttpServer server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+    // Registration, heartbeat and the policy pull: each answered, so start() makes all three.
+    server.createContext("/api/v1/",
+        exchange -> respond(exchange, 200, "{\"id\":\"agt_test\",\"policy_id\":\"\",\"policy_version\":0}"));
+    server.start();
+    java.net.ProxySelector original = java.net.ProxySelector.getDefault();
+    List<Boolean> marked = java.util.Collections.synchronizedList(new ArrayList<>());
+    java.net.ProxySelector.setDefault(new java.net.ProxySelector() {
+      @Override public List<java.net.Proxy> select(java.net.URI uri) {
+        marked.add(io.ohmyrasp.agent.runtime.AgentOwnIo.active());
+        return List.of(java.net.Proxy.NO_PROXY);
+      }
+
+      @Override public void connectFailed(java.net.URI uri, java.net.SocketAddress address, IOException failure) {}
+    });
+    try {
+      ControlPlaneConfig config = new ControlPlaneConfig("http://127.0.0.1:" + server.getAddress().getPort(),
+          "app_test", "secret_test", "env_test", "node-test", "java", "1.0.0");
+      try (ControlPlaneClient client = ControlPlaneClient.start(config)) {
+        long deadline = System.nanoTime() + 5_000_000_000L;
+        while (marked.size() < 3 && System.nanoTime() < deadline) Thread.sleep(10);
+      }
+    } finally {
+      java.net.ProxySelector.setDefault(original);
+      server.stop(0);
+    }
+    assertTrue(marked.size() >= 3, "register, heartbeat and policy pull connected: " + marked);
+    assertTrue(marked.stream().allMatch(Boolean::booleanValue), "every connect marked: " + marked);
+    assertFalse(io.ohmyrasp.agent.runtime.AgentOwnIo.active(), "the test thread is not marked");
+  }
+
   @Test
   void registersAndUploadsDetection() throws Exception {
     List<String> requests = new ArrayList<>();
@@ -151,6 +192,137 @@ final class ControlPlaneClientTest {
     assertTrue(installedPolicy.get().loaded());
     assertTrue(installedPolicy.get().evaluate(sqlDetection(), installedAgentKey.get()).detection().action().equals("block"));
     assertTrue("agt_policy".equals(installedAgentKey.get()));
+  }
+
+  /**
+   * The agent's start prepares the client while it can still fail and starts its cloud I/O only once it has
+   * committed: a prepared client sends nothing until then, and a closed one cannot start.
+   */
+  @Test
+  void aPreparedClientSendsNothingUntilItStartsReporting() throws Exception {
+    List<String> requests = new ArrayList<>();
+    AtomicReference<AgentPolicy> installed = new AtomicReference<>();
+    HttpServer server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+    server.createContext(
+        "/",
+        exchange -> {
+          record(requests, exchange);
+          respond(exchange, 200, "{\"id\":\"agt_prepared\"}");
+        });
+    server.start();
+    try {
+      ControlPlaneConfig config =
+          new ControlPlaneConfig(
+              "http://127.0.0.1:" + server.getAddress().getPort(),
+              "app_test", "secret_test", "env_test", "node-test", "java", "1.0.0");
+      try (ControlPlaneClient client = ControlPlaneClient.prepare(config, (policy, key) -> installed.set(policy))) {
+        Thread.sleep(300);
+        synchronized (requests) {
+          assertTrue(requests.isEmpty(), "a prepared client sent " + requests);
+        }
+        client.startReporting();
+        waitFor(requests, 1);
+        assertTrue(requests.get(0).contains("POST /api/v1/agents/register"), requests.get(0));
+      }
+    } finally {
+      server.stop(0);
+    }
+    ControlPlaneClient closed = ControlPlaneClient.prepare(
+        new ControlPlaneConfig("http://127.0.0.1:9", "a", "s", "e", "n", "java", "1"), (policy, key) -> installed.set(policy));
+    closed.close();
+    assertThrowsRejected(closed);
+  }
+
+  /**
+   * The policy response is parsed and its install has begun when close is called: close does not return until that
+   * install is over, so none can follow a close that has returned. (Before, close returned at once and the
+   * install went on.)
+   */
+  @Test
+  void closeWaitsForAPolicyInstallThatHasBegun() throws Exception {
+    HttpServer server = policyServer(null);
+    AtomicInteger installed = new AtomicInteger();
+    CountDownLatch installing = new CountDownLatch(1);
+    CountDownLatch release = new CountDownLatch(1);
+    try {
+      ControlPlaneClient client = ControlPlaneClient.start(config(server), (policy, key) -> {
+        installing.countDown();
+        try {
+          release.await();
+        } catch (InterruptedException e) {
+          Thread.currentThread().interrupt();
+          return;
+        }
+        installed.incrementAndGet();
+      });
+      assertTrue(installing.await(10, TimeUnit.SECONDS), "the policy install never began");
+      Thread closer = new Thread(client::close, "test-closer");
+      closer.start();
+      closer.join(500);
+      assertTrue(closer.isAlive(), "close returned while a policy install was in progress");
+      release.countDown();
+      closer.join(10_000);
+      assertFalse(closer.isAlive(), "close did not return once the install ended");
+      assertEquals(1, installed.get(), "the install in progress was abandoned");
+    } finally {
+      release.countDown();
+      server.stop(0);
+    }
+  }
+
+  /** A policy response that arrives after close is not installed. */
+  @Test
+  void aPolicyThatArrivesAfterCloseIsNotInstalled() throws Exception {
+    CountDownLatch answer = new CountDownLatch(1);
+    HttpServer server = policyServer(answer);
+    AtomicInteger installed = new AtomicInteger();
+    try {
+      ControlPlaneClient client = ControlPlaneClient.start(config(server), (policy, key) -> installed.incrementAndGet());
+      Thread.sleep(300);
+      client.close();
+      answer.countDown();
+      Thread.sleep(300);
+      assertEquals(0, installed.get(), "a policy fetched before close was installed after it");
+    } finally {
+      answer.countDown();
+      server.stop(0);
+    }
+  }
+
+  private static ControlPlaneConfig config(HttpServer server) {
+    return new ControlPlaneConfig(
+        "http://127.0.0.1:" + server.getAddress().getPort(),
+        "app_test", "secret_test", "env_test", "node-test", "java", "1.0.0");
+  }
+
+  /** A control plane that registers, accepts heartbeats and serves a policy, after {@code gate} opens when given. */
+  private static HttpServer policyServer(CountDownLatch gate) throws IOException {
+    HttpServer server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+    server.createContext("/api/v1/", exchange -> {
+      if (exchange.getRequestURI().getPath().endsWith("/policy")) {
+        if (gate != null) {
+          try {
+            gate.await(10, TimeUnit.SECONDS);
+          } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+          }
+        }
+        respond(exchange, 200, "{\"version\":9}");
+      } else {
+        respond(exchange, 200, "{\"id\":\"agt_close\",\"policy_id\":\"\",\"policy_version\":0}");
+      }
+    });
+    server.start();
+    return server;
+  }
+
+  private static void assertThrowsRejected(ControlPlaneClient closed) {
+    try {
+      closed.startReporting();
+    } catch (java.util.concurrent.RejectedExecutionException expected) {
+      return;
+    }
+    throw new AssertionError("a closed client started reporting");
   }
 
   @Test

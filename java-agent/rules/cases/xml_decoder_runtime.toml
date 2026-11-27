@@ -6,8 +6,8 @@ op = "beans.decode"
 args = { document = "<?xml version=\"1.0\"?><java><object class=\"java.lang.ProcessBuilder\"><array class=\"java.lang.String\" length=\"2\"><void index=\"0\"><string>echo</string></void><void index=\"1\"><string>rule-case</string></void></array><void method=\"start\"/></object></java>" }
 
 [case.primary]
-effect = "none"
-why = "the primary decides XMLDecoder statements only inside an HTTP request"
+effect = "block"
+rule = "xml_decoder_runtime"
 
 [case.backport]
 effect = "block"
@@ -46,3 +46,43 @@ effect = "none"
 
 [case.backport]
 effect = "none"
+
+[[case]]
+name = "process-builder-outside-request-log-only"
+kind = "attack"
+via = "sink"
+op = "beans.decode"
+args = { document = "<?xml version=\"1.0\"?><java><object class=\"java.lang.ProcessBuilder\"><array class=\"java.lang.String\" length=\"2\"><void index=\"0\"><string>echo</string></void><void index=\"1\"><string>rule-case</string></void></array><void method=\"start\"/></object></java>" }
+control = { outside_request = "log" }
+
+[case.primary]
+effect = "log"
+rule = "xml_decoder_runtime"
+why = "outside_request is log: outside a request the finding is logged and the operation runs"
+
+[case.backport]
+effect = "log"
+rule = "xml_decoder_runtime_execution"
+why = "outside_request is log: outside a request the finding is logged and the operation runs"
+
+[[case]]
+name = "process-builder-in-request-log-only"
+kind = "attack"
+via = "request-sink"
+op = "beans.decode"
+args = { document = "<?xml version=\"1.0\"?><java><object class=\"java.lang.ProcessBuilder\"><array class=\"java.lang.String\" length=\"2\"><void index=\"0\"><string>echo</string></void><void index=\"1\"><string>rule-case</string></void></array><void method=\"start\"/></object></java>" }
+control = { outside_request = "log" }
+
+[case.request]
+method = "GET"
+uri = "/app/report"
+query = "id=7"
+headers = { User-Agent = "Mozilla/5.0 (X11; Linux x86_64) Firefox/128.0", Accept = "text/html" }
+
+[case.primary]
+effect = "block"
+rule = "xml_decoder_runtime"
+
+[case.backport]
+effect = "block"
+rule = "xml_decoder_runtime_execution"

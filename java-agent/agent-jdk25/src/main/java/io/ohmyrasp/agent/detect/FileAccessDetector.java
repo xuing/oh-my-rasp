@@ -164,6 +164,11 @@ public final class FileAccessDetector {
               Map.of("path", location)));
     }
     if (!request.active()) {
+      // Outside a request every line decides with the protected host files of the backport rule.
+      if (HostReadPath.isProtectedHostFile(location) && HostReadPath.confirmsLocation(path)) {
+        return Optional.of(Detection.log(
+            "readFile", "readFile_unwanted", 85, "Sensitive local file read detected", request, Map.of("path", location)));
+      }
       return Optional.empty();
     }
     String protocol = protocolOf(path);
@@ -210,7 +215,7 @@ public final class FileAccessDetector {
               Map.of("path", location)));
     }
     if ((includeLocationPolicy || links != HostReadPath.OpenPolicy.PATH_ONLY) && protocol.isEmpty()
-        && (request.parameters().values().stream().anyMatch(values -> HostReadPath.selected(path, values))
+        && (request.inputParameters().values().stream().anyMatch(values -> HostReadPath.selected(path, values))
         || (isAbsolutePathLike(path) && bodyHasSinkValue(request, path)))) {
       String resolved = links.resolvedLocation(path);
       if (!resolved.isEmpty() && !resolved.equals(location)
@@ -253,7 +258,7 @@ public final class FileAccessDetector {
   }
 
   public static boolean requestSelectsDirectory(String path, RequestContext request, boolean descriptorRelative) {
-    return request.active() && (request.parameters().values().stream()
+    return request.active() && (request.inputParameters().values().stream()
         .anyMatch(values -> HostDirectory.selected(path, values, descriptorRelative)) || bodyHasSinkValue(request, path));
   }
 

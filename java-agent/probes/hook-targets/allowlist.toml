@@ -21,7 +21,6 @@ RmiRegistryHookModule = "JDK-only: rewrites sun.rmi.registry.RegistryImpl."
 [backport]
 "Java{N}Base64Transformer" = "JDK-only: rewrites java.util.Base64$Decoder."
 "Java{N}ClassLoaderTransformer" = "JDK-only: rewrites java.net.URLClassLoader, sun.rmi.server.LoaderHandler and URLClassPath loaders."
-"Java{N}FileTransformer" = "JDK-only: rewrites java.io and java.nio.file classes."
 "Java{N}JavaBeansTransformer" = "JDK-only: rewrites java.beans.Expression and Statement and com.sun.beans.decoder.DocumentHandler."
 "Java{N}JmxTransformer" = "JDK-only: rewrites the JDK's DefaultMBeanServerInterceptor and BadAttributeValueExpException."
 "Java{N}JndiTransformer" = "JDK-only: rewrites javax.naming.InitialContext and com.sun.jndi URL contexts."

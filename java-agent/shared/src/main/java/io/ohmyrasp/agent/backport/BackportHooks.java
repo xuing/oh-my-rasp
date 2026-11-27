@@ -1,9 +1,12 @@
 package io.ohmyrasp.agent.backport;
 
+import io.ohmyrasp.agent.hook.HookActivation;
 import io.ohmyrasp.agent.http.ServletContracts;
 import io.ohmyrasp.agent.file.EscapingPath;
 import io.ohmyrasp.agent.file.ArchiveEntryContext;
 import io.ohmyrasp.agent.file.HostReadPath;
+import io.ohmyrasp.agent.file.ScriptFileWrite;
+import io.ohmyrasp.agent.rules.OutsideRequest;
 import io.ohmyrasp.agent.file.HostDirectory;
 import io.ohmyrasp.agent.jmx.JmxDispatch;
 import io.ohmyrasp.agent.naming.LookupRoute;
@@ -17,6 +20,10 @@ import io.ohmyrasp.agent.rules.general.PlotWrite;
 import io.ohmyrasp.agent.jmx.JmxWriteScope;
 import io.ohmyrasp.agent.file.HostDelete;
 import io.ohmyrasp.agent.http.ArchiveUploadPolicy;
+import io.ohmyrasp.agent.http.BodyEvidence;
+import io.ohmyrasp.agent.http.RequestBody;
+import io.ohmyrasp.agent.http.RequestBodyCapture;
+import io.ohmyrasp.agent.http.RequestBodySnapshot;
 import io.ohmyrasp.agent.http.PercentEncodedText;
 import io.ohmyrasp.agent.http.MultipartFilename;
 import io.ohmyrasp.agent.http.ServletDispatchScope;
@@ -42,9 +49,12 @@ import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.util.ArrayList;
 import java.util.Base64;
+import java.util.Collections;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Set;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import javax.crypto.Cipher;
@@ -84,12 +94,6 @@ public final class BackportHooks {
       Pattern.compile("(?is)\\b(ldap|ldaps|rmi|iiop|corbaname|corbaloc)://[^\\s\"'<>\\u0000]{1,2048}");
   private static final Pattern TYPED_PAYLOAD_H2_INIT =
       Pattern.compile("(?is)jdbc:h2:[^\\s\"'<>]{0,4096}\\bINIT\\s*=");
-  private static final Pattern SENSITIVE_FILE_READ =
-      Pattern.compile(
-          "^/(?:etc/(?:passwd|shadow|issue)|proc/self/(?:environ|cmdline)|root/\\.ssh/(?:id_rsa|authorized_keys)|home/[^/]+/\\.ssh/id_rsa)$");
-  private static final Pattern SCRIPT_FILE_WRITE =
-      Pattern.compile(
-          "(?i).+\\.(?:jsp|jspx|jspf|war|class|jar|php|asp|aspx|ashx|cer|asa|sh|bash|cmd|bat|ps1)$");
   private static final Pattern MULTIPART_SCRIPT_UPLOAD_FILE =
       Pattern.compile(
           "(?i)(?:.+\\.(?:jsp|jspx|jspf|php|asp|aspx|ashx|cer|asa)|(?:^|.*/)(?:\\.htaccess|\\.user\\.ini))$");
@@ -102,9 +106,6 @@ public final class BackportHooks {
           "(?is)(?:%\\{|\\$\\{|#(?:context|application|session|request|response)|\\b(?:ognl|freemarker|execute)\\b|\\x00)");
   private static final Pattern MULTIPART_TRAVERSAL_UPLOAD_FILE =
       Pattern.compile("(?i)(?:^|/|%2f|%5c)\\.\\.(?:/|$|%2f|%5c)");
-  private static final Pattern WEBROOT_PATH =
-      Pattern.compile(
-          "(?i)(?:^|/)(?:webapps?|webroot|ROOT|www|wwwroot|htdocs|html|public|static|uploads?)(?:/|$)");
   private static final Pattern LOOPBACK_ADMIN_PATH =
       Pattern.compile(
           "(?i)(?:^|/)(?:actuator|jolokia|manager|host-manager|admin|console|webtools|solr/admin|_cat|debug|server-status)(?:[/?#;]|$)");
@@ -187,12 +188,15 @@ public final class BackportHooks {
 
   private static void beforeHttpRequest(Object request, boolean beforeServlet) {
     long started = System.nanoTime();
-    if (!DISPATCH.inRequest()) forgetLoggedValues();
+    boolean outermost = !DISPATCH.inRequest();
+    if (outermost) forgetLoggedValues();
     DISPATCH.enter(beforeServlet ? null : request);
+    RequestBodyCapture.dispatchEntered();
     try {
       try {
         beforeHttpRequestImpl(request, beforeServlet);
         DISPATCH.enteredApplication();
+        RequestBodyCapture.applicationEntered(outermost, request, !RaspRuntime.detectionOff());
       } finally {
         RaspRuntime.sampleLatency((System.nanoTime() - started) / 1000L);
       }
@@ -205,7 +209,221 @@ public final class BackportHooks {
   /** Leaves one servlet dispatch; leaving the outermost one forgets what this thread logged during the request. */
   private static void exitRequest() {
     DISPATCH.exit();
-    if (!DISPATCH.inRequest()) forgetLoggedValues();
+    boolean ended = !DISPATCH.inRequest();
+    RequestBodyCapture.dispatchExited(ended);
+    if (ended) forgetLoggedValues();
+  }
+
+  // ---- request body: what the application's own read calls returned (RequestBodyVisitor injects these) ----
+  // None of these throws to the application but the line's block: a read after a block on its request's body
+  // throws that block again, and a read whose recording completes a body state with a blocking finding throws it.
+
+  public static Object enterBodyRead(Object source) {
+    if (inactive()) return null;
+    try {
+      return RequestBodyCapture.enter(source);
+    } catch (RuntimeException denied) {
+      if (line().isBlock(denied)) throw denied;
+      return null;
+    } catch (Throwable ignored) {
+      return null;
+    }
+  }
+
+  public static Object enterBodyRead(Object source, java.nio.Buffer buffer) {
+    if (inactive()) return null;
+    try {
+      return RequestBodyCapture.enter(source, buffer);
+    } catch (RuntimeException denied) {
+      if (line().isBlock(denied)) throw denied;
+      return null;
+    } catch (Throwable ignored) {
+      return null;
+    }
+  }
+
+  /** The read threw; the rewritten method throws the same throwable on after this returns (it never throws). */
+  public static void abortBodyRead() {
+    try {
+      RequestBodyCapture.abort();
+    } catch (Throwable ignored) {
+      // The application's own exception goes on.
+    }
+  }
+
+  public static void exitBodyRead(int result, Object token) {
+    if (RequestBodyCapture.exitByte(result, token)) bodyCompleted();
+  }
+
+  public static void exitBodyRead(int result, Object token, byte[] buffer, int offset) {
+    if (RequestBodyCapture.exitBytes(result, token, buffer, offset)) bodyCompleted();
+  }
+
+  public static void exitBodyRead(int result, Object token, java.nio.ByteBuffer buffer) {
+    if (RequestBodyCapture.exitBuffer(result, token, buffer)) bodyCompleted();
+  }
+
+  public static void exitBodyRead(byte[] result, Object token, boolean toEnd) {
+    if (RequestBodyCapture.exitAll(result, token, toEnd)) bodyCompleted();
+  }
+
+  public static void exitBodyChars(int result, Object token) {
+    if (RequestBodyCapture.exitChar(result, token)) bodyCompleted();
+  }
+
+  public static void exitBodyChars(int result, Object token, char[] buffer, int offset) {
+    if (RequestBodyCapture.exitChars(result, token, buffer, offset)) bodyCompleted();
+  }
+
+  public static void exitBodyChars(int result, Object token, java.nio.CharBuffer buffer) {
+    if (RequestBodyCapture.exitCharBuffer(result, token, buffer)) bodyCompleted();
+  }
+
+  public static void exitBodyLine(String result, Object token) {
+    if (RequestBodyCapture.exitLine(result, token)) bodyCompleted();
+  }
+
+  /** The read completed the body: decide the request rules on it, inside the application's read call. */
+  private static void bodyCompleted() {
+    try {
+      settleBody();
+    } catch (RuntimeException failure) {
+      if (line().isBlock(failure)) throw failure;
+    } catch (Throwable ignored) {
+      // Recording and deciding never fail the application's read.
+    }
+  }
+
+  /**
+   * The URLs the current request supplies, its body's included, after deciding a body state no decision has seen.
+   * The body's are derived from the current body state each time (cached per state), not kept in the dispatch's
+   * slot, so that a nested dispatch's exit does not restore a list without them.
+   */
+  private static List<String> requestUrls() {
+    settleBody();
+    List<String> own = CURRENT_REQUEST_URLS.get();
+    RequestBody body = RequestBodyCapture.current();
+    RequestBodySnapshot snapshot = body == null ? null : body.lastSnapshot();
+    if (snapshot == null) return own;
+    BodyState state = BodyState.of(body);
+    if (state.urlsOf != snapshot) {
+      state.urls = requestControlledUrls(BackportRequestBody.withParameters(null, snapshot.values()));
+      state.urlsOf = snapshot;
+    }
+    if (state.urls.isEmpty()) return own;
+    if (own == null || own.isEmpty()) return state.urls;
+    List<String> joined = new ArrayList<String>(own);
+    for (String url : state.urls) {
+      if (joined.size() >= 16) break;
+      if (!joined.contains(url)) joined.add(url);
+    }
+    return joined;
+  }
+
+  /** The request input of the current request, after deciding a body state no decision has seen yet. */
+  private static RequestSnapshot currentRequest() {
+    settleBody();
+    return CURRENT_REQUEST.get();
+  }
+
+  /**
+   * Decides the request rules on a body state this dispatch has not decided: the rules that read parameters read
+   * the body's names and values with the request's own (and the body's alone, so that a parameter's match does
+   * not hide a body field's), as on the primary line. Every new finding is reported once per request and
+   * dispatch; the one finding the servlet entry reported for the request without its body is not reported again.
+   * A state counts as decided once its evaluation completed (or blocked); one that failed is decided again at the
+   * next hook, within the request's budget of {@link RequestBody#MAX_EVALUATIONS} evaluations. The event is built
+   * from structured evidence only (see publicFinding). A block throws from here, and every later read of the
+   * request's body stream throws it again.
+   */
+  private static void settleBody() {
+    RequestBody body = RequestBodyCapture.current();
+    if (body == null || body.version() == 0) return;
+    RequestSnapshot request = CURRENT_REQUEST.get();
+    if (request == null) return;
+    RequestBodySnapshot snapshot = body.snapshot();
+    int decided = request.bodyDecided;
+    if (snapshot == null || snapshot.version() == decided) return;
+    if (RaspRuntime.detectionOff()) return;
+    // In progress: a hook that this evaluation reaches does not start it again.
+    request.bodyDecided = snapshot.version();
+    if (!body.evaluate()) return;
+    try {
+      Object servletRequest = DISPATCH.servletRequest() != null ? DISPATCH.servletRequest() : body.servletRequest();
+      BodyState state = BodyState.of(body);
+      Map<Object, Object> merged = BackportRequestBody.withParameters(request.entryParameters, snapshot.values());
+      Map<Object, Object> bodyOnly = BackportRequestBody.withParameters(null, snapshot.values());
+      for (Finding finding : bodyFindings(servletRequest, merged, bodyOnly, request.admitted)) {
+        String once = finding.algorithm + '\0' + finding.detailValue + '\0' + System.identityHashCode(request);
+        if (state.reported.contains(once)) continue;
+        String action = shouldBlock(finding) ? "block" : "log";
+        appendEvent(finding, "HttpServlet.requestBody", action);
+        state.reported.add(once);
+        if ("block".equals(action)) {
+          RuntimeException block = line().block("OhMyRASP " + line().displayName + " blocked a suspicious request body");
+          RequestBodyCapture.deny(block);
+          throw block;
+        }
+      }
+    } catch (RuntimeException failure) {
+      if (line().isBlock(failure)) throw failure;
+      request.bodyDecided = decided; // not decided: the next hook decides it again, within the budget
+    } catch (Throwable failure) {
+      request.bodyDecided = decided;
+    }
+  }
+
+  /** What one request's body decisions keep: the findings reported, and the body's URLs for one state. */
+  private static final class BodyState {
+    final Set<String> reported = new HashSet<String>();
+    RequestBodySnapshot urlsOf;
+    List<String> urls = Collections.<String>emptyList();
+
+    static BodyState of(RequestBody body) {
+      Object kept = body.engineState;
+      if (kept instanceof BodyState) return (BodyState) kept;
+      BodyState state = new BodyState();
+      body.engineState = state;
+      return state;
+    }
+  }
+
+  /**
+   * The findings of the request rules that read parameters, on the request's parameters with the body's and on
+   * the body's alone, in the chain's order, without the one the servlet entry reported ({@code admitted}).
+   * The rules that read only the request line, cookies or headers decided at the servlet entry.
+   */
+  private static List<Finding> bodyFindings(Object request, Map<?, ?> merged, Map<?, ?> bodyOnly, Finding admitted) {
+    List<Finding> found = new ArrayList<Finding>(2);
+    if (request == null) return found;
+    String uri = requestUri(request);
+    if (uri.length() == 0) return found;
+    String query = requestQuery(request);
+    for (int rule = 0; rule < PARAMETER_RULES; rule++) {
+      Finding withBody = parameterRule(rule, request, uri, query, merged);
+      if (withBody != null && !sameFinding(admitted, withBody)) found.add(withBody);
+      Finding ofBody = parameterRule(rule, request, uri, query, bodyOnly);
+      if (ofBody != null && !sameFinding(admitted, ofBody) && !sameFinding(withBody, ofBody)) found.add(ofBody);
+    }
+    return found;
+  }
+
+  private static final int PARAMETER_RULES = 5;
+
+  /** The rules of classifyHttpRequest that read parameters, in its order. */
+  private static Finding parameterRule(int rule, Object request, String uri, String query, Map<?, ?> parameters) {
+    switch (rule) {
+      case 0: return classifyTypedPayloadDeserializationRequest(parameters, uri);
+      case 1: return classifyDebugProcessLaunchRequest(request, uri, query, parameters);
+      case 2: return classifyOgcFilterSqlInjectionRequest(parameters, uri);
+      case 3: return classifyTemplateSourceRequest(parameters, uri);
+      default: return classifyInternalForwardRequest(parameters, uri);
+    }
+  }
+
+  private static boolean sameFinding(Finding left, Finding right) {
+    return left != null && right != null && left.algorithm.equals(right.algorithm)
+        && left.detailValue.equals(right.detailValue);
   }
 
   /**
@@ -252,26 +470,53 @@ public final class BackportHooks {
         && requestHeader(request, "Content-Type").trim().regionMatches(true, 0, "multipart/", 0, 10);
     Object raw = deferMultipart ? null : invokeServlet(request, "getParameterMap");
     Map<?, ?> parameters = raw instanceof Map<?, ?> ? (Map<?, ?>) raw : ServletQueryParameters.parse(requestQuery(request));
-    CURRENT_REQUEST.set(new RequestSnapshot(parameters));
+    RequestSnapshot snapshot = new RequestSnapshot(parameters);
+    snapshot.formBody = raw instanceof Map<?, ?> && formContent(stringValue(invokeServlet(request, "getMethod")),
+        requestHeader(request, "Content-Type"))
+        && parsedFromBody(parameters, requestQuery(request));
+    CURRENT_REQUEST.set(snapshot);
     captureRequestControlledUrls(parameters);
     Finding finding = classifyHttpRequest(request, parameters);
     if (finding == null) {
       return;
     }
-    String action = shouldBlock() ? "block" : "log";
+    String action = shouldBlock(finding, request != null) ? "block" : "log";
     String previous = LAST_LOGGED_REQUEST.get();
     if (!"block".equals(action) && repeats(finding.detailValue, previous)) {
       return;
     }
     LAST_LOGGED_REQUEST.set(finding.detailValue);
+    snapshot.admitted = finding;
     appendEvent(finding, "HttpServlet.service", action);
     if ("block".equals(action)) {
       throw line().block("OhMyRASP " + line().displayName + " blocked suspicious request path");
     }
   }
 
+  /** Whether a container parses this request's body into parameters: a form or multipart body, not on GET or HEAD. */
+  private static boolean formContent(String method, String contentType) {
+    if ("GET".equalsIgnoreCase(method) || "HEAD".equalsIgnoreCase(method) || contentType == null) return false;
+    String type = contentType.trim().toLowerCase(Locale.ROOT);
+    return type.startsWith("application/x-www-form-urlencoded") || type.startsWith("multipart/");
+  }
+
+  /** Whether the container's parameters hold any name or value the query string does not: a parsed body's. */
+  private static boolean parsedFromBody(Map<?, ?> parameters, String query) {
+    if (parameters == null || parameters.isEmpty()) return false;
+    Map<String, List<String>> fromQuery = ServletQueryParameters.parse(query);
+    for (Map.Entry<?, ?> parameter : parameters.entrySet()) {
+      List<String> inQuery = fromQuery.get(String.valueOf(parameter.getKey()));
+      List<String> values = new ArrayList<String>();
+      collectParameterValues(values, parameter.getValue());
+      if (inQuery == null || values.size() > inQuery.size()) return true;
+    }
+    return false;
+  }
+
   public static void afterHttpRequest() {
-    if (inactive()) return;
+    // A dispatch entered while the runtime ran is left even when the runtime has stopped since: its request
+    // state, the body recorded among it, does not stay on the thread.
+    if (inactive() && !DISPATCH.inRequest()) return;
     exitRequest();
   }
 
@@ -301,7 +546,7 @@ public final class BackportHooks {
     if (RaspRuntime.detectionOff() || DISPATCH.inspectingRequest()) return;
     Finding finding = archiveOnly ? classifyArchiveUpload(filename) : classifyFileUpload(filename);
     if (finding == null) return;
-    String action = shouldBlock() ? "block" : "log";
+    String action = shouldBlock(finding) ? "block" : "log";
     if (MultipartFilename.eligible()) {
       if (!"block".equals(action) && MultipartFilename.repeated(DISPATCH.servletRequest(), filename,
           finding.algorithm, finding.decisionBasis == null ? "" : finding.decisionBasis, finding.policyDigest)) return;
@@ -324,7 +569,8 @@ public final class BackportHooks {
     if (RaspRuntime.detectionOff() || !SparkSubmitRole.denied(creation, request, requestApi)) return;
     Finding finding = new Finding(rule("request_remote_job_submission"), 95,
         "Spark job submission lacks the deployment's required role", "operation", "handleSubmit", "required_submit_role_denied");
-    boolean block = shouldBlock();
+    // The handler holds the HTTP request: inside a request with or without a servlet frame, as on the primary.
+    boolean block = shouldBlock(finding, request != null);
     appendEvent(finding, "SparkRest.handleSubmit", block ? "block" : "log");
     if (block) throw line().block("OhMyRASP blocked unauthorized Spark submission");
   }
@@ -339,7 +585,7 @@ public final class BackportHooks {
     Finding finding = new Finding(rule("request_remote_job_submission"), 95,
         "YARN job submission lacks the deployment's required role", "operation", "SubmitApplicationRequest.newInstance",
         "required_submit_role_denied");
-    boolean block = shouldBlock();
+    boolean block = shouldBlock(finding, request != null);
     appendEvent(finding, "RMWebServices.submitApplication", block ? "block" : "log");
     if (block) throw line().block("OhMyRASP blocked unauthorized YARN submission");
   }
@@ -350,7 +596,7 @@ public final class BackportHooks {
     Finding finding = new Finding(rule("command_execution_exploit_primitive"), 95,
         "Spring dispatched an HTTP-defined initializer to ProcessBuilder.start",
         "method", "ProcessBuilder.start", "remote_bean_init_dispatch");
-    boolean block = shouldBlock();
+    boolean block = shouldBlock(finding);
     appendEvent(finding, "Spring.initMethod", block ? "block" : "log");
     if (block) throw line().block("OhMyRASP blocked a Spring process initializer");
   }
@@ -362,7 +608,7 @@ public final class BackportHooks {
     if (finding == null) return;
     String api = io.ohmyrasp.agent.process.ProcessLaunch.api();
     if (api == null) return;
-    boolean block = shouldBlock();
+    boolean block = shouldBlock(finding);
     appendEvent(finding, api, block ? "block" : "log", null, argv.length);
     if (block) throw line().block("OhMyRASP blocked a process launch");
   }
@@ -404,7 +650,7 @@ public final class BackportHooks {
     if (url == null || operation == null || RaspRuntime.detectionOff()) return;
     Finding finding = classifyJndiLookup(url, operation);
     if (finding == null) return;
-    boolean block = shouldBlock();
+    boolean block = shouldBlock(finding);
     appendEvent(finding, "declared_lookup".equals(operation) ? "InitialContext.lookup" : operation, block ? "block" : "log");
     if (block) throw line().block("OhMyRASP blocked a remote JNDI lookup");
   }
@@ -419,7 +665,7 @@ public final class BackportHooks {
     Finding finding = new Finding(rule("deserialization_protocol_class"), 100,
         "OpenWire selected a non-Throwable constructor for an exception",
         "class", selected.getName(), "non_throwable_constructor");
-    boolean block = shouldBlock();
+    boolean block = shouldBlock(finding);
     appendEvent(finding, "OpenWire.createThrowable", block ? "block" : "log");
     if (block) throw line().block("OhMyRASP blocked an invalid OpenWire exception type");
   }
@@ -443,7 +689,7 @@ public final class BackportHooks {
     if (!StreamTypeNames.listed(name) || !BeanShellTypes.permitsTypeCheck(selected)) return false;
     Finding finding = new Finding(rule("deserialization_gadget_class"), deserializationConfidence(name),
         "Stream resolver selected a listed serialization type", "class", name, basis);
-    boolean block = shouldBlock();
+    boolean block = shouldBlock(finding);
     appendEvent(finding, hook, block ? "block" : "log");
     if (block) throw line().block("OhMyRASP blocked a listed serialization type");
     return true;
@@ -456,13 +702,14 @@ public final class BackportHooks {
     if (RaspRuntime.detectionOff() || !io.ohmyrasp.agent.rules.product.hessian.HessianAllocationTypes.listed(selected)) return;
     Finding finding = new Finding(rule("deserialization_hessian_type"), 95,
         "Hessian selected a listed type for allocation", "class", selected.getName(), basis);
-    boolean block = shouldBlock();
+    boolean block = shouldBlock(finding);
     appendEvent(finding, "Hessian.allocate", block ? "block" : "log");
     if (block) throw line().block("OhMyRASP blocked a listed Hessian allocation");
   }
 
   public static void beforeFileRead(Object path) {
     if (inactive()) return;
+    if (RaspRuntime.inOwnIo()) return; // the agent's own I/O (the hook-miss worker reads a manifest): before any classification
     if (!HostReadPath.isHostPath(path)) return;
     Finding finding = classifyFileRead(pathValue(path), HostReadPath.OpenPolicy.PATH_ONLY);
     emitFileFinding(finding, LAST_LOGGED_FILE_READ, "FileInputStream.open");
@@ -470,15 +717,16 @@ public final class BackportHooks {
 
   public static void captureDirectoryWalk(Object walker, java.nio.file.Path path) {
     if (inactive()) return;
-    RequestSnapshot request = CURRENT_REQUEST.get();
+    RequestSnapshot request = currentRequest();
     if (RaspRuntime.detectionOff() || request == null || path == null || !HostReadPath.isHostPath(path)) return;
-    List<String> inputs = request.parameterValues == null ? java.util.Collections.<String>emptyList() : request.parameterValues;
+    List<String> inputs = request.inputValues() == null ? java.util.Collections.<String>emptyList() : request.inputValues();
     HostDirectory.submitted(walker, inputs, HostDirectory.selected(path.toString(), inputs, false));
   }
 
-  public static void beginDirectoryVisit(Object walker, java.nio.file.Path path) {
-    if (inactive()) return;
-    HostDirectory.visiting(walker, path, CURRENT_REQUEST.get() != null);
+  /** Returns the visit it opened, the token the walker's exit passes to HostDirectory.visited, or null. */
+  public static Object beginDirectoryVisit(Object walker, java.nio.file.Path path) {
+    if (inactive()) return null;
+    return HostDirectory.visiting(walker, path, CURRENT_REQUEST.get() != null);
   }
 
   public static void afterFileList(String[] entries, String path) {
@@ -496,15 +744,16 @@ public final class BackportHooks {
   @SuppressWarnings("unchecked")
   private static void inspectListedDirectory(String path, java.nio.file.DirectoryStream<?> opened, boolean relative, HostDirectory.Walk walk) {
     if (RaspRuntime.detectionOff()) return;
-    RequestSnapshot request = CURRENT_REQUEST.get();
-    List<String> inputs = walk != null ? (List<String>) walk.origin : request != null ? request.parameterValues : null;
+    RequestSnapshot request = currentRequest();
+    List<String> inputs = walk != null ? (List<String>) walk.origin : request != null ? request.inputValues() : null;
     boolean direct = HostDirectory.selected(path, inputs, relative);
     if (!direct && (walk == null || !walk.selected)) return;
     String root = HostDirectory.protectedRoot(path, opened, relative);
     if (root.isEmpty()) return;
     Finding finding = new Finding(rule("directory_userinput"), 90, "Request selected a protected directory listing",
         "path", root, direct ? "selected_directory" : "selected_directory_walk");
-    boolean block = shouldBlock();
+    // A walk created inside a request carries that request (its origin) onto the thread that consumes it.
+    boolean block = shouldBlock(finding, walk != null && walk.origin != null);
     String operation = opened == null ? "FileSystem.list" : relative ? "SecureDirectoryStream.open" : "DirectoryStream.open";
     appendEvent(finding, operation, block ? "block" : "log");
     if (block) throw line().block("OhMyRASP blocked a directory listing");
@@ -524,15 +773,15 @@ public final class BackportHooks {
   private static void inspectDelete(java.nio.file.Path path, java.nio.file.SecureDirectoryStream<java.nio.file.Path> directory,
       int directoryFd, boolean removeDirectory) {
     if (RaspRuntime.detectionOff()) return;
-    RequestSnapshot request = CURRENT_REQUEST.get();
-    if (request == null || request.parameterValues == null) return;
+    RequestSnapshot request = currentRequest();
+    if (request == null || request.inputValues() == null) return;
     HostDelete entry = new HostDelete(path, directoryFd, directory != null, true);
-    for (String input : request.parameterValues) {
+    for (String input : request.inputValues()) {
       if (entry.match(input) != HostDelete.Basis.ESCAPING_ENTRY) continue;
       if (directory != null && !HostDelete.hasEntry(directory, path, removeDirectory)) return;
       Finding finding = new Finding("deleteFile_userinput", 85, "Request selected an entry outside the base directory",
           "path", entry.path(), "escaping_entry");
-      boolean block = shouldBlock();
+      boolean block = shouldBlock(finding);
       appendEvent(finding, directory == null ? "host_entry_removal" : "descriptor_relative_unlink", block ? "block" : "log");
       if (block) throw line().block("OhMyRASP blocked a file removal");
       return;
@@ -559,9 +808,6 @@ public final class BackportHooks {
     if (entry != null) {
       emitFileFinding(classifyArchiveWrite(entry, rawPath, null), LAST_LOGGED_ARCHIVE, "ArchiveEntry.write");
     }
-    if (isTomcatWarExpansionStack() || isTomcatJspCompilationStack()) {
-      return;
-    }
     Finding finding = classifyFileWrite(normalizedPath);
     emitFileFinding(finding, LAST_LOGGED_FILE_WRITE, "FileOutputStream.open");
   }
@@ -577,7 +823,7 @@ public final class BackportHooks {
       if (!attempt.hasDirective() || RaspRuntime.detectionOff()) return;
       Finding finding = new Finding(rule("file_generated_plot_script_command"), 91,
           "A plot directive reached its open output stream", "path", attempt.path(), "plot_stream_write");
-      boolean block = shouldBlock();
+      boolean block = shouldBlock(finding);
       appendEvent(finding, "FileOutputStream.write", block ? "block" : "log");
       if (block) throw line().block("OhMyRASP blocked a plot directive");
     } catch (RuntimeException | Error failure) {
@@ -610,18 +856,22 @@ public final class BackportHooks {
     }
   }
 
-  public static void beginNioRead(Object path) {
-    if (inactive()) return;
-    HostReadPath.beginFacade(path);
+  /** Returns the facade it opened, the token the facade's exit passes to HostReadPath.endFacade, or null. */
+  public static Object beginNioRead(Object path) {
+    if (inactive()) return null;
+    Object facade = HostReadPath.beginFacade(path);
     try { beforeNioFileRead(path); }
-    catch (RuntimeException | Error failure) { HostReadPath.endFacade(); throw failure; }
+    catch (RuntimeException | Error failure) { HostReadPath.endFacade(facade); throw failure; }
+    return facade;
   }
 
-  public static void beginNioChannel(Object path, Object options) {
-    if (inactive()) return;
-    HostReadPath.beginFacade(path);
+  /** Returns the facade it opened, the token the facade's exit passes to HostReadPath.endFacade, or null. */
+  public static Object beginNioChannel(Object path, Object options) {
+    if (inactive()) return null;
+    Object facade = HostReadPath.beginFacade(path);
     try { beforeNioByteChannelOpen(path, options); }
-    catch (RuntimeException | Error failure) { HostReadPath.endFacade(); throw failure; }
+    catch (RuntimeException | Error failure) { HostReadPath.endFacade(facade); throw failure; }
+    return facade;
   }
 
   public static void beforeNioFileRead(Object path) {
@@ -653,8 +903,13 @@ public final class BackportHooks {
   public static void captureHttpSubmission(Object exchange, java.net.URI uri) {
     if (inactive()) return;
     if (RaspRuntime.detectionOff()) return;
-    List<String> urls = CURRENT_REQUEST_URLS.get();
-    HTTP_SUBMISSIONS.capture(exchange, urls);
+    List<String> urls = requestUrls();
+    // A submission inside a request carries that request onto the thread that runs the exchange, whether or not
+    // the request supplied a URL, as on the primary: the exchange's finding is then inside a request. One from a
+    // request with a body carries that too (BodyOrigin), so the exchange's event is built as on the request.
+    List<String> origin = urls != null ? urls : DISPATCH.inRequest() ? java.util.Collections.<String>emptyList() : null;
+    if (origin != null && requestHasBody()) origin = new BodyOrigin(origin);
+    HTTP_SUBMISSIONS.capture(exchange, origin);
     if (urls != null && uri != null && urls.contains(urlParts(uri).comparisonKey)) {
       HttpTransportObservation.selectedSubmission(exchange, uri);
     }
@@ -685,9 +940,35 @@ public final class BackportHooks {
   }
 
   private static void inspectHttpExchange(Object exchange, java.net.URI uri, String peer) {
-    Finding finding = classifyUrlOpen(uri, HTTP_SUBMISSIONS.origin(exchange), peer, HttpTransportObservation.changedOrigin(exchange, uri));
-    if (finding != null) emitHttpDestination(finding, "HTTP.acquireExchange",
-        peer == null ? "http_exchange_acquire" : "http_resolved_route", shouldBlock(), peer);
+    List<String> origin = HTTP_SUBMISSIONS.origin(exchange);
+    Finding finding = classifyUrlOpen(uri, origin, peer, HttpTransportObservation.changedOrigin(exchange, uri));
+    if (finding == null) return;
+    // An exchange submitted inside a request carries it (origin): inside a request on whatever thread runs it.
+    boolean carried = origin instanceof BodyOrigin && CARRIED_BODY.get() == null;
+    if (carried) CARRIED_BODY.set(Boolean.TRUE);
+    try {
+      emitHttpDestination(finding, "HTTP.acquireExchange",
+          peer == null ? "http_exchange_acquire" : "http_resolved_route", shouldBlock(finding, origin != null), peer);
+    } finally {
+      if (carried) CARRIED_BODY.remove();
+    }
+  }
+
+  /** Whether the request this thread serves has a body, recorded or parsed by the container. */
+  private static boolean requestHasBody() {
+    RequestBody body = RequestBodyCapture.current();
+    if (body != null && body.version() > 0) return true;
+    RequestSnapshot request = CURRENT_REQUEST.get();
+    return request != null && request.formBody;
+  }
+
+  /** The URLs a request with a body supplied, carried with an operation it submitted to another thread. */
+  private static final class BodyOrigin extends ArrayList<String> {
+    private static final long serialVersionUID = 1L;
+
+    BodyOrigin(List<String> urls) {
+      super(urls);
+    }
   }
 
   public static void beforeUrlConnectionFactory(URL url) {
@@ -698,7 +979,7 @@ public final class BackportHooks {
   public static void captureHttpRedirect(Object connection, URL to, URL from) {
     if (inactive()) return;
     if (RaspRuntime.detectionOff() || !HttpTransportObservation.isHttp(from) || !HttpTransportObservation.isHttp(to)) return;
-    List<String> inputs = CURRENT_REQUEST_URLS.get();
+    List<String> inputs = requestUrls();
     HttpTransportObservation.selectedRedirect(connection, from, to, inputs != null && inputs.contains(urlComparisonKey(from)));
   }
 
@@ -730,9 +1011,9 @@ public final class BackportHooks {
 
   private static void inspectHttpTransport(Object connection, URL url, boolean write, String peer, String basis, boolean redirected) {
     if (RaspRuntime.detectionOff()) return;
-    Finding finding = classifyUrlOpen(url, CURRENT_REQUEST_URLS.get(), peer, redirected);
+    Finding finding = classifyUrlOpen(url, requestUrls(), peer, redirected);
     if (finding == null) return;
-    boolean block = shouldBlock();
+    boolean block = shouldBlock(finding);
     if (!block && HttpTransportObservation.repeated(connection, url, CURRENT_REQUEST.get(), finding.algorithm, write)) return;
     emitHttpDestination(finding, write ? "HTTP.writeRequest" : (peer == null ? "HTTP.acquireTransport" : "HTTP.connect"), basis, block, peer);
   }
@@ -750,7 +1031,7 @@ public final class BackportHooks {
     if (finding == null) {
       return;
     }
-    String action = shouldBlock() ? "block" : "log";
+    String action = shouldBlock(finding) ? "block" : "log";
     String previous = LAST_LOGGED_URL.get();
     if (!"block".equals(action) && repeats(finding.detailValue, previous)) {
       return;
@@ -769,7 +1050,7 @@ public final class BackportHooks {
     if (finding == null) {
       return;
     }
-    String action = shouldBlock() ? "block" : "log";
+    String action = shouldBlock(finding) ? "block" : "log";
     appendEvent(finding, "ParserConfig.checkAutoType.getResourceAsStream", action);
     if ("block".equals(action)) {
       throw line().block(
@@ -779,6 +1060,7 @@ public final class BackportHooks {
 
   public static void afterArchiveEntryName(String name) {
     if (inactive()) return;
+    if (RaspRuntime.inOwnIo()) return; // the agent's own I/O: before any bookkeeping of application state
     ARCHIVE_ENTRY.observe(name);
   }
 
@@ -826,7 +1108,7 @@ public final class BackportHooks {
     if (finding == null) {
       return;
     }
-    String action = shouldBlock() ? "block" : "log";
+    String action = shouldBlock(finding) ? "block" : "log";
     if ("mapper_substitution_at_jdbc".equals(finding.decisionBasis)) {
       if (!"block".equals(action) && MyBatisSqlTrace.repeatedObservation(sql, finding.algorithm)) return;
     } else if (!"block".equals(action) && io.ohmyrasp.agent.sql.JdbcObservation.repeated(receiver, sql)) {
@@ -867,7 +1149,7 @@ public final class BackportHooks {
                 + ",alphabet="
                 + (isURL ? "URL-safe" : "standard")
                 + ",cve=CVE-2026-114938");
-    String action = shouldBlock() ? "block" : "log";
+    String action = shouldBlock(finding) ? "block" : "log";
     String previous = LAST_LOGGED_BASE64.get();
     if (!"block".equals(action) && repeats(finding.detailValue, previous)) {
       return;
@@ -923,12 +1205,13 @@ public final class BackportHooks {
           "A raw mapper substitution introduced SQL control at JDBC",
           "identifier", "source=MyBatis reason=" + mapperControl, "mapper_substitution_at_jdbc");
     }
-    RequestSnapshot snapshot = CURRENT_REQUEST.get();
+    RequestSnapshot snapshot = currentRequest();
     boolean structural = statement.hasTruncatedLiteral()
         || (statement.hasConstantDisjunction()
+            // The H2 console's exemption reads the request parameters it submits through, not body fields.
             && (snapshot == null || !anySubmittedConsoleSelect(statement, snapshot.sqlInputs)));
     if (!structural && !statement.matchesSinkPolicy()
-        && (snapshot == null || !anyStructureFrom(statement, snapshot.sqlInputs))) {
+        && (snapshot == null || !anyStructureFrom(statement, snapshot.sqlInputs()))) {
       return null;
     }
     return new Finding(
@@ -962,7 +1245,7 @@ public final class BackportHooks {
     if (finding == null) {
       return;
     }
-    String action = shouldBlock() ? "block" : "log";
+    String action = shouldBlock(finding) ? "block" : "log";
     String previous = LAST_LOGGED_SQL_IDENTIFIER.get();
     if (!"block".equals(action) && repeats(finding.detailValue, previous)) {
       return;
@@ -979,7 +1262,7 @@ public final class BackportHooks {
     if (finding == null) {
       return;
     }
-    String action = shouldBlock() ? "block" : "log";
+    String action = shouldBlock(finding) ? "block" : "log";
     String previous = LAST_LOGGED_JDBC.get();
     if (!"block".equals(action) && repeats(finding.detailValue, previous)) {
       return;
@@ -1028,7 +1311,7 @@ public final class BackportHooks {
     if (finding == null) {
       return;
     }
-    String action = shouldBlock() ? "block" : "log";
+    String action = shouldBlock(finding) ? "block" : "log";
     String previous = LAST_LOGGED_SCRIPT.get();
     if (!"block".equals(action) && repeats(finding.detailValue, previous)) {
       return;
@@ -1046,7 +1329,7 @@ public final class BackportHooks {
     if (finding == null) {
       return;
     }
-    String action = shouldBlock() ? "block" : "log";
+    String action = shouldBlock(finding) ? "block" : "log";
     String previous = LAST_LOGGED_JEXL.get();
     if (!"block".equals(action) && repeats(finding.detailValue, previous)) {
       return;
@@ -1064,7 +1347,7 @@ public final class BackportHooks {
     if (finding == null) {
       return;
     }
-    String action = shouldBlock() ? "block" : "log";
+    String action = shouldBlock(finding) ? "block" : "log";
     String previous = LAST_LOGGED_EL.get();
     if (!"block".equals(action) && repeats(finding.detailValue, previous)) {
       return;
@@ -1117,10 +1400,10 @@ public final class BackportHooks {
 
   private static void inspectJmxFileWrite(String path, String operation) {
     JmxWriteScope scope = JmxWriteScope.current();
-    if (RaspRuntime.detectionOff() || !SCRIPT_FILE_WRITE.matcher(normalizePath(path)).matches() || !scope.selects(path)) return;
+    if (RaspRuntime.detectionOff() || !ScriptFileWrite.isScriptFile(normalizePath(path)) || !scope.selects(path)) return;
     Finding finding = new Finding(rule("jmx_script_file_write"), 90,
         "A managed operation opens its selected script destination for writing", "path", path, "selected_write_open");
-    boolean block = shouldBlock();
+    boolean block = shouldBlock(finding);
     appendEvent(finding, operation, block ? "block" : "log");
     if (block) throw line().block("OhMyRASP blocked a managed file write");
   }
@@ -1147,7 +1430,7 @@ public final class BackportHooks {
     if (finding == null) {
       return;
     }
-    String action = shouldBlock() ? "block" : "log";
+    String action = shouldBlock(finding) ? "block" : "log";
     String previous = LAST_LOGGED_JMX.get();
     if (!"block".equals(action) && repeats(finding.detailValue, previous)) {
       return;
@@ -1168,7 +1451,7 @@ public final class BackportHooks {
     Finding finding = new Finding(rule("request_jwt_verification_failure"), 95,
         "Authentication filter continued the request after rejecting its credential",
         "exception", rejection, "rejected_token_dispatch");
-    boolean block = shouldBlock();
+    boolean block = shouldBlock(finding, request != null);
     appendEvent(finding, "FilterChain.doFilter", block ? "block" : "log");
     if (block) throw line().block("OhMyRASP blocked continuation after credential rejection");
   }
@@ -1196,7 +1479,9 @@ public final class BackportHooks {
         throw (RuntimeException) throwable;
       }
       if (Boolean.getBoolean("ohmyrasp.debug")) {
-        System.err.println(line().logPrefix + " JavaBeans hook failed: " + throwable);
+        // On a request with a body, the exception's message may quote it: its class alone.
+        System.err.println(line().logPrefix + " JavaBeans hook failed: "
+            + (requestHasBody() ? throwable.getClass().getName() : String.valueOf(throwable)));
       }
     }
   }
@@ -1215,9 +1500,10 @@ public final class BackportHooks {
     }
   }
 
-  public static void beginAttachmentReference(String id) {
-    if (inactive()) return;
-    io.ohmyrasp.agent.xml.AttachmentFileRead.beginReference(RaspRuntime.detectionOff() ? null : id, null);
+  /** Returns the scope it opened, the token the reader's exit passes to AttachmentFileRead.endReference, or null. */
+  public static Object beginAttachmentReference(String id) {
+    if (inactive()) return null;
+    return io.ohmyrasp.agent.xml.AttachmentFileRead.beginReference(RaspRuntime.detectionOff() ? null : id, null);
   }
 
   public static void beforeXmlEntity(String name, Object source) {
@@ -1238,7 +1524,7 @@ public final class BackportHooks {
     if (finding == null) {
       return;
     }
-    String action = shouldBlock() ? "block" : "log";
+    String action = shouldBlock(finding) ? "block" : "log";
     String previous = LAST_LOGGED_XXE.get();
     if (!"block".equals(action) && repeats(finding.detailValue, previous)) {
       return;
@@ -1255,7 +1541,7 @@ public final class BackportHooks {
     if (finding == null) {
       return;
     }
-    String action = shouldBlock() ? "block" : "log";
+    String action = shouldBlock(finding) ? "block" : "log";
     String previous = LAST_LOGGED_COMMAND.get();
     if (!"block".equals(action) && repeats(finding.detailValue, previous)) {
       return;
@@ -1276,14 +1562,7 @@ public final class BackportHooks {
       return null;
     }
     StackTraceElement[] stack = Thread.currentThread().getStackTrace();
-    if (SolrExecutableListener.onStack(stack)) {
-      return new Finding(
-          rule("command_execution_exploit_primitive"),
-          93,
-          "Solr RunExecutableListener reached a " + line().displayName + " process sink",
-          "command",
-          joined, "configured_listener");
-    }
+    // Intrinsic stack evidence decides at once: an expression language or a deserializer reaching the process API.
     if (isExpressionLanguageRuntimeStack(stack)) {
       return new Finding(
           rule("command_execution_exploit_primitive"),
@@ -1299,14 +1578,6 @@ public final class BackportHooks {
           "Jiffle runtime reached a " + line().displayName + " process sink",
           "command",
           joined, "expression_evaluation");
-    }
-    if (isDatabaseJavaRoutineCommandStack(stack)) {
-      return new Finding(
-          rule("command_execution_exploit_primitive"),
-          93,
-          "Database Java routine reached a " + line().displayName + " process sink",
-          "command",
-          joined, "database_stack");
     }
     if (isJavaDeserializationCommandStack(stack)) {
       return new Finding(
@@ -1324,11 +1595,37 @@ public final class BackportHooks {
           "command",
           joined, "xml_deserialization");
     }
+    // Context-dependent stack evidence (Solr's configured listener, a Groovy script, a database routine, a scheduled
+    // shell job) is held: exploit-shaped arguments on the same launch are intrinsic and win, so log only cannot let
+    // them through.
     String executable = command[0] == null ? "" : command[0].trim();
     boolean shell = SHELL.matcher(executable).matches();
     String firstArgument = command.length > 1 ? command[1] : "";
-    if (shell && isSchedulerScriptExecutionStack(stack) && isScriptFilePath(firstArgument)) {
-      return new Finding(
+    Finding held = null;
+    if (SolrExecutableListener.onStack(stack)) {
+      held = new Finding(
+          rule("command_execution_exploit_primitive"),
+          93,
+          "Solr RunExecutableListener reached a " + line().displayName + " process sink",
+          "command",
+          joined, "configured_listener");
+    } else if (isGroovyScriptStack(stack)) {
+      // A general-purpose script engine starts processes on purpose too: script_evaluation follows outside_request.
+      held = new Finding(
+          rule("command_execution_exploit_primitive"),
+          93,
+          "Script evaluation reached a " + line().displayName + " process sink",
+          "command",
+          joined, "script_evaluation");
+    } else if (isDatabaseJavaRoutineCommandStack(stack)) {
+      held = new Finding(
+          rule("command_execution_exploit_primitive"),
+          93,
+          "Database Java routine reached a " + line().displayName + " process sink",
+          "command",
+          joined, "database_stack");
+    } else if (shell && isSchedulerScriptExecutionStack(stack) && isScriptFilePath(firstArgument)) {
+      held = new Finding(
           rule("command_execution_shell_meta"),
           90,
           "Scheduler script job reached a " + line().displayName + " shell script process sink",
@@ -1346,17 +1643,20 @@ public final class BackportHooks {
           "command",
           joined, "command_arguments");
     }
+    if (held != null) {
+      return held;
+    }
     if (posix != null) {
-      RequestSnapshot request = CURRENT_REQUEST.get();
+      RequestSnapshot request = currentRequest();
       ShellControlSource source = ShellControlSource.classify(
-          posix, request == null ? null : request.parameterValues, stack);
+          posix, request == null ? null : request.inputValues(), stack);
       if (source != null) {
         return new Finding(rule("command_execution_shell_meta"), 85, source.message,
             "command", joined, source.basis);
       }
     } else if (windows != null) {
-      RequestSnapshot request = CURRENT_REQUEST.get();
-      if (request != null && windows.controlsFrom(request.parameterValues)) {
+      RequestSnapshot request = currentRequest();
+      if (request != null && windows.controlsFrom(request.inputValues())) {
         return new Finding(rule("command_execution_shell_meta"), 85,
             "Request input matches control syntax in the inline command", "command", joined, "request_shell_syntax");
       }
@@ -1371,12 +1671,20 @@ public final class BackportHooks {
           || className.startsWith("org.elasticsearch.common.mvel2.")
           || className.startsWith("org.elasticsearch.script.mvel.")
           || className.startsWith("ognl.")
-          || className.startsWith("groovy.")
-          || className.startsWith("org.codehaus.groovy.")
           || (className.startsWith("org.apache.commons.jexl.") || className.startsWith("org.apache.commons.jexl2.")
               || className.startsWith("org.apache.commons.jexl3."))
           || className.startsWith("org.springframework.expression.")
           || className.startsWith("org.springframework.webflow.expression.")) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  private static boolean isGroovyScriptStack(StackTraceElement[] stack) {
+    for (StackTraceElement element : stack) {
+      String className = element.getClassName();
+      if (className.startsWith("groovy.") || className.startsWith("org.codehaus.groovy.")) {
         return true;
       }
     }
@@ -1448,7 +1756,7 @@ public final class BackportHooks {
     if (value == null) {
       return false;
     }
-    return SCRIPT_FILE_WRITE.matcher(value.trim().replace('\\', '/')).matches();
+    return ScriptFileWrite.isScriptFile(value.trim().replace('\\', '/'));
   }
 
   private static Finding classifyJndiLookup(String lookup, String operation) {
@@ -1497,19 +1805,19 @@ public final class BackportHooks {
     String normalized = HostReadPath.location(path);
     if (normalized.isEmpty()) return null;
     boolean hosts = HostReadPath.isHostsFile(normalized);
-    if (!hosts && SENSITIVE_FILE_READ.matcher(normalized).matches() && HostReadPath.confirmsLocation(path)) {
+    if (!hosts && HostReadPath.isProtectedHostFile(normalized) && HostReadPath.confirmsLocation(path)) {
       return new Finding(rule("file_sensitive_read"), fileReadConfidence(normalized),
           "Sensitive file read reached a " + line().displayName + " file sink", "path", normalized,
           path.equals(normalized) ? null : "normalized_read_location");
     }
-    RequestSnapshot request = CURRENT_REQUEST.get();
-    if (request == null || !HostReadPath.selected(path, request.parameterValues)) return null;
+    RequestSnapshot request = currentRequest();
+    if (request == null || !HostReadPath.selected(path, request.inputValues())) return null;
     if (hosts && HostReadPath.confirmsLocation(path)) {
       return new Finding(rule("file_sensitive_read"), fileReadConfidence(normalized),
           "Request selected the system hosts file", "path", normalized, "request_selected_hosts");
     }
     String resolved = links.resolvedLocation(path);
-    if (resolved.equals(normalized) || !(SENSITIVE_FILE_READ.matcher(resolved).matches() || HostReadPath.isHostsFile(resolved))) {
+    if (resolved.equals(normalized) || !(HostReadPath.isProtectedHostFile(resolved) || HostReadPath.isHostsFile(resolved))) {
       return null;
     }
     return new Finding(rule("file_sensitive_read"), fileReadConfidence(resolved),
@@ -1518,19 +1826,7 @@ public final class BackportHooks {
 
   private static Finding classifyFileWrite(String path) {
     String normalized = normalizePath(path);
-    if (normalized.length() == 0 || !SCRIPT_FILE_WRITE.matcher(normalized).matches()) {
-      return null;
-    }
-    if (isWebInfDeploymentArtifact(normalized)) {
-      return null;
-    }
-    if (isTeamCityPluginStartupWrite(normalized)) {
-      return null;
-    }
-    if (isMavenRepositoryArtifactWrite(normalized)) {
-      return null;
-    }
-    if (!WEBROOT_PATH.matcher(normalized).find() && normalized.indexOf("../") < 0) {
+    if (!ScriptFileWrite.protectedWrite(normalized)) {
       return null;
     }
     return new Finding(
@@ -1640,13 +1936,14 @@ public final class BackportHooks {
           "jdbc_url",
           normalized);
     }
-    if (relaxed.startsWith("jdbc:mysql:") && isDangerousMysqlJdbcUrl(relaxed)) {
+    if (io.ohmyrasp.agent.sql.MysqlDeserializationUrl.trigger(normalized) != null) {
+      // The primary's rule too; the event names the driver, host and options, never the URL (it can hold a password).
       return new Finding(
           rule("jdbc_mysql_deserialization"),
           92,
           "MySQL JDBC deserialization primitive reached a " + line().displayName + " JDBC sink",
-          "jdbc_url",
-          normalized);
+          "jdbc_options",
+          io.ohmyrasp.agent.sql.MysqlDeserializationUrl.evidence(normalized));
     }
     return null;
   }
@@ -1742,17 +2039,6 @@ public final class BackportHooks {
         || lower.indexOf("language java") >= 0;
   }
 
-  private static boolean isDangerousMysqlJdbcUrl(String lower) {
-    if (!isJdbcOptionEnabled(lower, "autodeserialize")) {
-      return false;
-    }
-    return lower.indexOf("statementinterceptors") >= 0
-        || lower.indexOf("queryinterceptors") >= 0
-        || lower.indexOf("detectcustomcollations=true") >= 0
-        || lower.indexOf("detectcustomcollations=1") >= 0
-        || lower.indexOf("detectcustomcollations=yes") >= 0;
-  }
-
   private static void emitClassLoaderFindings(Object sources, String mechanism) {
     if (RaspRuntime.detectionOff()) return;
     for (String value : CodebaseUrls.elements(sources)) emitClassLoaderFinding(value, mechanism);
@@ -1761,7 +2047,7 @@ public final class BackportHooks {
   private static void emitClassLoaderFinding(String value, String mechanism) {
     Finding finding = classifyClassLoaderSource(value, mechanism);
     if (finding == null) return;
-    boolean block = shouldBlock();
+    boolean block = shouldBlock(finding);
     appendEvent(finding, mechanism, block ? "block" : "log");
     if (block) throw line().block("OhMyRASP blocked a remote classloader codebase");
   }
@@ -1940,7 +2226,7 @@ public final class BackportHooks {
     if (finding == null) {
       return;
     }
-    String action = shouldBlock() ? "block" : "log";
+    String action = shouldBlock(finding) ? "block" : "log";
     String previous = LAST_LOGGED_JAVA_COMPILE.get();
     if (!"block".equals(action) && repeats(finding.detailValue, previous)) {
       return;
@@ -2004,7 +2290,7 @@ public final class BackportHooks {
     if (writerConstruction) {
       for (String argument : safeArguments) {
         String path = normalizePath(argument);
-        if (SCRIPT_FILE_WRITE.matcher(path).matches()) {
+        if (ScriptFileWrite.isScriptFile(path)) {
           return new Finding(
               rule("xml_decoder_script_file_write"),
               95,
@@ -2021,7 +2307,7 @@ public final class BackportHooks {
     if (finding == null) {
       return;
     }
-    String action = shouldBlock() ? "block" : "log";
+    String action = shouldBlock(finding) ? "block" : "log";
     String previous = LAST_LOGGED_XML_DECODER.get();
     if (!"block".equals(action) && repeats(finding.detailValue, previous)) {
       return;
@@ -2777,7 +3063,7 @@ public final class BackportHooks {
       if (PROTECTED_WEB_RESOURCE_PATH.matcher(normalized).find()) {
         return normalized;
       }
-      if (SCRIPT_FILE_WRITE.matcher(normalized).matches()) {
+      if (ScriptFileWrite.isScriptFile(normalized)) {
         return normalized;
       }
       if (hasConfusingDotSegment(normalized) || (i < decodedCount && hasPathControlCharacter(normalized))) {
@@ -3406,64 +3692,6 @@ public final class BackportHooks {
     return 90;
   }
 
-  private static boolean isWebInfDeploymentArtifact(String path) {
-    String normalized = normalizePath(path);
-    String lower = lower(normalized);
-    if (!(lower.indexOf("/web-inf/classes/") >= 0
-        || lower.indexOf("/web-inf/cfclasses/") >= 0
-        || lower.indexOf("/web-inf/lib/") >= 0)) {
-      return false;
-    }
-    return lower.endsWith(".class") || lower.endsWith(".jar");
-  }
-
-  private static boolean isMavenRepositoryArtifactWrite(String path) {
-    String lower = lower(normalizePath(path));
-    return lower.indexOf("/.m2/repository/") >= 0
-        && lower.indexOf("../") < 0
-        && lower.endsWith(".jar");
-  }
-
-  private static boolean isTeamCityPluginStartupWrite(String path) {
-    String lowerPath = lower(normalizePath(path));
-    if (!isTeamCityPluginStartupWritePath(lowerPath)) {
-      return false;
-    }
-    boolean startupStack = false;
-    boolean bundledPluginUnpackStack = false;
-    boolean pluginResourceUnpackStack = false;
-    StackTraceElement[] stack = Thread.currentThread().getStackTrace();
-    for (StackTraceElement element : stack) {
-      String className = element.getClassName();
-      if ("jetbrains.buildServer.plugins.files.PluginFilesUtil".equals(className)
-          || className.startsWith("jetbrains.buildServer.web.plugins.files.")) {
-        bundledPluginUnpackStack = true;
-      }
-      if ("jetbrains.buildServer.util.ArchiveUtil".equals(className)
-          || "jetbrains.buildServer.web.impl.Unpacker".equals(className)
-          || "jetbrains.buildServer.web.impl.WatchingResourceUnpackerState".equals(className)
-          || "jetbrains.buildServer.web.impl.InitializingResourceUnpacker".equals(className)
-          || "jetbrains.buildServer.web.impl.WebResourcesUnpacker".equals(className)) {
-        pluginResourceUnpackStack = true;
-      }
-      if ("jetbrains.buildServer.web.impl.BuildServerConfigurator".equals(className)
-          || "jetbrains.buildServer.serverSide.impl.BuildServerLifecycleProcessor"
-              .equals(className)
-          || className.startsWith("jetbrains.buildServer.maintenance.StartupProcessor")) {
-        startupStack = true;
-      }
-    }
-    return startupStack && (bundledPluginUnpackStack || pluginResourceUnpackStack);
-  }
-
-  private static boolean isTeamCityPluginStartupWritePath(String lowerPath) {
-    if (lowerPath.endsWith(".jar") && lowerPath.indexOf("/web-inf/plugins/.unpacked/") >= 0) {
-      return true;
-    }
-    return lowerPath.indexOf("/webapps/root/plugins/") >= 0
-        && SCRIPT_FILE_WRITE.matcher(lowerPath).matches();
-  }
-
   private static boolean isMutatingJmxOperation(String operationName) {
     String normalized = lower(operationName);
     return normalized.startsWith("add")
@@ -3903,7 +4131,7 @@ public final class BackportHooks {
   }
 
   private static Finding classifyUrlOpen(Object url) {
-    return classifyUrlOpen(url, CURRENT_REQUEST_URLS.get(), null, false);
+    return classifyUrlOpen(url, requestUrls(), null, false);
   }
 
   private static Finding classifyUrlOpen(Object url, List<String> requestUrls, String peer, boolean redirected) {
@@ -4118,28 +4346,6 @@ public final class BackportHooks {
     return 90;
   }
 
-  private static boolean isTomcatWarExpansionStack() {
-    StackTraceElement[] stack = Thread.currentThread().getStackTrace();
-    for (int i = 0; i < stack.length; i++) {
-      if ("org.apache.catalina.startup.ExpandWar".equals(stack[i].getClassName())) {
-        return true;
-      }
-    }
-    return false;
-  }
-
-  private static boolean isTomcatJspCompilationStack() {
-    StackTraceElement[] stack = Thread.currentThread().getStackTrace();
-    for (int i = 0; i < stack.length; i++) {
-      String className = stack[i].getClassName();
-      if ("org.apache.jasper.compiler.Compiler".equals(className)
-          || "org.apache.jasper.compiler.JDTCompiler".equals(className)) {
-        return true;
-      }
-    }
-    return false;
-  }
-
   private static boolean nioOptionsContainWrite(Object options) {
     if (options == null) {
       return false;
@@ -4176,7 +4382,7 @@ public final class BackportHooks {
     if (finding == null) {
       return;
     }
-    String action = shouldBlock() ? "block" : "log";
+    String action = shouldBlock(finding) ? "block" : "log";
     if ("attachment_file_open".equals(finding.decisionBasis)) {
       if (!"block".equals(action) && io.ohmyrasp.agent.xml.AttachmentFileRead.repeated()) return;
     } else if ((lastLoggedPath == LAST_LOGGED_FILE_READ || lastLoggedPath == null)
@@ -4218,10 +4424,52 @@ public final class BackportHooks {
 
   private static final class RequestSnapshot {
     String lastUpload;
+    // The container parsed some of the parameters from the request's body (a form or multipart body).
+    boolean formBody;
+    // The finding the servlet entry reported for the request, or null.
+    Finding admitted;
+    // The version of the body state this dispatch decided last (one snapshot per dispatch: a state decided under
+    // an include is decided again for the route it returns to).
+    int bodyDecided;
+    final Map<?, ?> entryParameters;
     final List<String> sqlInputs;
     final List<String> parameterValues;
+    // The parameter values with the body's added, for the body state of bodyVersion.
+    private int bodyVersion = -1;
+    private List<String> inputs;
+    private List<String> sqlInputsWithBody;
+
+    /** The parameter values, and the values of the body the request has read so far. */
+    List<String> inputValues() {
+      refresh();
+      return inputs == null ? parameterValues : inputs;
+    }
+
+    /** The inputs that may carry SQL structure, from the parameters and the body. */
+    List<String> sqlInputs() {
+      refresh();
+      return sqlInputsWithBody == null ? sqlInputs : sqlInputsWithBody;
+    }
+
+    private void refresh() {
+      RequestBodySnapshot body = BackportRequestBody.current();
+      if (body == null) {
+        inputs = null;
+        sqlInputsWithBody = null;
+        bodyVersion = -1;
+        return;
+      }
+      if (body.version() == bodyVersion) return;
+      bodyVersion = body.version();
+      inputs = BackportRequestBody.withValues(parameterValues, body.values());
+      sqlInputsWithBody = new ArrayList<String>(sqlInputs);
+      for (String value : body.values().values()) {
+        if (SqlStatement.mayControlStructure(value)) sqlInputsWithBody.add(value);
+      }
+    }
 
     RequestSnapshot(Map<?, ?> parameters) {
+      entryParameters = parameters;
       sqlInputs = new ArrayList<String>();
       if (parameters != null) {
         // Snapshot values at request entry. Framework-owned parameter arrays can change later.
@@ -4303,12 +4551,12 @@ public final class BackportHooks {
 
   public static Object jmxAttributeDisplayReceiver(Object value) {
     if (inactive()) return value;
-    return io.ohmyrasp.agent.jmx.JmxAttributeDisplay.receiver(value, shouldBlock());
+    return io.ohmyrasp.agent.jmx.JmxAttributeDisplay.receiver(value, repairEnabled());
   }
 
   public static boolean enforceElasticLz4Bounds() {
     if (inactive()) return false;
-    return shouldBlock();
+    return repairEnabled();
   }
 
   /** The line's id of a rule family: {@code java8_} and the family on the Java 8 line. */
@@ -4322,7 +4570,8 @@ public final class BackportHooks {
    */
   public static void initialise() {
     BackportLine.initialise(
-        Finding.class, RequestSnapshot.class, UrlParts.class, IncludeAttributes.class, TypedPayloadMatch.class);
+        Finding.class, RequestSnapshot.class, UrlParts.class, IncludeAttributes.class, TypedPayloadMatch.class,
+        BackportRequestBody.class, BodyState.class, BodyOrigin.class);
   }
 
   /** The installed line. Read where used, not while this class initialises: a hook may run before the line starts. */
@@ -4331,15 +4580,45 @@ public final class BackportHooks {
   }
 
   /**
-   * True until the runtime has started. Every hook entry returns at once while it is true, doing nothing and
-   * throwing nothing: an instrumented class, or code that reaches these classes before the line's entry class has
-   * started them, must never see an exception from the agent.
+   * True until the line's start has committed (its entry class turns {@link HookActivation} on after the start line
+   * is written), and again from the first step of undoing a start that failed. Every hook entry returns at once while
+   * it is true, doing nothing and throwing nothing: an instrumented class, or code that reaches these classes before
+   * the line's entry class has started them, must never see an exception from the agent. The runtime is always
+   * started before the flag turns on, and its configuration stays readable after an undo stopped it, so a hook that
+   * passed this check while an undo runs finishes with the configuration it started with.
    */
   private static boolean inactive() {
-    return !RaspRuntime.isStarted();
+    return HookActivation.inactive();
   }
 
-  private static boolean shouldBlock() {
+  /**
+   * Whether {@code finding} blocks, with the thread's request as its only request evidence: see
+   * {@link #shouldBlock(Finding, boolean)}.
+   */
+  private static boolean shouldBlock(Finding finding) {
+    return shouldBlock(finding, false);
+  }
+
+  /**
+   * Whether {@code finding} blocks: blocking is allowed, and its block scope allows it, by the one definition both
+   * engines use ({@link OutsideRequest}). It has request evidence when the thread serves an HTTP request or
+   * {@code heldRequest}: the hook carries the request that started the operation onto this thread (an HTTP client
+   * exchange, a walk a request selected) or holds the HTTP request itself (Spark, YARN, DataEase, servlet entry).
+   * Outside a request its class decides ({@link OutsideRequest#scopeHere}): intrinsic blocks, request-only logs,
+   * context-dependent follows {@code outside_request}.
+   */
+  private static boolean shouldBlock(Finding finding, boolean heldRequest) {
+    boolean requestEvidence = heldRequest || DISPATCH.inRequest();
+    int scope = finding == null ? OutsideRequest.CONTEXT
+        : OutsideRequest.scopeHere(OutsideRequest.family(finding.algorithm), finding.decisionBasis, requestEvidence);
+    return RaspRuntime.findingBlocks(RaspRuntime.legacyBlockFlag(), requestEvidence, scope);
+  }
+
+  /**
+   * Whether a runtime repair (a bounds check, a safe display) applies: whenever blocking is
+   * allowed. A repair is no finding, so {@code outside_request} does not apply to it.
+   */
+  private static boolean repairEnabled() {
     return RaspRuntime.blockingAllowed(RaspRuntime.legacyBlockFlag());
   }
 
@@ -4368,6 +4647,12 @@ public final class BackportHooks {
     if (RaspRuntime.detectionOff()) {
       return;
     }
+    // The public finding first, then the URL credentials in its detail (a JDBC URL a pool configured). Without a
+    // body the detail is as the rule wrote it and the credentials are removed from it. With a body publicFinding
+    // matches the operand to the inputs as the application built it and replaces the detail with an allow-list;
+    // BodyEvidence removes the credentials from the one name and value it shows, before it cuts them.
+    finding = withoutUrlCredentials(publicFinding(finding));
+    if (finding.extra != null) resolvedAddress = null; // derived from an operand a body may have supplied
     String logPath = RaspRuntime.resolveLogPath();
     String event =
         "{"
@@ -4395,6 +4680,7 @@ public final class BackportHooks {
             + "\":\""
             + json(finding.detailValue)
             + "\""
+            + extraDetails(finding.extra)
             + (argc < 0 ? "" : ",\"process_operation\":\"ProcessImpl.start\",\"argument_count\":\"" + argc + "\"")
             + (resolvedAddress == null ? "" : ",\"resolved_address\":\"" + json(resolvedAddress) + "\"")
             + (finding.policyDigest != null && DISPATCH.deliveredPart(MultipartFilename.receiver())
@@ -4405,6 +4691,76 @@ public final class BackportHooks {
             + "}";
     RaspRuntime.writeEvent(logPath, event);
   }
+
+  /** The finding with the credentials of every URL in its detail removed (Redaction.redactedUrls). */
+  private static Finding withoutUrlCredentials(Finding finding) {
+    String detail = io.ohmyrasp.agent.util.Redaction.redactedUrls(finding.detailValue);
+    if (detail == null || detail.equals(finding.detailValue)) return finding;
+    return new Finding(finding.algorithm, finding.confidence, finding.message, finding.detailKey, detail,
+        finding.decisionBasis, finding.policyDigest, finding.extra);
+  }
+
+  /**
+   * The finding as an event carries it. On a request with a body (recorded, or a form the container parsed) or
+   * an operation carried from one, it is built from an allow-list (see BodyEvidence): the rule's fields and
+   * decision basis, a fixed message, the one input field it matched with its value, and its detail as a kind and a
+   * length; any other finding is as the rule made it. When this fails, the detail and message are dropped.
+   */
+  private static Finding publicFinding(Finding finding) {
+    try {
+      RequestBody body = RequestBodyCapture.current();
+      RequestSnapshot request = CURRENT_REQUEST.get();
+      boolean bodied = (body != null && body.version() > 0) || (request != null && request.formBody)
+          || CARRIED_BODY.get() != null;
+      if (!bodied) return finding;
+      Map<?, ?> fields = null;
+      if (request != null) {
+        RequestBodySnapshot snapshot = body == null ? null : body.lastSnapshot();
+        fields = snapshot == null ? request.entryParameters
+            : BackportRequestBody.withParameters(request.entryParameters, snapshot.values());
+      }
+      String named = namedParameter(finding.detailValue, fields);
+      List<String> operands = finding.detailValue == null ? Collections.<String>emptyList()
+          : Collections.singletonList(finding.detailValue);
+      String[] input = BodyEvidence.matched(fields, named, operands);
+      String[] extra = input == null ? new String[0] : input[1] == null
+          ? new String[] {BodyEvidence.INPUT_FIELD, input[0]}
+          : new String[] {BodyEvidence.INPUT_FIELD, input[0], BodyEvidence.INPUT_VALUE, input[1]};
+      String operand = BodyEvidence.operand(finding.detailKey, operands);
+      return new Finding(finding.algorithm, finding.confidence, BodyEvidence.fixedMessage(finding.algorithm),
+          BodyEvidence.OPERAND, operand == null ? "" : operand, finding.decisionBasis, finding.policyDigest, extra);
+    } catch (Throwable failure) {
+      return new Finding(finding.algorithm, finding.confidence, BodyEvidence.fixedMessage(finding.algorithm),
+          BodyEvidence.OPERAND, "", finding.decisionBasis, finding.policyDigest, new String[0]);
+    }
+  }
+
+  /** The field a request rule names in its composite detail ("... parameter=NAME ..."), when it is an input's. */
+  private static String namedParameter(String detail, Map<?, ?> fields) {
+    if (detail == null || fields == null) return null;
+    int at = detail.indexOf(" parameter=");
+    if (at < 0) return null;
+    int from = at + " parameter=".length();
+    int end = detail.indexOf(' ', from);
+    String name = detail.substring(from, end < 0 ? detail.length() : end);
+    return fields.containsKey(name) ? name : null;
+  }
+
+  /** The extra detail pairs of a public finding, as JSON members after the first. */
+  private static String extraDetails(String[] extra) {
+    if (extra == null || extra.length == 0) return "";
+    StringBuilder out = new StringBuilder();
+    for (int i = 0; i + 1 < extra.length; i += 2) {
+      out.append(",\"").append(json(extra[i])).append("\":\"").append(json(extra[i + 1])).append('"');
+    }
+    return out.toString();
+  }
+
+  /**
+   * Set while a finding of an operation carried from a request with a body is recorded on another thread (an HTTP
+   * exchange a request submitted): its event is built as on that request.
+   */
+  private static final ThreadLocal<Object> CARRIED_BODY = new ThreadLocal<Object>();
 
   private static boolean hasText(String value) {
     return value != null && value.trim().length() > 0;
@@ -4465,6 +4821,7 @@ public final class BackportHooks {
     final String detailValue;
     final String decisionBasis;
     final String policyDigest;
+    final String[] extra;
 
     Finding(String algorithm, int confidence, String message, String detailKey, String detailValue) {
       this(algorithm, confidence, message, detailKey, detailValue, null);
@@ -4477,6 +4834,13 @@ public final class BackportHooks {
 
     Finding(String algorithm, int confidence, String message, String detailKey, String detailValue,
         String decisionBasis, String policyDigest) {
+      this(algorithm, confidence, message, detailKey, detailValue, decisionBasis, policyDigest, null);
+    }
+
+    /** {@code extra}: more detail pairs, name then value, set only on a public finding (see publicFinding). */
+    Finding(String algorithm, int confidence, String message, String detailKey, String detailValue,
+        String decisionBasis, String policyDigest, String[] extra) {
+      this.extra = extra;
       this.policyDigest = policyDigest;
       this.decisionBasis = decisionBasis;
       this.algorithm = algorithm;

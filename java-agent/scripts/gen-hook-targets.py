@@ -1,12 +1,15 @@
 #!/usr/bin/env python3
-"""Generate java-agent/docs/HOOK-TARGETS.md from the recorded hook maps.
+"""Generate java-agent/docs/HOOK-TARGETS.md, and the hook-miss report's tables, from the recorded hook maps.
 
 The maps are java-agent/probes/hook-targets/recorded/{primary,backport}.txt, written by the
 hook-targets probe from the packaged agents over real library JARs; libraries.toml says which
-versions. This reads only those files, so it needs no Docker and no network.
+versions. The tables are META-INF/ohmyrasp/hook-expectations/{primary,backport}.txt of the :shared
+module, which every agent JAR carries: the library classes each hook unit is expected to instrument,
+less what probes/hook-targets/hook-miss.toml exempts. This reads only those files, so it needs no
+Docker and no network.
 
 Usage:  python3 java-agent/scripts/gen-hook-targets.py [--check]
-        --check exits non-zero if the document is stale (for CI).
+        --check exits non-zero if the document or a table is stale (for CI).
 """
 from __future__ import annotations
 
@@ -65,7 +68,7 @@ def render() -> str:
     w("> `hook-targets` probe records a new map; `--check` fails CI when this file is stale.")
     w("")
     w("A hook aimed at a library matches a class name and a method. When a release renames the method,")
-    w("the hook stops applying and nothing says so. The `hook-targets` probe runs each packaged agent over")
+    w("the hook stops applying silently. The `hook-targets` probe runs each packaged agent over")
     w("every class of real library JARs and records which methods come out calling back into the agent.")
     w("This page summarises those recorded maps; the full rows are in")
     w("[`recorded/primary.txt`](../probes/hook-targets/recorded/primary.txt) and")
@@ -96,6 +99,24 @@ def render() -> str:
     w("`Instrumentation.addTransformer`, and the backport map is the chained run in registration order, as")
     w("production runs it. A class on which a transformer adds something else after its predecessors than on the")
     w("original bytes is a `# chain:` line in the recorded map and is listed below.")
+    w("")
+    w("## At run time")
+    w("")
+    w("Each agent JAR carries a table derived from these maps: per hook unit, the classes it hooks on some")
+    w("recorded version, the methods it hooks there and, for each method, the agent methods it calls from it.")
+    w("A running agent writes one diagnostic line when it loads such a class and the unit calls none of those")
+    w("agent methods from any of those methods, so a version the probe never saw is")
+    w("reported where it runs ([docs/agent.md](../../docs/agent.md#hooks-that-did-not-apply)). The probe")
+    w("runs the agent with that report on over the libraries below and fails on a version that the unit does")
+    w("not hook unless [`hook-miss.toml`](../probes/hook-targets/hook-miss.toml) explains it:")
+    w("")
+    w("| Unit | Class | Check | Why |")
+    w("|---|---|---|---|")
+    for pair in sorted(hookmap.load_hook_miss().values(), key=lambda p: (p.unit, p.cls)):
+        w(f"| `{pair.unit}` | `{pair.cls}` | {pair.check} | {pair.why} |")
+    w("")
+    w("`absent`: not reported when the class declares no method of a name the unit looks for (a release from")
+    w("before the hooked code existed). `never`: not reported.")
     w("")
     w("## Hooked methods per library version")
     w("")
@@ -171,18 +192,35 @@ def render() -> str:
     return "\n".join(out)
 
 
+def outputs() -> dict[Path, str]:
+    """Every file this script writes, with its content."""
+    maps = hookmap.load_recorded()
+    hook_miss = hookmap.load_hook_miss()
+    problems = hookmap.hook_miss_entry_problems(maps, hook_miss)
+    if problems:
+        raise SystemExit("gen-hook-targets: " + "; ".join(problems))
+    files = {OUTPUT: render()}
+    for family, hook_map in maps.items():
+        files[hookmap.EXPECTATIONS / f"{family}.txt"] = hookmap.expectation_table(family, hook_map, hook_miss)
+    return files
+
+
 def main() -> int:
-    content = render()
+    files = outputs()
+    stale = [path for path, content in files.items()
+             if not path.exists() or path.read_text(encoding="utf-8") != content]
     if "--check" in sys.argv:
-        if not OUTPUT.exists() or OUTPUT.read_text(encoding="utf-8") != content:
-            print("gen-hook-targets: stale — java-agent/docs/HOOK-TARGETS.md. Run"
+        if stale:
+            names = ", ".join(str(path.relative_to(REPO)) for path in stale)
+            print(f"gen-hook-targets: stale — {names}. Run"
                   " `python3 java-agent/scripts/gen-hook-targets.py` and commit the result.", file=sys.stderr)
             return 1
-        print("gen-hook-targets: HOOK-TARGETS.md is up to date.")
+        print("gen-hook-targets: HOOK-TARGETS.md and the hook-miss tables are up to date.")
         return 0
-    if not OUTPUT.exists() or OUTPUT.read_text(encoding="utf-8") != content:
-        OUTPUT.write_text(content, encoding="utf-8")
-        print(f"wrote {OUTPUT.relative_to(REPO)}")
+    for path in stale:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(files[path], encoding="utf-8")
+        print(f"wrote {path.relative_to(REPO)}")
     return 0
 
 

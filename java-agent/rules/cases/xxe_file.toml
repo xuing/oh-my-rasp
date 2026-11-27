@@ -6,10 +6,8 @@ op = "xml.parse"
 args = { document = "<?xml version=\"1.0\"?><!DOCTYPE r [<!ENTITY x SYSTEM \"file:///etc/passwd\">]><r>&x;</r>" }
 
 [case.primary]
-effect = "log"
-rule = "xxe_file"
-also = ["xxe_protocol"]
-why = "the primary blocks this only inside an HTTP request; outside one it logs"
+effect = "block"
+rule = "xxe_protocol"
 
 [case.backport]
 effect = "block"
@@ -48,3 +46,45 @@ effect = "none"
 
 [case.backport]
 effect = "none"
+
+[[case]]
+name = "passwd-entity-outside-request-log-only"
+kind = "attack"
+via = "sink"
+op = "xml.parse"
+args = { document = "<?xml version=\"1.0\"?><!DOCTYPE r [<!ENTITY x SYSTEM \"file:///etc/passwd\">]><r>&x;</r>" }
+control = { outside_request = "log" }
+
+[case.primary]
+effect = "log"
+rule = "xxe_file"
+also = ["xxe_protocol"]
+why = "outside_request is log: outside a request the finding is logged and the operation runs"
+
+[case.backport]
+effect = "log"
+rule = "xxe_external_entity_protocol"
+also = ["file_sensitive_read"]
+why = "outside_request is log: outside a request the finding is logged and the operation runs"
+
+[[case]]
+name = "passwd-entity-in-request-log-only"
+kind = "attack"
+via = "request-sink"
+op = "xml.parse"
+args = { document = "<?xml version=\"1.0\"?><!DOCTYPE r [<!ENTITY x SYSTEM \"file:///etc/passwd\">]><r>&x;</r>" }
+control = { outside_request = "log" }
+
+[case.request]
+method = "GET"
+uri = "/app/report"
+query = "id=7"
+headers = { User-Agent = "Mozilla/5.0 (X11; Linux x86_64) Firefox/128.0", Accept = "text/html" }
+
+[case.primary]
+effect = "block"
+rule = "xxe_protocol"
+
+[case.backport]
+effect = "block"
+rule = "xxe_external_entity_protocol"

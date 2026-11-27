@@ -14,6 +14,13 @@ val testSources = extensions.getByType<SourceSetContainer>().named("test")
 // line before any test runs), so every line reads them as they are.
 testSources.configure { resources.srcDir(rootProject.file("backport-tests/src/test/resources")) }
 
+// Java8InjectedCallsTest takes the library side of its inventory of injected agent calls from the recorded map.
+tasks.named<Test>("test") {
+    val backportHookMap = rootProject.file("probes/hook-targets/recorded/backport.txt")
+    inputs.file(backportHookMap).withPropertyName("backportHookMap").withPathSensitivity(PathSensitivity.RELATIVE)
+    systemProperty("ohmyrasp.hookTargets.backport", backportHookMap.path)
+}
+
 val line = name.removePrefix("agent-java")
 if (line == "8") {
     testSources.configure { java.srcDir(canonicalTests) }
@@ -69,4 +76,14 @@ if (line == "8") {
     testSources.configure {
         java.srcDir(files(layout.buildDirectory.dir("generated/backport-tests/java")).builtBy(generate))
     }
+}
+
+// The real-JVM start tests (Java8RealJvmStartTest) start the line from its own agent JAR in a JVM of their own,
+// with the JVM's Instrumentation, as an attach does: the entry class appends that JAR to the bootstrap search.
+tasks.named<Test>("test") {
+    dependsOn("agentJava${line}Jar")
+    val agentJar = layout.buildDirectory.file("libs/ohmyrasp-agent-java$line.jar")
+    jvmArgumentProviders.add(CommandLineArgumentProvider {
+        listOf("-Dohmyrasp.test.agentJar=${agentJar.get().asFile.absolutePath}")
+    })
 }

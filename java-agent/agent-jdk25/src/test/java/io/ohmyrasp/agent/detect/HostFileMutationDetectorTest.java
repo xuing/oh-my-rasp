@@ -16,7 +16,7 @@ final class HostFileMutationDetectorTest {
   void correlatesManagedArgumentsWithAnObservedWrite() {
     String selected = "/reports/weekly.jsp";
     for (String argument : List.of(selected, "<report destination=\"" + selected + "\"/>")) {
-      io.ohmyrasp.agent.jmx.JmxWriteScope.enter();
+      Object opened = io.ohmyrasp.agent.jmx.JmxWriteScope.enter();
       try {
         var values = List.of(argument);
         io.ohmyrasp.agent.jmx.JmxWriteScope.select("reports:type=Writer", "publish", values);
@@ -27,7 +27,7 @@ final class HostFileMutationDetectorTest {
         assertAlgorithm(detection, "jmx_file_write");
         assertEquals("selected_write_open", detection.get().details().get("decision_basis"));
       } finally {
-        io.ohmyrasp.agent.jmx.JmxWriteScope.exit();
+        io.ohmyrasp.agent.jmx.JmxWriteScope.exit(opened);
       }
     }
   }
@@ -38,6 +38,19 @@ final class HostFileMutationDetectorTest {
 
     assertTrue(result.isPresent());
     assertEquals("writeFile_script", result.orElseThrow().algorithm());
+  }
+
+  /** Outside a request the script-write rule of the backports decides, on every line. */
+  @Test
+  void decidesScriptWritesOutsideARequestWithTheBackportRule() {
+    assertAlgorithm(HostFileMutationDetector.detectFileWrite("/usr/local/tomcat/webapps/ROOT/shell.jsp",
+        RequestContext.empty()), "writeFile_script");
+    assertAlgorithm(HostFileMutationDetector.detectFileWrite("/srv/upload/../webapps/ROOT/x.war",
+        RequestContext.empty()), "writeFile_script");
+    for (String benign : List.of("/tmp/report.jsp", "/srv/app/webapps/ROOT/WEB-INF/lib/app.jar",
+        "/home/build/.m2/repository/org/example/lib/1.0/lib-1.0.jar", "/usr/local/tomcat/webapps/ROOT/index.html")) {
+      assertTrue(HostFileMutationDetector.detectFileWrite(benign, RequestContext.empty()).isEmpty(), benign);
+    }
   }
 
   @Test

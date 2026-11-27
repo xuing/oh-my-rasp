@@ -95,6 +95,19 @@ final class FileAccessDetectorTest {
     assertTrue(result.isEmpty());
   }
 
+  /** Outside a request the protected host files of the backport rule decide, on every line. */
+  @ParameterizedTest
+  @ValueSource(strings = {"/etc/passwd", "/etc/shadow", "/proc/self/environ", "/root/.ssh/id_rsa"})
+  void detectsProtectedHostFileReadOutsideARequest(String path) {
+    assertAlgorithm(FileAccessDetector.detectFileRead(path, RequestContext.empty(), false), "readFile_unwanted");
+  }
+
+  @ParameterizedTest
+  @ValueSource(strings = {"/etc/hosts", "/etc/os-release", "/srv/app/config/application.yml"})
+  void ignoresOtherHostFileReadsOutsideARequest(String path) {
+    assertTrue(FileAccessDetector.detectFileRead(path, RequestContext.empty(), false).isEmpty());
+  }
+
   @Test
   void detectsSensitiveFileRead() {
     var result = FileAccessDetector.detectFileRead("/etc/passwd", request(), false);

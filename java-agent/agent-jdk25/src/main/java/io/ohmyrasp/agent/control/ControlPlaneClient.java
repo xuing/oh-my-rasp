@@ -8,6 +8,7 @@ import java.io.IOException;
 import java.io.OutputStream;
 import java.lang.management.ManagementFactory;
 import java.lang.management.RuntimeMXBean;
+import io.ohmyrasp.agent.runtime.AgentOwnIo;
 import java.net.HttpURLConnection;
 import java.net.URI;
 import java.nio.charset.StandardCharsets;
@@ -32,6 +33,11 @@ public final class ControlPlaneClient implements AutoCloseable {
   private volatile String policyId;
   private volatile int policyVersion;
   private volatile String cachedPolicy;
+  // Set by close, under publication: a request in flight then installs no policy it fetched.
+  private volatile boolean closed;
+  // Serialises close with the final install of a fetched policy (checking closed, then installing), so that once
+  // close returns no policy is installed. Held for that check and the install only: never across I/O or parsing.
+  private final Object publication = new Object();
 
   public ControlPlaneClient(ControlPlaneConfig config) {
     this(config, (policy, agentKey) -> {});
@@ -56,13 +62,39 @@ public final class ControlPlaneClient implements AutoCloseable {
 
   public static ControlPlaneClient start(
       ControlPlaneConfig config, BiConsumer<AgentPolicy, String> policyInstaller) {
+    ControlPlaneClient client = prepare(config, policyInstaller);
+    if (client != null) {
+      client.startReporting();
+    }
+    return client;
+  }
+
+  /**
+   * A client for {@code config}, or null when direct cloud reporting is not configured. It sends nothing and starts
+   * no thread: the agent's start prepares it, and calls {@link #startReporting} only once the start has committed,
+   * so a start that fails has sent nothing to the cloud and has nothing of it to undo but {@link #close}.
+   */
+  public static ControlPlaneClient prepare(
+      ControlPlaneConfig config, BiConsumer<AgentPolicy, String> policyInstaller) {
     if (config == null || !config.enabled()) {
       return null;
     }
-    ControlPlaneClient client = new ControlPlaneClient(config, policyInstaller);
-    client.executor.execute(client::registerAndHeartbeat);
-    client.executor.scheduleAtFixedRate(client::heartbeatQuietly, 30, 30, TimeUnit.SECONDS);
-    return client;
+    return new ControlPlaneClient(config, policyInstaller);
+  }
+
+  /**
+   * Starts the cloud I/O on the client's own thread: registration, the first heartbeat and policy pull, then a
+   * heartbeat every 30 seconds. When the executor refuses (its thread cannot be created), the client is closed and
+   * the refusal is thrown; the heartbeats are scheduled first, so a refusal comes before anything has run.
+   */
+  public void startReporting() {
+    try {
+      executor.scheduleAtFixedRate(this::heartbeatQuietly, 30, 30, TimeUnit.SECONDS);
+      executor.execute(this::registerAndHeartbeat);
+    } catch (RuntimeException | Error failure) {
+      close();
+      throw failure;
+    }
   }
 
   public void submit(Detection detection) {
@@ -89,6 +121,9 @@ public final class ControlPlaneClient implements AutoCloseable {
 
   @Override
   public void close() {
+    synchronized (publication) {
+      closed = true;
+    }
     executor.shutdownNow();
   }
 
@@ -161,18 +196,32 @@ public final class ControlPlaneClient implements AutoCloseable {
   private void pullPolicy() throws IOException, InterruptedException {
     String id = ensureRegistered();
     Response response = send("GET", "/agents/" + encodePath(id) + "/policy", "");
+    if (closed) {
+      return;
+    }
     if (response.statusCode() == 404) {
       cachedPolicy = "";
-      policyInstaller.accept(AgentPolicy.empty(), id);
+      publish(AgentPolicy.empty(), id);
       return;
     }
     requireSuccess(response, "pull policy");
     cachedPolicy = response.body();
     try {
-      policyInstaller.accept(AgentPolicy.parse(cachedPolicy), id);
+      // Parsed before publish takes its lock.
+      publish(AgentPolicy.parse(cachedPolicy), id);
     } catch (IllegalArgumentException e) {
       uploadErrorQuietly("control-plane.policy", "policy parse failed", e);
       System.err.println("[OHMYRASP] policy parse failed: " + e.getMessage());
+    }
+  }
+
+  /** Installs {@code policy} unless the client is closed; with close, one at a time, so none follows a close. */
+  private void publish(AgentPolicy policy, String agentKey) {
+    synchronized (publication) {
+      if (closed) {
+        return;
+      }
+      policyInstaller.accept(policy, agentKey);
     }
   }
 
@@ -582,7 +631,22 @@ public final class ControlPlaneClient implements AutoCloseable {
     return Math.max(0, value);
   }
 
+  /**
+   * One request to the configured control plane, as the agent's own I/O ({@link AgentOwnIo}): the hooks it passes
+   * through (URL, DNS, socket, transport) neither report nor block it, so a backend address that matches a network
+   * rule (a callback-looking name, an address a policy selects) cannot stop registration, heartbeats or uploads, and
+   * no agent exception reaches the scheduled task. The mark covers only this call on this thread.
+   */
   private Response send(String method, String path, String body) throws IOException {
+    boolean ownIo = AgentOwnIo.enter();
+    try {
+      return sendMarked(method, path, body);
+    } finally {
+      AgentOwnIo.exit(ownIo);
+    }
+  }
+
+  private Response sendMarked(String method, String path, String body) throws IOException {
     HttpURLConnection connection = (HttpURLConnection) endpoint(path).toURL().openConnection();
     connection.setConnectTimeout(3_000);
     connection.setReadTimeout(5_000);

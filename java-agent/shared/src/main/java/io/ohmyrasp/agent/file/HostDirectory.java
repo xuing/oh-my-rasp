@@ -1,5 +1,6 @@
 package io.ohmyrasp.agent.file;
 
+import io.ohmyrasp.agent.hook.HookActivation;
 import io.ohmyrasp.agent.util.WeakOwners;
 import java.io.File;
 import java.io.IOException;
@@ -51,22 +52,31 @@ public final class HostDirectory {
     if (origin != null) ORIGINS.put(walker, new Walk(origin, selected));
   }
 
-  public static void visiting(Object walker, Path path, boolean activeRequest) {
+  /**
+   * Enters one walker visit; returns the visit it opened, as the token {@link #visited} takes, or null when it
+   * opened none. The hook entry that calls it asks the activation first.
+   */
+  public static Object visiting(Object walker, Path path, boolean activeRequest) {
     Walk walk = ORIGINS.get(walker);
     Visit parent = CURRENT.get();
-    if (walk != null || activeRequest || parent != null) {
-      CURRENT.set(new Visit(path, walk == null ? BACKGROUND : walk, parent));
-    }
+    if (walk == null && !activeRequest && parent == null) return null;
+    Visit visit = new Visit(path, walk == null ? BACKGROUND : walk, parent);
+    CURRENT.set(visit);
+    return visit;
   }
 
-  public static void visited() {
-    Visit visit = CURRENT.get();
-    if (visit == null) return;
-    if (visit.parent == null) CURRENT.remove();
-    else CURRENT.set(visit.parent);
+  /** Leaves the visit {@code token} entered: the thread's visit is its parent again. Null entered none. */
+  public static void visited(Object token) {
+    if (token == null) return;
+    Visit parent = ((Visit) token).parent;
+    if (parent == null) CURRENT.remove();
+    else CURRENT.set(parent);
   }
 
-  public static void closed(Object walker) { ORIGINS.remove(walker); }
+  public static void closed(Object walker) {
+    if (HookActivation.inactive()) return;
+    ORIGINS.remove(walker);
+  }
 
   public static Walk origin(Path opened) {
     Visit visit = CURRENT.get();
@@ -76,11 +86,13 @@ public final class HostDirectory {
   private HostDirectory() {}
 
   public static void listed(File used, String[] entries, File original) {
+    if (HookActivation.inactive()) return;
     if (entries != null && used != original) SUBSTITUTION.set(new Substitution(original, entries, used));
     else if (SUBSTITUTION.get() != null) SUBSTITUTION.remove();
   }
 
   public static File selectedFile(File original, String[] entries) {
+    if (HookActivation.inactive()) return original;
     Substitution handoff = SUBSTITUTION.get();
     if (handoff == null) return original;
     SUBSTITUTION.remove();

@@ -20,6 +20,66 @@ import rule_wiring  # noqa: E402
 CATALOGUE = {"primary": rule_catalogue.primary_ids(), "backport": rule_catalogue.backport_families()}
 
 
+def _rule_cases_probe():
+    """probes/rule-cases/check.py as a module (its directory name is not an importable package name)."""
+    import importlib.util
+    path = Path(__file__).resolve().parent.parent / "probes" / "rule-cases" / "check.py"
+    spec = importlib.util.spec_from_file_location("rule_cases_probe", path)
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = module  # its dataclasses look their module up while it runs
+    spec.loader.exec_module(module)
+    return module
+
+
+class ClassLoadWindowTest(unittest.TestCase):
+    """The probe judges the loads between exactly one start mark and one end mark, in that order."""
+
+    START = "[0.512s][4101][info][class,load] RuleCaseDriver$OperationStart source: file:/w/classes/"
+    END = "[0.733s][4101][info][class,load] RuleCaseDriver$OperationEnd source: file:/w/classes/"
+    OURS = "[0.600s][4101][info][class,load] io.ohmyrasp.agent.detect.Late source: jrt:/agent"
+    WORKER = "[0.610s][4200][info][class,load] io.ohmyrasp.agent.log.Other source: file:/agent.jar"
+    LAMBDA = ("[0.620s][4101][info][class,load] io.ohmyrasp.agent.hook.OhMyRaspHooks$$Lambda/0x000071a4c8010a00"
+              " source: io.ohmyrasp.agent.hook.OhMyRaspHooks")
+    JDK = "[0.630s][4101][info][class,load] java.util.HexFormat source: jrt:/java.base"
+
+    @classmethod
+    def setUpClass(cls):
+        cls.probe = _rule_cases_probe()
+
+    def window(self, *lines):
+        return self.probe.late_agent_classes("\n".join(lines))
+
+    def test_the_loads_between_the_marks_are_late_with_their_thread(self):
+        late = self.window(self.START, self.OURS, self.WORKER, self.LAMBDA, self.JDK, self.END)
+        self.assertEqual(("io.ohmyrasp.agent.detect.Late", "io.ohmyrasp.agent.log.Other"), late.named)
+        self.assertEqual(("io.ohmyrasp.agent.hook.OhMyRaspHooks",), late.hidden)
+        self.assertEqual("thread 4101, from jrt:/agent", late.where["io.ohmyrasp.agent.detect.Late"])
+        self.assertEqual("thread 4200 (not the driver's), from file:/agent.jar",
+                         late.where["io.ohmyrasp.agent.log.Other"])
+
+    def test_loads_outside_the_marks_are_not_judged(self):
+        late = self.window(self.OURS, self.START, self.JDK, self.END, self.WORKER)
+        self.assertEqual((), late.named)
+
+    def test_reversed_repeated_or_missing_marks_leave_no_window(self):
+        self.assertIsNone(self.window(self.END, self.OURS, self.START))
+        self.assertIsNone(self.window(self.START, self.OURS, self.START, self.END))
+        self.assertIsNone(self.window(self.START, self.OURS, self.END, self.END))
+        self.assertIsNone(self.window(self.START, self.OURS))
+        self.assertIsNone(self.window(self.OURS, self.END))
+
+    def test_java_8_lines_have_no_thread(self):
+        late = self.window("[Loaded RuleCaseDriver$OperationStart from file:/w/classes/]",
+                           "[Loaded io.ohmyrasp.agent.detect.Late from file:/agent.jar]",
+                           "[Loaded RuleCaseDriver$OperationEnd from file:/w/classes/]")
+        self.assertEqual(("io.ohmyrasp.agent.detect.Late",), late.named)
+        self.assertEqual("thread unknown, from file:/agent.jar", late.where["io.ohmyrasp.agent.detect.Late"])
+
+    def test_the_log_is_one_file_per_case_that_is_never_rotated(self):
+        options = self.probe.class_load_options(21, Path("/tmp/case"))
+        self.assertEqual(["-Xlog:class+load:file=/tmp/case/class-load.log:uptime,tid,level,tags:filecount=0"], options)
+
+
 class SchemaTest(unittest.TestCase):
     def test_every_case_file_follows_the_schema(self):
         try:
@@ -149,12 +209,23 @@ class WiringTest(unittest.TestCase):
         arities = {key[2] for key in rule_wiring.reachable_methods() if key[:2] == ("OhMyRaspHooks", "beforeProcessBuilderStart")}
         self.assertEqual({1, 2}, arities)
 
-    def test_a_request_body_enters_the_detectors_through_no_reachable_method(self):
-        # The servlet entry builds its context without a body; the entries that take one are called by no hook module.
-        # If this fails, a hook now supplies a body: measure the body-only rules (rule_wiring.BODY_ONLY) again with
-        # the rule-cases probe, and take off not_wired those that fire.
-        self.assertEqual(set(), rule_wiring.request_body_sources())
-        self.assertLessEqual(rule_wiring.BODY_ONLY.keys(), rule_catalogue.not_wired().keys())
+    def test_the_request_body_hooks_give_the_detectors_a_body(self):
+        # The body the application reads reaches a request context through the request-body hooks (the exitBody*
+        # entries RequestBodyVisitor injects), so the body-only rules (rule_wiring.BODY_ONLY) are reachable and none
+        # of them is marked not wired. If this fails, that path is gone: measure the body-only rules again with the
+        # rule-cases probe and mark those that no longer fire.
+        self.assertIn(("OhMyRaspHooks", "settleBody", 2), rule_wiring.request_body_sources())
+        self.assertTrue(rule_wiring.is_reachable("OhMyRaspHooks", "exitBodyRead"))
+        self.assertFalse(rule_wiring.BODY_ONLY.keys() & rule_catalogue.not_wired().keys())
+
+    def test_the_start_warm_up_is_no_evidence_of_an_injected_call(self):
+        # hook/Warmup calls hook entries once at start, and BootstrapAgent (a root) calls it: neither makes an entry
+        # reachable. beforeDeserializationClass is called by the warm-up and by no module; if a module comes to
+        # inject it, replace it here with another entry only the warm-up calls, or drop the line.
+        self.assertIn("Warmup", rule_wiring.NOT_HOOK_EVIDENCE)
+        self.assertFalse({key for key in rule_wiring.reachable_methods() if key[0] in rule_wiring.NOT_HOOK_EVIDENCE})
+        self.assertNotIn("beforeDeserializationClass", rule_wiring.named_in_emitters())
+        self.assertFalse(rule_wiring.is_reachable("OhMyRaspHooks", "beforeDeserializationClass"))
 
     def test_a_compatibility_stub_is_not_a_capability(self):
         self.assertIn(("DeserializationDetector", "detectHessianType"), rule_wiring.empty_stubs())

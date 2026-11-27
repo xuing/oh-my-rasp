@@ -123,8 +123,13 @@ final class Java8ContractFiles {
       String token = lineToken();
       fixed = fixed
           .replace("\"" + token + "_", "\"" + LINE_PLACEHOLDER + "_")
-          .replace("Java " + token.substring("java".length()) + " ", "Java N ");
+          .replace("Java " + token.substring("java".length()) + " ", "Java N ")
+          // A transformer's name, as a hook-miss line gives it: Java11JdbcTransformer.
+          .replaceAll("Java" + token.substring("java".length()) + "(?=[A-Z])", "JavaN");
     }
+    // A hook-miss line names the JAR a class came from: the test's JAR is in a temporary directory.
+    fixed = fixed.replaceFirst("\"code_source_path\":\"[^\"]*[/\\\\]([^\"/\\\\]+)\"",
+        "\"code_source_path\":\"/opt/app/lib/$1\"");
     // A start line has no timestamp. Any other line has epoch milliseconds, and only that: a
     // writer that switched to seconds would otherwise be normalised to the fixed value too.
     if (fixed.contains("\"timestamp\":")) {

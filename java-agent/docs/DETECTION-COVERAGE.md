@@ -8,12 +8,12 @@
 
 | Metric | Count |
 |--------|------:|
-| Hook families (instrumentation points) | 30 |
+| Hook families (instrumentation points) | 32 |
 | Detector capabilities (public `detect*` entry points) | 42 |
-| Algorithm signatures asserted in acceptance scripts | 173 |
+| Algorithm signatures asserted in acceptance scripts | 176 |
 | End-to-end vulnerability acceptance scenarios | 136 |
 | JDK lines exercised | 6 |
-| Primary rule ids defined, not wired (in none of the counts above) | 23 |
+| Primary rule ids defined, not wired (in none of the counts above) | 18 |
 
 ## Hook families
 
@@ -26,6 +26,7 @@ rewrites a family of risky call sites and routes them to a detector class.
 | ArgumentParser | `ArgumentParserHookModule` |
 | Base64 | `Base64HookModule` |
 | ClassLoader | `ClassLoaderHookModule` |
+| ContainerDeployment | `ContainerDeploymentHookModule` |
 | ElasticLz4 | `ElasticLz4HookModule` |
 | Expression | `ExpressionHookModule` |
 | File | `FileHookModule` |
@@ -42,6 +43,7 @@ rewrites a family of risky call sites and routes them to a detector class.
 | OpenWire | `OpenWireHookModule` |
 | PolymorphicDeserialization | `PolymorphicDeserializationHookModule` |
 | Process | `ProcessHookModule` |
+| RequestBody | `RequestBodyHookModule` |
 | RmiRegistry | `RmiRegistryHookModule` |
 | Servlet | `ServletHookModule` |
 | Session | `SessionHookModule` |
@@ -167,7 +169,9 @@ The descriptions live in the [general catalog](../rules/general.json) and [produ
 | `request_internal_resource` | Alternative interpretations of the request target expose protected web resources or ambiguous path structure. | — |
 | `request_java_bean_pollution` | A request binding name refers to Java class-loader metadata. | — |
 | `request_jndi_lookup` | Request text contains naming-lookup or XML entity syntax. Transport opening is unconfirmed. | — |
+| `request_json_patch_expression` | A JSON Patch path contains an expression indicator. | — |
 | `request_jwt_verification_failure` | — | The DataEase authentication filter hands the same request to its chain after its selected credential fails verification. |
+| `request_message_selector_expression` | A message-selector field contains runtime expression syntax. | — |
 | `request_ogc_filter_sql_injection` | An OGC filter argument contains SQL-control indicators. JDBC execution is unconfirmed. | — |
 | `request_path_confusion` | Alternative interpretations of the request target expose protected web resources or ambiguous path structure. | — |
 | `request_plot_command_injection` | A plotting parameter contains a plot-interpreter command directive. | — |
@@ -180,12 +184,15 @@ The descriptions live in the [general catalog](../rules/general.json) and [produ
 | `request_serialized_client_state` | Client state in a request contains a Java object stream. | — |
 | `request_server_side_script_put` | An HTTP PUT selects a script-like destination. | — |
 | `request_setup_state_reset` | — | The meaning of a bypass flag or setup-state field depends on the application's access-control contract. |
+| `request_sql_identifier_injection` | An explicitly selected policy inspects SQL-related request fields before any JDBC handoff. | — |
+| `request_sql_sort_injection` | An explicitly selected policy inspects SQL-related request fields before any JDBC handoff. | — |
 | `request_template_loader_enable` | — | Application configuration fields select executable scripts or enable a template loader. |
 | `request_template_parameter` | An HTTP field or path contains expression or template syntax. These are input indicators. | — |
 | `request_template_source` | Route and parameter conventions suggest an internal forward or an external template source. | — |
 | `request_typed_parameter_deserialization` | — | Typed binding syntax and known classes or gadget families determine the match. |
 | `request_typed_payload_deserialization` | — | Typed binding syntax and known classes or gadget families determine the match. |
 | `request_upload_filename_override` | — | Upload-binding field conventions determine whether a filename can be overridden. |
+| `request_xml_polymorphic_gadget` | — | Typed binding syntax and known classes or gadget families determine the match. |
 | `request_xxe_payload` | Request text contains naming-lookup or XML entity syntax. Transport opening is unconfirmed. | — |
 | `script_runtime` | Runtime execution primitives occur in an expression or execution is observed under an evaluator. A library hook identifies the evaluation context. | — |
 | `spel_runtime` | Runtime execution primitives occur in an expression or execution is observed under an evaluator. A library hook identifies the evaluation context. | — |
@@ -290,11 +297,6 @@ against the sources by `scripts/test_rule_cases.py`.
 | `loadLibrary_unc` | No hook module injects a call to OhMyRaspHooks.beforeLoadLibrary; only the playground servlet calls it. | A native library load selects a network share. | the JDK 25 runtime suite, via the playground servlet |
 | `ognl_runtime` | No code emits it: the OGNL path (CodeExecutionDetector.detectOgnl) reports ognl_blacklist or ognl_length_limit. | Runtime execution primitives occur in an expression or execution is observed under an evaluator. A library hook identifies the evaluation context. | — |
 | `rename_webshell` | No hook module injects a call to OhMyRaspHooks.beforeRename; only the playground servlet calls it. | A link or rename selects a script-like destination. | the JDK 25 runtime suite, via the playground servlet |
-| `request_json_patch_expression` | The request context the servlet entry builds has no body: no hook module reads the request input stream or reader, so a rule decided from the body alone never sees one (measured with the rule-cases probe: a body the handler reads through getInputStream() and through getReader() fires nothing on JDK 25 or Java 17). | A JSON Patch path contains an expression indicator. | the JDK 25 runtime suite, via the playground servlet |
-| `request_message_selector_expression` | The request context the servlet entry builds has no body: no hook module reads the request input stream or reader, so a rule decided from the body alone never sees one (measured with the rule-cases probe: a body the handler reads through getInputStream() and through getReader() fires nothing on JDK 25 or Java 17). | A message-selector field contains runtime expression syntax. | the JDK 25 runtime suite, via the playground servlet |
-| `request_sql_identifier_injection` | The request context the servlet entry builds has no body: no hook module reads the request input stream or reader, so a rule decided from the body alone never sees one (measured with the rule-cases probe: a body the handler reads through getInputStream() and through getReader() fires nothing on JDK 25 or Java 17); the rule is also selected only by a loaded policy. | An explicitly selected policy inspects SQL-related request fields before any JDBC handoff. | — |
-| `request_sql_sort_injection` | The request context the servlet entry builds has no body: no hook module reads the request input stream or reader, so a rule decided from the body alone never sees one (measured with the rule-cases probe: a body the handler reads through getInputStream() and through getReader() fires nothing on JDK 25 or Java 17); the rule is also selected only by a loaded policy. | An explicitly selected policy inspects SQL-related request fields before any JDBC handoff. | — |
-| `request_xml_polymorphic_gadget` | The request context the servlet entry builds has no body: no hook module reads the request input stream or reader, so a rule decided from the body alone never sees one (measured with the rule-cases probe: a body the handler reads through getInputStream() and through getReader() fires nothing on JDK 25 or Java 17). | Typed binding syntax and known classes or gadget families determine the match. | the JDK 25 runtime suite, via the playground servlet |
 | `response_dataLeak` | No hook module injects a call to OhMyRaspHooks.beforeResponseDataLeak; only the playground servlet and the servlet-admission probe's stub servlet call it. | An explicit response policy matches an identifier format in HTML, JSON or XML. The event records the identifier category. | the [servlet-admission](../probes/servlet-admission/) probe |
 | `sql_exception` | No hook module injects a call to OhMyRaspHooks.beforeSqlException; only the playground servlet calls it. | JDBC evidence includes an error, a configured SQL policy or request-correlated query structure, depending on the identifier. | the JDK 25 runtime suite, via the playground servlet |
 | `sql_regex` | No hook module injects a call to OhMyRaspHooks.beforeSqlRegex; only the playground servlet calls it. | The operator supplies a pattern to match against evaluation input or SQL. | the JDK 25 runtime suite, via the playground servlet |
@@ -445,7 +447,9 @@ tracked in the [Vulhub coverage ledger](../../docs/development/vulhub-coverage.m
 - `request_internal_resource`
 - `request_java_bean_pollution`
 - `request_jndi_lookup`
+- `request_json_patch_expression`
 - `request_jwt_verification_failure`
+- `request_message_selector_expression`
 - `request_ogc_filter_sql_injection`
 - `request_path_confusion`
 - `request_plot_command_injection`
@@ -462,6 +466,7 @@ tracked in the [Vulhub coverage ledger](../../docs/development/vulhub-coverage.m
 - `request_typed_parameter_deserialization`
 - `request_typed_payload_deserialization`
 - `request_upload_filename_override`
+- `request_xml_polymorphic_gadget`
 - `request_xxe_payload`
 - `script_runtime`
 - `spel_runtime`
@@ -504,15 +509,18 @@ line it runs holds a block event for each identifier in its `required_algorithms
 - `request_scheduler_shell_job`
 - `request_debug_process_launch`
 - `request_dynamic_script_config`
+- `request_message_selector_expression`
 - `request_expression_header`
 - `request_jndi_lookup`
 - `request_expression_parameter`
 - `request_ogc_filter_sql_injection`
+- `request_json_patch_expression`
 - `request_expression_parameter_name`
 - `request_expression_path`
 - `request_xxe_payload`
 - `request_typed_parameter_deserialization`
 - `request_typed_payload_deserialization`
+- `request_xml_polymorphic_gadget`
 - `request_template_parameter`
 - `request_template_loader_enable`
 - `request_template_source`
@@ -589,9 +597,9 @@ line it runs holds a block event for each identifier in its `required_algorithms
 - `java_compile_runtime`
 - `template_runtime`
 
-The array also names 17 rules [defined, not wired](#defined-not-wired). The suite reaches them
+The array also names 14 rules [defined, not wired](#defined-not-wired). The suite reaches them
 through the playground servlet, which calls their hook entry methods itself, so a block event for one shows that
-the detector and the policy work, not that a hook reaches it: `request_message_selector_expression`, `request_json_patch_expression`, `request_xml_polymorphic_gadget`, `sql_regex`, `sql_exception`, `include_userinput`, `include_protocol`, `fileUpload_webdav`, `rename_webshell`, `link_webshell`, `eval_regex`, `loadLibrary_unc`, `webshell_eval`, `webshell_command`, `webshell_file_put_contents`, `webshell_callable`, `webshell_ld_preload`.
+the detector and the policy work, not that a hook reaches it: `sql_regex`, `sql_exception`, `include_userinput`, `include_protocol`, `fileUpload_webdav`, `rename_webshell`, `link_webshell`, `eval_regex`, `loadLibrary_unc`, `webshell_eval`, `webshell_command`, `webshell_file_put_contents`, `webshell_callable`, `webshell_ld_preload`.
 
 ### Other primary rules a probe checks
 

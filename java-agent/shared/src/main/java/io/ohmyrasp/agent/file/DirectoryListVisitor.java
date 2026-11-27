@@ -36,13 +36,14 @@ public final class DirectoryListVisitor {
       }
       if ("visit".equals(name) && (("(Ljava/nio/file/Path;ZZ)" + EVENT).equals(desc)
           || ("(Ljava/nio/file/Path;Z)" + EVENT).equals(desc))) {
-        return new ScopedMethodAdvice(Opcodes.ASM9, visitor, access, name, desc) {
+        return new ScopedMethodAdvice(Opcodes.ASM9, visitor, access, name, desc, true) {
           @Override protected void enterDispatch() {
             loadThis(); loadArg(0);
-            invokeStatic(Type.getObjectType(hooks), Method.getMethod("void beginDirectoryVisit(Object, java.nio.file.Path)"));
+            invokeStatic(Type.getObjectType(hooks), Method.getMethod("Object beginDirectoryVisit(Object, java.nio.file.Path)"));
           }
           @Override protected void exitDispatch() {
-            invokeStatic(Type.getObjectType(STATE), Method.getMethod("void visited()"));
+            loadToken();
+            invokeStatic(Type.getObjectType(STATE), Method.getMethod("void visited(Object)"));
           }
         };
       }

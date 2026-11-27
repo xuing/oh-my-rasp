@@ -12,6 +12,7 @@ import io.ohmyrasp.agent.file.EscapingPath;
 import io.ohmyrasp.agent.file.HostDelete;
 import io.ohmyrasp.agent.file.WindowsDataStream;
 import io.ohmyrasp.agent.jmx.JmxWriteScope;
+import io.ohmyrasp.agent.file.ScriptFileWrite;
 import io.ohmyrasp.agent.model.Detection;
 import io.ohmyrasp.agent.model.RequestContext;
 import java.nio.file.Path;
@@ -95,7 +96,8 @@ public final class HostFileMutationDetector {
                   "path", normalized,
                   "persistence", abbreviate(configPersistence.orElseThrow()))));
     }
-    if (request.active() && SCRIPT_FILE.matcher(normalized).matches()) {
+    // Outside a request every line decides with the script-write rule of the backports.
+    if (request.active() ? SCRIPT_FILE.matcher(normalized).matches() : ScriptFileWrite.protectedWrite(path)) {
       return Optional.of(
           Detection.log(
               "writeFile",
@@ -139,7 +141,7 @@ public final class HostFileMutationDetector {
   public static Optional<Detection> detectFileDelete(HostDelete entry, RequestContext request, boolean explicitPathPolicy) {
     if (!request.active()) return Optional.empty();
     HostDelete.Basis basis = HostDelete.Basis.NONE;
-    for (List<String> values : request.parameters().values()) {
+    for (List<String> values : request.inputParameters().values()) {
       for (String value : values) {
         HostDelete.Basis match = entry.match(value);
         if (match.ordinal() > basis.ordinal()) basis = match;
@@ -289,7 +291,7 @@ public final class HostFileMutationDetector {
       if (quote != 0 || comment || escape) continue;
       String operation = content.substring(start, end);
       String argument = generatedOperationArgument(content, start, end);
-      for (List<String> values : request.parameters().values()) {
+      for (List<String> values : request.inputParameters().values()) {
         for (String value : values) {
           if (value == null || value.isBlank()) continue;
           if (value.equals(argument)) return true;

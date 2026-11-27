@@ -253,6 +253,34 @@ final class Java8ShirudoStandaloneTest {
     assertEquals(RaspRuntime.Mode.MONITOR, config.mode);
   }
 
+  /** outside_request resolves like mode: each source on its own, only the baked value under lock_config. */
+  @Test
+  void outsideRequestResolvesLikeTheMode() {
+    assertTrue(RaspRuntime.Config.resolve(null, null, null).outsideRequestBlocks, "the default is block");
+
+    Properties baked = new Properties();
+    baked.setProperty("outside_request", "log");
+    assertFalse(RaspRuntime.Config.resolve(baked, null, null).outsideRequestBlocks, "baked");
+
+    Map<String, String> env = new HashMap<String, String>();
+    env.put("OHMYRASP_OUTSIDE_REQUEST", "BLOCK");
+    assertTrue(RaspRuntime.Config.resolve(baked, null, env).outsideRequestBlocks, "the environment over baked");
+
+    Properties sysProps = new Properties();
+    sysProps.setProperty("ohmyrasp.outside_request", "sometimes");
+    assertTrue(RaspRuntime.Config.resolve(baked, sysProps, env).outsideRequestBlocks,
+        "an unusable property leaves the next source in charge");
+    sysProps.setProperty("ohmyrasp.outside_request", " log ");
+    assertFalse(RaspRuntime.Config.resolve(baked, sysProps, env).outsideRequestBlocks, "the property first");
+
+    baked.setProperty("lock_config", "true");
+    baked.setProperty("outside_request", "block");
+    assertTrue(RaspRuntime.Config.resolve(baked, sysProps, env).outsideRequestBlocks, "locked: baked only");
+    baked.remove("outside_request");
+    assertTrue(RaspRuntime.Config.resolve(baked, sysProps, env).outsideRequestBlocks,
+        "locked with nothing baked: the default, not the property");
+  }
+
   @Test
   void unlockedPrecedenceFollowsSyspropOverEnvOverBakedOverDefaults() {
     Properties baked = new Properties();
@@ -957,7 +985,9 @@ final class Java8ShirudoStandaloneTest {
     assertEquals(writers + 1, threadsNamed(WRITER_THREAD));
 
     call(runtime, "stop");
-    assertEquals(Boolean.FALSE, call(runtime, "isStarted"), "the hooks are inactive after a stop");
+    assertEquals(Boolean.FALSE, call(runtime, "isRunning"), "the runtime still runs after a stop");
+    // What it resolved stays readable, for a hook that was already running: the hooks' on and off is HookActivation's.
+    assertEquals(Boolean.TRUE, call(runtime, "isStarted"));
     assertEquals(pollers, threadsNamed(CONTROL_THREAD), "the poller stopped");
     assertEquals(writers, threadsNamed(WRITER_THREAD), "the writer stopped");
 
@@ -967,7 +997,7 @@ final class Java8ShirudoStandaloneTest {
     } finally {
       System.clearProperty("ohmyrasp.control");
     }
-    assertEquals(Boolean.TRUE, call(runtime, "isStarted"));
+    assertEquals(Boolean.TRUE, call(runtime, "isRunning"));
     call(runtime, "stop");
   }
 
@@ -1032,7 +1062,7 @@ final class Java8ShirudoStandaloneTest {
     hook.join(10000L);
     IllegalStateException refused = assertThrows(IllegalStateException.class, () -> call(runtime, "start"));
     assertTrue(refused.getMessage().contains("shutting down"), refused.getMessage());
-    assertEquals(Boolean.FALSE, call(runtime, "isStarted"));
+    assertEquals(Boolean.FALSE, call(runtime, "isRunning"));
   }
 
   /** System properties for an isolated runtime: async writes, no control file. */

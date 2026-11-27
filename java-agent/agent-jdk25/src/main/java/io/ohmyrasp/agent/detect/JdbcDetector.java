@@ -7,6 +7,7 @@ import static io.ohmyrasp.agent.detect.RequestJson.jsonStringFields;
 import io.ohmyrasp.agent.detect.RequestJson.JsonStringField;
 import io.ohmyrasp.agent.model.Detection;
 import io.ohmyrasp.agent.model.RequestContext;
+import io.ohmyrasp.agent.sql.MysqlDeserializationUrl;
 import io.ohmyrasp.agent.sql.SqlStatement;
 import java.util.List;
 import java.util.Locale;
@@ -40,13 +41,6 @@ public final class JdbcDetector {
 
   private static final Pattern DERBY_EXTERNAL_NAME = Pattern.compile("(?i)\\bexternal\\s+name\\b");
 
-  private static final Pattern MYSQL_JDBC_AUTO_DESERIALIZE =
-      Pattern.compile("(?is)(?:[?&;]|^)\\s*autodeserialize\\s*=\\s*(?:true|1|yes)\\b");
-
-  private static final Pattern MYSQL_JDBC_DESERIALIZATION_TRIGGER =
-      Pattern.compile(
-          "(?is)(?:[?&;]\\s*(?:statementinterceptors|queryinterceptors)\\s*=|serverstatusdiffinterceptor|[?&;]\\s*detectcustomcollations\\s*=\\s*(?:true|1|yes)\\b)");
-
   public static Optional<Detection> detectSql(String query, RequestContext request) {
     return detectSql(query, request, null);
   }
@@ -65,7 +59,7 @@ public final class JdbcDetector {
 
   private static Optional<Detection> classifySql(SqlStatement statement, RequestContext request) {
     String query = statement.source();
-    if (request.parameters().values().stream().flatMap(List::stream)
+    if (request.inputParameters().values().stream().flatMap(List::stream)
             .anyMatch(value -> statement.hasCommentFrom(value) || statement.matchesStructureFrom(value))
         || requestBodyControlsSql(statement, request)) {
       return Optional.of(
@@ -103,8 +97,8 @@ public final class JdbcDetector {
                   "requestControlled", String.valueOf(requestControlled))));
     }
     boolean structuralSqlInjection = statement.hasTruncatedLiteral()
-        || (statement.hasConstantDisjunction() && request.parameters().values().stream()
-            .flatMap(List::stream).noneMatch(statement::isSubmittedConsoleSelect));
+        || (statement.hasConstantDisjunction() && consoleInputs(request).stream()
+            .noneMatch(statement::isSubmittedConsoleSelect));
     if (structuralSqlInjection || statement.matchesSinkPolicy()) {
       return Optional.of(
           Detection.log(
@@ -116,6 +110,16 @@ public final class JdbcDetector {
               Map.of("query", abbreviate(query))));
     }
     return Optional.empty();
+  }
+
+  /**
+   * The inputs the H2 console's exemption compares a SELECT with: the request's parameters, through which the
+   * console submits its editor's text. Never a field of a body the application read.
+   */
+  static List<String> consoleInputs(RequestContext request) {
+    List<String> inputs = new java.util.ArrayList<>();
+    for (List<String> values : request.parameters().values()) inputs.addAll(values);
+    return inputs;
   }
 
   private static boolean requestBodyControlsSql(SqlStatement statement, RequestContext request) {
@@ -151,15 +155,23 @@ public final class JdbcDetector {
               request,
               Map.of("url", abbreviate(url))));
     }
-    if (mysqlJdbcDeserializationUrl(url, request)) {
+    String trigger = MysqlDeserializationUrl.trigger(url);
+    if (trigger != null) {
+      // Decided whoever chose the URL, with the backports' rule (MysqlDeserializationUrl); a request that carries it
+      // raises the confidence. The event names the driver, the host and the options, never the URL: a pool's URL can
+      // hold the database password.
+      boolean requestControlled = request.active() && request.hasParameterIn(url);
       return Optional.of(
           Detection.log(
               "jdbc",
               "jdbc_mysql_deserialization",
-              95,
-              "Request-controlled MySQL JDBC URL enables connector deserialization behavior",
+              requestControlled ? 95 : 92,
+              requestControlled
+                  ? "Request-controlled MySQL JDBC URL enables connector deserialization behavior"
+                  : "MySQL JDBC URL enables connector deserialization behavior",
               request,
-              Map.of("url", abbreviate(url), "driver", mysqlJdbcDriver(normalized))));
+              Map.of("driver", MysqlDeserializationUrl.driver(url), "host", MysqlDeserializationUrl.host(url),
+                  "options", trigger)));
     }
     return Optional.empty();
   }
@@ -247,21 +259,6 @@ public final class JdbcDetector {
         || (H2_CODE_CONTAINER.matcher(value).find() && H2_CODE_PRIMITIVE.matcher(value).find());
   }
 
-  private static boolean mysqlJdbcDeserializationUrl(String url, RequestContext request) {
-    if (!request.active() || !request.hasParameterIn(url)) {
-      return false;
-    }
-    String normalized = lower(url);
-    if (!normalized.startsWith("jdbc:mysql:") && !normalized.startsWith("jdbc:mariadb:")) {
-      return false;
-    }
-    return MYSQL_JDBC_AUTO_DESERIALIZE.matcher(url).find()
-        && MYSQL_JDBC_DESERIALIZATION_TRIGGER.matcher(url).find();
-  }
-
-  private static String mysqlJdbcDriver(String normalizedUrl) {
-    return normalizedUrl.startsWith("jdbc:mariadb:") ? "mariadb" : "mysql";
-  }
 
   static boolean h2JdbcInitConfig(String value) {
     if (value == null || value.isBlank()) {

@@ -107,13 +107,13 @@ args = { path = "/etc" }
 method = "POST"
 uri = "/app/browse"
 headers = { "User-Agent" = "Mozilla/5.0 (X11; Linux x86_64) Firefox/128.0", Accept = "text/html", "Content-Type" = "application/json" }
-body = "{\"dir\":\"/etc\"}"
+body = "{\"username\":\"a\",\"password\":\"hunter2-Secret\",\"dir\":\"/etc\"}"
 body_api = "stream"
 
 [case.primary]
-effect = "none"
-why = "the same input blocks as a query parameter but passes as a JSON body: the agent's request context has no body (no hook reads the input stream or the reader), so body fields are never read"
+effect = "block"
+rule = "directory_userinput"
 
 [case.backport]
-effect = "none"
-why = "the same input blocks as a query parameter but passes as a JSON body: the agent's request context has no body (no hook reads the input stream or the reader), so body fields are never read"
+effect = "block"
+rule = "directory_userinput"

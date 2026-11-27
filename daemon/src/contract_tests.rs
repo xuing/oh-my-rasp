@@ -14,8 +14,8 @@ use std::path::{Path, PathBuf};
 
 use serde_json::Value;
 
-use crate::control::{ControlState, Controller, Mode};
-use crate::model::{AgentEvent, CloudIdentity, EventClass};
+use crate::control::{ControlState, Controller, Mode, OutsideRequest};
+use crate::model::{AgentEvent, CloudIdentity, DiagnosticFormat, EventClass};
 use crate::store::EventStore;
 
 /// What `updated_at` is replaced with in a golden control document.
@@ -23,6 +23,11 @@ const FIXED_UPDATED_AT: &str = "2026-01-01T00:00:00Z";
 
 /// A cloud policy as the control plane serves it: JSON text the daemon passes through verbatim.
 const POLICY: &str = r#"{"version":4,"status":"active","canary_percent":100,"rules":[{"algorithm":"sql_userinput","action":"block"}]}"#;
+
+/// A cloud policy whose `config` carries the control plane's `protection.hardening` setting with
+/// `outside_request` set to log, as `GetAgentPolicy` serves it, beside a rule that blocks a
+/// context-dependent finding: outside a request that finding logs, inside one it blocks.
+const POLICY_OUTSIDE_LOG: &str = r#"{"version":6,"status":"active","rules":[{"algorithm":"readFile_unwanted","action":"block"}],"config":{"hardening":{"mode":"monitor","outside_request":"log"}}}"#;
 
 /// A policy whose text needs every kind of JSON string escape once it is carried as a string
 /// member of the control file: quotes, backslash, newline, tab, a control character, and non-ASCII
@@ -119,6 +124,50 @@ fn control_documents() -> Vec<(&'static str, String, ControlState)> {
     let ctrl = Controller::load_or_init(&path, Mode::Block).unwrap();
     assert!(ctrl.set_policy(Some(ESCAPED_POLICY.to_string())).unwrap());
     docs.push(("policy-escaped", normalized_control(&path), ctrl.snapshot()));
+
+    // Findings outside a request logged instead of blocked: set on the host's console, then by
+    // the cloud, whose value travels in the policy and leaves with it.
+    let path = dir.path().join("outside.json");
+    let ctrl = Controller::load_or_init(&path, Mode::Block).unwrap();
+    ctrl.update_with(None, Some(Some(OutsideRequest::Log)), None)
+        .unwrap();
+    docs.push((
+        "outside-request-log",
+        normalized_control(&path),
+        ctrl.snapshot(),
+    ));
+    let path = dir.path().join("outside-policy.json");
+    let ctrl = Controller::load_or_init(&path, Mode::Block).unwrap();
+    assert!(
+        ctrl.set_policy(Some(POLICY_OUTSIDE_LOG.to_string()))
+            .unwrap()
+    );
+    docs.push((
+        "outside-request-from-policy",
+        normalized_control(&path),
+        ctrl.snapshot(),
+    ));
+    assert!(ctrl.set_policy(None).unwrap());
+    docs.push((
+        "outside-request-policy-withdrawn",
+        normalized_control(&path),
+        ctrl.snapshot(),
+    ));
+    // The host says block and the cloud says log: blocking needs both, so the agents log, and the
+    // host's member stays for when the cloud's policy no longer says log.
+    let path = dir.path().join("outside-both.json");
+    let ctrl = Controller::load_or_init(&path, Mode::Block).unwrap();
+    ctrl.update_with(None, Some(Some(OutsideRequest::Block)), None)
+        .unwrap();
+    assert!(
+        ctrl.set_policy(Some(POLICY_OUTSIDE_LOG.to_string()))
+            .unwrap()
+    );
+    docs.push((
+        "outside-request-host-and-policy",
+        normalized_control(&path),
+        ctrl.snapshot(),
+    ));
     docs
 }
 
@@ -163,6 +212,28 @@ fn assert_manifest(document: &str, state: &ControlState) {
             .unwrap_or_default()
     };
     assert_eq!(get("mode"), state.mode.as_str(), "{document} mode");
+    // What an agent started with the default (block) applies, and the two parties' values.
+    let view = state.outside_request_view();
+    let applied = if view.effective == "start-up" {
+        "block"
+    } else {
+        view.effective
+    };
+    assert_eq!(
+        get("outside_request"),
+        applied,
+        "{document} outside_request"
+    );
+    assert_eq!(
+        get("outside_request.host"),
+        view.host.unwrap_or("none"),
+        "{document} outside_request.host"
+    );
+    assert_eq!(
+        get("outside_request.cloud"),
+        view.cloud.unwrap_or("none"),
+        "{document} outside_request.cloud"
+    );
     assert_eq!(
         get("revision"),
         state.revision.to_string(),
@@ -244,6 +315,10 @@ fn the_daemon_reloads_its_own_golden_documents_unchanged() {
 
         let reloaded = ctrl.snapshot();
         assert_eq!(reloaded.mode, state.mode, "{name} mode");
+        assert_eq!(
+            reloaded.outside_request, state.outside_request,
+            "{name} outside_request"
+        );
         assert_eq!(reloaded.algorithms, state.algorithms, "{name} switches");
         assert_eq!(reloaded.policy, state.policy, "{name} policy");
         assert_eq!(reloaded.revision, state.revision, "{name} revision");
@@ -350,12 +425,31 @@ fn the_daemon_reads_the_hand_edited_control_documents_and_writes_the_canonical_m
                 .collect();
             assert_eq!(held, listed, "{name} {field} switches");
         }
-        // Rewritten with the canonical word and nothing else changed.
+        // `outside_request`: a word the agents accept is written back canonical; a value nobody
+        // accepts (the agents keep what they had) is kept as found; absent or null stays absent
+        // (the agents keep their start-up value). The daemon never invents one.
+        let outside = &manifest[&format!("{name}.outside_request")];
+        let found = original.get("outside_request").filter(|v| !v.is_null());
+        let expected_member = match (found, outside.as_str()) {
+            (None, _) => None,
+            (Some(kept), "unknown") => Some(kept.clone()),
+            (Some(_), word) => Some(Value::from(word)),
+        };
+        assert_eq!(
+            state.outside_request, expected_member,
+            "{name} outside_request"
+        );
+        // Rewritten with the canonical words and nothing else changed.
         let written: Value = serde_json::from_str(&fs::read_to_string(&path).unwrap()).unwrap();
         assert_eq!(
             written["mode"],
             manifest[&format!("{name}.mode")].as_str(),
             "{name} rewritten mode"
+        );
+        assert_eq!(
+            written.get("outside_request").cloned(),
+            expected_member,
+            "{name} rewritten outside_request"
         );
         for field in ["algorithms", "revision", "updated_at"] {
             assert_eq!(written[field], original[field], "{name} {field} kept");
@@ -398,7 +492,7 @@ struct Expect {
 
 #[rustfmt::skip]
 fn expectations() -> Vec<Expect> {
-    use EventClass::{Detection, Lifecycle, Telemetry};
+    use EventClass::{Detection, Diagnostic, Lifecycle, Telemetry};
     let e = |file, kind, hook, algorithm, action, confidence, latency_us, timestamp, severity, class| Expect {
         file, kind, hook, algorithm, action, confidence, latency_us, timestamp, severity, class,
     };
@@ -406,17 +500,26 @@ fn expectations() -> Vec<Expect> {
     vec![
         e("primary/detection-block-request.json", "detection", "writeFile", "writeFile_script", "block", 90, Some(1234), at, "critical", Detection),
         e("primary/detection-monitor-no-request.json", "detection", "ssrf", "ssrf_aws", "log", 100, Some(1234), at, "critical", Detection),
+        // The strings that mark a diagnostic, inside the escaped data of a detection: still a detection.
+        e("primary/detection-reserved-strings.json", "detection", "ssrf", "ssrf_obfuscate", "log", 70, Some(1234), at, "medium", Detection),
         e("primary/telemetry.json", "telemetry", "http_request", "hook_latency", "observe", 0, Some(1234), at, "low", Telemetry),
         // The backports write `"event":"ohmyrasp-detection"` and no `kind`, and the time as epoch
         // milliseconds.
         e("backport/detection-block-request.json", "detection", "ProcessBuilder.start", "javaN_command_execution_shell_meta", "block", 85, None, at, "high", Detection),
         e("backport/detection-monitor-no-request.json", "detection", "ProcessBuilder.start", "javaN_command_execution_exploit_primitive", "log", 95, None, at, "critical", Detection),
+        e("backport/detection-reserved-strings.json", "detection", "ProcessBuilder.start", "javaN_command_execution_exploit_primitive", "log", 95, None, at, "critical", Detection),
         e("backport/telemetry.json", "telemetry", "http_request", "hook_latency", "observe", 0, Some(1234), at, "low", Telemetry),
         // The start line has no `kind` and no `timestamp`: the daemon reads it from its `event`
         // member as a lifecycle line, which is not a detection.
         e("backport/agent-start-java8.json", "lifecycle", "", "", "", 0, None, "", "low", Lifecycle),
         e("backport/agent-start-java11.json", "lifecycle", "", "", "", 0, None, "", "low", Lifecycle),
         e("backport/agent-start-java17.json", "lifecycle", "", "", "", 0, None, "", "low", Lifecycle),
+        // A hook that did not apply, and the line that says no more are written: no `algorithm` or
+        // `action`, so neither is a detection. The backports name them in `event`, not `kind`.
+        e("primary/diagnostic-hook-miss.json", "diagnostic", "", "", "", 0, None, at, "low", Diagnostic),
+        e("primary/diagnostic-hook-miss-suppressed.json", "diagnostic", "", "", "", 0, None, at, "low", Diagnostic),
+        e("backport/hook-miss.json", "diagnostic", "", "", "", 0, None, at, "low", Diagnostic),
+        e("backport/hook-miss-suppressed.json", "diagnostic", "", "", "", 0, None, at, "low", Diagnostic),
     ]
 }
 
@@ -485,6 +588,55 @@ fn every_golden_event_line_parses_to_what_the_daemon_reads() {
             serde_json::from_str::<Value>(line).unwrap(),
             "{name} raw line kept verbatim"
         );
+    }
+}
+
+/// The writers escape what an application controls, so the strings the daemon reads at the top level
+/// to recognise a diagnostic (`"kind":"diagnostic"`, `"event":"ohmyrasp-hook-miss"`) can only be
+/// inside a string of a detection. The two fixtures hold them there, written by the real writers;
+/// the daemon reads their top level only and keeps them detections, recorded and uploaded.
+#[test]
+fn reserved_strings_inside_escaped_detection_data_do_not_make_a_diagnostic() {
+    for name in [
+        "primary/detection-reserved-strings.json",
+        "backport/detection-reserved-strings.json",
+    ] {
+        let (_, line) = golden_events()
+            .into_iter()
+            .find(|(file, _)| file == name)
+            .unwrap_or_else(|| panic!("{name} is missing"));
+        for reserved in [
+            r#"\"kind\":\"diagnostic\""#,
+            r#"\"event\":\"ohmyrasp-hook-miss\""#,
+            r#"\"diagnostic\":\"hook_miss\""#,
+        ] {
+            assert!(
+                line.contains(reserved),
+                "{name} holds {reserved} inside a string of the detection: {line}"
+            );
+        }
+        let event = AgentEvent::parse_line(7, RECEIVED_AT.into(), &line).unwrap();
+        assert_eq!(event.class(), EventClass::Detection, "{name}");
+        assert!(
+            event.raw.get("diagnostic").is_none(),
+            "{name}: no top-level member"
+        );
+        assert_ne!(
+            event.raw.get("kind").and_then(Value::as_str),
+            Some("diagnostic"),
+            "{name}"
+        );
+
+        let store = EventStore::new(10);
+        let mut offered = 0;
+        crate::route(event, &store, |_| offered += 1);
+        let stats = store.stats();
+        assert_eq!(
+            (offered, stats.detections, stats.retained),
+            (1, 1, 1),
+            "{name}"
+        );
+        assert_eq!(stats.diagnostics, 0, "{name}");
     }
 }
 
@@ -584,8 +736,9 @@ fn every_golden_detection_uploads_the_body_the_daemon_builds() {
 }
 
 /// What the pipeline does with each golden line: a detection is recorded and offered to the
-/// uploader once; telemetry feeds the latency panel; a start line only describes the agent. A
-/// start line is never a detection, so it is not counted and not uploaded.
+/// uploader once; telemetry feeds the latency panel; a start line only describes the agent; a
+/// diagnostic is kept in the local status view. A start line or a diagnostic is never a
+/// detection, so it is not counted and not uploaded.
 #[test]
 fn only_golden_detections_are_recorded_and_offered_to_the_uploader() {
     let expectations = expectations();
@@ -621,6 +774,25 @@ fn only_golden_detections_are_recorded_and_offered_to_the_uploader() {
             "{name} telemetry"
         );
         assert!(stats.ignored_kinds.is_empty(), "{name} is a known kind");
+        // A diagnostic is counted in the status view; the suppressed line only sets the flag.
+        let is_diagnostic = want.class == EventClass::Diagnostic;
+        let suppressed = name.contains("suppressed");
+        assert_eq!(
+            stats.diagnostics,
+            u64::from(is_diagnostic),
+            "{name} diagnostics"
+        );
+        assert_eq!(
+            stats.hook_misses.len(),
+            usize::from(is_diagnostic && !suppressed),
+            "{name} hook_misses"
+        );
+        assert_eq!(
+            stats.hook_misses_suppressed,
+            is_diagnostic && suppressed,
+            "{name} hook_misses_suppressed"
+        );
+        assert_eq!(stats.hook_misses_dropped, 0, "{name} hook_misses_dropped");
         if want.class == EventClass::Lifecycle {
             let agent = stats
                 .agent
@@ -638,6 +810,58 @@ fn only_golden_detections_are_recorded_and_offered_to_the_uploader() {
                 "{name}: only a start line describes the agent"
             );
         }
+    }
+}
+
+/// The two writers' hook-miss lines say the same thing to the daemon, apart from the unit's line
+/// token (`SqlHookModule` on the primary agent, `JavaNJdbcTransformer` on a backport agent), and
+/// the suppressed lines are told apart from them.
+#[test]
+fn the_two_writers_hook_miss_lines_read_the_same() {
+    let events: std::collections::BTreeMap<String, String> = golden_events().into_iter().collect();
+    let read = |name: &str| {
+        AgentEvent::parse_line(7, RECEIVED_AT.into(), &events[name])
+            .unwrap_or_else(|| panic!("{name}: the daemon rejects the line"))
+    };
+    let primary = read("primary/diagnostic-hook-miss.json");
+    let backport = read("backport/hook-miss.json");
+    let (p, b) = (primary.hook_miss().unwrap(), backport.hook_miss().unwrap());
+    assert_eq!(p.format, DiagnosticFormat::Primary);
+    assert_eq!(b.format, DiagnosticFormat::Backport);
+    assert_eq!(p.unit, "SqlHookModule");
+    assert_eq!(b.unit, "JavaNJdbcTransformer");
+    for miss in [&p, &b] {
+        assert_eq!(
+            miss.class,
+            "org.apache.ibatis.executor.statement.BaseStatementHandler"
+        );
+        assert_eq!(miss.reason, "no_agent_call");
+        assert_eq!(miss.exception, None);
+        assert_eq!(
+            miss.looked_for,
+            ["prepare(Ljava/sql/Connection;Ljava/lang/Integer;)Ljava/sql/Statement;"]
+        );
+        assert_eq!(
+            miss.found,
+            ["prepare(Ljava/sql/Connection;Ljava/time/Duration;)Ljava/sql/Statement;"]
+        );
+        assert_eq!(miss.code_source.as_deref(), Some("mybatis-9.9.9.jar"));
+        assert_eq!(
+            miss.code_source_path.as_deref(),
+            Some("/opt/app/lib/mybatis-9.9.9.jar")
+        );
+        assert_eq!(miss.implementation_version.as_deref(), Some("9.9.9"));
+    }
+    assert!(!primary.is_hook_miss_suppressed() && !backport.is_hook_miss_suppressed());
+
+    for name in [
+        "primary/diagnostic-hook-miss-suppressed.json",
+        "backport/hook-miss-suppressed.json",
+    ] {
+        let event = read(name);
+        assert!(event.is_hook_miss_suppressed(), "{name}");
+        assert!(event.hook_miss().is_none(), "{name}");
+        assert_eq!(event.raw["limit"], 32, "{name} limit");
     }
 }
 

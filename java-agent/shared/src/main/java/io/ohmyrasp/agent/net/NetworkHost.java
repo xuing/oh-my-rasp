@@ -3,7 +3,6 @@ package io.ohmyrasp.agent.net;
 import java.net.InetAddress;
 import java.net.UnknownHostException;
 import java.util.Arrays;
-import java.util.List;
 import java.util.Locale;
 import java.util.regex.Pattern;
 
@@ -12,9 +11,16 @@ public final class NetworkHost {
   private static final Pattern IPV4 = Pattern.compile("[0-9]{1,10}(?:\\.[0-9]{1,10}){0,3}");
   private static final Pattern IPV6 = Pattern.compile("[0-9a-f:.]+");
 
-  private static final List<InetAddress> METADATA_ADDRESSES = Arrays.asList(
-      address("169.254.169.254"), address("169.254.170.2"), address("100.100.100.200"),
-      address("fd00:ec2::254"));
+  // The cloud metadata addresses as raw bytes, compared with InetAddress.getAddress(). Not InetAddress constants:
+  // this class is preloaded at the agent's start, and constructing an InetAddress there initialises the JDK's
+  // networking (InetAddress reads jdk.net.hosts.file and the address-cache security properties once), so a value
+  // the application sets afterwards would be ignored, as it is not without the agent.
+  private static final byte[][] METADATA_ADDRESSES = {
+    {(byte) 169, (byte) 254, (byte) 169, (byte) 254},
+    {(byte) 169, (byte) 254, (byte) 170, 2},
+    {100, 100, 100, (byte) 200},
+    {(byte) 0xfd, 0, 0x0e, (byte) 0xc2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0x02, 0x54},
+  };
 
   private NetworkHost() {}
 
@@ -115,6 +121,15 @@ public final class NetworkHost {
   }
 
   static boolean isMetadata(InetAddress ip) {
-    return ip != null && METADATA_ADDRESSES.contains(ip);
+    if (ip == null) {
+      return false;
+    }
+    byte[] bytes = ip.getAddress();
+    for (int i = 0; i < METADATA_ADDRESSES.length; i++) {
+      if (Arrays.equals(METADATA_ADDRESSES[i], bytes)) {
+        return true;
+      }
+    }
+    return false;
   }
 }

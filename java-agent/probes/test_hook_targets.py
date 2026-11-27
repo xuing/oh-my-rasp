@@ -5,6 +5,7 @@ Run: python3 -m unittest discover -s java-agent/probes -p 'test_*.py'
 The recorded maps are what the probe compares the packaged agents with; these tests read the committed
 files only, so they run without Docker. check.py runs the same two rules after every comparison.
 """
+import hashlib
 import importlib.util
 import re
 import subprocess
@@ -203,6 +204,52 @@ class ParsingTest(unittest.TestCase):
             hookmap.parse("hello\n")
 
 
+class ExpectationTableTest(unittest.TestCase):
+    """The run-time table (io.ohmyrasp.agent.hookmiss.HookExpectations reads it): its format, callees and integrity trailer."""
+
+    MAP = ("# units (1): ExpressionHookModule\n"
+           "g:a 1 pkg/C m (I)V -> io/ohmyrasp/agent/hook/OhMyRaspHooks.beforeA x2 @ ExpressionHookModule\n"
+           "g:a 1 pkg/C m (I)V -> io/ohmyrasp/agent/hook/OhMyRaspHooks.beforeB @ ExpressionHookModule\n"
+           "g:a 2 pkg/C n ()V -> io/ohmyrasp/agent/hook/OhMyRaspHooks.evaluate (reflective) @ ExpressionHookModule\n"
+           "g:a 1 pkg/E m ()V -> io/ohmyrasp/agent/hook/OhMyRaspHooks.beforeD @ ExpressionHookModule\n")
+
+    def table(self, family="primary", hook_miss=None):
+        return hookmap.expectation_table(family, hookmap.parse(self.MAP), hook_miss or {})
+
+    def test_callee_name_drops_the_owner_and_the_reflective_mark(self):
+        self.assertEqual(hookmap.callee_name("io/ohmyrasp/agent/hook/OhMyRaspHooks.beforeX"), "beforeX")
+        self.assertEqual(hookmap.callee_name("io/ohmyrasp/agent/hook/OhMyRaspHooks.evaluate (reflective)"), "evaluate")
+
+    def test_each_method_lists_the_callees_the_map_shows_from_it(self):
+        rows = [line for line in self.table().splitlines() if not line.startswith("#")]
+        self.assertEqual(rows, ["ExpressionHookModule pkg/C report m(I)V=beforeA,beforeB n()V=evaluate",
+                                "ExpressionHookModule pkg/E report m()V=beforeD"])
+
+    def test_the_table_names_its_family_and_ends_with_its_row_count_and_digest(self):
+        text = self.table()
+        lines = text.splitlines()
+        self.assertIn("#! family primary", lines)
+        self.assertLess(lines.index("#! family primary"), next(i for i, l in enumerate(lines) if not l.startswith("#")))
+        body, trailer = text[:text.rindex("#! end ")], text[text.rindex("#! end "):]
+        self.assertEqual(trailer.strip(), f"#! end rows=2 sha256={hashlib.sha256(body.encode()).hexdigest()}")
+
+    def test_a_pair_the_exemptions_leave_out_is_not_a_row_or_counted(self):
+        never = {("ExpressionHookModule", "pkg/E"): hookmap.MissPair("ExpressionHookModule", "pkg/E", "never", "because")}
+        text = self.table(hook_miss=never)
+        self.assertNotIn("pkg/E", text)
+        self.assertIn("#! end rows=1 ", text)
+
+    def test_the_committed_tables_end_with_a_digest_of_what_precedes_them(self):
+        for family in hookmap.FAMILIES:
+            text = (hookmap.EXPECTATIONS / f"{family}.txt").read_text()
+            body, trailer = text[:text.rindex("#! end ")], text[text.rindex("#! end "):]
+            rows = [line for line in body.splitlines() if line and not line.startswith("#")]
+            self.assertIn(f"#! family {family}", body.splitlines())
+            self.assertEqual(trailer.strip(), f"#! end rows={len(rows)} sha256={hashlib.sha256(body.encode()).hexdigest()}")
+            for row in rows:
+                self.assertTrue(all("=" in token for token in row.split(" ")[3:]), row)
+
+
 class StagedTreeTest(unittest.TestCase):
     def test_staged_tree_must_match_the_list(self):
         libraries = [hookmap.Library("g", "a", ("1", "2"), "why", {})]
@@ -213,6 +260,23 @@ class StagedTreeTest(unittest.TestCase):
                 path.write_bytes(b"")
             problems = check.staged_problems(Path(tmp), libraries)
         self.assertEqual(problems, ["not staged: g/a/2", "staged but not in libraries.toml: g/a/3"])
+
+
+class VerifyDependencyTest(unittest.TestCase):
+    def test_probe_toml_stages_each_pinned_dependency_once(self):
+        # check.py pins the digest, probe.toml says where run.py stages the JAR: the two lists must be the same.
+        fixtures = [f for f in tomllib.loads((PROBE / "probe.toml").read_text())["fixture"] if f["flag"] == "--verify-dependency"]
+        staged = [f["stage"][1] for f in fixtures]
+        self.assertEqual(sorted(staged), sorted(check.VERIFY_DEPENDENCIES))
+        for fixture in fixtures:
+            _, artifact, version = fixture["stage"][1].split(":")
+            self.assertEqual(fixture["stage"], ["--download-dependency", fixture["stage"][1], "{path}"])
+            # build/runtime-probes/*.jar is what agent.yml carries to the runtime matrix.
+            self.assertEqual(fixture["path"], f"build/runtime-probes/hook-verify-{artifact}-{version}.jar")
+
+    def test_a_coordinate_that_is_not_pinned_is_refused(self):
+        with self.assertRaises(SystemExit):
+            check.download_dependency("org.example:unpinned:1.0", Path(tempfile.gettempdir()) / "never-written.jar")
 
 
 if __name__ == "__main__":

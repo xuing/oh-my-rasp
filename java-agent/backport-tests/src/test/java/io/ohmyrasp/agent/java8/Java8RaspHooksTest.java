@@ -632,14 +632,14 @@ final class Java8RaspHooksTest {
                     .withHeader("Content-Type", "application/x-www-form-urlencoded")
                     .withParameter("argumentCollection", payload)));
 
+    // A form POST: its parameters came from the body, so the event is built from structured evidence. It names the
+    // field the rule decided on with that field's value (the payload, cut), and withholds the rule's composite detail.
     String text = new String(Files.readAllBytes(log), StandardCharsets.UTF_8);
     assertTrue(text.contains("\"algorithm\":\"java8_request_typed_payload_deserialization\""));
     assertTrue(text.contains("\"action\":\"block\""));
-    assertTrue(text.contains("parameter=argumentCollection"));
-    assertTrue(text.contains("class=com.sun.rowset.JdbcRowSetImpl"));
-    assertTrue(text.contains("trigger=jndi:ldap"));
-    assertTrue(text.contains("value=[redacted]"));
-    assertFalse(text.contains("ldap://127.0.0.1"));
+    assertTrue(text.contains("\"input_field\":\"argumentCollection\""), text);
+    assertTrue(text.contains("\"operand\":\"payload, "), text);
+    assertFalse(text.contains("method=foo"), "the rule's detail as written: " + text);
   }
 
   @Test
@@ -1462,10 +1462,7 @@ final class Java8RaspHooksTest {
     Java8RaspHooks.beforeFileWrite(
         "/opt/coldfusion11/cfusion/wwwroot/WEB-INF/cfclasses/cfcomponent2ecfc531178316.class");
     Java8RaspHooks.beforeFileWrite("/usr/local/tomcat/webapps/ROOT/WEB-INF/lib/app.jar");
-    org.apache.catalina.startup.ExpandWar.writeJava8DeploymentFile(
-        "/usr/local/tomcat/webapps/ROOT/index.jsp");
-    org.apache.jasper.compiler.JDTCompiler.writeJava8JspCompilationFile(
-        "/usr/local/tomcat/work/Catalina/localhost/ROOT/org/apache/jsp/index_jsp.class");
+    // Tomcat's own unpack and JSP compile: Java8TomcatDeploymentTest.
     io.netty.resolver.HostsFileEntriesProvider.ParserImpl.readJava8HostsFile("/etc/hosts");
 
     assertFalse(Files.exists(log));

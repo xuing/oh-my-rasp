@@ -6,24 +6,10 @@
   "java17": {},
   "jdk25": {
    "io/ohmyrasp/agent/BootstrapAgent": {
-    "lambda": 2,
-    "string-concat": 3
-   },
-   "io/ohmyrasp/agent/OhMyRaspAgent": {
-    "string-concat": 1
-   },
-   "io/ohmyrasp/agent/asm/OhMyRaspTransformer": {
-    "string-concat": 2
-   },
-   "io/ohmyrasp/agent/asm/SqlCallsiteClassVisitor": {
-    "string-concat": 1
-   },
-   "io/ohmyrasp/agent/asm/SqlCallsiteClassVisitor$1$1": {
-    "string-concat": 1
+    "lambda": 2
    },
    "io/ohmyrasp/agent/control/ControlPlaneClient": {
-    "lambda": 11,
-    "string-concat": 23
+    "lambda": 11
    },
    "io/ohmyrasp/agent/control/ControlPlaneClient$Response": {
     "record": 3
@@ -31,15 +17,8 @@
    "io/ohmyrasp/agent/control/ControlPlaneConfig": {
     "record": 3
    },
-   "io/ohmyrasp/agent/detect/CodeExecutionDetector": {
-    "string-concat": 1
-   },
-   "io/ohmyrasp/agent/detect/CommandDestination": {
-    "string-concat": 1
-   },
    "io/ohmyrasp/agent/detect/CredentialDetector": {
-    "lambda": 3,
-    "string-concat": 3
+    "lambda": 3
    },
    "io/ohmyrasp/agent/detect/CredentialDetector$DefaultCredentialMatch": {
     "record": 3
@@ -57,12 +36,10 @@
     "record": 3
    },
    "io/ohmyrasp/agent/detect/DeserializationDetector": {
-    "lambda": 1,
-    "string-concat": 1
+    "lambda": 1
    },
    "io/ohmyrasp/agent/detect/DetectorEngine": {
-    "lambda": 4,
-    "string-concat": 5
+    "lambda": 4
    },
    "io/ohmyrasp/agent/detect/DetectorEngine$InternalResourceMatch": {
     "record": 3
@@ -76,44 +53,29 @@
    "io/ohmyrasp/agent/detect/DetectorEngine$UploadFilenameOverrideMatch": {
     "record": 3
    },
-   "io/ohmyrasp/agent/detect/DetectorStrings": {
-    "string-concat": 1
-   },
    "io/ohmyrasp/agent/detect/FileAccessDetector": {
-    "lambda": 5,
-    "string-concat": 1
+    "lambda": 5
    },
    "io/ohmyrasp/agent/detect/FileAccessDetector$IncludeAttributeTarget": {
     "record": 3
-   },
-   "io/ohmyrasp/agent/detect/FilePaths": {
-    "string-concat": 1
-   },
-   "io/ohmyrasp/agent/detect/FileUploadDetector": {
-    "string-concat": 3
    },
    "io/ohmyrasp/agent/detect/HostFileMutationDetector": {
     "lambda": 1
    },
    "io/ohmyrasp/agent/detect/JdbcDetector": {
-    "lambda": 4,
-    "string-concat": 1
+    "lambda": 4
    },
    "io/ohmyrasp/agent/detect/NetworkDestinationDetector": {
-    "lambda": 1,
-    "string-concat": 5
+    "lambda": 1
    },
    "io/ohmyrasp/agent/detect/ProcessDetector": {
-    "lambda": 2,
-    "string-concat": 1
+    "lambda": 2
    },
    "io/ohmyrasp/agent/detect/RemoteResourceDetector": {
-    "lambda": 1,
-    "string-concat": 1
+    "lambda": 1
    },
    "io/ohmyrasp/agent/detect/RequestConfigurationDetector": {
-    "lambda": 8,
-    "string-concat": 5
+    "lambda": 8
    },
    "io/ohmyrasp/agent/detect/RequestConfigurationDetector$DebugProcessLaunchMatch": {
     "record": 3
@@ -134,12 +96,10 @@
     "record": 3
    },
    "io/ohmyrasp/agent/detect/RequestDecoding": {
-    "lambda": 3,
-    "string-concat": 1
+    "lambda": 3
    },
    "io/ohmyrasp/agent/detect/RequestExpressionDetector": {
-    "lambda": 4,
-    "string-concat": 7
+    "lambda": 4
    },
    "io/ohmyrasp/agent/detect/RequestExpressionDetector$ExpressionHeaderMatch": {
     "record": 3
@@ -169,8 +129,7 @@
     "record": 3
    },
    "io/ohmyrasp/agent/detect/RequestPayloadDetector": {
-    "lambda": 4,
-    "string-concat": 4
+    "lambda": 4
    },
    "io/ohmyrasp/agent/detect/RequestPayloadDetector$RequestXxePayloadMatch": {
     "record": 3
@@ -194,8 +153,7 @@
     "record": 3
    },
    "io/ohmyrasp/agent/detect/RequestResourceDetector": {
-    "lambda": 4,
-    "string-concat": 5
+    "lambda": 4
    },
    "io/ohmyrasp/agent/detect/RequestResourceDetector$PlotCommandInjectionMatch": {
     "record": 3
@@ -210,8 +168,7 @@
     "record": 3
    },
    "io/ohmyrasp/agent/detect/RequestTemplateDetector": {
-    "lambda": 3,
-    "string-concat": 7
+    "lambda": 3
    },
    "io/ohmyrasp/agent/detect/RequestTemplateDetector$TemplateLoaderEnableMatch": {
     "record": 3
@@ -222,15 +179,8 @@
    "io/ohmyrasp/agent/detect/RequestTemplateDetector$TemplateSourceMatch": {
     "record": 3
    },
-   "io/ohmyrasp/agent/detect/RequestValues": {
-    "string-concat": 1
-   },
-   "io/ohmyrasp/agent/detect/ResponseContentDetector": {
-    "string-concat": 1
-   },
    "io/ohmyrasp/agent/detect/SerializedRequestState": {
-    "lambda": 1,
-    "string-concat": 2
+    "lambda": 1
    },
    "io/ohmyrasp/agent/detect/SerializedRequestState$SerializedClientStateMatch": {
     "record": 3
@@ -253,16 +203,11 @@
    "io/ohmyrasp/agent/hook/DeserializationGuard": {
     "lambda": 1
    },
-   "io/ohmyrasp/agent/hook/GeneratedLineWrite": {
-    "string-concat": 1
-   },
    "io/ohmyrasp/agent/hook/OhMyRaspHooks": {
-    "lambda": 22,
-    "string-concat": 5
+    "lambda": 22
    },
    "io/ohmyrasp/agent/log/JsonEventLogger": {
-    "lambda": 2,
-    "string-concat": 3
+    "lambda": 2
    },
    "io/ohmyrasp/agent/log/JsonEventLogger$Sample": {
     "record": 3
@@ -273,11 +218,13 @@
    "io/ohmyrasp/agent/model/RequestContext": {
     "lambda": 2
    },
+   "io/ohmyrasp/agent/model/RequestContext$Inputs": {
+    "record": 3
+   },
    "io/ohmyrasp/agent/policy/AgentPolicy": {
     "lambda": 2
    },
    "io/ohmyrasp/agent/policy/AgentPolicy$PolicyConfig": {
-    "string-concat": 1,
     "record": 3
    },
    "io/ohmyrasp/agent/policy/PolicyEvaluation": {
@@ -290,15 +237,8 @@
     "lambda": 8,
     "record": 3
    },
-   "io/ohmyrasp/agent/policy/SimpleJson$Parser": {
-    "string-concat": 2
-   },
    "io/ohmyrasp/agent/runtime/AgentRuntime": {
-    "lambda": 5,
-    "string-concat": 1
-   },
-   "io/ohmyrasp/agent/runtime/ShirudoDefaults": {
-    "string-concat": 2
+    "lambda": 6
    }
   }
  }

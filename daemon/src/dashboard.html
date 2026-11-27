@@ -92,6 +92,13 @@
       <button data-mode="monitor">Monitor</button>
       <button data-mode="block">Block</button>
     </div>
+    <span class="mono" style="color:var(--muted); font-size:12px;" title="Context-dependent findings with no HTTP request behind them (scheduled jobs, consumers, start-up code). Findings whose argument is the exploit itself block whatever this says; findings that only show an operation happened (a metadata address, a remote DTD) only log.">outside a request</span>
+    <div class="seg" id="outsideSeg">
+      <button data-outside="block">Block</button>
+      <button data-outside="log">Log only</button>
+      <button data-outside="" title="Remove this host's setting: the cloud's value, else each agent's start-up value">Default</button>
+    </div>
+    <span class="mono" id="outsideApplied" style="color:var(--muted); font-size:12px;"></span>
   </div>
 </header>
 
@@ -169,21 +176,37 @@ function esc(s){ return String(s ?? '').replace(/[&<>"]/g, ch => ({'&':'&amp;','
 async function postControl(body){
   try {
     const r = await fetch('/api/control', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body)});
-    if(r.ok){ const c = await r.json(); applyControl(c); }
+    if(r.ok){ await r.json(); tick(true); }
   } catch(e){ /* offline console; ignore */ }
 }
 
-function applyControl(c){
+// The host's own setting is the highlighted button; what the agents apply, and who decides it,
+// is the text beside it: blocking outside a request needs both the host and the cloud policy.
+function applyControl(c, outside){
   currentMode = c.mode;
   controlAlgos = c.algorithms || {};
   for(const b of document.querySelectorAll('#modeSeg button')){
     const on = b.dataset.mode === c.mode;
     b.className = on ? ('on-'+c.mode) : '';
   }
+  const host = typeof c.outside_request === 'string' ? c.outside_request.trim().toLowerCase() : (c.outside_request == null ? '' : 'invalid');
+  for(const b of document.querySelectorAll('#outsideSeg button')){
+    const on = b.dataset.outside === host;
+    b.className = on ? (host === 'log' ? 'on-monitor' : host === 'block' ? 'on-block' : 'on-off') : '';
+  }
+  if(outside){
+    const why = {cloud: "the cloud policy says log", host: "this host's setting", agent: "each agent's start-up value (block unless started with log)",
+      invalid: "the control file's value is not block or log; the agents keep what they had"}[outside.source] || outside.source;
+    const applied = outside.effective === 'start-up' ? 'start-up' : outside.effective;
+    $('outsideApplied').textContent = 'applied: ' + applied + ' (' + why + ')';
+  }
 }
 
 document.querySelectorAll('#modeSeg button').forEach(b => {
   b.onclick = () => postControl({mode: b.dataset.mode});
+});
+document.querySelectorAll('#outsideSeg button').forEach(b => {
+  b.onclick = () => postControl({outside_request: b.dataset.outside === '' ? null : b.dataset.outside});
 });
 $('pauseBtn').onclick = () => { paused = !paused; $('pauseBtn').textContent = paused ? 'Resume' : 'Pause';
   $('liveDot').className = 'dot ' + (paused ? 'paused' : 'live'); };
@@ -253,8 +276,8 @@ async function tick(force){
   if(paused && !force) return;
   try {
     const s = await (await fetch('/api/stats')).json();
-    if(currentMode === null) applyControl(s.control);
-    else { controlAlgos = s.control.algorithms || {}; }
+    // Every refresh: the cloud can change what the agents apply at any heartbeat.
+    applyControl(s.control, s.outside_request);
     $('version').textContent = 'host console · v' + (s.version || '?');
     $('srcPaths').textContent = 'spool: ' + s.spool_path;
     const st = s.stats;

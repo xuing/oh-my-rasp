@@ -13,13 +13,14 @@ final class XmlRpcHookModule implements HookModule {
 
   @Override public MethodVisitor visitMethod(String owner, MethodVisitor delegate, int access, String name, String desc) {
     if (!"getResult".equals(name) || !"()Ljava/lang/Object;".equals(desc)) return delegate;
-    return new ScopedMethodAdvice(Opcodes.ASM9, delegate, access, name, desc) {
+    return new ScopedMethodAdvice(Opcodes.ASM9, delegate, access, name, desc, true) {
       @Override protected void enterDispatch() {
-        invokeStatic(Type.getType(XmlRpcReadScope.class), Method.getMethod("void enter()"));
+        invokeStatic(Type.getType(XmlRpcReadScope.class), Method.getMethod("Object enter()"));
       }
 
       @Override protected void exitDispatch() {
-        invokeStatic(Type.getType(XmlRpcReadScope.class), Method.getMethod("void exit()"));
+        loadToken();
+        invokeStatic(Type.getType(XmlRpcReadScope.class), Method.getMethod("void exit(Object)"));
       }
 
       @Override public void visitMethodInsn(int op, String target, String method, String signature, boolean itf) {

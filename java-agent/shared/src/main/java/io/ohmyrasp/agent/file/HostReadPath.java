@@ -25,19 +25,25 @@ public final class HostReadPath {
     Facade(String path, Facade parent) { this.path = path; this.parent = parent; }
   }
 
-  public static void beginFacade(Object path) {
+  /**
+   * Enters one Files facade operation; returns the facade it opened, as the token {@link #endFacade} takes, or null
+   * when it opened none. The hook entry that calls it asks the activation first.
+   */
+  public static Object beginFacade(Object path) {
     Facade parent = FACADES.get();
     boolean fallback = needsFacadeRead(path);
-    if (fallback || parent != null) {
-      FACADES.set(new Facade(fallback ? String.valueOf(path) : null, parent));
-    }
+    if (!fallback && parent == null) return null;
+    Facade facade = new Facade(fallback ? String.valueOf(path) : null, parent);
+    FACADES.set(facade);
+    return facade;
   }
 
-  public static void endFacade() {
-    Facade current = FACADES.get();
-    if (current == null) return;
-    if (current.parent == null) FACADES.remove();
-    else FACADES.set(current.parent);
+  /** Leaves the operation {@code token} entered: the thread's facade is its parent again. Null entered none. */
+  public static void endFacade(Object token) {
+    if (token == null) return;
+    Facade parent = ((Facade) token).parent;
+    if (parent == null) FACADES.remove();
+    else FACADES.set(parent);
   }
 
   /** Only suppress a repeated log inside the same still-active facade operation. */
@@ -138,6 +144,18 @@ public final class HostReadPath {
       if (component.toString().equals("..")) return true;
     }
     return false;
+  }
+
+  private static final java.util.regex.Pattern PROTECTED_HOST_FILE =
+      java.util.regex.Pattern.compile(
+          "^/(?:etc/(?:passwd|shadow|issue)|proc/self/(?:environ|cmdline)|root/\\.ssh/(?:id_rsa|authorized_keys)|home/[^/]+/\\.ssh/id_rsa)$");
+
+  /**
+   * Whether {@code location} (a {@link #location}) is a host file every line blocks a read of, inside or outside an
+   * HTTP request: account databases, the process environment and command line, SSH keys.
+   */
+  public static boolean isProtectedHostFile(String location) {
+    return location != null && PROTECTED_HOST_FILE.matcher(location).matches();
   }
 
   public static boolean isHostsFile(String location) {

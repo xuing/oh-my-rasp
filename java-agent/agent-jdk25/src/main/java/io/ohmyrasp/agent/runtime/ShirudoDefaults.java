@@ -12,13 +12,14 @@ public final class ShirudoDefaults {
   private static final String AGENT_ENTRY_CLASS = "io.ohmyrasp.agent.OhMyRaspAgent";
 
   private static final ShirudoDefaults ABSENT =
-      new ShirudoDefaults(false, false, false, null, null, null, null);
+      new ShirudoDefaults(false, false, false, null, null, null, null, null);
 
   private final boolean present;
   private final boolean standalone;
   private final boolean lockConfig;
   private final DetectionMode mode;
   private final String control;
+  private final String outsideRequest;
   private final String log;
   private final Integer latencySample;
 
@@ -28,6 +29,7 @@ public final class ShirudoDefaults {
       boolean lockConfig,
       DetectionMode mode,
       String control,
+      String outsideRequest,
       String log,
       Integer latencySample) {
     this.present = present;
@@ -35,6 +37,7 @@ public final class ShirudoDefaults {
     this.lockConfig = lockConfig;
     this.mode = mode;
     this.control = control;
+    this.outsideRequest = outsideRequest;
     this.log = log;
     this.latencySample = latencySample;
   }
@@ -49,7 +52,7 @@ public final class ShirudoDefaults {
     return props == null ? ABSENT : fromProperties(props);
   }
 
-  static ShirudoDefaults absent() {
+  public static ShirudoDefaults absent() {
     return ABSENT;
   }
 
@@ -63,6 +66,7 @@ public final class ShirudoDefaults {
         parseBoolean(props.getProperty("lock_config")),
         DetectionMode.parse(props.getProperty("mode")),
         trimToNull(props.getProperty("control")),
+        trimToNull(props.getProperty(io.ohmyrasp.agent.rules.OutsideRequest.CONTROL_KEY)),
         trimToNull(props.getProperty("log")),
         parseInteger(props.getProperty("latency_sample")));
   }
@@ -85,6 +89,11 @@ public final class ShirudoDefaults {
 
   public String control() {
     return control;
+  }
+
+  /** The baked {@code outside_request} as written, or null; {@code OutsideRequest.parse} reads it. */
+  public String outsideRequest() {
+    return outsideRequest;
   }
 
   public String log() {

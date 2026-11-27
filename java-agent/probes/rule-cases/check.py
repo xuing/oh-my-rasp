@@ -9,8 +9,22 @@ the driver's marks around the operation, not everything in the event file.
 Each case JVM also logs class loading (-verbose:class on Java 8, -Xlog:class+load on 9 and later), and the
 driver loads a marker class at each end of the operation. A class of the agent (io.ohmyrasp.agent.) that
 loads between the marks loaded inside a hook or a transformer, inside the JDK call the hook instruments,
-where loading a class can re-enter the hook: on a backport line the case fails and names the class, since those
-lines load at start what their hooks use. On the primary line the classes are reported (ENFORCED_ENGINES).
+where loading a class can re-enter the hook: the case fails and names the class, on every line, since each loads at
+start, from the list in its JAR, what its hooks use. A lambda's hidden class (Foo$$Lambda/0x...) cannot be on a list,
+because it does not exist until its call site first runs; those are counted per source class and reported, and they
+fail a case only on the lines in ENFORCED_HIDDEN (none of the primary's: it still has lambdas and method references).
+
+A case with a request body is also broken when an event carries text of that body other than the one input field
+the event names as matched (its input_field and input_value details). The texts looked for are every key and value of
+the body (of a JSON body, a form body, or the body's text when it is neither) of three characters or more, and the
+canary password the JSON cases carry, each as is, lower- and upper-cased, percent-encoded and percent-decoded,
+JSON-escaped and JSON-unescaped; and every three-character piece of each value longer than four characters, ignoring
+case (any longer substring contains one). A text that the case's request line or headers also contain is not looked
+for: an event may show those. Not searched, because they hold only fixed vocabulary: the rule id, hook and action,
+the details of a rule's own constants (BodyEvidence.RULE_CONSTANTS), an operand shown as "<kind>, <n> chars", and the
+fixed message of an event built from structured evidence (BodyEvidence.fixedMessage, mirrored in FIXED_MESSAGE). The
+three-character pieces are looked for only in events built from structured evidence: an event made before the
+application read the body carries the rule's own wording, whose words share three-letter pieces with many values.
 
 Known gaps of the class-load check: hooks reached while the driver sets up, before its first mark (the
 listener socket, the stub JDBC driver), are not checked; and no case exercises the completion of
@@ -31,7 +45,7 @@ import time
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from pathlib import Path
-from urllib.parse import parse_qsl
+from urllib.parse import parse_qsl, quote, quote_plus, unquote, unquote_plus
 
 HERE = Path(__file__).resolve().parent
 COMMON = HERE.parent / "common"
@@ -43,30 +57,206 @@ from servlet_fixture import api_jar  # noqa: E402
 TIMEOUT = 90
 AGENT_PACKAGE = "io.ohmyrasp.agent."
 # The class name in a class-load line: "[Loaded <name> from <source>]" (Java 8 -verbose:class) or
-# "[<decorations>][class,load] <name> source: <source>" (Java 9 and later -Xlog:class+load).
+# "[<uptime>][<tid>][<level>][class,load] <name> source: <source>" (Java 9 and later, with the decorations
+# class_load_options asks for). The thread id and the source are kept to say where a late load happened.
 LOADED = re.compile(r"^\[Loaded (\S+) from |\[class,load\]\s+(\S+)")
+LOAD_THREAD = re.compile(r"^\[[^\]]*\]\[(\d+)\]")
+LOAD_SOURCE = re.compile(r"(?: from | source: )(.*?)\]?$")
 MARKS = ("RuleCaseDriver$OperationStart", "RuleCaseDriver$OperationEnd")
-# The guard fails a case on the backport lines. On the primary line it reports and does not fail: the primary
-# loads its detectors at start but has no full preload list yet, because initialising all of its classes at start
-# cost 82 to 92 ms on JDK 25. Its lambda classes would stay outside any list in any case: a lambda's class does
-# not exist until its call site first runs.
-ENFORCED_ENGINES = ("backport",)
+# The guard fails a case on both families: a named class of the agent that loads during the operation is a
+# class missing from the line's preload list. A lambda's hidden class is reported separately, and fails a case
+# only on the families named in ENFORCED_HIDDEN: the backports compile without invokedynamic call sites, so any
+# hidden class there is a regression; the primary still has lambdas and method references in code its hooks reach.
+ENFORCED_ENGINES = ("backport", "primary")
+ENFORCED_HIDDEN = ("backport",)
+HIDDEN = re.compile(r"^(.*)\$\$Lambda(\$\d+)?/(0x[0-9a-f]+|\d+)$")
+
+
+CANARY = "hunter2-Secret"
+# Detail keys whose values are a rule's own constants (BodyEvidence.RULE_CONSTANTS): not request text.
+RULE_CONSTANTS = {"decision_basis", "policy_basis", "process_operation", "argument_count", "multipart_source",
+                  "archive_policy_sha256", "kind"}
+ALLOWED = ("input_field", "input_value")
+OPERAND = re.compile(r"^[A-Za-z_.]+, \d+ chars$")
+# BodyEvidence.fixedMessage: the message of an event built from structured evidence.
+FIXED_MESSAGE = "Rule {} matched a request that has a body; its operands are withheld"
+PLACEHOLDER = re.compile(r"\{\w+\}")
+MIN_TEXT = 3
+PIECE = 3
+
+
+def body_parts(body: str, content_type: str) -> tuple[list[str], list[str]]:
+    """The keys and values of a request body (see the module docstring)."""
+    keys, values = [], [CANARY]
+    try:
+        document = json.loads(body)
+    except ValueError:
+        document = None
+    if document is not None and not isinstance(document, (str, int, float, bool)):
+        def walk(value):
+            if isinstance(value, dict):
+                for key, item in value.items():
+                    keys.append(str(key))
+                    walk(item)
+            elif isinstance(value, list):
+                for item in value:
+                    walk(item)
+            elif isinstance(value, str):
+                values.append(value)
+        walk(document)
+    elif "x-www-form-urlencoded" in content_type.lower():
+        for key, value in parse_qsl(body.strip(), keep_blank_values=True):
+            keys.append(key)
+            values.append(value)
+    else:
+        values.append(body.strip())
+    # A text with a placeholder the driver fills ({port}) is looked for by its literal pieces.
+    def literal(texts):
+        out = []
+        for text in texts:
+            out += [part for part in PLACEHOLDER.split(text) if len(part) >= MIN_TEXT]
+        return out
+    return literal(keys), literal(values)
+
+
+def transformations(text: str) -> set[str]:
+    """The text as is, case-changed, percent-encoded and -decoded, JSON-escaped and -unescaped."""
+    out = {text, text.lower(), text.upper(), quote(text, safe=""), quote_plus(text, safe=""), unquote(text),
+           unquote_plus(text), json.dumps(text)[1:-1], json.dumps(text, ensure_ascii=False)[1:-1]}
+    try:
+        out.add(json.loads('"' + text + '"'))
+    except ValueError:
+        pass
+    return {item for item in out if len(item) >= MIN_TEXT}
+
+
+def pieces(values: list[str]) -> set[str]:
+    """Every three-character piece, lower-cased, of each value longer than four characters."""
+    out = set()
+    for value in values:
+        if len(value) > 4:
+            lowered = value.lower()
+            out.update(lowered[i:i + PIECE] for i in range(len(lowered) - PIECE + 1))
+    return out
+
+
+def event_texts(event: dict) -> tuple[list[tuple[str, str]], bool]:
+    """The (where, text) pairs of an event that are searched, and whether it is built from structured evidence."""
+    algorithm = str(event.get("algorithm", ""))
+    message = str(event.get("message", ""))
+    structured = message == FIXED_MESSAGE.format(algorithm)
+    details = event.get("details") or {}
+    allowed = [str(details[key]) for key in ALLOWED if isinstance(details.get(key), str) and details.get(key)]
+    out = [] if structured else [("message", message)]
+    for key, value in details.items():
+        if key in RULE_CONSTANTS or key in ALLOWED or not isinstance(value, str):
+            continue
+        if key == "operand" and OPERAND.match(value):
+            continue
+        out.append((f"details.{key}", value))
+    request = event.get("request") or {}
+    if isinstance(request, dict):
+        for key in ("uri", "query", "body"):
+            if isinstance(request.get(key), str):
+                out.append((f"request.{key}", request[key]))
+        for group in ("parameters", "headers"):
+            items = request.get(group) or {}
+            if isinstance(items, dict):
+                for name, value in items.items():
+                    out.append((f"request.{group}", str(name)))
+                    for item in value if isinstance(value, list) else [value]:
+                        out.append((f"request.{group}.{name}", str(item)))
+    # The matched field's own name and value may be shown: taken out of every searched text.
+    cleaned = []
+    for where, text in out:
+        for shown in allowed:
+            text = text.replace(shown, " ")
+        cleaned.append((where, text))
+    return cleaned, structured
+
+
+def body_text_in_events(case: rule_cases.Case, events: list[dict]) -> str | None:
+    """The first body text an event carries, as 'rule: where carries text', or None."""
+    request = case.request or {}
+    if "body" not in request:
+        return None
+    headers = request.get("headers") or {}
+    content_type = next((v for k, v in headers.items() if k.lower() == "content-type"), "")
+    keys, values = body_parts(request["body"], content_type)
+    # What the case's request line and headers hold is not the body's: an event may show it.
+    own = " ".join([str(request.get(k, "")) for k in ("method", "uri", "query")]
+                   + [f"{k} {v}" for k, v in headers.items()]).lower()
+    whole = set()
+    for text in keys + values:
+        whole |= transformations(text)
+    whole = {text.lower() for text in whole if text.lower() not in own}
+    short = {piece for piece in pieces(values) if piece not in own}
+    for event in events:
+        details = event.get("details") or {}
+        allowed = " ".join(str(details.get(key, "")) for key in ALLOWED).lower()
+        texts, structured = event_texts(event)
+        for where, text in texts:
+            lowered = text.lower()
+            for needle in whole:
+                if needle in allowed:
+                    continue
+                if needle in lowered:
+                    return f"{event.get('algorithm')}: {where} carries {needle[:24]!r}"
+            if structured:
+                for piece in short:
+                    if piece not in allowed and piece in lowered:
+                        return f"{event.get('algorithm')}: {where} carries the piece {piece!r} of a body value"
+    return None
 
 
 def class_load_options(major: int, tmp: Path) -> list[str]:
-    """JVM options that log class loading: to standard output on Java 8, to a file on 9 and later."""
-    return ["-verbose:class"] if major <= 8 else [f"-Xlog:class+load:file={tmp / 'class-load.log'}"]
+    """JVM options that log class loading: to standard output on Java 8; on 9 and later to one file per case, with
+    the loading thread's id, and never rotated (a rotated file would lose the start of the case)."""
+    if major <= 8:
+        return ["-verbose:class"]
+    return [f"-Xlog:class+load:file={tmp / 'class-load.log'}:uptime,tid,level,tags:filecount=0"]
 
 
-def late_agent_classes(text: str) -> tuple[str, ...] | None:
-    """Agent classes the log shows loading between the driver's two marks, in order; None when a mark is missing."""
-    names = [m.group(1) or m.group(2) for m in map(LOADED.search, text.splitlines()) if m]
-    if MARKS[0] not in names or MARKS[1] not in names:
+@dataclass
+class LateLoads:
+    named: tuple[str, ...]    # named agent classes loaded between the marks, in order
+    hidden: tuple[str, ...]   # the source class of each hidden lambda class loaded between them
+    where: dict               # named class -> "thread T, from SOURCE", for the reader of a failure
+
+
+def late_agent_classes(text: str) -> LateLoads | None:
+    """The agent classes the log shows loading between the driver's two marks. None unless the log holds exactly
+    one start mark and one end mark, the start first: a missing, repeated or reversed mark leaves no window to
+    judge, and the case is broken rather than passed. A load on a thread other than the one that loaded the marks
+    (the driver's) is still a late load, and its thread says so."""
+    loads = []
+    for line in text.splitlines():
+        m = LOADED.search(line)
+        if m:
+            thread = LOAD_THREAD.search(line)
+            source = LOAD_SOURCE.search(line)
+            loads.append((m.group(1) or m.group(2), thread.group(1) if thread else None,
+                          source.group(1) if source else ""))
+    names = [name for name, _, _ in loads]
+    if names.count(MARKS[0]) != 1 or names.count(MARKS[1]) != 1:
         return None
-    between = names[names.index(MARKS[0]) + 1:names.index(MARKS[1])]
-    # A lambda's class name carries a counter and an address that differ between runs.
-    return tuple(re.sub(r"\$\$Lambda(\$\d+)?/(0x[0-9a-f]+|\d+)$", "$$Lambda", name)
-                 for name in between if name.startswith(AGENT_PACKAGE))
+    start, end = names.index(MARKS[0]), names.index(MARKS[1])
+    if start > end:
+        return None
+    driver = loads[start][1]
+    between = [load for load in loads[start + 1:end] if load[0].startswith(AGENT_PACKAGE)]
+    # A lambda's class name carries a counter and an address that differ between runs: keep its source class.
+    named, hidden, where = [], [], {}
+    for name, thread, source in between:
+        lambda_class = HIDDEN.match(name)
+        if lambda_class:
+            hidden.append(lambda_class.group(1))
+            continue
+        named.append(name)
+        on = "thread unknown" if thread is None else f"thread {thread}" + (
+            "" if thread == driver else " (not the driver's)")
+        where.setdefault(name, f"{on}, from {source or 'unknown source'}")
+    return LateLoads(tuple(named), tuple(hidden), where)
 
 
 def engine_of(agent: Path) -> tuple[str, str | None]:
@@ -81,7 +271,9 @@ class Actual:
     rule: str | None
     also: tuple[str, ...]
     note: str               # how the operation ended, for the reader
-    late: tuple[str, ...] = ()  # agent classes that loaded during the operation
+    late: tuple[str, ...] = ()  # named agent classes that loaded during the operation
+    late_where: dict = None     # named class -> where it loaded (thread, source), for the failure message
+    hidden: tuple[str, ...] = ()  # source class of each hidden lambda class that loaded during the operation
 
 
 def spec_lines(case: rule_cases.Case, tmp: Path, classes: Path) -> str:
@@ -105,7 +297,10 @@ def spec_lines(case: rule_cases.Case, tmp: Path, classes: Path) -> str:
         if query is not None:
             pairs.append(("request.query", sub(query)))
         if "body" in r:
-            pairs += [("request.body", sub(r["body"])), ("request.bodyApi", r.get("body_api", "stream"))]
+            pairs += [("request.body", sub(r["body"]) * r.get("body_repeat", 1)),
+                      ("request.bodyApi", r.get("body_api", "stream")), ("request.bodyRead", r.get("body_read", "all"))]
+            if "body_chunk" in r:
+                pairs.append(("request.bodyChunk", str(r["body_chunk"])))
         params = r.get("params")
         if params is None:
             params = {}
@@ -147,8 +342,15 @@ def run_case(case, agent, classpath, classes, work, track, major) -> tuple[Actua
     # The driver's report is a file, not a line of standard output: on Java 8 the class-load log shares
     # standard output and can split a line printed there.
     report = tmp / "rulecase-report.txt"
-    command = ["java", "-Xverify:all", f"-javaagent:{agent}", "-Dohmyrasp.standalone=true", "-Dohmyrasp.mode=block",
-               "-Dohmyrasp.control=none", "-Dohmyrasp.log.sync=true", f"-Dohmyrasp.log={log}", *props,
+    if case.control:
+        # Daemon-managed: the agent reads the control document at start, as it reads the daemon's.
+        control = tmp / "control.json"
+        control.write_text(json.dumps({"mode": "block", **case.control}, indent=2) + "\n")
+        settings = ["-Dohmyrasp.standalone=false", f"-Dohmyrasp.control={control}"]
+    else:
+        settings = ["-Dohmyrasp.standalone=true", "-Dohmyrasp.mode=block", "-Dohmyrasp.control=none"]
+    command = ["java", "-Xverify:all", f"-javaagent:{agent}", *settings,
+               "-Dohmyrasp.log.sync=true", f"-Dohmyrasp.log={log}", *props,
                *class_load_options(major, tmp), f"-Drulecase.report={report}",
                "-cp", classpath, "RuleCaseDriver"]
     try:
@@ -180,11 +382,15 @@ def run_case(case, agent, classpath, classes, work, track, major) -> tuple[Actua
         return rule[len(prefix):] if prefix and rule.startswith(prefix) else rule
 
     actual = classify(case, result, [(family(e["algorithm"]), e["action"]) for e in events])
+    leak = body_text_in_events(case, events)
+    if leak:
+        actual = Actual("broken", actual.rule, actual.also, f"an event carries request-body text ({leak})")
     load_log = tmp / "class-load.log"
     late = late_agent_classes(load_log.read_text(errors="replace") if load_log.exists() else run.stdout)
     if late is None:
-        return Actual("broken", None, (), "the class-load log has no operation marks"), output
-    actual.late = late
+        return Actual("broken", None, (), "the class-load log does not hold one start and one end mark, in order"), \
+            output
+    actual.late, actual.hidden, actual.late_where = late.named, late.hidden, late.where
     return actual, output
 
 
@@ -206,6 +412,9 @@ def classify(case, result: dict, events: list[tuple[str, str]]) -> Actual:
     entry, handler, op, ending = result.get("entry"), result.get("handler"), result.get("op"), result.get("ending", "")
     if case.via == "sink":
         outcome, note = op, ending
+    elif handler == "yes" and result.get("body", "").startswith("blocked"):
+        # The agent's exception ended the application's own read of the body: the read decided the body.
+        outcome, note = "blocked", f"in the handler, while it read the body ({result['body']})"
     elif handler == "yes":
         outcome, note = ("ran", "handler ran") if case.via == "request" else (op, f"in the handler: {ending}")
         if "body" in result:
@@ -217,6 +426,11 @@ def classify(case, result: dict, events: list[tuple[str, str]]) -> Actual:
         outcome, note = "error", f"handler did not run; entry {entry}: {result.get('entry_ending', '')}"
     rules = list(dict.fromkeys(rule for rule, _ in events))
     blocks = list(dict.fromkeys(rule for rule, action in events if action == "block"))
+    # Every case runs in block mode: an event says block or log, and anything else (monitor, a missing action)
+    # means the agent did not run as the case declares, not a "log".
+    unexpected = sorted({f"{rule}={action}" for rule, action in events if action not in ("block", "log")})
+    if unexpected:
+        return Actual("broken", None, tuple(rules), f"an event's action is neither block nor log: {', '.join(unexpected)}")
     if outcome == "error" or outcome not in ("ran", "blocked"):
         return Actual("broken", None, tuple(rules), f"the operation failed without the agent: {note}")
     if outcome == "blocked":
@@ -298,7 +512,10 @@ def main():
         failures = 0
         late_failures = 0
         late_by_class: dict[str, list[str]] = {}
+        hidden_by_source: dict[str, list[int]] = {}   # per source class, how many hidden classes each case loaded
+        hidden_cases: dict[str, list[str]] = {}
         enforced = engine in ENFORCED_ENGINES
+        hidden_enforced = engine in ENFORCED_HIDDEN
         for case, (actual, output) in zip(cases, results):
             expect = case.expect[engine]
             if args.print_actual:
@@ -307,9 +524,18 @@ def main():
             late = list(dict.fromkeys(actual.late))
             for name in late:
                 late_by_class.setdefault(name, []).append(case.id)
+            for source in dict.fromkeys(actual.hidden):
+                hidden_by_source.setdefault(source, []).append(actual.hidden.count(source))
+                hidden_cases.setdefault(source, []).append(case.id)
             if late and enforced:
                 late_failures += 1
-                print(f"LATE {case.id}: agent classes loaded during the operation: {', '.join(late)}")
+                where = actual.late_where or {}
+                print(f"LATE {case.id}: agent classes loaded during the operation: "
+                      + ", ".join(f"{name} ({where[name]})" if name in where else name for name in late))
+            if actual.hidden and hidden_enforced:
+                late_failures += 1
+                print(f"HIDDEN {case.id}: lambda classes created during the operation, from: "
+                      f"{', '.join(dict.fromkeys(actual.hidden))}")
             if not matches(expect, actual):
                 failures += 1
                 print(f"FAIL {case.id} ({case.kind}, via {case.via}) on the {engine}\n"
@@ -328,6 +554,15 @@ def main():
           + ("" if enforced else f"; reported, not enforced on the {engine} line (see ENFORCED_ENGINES)"))
     for name, ids in sorted(late_by_class.items()):
         print(f"  late {name}: {len(ids)} case(s), first {ids[0]}")
+    # The most hidden classes one case loaded from a source class is the least number of lambda sites it has that
+    # the cases reach; the same class from two cases may be two sites or one.
+    sites = {source: max(counts) for source, counts in hidden_by_source.items()}
+    print(f"{sum(sites.values())} hidden lambda class(es) at least, from {len(sites)} source class(es), created during "
+          "an operation" + ("" if hidden_enforced else f"; reported, not enforced on the {engine} line "
+                                                       "(see ENFORCED_HIDDEN)"))
+    for source, count in sorted(sites.items()):
+        print(f"  hidden {source}: {count} lambda class(es) in one case, {len(hidden_cases[source])} case(s), "
+              f"first {hidden_cases[source][0]}")
     if failures or late_failures:
         raise SystemExit(f"{failures} rule case(s) differ from what their file declares; "
                          f"{late_failures} loaded an agent class during the operation")

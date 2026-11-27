@@ -356,7 +356,13 @@ def main(argv: list[str] | None = None) -> int:
     for line, (family, _) in jars.items():
         count = totals(summarize(scanned[line]))
         if family != "backport":
-            print(f"{line}: primary line, recorded but not gated ({sum(count.values())} sites)")
+            # agent-jdk25 compiles with -XDstringConcat=inline, so it has no StringConcatFactory site: a concat site
+            # links on its first use, inside a hook. That one kind is gated; lambdas and records stay recorded.
+            concat = [f"{line}: {site.cls}.{site.method} uses {site.bootstrap}"
+                      for site in scanned[line] if site.kind == CONCAT]
+            failures.extend(concat)
+            print(f"{line}: primary line, recorded but not gated ({sum(count.values())} sites); "
+                  f"string-concat={'FAIL' if concat else 'ok'}")
             continue
         found = compare({}, scanned[line])  # none allowed, whatever the baseline file says
         failures.extend(found)

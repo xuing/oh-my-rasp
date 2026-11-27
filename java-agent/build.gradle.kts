@@ -1,3 +1,4 @@
+import java.util.zip.ZipFile
 import java.util.jar.JarFile
 
 plugins {
@@ -22,9 +23,10 @@ subprojects {
         apply(from = rootProject.file("gradle/backport-tests.gradle.kts"))
     }
 
-    // The primary line (agent-jdk25) has no list yet: initialising all of its classes at start cost 82 to 92 ms on
-    // JDK 25, over the start-time budget; it still initialises its detectors at start (DetectorEngine).
-    if (name in setOf("agent-java8", "agent-java11", "agent-java17")) {
+    // Every line, the primary too, lists the classes it loads before it registers a transformer. Time spent at
+    // start is not a constraint, time on an application thread is: loading all of the primary's classes at start
+    // costs JVM start time (measured in docs/agent.md) and keeps a class load out of every hooked call.
+    if (name in setOf("agent-java8", "agent-java11", "agent-java17", "agent-jdk25")) {
         apply(from = rootProject.file("gradle/preload-index.gradle.kts"))
     }
 
@@ -97,8 +99,82 @@ val verifyLauncherEntries = tasks.register("verifyLauncherEntries") {
         }
     }
 }
+
+// Which preload lists each JAR must carry: a line reads the list of its own module from the JAR it was started
+// from (META-INF/ohmyrasp/preload/<module>.txt), and a JAR without it cannot start that line.
+val preloadListJars = mapOf(
+    ":agent-jdk25:agentJar" to listOf("agent-jdk25"),
+    ":agent-jdk25:shirudoUpatchJar" to listOf("agent-jdk25"),
+    ":agent-java17:agentJava17Jar" to listOf("agent-java17"),
+    ":agent-java17:shirudoUpatchJar" to listOf("agent-java17"),
+    ":agent-java11:agentJava11Jar" to listOf("agent-java11"),
+    ":agent-java11:shirudoUpatchJar" to listOf("agent-java11"),
+    ":agent-java8:agentJava8Jar" to listOf("agent-java8"),
+    ":agent-java8:shirudoUpatchJar" to listOf("agent-java8"),
+    ":agent-all:agentAllJar" to listOf("agent-jdk25", "agent-java17", "agent-java11", "agent-java8"),
+    ":agent-all:shirudoUpatchJar" to listOf("agent-jdk25", "agent-java17", "agent-java11", "agent-java8"),
+)
+val verifyPreloadLists = tasks.register("verifyPreloadLists") {
+    group = "verification"
+    description = "Verifies that every agent JAR carries the preload list of each line it can start, and that each list names only classes the JAR holds."
+    val jars = preloadListJars.map { (path, modules) ->
+        val (module, task) = path.removePrefix(":").split(":")
+        dependsOn(path)
+        Triple(path, modules, provider { project(":$module").tasks.named<Jar>(task).get().archiveFile.get().asFile })
+    }
+    jars.forEach { (_, _, file) -> inputs.file(file) }
+    doLast {
+        for ((path, modules, file) in jars) {
+            val jarFile = file.get()
+            ZipFile(jarFile).use { zip ->
+                for (module in modules) {
+                    val entry = zip.getEntry("META-INF/ohmyrasp/preload/$module.txt")
+                        ?: error("${jarFile.name} ($path) can start the $module line and has no META-INF/ohmyrasp/preload/$module.txt")
+                    val names = zip.getInputStream(entry).bufferedReader(Charsets.UTF_8).readLines().filter { it.isNotEmpty() }
+                    require(names.isNotEmpty()) { "${jarFile.name}: the $module preload list is empty" }
+                    val missing = names.filter { zip.getEntry(it.replace('.', '/') + ".class") == null }
+                    require(missing.isEmpty()) { "${jarFile.name}: the $module list names classes the JAR does not hold: ${missing.take(10)}" }
+                }
+            }
+        }
+    }
+}
+// The hook-miss report of a line reads its family's table from the JAR it was started from
+// (META-INF/ohmyrasp/hook-expectations/<family>.txt, generated into :shared by scripts/gen-hook-targets.py). A line
+// whose table is missing starts with the report off and says so only with ohmyrasp.debug, so the JARs are checked here.
+val hookExpectationFamily = mapOf(
+    "agent-jdk25" to "primary", "agent-java17" to "backport", "agent-java11" to "backport", "agent-java8" to "backport",
+)
+val verifyHookExpectationTables = tasks.register("verifyHookExpectationTables") {
+    group = "verification"
+    description = "Verifies that every agent JAR carries the hook-expectation table of each line it can start, as generated."
+    val tables = project(":shared").layout.projectDirectory.dir("src/main/resources/META-INF/ohmyrasp/hook-expectations")
+    val jars = preloadListJars.map { (path, modules) ->
+        val (module, task) = path.removePrefix(":").split(":")
+        dependsOn(path)
+        Triple(path, modules, provider { project(":$module").tasks.named<Jar>(task).get().archiveFile.get().asFile })
+    }
+    jars.forEach { (_, _, file) -> inputs.file(file) }
+    inputs.dir(tables)
+    doLast {
+        for ((path, modules, file) in jars) {
+            val jarFile = file.get()
+            ZipFile(jarFile).use { zip ->
+                for (family in modules.map { hookExpectationFamily.getValue(it) }.distinct()) {
+                    val name = "META-INF/ohmyrasp/hook-expectations/$family.txt"
+                    val entry = zip.getEntry(name)
+                        ?: error("${jarFile.name} ($path) can start a $family line and has no $name: its hook-miss report would be off")
+                    val expected = tables.file("$family.txt").asFile.readBytes()
+                    require(zip.getInputStream(entry).use { it.readBytes() }.contentEquals(expected)) {
+                        "${jarFile.name} ($path): $name differs from the generated table in :shared"
+                    }
+                }
+            }
+        }
+    }
+}
 tasks.check {
-    dependsOn(verifyLauncherEntries)
+    dependsOn(verifyLauncherEntries, verifyPreloadLists, verifyHookExpectationTables)
 }
 
 // Kept separate from agent packaging: these libraries run the upstream REST admission fixture.

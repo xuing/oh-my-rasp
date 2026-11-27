@@ -15,6 +15,23 @@ effect = "block"
 rule = "base64_avx512_tail_underflow"
 
 [[case]]
+name = "tail-underflow-outside-request-log-only"
+kind = "attack"
+via = "sink"
+op = "base64.decode"
+args = { input = "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=" }
+completes_with = ["IllegalArgumentException"]
+control = { outside_request = "log" }
+
+[case.primary]
+effect = "block"
+rule = "base64_avx512_tail_underflow"
+
+[case.backport]
+effect = "block"
+rule = "base64_avx512_tail_underflow"
+
+[[case]]
 name = "tail-underflow-in-request"
 kind = "attack"
 via = "request-sink"

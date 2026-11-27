@@ -109,11 +109,16 @@ public final class ContractFiles {
    * instant), the in-hook latency, and the member order of the {@code headers} and {@code details}
    * objects, which the agent emits in hash order.
    */
+  /** The directory every normalised hook-miss line names its JAR in. */
+  public static final String FIXED_CODE_SOURCE_DIRECTORY = "/opt/app/lib/";
+
   public static String normalizeEvent(String line) {
     Matcher timestamp = TIMESTAMP.matcher(line);
     assertTrue(timestamp.find(), "an event line carries an ISO-8601 timestamp string: " + line);
     String fixed = timestamp.replaceFirst("\"timestamp\":\"" + FIXED_TIMESTAMP + "\"");
     fixed = LATENCY.matcher(fixed).replaceFirst("\"latency_us\":" + FIXED_LATENCY_US);
+    // A hook-miss line names the JAR a class came from: the test's JAR is in a temporary directory.
+    fixed = fixed.replaceFirst("\"code_source_path\":\"[^\"]*[/\\\\]([^\"/\\\\]+)\"", "\"code_source_path\":\"" + FIXED_CODE_SOURCE_DIRECTORY + "$1\"");
     for (String member : List.of("headers", "details")) {
       fixed = sortMembers(fixed, member);
     }

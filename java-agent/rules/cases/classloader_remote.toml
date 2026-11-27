@@ -6,9 +6,8 @@ op = "classloader.remote"
 args = { url = "http://127.0.0.1:{port}/", class = "RemoteGreeting" }
 
 [case.primary]
-effect = "log"
+effect = "block"
 rule = "classloader_remote"
-why = "the primary blocks this only inside an HTTP request; outside one it logs"
 
 [case.backport]
 effect = "block"
@@ -47,3 +46,43 @@ effect = "none"
 
 [case.backport]
 effect = "none"
+
+[[case]]
+name = "http-codebase-outside-request-log-only"
+kind = "attack"
+via = "sink"
+op = "classloader.remote"
+args = { url = "http://127.0.0.1:{port}/", class = "RemoteGreeting" }
+control = { outside_request = "log" }
+
+[case.primary]
+effect = "log"
+rule = "classloader_remote"
+why = "outside_request is log: outside a request the finding is logged and the operation runs"
+
+[case.backport]
+effect = "log"
+rule = "classloader_remote_codebase"
+why = "outside_request is log: outside a request the finding is logged and the operation runs"
+
+[[case]]
+name = "http-codebase-in-request-log-only"
+kind = "attack"
+via = "request-sink"
+op = "classloader.remote"
+args = { url = "http://127.0.0.1:{port}/", class = "RemoteGreeting" }
+control = { outside_request = "log" }
+
+[case.request]
+method = "GET"
+uri = "/app/report"
+query = "id=7"
+headers = { User-Agent = "Mozilla/5.0 (X11; Linux x86_64) Firefox/128.0", Accept = "text/html" }
+
+[case.primary]
+effect = "block"
+rule = "classloader_remote"
+
+[case.backport]
+effect = "block"
+rule = "classloader_remote_codebase"

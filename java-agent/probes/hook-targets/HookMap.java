@@ -61,7 +61,7 @@ import java.util.jar.JarFile;
 public final class HookMap {
   private static final String AGENT = "io/ohmyrasp/agent/";
   private static final String SHADED_ASM = "io/ohmyrasp/agent/shaded/asm/";
-  private static final String COMMON = "(shared visitors)";
+  static final String COMMON = "(shared visitors)";
 
   /** One hook family: a HookModule of the primary agent or a transformer class of a backport. */
   interface Unit {
@@ -69,7 +69,7 @@ public final class HookMap {
     byte[] apply(String owner, byte[] bytes) throws Exception;
   }
 
-  private static final class Transform implements Unit {
+  static final class Transform implements Unit {
     private final String name;
     private final Object transformer;
     private final Method method;
@@ -106,7 +106,7 @@ public final class HookMap {
 
   // ---- finding the agent's transformers ----------------------------------------------------------
 
-  private static List<Unit> primaryModules() throws Exception {
+  static List<Unit> primaryModules() throws Exception {
     Class<?> registryType = Class.forName("io.ohmyrasp.agent.asm.HookRegistry");
     Object defaults = registryType.getMethod("defaults").invoke(null);
     java.lang.reflect.Field field = registryType.getDeclaredField("modules");
@@ -197,7 +197,7 @@ public final class HookMap {
     return registered;
   }
 
-  private static List<Unit> registeredTransformers(JarFile agent, String entry) throws Exception {
+  static List<Unit> registeredTransformers(JarFile agent, String entry) throws Exception {
     List<Unit> units = new ArrayList<Unit>();
     for (String type : registeredTypes(agent, entry)) {
       units.add(new Transform(type.substring(type.lastIndexOf('/') + 1), Class.forName(type.replace('/', '.')).getConstructor().newInstance()));
@@ -364,7 +364,7 @@ public final class HookMap {
     return false;
   }
 
-  private static byte[] bytes(InputStream input) throws Exception {
+  static byte[] bytes(InputStream input) throws Exception {
     try {
       ByteArrayOutputStream out = new ByteArrayOutputStream();
       byte[] buffer = new byte[16384];
@@ -378,7 +378,7 @@ public final class HookMap {
   // ---- the staged tree --------------------------------------------------------------------------
 
   /** group:artifact version jar, sorted. */
-  private static List<String[]> libraries(File root) {
+  static List<String[]> libraries(File root) {
     List<String[]> found = new ArrayList<String[]>();
     File[] groups = root.listFiles();
     if (groups == null) throw new IllegalArgumentException("no staged tree at " + root);
@@ -405,15 +405,15 @@ public final class HookMap {
   }
 
   private static int shadowed;
-  private static final String VERSIONS = "META-INF/versions/";
+  static final String VERSIONS = "META-INF/versions/";
 
   /** The entries a run of the JVM would load as classes: base entries, and versioned ones of a multi-release JAR. */
-  private static boolean multiRelease(JarFile jar) throws Exception {
+  static boolean multiRelease(JarFile jar) throws Exception {
     return jar.getManifest() != null && "true".equalsIgnoreCase(jar.getManifest().getMainAttributes().getValue("Multi-Release"));
   }
 
   /** The class name the JVM gives an entry: a versioned entry loses its META-INF/versions/N/ prefix. */
-  private static String runtimeName(String path) {
+  static String runtimeName(String path) {
     if (!path.startsWith(VERSIONS)) return path;
     int slash = path.indexOf('/', VERSIONS.length());
     return slash < 0 ? path : path.substring(slash + 1);

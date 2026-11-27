@@ -25,6 +25,10 @@ import io.ohmyrasp.agent.detect.RemoteResourceDetector;
 import io.ohmyrasp.agent.detect.ResponseContentDetector;
 import io.ohmyrasp.agent.detect.SqlRequestIndicators;
 import io.ohmyrasp.agent.http.ArchiveUploadPolicy;
+import io.ohmyrasp.agent.http.BodyEvidence;
+import io.ohmyrasp.agent.http.RequestBody;
+import io.ohmyrasp.agent.http.RequestBodyCapture;
+import io.ohmyrasp.agent.http.RequestBodySnapshot;
 import io.ohmyrasp.agent.http.MultipartFilename;
 import io.ohmyrasp.agent.http.ServletDispatchScope;
 import io.ohmyrasp.agent.net.HttpTransportObservation;
@@ -34,6 +38,7 @@ import io.ohmyrasp.agent.model.Detection;
 import io.ohmyrasp.agent.model.RequestContext;
 import io.ohmyrasp.agent.policy.AgentPolicy;
 import io.ohmyrasp.agent.policy.PolicyEvaluation;
+import io.ohmyrasp.agent.rules.OutsideRequest;
 import io.ohmyrasp.agent.process.PosixShellCommand;
 import io.ohmyrasp.agent.naming.LookupRoute;
 import io.ohmyrasp.agent.loading.CodebaseUrls;
@@ -76,17 +81,30 @@ public final class OhMyRaspHooks {
       StackWalker.getInstance(
           Set.of(StackWalker.Option.RETAIN_CLASS_REFERENCE, StackWalker.Option.SHOW_REFLECT_FRAMES));
 
-  // The logger emit reports to in place of the shared one; only tests set it.
+  // The logger emit reports to in place of the shared one; tests set it. The warm-up's thread needs none: events()
+  // gives it a logger of its own that writes nothing.
   private static volatile JsonEventLogger reporter;
 
   private OhMyRaspHooks() {}
 
-  /** Makes emit report to {@code logger}, or to the shared logger again when it is null. Tests only. */
+  /** Makes emit report to {@code logger}, or to the shared logger again when it is null. Tests. */
   static void reportTo(JsonEventLogger logger) {
     reporter = logger;
   }
 
-  private static JsonEventLogger events() {
+  /** The logger emit reports to in place of the shared one, or null. */
+  static JsonEventLogger reportingTo() {
+    return reporter;
+  }
+
+  /**
+   * The logger this thread's reports go to: the discarding one of the warm-up's own thread (and of that thread
+   * only, whenever it still runs), else the replacement a test set, else the shared logger.
+   */
+  static JsonEventLogger events() {
+    if (Thread.currentThread() instanceof Warmup.Worker warmUp) {
+      return warmUp.sink();
+    }
     JsonEventLogger replaced = reporter;
     return replaced != null ? replaced : JsonEventLogger.get();
   }
@@ -102,25 +120,33 @@ public final class OhMyRaspHooks {
   }
 
   public static void enterHttpRequest(Object request, Object response) {
+    if (HookActivation.inactive()) return;
     enterHttpRequest(request, response, false);
   }
 
   private static void enterHttpRequest(Object request, Object response, boolean genericService) {
+    boolean outermost = !DISPATCH.inRequest();
     DISPATCH.enter(request, genericService);
+    RequestBodyCapture.dispatchEntered();
     try {
       inspectHttpRequest(request, response);
       DISPATCH.enteredApplication();
+      RequestBodyCapture.applicationEntered(outermost, request, !detectionDisabled());
     } catch (RuntimeException | Error failure) {
+      forgetBody();
       DISPATCH.exit();
+      RequestBodyCapture.dispatchExited(!DISPATCH.inRequest());
       throw failure;
     }
   }
 
   public static boolean admitServletRequest(Object request, Object response) {
+    if (HookActivation.inactive()) return true;
     return admitServletRequest(request, response, false);
   }
 
   public static boolean admitServletRequest(Object request, Object response, boolean genericService) {
+    if (HookActivation.inactive()) return true;
     try {
       enterHttpRequest(request, response, genericService);
       return true;
@@ -151,7 +177,7 @@ public final class OhMyRaspHooks {
     } catch (Throwable throwable) {
       quiet("enterHttpRequest", throwable);
     }
-    JsonEventLogger.get().sampleHookLatency("http_request", elapsedMicros(started));
+    events().sampleHookLatency("http_request", elapsedMicros(started));
   }
 
   private static void inspectRequest(RequestContext request) {
@@ -172,6 +198,7 @@ public final class OhMyRaspHooks {
       String query,
       Map<String, List<String>> parameters,
       Map<String, String> headers) {
+    if (HookActivation.inactive()) return;
     if (detectionDisabled()) {
       return;
     }
@@ -192,6 +219,7 @@ public final class OhMyRaspHooks {
       Map<String, List<String>> parameters,
       Map<String, String> headers,
       String body) {
+    if (HookActivation.inactive()) return;
     if (detectionDisabled()) {
       return;
     }
@@ -214,6 +242,7 @@ public final class OhMyRaspHooks {
       String body,
       Object config,
       String mechanism) {
+    if (HookActivation.inactive()) return;
     // Raw configuration does not establish a naming operation.
   }
 
@@ -226,6 +255,7 @@ public final class OhMyRaspHooks {
       String mechanism,
       String exceptionClass,
       String message) {
+    if (HookActivation.inactive()) return;
     if (detectionDisabled()) {
       return;
     }
@@ -241,6 +271,7 @@ public final class OhMyRaspHooks {
 
   public static void beforeServletIncludeAttributes(
       Map<String, String> attributes, List<String> stackClassNames) {
+    if (HookActivation.inactive()) return;
     if (detectionDisabled()) {
       return;
     }
@@ -261,6 +292,7 @@ public final class OhMyRaspHooks {
       Map<String, String> headers,
       Map<String, String> attributes,
       List<String> stackClassNames) {
+    if (HookActivation.inactive()) return;
     if (detectionDisabled()) {
       return;
     }
@@ -275,11 +307,13 @@ public final class OhMyRaspHooks {
   }
 
   public static void beforeSparkSubmitDispatch(boolean creation, Object request, Class<?> requestApi) {
+    if (HookActivation.inactive()) return;
     if (detectionDisabled() || !SparkSubmitRole.denied(creation, request, requestApi)) return;
     emitSubmitRoleDenial(request, "Spark", "SparkRest.handleSubmit");
   }
 
   public static void afterYarnSubmitPrepared(Object prepared, Object request, Class<?> requestApi) {
+    if (HookActivation.inactive()) return;
     if (prepared == null || detectionDisabled()
         || !ServletSubmitRole.denied("ohmyrasp.yarn.submitRole", request, requestApi)) return;
     emitSubmitRoleDenial(request, "YARN", "RMWebServices.submitApplication");
@@ -291,7 +325,7 @@ public final class OhMyRaspHooks {
           "", Map.of(), Map.of());
       emit(Optional.of(Detection.log("request", "request_remote_job_submission", 95,
           service + " job submission lacks the deployment's required role", context,
-          Map.of("decision_basis", "required_submit_role_denied", "operation", operation))), true);
+          Map.of("decision_basis", "required_submit_role_denied", "operation", operation))));
     } catch (OhMyRaspBlockException blocked) {
       throw blocked;
     } catch (Throwable failure) {
@@ -300,6 +334,7 @@ public final class OhMyRaspHooks {
   }
 
   public static void beforeRemoteJobSubmission(String mechanism, String descriptor) {
+    if (HookActivation.inactive()) return;
     if (detectionDisabled()) {
       return;
     }
@@ -314,6 +349,7 @@ public final class OhMyRaspHooks {
   }
 
   public static void beforeRmiRegistryBind(String operation, String bindingName, Object remote) {
+    if (HookActivation.inactive()) return;
     if (detectionDisabled()) {
       return;
     }
@@ -322,6 +358,7 @@ public final class OhMyRaspHooks {
 
   public static void beforeRmiRegistryBind(
       String operation, String bindingName, Object remote, List<String> stackClassNames) {
+    if (HookActivation.inactive()) return;
     if (detectionDisabled()) {
       return;
     }
@@ -339,6 +376,7 @@ public final class OhMyRaspHooks {
 
   public static void beforeSyntheticRmiRegistryBind(
       String operation, String bindingName, String remoteClassName, List<String> stackClassNames) {
+    if (HookActivation.inactive()) return;
     if (detectionDisabled()) {
       return;
     }
@@ -354,17 +392,298 @@ public final class OhMyRaspHooks {
   }
 
   public static void exitHttpRequest() {
+    if (HookActivation.inactive()) return;
+    forgetBody();
     DISPATCH.exit();
+    RequestBodyCapture.dispatchExited(!DISPATCH.inRequest());
+  }
+
+  /**
+   * The dispatch leaving this thread drops the body state its request context holds: a context that an
+   * operation carried onto another thread (an HTTP exchange, a directory walk) keeps no body past the dispatch.
+   */
+  private static void forgetBody() {
+    RequestContext context = REQUEST.get();
+    if (context != null) context.forgetBody();
+  }
+
+  // ---- request body: what the application's own read calls returned (RequestBodyVisitor injects these) ----
+  // None of these throws to the application but the block: a read after a block on its request's body throws
+  // that block again, and a read whose recording completes a body state with a blocking finding throws it.
+
+  public static Object enterBodyRead(Object source) {
+    if (HookActivation.inactive()) return null;
+    try {
+      return RequestBodyCapture.enter(source);
+    } catch (OhMyRaspBlockException blocked) {
+      throw blocked;
+    } catch (Throwable ignored) {
+      return null;
+    }
+  }
+
+  public static Object enterBodyRead(Object source, java.nio.Buffer buffer) {
+    if (HookActivation.inactive()) return null;
+    try {
+      return RequestBodyCapture.enter(source, buffer);
+    } catch (OhMyRaspBlockException blocked) {
+      throw blocked;
+    } catch (Throwable ignored) {
+      return null;
+    }
+  }
+
+  /** The read threw; the rewritten method throws the same throwable on after this returns (it never throws). */
+  public static void abortBodyRead() {
+    if (HookActivation.inactive()) return;
+    try {
+      RequestBodyCapture.abort();
+    } catch (Throwable ignored) {
+      // The application's own exception goes on.
+    }
+  }
+
+  public static void exitBodyRead(int result, Object token) {
+    if (HookActivation.inactive()) return;
+    if (RequestBodyCapture.exitByte(result, token)) bodyCompleted();
+  }
+
+  public static void exitBodyRead(int result, Object token, byte[] buffer, int offset) {
+    if (HookActivation.inactive()) return;
+    if (RequestBodyCapture.exitBytes(result, token, buffer, offset)) bodyCompleted();
+  }
+
+  public static void exitBodyRead(int result, Object token, java.nio.ByteBuffer buffer) {
+    if (HookActivation.inactive()) return;
+    if (RequestBodyCapture.exitBuffer(result, token, buffer)) bodyCompleted();
+  }
+
+  public static void exitBodyRead(byte[] result, Object token, boolean toEnd) {
+    if (HookActivation.inactive()) return;
+    if (RequestBodyCapture.exitAll(result, token, toEnd)) bodyCompleted();
+  }
+
+  public static void exitBodyChars(int result, Object token) {
+    if (HookActivation.inactive()) return;
+    if (RequestBodyCapture.exitChar(result, token)) bodyCompleted();
+  }
+
+  public static void exitBodyChars(int result, Object token, char[] buffer, int offset) {
+    if (HookActivation.inactive()) return;
+    if (RequestBodyCapture.exitChars(result, token, buffer, offset)) bodyCompleted();
+  }
+
+  public static void exitBodyChars(int result, Object token, java.nio.CharBuffer buffer) {
+    if (HookActivation.inactive()) return;
+    if (RequestBodyCapture.exitCharBuffer(result, token, buffer)) bodyCompleted();
+  }
+
+  public static void exitBodyLine(String result, Object token) {
+    if (HookActivation.inactive()) return;
+    if (RequestBodyCapture.exitLine(result, token)) bodyCompleted();
+  }
+
+  /** The read completed the body: decide the rules that read it, inside the application's read call. */
+  private static void bodyCompleted() {
+    try {
+      if (!detectionDisabled()) currentRequest();
+    } catch (OhMyRaspBlockException blocked) {
+      throw blocked;
+    } catch (Throwable throwable) {
+      quietBody(throwable);
+    }
+  }
+
+  /**
+   * Gives the request context the body read so far and, when this dispatch has not decided that state yet,
+   * decides the request rules on it first: so a body-only rule is decided before any other hook decides with the
+   * new bytes. Every finding of the request chain on the body is reported once per request, dispatch and policy
+   * (not only the chain's first, which an earlier, already reported or ignored finding would hide), except the
+   * one finding the servlet entry reported for the request without its body. A state counts as decided once its
+   * evaluation completed (or blocked); one that failed is decided again at the next hook. At most
+   * {@link RequestBody#MAX_EVALUATIONS} evaluations per request. A block throws from here, and every later read
+   * of the request's body stream throws it again.
+   */
+  private static void settleBody(RequestContext context, RequestBody body) {
+    RequestBodySnapshot snapshot = body.snapshot();
+    if (snapshot == null) return;
+    context.observeBody(snapshot);
+    int decided = context.bodyDecided();
+    if (snapshot.version() == decided) return;
+    if (detectionDisabled()) return;
+    // In progress: a hook that this evaluation reaches does not start it again.
+    context.bodyDecided(snapshot.version());
+    if (!body.evaluate()) return;
+    long started = System.nanoTime();
+    try {
+      BodyFindings seen = BodyFindings.of(body, context);
+      AgentPolicy policy = policy();
+      // The request rules read the body's values where they read parameters: with the request's own, and alone,
+      // so that a parameter's match does not hide a body field's inside one rule.
+      RequestContext view = context.withBodyParameters();
+      RequestContext bodyOnly = context.withOnlyBodyParameters();
+      for (Detection found : DETECTORS.requestChainFindings(view)) seen.emitOnce(found, context, policy);
+      for (Detection found : DETECTORS.requestChainFindings(bodyOnly)) seen.emitOnce(found, context, policy);
+      if (policy.selectsAlgorithm("xss_userinput")) {
+        seen.emitOnce(ResponseContentDetector.detectMarkupParameter(view), context, policy);
+        seen.emitOnce(ResponseContentDetector.detectMarkupParameter(bodyOnly), context, policy);
+      }
+      if (policy.loaded()) {
+        for (Detection candidate : SqlRequestIndicators.sqlRequestMetadata(view, new SelectedBy(policy))) {
+          seen.emitOnce(candidate, context, policy);
+        }
+      }
+    } catch (OhMyRaspBlockException blocked) {
+      RequestBodyCapture.deny(blocked);
+      throw blocked;
+    } catch (Throwable throwable) {
+      context.bodyDecided(decided); // not decided: the next hook decides it again, within the request's budget
+      quietBody(throwable);
+    }
+    events().sampleHookLatency("http_request_body", elapsedMicros(started));
+  }
+
+  /** The algorithms a policy selects; a class, not a method reference, so that no call site links on a request. */
+  private static final class SelectedBy implements java.util.function.Predicate<String> {
+    private final AgentPolicy policy;
+
+    SelectedBy(AgentPolicy policy) {
+      this.policy = policy;
+    }
+
+    @Override public boolean test(String algorithm) {
+      return policy.selectsAlgorithm(algorithm);
+    }
+  }
+
+  /**
+   * The body findings one request has reported, per dispatch and policy, and the finding the servlet entry of a
+   * dispatch reported for the request without its body: kept on the request's body recorder, which drops them
+   * when the request ends.
+   */
+  private static final class BodyFindings {
+    private final Set<List<Object>> reported = new java.util.HashSet<>();
+    private final Map<RequestContext, List<Object>> admitted = new java.util.IdentityHashMap<>();
+
+    static BodyFindings of(RequestBody body, RequestContext context) {
+      BodyFindings seen = body.engineState instanceof BodyFindings kept ? kept : new BodyFindings();
+      body.engineState = seen;
+      if (!seen.admitted.containsKey(context)) {
+        // What the servlet entry reported for this dispatch's request without its body: the chain's first finding,
+        // when the policy and the runtime switches let it be reported.
+        RequestContext withoutBody = new RequestContext(
+            context.method(), context.uri(), context.query(), context.parameters(), context.headers());
+        Optional<Detection> first = DETECTORS.detectRequest(withoutBody);
+        seen.admitted.put(context, first.isPresent() && reportable(first.orElseThrow()) ? key(first.orElseThrow()) : List.of());
+      }
+      return seen;
+    }
+
+    /** Emits the finding unless the servlet entry reported it or this dispatch reported it under this policy. */
+    void emitOnce(Optional<Detection> found, RequestContext context, AgentPolicy policy) {
+      if (found.isPresent()) emitOnce(found.orElseThrow(), context, policy);
+    }
+
+    void emitOnce(Detection found, RequestContext context, AgentPolicy policy) {
+      List<Object> finding = key(found);
+      if (finding.equals(admitted.get(context))) return;
+      List<Object> once = List.of(finding, new Identity(context), new Identity(policy));
+      if (reported.contains(once)) return;
+      try {
+        emit(Optional.of(found));
+      } finally {
+        reported.add(once);
+      }
+    }
+
+    private static boolean reportable(Detection found) {
+      AgentRuntime.ControlState runtime = AgentRuntime.get().state();
+      return runtime.detectionEnabled() && runtime.isAlgorithmEnabled(found.algorithm())
+          && !runtime.policy().evaluate(found, runtime.policyAgentKey()).ignored();
+    }
+
+    private static List<Object> key(Detection found) {
+      return List.of(found.algorithm(), found.details());
+    }
+  }
+
+  /** An object compared by identity, inside a key compared by value (a class, not a record: no call site links). */
+  private static final class Identity {
+    private final Object of;
+
+    Identity(Object of) {
+      this.of = of;
+    }
+
+    @Override public boolean equals(Object other) {
+      return other instanceof Identity identity && identity.of == of;
+    }
+
+    @Override public int hashCode() {
+      return System.identityHashCode(of);
+    }
+  }
+
+  /**
+   * The detection as it leaves the agent (event, cloud upload, block exception, block page). A detection on a
+   * request with a body (one the agent recorded, a form the container parsed, or an operation carried from such
+   * a request) is built from an allow-list ({@link BodyEvidence}): the rule's fields, a fixed message, the rule
+   * constants among its details, the one input field it matched with its value, and its operands as a kind and a
+   * length; the request as its method, URI, query and headers. Any other detection is as the rule made it, with
+   * a copy of its request that holds no body state, so that a queued event keeps no live context. When this
+   * fails, the details and message are dropped whole.
+   */
+  static Detection publicView(Detection event) {
+    RequestContext request = event.request();
+    try {
+      RequestBody current = RequestBodyCapture.current();
+      boolean bodied = (request != null && request.bodyDerived()) || (current != null && current.version() > 0);
+      if (!bodied) {
+        return new Detection(event.timestamp(), event.hook(), event.algorithm(), event.action(), event.confidence(),
+            event.message(), request == null ? null : request.withoutBody(), event.details());
+      }
+      Map<String, String> details = new java.util.LinkedHashMap<>();
+      List<String> operands = new java.util.ArrayList<>();
+      for (Map.Entry<String, String> detail : event.details().entrySet()) {
+        if (BodyEvidence.RULE_CONSTANTS.contains(detail.getKey())) details.put(detail.getKey(), detail.getValue());
+        else if (!BodyEvidence.PARAMETER.equals(detail.getKey())) operands.add(detail.getValue());
+      }
+      String[] input = request == null ? null : BodyEvidence.matched(request.inputParameters(),
+          event.details().get(BodyEvidence.PARAMETER), operands);
+      if (input != null) {
+        details.put(BodyEvidence.INPUT_FIELD, input[0]);
+        if (input[1] != null) details.put(BodyEvidence.INPUT_VALUE, input[1]);
+      }
+      String operand = BodyEvidence.operand(event.hook(), operands);
+      if (operand != null) details.put(BodyEvidence.OPERAND, operand);
+      return new Detection(event.timestamp(), event.hook(), event.algorithm(), event.action(), event.confidence(),
+          BodyEvidence.fixedMessage(event.algorithm()), request == null ? null : request.publicEnvelope(),
+          Map.copyOf(details));
+    } catch (Throwable failure) {
+      return new Detection(event.timestamp(), event.hook(), event.algorithm(), event.action(), event.confidence(),
+          BodyEvidence.fixedMessage(event.algorithm()), request == null ? null : RequestContext.empty(), Map.of());
+    }
+  }
+
+  /** A failure on the body path is reported by its class alone: an exception message could quote the body. */
+  private static void quietBody(Throwable throwable) {
+    try {
+      quiet("requestBody", new IllegalStateException(throwable.getClass().getName()));
+    } catch (Throwable ignored) {
+      // Reporting a failure never fails the application's read.
+    }
   }
 
   public static void beforeSpringProcessStart(ProcessBuilder builder) {
+    if (HookActivation.inactive()) return;
     if (detectionDisabled() || !io.ohmyrasp.agent.rules.product.spring.SpringProcessInit.selects(builder)) return;
     emit(Optional.of(Detection.log("command", "command_spring_remote_init", 95,
         "Spring dispatched an HTTP-defined initializer to ProcessBuilder.start", currentRequest(),
-        Map.of("decision_basis", "remote_bean_init_dispatch", "method", "ProcessBuilder.start"))), true);
+        Map.of("decision_basis", "remote_bean_init_dispatch", "method", "ProcessBuilder.start"))));
   }
 
   public static void beforeProcessLaunch(String[] argv) {
+    if (HookActivation.inactive()) return;
     if (detectionDisabled()) return;
     try {
       var finding = ProcessDetector.detectCommand(java.util.Arrays.asList(argv), currentRequest(), stackTraceClassNames(),
@@ -387,6 +706,7 @@ public final class OhMyRaspHooks {
   }
 
   public static void beforeProcessBuilderStart(ProcessBuilder processBuilder) {
+    if (HookActivation.inactive()) return;
     if (detectionDisabled()) {
       return;
     }
@@ -395,6 +715,7 @@ public final class OhMyRaspHooks {
 
   public static void beforeProcessBuilderStart(
       ProcessBuilder processBuilder, List<String> stackClassNames) {
+    if (HookActivation.inactive()) return;
     if (detectionDisabled()) {
       return;
     }
@@ -408,6 +729,7 @@ public final class OhMyRaspHooks {
   }
 
   public static void beforeRuntimeExecString(String command) {
+    if (HookActivation.inactive()) return;
     if (detectionDisabled()) {
       return;
     }
@@ -422,6 +744,7 @@ public final class OhMyRaspHooks {
   }
 
   public static void beforeRuntimeExecArray(String[] command) {
+    if (HookActivation.inactive()) return;
     if (detectionDisabled()) {
       return;
     }
@@ -439,14 +762,17 @@ public final class OhMyRaspHooks {
   }
 
   public static void observeMyBatisSubstitution(StringBuilder builder, String value, Object handler, String expression) {
+    if (HookActivation.inactive()) return;
     if (!detectionDisabled()) MyBatisSqlTrace.substitution(builder, value, handler, expression);
   }
 
   public static void beforeSql(String query) {
+    if (HookActivation.inactive()) return;
     inspectSql(null, query);
   }
 
   public static void beforeSql(Object jdbcReceiver, String query) {
+    if (HookActivation.inactive()) return;
     if (jdbcReceiver != null) inspectSql(jdbcReceiver, query);
   }
 
@@ -462,11 +788,11 @@ public final class OhMyRaspHooks {
         var finding = Detection.log("sql", "sql_identifier_injection", 95,
             "A raw mapper substitution introduced SQL control at JDBC", redacted,
             Map.of("source", "MyBatis", "reason", reason, "decision_basis", "mapper_substitution_at_jdbc"));
-        emit(Optional.of(finding), true, algorithm -> MyBatisSqlTrace.repeatedObservation(query, algorithm));
+        emit(Optional.of(finding), algorithm -> MyBatisSqlTrace.repeatedObservation(query, algorithm));
         // A managed policy may independently select the existing JDBC classifier.
         if (!policy().loaded()) return;
       }
-      emit(JdbcDetector.detectSql(query, request, jdbcReceiver), true,
+      emit(JdbcDetector.detectSql(query, request, jdbcReceiver),
           algorithm -> MyBatisSqlTrace.repeatedObservation(query, algorithm));
     } catch (OhMyRaspBlockException blocked) {
       throw blocked;
@@ -477,6 +803,7 @@ public final class OhMyRaspHooks {
 
   public static void beforeBase64Decode(
       byte[] src, int sp, int sl, boolean isURL, boolean isMIME) {
+    if (HookActivation.inactive()) return;
     // Pure arithmetic fast path first so benign Base64 decoding never triggers
     // class initialization or allocates on the hot path.
     if (!Base64DecodeDetector.isBase64TailUnderflowCandidate(src, sp, sl, isURL, isMIME)) {
@@ -486,7 +813,7 @@ public final class OhMyRaspHooks {
       return;
     }
     try {
-      emit(Base64DecodeDetector.detectBase64Decode(src, sp, sl, isURL, isMIME, currentRequest()), true);
+      emit(Base64DecodeDetector.detectBase64Decode(src, sp, sl, isURL, isMIME, currentRequest()));
     } catch (OhMyRaspBlockException blocked) {
       throw blocked;
     } catch (Throwable throwable) {
@@ -495,6 +822,7 @@ public final class OhMyRaspHooks {
   }
 
   public static void beforeJdbcConnect(String url) {
+    if (HookActivation.inactive()) return;
     if (detectionDisabled()) {
       return;
     }
@@ -515,6 +843,7 @@ public final class OhMyRaspHooks {
       Map<String, String> headers,
       String body,
       String url) {
+    if (HookActivation.inactive()) return;
     if (detectionDisabled()) {
       return;
     }
@@ -530,6 +859,7 @@ public final class OhMyRaspHooks {
 
   public static void beforeSqlException(
       String server, String errorCode, String errorState, String errorMessage, String query) {
+    if (HookActivation.inactive()) return;
     if (detectionDisabled()) {
       return;
     }
@@ -545,6 +875,7 @@ public final class OhMyRaspHooks {
   }
 
   public static void beforeSqlRegex(String query, String regex) {
+    if (HookActivation.inactive()) return;
     if (detectionDisabled()) {
       return;
     }
@@ -561,6 +892,7 @@ public final class OhMyRaspHooks {
       new HttpTransportObservation.Submissions<>();
 
   public static void captureHttpSubmission(Object exchange, java.net.URI uri) {
+    if (HookActivation.inactive()) return;
     if (detectionDisabled()) return;
     RequestContext request = currentRequest();
     if (request.active()) {
@@ -572,10 +904,12 @@ public final class OhMyRaspHooks {
   }
 
   public static void finishHttpSubmission(java.util.concurrent.CompletableFuture<?> future, Object exchange) {
+    if (HookActivation.inactive()) return;
     HTTP_SUBMISSIONS.finishedWhen(future, exchange);
   }
 
   public static void beforeHttpExchange(Object exchange, Object requestObject, java.net.URI uri) {
+    if (HookActivation.inactive()) return;
     if (detectionDisabled() || uri == null || !("http".equalsIgnoreCase(uri.getScheme())
         || "https".equalsIgnoreCase(uri.getScheme()))) return;
     HttpTransportObservation.bindExchange(requestObject, exchange, uri);
@@ -584,6 +918,7 @@ public final class OhMyRaspHooks {
 
   public static void beforeResolvedHttpExchange(Object requestObject, java.net.URI uri, java.net.InetSocketAddress address,
       java.net.InetSocketAddress proxy) {
+    if (HookActivation.inactive()) return;
     if (detectionDisabled()) return;
     String peer = HttpTransportObservation.directAddress(uri, address, proxy);
     if (peer != null) {
@@ -594,12 +929,14 @@ public final class OhMyRaspHooks {
 
   private static void inspectHttpExchange(Object exchange, java.net.URI uri, String peer) {
     try {
+      // The request that submitted the exchange, else the one this thread serves (as on the backports).
+      RequestContext current = currentRequest();
       RequestContext origin = HTTP_SUBMISSIONS.origin(exchange);
-      RequestContext request = origin == null ? RequestContext.empty() : origin;
+      RequestContext request = origin == null ? current : origin;
       var finding = NetworkDestinationDetector.classifyHttpTransport(uri, request, policy().loaded(), peer, HttpTransportObservation.changedOrigin(exchange, uri));
       if (finding.isEmpty()) return;
       var observed = transportEvidence(finding.get(), peer == null ? "http_exchange_acquire" : "http_resolved_route", peer);
-      emit(Optional.of(observed), false, null, origin != null && origin == currentRequest());
+      emit(Optional.of(observed), null, request.active() && request == current);
     } catch (OhMyRaspBlockException blocked) {
       throw blocked;
     } catch (Throwable failure) {
@@ -616,10 +953,12 @@ public final class OhMyRaspHooks {
   }
 
   public static void beforeUrlConnectionFactory(URL url) {
+    if (HookActivation.inactive()) return;
     if (!HttpTransportObservation.isHttp(url)) beforeUrlOpen(url);
   }
 
   public static void captureHttpRedirect(Object connection, URL to, URL from) {
+    if (HookActivation.inactive()) return;
     if (detectionDisabled() || !HttpTransportObservation.isHttp(from) || !HttpTransportObservation.isHttp(to)) return;
     String source = HttpTransportObservation.address(from);
     boolean supplied = NetworkDestinationDetector.requestSuppliesHttpUrl(HttpTransportObservation.comparisonUri(from, source),
@@ -628,16 +967,19 @@ public final class OhMyRaspHooks {
   }
 
   public static void beginHttpRoute(Object client, URL url, java.net.Proxy proxy) {
+    if (HookActivation.inactive()) return;
     HttpTransportObservation.beginRoute(client, detectionDisabled() ? null : url, proxy);
   }
 
   public static void beforeHttpDial(Object client, java.net.SocketAddress destination) {
+    if (HookActivation.inactive()) return;
     if (detectionDisabled()) return;
     URL url = HttpTransportObservation.dialTarget(client, destination);
     if (url != null) inspectHttpTransport(client, url, false, HttpTransportObservation.peer(client, url), "http_direct_connect", HttpTransportObservation.dialingRedirect(url));
   }
 
   public static void beforeHttpWrite(Object client, Object connection, URL url) {
+    if (HookActivation.inactive()) return;
     if (detectionDisabled()) return;
     String peer = HttpTransportObservation.peer(client, url);
     inspectHttpTransport(peer == null ? connection : client, url, true, peer, "http_request_write",
@@ -645,6 +987,7 @@ public final class OhMyRaspHooks {
   }
 
   public static void beforeHttpTransport(Object connection, URL url, boolean write) {
+    if (HookActivation.inactive()) return;
     inspectHttpTransport(connection, url, write, null, write ? "http_request_write" : "http_transport_acquire",
         HttpTransportObservation.redirected(connection, url));
   }
@@ -656,7 +999,7 @@ public final class OhMyRaspHooks {
       var finding = NetworkDestinationDetector.classifyHttpTransport(url, request, policy().loaded(), peer, redirected);
       if (finding.isEmpty()) return;
       Detection observed = transportEvidence(finding.get(), basis, peer);
-      emit(Optional.of(observed), false,
+      emit(Optional.of(observed),
           algorithm -> HttpTransportObservation.repeated(connection, url, request, algorithm, write));
     } catch (OhMyRaspBlockException blocked) {
       throw blocked;
@@ -666,6 +1009,7 @@ public final class OhMyRaspHooks {
   }
 
   public static void beforeUrlOpen(Object url) {
+    if (HookActivation.inactive()) return;
     if (detectionDisabled()) {
       return;
     }
@@ -680,6 +1024,7 @@ public final class OhMyRaspHooks {
   }
 
   public static void beforeDnsLookup(String host) {
+    if (HookActivation.inactive()) return;
     if (detectionDisabled()) {
       return;
     }
@@ -694,14 +1039,17 @@ public final class OhMyRaspHooks {
 
   /** Compatibility entry for callers that explicitly supply a lookup string. */
   public static void beforeJndiLookup(Object name) {
+    if (HookActivation.inactive()) return;
     if (name instanceof String text) onJndiRoute(text, "declared_lookup");
   }
 
   public static void beforeJndiProviderLookup(String url, Object provider, String operation) {
+    if (HookActivation.inactive()) return;
     if (!LookupRoute.observedAtSelection(provider, url)) onJndiRoute(url, operation);
   }
 
   public static void onJndiRoute(String url, String operation) {
+    if (HookActivation.inactive()) return;
     if (operation == null || detectionDisabled()) return;
     try {
       RequestContext request = currentRequest();
@@ -731,28 +1079,34 @@ public final class OhMyRaspHooks {
   public static void beforeClassLoaderUrls(Object urls) {}
 
   public static void onClassResourceRead(java.net.URLConnection connection, Object resource) {
+    if (HookActivation.inactive()) return;
     if (!detectionDisabled()) ClassDefinitionOrigin.read(connection, resource);
   }
 
   public static void beforeClassDefinition(java.net.URL origin, Object handler, Object resource) {
+    if (HookActivation.inactive()) return;
     if (detectionDisabled()) return;
     String selected = ClassDefinitionOrigin.selected(resource, origin, handler);
     if (selected != null) onClassDefinitionSource(selected);
   }
 
   public static void onClassDefinitionSource(String source) {
+    if (HookActivation.inactive()) return;
     if (!detectionDisabled()) emit(RemoteResourceDetector.detectClassLoaderUrl(source, "URLClassLoader", currentRequest()));
   }
 
   public static void beforeRmiClassLoaderCodebase(String codebase) {
+    if (HookActivation.inactive()) return;
     // An annotation alone does not select a codebase loader.
   }
 
   public static void beforeRmiCodebaseLoader(java.net.URL[] urls) {
+    if (HookActivation.inactive()) return;
     if (!detectionDisabled()) beforeClassLoaderSources("RMIClassLoader", urls);
   }
 
   public static void beforeSpringConfigLocation(Object location) {
+    if (HookActivation.inactive()) return;
     if (detectionDisabled()) {
       return;
     }
@@ -760,6 +1114,7 @@ public final class OhMyRaspHooks {
   }
 
   public static void beforeSpringConfigLocations(Object locations) {
+    if (HookActivation.inactive()) return;
     if (detectionDisabled()) {
       return;
     }
@@ -791,6 +1146,7 @@ public final class OhMyRaspHooks {
   }
 
   public static void beforeJmxStreamWrite(String path, int write) {
+    if (HookActivation.inactive()) return;
     if (AgentOwnIo.active()) return; // the agent's own I/O: before any application state
     JmxWriteScope scope = write != 0 ? JmxWriteScope.current() : null;
     if (scope != null && !detectionDisabled())
@@ -798,6 +1154,7 @@ public final class OhMyRaspHooks {
   }
 
   public static void beforeUnixChannelWrite(java.nio.file.Path path, int directoryFd, boolean write) {
+    if (HookActivation.inactive()) return;
     if (AgentOwnIo.active()) return; // the agent's own I/O: before any application state
     if (!write) return;
     var open = ARCHIVE_ENTRY.atChannelOpen(path, directoryFd);
@@ -806,6 +1163,7 @@ public final class OhMyRaspHooks {
   }
 
   public static void beforeJmxChannelWrite(java.nio.file.Path path, int directoryFd, boolean write) {
+    if (HookActivation.inactive()) return;
     if (AgentOwnIo.active()) return; // the agent's own I/O: before any application state
     JmxWriteScope scope = write ? JmxWriteScope.current() : null;
     if (scope != null && !detectionDisabled() && (directoryFd < 0 || path.isAbsolute()))
@@ -813,10 +1171,12 @@ public final class OhMyRaspHooks {
   }
 
   public static void beforeJmxMBeanInvoke(Object mbeanName, String operationName, Object arguments) {
+    if (HookActivation.inactive()) return;
     inspectJmxInvoke(mbeanName, operationName, arguments, false);
   }
 
   public static void beforeResolvedJmxInvoke(Object mbeanName, String operationName, Object arguments) {
+    if (HookActivation.inactive()) return;
     inspectJmxInvoke(mbeanName, operationName, arguments, true);
   }
 
@@ -839,6 +1199,7 @@ public final class OhMyRaspHooks {
   }
 
   public static void beforeArgumentFileExpansion(Object arguments) {
+    if (HookActivation.inactive()) return;
     if (detectionDisabled()) {
       return;
     }
@@ -854,10 +1215,12 @@ public final class OhMyRaspHooks {
   }
 
   public static void beforeStreamFileRead(String path, String hook) {
+    if (HookActivation.inactive()) return;
     inspectFileRead(path, HostReadPath.OpenPolicy.FOLLOW, hook);
   }
 
   public static void beforeFileRead(String path) {
+    if (HookActivation.inactive()) return;
     inspectFileRead(path, HostReadPath.OpenPolicy.PATH_ONLY, null);
   }
 
@@ -871,7 +1234,7 @@ public final class OhMyRaspHooks {
         RequestContext request = origin instanceof RequestContext source ? source : RequestContext.empty();
         emit(Optional.of(Detection.log("ssrf", "ssrf_protocol", 95, "External attachment reference opened a host file",
             request, Map.of("scheme", "file", "mechanism", "cxf-aegis-xop", "path", path,
-                "decision_basis", "attachment_file_open"))), true, ignored -> io.ohmyrasp.agent.xml.AttachmentFileRead.repeated(),
+                "decision_basis", "attachment_file_open"))), ignored -> io.ohmyrasp.agent.xml.AttachmentFileRead.repeated(),
             request.active() && request == currentRequest());
       } else {
         var finding = FileAccessDetector.detectFileRead(path, currentRequest(), OhMyRaspHooks::isXmlParserStack, policy().loaded(), links);
@@ -884,7 +1247,7 @@ public final class OhMyRaspHooks {
             observed = new Detection(observed.timestamp(), observed.hook(), observed.algorithm(), observed.action(),
                 observed.confidence(), observed.message(), observed.request(), details);
           }
-          emit(Optional.of(observed), false, algorithm -> HostReadPath.repeated(path, algorithm + ":" + basis));
+          emit(Optional.of(observed), algorithm -> HostReadPath.repeated(path, algorithm + ":" + basis));
         }
       }
     } catch (OhMyRaspBlockException blocked) {
@@ -895,6 +1258,7 @@ public final class OhMyRaspHooks {
   }
 
   public static void beforeFileReadObject(Object file) {
+    if (HookActivation.inactive()) return;
     if (detectionDisabled()) {
       return;
     }
@@ -902,6 +1266,7 @@ public final class OhMyRaspHooks {
   }
 
   public static void beforeFileWrite(String path) {
+    if (HookActivation.inactive()) return;
     if (AgentOwnIo.active()) return; // the agent's own I/O: before any application state
     if (detectionDisabled()) {
       return;
@@ -910,6 +1275,7 @@ public final class OhMyRaspHooks {
   }
 
   public static void beforeFileWrite(String path, List<String> stackClassNames) {
+    if (HookActivation.inactive()) return;
     if (AgentOwnIo.active()) return; // the agent's own I/O: before any application state
     if (detectionDisabled()) {
       return;
@@ -927,6 +1293,7 @@ public final class OhMyRaspHooks {
   }
 
   public static void beforeWindowsStreamWrite(String path, int writeAccess) {
+    if (HookActivation.inactive()) return;
     if (AgentOwnIo.active()) return; // the agent's own I/O: before any application state
     if (writeAccess == 0 || java.io.File.separatorChar != '\\') return;
     WindowsDataStream stream = WindowsDataStream.parse(path);
@@ -942,6 +1309,7 @@ public final class OhMyRaspHooks {
   }
 
   public static void beforeFileWriteObject(Object file) {
+    if (HookActivation.inactive()) return;
     if (AgentOwnIo.active()) return; // the agent's own I/O: before any application state
     if (detectionDisabled()) {
       return;
@@ -950,6 +1318,7 @@ public final class OhMyRaspHooks {
   }
 
   public static void beforeFileDelete(Object file) {
+    if (HookActivation.inactive()) return;
     if (detectionDisabled()) return;
     try {
       if (HostReadPath.isHostPath(file)) beforeFileDeletePath(pathFrom(file), "file_api_delete");
@@ -961,6 +1330,7 @@ public final class OhMyRaspHooks {
   }
 
   public static void beforeFileDeletePath(String value, String operation) {
+    if (HookActivation.inactive()) return;
     if (detectionDisabled() || value == null || value.isEmpty()) return;
     try {
       inspectDelete(java.nio.file.Paths.get(value), null, -1, false, operation);
@@ -970,31 +1340,38 @@ public final class OhMyRaspHooks {
   }
 
   public static void captureDirectoryWalk(Object walker, java.nio.file.Path path) {
+    if (HookActivation.inactive()) return;
     RequestContext request = currentRequest();
     if (!detectionDisabled() && request.active() && path != null && HostReadPath.isHostPath(path)) {
       HostDirectory.submitted(walker, request, FileAccessDetector.requestSelectsDirectory(path.toString(), request, false));
     }
   }
 
-  public static void beginDirectoryVisit(Object walker, java.nio.file.Path path) {
-    HostDirectory.visiting(walker, path, currentRequest().active());
+  /** Returns the visit it opened, the token the walker's exit passes to HostDirectory.visited, or null. */
+  public static Object beginDirectoryVisit(Object walker, java.nio.file.Path path) {
+    if (HookActivation.inactive()) return null;
+    return HostDirectory.visiting(walker, path, currentRequest().active());
   }
 
   public static void beforeDirectoryList(Object file) {
+    if (HookActivation.inactive()) return;
     if (!detectionDisabled() && HostReadPath.isHostPath(file))
       inspectDirectory(pathFrom(file), null, false, false, null, OhMyRaspHooks::stackTraceClassNames);
   }
 
   public static void beforeDirectoryList(Object file, List<String> stackClassNames) {
+    if (HookActivation.inactive()) return;
     if (!detectionDisabled() && HostReadPath.isHostPath(file))
       inspectDirectory(pathFrom(file), null, false, false, null, () -> stackClassNames);
   }
 
   public static void afterFileList(String[] entries, String path) {
+    if (HookActivation.inactive()) return;
     if (entries != null && !detectionDisabled()) inspectDirectory(path, null, false, true, null, OhMyRaspHooks::stackTraceClassNames);
   }
 
   public static void afterDirectoryOpen(java.nio.file.DirectoryStream<?> opened, java.nio.file.Path path, boolean relativeApi) {
+    if (HookActivation.inactive()) return;
     if (opened == null || detectionDisabled()) return;
     try {
       inspectDirectory(path.toString(), opened, relativeApi && !path.isAbsolute(), true, HostDirectory.origin(path), OhMyRaspHooks::stackTraceClassNames);
@@ -1017,7 +1394,7 @@ public final class OhMyRaspHooks {
           finding = new Detection(finding.timestamp(), finding.hook(), finding.algorithm(), finding.action(),
               finding.confidence(), finding.message(), finding.request(), details);
         }
-        emit(Optional.of(finding), false, null, origin == current);
+        emit(Optional.of(finding), null, origin == current);
       }
     } catch (OhMyRaspBlockException blocked) {
       throw blocked;
@@ -1027,6 +1404,7 @@ public final class OhMyRaspHooks {
   }
 
   public static void beforeInclude(String url, String realPath, String function) {
+    if (HookActivation.inactive()) return;
     if (detectionDisabled()) {
       return;
     }
@@ -1040,20 +1418,23 @@ public final class OhMyRaspHooks {
   }
 
   public static void afterMultipartAccess(Object source, Object result, boolean iterator) {
+    if (HookActivation.inactive()) return;
     DISPATCH.multipartAccess(source, result, iterator);
   }
 
   public static void afterMultipartLookup(Object result, Object request, int kind, boolean bulk) {
+    if (HookActivation.inactive()) return;
     DISPATCH.multipartResult(request, result, kind, bulk);
   }
 
   public static void inspectMultipartFilename(String filename, boolean archiveOnly) {
+    if (HookActivation.inactive()) return;
     if (MultipartFilename.eligible() && (!archiveOnly || DISPATCH.deliveredPart(MultipartFilename.receiver()))) {
       inspectFileUpload(filename, archiveOnly);
     }
   }
 
-  public static void beforeFileUpload(String filename) { inspectFileUpload(filename, false); }
+  public static void beforeFileUpload(String filename) { if (HookActivation.inactive()) return; inspectFileUpload(filename, false); }
 
   private static void inspectFileUpload(String filename, boolean archiveOnly) {
     if (detectionDisabled() || DISPATCH.inspectingRequest()) {
@@ -1076,7 +1457,7 @@ public final class OhMyRaspHooks {
           event = new Detection(event.timestamp(), event.hook(), event.algorithm(), event.action(), event.confidence(),
               event.message(), event.request(), details);
         }
-        emit(Optional.of(event), false, algorithm -> MultipartFilename.repeated(
+        emit(Optional.of(event), algorithm -> MultipartFilename.repeated(
             DISPATCH.servletRequest(), filename, algorithm, basis, evaluation.policyDigest));
       }
     } catch (OhMyRaspBlockException blocked) {
@@ -1087,6 +1468,7 @@ public final class OhMyRaspHooks {
   }
 
   public static void beforeWebdavUpload(String source, String destination, String method) {
+    if (HookActivation.inactive()) return;
     if (detectionDisabled()) {
       return;
     }
@@ -1100,6 +1482,7 @@ public final class OhMyRaspHooks {
   }
 
   public static void beforeRename(String source, String destination) {
+    if (HookActivation.inactive()) return;
     if (detectionDisabled()) {
       return;
     }
@@ -1113,6 +1496,7 @@ public final class OhMyRaspHooks {
   }
 
   public static void beforeLink(String source, String destination, String type) {
+    if (HookActivation.inactive()) return;
     if (detectionDisabled()) {
       return;
     }
@@ -1126,11 +1510,13 @@ public final class OhMyRaspHooks {
   }
 
   public static void beforeUnixFileOpen(java.nio.file.Path path, boolean read, int directoryFd) {
+    if (HookActivation.inactive()) return;
     beforeUnixFileOpen(path, read, directoryFd, false, false);
   }
 
   public static void beforeUnixFileOpen(java.nio.file.Path path, boolean read, int directoryFd,
       boolean noFollowFinal, boolean creatingNew) {
+    if (HookActivation.inactive()) return;
     if (AgentOwnIo.active()) return; // the agent's own I/O: before any application state
     if (HostReadPath.nativeRead(path, read && !creatingNew, directoryFd)) {
       inspectFileRead(path.toString(), noFollowFinal ? HostReadPath.OpenPolicy.NOFOLLOW_FINAL : HostReadPath.OpenPolicy.FOLLOW,
@@ -1138,17 +1524,21 @@ public final class OhMyRaspHooks {
     }
   }
 
-  public static void beginNioRead(Object path) {
-    HostReadPath.beginFacade(path);
+  /** Returns the facade it opened, the token the facade's exit passes to HostReadPath.endFacade, or null. */
+  public static Object beginNioRead(Object path) {
+    if (HookActivation.inactive()) return null;
+    Object facade = HostReadPath.beginFacade(path);
     try {
       if (!detectionDisabled() && HostReadPath.needsFacadeRead(path)) inspectFileRead(pathFrom(path), HostReadPath.OpenPolicy.PATH_ONLY, null);
     } catch (RuntimeException | Error failure) {
-      HostReadPath.endFacade();
+      HostReadPath.endFacade(facade);
       throw failure;
     }
+    return facade;
   }
 
   public static void beforePathRead(Object path) {
+    if (HookActivation.inactive()) return;
     if (detectionDisabled()) {
       return;
     }
@@ -1156,6 +1546,7 @@ public final class OhMyRaspHooks {
   }
 
   public static void beforePathWrite(Object path) {
+    if (HookActivation.inactive()) return;
     if (AgentOwnIo.active()) return; // the agent's own I/O: before any application state
     if (detectionDisabled()) {
       return;
@@ -1164,6 +1555,7 @@ public final class OhMyRaspHooks {
   }
 
   public static void beforePathWrite(Object path, List<String> stackClassNames) {
+    if (HookActivation.inactive()) return;
     if (AgentOwnIo.active()) return; // the agent's own I/O: before any application state
     if (detectionDisabled()) {
       return;
@@ -1172,6 +1564,7 @@ public final class OhMyRaspHooks {
   }
 
   public static GeneratedLineWrite beginGeneratedLines(Object target) {
+    if (HookActivation.inactive()) return null;
     if (detectionDisabled() || !currentRequest().active() || !(target instanceof java.nio.file.Path) || !HostFileSystem.contains(target)) return null;
     try {
       String path = pathFrom(target);
@@ -1183,10 +1576,11 @@ public final class OhMyRaspHooks {
   }
 
   public static void beforeGeneratedLine(String line, GeneratedLineWrite output) {
+    if (HookActivation.inactive()) return;
     if (output == null || detectionDisabled()) return;
     try {
       String content = output.append(line);
-      if (content != null) emit(HostFileMutationDetector.detectGeneratedScriptFileWrite(output.path, content, currentRequest()), false, ignored -> output.repeated());
+      if (content != null) emit(HostFileMutationDetector.detectGeneratedScriptFileWrite(output.path, content, currentRequest()), ignored -> output.repeated());
     } catch (OhMyRaspBlockException denied) {
       throw denied;
     } catch (Throwable failure) {
@@ -1195,6 +1589,7 @@ public final class OhMyRaspHooks {
   }
 
   public static void beforeEncodedScriptWrite(byte[] bytes, Object target, String text, java.nio.charset.Charset charset) {
+    if (HookActivation.inactive()) return;
     if (AgentOwnIo.active()) return; // the agent's own I/O: before any application state
     // The immediately following Files.write(byte[]) observes a complete small UTF-8 input itself.
     if (text == null || detectionDisabled() || (charset == StandardCharsets.UTF_8 && bytes.length <= 8192)
@@ -1214,6 +1609,7 @@ public final class OhMyRaspHooks {
   }
 
   public static void beforeGeneratedScriptFileWrite(Object path, Object content) {
+    if (HookActivation.inactive()) return;
     if (AgentOwnIo.active()) return; // the agent's own I/O: before any application state
     if (detectionDisabled() || !HostFileSystem.contains(path)) {
       return;
@@ -1230,16 +1626,19 @@ public final class OhMyRaspHooks {
   }
 
   public static void beforePortablePathDelete(Object value) {
+    if (HookActivation.inactive()) return;
     if (detectionDisabled() || !(value instanceof java.nio.file.Path path) || !HostReadPath.isHostPath(path)) return;
     if (!io.ohmyrasp.agent.file.UnixDeleteVisitor.usesNativeBoundary(path)) inspectDelete(path, null, -1, false, "file_api_delete");
   }
 
   public static void beforeHostDelete(java.nio.file.Path path) {
+    if (HookActivation.inactive()) return;
     inspectDelete(path, null, -1, false, "host_entry_removal");
   }
 
   public static void beforeSecureDelete(int directoryFd, java.nio.file.SecureDirectoryStream<java.nio.file.Path> directory,
       java.nio.file.Path path, int flags) {
+    if (HookActivation.inactive()) return;
     inspectDelete(path, directory, directoryFd, flags != 0, "descriptor_relative_unlink");
   }
 
@@ -1267,14 +1666,18 @@ public final class OhMyRaspHooks {
   }
 
   public static void beforePathDelete(Object path) {
+    if (HookActivation.inactive()) return;
     beforeFileDelete(path);
   }
 
   public static void afterArchiveEntry(Object entry) {
+    if (HookActivation.inactive()) return;
     afterZipEntryRead(entry, null);
   }
 
   public static void afterZipEntryRead(Object entry, Object reader) {
+    if (HookActivation.inactive()) return;
+    if (AgentOwnIo.active()) return; // the agent's own I/O: before any bookkeeping of application state
     if (!(entry instanceof ZipEntry zip)) {
       ARCHIVE_ENTRY.remove();
       return;
@@ -1286,18 +1689,25 @@ public final class OhMyRaspHooks {
   }
 
   public static void afterZipLookup(Object stream, String selectedName, Object reader) {
+    if (HookActivation.inactive()) return;
+    if (AgentOwnIo.active()) return; // the agent's own I/O: before any bookkeeping of application state
     ARCHIVE_ENTRY.observe(reader, stream == null ? null : selectedName);
   }
 
   public static void closeArchiveReader(Object reader) {
+    if (HookActivation.inactive()) return;
+    if (AgentOwnIo.active()) return; // the agent's own I/O: before any bookkeeping of application state
     ARCHIVE_ENTRY.closed(reader);
   }
 
   public static void clearArchiveEntry() {
+    if (HookActivation.inactive()) return;
+    if (AgentOwnIo.active()) return; // the agent's own I/O: before any bookkeeping of application state
     ARCHIVE_ENTRY.remove();
   }
 
   public static void beforeXmlEntityOpen(URL target, String name, Object parserInput, Object document, String literal) {
+    if (HookActivation.inactive()) return;
     if (target == null || "[xml]".equals(name) || detectionDisabled()) {
       return;
     }
@@ -1313,6 +1723,7 @@ public final class OhMyRaspHooks {
   }
 
   public static void beforeXmlEntity(String name, Object source) {
+    if (HookActivation.inactive()) return;
     if (detectionDisabled()) {
       return;
     }
@@ -1331,11 +1742,14 @@ public final class OhMyRaspHooks {
     }
   }
 
-  public static void beginAttachmentReference(String id) {
-    io.ohmyrasp.agent.xml.AttachmentFileRead.beginReference(detectionDisabled() ? null : id, currentRequest());
+  /** Returns the scope it opened, the token the reader's exit passes to AttachmentFileRead.endReference, or null. */
+  public static Object beginAttachmentReference(String id) {
+    if (HookActivation.inactive()) return null;
+    return io.ohmyrasp.agent.xml.AttachmentFileRead.beginReference(detectionDisabled() ? null : id, currentRequest());
   }
 
   public static void beforeUrlDataSource(Object url) {
+    if (HookActivation.inactive()) return;
     if (detectionDisabled()) {
       return;
     }
@@ -1353,6 +1767,7 @@ public final class OhMyRaspHooks {
   }
 
   public static void beforeXmlAttachmentReference(String mechanism, String href) {
+    if (HookActivation.inactive()) return;
     if (detectionDisabled()) {
       return;
     }
@@ -1366,6 +1781,7 @@ public final class OhMyRaspHooks {
   }
 
   public static void beforeXxeFileRead(String path) {
+    if (HookActivation.inactive()) return;
     if (detectionDisabled()) {
       return;
     }
@@ -1382,6 +1798,7 @@ public final class OhMyRaspHooks {
   public static void beforeJwtVerificationFailure(String mechanism, Object failure) {}
 
   public static void beforeDataEaseFilterContinuation(String rejection, Object request) {
+    if (HookActivation.inactive()) return;
     if (rejection == null || detectionDisabled()) return;
     try {
       RequestContext context = new RequestContext(invokeString(request, "getMethod").orElse(""),
@@ -1389,7 +1806,7 @@ public final class OhMyRaspHooks {
       emit(Optional.of(Detection.log("request", "request_jwt_verification_failure", 95,
           "Authentication filter continued the request after rejecting its credential", context,
           Map.of("exception", rejection, "decision_basis", "rejected_token_dispatch",
-              "operation", "FilterChain.doFilter"))), true);
+              "operation", "FilterChain.doFilter"))));
     } catch (OhMyRaspBlockException blocked) {
       throw blocked;
     } catch (Throwable failure) {
@@ -1398,6 +1815,7 @@ public final class OhMyRaspHooks {
   }
 
   public static void beforeDeserializationClass(String className) {
+    if (HookActivation.inactive()) return;
     if (detectionDisabled()) {
       return;
     }
@@ -1424,7 +1842,7 @@ public final class OhMyRaspHooks {
       event = new Detection(event.timestamp(), event.hook(), event.algorithm(), event.action(),
           event.confidence(), event.message(), event.request(), details);
     }
-    emit(Optional.of(event), (xmlRpc || blockingEnabled()) && isDangerousDeserialization(className));
+    emit(Optional.of(event));
   }
 
   /**
@@ -1442,10 +1860,11 @@ public final class OhMyRaspHooks {
   }
 
   public static Object jmxAttributeDisplayReceiver(Object value) {
+    if (HookActivation.inactive()) return value;
     return io.ohmyrasp.agent.jmx.JmxAttributeDisplay.receiver(value, runtimeRepairEnabled());
   }
 
-  public static boolean enforceElasticLz4Bounds() { return runtimeRepairEnabled(); }
+  public static boolean enforceElasticLz4Bounds() { if (HookActivation.inactive()) return false; return runtimeRepairEnabled(); }
 
   private static boolean runtimeRepairEnabled() {
     return AgentRuntime.get().mode() == DetectionMode.BLOCK || blockingEnabled();
@@ -1464,6 +1883,7 @@ public final class OhMyRaspHooks {
 
   public static void beforeSyntheticDeserializationClass(
       String className, List<String> stackClassNames) {
+    if (HookActivation.inactive()) return;
     if (detectionDisabled()) {
       return;
     }
@@ -1479,16 +1899,19 @@ public final class OhMyRaspHooks {
   public static void beforeObjectInputStream(Object inputStream) {}
 
   public static void afterObjectInputStreamConstruction(java.io.ObjectInputStream stream, Object input) {
+    if (HookActivation.inactive()) return;
     ServletObjectStreams.constructed(stream, input);
   }
 
   public static void beforeServletObjectRead(java.io.ObjectInputStream stream) {
+    if (HookActivation.inactive()) return;
     if (detectionDisabled() || !policy().selectsAlgorithm("deserialization_http_object_stream")) return;
     String source = ServletObjectStreams.source(stream);
     if (source != null) emit(DeserializationDetector.detectHttpObjectStreamDeserialization(source, currentRequest()));
   }
 
   public static void beforeSessionDeserialization(String sessionId, String mechanism) {
+    if (HookActivation.inactive()) return;
     if (detectionDisabled()) {
       return;
     }
@@ -1502,6 +1925,7 @@ public final class OhMyRaspHooks {
   }
 
   public static void beforePolymorphicType(String parser, String className) {
+    if (HookActivation.inactive()) return;
     if (detectionDisabled()) {
       return;
     }
@@ -1515,11 +1939,12 @@ public final class OhMyRaspHooks {
   }
 
   public static void beforeFastjsonClassResource(String resource) {
+    if (HookActivation.inactive()) return;
     if (detectionDisabled()) {
       return;
     }
     try {
-      emit(DeserializationDetector.detectFastjsonClassResource(resource, currentRequest()), true);
+      emit(DeserializationDetector.detectFastjsonClassResource(resource, currentRequest()));
     } catch (OhMyRaspBlockException blocked) {
       throw blocked;
     } catch (Throwable throwable) {
@@ -1529,17 +1954,20 @@ public final class OhMyRaspHooks {
 
   public static void beforeProtocolClassInstantiation(
       String protocol, String className, Object arguments) {
+    if (HookActivation.inactive()) return;
     // A declared class name is not the type of a resolved constructor.
   }
 
   public static void beforeOpenWireThrowable(Class<?> selected) {
+    if (HookActivation.inactive()) return;
     if (detectionDisabled()) return;
-    emit(DeserializationDetector.detectOpenWireThrowable(selected, currentRequest()), true);
+    emit(DeserializationDetector.detectOpenWireThrowable(selected, currentRequest()));
   }
 
   public static void beforeHttpInvokerDeserialization(String mechanism) {}
 
   public static void beforeHttpInvokerRead(Object exporter) {
+    if (HookActivation.inactive()) return;
     if (detectionDisabled() || !policy().selectsAlgorithm("deserialization_http_invoker")) return;
     for (Class<?> c = exporter.getClass(); c != null; c = c.getSuperclass()) {
       if ("org.springframework.remoting.httpinvoker.HttpInvokerServiceExporter".equals(c.getName())
@@ -1553,20 +1981,23 @@ public final class OhMyRaspHooks {
   public static void beforeHessianType(String type) {}
 
   public static void beforeHessianAllocation(Class<?> selected, String basis) {
-    if (!detectionDisabled()) emit(DeserializationDetector.detectHessianAllocation(selected, basis, currentRequest()), true);
+    if (HookActivation.inactive()) return;
+    if (!detectionDisabled()) emit(DeserializationDetector.detectHessianAllocation(selected, basis, currentRequest()));
   }
 
   /** Compatibility entry for callers that only saw a declaration. */
   public static void beforeXmlRpcSerializableValue(String mechanism) {}
 
   public static void beforeXmlRpcObjectRead(java.io.ObjectInputStream stream) {
+    if (HookActivation.inactive()) return;
     if (detectionDisabled()) return;
     XmlRpcReadScope.reading(stream);
     if (!policy().selectsAlgorithm("deserialization_xmlrpc_serialized")) return;
-    emit(DeserializationDetector.detectXmlRpcSerializableValue("ApacheXmlRpc", currentRequest()), true);
+    emit(DeserializationDetector.detectXmlRpcSerializableValue("ApacheXmlRpc", currentRequest()));
   }
 
   public static void beforeJavaBeansStatement(Object statement) {
+    if (HookActivation.inactive()) return;
     if (detectionDisabled()) {
       return;
     }
@@ -1589,6 +2020,7 @@ public final class OhMyRaspHooks {
   }
 
   public static void rethrowIfOhMyRaspBlock(Object throwable) {
+    if (HookActivation.inactive()) return;
     Throwable current = throwable instanceof Throwable value ? value : null;
     while (current != null) {
       if (current instanceof OhMyRaspBlockException blocked) {
@@ -1599,6 +2031,7 @@ public final class OhMyRaspHooks {
   }
 
   public static void beforeOgnl(String expression) {
+    if (HookActivation.inactive()) return;
     if (detectionDisabled()) {
       return;
     }
@@ -1612,6 +2045,7 @@ public final class OhMyRaspHooks {
   }
 
   public static void beforeExpressionEvaluation(String engine, Object expression) {
+    if (HookActivation.inactive()) return;
     if (detectionDisabled()) {
       return;
     }
@@ -1625,6 +2059,7 @@ public final class OhMyRaspHooks {
   }
 
   public static void beforeJavaCompilationSource(String compiler, Object source) {
+    if (HookActivation.inactive()) return;
     if (detectionDisabled()) {
       return;
     }
@@ -1638,6 +2073,7 @@ public final class OhMyRaspHooks {
   }
 
   public static void beforeJavaCompilationUnits(Object units) {
+    if (HookActivation.inactive()) return;
     if (detectionDisabled()) {
       return;
     }
@@ -1645,6 +2081,7 @@ public final class OhMyRaspHooks {
   }
 
   public static void beforeJavaCompilationUnits(String compiler, Object units) {
+    if (HookActivation.inactive()) return;
     if (detectionDisabled()) {
       return;
     }
@@ -1660,6 +2097,7 @@ public final class OhMyRaspHooks {
   }
 
   public static void beforeEval(String function, String code) {
+    if (HookActivation.inactive()) return;
     if (detectionDisabled()) {
       return;
     }
@@ -1673,6 +2111,7 @@ public final class OhMyRaspHooks {
   }
 
   public static void beforeLoadLibrary(String function, String path, boolean windows) {
+    if (HookActivation.inactive()) return;
     if (detectionDisabled()) {
       return;
     }
@@ -1686,6 +2125,7 @@ public final class OhMyRaspHooks {
   }
 
   public static void beforeResponseDataLeak(String contentType, String content) {
+    if (HookActivation.inactive()) return;
     if (detectionDisabled() || !policy().selectsAlgorithm("response_dataLeak")) {
       return;
     }
@@ -1699,6 +2139,7 @@ public final class OhMyRaspHooks {
   }
 
   public static void beforeXssEcho(String content) {
+    if (HookActivation.inactive()) return;
     Object response = RESPONSE.get();
     if (detectionDisabled() || response == null || !policy().selectsAlgorithm("xss_echo")) return;
     try {
@@ -1715,6 +2156,7 @@ public final class OhMyRaspHooks {
   }
 
   public static void beforeWebshellEval(String function, String code) {
+    if (HookActivation.inactive()) return;
     if (detectionDisabled()) {
       return;
     }
@@ -1728,6 +2170,7 @@ public final class OhMyRaspHooks {
   }
 
   public static void beforeWebshellCommand(String command) {
+    if (HookActivation.inactive()) return;
     if (detectionDisabled()) {
       return;
     }
@@ -1741,6 +2184,7 @@ public final class OhMyRaspHooks {
   }
 
   public static void beforeWebshellFileWrite(String path, String content) {
+    if (HookActivation.inactive()) return;
     if (detectionDisabled()) {
       return;
     }
@@ -1754,6 +2198,7 @@ public final class OhMyRaspHooks {
   }
 
   public static void beforeWebshellCallable(String function) {
+    if (HookActivation.inactive()) return;
     if (detectionDisabled()) {
       return;
     }
@@ -1767,6 +2212,7 @@ public final class OhMyRaspHooks {
   }
 
   public static void beforeWebshellLdPreload(String name, String value) {
+    if (HookActivation.inactive()) return;
     if (detectionDisabled()) {
       return;
     }
@@ -1780,7 +2226,10 @@ public final class OhMyRaspHooks {
   }
 
   public static RequestContext currentRequest() {
-    return REQUEST.get();
+    RequestContext context = REQUEST.get();
+    RequestBody body = RequestBodyCapture.current();
+    if (body != null && body.version() > 0 && context.active()) settleBody(context, body);
+    return context;
   }
 
   private static RequestContext buildRequestContext(Object request) throws ReflectiveOperationException {
@@ -1792,7 +2241,27 @@ public final class OhMyRaspHooks {
     String query = invokeString(ServletContracts.of(request), request, "getQueryString").orElse("");
     Map<String, List<String>> parameters = readParameterMap(request, query);
     Map<String, String> headers = readHeaders(request);
-    return new RequestContext(method, uri, query, parameters, headers);
+    RequestContext context = new RequestContext(method, uri, query, parameters, headers);
+    return formContent(method, headers.get("content-type")) && parsedFromBody(parameters, query)
+        ? context.withFormBody() : context;
+  }
+
+  /** Whether a container parses this request's body into parameters: a form or multipart body, not on GET or HEAD. */
+  private static boolean formContent(String method, String contentType) {
+    if ("GET".equalsIgnoreCase(method) || "HEAD".equalsIgnoreCase(method) || contentType == null) return false;
+    String type = contentType.trim().toLowerCase(Locale.ROOT);
+    return type.startsWith("application/x-www-form-urlencoded") || type.startsWith("multipart/");
+  }
+
+  /** Whether the container's parameters hold any name or value the query string does not: a parsed body's. */
+  private static boolean parsedFromBody(Map<String, List<String>> parameters, String query) {
+    if (parameters.isEmpty()) return false;
+    Map<String, List<String>> fromQuery = ServletQueryParameters.parse(query);
+    for (Map.Entry<String, List<String>> parameter : parameters.entrySet()) {
+      List<String> inQuery = fromQuery.get(parameter.getKey());
+      if (inQuery == null || parameter.getValue().size() > inQuery.size()) return true;
+    }
+    return false;
   }
 
   private static Map<String, List<String>> readParameterMap(Object request, String query)
@@ -2145,21 +2614,19 @@ public final class OhMyRaspHooks {
   }
 
   private static void emit(Optional<Detection> detection) {
-    emit(detection, false);
+    emit(detection, null);
   }
 
-  private static void emit(
-      Optional<Detection> detection, boolean allowNonRequestBlock) {
-    emit(detection, allowNonRequestBlock, null);
+  private static void emit(Optional<Detection> detection, java.util.function.Predicate<String> repeatedObservation) {
+    emit(detection, repeatedObservation, true);
   }
 
+  /**
+   * Decides and records a finding. It blocks when blocking is permitted, the finding's action is block, and its
+   * block scope allows it ({@link #blockScope}): the same decision as the backport lines make.
+   */
   private static void emit(Optional<Detection> detection,
-      boolean allowNonRequestBlock, java.util.function.Predicate<String> repeatedObservation) {
-    emit(detection, allowNonRequestBlock, repeatedObservation, true);
-  }
-
-  private static void emit(Optional<Detection> detection,
-      boolean allowNonRequestBlock, java.util.function.Predicate<String> repeatedObservation, boolean mayRedirect) {
+      java.util.function.Predicate<String> repeatedObservation, boolean mayRedirect) {
     // The agent's own event and control I/O is neither reported nor blocked.
     if (detection.isEmpty() || AgentOwnIo.active()) {
       return;
@@ -2180,7 +2647,7 @@ public final class OhMyRaspHooks {
       return;
     }
     Detection event = policyEvaluation.detection();
-    boolean blockScope = activeRequest(value) || allowNonRequestBlock;
+    boolean blockScope = blockScope(value, runtime.outsideRequestBlocks());
     if (!policyEvaluation.controlled()
         && (legacyBlockEnabled() || runtime.mode() == DetectionMode.BLOCK)
         && blockScope) {
@@ -2189,10 +2656,7 @@ public final class OhMyRaspHooks {
     if (forceBlockEnabled() && blockScope && !value.requiresExplicitRule()) {
       event = event.withAction("block");
     }
-    boolean willBlock =
-        runtime.blockingAllowed()
-            && "block".equalsIgnoreCase(event.action())
-            && (activeRequest(event) || allowNonRequestBlock);
+    boolean willBlock = runtime.blockingAllowed() && "block".equalsIgnoreCase(event.action()) && blockScope;
     if (!willBlock && repeatedObservation != null && repeatedObservation.test(event.algorithm())) return;
     Detection recorded = event;
     if (!willBlock && "block".equalsIgnoreCase(event.action())) {
@@ -2207,12 +2671,14 @@ public final class OhMyRaspHooks {
       report(recorded, started, ruleEvaluationUs);
       return;
     }
-    // Blocking is decided. Nothing that fails while the event is built, redacted or recorded, or
-    // while the response is redirected, stops the block: the event is lost, or the block is not
-    // redirected.
-    Detection blocked = recorded;
+    // Blocking is decided. Nothing that fails while the event is redacted, scrubbed or recorded, or
+    // while the response is redirected, stops the block: the block starts from the finding without
+    // its evidence, which nothing can fail to build, and every step that reads the evidence runs
+    // inside the try. A failure loses the event, or the evidence the block carries, or the redirect.
+    Detection blocked = withoutEvidence(recorded);
     try {
-      blocked = report(recorded, started, ruleEvaluationUs);
+      blocked = reportable(recorded);
+      record(blocked, started, ruleEvaluationUs);
     } catch (Throwable reportingFailure) {
       // The block below stands.
     }
@@ -2225,17 +2691,67 @@ public final class OhMyRaspHooks {
     throw new OhMyRaspBlockException(blocked, redirected);
   }
 
-  /** Records {@code event} without the evidence a response finding must not carry; returns what was recorded. */
+  /** Records {@code event} as {@link #reportable} makes it; returns what was recorded. */
   private static Detection report(Detection event, long started, long ruleEvaluationUs) {
-    Detection recorded = event;
+    Detection recorded = reportable(event);
+    record(recorded, started, ruleEvaluationUs);
+    return recorded;
+  }
+
+  private static void record(Detection reportable, long started, long ruleEvaluationUs) {
+    events().record(redactHttpObservation(reportable), elapsedMicros(started), ruleEvaluationUs);
+  }
+
+  /**
+   * {@code event} as it leaves the agent, in the event and in the block exception: as its public view
+   * ({@link #publicView}), then without the URL credentials in its details ({@link #withoutUrlCredentials}), and
+   * without the evidence a response finding must not carry. On a request without a body the view keeps the
+   * details as the rule wrote them, and the credentials are removed from those. On a request with a body the view
+   * matches the operands to the inputs as the application built them and replaces the details with an allow-list;
+   * {@link BodyEvidence} removes the credentials from the one name and value it shows, before it cuts them.
+   */
+  private static Detection reportable(Detection event) {
+    java.util.function.UnaryOperator<Detection> replaced = scrubberForTesting;
+    Detection recorded = replaced != null ? replaced.apply(event) : withoutUrlCredentials(publicView(event));
     if ("response_dataLeak".equals(recorded.algorithm()) || "xss_echo".equals(recorded.algorithm())) {
       Map<String, String> evidence = "response_dataLeak".equals(recorded.algorithm())
           ? Map.of("kind", recorded.details().get("kind")) : Map.of("decision_basis", "verbatim_request_markup");
       recorded = new Detection(recorded.timestamp(), recorded.hook(), recorded.algorithm(), recorded.action(),
           recorded.confidence(), recorded.message(), RequestContext.empty(), evidence);
     }
-    events().record(redactHttpObservation(recorded), elapsedMicros(started), ruleEvaluationUs);
     return recorded;
+  }
+
+  /** Replaces the redaction and scrubbing of {@link #reportable} in a test; null in production. */
+  static volatile java.util.function.UnaryOperator<Detection> scrubberForTesting;
+
+  /**
+   * {@code event} with none of its evidence: no details, no request, and a message of the agent's own words. What a
+   * block carries when the evidence could not be made safe; building it reads nothing the application supplied.
+   */
+  static Detection withoutEvidence(Detection event) {
+    return new Detection(event.timestamp(), event.hook(), event.algorithm(), event.action(), event.confidence(),
+        "OhMyRasp blocked a " + event.algorithm() + " finding", RequestContext.empty(), Map.of());
+  }
+
+  /**
+   * The finding with the credentials of every URL in its details removed (user information, Oracle's
+   * {@code user/password@}, password-like parameters: {@link io.ohmyrasp.agent.util.Redaction#redactedUrls}), so a
+   * JDBC URL a pool configured never reaches the spool or the cloud with its password. The backports do the same.
+   */
+  private static Detection withoutUrlCredentials(Detection event) {
+    java.util.LinkedHashMap<String, String> details = null;
+    for (Map.Entry<String, String> entry : event.details().entrySet()) {
+      String value = entry.getValue();
+      String redacted = io.ohmyrasp.agent.util.Redaction.redactedUrls(value);
+      if (redacted != value && !java.util.Objects.equals(redacted, value)) {
+        if (details == null) details = new java.util.LinkedHashMap<>(event.details());
+        details.put(entry.getKey(), redacted);
+      }
+    }
+    if (details == null) return event;
+    return new Detection(event.timestamp(), event.hook(), event.algorithm(), event.action(),
+        event.confidence(), event.message(), event.request(), details);
   }
 
   private static Detection redactHttpObservation(Detection event) {
@@ -2249,6 +2765,19 @@ public final class OhMyRaspHooks {
     var request = new RequestContext(event.request().method(), event.request().uri(), "", Map.of(), Map.of());
     return new Detection(event.timestamp(), event.hook(), event.algorithm(), event.action(),
         event.confidence(), event.message(), request, details);
+  }
+
+  /**
+   * Whether {@code finding} may block, by the one definition both engines use ({@link OutsideRequest}): always when it
+   * carries request evidence (an active request context, which a hook may have carried from the request that started
+   * the operation onto the thread doing it); outside a request, by its class ({@link OutsideRequest#scopeHere}):
+   * intrinsic always, request-only never, context-dependent when {@code outsideRequestBlocks}.
+   */
+  static boolean blockScope(Detection finding, boolean outsideRequestBlocks) {
+    if (finding == null) return false;
+    boolean requestEvidence = activeRequest(finding);
+    int scope = OutsideRequest.scopeHere(finding.algorithm(), finding.details().get("decision_basis"), requestEvidence);
+    return OutsideRequest.mayBlock(scope, requestEvidence, outsideRequestBlocks);
   }
 
   private static boolean activeRequest(Detection detection) {
@@ -2308,10 +2837,28 @@ public final class OhMyRaspHooks {
     return URLEncoder.encode(value == null ? "" : value, StandardCharsets.UTF_8);
   }
 
-  private static void quiet(String hook, Throwable throwable) {
-    JsonEventLogger.get().reportError(hook, throwable);
+  static void quiet(String hook, Throwable throwable) {
+    JsonEventLogger events = events();
+    if (events.discards()) {
+      return; // the warm-up's logger: nothing is reported anywhere
+    }
+    // A failure on a request with a body may quote it (a sink's exception message): its class alone.
+    Throwable shown = requestBodyMayBeIn() ? new IllegalStateException(throwable.getClass().getName()) : throwable;
+    events.reportError(hook, shown);
     if (Boolean.getBoolean("ohmyrasp.debug")) {
-      System.err.println("[OHMYRASP] hook failure in " + hook + ": " + throwable);
+      System.err.println("[OHMYRASP] hook failure in " + hook + ": " + shown);
+    }
+  }
+
+  /** Whether the request this thread serves has a body, recorded or parsed by the container (see publicView). */
+  private static boolean requestBodyMayBeIn() {
+    try {
+      RequestBody current = RequestBodyCapture.current();
+      if (current != null && current.version() > 0) return true;
+      RequestContext context = REQUEST.get();
+      return context != null && context.bodyDerived();
+    } catch (Throwable unknown) {
+      return true;
     }
   }
 }

@@ -1,5 +1,6 @@
 package io.ohmyrasp.agent.xml;
 
+import io.ohmyrasp.agent.hook.HookActivation;
 import java.lang.ref.ReferenceQueue;
 import java.lang.ref.WeakReference;
 import java.net.URI;
@@ -33,6 +34,7 @@ public final class XmlCatalogResolution {
   // Only the next external subset can use a root observation. A new document,
   // entity closure, parser reuse, or collection invalidates it.
   public static Object enter(Object manager, String name) {
+    if (HookActivation.inactive()) return null;
     if (DOCUMENTS.isEmpty()) return null;
     ManagerKey key;
     while ((key = (ManagerKey) COLLECTED.poll()) != null) DOCUMENTS.remove(key);
@@ -41,6 +43,7 @@ public final class XmlCatalogResolution {
   }
 
   public static void opened(Object manager, String name, URL target) {
+    if (HookActivation.inactive()) return;
     if (!"[xml]".equals(name)) return;
     Entry root = entry(target);
     if (root != null && parserCaller("setupCurrentEntity")) {
@@ -49,6 +52,7 @@ public final class XmlCatalogResolution {
   }
 
   public static void resolved(Object parserInput, String requestedId, String baseId) {
+    if (HookActivation.inactive()) return;
     if (parserInput != null && remoteIdentifier(requestedId, baseId) && parserCaller("resolveEntity")) {
       REMAPPED.set(new WeakReference<Object>(parserInput));
     } else {

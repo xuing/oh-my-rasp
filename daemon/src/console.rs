@@ -19,7 +19,9 @@ use axum::routing::get;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 
-use crate::control::{ControlState, ControlStatus, ControlTooLarge, Controller, Mode};
+use crate::control::{
+    ControlState, ControlStatus, ControlTooLarge, Controller, Mode, OutsideRequest,
+};
 use crate::store::EventStore;
 use crate::uploader::{CloudStatus, CloudStatusHandle};
 
@@ -148,6 +150,7 @@ async fn stats(State(state): State<Arc<AppState>>) -> Json<Value> {
     Json(json!({
         "stats": state.store.stats(),
         "cloud": state.cloud_status.snapshot(),
+        "outside_request": control.outside_request_view(),
         "control": control,
         "control_status": control_status,
         "spool_path": state.spool_path,
@@ -163,8 +166,18 @@ async fn control_get(State(state): State<Arc<AppState>>) -> Json<ControlState> {
 #[derive(Debug, Deserialize)]
 struct ControlUpdate {
     mode: Option<String>,
+    /// The host's `outside_request`: absent leaves it, null clears it (the agents return to the
+    /// cloud's value or their start-up value), `block` or `log` sets it; anything else is a 400.
+    #[serde(default, deserialize_with = "present")]
+    outside_request: Option<Value>,
     #[serde(default)]
     algorithms: Option<BTreeMap<String, bool>>,
+}
+
+/// A member that is present, null included: `Some(Value::Null)` for null, `None` only when absent
+/// (the field's default).
+fn present<'de, D: serde::Deserializer<'de>>(deserializer: D) -> Result<Option<Value>, D::Error> {
+    Value::deserialize(deserializer).map(Some)
 }
 
 #[derive(Debug, Serialize)]
@@ -190,9 +203,26 @@ async fn control_post(
         },
         None => None,
     };
+    let outside_request = match &update.outside_request {
+        None => None,
+        Some(Value::Null) => Some(None),
+        Some(raw) => match raw.as_str().and_then(OutsideRequest::parse) {
+            Some(value) => Some(Some(value)),
+            None => {
+                return Err((
+                    StatusCode::BAD_REQUEST,
+                    Json(ApiError {
+                        error: format!(
+                            "invalid outside_request: {raw} (expected block, log, or null to clear the host's setting)"
+                        ),
+                    }),
+                ));
+            }
+        },
+    };
     state
         .controller
-        .update(mode, update.algorithms)
+        .update_with(mode, outside_request, update.algorithms)
         .map(Json)
         .map_err(|err| {
             // A change that would make the document larger than the agents read conflicts with
@@ -345,5 +375,81 @@ mod tests {
             json!(crate::control::MAX_CONTROL_BYTES)
         );
         assert!(refused["size_bytes"].as_u64().unwrap() > refused["limit_bytes"].as_u64().unwrap());
+    }
+
+    async fn post_control(app: Router, body: Value) -> (StatusCode, Value) {
+        let resp = app
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/api/control")
+                    .header(CONTENT_TYPE, "application/json")
+                    .body(Body::from(body.to_string()))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        let status = resp.status();
+        let bytes = axum::body::to_bytes(resp.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        (status, serde_json::from_slice(&bytes).unwrap())
+    }
+
+    /// The console sets the host's `outside_request` as it sets the mode, clears it with null,
+    /// leaves it when the member is absent, and refuses anything else, a non-string included, with
+    /// 400 instead of writing it. `/api/stats` says what the agents apply and who decides it.
+    #[tokio::test]
+    async fn the_console_sets_clears_and_refuses_outside_request() {
+        let state = test_state();
+        let app = router(state.clone());
+        assert!(
+            get_json(app.clone(), "/api/control")
+                .await
+                .get("outside_request")
+                .is_none(),
+            "no host setting until the host sets one"
+        );
+        assert_eq!(
+            get_json(app.clone(), "/api/stats").await["outside_request"]["effective"],
+            "start-up"
+        );
+
+        let (status, body) = post_control(app.clone(), json!({ "outside_request": "LOG" })).await;
+        assert_eq!(status, StatusCode::OK);
+        assert_eq!(body["outside_request"], "log");
+        assert_eq!(body["mode"], "monitor", "the mode is left as it was");
+        let view = get_json(app.clone(), "/api/stats").await["outside_request"].clone();
+        assert_eq!(
+            (view["host"].clone(), view["effective"].clone()),
+            (json!("log"), json!("log"))
+        );
+
+        let (status, _) = post_control(app.clone(), json!({ "mode": "block" })).await;
+        assert_eq!(status, StatusCode::OK);
+        assert_eq!(
+            state.controller.snapshot().host_outside_request(),
+            crate::control::HostOutsideRequest::Set(OutsideRequest::Log),
+            "absent: left as it was"
+        );
+
+        for refused in [json!("sometimes"), json!(true), json!(7), json!({})] {
+            let (status, body) =
+                post_control(app.clone(), json!({ "outside_request": refused })).await;
+            assert_eq!(status, StatusCode::BAD_REQUEST, "{refused}");
+            assert!(
+                body["error"].as_str().unwrap().contains("outside_request"),
+                "{refused}"
+            );
+        }
+        assert_eq!(
+            state.controller.snapshot().host_outside_request(),
+            crate::control::HostOutsideRequest::Set(OutsideRequest::Log),
+            "unchanged"
+        );
+
+        let (status, body) = post_control(app.clone(), json!({ "outside_request": null })).await;
+        assert_eq!(status, StatusCode::OK);
+        assert!(body.get("outside_request").is_none(), "cleared: {body}");
     }
 }

@@ -4,32 +4,41 @@ import java.lang.reflect.InvocationHandler;
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
 import java.lang.reflect.Proxy;
+import java.util.Collections;
+import java.util.IdentityHashMap;
+import java.util.Set;
 import java.util.jar.JarFile;
 
 /**
  * A probe agent ({@code -javaagent:flaky.jar=AGENT-JAR}) that starts AGENT-JAR's launcher entry with the JVM's
  * Instrumentation, except that the fifth addTransformer throws: a failure after the line has started. The start
- * must undo itself. It prints how many transformers were added and removed, the agent threads left, and whether
- * the bootstrap-defined backport runtime counts as started.
+ * must undo itself. It prints how many transformers were added and how many of them are still registered, the agent
+ * threads left, whether the bootstrap-defined backport runtime still runs and whether the hooks are on. (The undo
+ * also removes the refused one, which it recorded before it asked to add it: a no-op, not counted here.)
  */
 public class FlakyInstrumentationAgent {
   public static void premain(String agentJar, final Instrumentation real) throws Exception {
-    final int[] counts = new int[2];
+    final int[] added = new int[1];
+    final Set<Object> registered = Collections.newSetFromMap(new IdentityHashMap<Object, Boolean>());
     Instrumentation flaky = (Instrumentation) Proxy.newProxyInstance(FlakyInstrumentationAgent.class.getClassLoader(),
         new Class<?>[] {Instrumentation.class}, new InvocationHandler() {
           public Object invoke(Object proxy, Method method, Object[] args) throws Throwable {
-            if (method.getName().equals("addTransformer") && ++counts[0] == 5) {
-              counts[0]--;
+            if (method.getName().equals("addTransformer") && added[0] == 4) {
               throw new IllegalStateException("the fifth transformer is refused by the probe");
             }
-            if (method.getName().equals("removeTransformer")) {
-              counts[1]++;
-            }
+            Object result;
             try {
-              return method.invoke(real, args);
+              result = method.invoke(real, args);
             } catch (InvocationTargetException e) {
               throw e.getCause();
             }
+            if (method.getName().equals("addTransformer")) {
+              added[0]++;
+              registered.add(args[0]);
+            } else if (method.getName().equals("removeTransformer")) {
+              registered.remove(args[0]);
+            }
+            return result;
           }
         });
     String entry;
@@ -48,15 +57,18 @@ public class FlakyInstrumentationAgent {
         threads++;
       }
     }
-    Object started;
+    Object running;
+    Object active;
     try {
-      Method isStarted = Class.forName("io.ohmyrasp.agent.backport.RaspRuntime", false, null).getDeclaredMethod("isStarted");
-      isStarted.setAccessible(true);
-      started = isStarted.invoke(null);
+      Method isRunning = Class.forName("io.ohmyrasp.agent.backport.RaspRuntime", false, null).getDeclaredMethod("isRunning");
+      isRunning.setAccessible(true);
+      running = isRunning.invoke(null);
+      active = Class.forName("io.ohmyrasp.agent.hook.HookActivation", false, null).getMethod("active").invoke(null);
     } catch (ClassNotFoundException primary) {
-      started = "n/a";
+      running = "n/a";
+      active = "n/a";
     }
-    System.out.println("flaky: added=" + counts[0] + " removed=" + counts[1] + " threads=" + threads
-        + " runtime started=" + started);
+    System.out.println("flaky: added=" + added[0] + " left=" + registered.size() + " threads=" + threads
+        + " runtime running=" + running + " hooks active=" + active);
   }
 }

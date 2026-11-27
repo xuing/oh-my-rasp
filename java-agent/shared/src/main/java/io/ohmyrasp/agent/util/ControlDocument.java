@@ -39,17 +39,96 @@ public final class ControlDocument {
    * @throws IllegalArgumentException when {@code text} is not exactly one well-formed JSON object
    */
   public static String topLevelString(String text, String key) {
+    Object value = topLevelValues(text, new String[] {key})[0];
+    return value instanceof String ? (String) value : null;
+  }
+
+  /** What {@link #topLevelValues} returns for a member whose value is not a string and not null. */
+  public static final Object NOT_A_STRING = new Object();
+
+  /**
+   * The values of {@code keys} in the top-level object of {@code text}, in the same order: the string for a string
+   * value, null for a key that is absent or whose value is JSON null, and {@link #NOT_A_STRING} for any other value.
+   *
+   * @throws IllegalArgumentException when {@code text} is not exactly one well-formed JSON object
+   */
+  public static Object[] topLevelValues(String text, String[] keys) {
     if (text == null) {
       throw new IllegalArgumentException("no control document");
     }
     ControlDocument document = new ControlDocument(text);
     document.skipWhitespace();
-    String value = document.topLevelObject(key);
+    Object[] values = document.topLevelObject(keys);
     document.skipWhitespace();
     if (document.offset != text.length()) {
       throw new IllegalArgumentException("text after the control object");
     }
+    return values;
+  }
+
+  /**
+   * The value at {@code path} in {@code text}, a JSON object: {@code path[0]} a member of the top-level object,
+   * each next name a member of the object the previous one holds. As {@link #topLevelValues} returns it: the string
+   * for a string value, null when a member on the path is absent, is not an object where the path goes on, or holds
+   * JSON null, and {@link #NOT_A_STRING} for any other value at the end of the path. Where a name occurs more than
+   * once in one object, the last occurrence counts, as for the top level.
+   *
+   * @throws IllegalArgumentException when {@code text} is not exactly one well-formed JSON object
+   */
+  public static Object valueAt(String text, String[] path) {
+    if (text == null) {
+      throw new IllegalArgumentException("no JSON document");
+    }
+    ControlDocument document = new ControlDocument(text);
+    document.skipWhitespace();
+    Object value = document.objectAt(path, 0, 1);
+    document.skipWhitespace();
+    if (document.offset != text.length()) {
+      throw new IllegalArgumentException("text after the JSON object");
+    }
     return value;
+  }
+
+  /** Reads the object at the offset; the value at {@code path[index..]} inside it. */
+  private Object objectAt(String[] path, int index, int depth) {
+    expect('{');
+    Object found = null;
+    skipWhitespace();
+    if (take('}')) {
+      return null;
+    }
+    while (true) {
+      skipWhitespace();
+      String name = string();
+      skipWhitespace();
+      expect(':');
+      skipWhitespace();
+      boolean onPath = index < path.length && name.equals(path[index]);
+      if (onPath && index == path.length - 1) {
+        if (peek() == '"') {
+          found = string();
+        } else {
+          found = text.startsWith("null", offset) ? null : NOT_A_STRING;
+          value(depth);
+        }
+      } else if (onPath && peek() == '{') {
+        if (depth >= MAX_DEPTH) {
+          throw new IllegalArgumentException("JSON document nested too deeply");
+        }
+        found = objectAt(path, index + 1, depth + 1);
+      } else {
+        if (onPath) {
+          found = null;
+        }
+        value(depth);
+      }
+      skipWhitespace();
+      if (take(',')) {
+        continue;
+      }
+      expect('}');
+      return found;
+    }
   }
 
   /**
@@ -114,28 +193,29 @@ public final class ControlDocument {
     }
   }
 
-  private String topLevelObject(String key) {
+  private Object[] topLevelObject(String[] keys) {
+    Object[] found = new Object[keys.length];
     expect('{');
     skipWhitespace();
     if (take('}')) {
-      return null;
+      return found;
     }
-    String found = null;
     while (true) {
       skipWhitespace();
       String name = string();
       skipWhitespace();
       expect(':');
       skipWhitespace();
+      Object value;
       if (peek() == '"') {
-        String value = string();
-        if (name.equals(key)) {
-          found = value;
-        }
+        value = string();
       } else {
+        value = text.startsWith("null", offset) ? null : NOT_A_STRING;
         value(1);
-        if (name.equals(key)) {
-          found = null;
+      }
+      for (int i = 0; i < keys.length; i++) {
+        if (name.equals(keys[i])) {
+          found[i] = value;
         }
       }
       skipWhitespace();

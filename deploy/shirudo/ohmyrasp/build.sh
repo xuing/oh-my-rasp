@@ -1,6 +1,8 @@
 #!/bin/sh
 # Build the universal OhMyRASP shirudo upatch jar (every Java line, 8 to 25) and optional .bee package:
-#   deploy/shirudo/ohmyrasp/build.sh [--jar-only] [--mode block|monitor] <version> [bpm build options...]
+#   deploy/shirudo/ohmyrasp/build.sh [--jar-only] [--mode block|monitor] [--outside-request block|log] <version> [bpm build options...]
+# --outside-request log bakes outside_request=log: a finding on a thread that serves no HTTP request is logged and
+# the operation runs; inside a request nothing changes. The default, block, blocks it as inside one.
 
 set -eu
 
@@ -11,9 +13,10 @@ gradle_task=":agent-all:shirudoUpatchJar"
 
 jar_only=0
 mode=block
+outside_request=block
 
 usage() {
-	echo "usage: $0 [--jar-only] [--mode block|monitor] <version> [bpm build options...]" >&2
+	echo "usage: $0 [--jar-only] [--mode block|monitor] [--outside-request block|log] <version> [bpm build options...]" >&2
 }
 
 while [ $# -gt 0 ]; do
@@ -29,6 +32,15 @@ while [ $# -gt 0 ]; do
 		;;
 	--mode=*)
 		mode=${1#--mode=}
+		shift
+		;;
+	--outside-request)
+		[ $# -ge 2 ] || { usage; exit 2; }
+		outside_request=$2
+		shift 2
+		;;
+	--outside-request=*)
+		outside_request=${1#--outside-request=}
 		shift
 		;;
 	-h|--help)
@@ -58,6 +70,14 @@ block|monitor) ;;
 	;;
 esac
 
+case "$outside_request" in
+block|log) ;;
+*)
+	echo "invalid --outside-request '$outside_request': expected block or log" >&2
+	exit 2
+	;;
+esac
+
 if [ "$jar_only" -eq 0 ]; then
 	[ $# -ge 1 ] || { usage; exit 2; }
 	version=$1
@@ -74,6 +94,7 @@ if command -v gradle >/dev/null 2>&1; then
 		OHMYRASP_SHIRUDO_MODE="$mode" gradle --no-daemon \
 			"$gradle_task" \
 			"-PshirudoMode=$mode" \
+			"-PshirudoOutsideRequest=$outside_request" \
 			"-Pohmyrasp.shirudo.mode=$mode" \
 			"-Pohmyrasp.mode=$mode"
 	)
@@ -95,6 +116,7 @@ else
 		gradle --no-daemon --no-problems-report --project-cache-dir /tmp/gradle-proj-pkg \
 		"$gradle_task" \
 		"-PshirudoMode=$mode" \
+		"-PshirudoOutsideRequest=$outside_request" \
 		"-Pohmyrasp.shirudo.mode=$mode" \
 		"-Pohmyrasp.mode=$mode"
 fi

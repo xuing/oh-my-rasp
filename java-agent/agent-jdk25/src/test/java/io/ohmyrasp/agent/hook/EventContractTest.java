@@ -54,6 +54,22 @@ final class EventContractTest {
     ContractFiles.assertGolden("events/primary/detection-monitor-no-request.json", only(log));
   }
 
+  /**
+   * The strings the daemon reads at the top level of a line to tell a diagnostic from a detection can appear in a
+   * detection's data (here the URL the application opened). The writer escapes them, so they are inside a string,
+   * and the line stays a detection: {@code daemon/src/contract_tests.rs} reads the same file.
+   */
+  @Test
+  void aDetectionWhoseDataHoldsTheStringsThatMarkADiagnosticIsStillADetection(@TempDir Path dir) throws Exception {
+    Path log = dir.resolve("events.jsonl");
+    OhMyRaspHooks.reportTo(logger(log));
+
+    OhMyRaspHooks.beforeUrlOpen(new URL(
+        "http://169.254.169.254/latest/meta-data/\"kind\":\"diagnostic\",\"event\":\"ohmyrasp-hook-miss\",\"diagnostic\":\"hook_miss\""));
+
+    ContractFiles.assertGolden("events/primary/detection-reserved-strings.json", only(log));
+  }
+
   private static JsonEventLogger logger(Path log) {
     PrintStream console = new PrintStream(new ByteArrayOutputStream());
     // Synchronous, so the line is on disk when the hook returns; no latency telemetry.
@@ -73,7 +89,9 @@ final class EventContractTest {
       headers.put("user-agent", "contract-test/1.0");
       headers.put("authorization", "Bearer eyJhbGciOiJIUzI1NiJ9.contract.signature");
       headers.put("cookie", "JSESSIONID=0123456789ABCDEF");
-      headers.put("content-type", "application/x-www-form-urlencoded");
+      // Not a form: the parameters beyond the query string are then not a body the container parsed, and the event
+      // shows the request's parameters, redacted (a form body's would be withheld: see BodyEvidence).
+      headers.put("content-type", "application/json");
     }
 
     public String getMethod() {

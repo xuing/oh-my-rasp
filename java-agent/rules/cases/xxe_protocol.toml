@@ -6,9 +6,8 @@ op = "xml.parse"
 args = { document = "<?xml version=\"1.0\"?><!DOCTYPE r [<!ENTITY x SYSTEM \"http://127.0.0.1:{port}/entity.txt\">]><r>&x;</r>" }
 
 [case.primary]
-effect = "log"
+effect = "block"
 rule = "xxe_protocol"
-why = "the primary blocks this only inside an HTTP request; outside one it logs"
 
 [case.backport]
 effect = "block"
@@ -56,9 +55,8 @@ op = "xml.parse"
 args = { document = "<?xml version=\"1.0\"?><!DOCTYPE r SYSTEM \"http://127.0.0.1:{port}/ext.dtd\"><r>&remote;</r>" }
 
 [case.primary]
-effect = "log"
+effect = "block"
 rule = "xxe_protocol"
-why = "the primary blocks this only inside an HTTP request; outside one it logs"
 
 [case.backport]
 effect = "block"

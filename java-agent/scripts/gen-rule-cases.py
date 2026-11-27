@@ -30,6 +30,8 @@ def cell(text: str) -> str:
 
 def describe_input(case: rule_cases.Case) -> str:
     parts = []
+    if case.control:
+        parts.append("control " + ", ".join(f"{k}={v}" for k, v in case.control.items()))
     if case.request:
         r = case.request
         target = r["uri"] + (f"?{r['query']}" if r.get("query") else "")

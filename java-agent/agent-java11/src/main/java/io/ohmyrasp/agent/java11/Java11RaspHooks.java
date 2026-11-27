@@ -26,6 +26,50 @@ public final class Java11RaspHooks {
     BackportHooks.afterHttpRequest();
   }
 
+  public static Object enterBodyRead(Object source) {
+    return BackportHooks.enterBodyRead(source);
+  }
+
+  public static Object enterBodyRead(Object source, java.nio.Buffer buffer) {
+    return BackportHooks.enterBodyRead(source, buffer);
+  }
+
+  public static void abortBodyRead() {
+    BackportHooks.abortBodyRead();
+  }
+
+  public static void exitBodyRead(int result, Object token) {
+    BackportHooks.exitBodyRead(result, token);
+  }
+
+  public static void exitBodyRead(int result, Object token, byte[] buffer, int offset) {
+    BackportHooks.exitBodyRead(result, token, buffer, offset);
+  }
+
+  public static void exitBodyRead(int result, Object token, java.nio.ByteBuffer buffer) {
+    BackportHooks.exitBodyRead(result, token, buffer);
+  }
+
+  public static void exitBodyRead(byte[] result, Object token, boolean toEnd) {
+    BackportHooks.exitBodyRead(result, token, toEnd);
+  }
+
+  public static void exitBodyChars(int result, Object token) {
+    BackportHooks.exitBodyChars(result, token);
+  }
+
+  public static void exitBodyChars(int result, Object token, char[] buffer, int offset) {
+    BackportHooks.exitBodyChars(result, token, buffer, offset);
+  }
+
+  public static void exitBodyChars(int result, Object token, java.nio.CharBuffer buffer) {
+    BackportHooks.exitBodyChars(result, token, buffer);
+  }
+
+  public static void exitBodyLine(String result, Object token) {
+    BackportHooks.exitBodyLine(result, token);
+  }
+
   public static void afterMultipartAccess(Object source, Object result, boolean iterator) {
     BackportHooks.afterMultipartAccess(source, result, iterator);
   }
@@ -126,8 +170,8 @@ public final class Java11RaspHooks {
     BackportHooks.captureDirectoryWalk(walker, path);
   }
 
-  public static void beginDirectoryVisit(Object walker, java.nio.file.Path path) {
-    BackportHooks.beginDirectoryVisit(walker, path);
+  public static Object beginDirectoryVisit(Object walker, java.nio.file.Path path) {
+    return BackportHooks.beginDirectoryVisit(walker, path);
   }
 
   public static void afterFileList(String[] entries, String path) {
@@ -179,12 +223,12 @@ public final class Java11RaspHooks {
     BackportHooks.beforeUnixFileOpen(path, read, directoryFd, noFollowFinal, creatingNew);
   }
 
-  public static void beginNioRead(Object path) {
-    BackportHooks.beginNioRead(path);
+  public static Object beginNioRead(Object path) {
+    return BackportHooks.beginNioRead(path);
   }
 
-  public static void beginNioChannel(Object path, Object options) {
-    BackportHooks.beginNioChannel(path, options);
+  public static Object beginNioChannel(Object path, Object options) {
+    return BackportHooks.beginNioChannel(path, options);
   }
 
   public static void beforeNioFileRead(Object path) {
@@ -379,8 +423,8 @@ public final class Java11RaspHooks {
     BackportHooks.rethrowIfBlock(throwable);
   }
 
-  public static void beginAttachmentReference(String id) {
-    BackportHooks.beginAttachmentReference(id);
+  public static Object beginAttachmentReference(String id) {
+    return BackportHooks.beginAttachmentReference(id);
   }
 
   public static void beforeXmlEntity(String name, Object source) {

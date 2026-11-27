@@ -100,6 +100,22 @@ class Run:
         return self
 
 
+# The module whose preload list each line reads from the JAR it was started from.
+PRELOAD_MODULES = {agent_track.PRIMARY: "agent-jdk25", "17": "agent-java17", "11": "agent-java11", "8": "agent-java8"}
+
+
+def jar_without(source, entry, destination):
+    """A copy of the JAR without one entry."""
+    with zipfile.ZipFile(source) as original, zipfile.ZipFile(destination, "w", zipfile.ZIP_DEFLATED) as copy:
+        names = original.namelist()
+        if entry not in names:
+            raise SystemExit(f"{source.name} has no {entry}")
+        for name in names:
+            if name != entry:
+                copy.writestr(original.getinfo(name), original.read(name))
+    return destination
+
+
 def failing_entry_jar(universal, track, work):
     """The real launcher and universal entry, with a line entry for `track` whose premain throws."""
     package, _, name = LINE_ENTRIES[track].rpartition(".")
@@ -195,7 +211,7 @@ def main():
 
         if tested != agent_track.PRIMARY:
             # A failure after the line has started (the fifth transformer is refused) undoes the start: the
-            # transformers added are removed, the runtime's threads stop and it counts as not started.
+            # transformers added are removed, the runtime's threads stop, it no longer runs and the hooks stay off.
             classes = work / "flaky-classes"
             classes.mkdir()
             subprocess.run(["javac", "-d", str(classes), str(Path(__file__).with_name("FlakyInstrumentationAgent.java"))],
@@ -212,7 +228,7 @@ def main():
                             [tested], extra_classpath=[agent])
             run.expect([], False, [FAILED])
             report = next((line for line in run.out.splitlines() if line.startswith("flaky: ")), "")
-            if report != "flaky: added=4 removed=4 threads=0 runtime started=false":
+            if report != "flaky: added=4 left=0 threads=0 runtime running=false hooks active=false":
                 run.fail(f"expected the start undone, saw '{report}'")
 
         failing = failing_entry_jar(universal, expected, work)
@@ -223,24 +239,39 @@ def main():
                 agent_track.LINE_NAMES[expected], "java.lang.NoClassDefFoundError", FAILURE_MESSAGE,
                 "inactive or incomplete"):
             run.fail(f"unexpected failure details {line}")
+        # A line reads the list of the classes it must load before it registers a transformer from the JAR it was
+        # started from. Without it the start fails before any transformer is registered: the launcher says so, the
+        # JVM runs, and no hook is active.
+        for jar, line in ((agent, tested), (universal, expected)):
+            entry = f"META-INF/ohmyrasp/preload/{PRELOAD_MODULES[line]}.txt"
+            stripped = jar_without(jar, entry, work / f"no-list-{line}-{jar.name}")
+            run = probe.run(f"{jar.name} without its preload list fails the start cleanly", AGENT_OPTIONS,
+                            [stripped], [line])
+            run.expect([], False, [FAILED])
+            failure = run.launcher[0]
+            if failure["line"] != agent_track.LINE_NAMES[line] or entry not in failure["message"]:
+                run.fail(f"unexpected failure details {failure}")
         probe.run("after a failed start, a later JAR starts no line", AGENT_OPTIONS, [failing, universal], []) \
             .expect([], None, [FAILED, EARLIER_FAILED])
 
         probe.run("agentmain alone starts the fitting line", AGENT_OPTIONS, [], [expected, "attach", str(universal)]) \
             .expect([expected], True, [])
+        # The agent JAR is also on the application class path, and the application reaches the line's classes there
+        # before the attach. The start must not use that copy: the injected calls of the application's classes would
+        # reach it, and on the primary its activation flag is never turned on. It fails, names the class and its
+        # loader, and the JVM runs unprotected. (A backport's runtime can also be started there; the primary's start
+        # needs an Instrumentation, which the application does not have.)
+        copy_cases = [("touch-hooks-then-attach", "a hook of the class-path copy was called", False)]
         if tested != agent_track.PRIMARY:
-            # The agent JAR is also on the application class path, and the application reaches the line's classes
-            # there before the attach. The start must not use that copy: the injected calls reach the bootstrap
-            # one. It fails, names the class and its loader, and the JVM runs unprotected.
-            for mode, what, blocked in (("touch-hooks-then-attach", "a hook of the class-path copy was called", False),
-                                        ("start-copy-then-attach", "the class-path copy of the line was started", None)):
-                run = probe.run(f"an attach after {what} fails cleanly", AGENT_OPTIONS, [],
-                                [tested, mode, str(agent)], extra_classpath=[agent])
-                run.expect([], blocked, [FAILED])
-                failure = run.launcher[0]
-                if (failure["exception"] != "java.lang.IllegalStateException"
-                        or "not the bootstrap loader" not in failure["message"]):
-                    run.fail(f"unexpected failure details {failure}")
+            copy_cases.append(("start-copy-then-attach", "the class-path copy of the line was started", None))
+        for mode, what, blocked in copy_cases:
+            run = probe.run(f"an attach after {what} fails cleanly", AGENT_OPTIONS, [],
+                            [tested, mode, str(agent)], extra_classpath=[agent])
+            run.expect([], blocked, [FAILED])
+            failure = run.launcher[0]
+            if (failure["exception"] != "java.lang.IllegalStateException"
+                    or "not the bootstrap loader" not in failure["message"]):
+                run.fail(f"unexpected failure details {failure}")
         probe.run("two racing attaches start one line", AGENT_OPTIONS, [],
                   [expected, "attach", str(universal), str(universal)]).expect([expected], True, [ACTIVE])
         probe.run("agentmain after premain starts nothing", AGENT_OPTIONS, [universal],

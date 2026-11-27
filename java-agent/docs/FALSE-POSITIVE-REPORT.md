@@ -5,7 +5,7 @@
 
 ## Method
 
-A curated corpus of **194** benign-but-plausible inputs across **26** detector categories is run through the engine. Each input is presented with a realistic request context; where a value would be user-supplied it is placed in a request parameter so taint-aware detectors evaluate it as in production. A *false positive* is any detector returning a detection for legitimate input. This is a detector-precision probe on benign traffic, **not** a production-traffic false-positive rate.
+A curated corpus of **206** benign-but-plausible inputs across **27** detector categories is run through the engine. Each input is presented with a realistic request context; where a value would be user-supplied it is placed in a request parameter so taint-aware detectors evaluate it as in production. A *false positive* is any detector returning a detection for legitimate input. This is a detector-precision probe on benign traffic, **not** a production-traffic false-positive rate.
 
 ## Result
 
@@ -36,8 +36,9 @@ A curated corpus of **194** benign-but-plausible inputs across **26** detector c
 | JDBC URLs | 5 | 0 | 0.0% |
 | Application response markup | 2 | 0 | 0.0% |
 | Request parameters | 8 | 0 | 0.0% |
+| Request bodies | 12 | 0 | 0.0% |
 | Base64 decoding | 8 | 0 | 0.0% |
-| **Overall** | **194** | **0** | **0.0%** |
+| **Overall** | **206** | **0** | **0.0%** |
 
 No false positives observed across the corpus.
 
@@ -305,6 +306,21 @@ No false positives observed across the corpus.
 - `<ul><li>one</li><li>two</li></ul>` (user input: `<ul><li>one</li><li>two</li></ul>`)
 - `prices: a < b, c > d` (user input: `prices: a < b, c > d`)
 - `online surveys and onboarding tips` (user input: `online surveys and onboarding tips`)
+
+**Request bodies**
+
+- `{"host":"127.0.0.1","count":1}`
+- `{"report":"weekly.csv","format":"pdf","name":"Ada Lovelace"}`
+- `{"note":"run `ls -la; cat /etc/hosts` && echo done | tee /tmp/x","tags":["ops...`
+- `{"query":"SELECT * FROM t WHERE a = 1 OR 1=1 -- comment","sort":"name desc"}`
+- `{"links":["https://example.com/docs?page=2&lang=en","http://localhost:8080/he...`
+- `{"paths":["/var/log/app/server.log","../shared/readme.md","C:\\Users\\me\\not...`
+- `{"template":"Hello ${name}, your order #{id} ships on {{date}}","expression":...`
+- `{"user":{"name":"Åsa","city":"東京","emoji":"😀"},"password":"correct horse"}`
+- `[{"op":"replace","path":"/lastname","value":"vulhub"},{"op":"add","path":"/ta...`
+- `host=127.0.0.1&report=weekly.csv&note=a%26b+%7C+c`
+- `<order><id>3</id><note>ships &amp; tracks</note><type>express</type></order>`
+- `weekly report: cat /etc/hosts is an example; DROP is a verb here`
 
 **Base64 decoding**
 

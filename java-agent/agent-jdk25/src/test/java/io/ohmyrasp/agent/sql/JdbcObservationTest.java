@@ -9,20 +9,20 @@ class JdbcObservationTest {
     Object first = new Object();
     Object second = new Object();
     String sql = "select 7";
-    JdbcObservation.enter(first, sql);
+    Object outer = JdbcObservation.enter(first, sql);
     try {
       assertFalse(JdbcObservation.repeated(first, sql));
-      JdbcObservation.enter(first, new String(sql));
+      Object delegated = JdbcObservation.enter(first, new String(sql));
       try { assertTrue(JdbcObservation.repeated(first, sql)); }
-      finally { JdbcObservation.exit(); }
-      JdbcObservation.enter(second, sql);
+      finally { JdbcObservation.exit(delegated); }
+      Object other = JdbcObservation.enter(second, sql);
       try { assertFalse(JdbcObservation.repeated(second, sql)); }
-      finally { JdbcObservation.exit(); }
+      finally { JdbcObservation.exit(other); }
       assertTrue(JdbcObservation.repeated(first, sql));
-    } finally { JdbcObservation.exit(); }
+    } finally { JdbcObservation.exit(outer); }
 
-    JdbcObservation.enter(first, sql);
+    Object again = JdbcObservation.enter(first, sql);
     try { assertFalse(JdbcObservation.repeated(first, sql)); }
-    finally { JdbcObservation.exit(); }
+    finally { JdbcObservation.exit(again); }
   }
 }

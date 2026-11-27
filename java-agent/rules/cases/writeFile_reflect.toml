@@ -6,9 +6,8 @@ op = "file.write"
 args = { path = "{tmp}/webapps/ROOT/r.jsp", content = "<%= 1 %>", api = "reflection" }
 
 [case.primary]
-effect = "log"
+effect = "block"
 rule = "writeFile_reflect"
-why = "the primary blocks this only inside an HTTP request; outside one it logs"
 
 [case.backport]
 effect = "block"

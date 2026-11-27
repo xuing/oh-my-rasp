@@ -2,6 +2,7 @@ package io.ohmyrasp.agent.runtime;
 
 import io.ohmyrasp.agent.policy.AgentPolicy;
 import io.ohmyrasp.agent.policy.SimpleJson;
+import io.ohmyrasp.agent.rules.OutsideRequest;
 import io.ohmyrasp.agent.util.ControlDocument;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -59,6 +60,8 @@ public final class AgentRuntime {
    */
   public static final class ControlState {
     private final DetectionMode mode; // null = unset → legacy behavior
+    // Whether a finding outside an HTTP request blocks; see OutsideRequest.
+    private final boolean outsideRequestBlocks;
     private final Map<String, Boolean> algorithms;
     private final long revision;
     private final AgentPolicy policy;
@@ -71,6 +74,7 @@ public final class AgentRuntime {
 
     private ControlState(
         DetectionMode mode,
+        boolean outsideRequestBlocks,
         Map<String, Boolean> algorithms,
         long revision,
         AgentPolicy policy,
@@ -79,6 +83,7 @@ public final class AgentRuntime {
         String appliedContent,
         String controlPolicyJson) {
       this.mode = mode;
+      this.outsideRequestBlocks = outsideRequestBlocks;
       this.algorithms = algorithms;
       this.revision = revision;
       this.policy = policy;
@@ -89,7 +94,8 @@ public final class AgentRuntime {
     }
 
     static ControlState startUp(DetectionMode mode) {
-      return new ControlState(mode, Map.of(), 0, AgentPolicy.absent(), "", PolicySource.NONE, null, null);
+      return new ControlState(
+          mode, OutsideRequest.DEFAULT_BLOCKS, Map.of(), 0, AgentPolicy.absent(), "", PolicySource.NONE, null, null);
     }
 
     public DetectionMode mode() {
@@ -104,6 +110,21 @@ public final class AgentRuntime {
     /** Whether blocking is permitted. Unset (legacy) and BLOCK permit it; MONITOR/OFF do not. */
     public boolean blockingAllowed() {
       return mode == null || mode == DetectionMode.BLOCK;
+    }
+
+    /**
+     * Whether a context-dependent finding with no request evidence blocks (when blocking is permitted and the finding
+     * asks for it): both the host's {@code outside_request} ({@link #hostOutsideRequestBlocks}) and the installed
+     * policy's {@code config.hardening.outside_request} allow it. Either one set to {@code log} makes it log, as either
+     * the top-level mode or the policy's hardening mode stops a hardening finding from blocking.
+     */
+    public boolean outsideRequestBlocks() {
+      return outsideRequestBlocks && policy.permitsOutsideRequestBlock();
+    }
+
+    /** The host's {@code outside_request}: the control document's top-level member, or the start-up value. */
+    public boolean hostOutsideRequestBlocks() {
+      return outsideRequestBlocks;
     }
 
     /** An algorithm is enabled unless the control file explicitly disables it. */
@@ -135,6 +156,8 @@ public final class AgentRuntime {
   private volatile ControlState state = ControlState.startUp(null);
   // The mode resolved by start, before any control file. Written once, before polling starts.
   private volatile DetectionMode startUpMode;
+  // The outside_request setting resolved by start, before any control file. Written once, before polling starts.
+  private volatile boolean startUpOutsideRequestBlocks = OutsideRequest.DEFAULT_BLOCKS;
   // Serialises the writers of {@link #state}: the poller, start-up and the direct-cloud client.
   private final Object stateLock = new Object();
 
@@ -146,7 +169,16 @@ public final class AgentRuntime {
   private volatile Integer argLatencySample;
 
   private Path controlPath;
+  // Guards poller and stopped against each other: a stop that runs while start is about to start the poller
+  // either sees the poller or keeps it from starting.
+  private final Object lifecycle = new Object();
+  // The control-file poller, while one runs. Guarded by lifecycle.
+  private Thread poller;
+  // Set by stop, under lifecycle and stateLock: no poller starts and no poll publishes state from then on.
+  private volatile boolean stopped;
   private final AtomicBoolean started = new AtomicBoolean();
+  // stop waits this long for the poller to end; a poll stuck in file-system I/O is left to finish without effect.
+  private static final long STOP_JOIN_MILLIS = 1000;
 
   private AgentRuntime(ShirudoDefaults defaults) {
     ShirudoDefaults active = defaults == null ? ShirudoDefaults.absent() : defaults;
@@ -174,14 +206,19 @@ public final class AgentRuntime {
   /**
    * Installs a policy from the direct-cloud client. The last source to install a policy owns it:
    * a later control-file policy replaces this one, and removing the control file leaves it in
-   * place, because the control file did not install it.
+   * place, because the control file did not install it. A stopped runtime installs nothing: the start that owned
+   * it failed and was undone.
    */
   public void installDirectPolicy(AgentPolicy policy, String agentKey) {
     synchronized (stateLock) {
+      if (stopped) {
+        return;
+      }
       ControlState current = state;
       state =
           new ControlState(
               current.mode,
+              current.outsideRequestBlocks,
               current.algorithms,
               current.revision,
               policy == null ? AgentPolicy.empty() : policy,
@@ -192,15 +229,19 @@ public final class AgentRuntime {
     }
   }
 
-  /** Initialise from configuration and start the control-file poller (idempotent). */
-  public void start(String agentArgs) {
-    start(agentArgs, this.defaults);
+  /**
+   * Initialise from configuration and start the control-file poller (idempotent).
+   *
+   * @return true when this call started the runtime, false when it had been started before
+   */
+  public boolean start(String agentArgs) {
+    return start(agentArgs, this.defaults);
   }
 
   /** Initialise from configuration and explicit {@link ShirudoDefaults} (idempotent). */
-  void start(String agentArgs, ShirudoDefaults defaults) {
+  boolean start(String agentArgs, ShirudoDefaults defaults) {
     if (!started.compareAndSet(false, true)) {
-      return;
+      return false;
     }
     ShirudoDefaults activeDefaults = defaults == null ? ShirudoDefaults.absent() : defaults;
     this.defaults = activeDefaults;
@@ -257,12 +298,24 @@ public final class AgentRuntime {
     if (resolvedMode == null && resolvedStandalone) {
       resolvedMode = DetectionMode.BLOCK;
     }
+    // Resolved like mode: each source on its own, only the baked value under lock_config.
+    Boolean resolvedOutside;
+    if (lockConfig) {
+      resolvedOutside = OutsideRequest.parse(activeDefaults.outsideRequest());
+    } else {
+      Boolean explicit = resolveValid(
+          agentArgs, OutsideRequest.CONTROL_KEY, OutsideRequest.PROPERTY, OutsideRequest.ENVIRONMENT, OutsideRequest::parse);
+      resolvedOutside = explicit != null ? explicit : OutsideRequest.parse(activeDefaults.outsideRequest());
+    }
+    boolean outsideBlocks = resolvedOutside != null ? resolvedOutside : OutsideRequest.DEFAULT_BLOCKS;
     synchronized (stateLock) {
       startUpMode = resolvedMode;
+      startUpOutsideRequestBlocks = outsideBlocks;
       ControlState current = state;
       state =
           new ControlState(
               resolvedMode,
+              outsideBlocks,
               current.algorithms,
               current.revision,
               current.policy,
@@ -274,12 +327,13 @@ public final class AgentRuntime {
 
     if (disableControl) {
       controlPath = null;
-      return;
+      return true;
     }
 
     controlPath = Path.of(controlSetting != null ? controlSetting : DEFAULT_CONTROL);
     reloadIfChanged();
     startPoller(pollIntervalMillis(agentArgs));
+    return true;
   }
 
   public boolean isStandalone() {
@@ -379,11 +433,50 @@ public final class AgentRuntime {
     return state.policy();
   }
 
+  /**
+   * Stops the control-file poller this runtime started, if any, for a start that fails after the runtime started:
+   * the JVM goes on without a thread of ours. From the moment it returns no poll changes the control state (a poll
+   * in progress finishes without publishing), a poller that start had not yet started never starts, and the poller
+   * has ended or, stuck in file-system I/O, is waited for at most {@value #STOP_JOIN_MILLIS} ms. The mode and the
+   * policy stay as the last read left them.
+   */
+  public void stop() {
+    Thread running;
+    synchronized (lifecycle) {
+      synchronized (stateLock) {
+        stopped = true;
+      }
+      running = poller;
+      poller = null;
+    }
+    if (running == null || running == Thread.currentThread()) {
+      return;
+    }
+    boolean interrupted = Thread.interrupted();
+    try {
+      running.interrupt();
+      running.join(STOP_JOIN_MILLIS);
+    } catch (InterruptedException e) {
+      interrupted = true;
+    } finally {
+      if (interrupted) {
+        Thread.currentThread().interrupt();
+      }
+    }
+  }
+
+  /** The control-file poller while one runs. Tests only. */
+  Thread pollerThread() {
+    synchronized (lifecycle) {
+      return poller;
+    }
+  }
+
   private void startPoller(long intervalMillis) {
     Thread poller =
         new Thread(
             () -> {
-              while (true) {
+              while (!stopped) {
                 try {
                   Thread.sleep(intervalMillis);
                   reloadIfChanged();
@@ -397,7 +490,13 @@ public final class AgentRuntime {
             },
             "ohmyrasp-control-poller");
     poller.setDaemon(true);
-    poller.start();
+    synchronized (lifecycle) {
+      if (stopped) {
+        return;
+      }
+      this.poller = poller;
+      poller.start();
+    }
   }
 
   /**
@@ -462,11 +561,15 @@ public final class AgentRuntime {
    */
   private void restoreStartUpSettings() {
     synchronized (stateLock) {
+      if (stopped) {
+        return;
+      }
       ControlState current = state;
       boolean ownsPolicy = current.policySource == PolicySource.CONTROL_FILE;
       state =
           new ControlState(
               startUpMode,
+              startUpOutsideRequestBlocks,
               Map.of(),
               0,
               ownsPolicy ? AgentPolicy.absent() : current.policy,
@@ -494,6 +597,9 @@ public final class AgentRuntime {
       return false;
     }
     synchronized (stateLock) {
+      if (stopped) {
+        return false;
+      }
       ControlState current = state;
       DetectionMode nextMode = current.mode;
       if (object.get("mode") instanceof String token) {
@@ -501,6 +607,15 @@ public final class AgentRuntime {
         if (parsedMode != null) {
           nextMode = parsedMode;
         }
+      }
+      // outside_request: absent or null returns the start-up value; a value nobody accepts changes
+      // nothing, as an unrecognised mode does.
+      boolean nextOutside = current.outsideRequestBlocks;
+      Object outsideValue = object.get(OutsideRequest.CONTROL_KEY);
+      if (outsideValue == null) {
+        nextOutside = startUpOutsideRequestBlocks;
+      } else if (outsideValue instanceof String token && OutsideRequest.parse(token) != null) {
+        nextOutside = OutsideRequest.parse(token);
       }
       Map<String, Boolean> nextAlgorithms = current.algorithms;
       if (object.get("algorithms") instanceof Map<?, ?> map) {
@@ -545,7 +660,7 @@ public final class AgentRuntime {
       }
       state =
           new ControlState(
-              nextMode, nextAlgorithms, nextRevision, nextPolicy, nextKey, nextSource, json, nextPolicyJson);
+              nextMode, nextOutside, nextAlgorithms, nextRevision, nextPolicy, nextKey, nextSource, json, nextPolicyJson);
     }
     return true;
   }

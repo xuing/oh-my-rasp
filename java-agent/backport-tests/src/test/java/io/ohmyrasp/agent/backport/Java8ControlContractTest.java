@@ -19,9 +19,9 @@ import org.junit.jupiter.api.io.TempDir;
 /**
  * Every control document the daemon writes ({@code contracts/agent-daemon/control/}, produced by
  * the daemon's {@code Controller}), read through the production {@code RaspRuntime} poller, and
- * the documents it must refuse. The backport lines read the mode and nothing else from the file:
- * the per-algorithm switches, the revision and the policy are primary-agent settings, so
- * {@code control/expected.properties} is checked here for the mode only.
+ * the documents it must refuse. The backport lines read the mode and {@code outside_request} and
+ * nothing else from the file: the per-algorithm switches, the revision and the policy are
+ * primary-agent settings, so {@code control/expected.properties} is checked here for those two.
  */
 final class Java8ControlContractTest {
   @TempDir Path dir;
@@ -43,6 +43,7 @@ final class Java8ControlContractTest {
       RaspRuntime.ControlState state = new RaspRuntime.ControlState(null);
       state.poll(place("control/" + document + ".json"));
       assertEquals(expected.getProperty(document + ".mode"), state.mode().name().toLowerCase(java.util.Locale.ROOT), document);
+      assertEquals(expected.getProperty(document + ".outside_request"), outsideRequest(state), document + " outside_request");
     }
   }
 
@@ -69,7 +70,23 @@ final class Java8ControlContractTest {
       RaspRuntime.ControlState state = new RaspRuntime.ControlState(null);
       state.poll(place("control/hand-edited/" + document + ".json"));
       assertEquals(expected.getProperty(document + ".mode"), state.mode().name().toLowerCase(java.util.Locale.ROOT), document);
+      String outside = expected.getProperty(document + ".outside_request");
+      if ("unknown".equals(outside)) {
+        // A value nobody accepts changes nothing: the start-up value, or what an earlier document set.
+        assertEquals("block", outsideRequest(state), document + " outside_request keeps the start-up value");
+        RaspRuntime.ControlState primed = new RaspRuntime.ControlState(null);
+        primed.poll(place("control/outside-request-log.json"));
+        primed.poll(place("control/hand-edited/" + document + ".json"));
+        assertEquals("log", outsideRequest(primed), document + " outside_request keeps log");
+        assertEquals(RaspRuntime.Mode.BLOCK, primed.mode(), document + " still applies its mode");
+      } else {
+        assertEquals(outside, outsideRequest(state), document + " outside_request");
+      }
     }
+  }
+
+  private static String outsideRequest(RaspRuntime.ControlState state) {
+    return state.settings().outsideRequestBlocks ? "block" : "log";
   }
 
   /** A document that is not one well-formed JSON object changes nothing, whatever it says. */

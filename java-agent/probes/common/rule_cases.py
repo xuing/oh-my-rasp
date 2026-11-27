@@ -15,6 +15,9 @@ engine does with it today:
                                              #   (an exception that agent code threw never counts; leave it out
                                              #   of a benign case whose operation has no reason to fail)
     properties = { "ohmyrasp.x" = "..." }    # optional: extra system properties for the agent JVM
+    control = { outside_request = "log" }    # optional: top-level members of a control document; the agent
+                                             #   then runs in daemon-managed mode and reads {"mode": "block", ...}
+                                             #   from the control file at start, instead of standalone block mode
     setup = { files = ["{tmp}/a/b.txt"] }    # optional: files created before the JVM starts
     stubs = ["org.example.Gadget"]           # optional: empty serializable classes of these names on the class path
 
@@ -25,7 +28,13 @@ engine does with it today:
     params = { file = ["/etc/passwd"] }
     headers = { "User-Agent" = "curl/8.0" }  # a value or a list of values
     body = "{\"a\":1}"                       # optional: the request body, which the handler reads like an application
-    body_api = "reader"                      # stream (the default) or reader: getInputStream() or getReader()
+    body_api = "reader"                      # stream (the default) or reader: getInputStream() or getReader(), which
+                                             #   is a reader over the stub input stream, as Jetty and Undertow serve it
+    body_chunk = 7                           # optional: the stub stream returns at most this many bytes per
+                                             #   read(byte[], int, int), and the handler reads with array reads
+    body_read = "content-length"             # optional: all (the default: to end of stream), content-length (exactly
+                                             #   that many bytes, never asking past them) or none (never reads it)
+    body_repeat = 3                          # optional: the body is the string repeated this many times
     attributes = { "javax.servlet.include.request_uri" = "/WEB-INF/web.xml" }
 
     [case.primary]                           # and [case.backport]
@@ -72,8 +81,11 @@ OPS = {
     "java.compile": ({"source"}, {"api"}),
     "xpath.evaluate": ({"expression"}, set()),
 }
-CASE_KEYS = {"name", "kind", "via", "op", "args", "completes_with", "properties", "setup", "stubs", "request", *ENGINES}
-REQUEST_KEYS = {"method", "uri", "query", "params", "headers", "attributes", "body", "body_api"}
+CASE_KEYS = {"name", "kind", "via", "op", "args", "completes_with", "properties", "control", "setup", "stubs", "request",
+             *ENGINES}
+REQUEST_KEYS = {"method", "uri", "query", "params", "headers", "attributes", "body", "body_api", "body_chunk",
+                "body_read", "body_repeat"}
+BODY_READS = ("all", "content-length", "none")
 EXPECT_KEYS = {"effect", "rule", "also", "why"}
 
 
@@ -100,6 +112,7 @@ class Case:
     expect: dict          # engine -> Expect
     completes_with: tuple[str, ...] = ()
     properties: dict = field(default_factory=dict)
+    control: dict = field(default_factory=dict)
     setup: dict = field(default_factory=dict)
     stubs: tuple[str, ...] = ()
 
@@ -195,15 +208,23 @@ def parse(file: str, text: str) -> tuple[list[Case], list[str]]:
                     errors.append(f"{where}: request body is a string")
                 if "body_api" in request and (request["body_api"] not in ("stream", "reader") or "body" not in request):
                     errors.append(f"{where}: request body_api is stream or reader, and needs a body")
+                for key in ("body_chunk", "body_repeat"):
+                    if key in request and (type(request[key]) is not int or request[key] < 1 or "body" not in request):
+                        errors.append(f"{where}: request {key} is a positive integer, and needs a body")
+                if "body_read" in request and (request["body_read"] not in BODY_READS or "body" not in request):
+                    errors.append(f"{where}: request body_read is one of {', '.join(BODY_READS)}, and needs a body")
                 for key in ("params", "headers", "attributes"):
                     table = request.get(key, {})
                     if not isinstance(table, dict) or not all(_strings(v) for v in table.values()):
                         errors.append(f"{where}: request {key} maps names to a string or a list of strings")
         elif request is not None:
             errors.append(f"{where}: via sink carries no request")
-        for key in ("properties", "setup"):
+        for key in ("properties", "control", "setup"):
             if not isinstance(raw.get(key, {}), dict):
                 errors.append(f"{where}: {key} is a table")
+        control = raw.get("control", {}) if isinstance(raw.get("control", {}), dict) else {}
+        if "mode" in control or not all(isinstance(v, str) for v in control.values()):
+            errors.append(f"{where}: control holds string members other than mode (the probe writes mode block)")
         files = raw.get("setup", {}).get("files", []) if isinstance(raw.get("setup", {}), dict) else []
         if not isinstance(files, list) or not all(isinstance(f, str) and f.startswith("{tmp}/") for f in files):
             errors.append(f"{where}: setup files are paths under {{tmp}}/")
@@ -225,7 +246,8 @@ def parse(file: str, text: str) -> tuple[list[Case], list[str]]:
         if len(expect) == len(ENGINES) and kind in KINDS and via in VIAS:
             cases.append(Case(file=file, name=name, kind=kind, via=via, op=op, args=dict(args),
                               request=request, expect=expect, completes_with=tuple(completes),
-                              properties=dict(raw.get("properties", {})), setup=dict(raw.get("setup", {})),
+                              properties=dict(raw.get("properties", {})), control=dict(control),
+                              setup=dict(raw.get("setup", {})),
                               stubs=tuple(stubs)))
     if not data.get("case"):
         errors.append(f"{file}: holds no [[case]]")

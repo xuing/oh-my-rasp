@@ -61,11 +61,17 @@ public final class XmlRpcReadCheck {
     }
     if (blocked != block) throw new AssertionError("incorrect extension policy decision");
 
+    // A plain stream on a worker thread is not the parser's: outside a request it is decided as on every line,
+    // blocked in block mode (outside_request is block by default).
     HttpInvokerReadCheck.install("{\"algorithm\":\"deserialization_gadget\",\"action\":\"block\"}");
     byte[] localData = encode(new org.apache.commons.beanutils.BeanComparator());
+    boolean localRejected = false;
     try (ObjectInputStream local = new ObjectInputStream(new ByteArrayInputStream(localData))) {
       if (local.readObject().getClass() != org.apache.commons.beanutils.BeanComparator.class)
         throw new AssertionError("local worker record changed");
+    } catch (InvalidClassException rejected) {
+      localRejected = true;
     }
+    if (localRejected != block) throw new AssertionError("incorrect local worker stream decision");
   }
 }

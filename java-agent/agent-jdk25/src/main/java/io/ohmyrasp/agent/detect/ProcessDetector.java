@@ -52,21 +52,28 @@ public final class ProcessDetector {
     if (joined.isBlank()) {
       return Optional.empty();
     }
-    String expressionEngine = expressionEngineFromStack(stackClassNames);
+    // Stack evidence first. An expression language reaching the process API is intrinsic and decides at once; a
+    // general-purpose script engine or Solr's configured listener starts processes on purpose too and follows
+    // outside_request, so it is held while the intrinsic checks below run: one of them on the same launch (shell
+    // operators in RocketMQ's launcher, exploit-shaped arguments) wins, and log only cannot let it through.
+    String expressionEngine = expressionEngineFromStack(stackClassNames, false);
+    Optional<Detection> held = Optional.empty();
     if (!expressionEngine.isBlank()) {
-      String algorithm = expressionRuntimeAlgorithm(expressionEngine);
-      return Optional.of(
-          Detection.log(
-              expressionEngine,
-              algorithm,
-              95,
-              "Command execution reached from dynamic expression evaluation",
-              request,
-              Map.of("command", abbreviate(joined))));
+      // The backports' bases for the same evidence: an expression language reaching the process API is expression
+      // injection (intrinsic); a general-purpose script engine starts processes on purpose too (follows the setting).
+      if (!isScriptEngine(expressionEngine)) {
+        return Optional.of(expressionFinding(expressionEngine, joined, request));
+      }
+      // A script engine nearer the sink than an expression language that drove it: the language decides.
+      String language = expressionEngineFromStack(stackClassNames, true);
+      if (!language.isBlank()) {
+        return Optional.of(expressionFinding(language, joined, request));
+      }
+      held = Optional.of(expressionFinding(expressionEngine, joined, request));
     }
-    String executableListener = SolrExecutableListener.frame(stackClassNames);
+    String executableListener = held.isPresent() ? null : SolrExecutableListener.frame(stackClassNames);
     if (executableListener != null) {
-      return Optional.of(
+      held = Optional.of(
           Detection.log(
               "command",
               "command_config_listener",
@@ -77,8 +84,12 @@ public final class ProcessDetector {
                   "command", abbreviate(joined),
                   "listener", abbreviate(executableListener))));
     }
+    PosixShellCommand shell = PosixShellCommand.from(command);
+    WindowsShellCommand windows = WindowsShellCommand.from(command);
     String configLauncher = RocketMqFilterServer.directOwner(stackClassNames);
-    if (configLauncher != null) {
+    // Shell operators in the program the filter-server manager launches, as on the backports: its own start command
+    // (sh <home>/bin/startfsrv.sh ...) has none, an injected rocketmqHome (CVE-2023-33246) does.
+    if (configLauncher != null && shell != null && shell.hasOperator()) {
       return Optional.of(
           Detection.log(
               "command",
@@ -88,15 +99,18 @@ public final class ProcessDetector {
               request,
               Map.of(
                   "command", abbreviate(joined),
-                  "launcher", abbreviate(configLauncher))));
+                  "launcher", abbreviate(configLauncher),
+                  "decision_basis", "configuration_launcher")));
     }
-    PosixShellCommand shell = PosixShellCommand.from(command);
-    WindowsShellCommand windows = WindowsShellCommand.from(command);
+    if (held.isPresent()) {
+      return ProcessLaunchIndicators.matches(command, shell, windows, COMMAND_COMMON, FILE_READERS, SENSITIVE_PATHS)
+          ? Optional.of(commandCommon(joined, request)) : held;
+    }
     boolean requestSyntax = shell != null && shell.hasOperator()
-        && (request.parameters().values().stream().anyMatch(values -> RequestShellSyntax.matches(shell, values))
+        && (request.inputParameters().values().stream().anyMatch(values -> RequestShellSyntax.matches(shell, values))
             || bodyHasSinkValue(request, shell.source()));
     boolean windowsSyntax = windows != null && windows.hasControl()
-        && (request.parameters().values().stream().anyMatch(windows::controlsFrom) || bodyHasSinkValue(request, windows.source()));
+        && (request.inputParameters().values().stream().anyMatch(windows::controlsFrom) || bodyHasSinkValue(request, windows.source()));
     if (requestSyntax || windowsSyntax) {
       return Optional.of(
           Detection.log(
@@ -108,14 +122,7 @@ public final class ProcessDetector {
               Map.of("command", abbreviate(joined), "decision_basis", "request_shell_syntax")));
     }
     if (ProcessLaunchIndicators.matches(command, shell, windows, COMMAND_COMMON, FILE_READERS, SENSITIVE_PATHS)) {
-      return Optional.of(
-          Detection.log(
-              "command",
-              "command_common",
-              95,
-              "Potentially dangerous command execution detected",
-              request,
-              Map.of("command", abbreviate(joined))));
+      return Optional.of(commandCommon(joined, request));
     }
     String callbackHost = CommandDestination.callbackHost(command);
     if (callbackHost != null) {
@@ -144,6 +151,22 @@ public final class ProcessDetector {
           Map.of("command", abbreviate(joined), "decision_basis", "process_dispatch")));
     }
     return Optional.empty();
+  }
+
+  private static Detection commandCommon(String joined, RequestContext request) {
+    return Detection.log("command", "command_common", 95, "Potentially dangerous command execution detected", request,
+        Map.of("command", abbreviate(joined)));
+  }
+
+  private static boolean isScriptEngine(String engine) {
+    return "groovy".equals(engine) || "javascript".equals(engine) || "script".equals(engine);
+  }
+
+  private static Detection expressionFinding(String engine, String joined, RequestContext request) {
+    return Detection.log(engine, expressionRuntimeAlgorithm(engine), 95,
+        "Command execution reached from dynamic expression evaluation", request,
+        Map.of("command", abbreviate(joined),
+            "decision_basis", isScriptEngine(engine) ? "script_evaluation" : "expression_evaluation"));
   }
 
   public static Optional<Detection> detectWebshellCommand(
@@ -180,31 +203,41 @@ public final class ProcessDetector {
         || frame.startsWith("sun.reflect."));
   }
 
-  private static String expressionEngineFromStack(List<String> stackClassNames) {
+  /**
+   * The engine of the first frame (nearest the sink) that belongs to one; with {@code languagesOnly}, the first that
+   * is an expression language and not a general-purpose script engine.
+   */
+  private static String expressionEngineFromStack(List<String> stackClassNames, boolean languagesOnly) {
     if (stackClassNames == null) {
       return "";
     }
     for (String frame : stackClassNames) {
       if (frame == null) continue;
-      if (frame.startsWith("org.springframework.expression.") || frame.startsWith("org.springframework.webflow.expression.")) return "spel";
-      if (frame.startsWith("org.apache.velocity.") || frame.startsWith("freemarker.")) return "template";
-      if (frame.startsWith("org.mozilla.javascript.") || frame.startsWith("jdk.nashorn.")
-          || frame.startsWith("org.openjdk.nashorn.") || frame.startsWith("com.oracle.truffle.js.")) return "javascript";
-      if (frame.startsWith("org.apache.commons.jxpath.") || frame.startsWith("javax.xml.xpath.")
-          || frame.startsWith("org.apache.xpath.") || frame.startsWith("com.sun.org.apache.xpath.internal.")
-          || frame.startsWith("net.sf.saxon.xpath.")) return "xpath";
-      if (frame.startsWith("org.apache.commons.jexl.") || frame.startsWith("org.apache.commons.jexl2.")
-          || frame.startsWith("org.apache.commons.jexl3.")) return "jexl";
-      if (frame.startsWith("javax.el.") || frame.startsWith("jakarta.el.") || frame.startsWith("org.apache.el.")) return "el";
-      if (frame.startsWith("groovy.") || frame.startsWith("org.codehaus.groovy.") || frame.startsWith("org.apache.groovy.")
-          || frame.startsWith("org.apache.tinkerpop.gremlin.groovy.")
-          || frame.startsWith("org.jenkinsci.plugins.scriptsecurity.sandbox.groovy.")) return "groovy";
-      if (frame.startsWith("javax.script.")) return "script";
-      if (frame.startsWith("ognl.") || frame.startsWith("org.apache.commons.ognl.")
-          || frame.startsWith("com.opensymphony.xwork2.ognl.")) return "ognl";
-      if (frame.startsWith("org.mvel.") || frame.startsWith("org.mvel2.")
-          || frame.startsWith("org.elasticsearch.common.mvel2.")) return "mvel";
+      String engine = engineOf(frame);
+      if (!engine.isEmpty() && !(languagesOnly && isScriptEngine(engine))) return engine;
     }
+    return "";
+  }
+
+  private static String engineOf(String frame) {
+    if (frame.startsWith("org.springframework.expression.") || frame.startsWith("org.springframework.webflow.expression.")) return "spel";
+    if (frame.startsWith("org.apache.velocity.") || frame.startsWith("freemarker.")) return "template";
+    if (frame.startsWith("org.mozilla.javascript.") || frame.startsWith("jdk.nashorn.")
+        || frame.startsWith("org.openjdk.nashorn.") || frame.startsWith("com.oracle.truffle.js.")) return "javascript";
+    if (frame.startsWith("org.apache.commons.jxpath.") || frame.startsWith("javax.xml.xpath.")
+        || frame.startsWith("org.apache.xpath.") || frame.startsWith("com.sun.org.apache.xpath.internal.")
+        || frame.startsWith("net.sf.saxon.xpath.")) return "xpath";
+    if (frame.startsWith("org.apache.commons.jexl.") || frame.startsWith("org.apache.commons.jexl2.")
+        || frame.startsWith("org.apache.commons.jexl3.")) return "jexl";
+    if (frame.startsWith("javax.el.") || frame.startsWith("jakarta.el.") || frame.startsWith("org.apache.el.")) return "el";
+    if (frame.startsWith("groovy.") || frame.startsWith("org.codehaus.groovy.") || frame.startsWith("org.apache.groovy.")
+        || frame.startsWith("org.apache.tinkerpop.gremlin.groovy.")
+        || frame.startsWith("org.jenkinsci.plugins.scriptsecurity.sandbox.groovy.")) return "groovy";
+    if (frame.startsWith("javax.script.")) return "script";
+    if (frame.startsWith("ognl.") || frame.startsWith("org.apache.commons.ognl.")
+        || frame.startsWith("com.opensymphony.xwork2.ognl.")) return "ognl";
+    if (frame.startsWith("org.mvel.") || frame.startsWith("org.mvel2.")
+        || frame.startsWith("org.elasticsearch.common.mvel2.")) return "mvel";
     return "";
   }
 
