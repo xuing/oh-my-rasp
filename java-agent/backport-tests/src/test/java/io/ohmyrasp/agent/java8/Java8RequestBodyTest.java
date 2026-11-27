@@ -20,12 +20,14 @@ final class Java8RequestBodyTest {
   /** The stream the request reads its body from. */
   private static final Object STREAM = new Object();
   /**
-   * Other tests on this thread can leave a dispatch open, or stop the runtime while one is (afterHttpRequest then
-   * does nothing): start each test outside any request, with the thread's body recorder closed.
+   * Other tests on this thread can leave dispatches open: start each test outside any request, with the thread's
+   * body recorder closed.
    */
   @BeforeEach
   void leaveEveryRequest() {
-    for (int i = 0; i < 16; i++) Java8RaspHooks.afterHttpRequest();
+    // Java8RaspHooksTest leaves more than 16 nested dispatches open on this thread: with one still open, a
+    // request is not the outermost, and its body is not recorded.
+    for (int i = 0; i < 1024; i++) Java8RaspHooks.afterHttpRequest();
     io.ohmyrasp.agent.http.RequestBodyCapture.dispatchExited(true);
   }
 
@@ -111,7 +113,18 @@ final class Java8RequestBodyTest {
         }, new java.util.function.Supplier<String>() {
           @Override public String get() {
             try {
-              return "token " + token + ", events: " + read(log);
+              StringBuilder state = new StringBuilder();
+              Object recorder = io.ohmyrasp.agent.http.RequestBodyCapture.current();
+              if (recorder != null) {
+                for (java.lang.reflect.Field field : recorder.getClass().getDeclaredFields()) {
+                  if (java.lang.reflect.Modifier.isStatic(field.getModifiers())) continue;
+                  field.setAccessible(true);
+                  Object value = field.get(recorder);
+                  state.append(field.getName()).append('=')
+                      .append(value instanceof byte[] || value instanceof char[] ? "[...]" : value).append(' ');
+                }
+              }
+              return "token " + token + ", recorder {" + state + "}, events: " + read(log);
             } catch (Exception e) {
               return e.toString();
             }
