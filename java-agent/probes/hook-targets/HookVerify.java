@@ -24,9 +24,10 @@ import java.util.jar.JarFile;
  * <pre>java -cp &lt;this class&gt;:&lt;HookMap&gt;:&lt;agent jar&gt; HookVerify &lt;agent jar&gt; &lt;staged tree&gt; &lt;primary | entry class&gt; [dependency jar...]</pre>
  *
  * <p>The units are HookMap's: on the primary agent the whole registry (what production runs) and each unit alone
- * (the shared visitors, and each HookModule), on a classes the whole registry changes; on a backport the transformers
+ * (the shared visitors, and each HookModule), on the classes the whole registry changes; on a backport the transformers
  * its entry class registers, chained in that order as production chains them. A class is rewritten by a unit when the
- * bytes the unit returns differ from the bytes it was given. In a chain the bytes after each unit are verified, and a
+ * bytes the unit returns differ from the bytes it was given; a HookModule's, from what the shared visitors alone
+ * write, since the primary transformer writes again every class it reads. In a chain the bytes after each unit are verified, and a
  * class that fails is pinned on the first unit after which it fails.
  *
  * <p>How a class is verified without running library code: it is defined from its bytes in a fresh loader and
@@ -42,8 +43,9 @@ import java.util.jar.JarFile;
  * JAR itself (for a multi-release JAR, the entry this JVM would read); the JDK's platform (on 8, extension) loader;
  * and last the nearest other staged JAR that has the class: most leading group segments in common, then the same
  * version, then the nearest major version, then the highest version, then the order of the staged tree, skipping a
- * class file newer than this JVM reads. A container's stream class thus finds its servlet API and the rest of its
- * own release (tomcat-catalina 9.0.124 finds Coyote in tomcat-embed-core 9.0.124).
+ * class file newer than this JVM reads; after every staged JAR, the dependency JARs given on the command line. A
+ * container's stream class thus finds its servlet API and the rest of its own release (tomcat-catalina 9.0.124 finds
+ * Coyote in tomcat-embed-core 9.0.124).
  *
  * <p>The rule that tells a defect from a dependency the staged tree lacks: the original class is linked in one fresh
  * loader and the rewritten one in another with the same classpath.
@@ -56,8 +58,8 @@ import java.util.jar.JarFile;
  *     rewritten class throws a VerifyError or ClassFormatError where the original threw neither. A missing class
  *     makes the verifier throw NoClassDefFoundError, never VerifyError, so that VerifyError is the rewrite's.</li>
  * </ul>
- * Output, one line each: {@code unit} (the counts of one unit), {@code skip} (the commonest reasons a unit's classes
- * were skipped), {@code synthetic} (one class of {@link BodyReadShapes} through the line's transformers), and
+ * Output, one line each: {@code unit} (the counts of one unit), {@code skip} (each skipped class of a unit that skips
+ * at most SKIPS_LISTED, else its commonest reasons), {@code synthetic} (one class of {@link BodyReadShapes} through the line's transformers), and
  * {@code fail} (tab-separated: unit, library, version, class, the JVM's message).
  */
 public final class HookVerify {
