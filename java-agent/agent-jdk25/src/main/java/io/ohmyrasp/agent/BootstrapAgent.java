@@ -106,7 +106,7 @@ public final class BootstrapAgent {
   }
 
   /** What one start did that a failed start must undo, recorded before each step can fail. */
-  private static final class Started {
+  static final class Started {
     AgentRuntime runtime;
     JsonEventLogger logger;
     boolean hookMisses;
@@ -120,30 +120,55 @@ public final class BootstrapAgent {
      */
     void commit() {
       HookActivation.activate();
-      if (hookMisses) {
-        HookMisses.release();
+      // The hooks are on: nothing below may throw out of start, which the launcher would report as a failed start
+      // with hooks active.
+      try {
+        if (hookMisses) {
+          HookMisses.release();
+        }
+        if (controlPlane != null) {
+          startCloudReporting();
+        }
+      } catch (Throwable ignored) {
+        // Whatever failed here is not the start's.
       }
-      if (controlPlane != null) {
+    }
+
+    private void startCloudReporting() {
+      try {
+        // The logger sees the client only once its I/O is scheduled; a refused start leaves the logger without it.
+        controlPlane.startReporting();
+        logger.setControlPlaneClient(controlPlane);
+      } catch (Throwable refused) {
         try {
-          logger.setControlPlaneClient(controlPlane);
-          controlPlane.startReporting();
-        } catch (RuntimeException | Error refused) {
           logger.setControlPlaneClient(null);
-          controlPlane.close();
-          System.err.println("[OHMYRASP] direct cloud reporting did not start: " + refused);
-          return;
+        } catch (Throwable ignored) {
+          // Nothing more to undo.
         }
         try {
-          installCrashReporter(controlPlane);
-        } catch (RuntimeException | Error refused) {
-          // Crashes are not reported to the cloud; everything else is.
+          controlPlane.close();
+        } catch (Throwable ignored) {
+          // Closed as far as it can be.
         }
+        try {
+          System.err.println("[OHMYRASP] direct cloud reporting did not start: " + refused);
+        } catch (Throwable ignored) {
+          // A console the application broke does not fail a start that committed.
+        }
+        return;
+      }
+      try {
+        installCrashReporter(controlPlane);
+      } catch (Throwable refused) {
+        // Crashes are not reported to the cloud; everything else is.
       }
     }
 
     /**
      * Undoes what the start did, each step on its own: a failing step is added to {@code failure} as suppressed
-     * and the next still runs. The hooks are turned off first; nothing here writes an event or waits on output.
+     * and the next still runs. The hooks are turned off first and the workers are stopped before the compensating
+     * retransformations, which can wait on other agents' transformers; nothing here writes an event or waits on
+     * output.
      */
     void undo(Instrumentation instrumentation, Throwable failure) {
       HookActivation.deactivate();
@@ -159,15 +184,6 @@ public final class BootstrapAgent {
           instrumentation.removeTransformer(transformer);
         } catch (RuntimeException | Error other) {
           failure.addSuppressed(other);
-        }
-        // Best effort: the classes this start retransformed get their bytecode back without this transformer. A
-        // class first loaded during the start, and a method running when it was rewritten, keep the inert calls.
-        for (Class<?> rewritten : retransformed) {
-          try {
-            instrumentation.retransformClasses(rewritten);
-          } catch (Throwable ignored) {
-            // The calls it holds stay inert.
-          }
         }
       }
       if (controlPlane != null) {
@@ -189,6 +205,19 @@ public final class BootstrapAgent {
           runtime.stop();
         } catch (RuntimeException | Error other) {
           failure.addSuppressed(other);
+        }
+      }
+      // Last, because it can run other agents' transformers and stall: by now no worker of ours is left running
+      // for it to hold up. Best effort: the classes this start retransformed get their bytecode back without this
+      // transformer. A class first loaded during the start, and a method running when it was rewritten, keep the
+      // inert calls.
+      if (transformer != null) {
+        for (Class<?> rewritten : retransformed) {
+          try {
+            instrumentation.retransformClasses(rewritten);
+          } catch (Throwable ignored) {
+            // The calls it holds stay inert.
+          }
         }
       }
     }

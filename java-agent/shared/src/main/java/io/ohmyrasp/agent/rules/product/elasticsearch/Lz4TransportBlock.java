@@ -1,5 +1,6 @@
 package io.ohmyrasp.agent.rules.product.elasticsearch;
 
+import io.ohmyrasp.agent.hook.HookActivation;
 import java.io.IOException;
 import java.lang.invoke.MethodHandle;
 import java.util.Arrays;
@@ -8,9 +9,13 @@ import java.util.Arrays;
 public final class Lz4TransportBlock {
   private Lz4TransportBlock() {}
 
+  /**
+   * Stands in for the decoder's {@code decompress(src, offset, dst, dstOffset, dstLength)}, which {@code original}
+   * calls. While the hooks are off, or when the bound is not enforced, it is that call alone.
+   */
   public static int decode(Object decoder, byte[] src, int offset, byte[] dst, int dstOffset, int dstLength,
       int compressedLength, MethodHandle original, boolean enforce) throws Throwable {
-    if (!enforce) return (int) original.invoke(decoder, src, offset, dst, dstOffset, dstLength);
+    if (HookActivation.inactive() || !enforce) return (int) original.invoke(decoder, src, offset, dst, dstOffset, dstLength);
     if (compressedLength < 0 || offset < 0 || offset > src.length - compressedLength) {
       throw new IOException("Invalid Elasticsearch LZ4 transport block extent");
     }

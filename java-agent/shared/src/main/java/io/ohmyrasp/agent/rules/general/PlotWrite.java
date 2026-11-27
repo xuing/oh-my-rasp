@@ -1,10 +1,15 @@
 package io.ohmyrasp.agent.rules.general;
 
+import io.ohmyrasp.agent.hook.HookActivation;
 import io.ohmyrasp.agent.util.WeakOwners;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
-/** Content evidence belongs to a successfully opened stream, across thread handoffs. */
+/**
+ * Content evidence belongs to a successfully opened stream, across thread handoffs. The backport file transformers
+ * call it from {@code FileOutputStream}: while the hooks are off every entry returns at once, so no stream is
+ * registered and no write is scanned, and nothing here throws into the application's write.
+ */
 public final class PlotWrite {
   private static final int WINDOW = 8192;
   private static final Pattern FILE = Pattern.compile("(?is).+\\.(?:gnuplot|gp|plt|plot)$");
@@ -45,12 +50,17 @@ public final class PlotWrite {
   }
 
   public static void opened(Object owner, String path, boolean append) {
+    if (HookActivation.inactive()) return;
     if (path != null && FILE.matcher(path).matches()) STREAMS.put(owner, new Stream(path, append));
   }
 
-  public static void closed(Object owner) { STREAMS.remove(owner); }
+  public static void closed(Object owner) {
+    if (HookActivation.inactive()) return;
+    STREAMS.remove(owner);
+  }
 
   public static void exposed(Object owner) {
+    if (HookActivation.inactive()) return;
     Stream s = STREAMS.get(owner);
     if (s != null) synchronized (s) {
       s.sharedPosition = true;
@@ -60,17 +70,21 @@ public final class PlotWrite {
     }
   }
 
+  /** The evidence of one write, the token {@link #finished} takes, or null when there is none to gather. */
   public static PlotWrite bytes(Object owner, byte[] buffer, int offset, int length) {
+    if (HookActivation.inactive()) return null;
     Stream stream = STREAMS.get(owner);
     if (stream == null || buffer == null || length <= 0 || offset < 0 || offset > buffer.length - length) return null;
     return prepare(stream, buffer, offset, length);
   }
 
   public static PlotWrite single(Object owner, int value) {
+    if (HookActivation.inactive()) return null;
     Stream stream = STREAMS.get(owner);
     return stream == null ? null : prepare(stream, new byte[]{(byte)value}, 0, 1);
   }
 
+  /** Scans the write; a failure of the scan leaves the write with no evidence rather than failing it. */
   private static PlotWrite prepare(Stream stream, byte[] buffer, int offset, int length) {
     PlotWrite write = new PlotWrite(stream);
     try {
@@ -90,9 +104,10 @@ public final class PlotWrite {
         offset += count;
       }
       return write;
-    } catch (RuntimeException | Error failure) {
-      cancelled(write);
-      throw failure;
+    } catch (Throwable failure) {
+      // The stream's evidence restarts: what this write adds to it is unknown.
+      finished(write, false);
+      return null;
     }
   }
 

@@ -49,17 +49,26 @@ public final class HttpTransportObservation {
     }
   }
 
-  public static void enterAcquisition(Object connection) {
+  /**
+   * Enters one client acquisition; returns the acquisition it opened, as the token {@link #exitAcquisition} takes,
+   * or null when it opened none (the hooks are off, or the connection was not redirected).
+   */
+  public static Object enterAcquisition(Object connection) {
+    if (io.ohmyrasp.agent.hook.HookActivation.inactive()) return null;
     Acquisition parent = ACQUIRING.get();
     WeakReference<URL> target = REDIRECTS.get(connection);
-    if (parent != null || target != null) ACQUIRING.set(new Acquisition(parent, target == null ? null : target.get()));
+    if (parent == null && target == null) return null;
+    Acquisition acquisition = new Acquisition(parent, target == null ? null : target.get());
+    ACQUIRING.set(acquisition);
+    return acquisition;
   }
 
-  public static void exitAcquisition() {
-    Acquisition current = ACQUIRING.get();
-    if (current == null) return;
-    if (current.parent == null) ACQUIRING.remove();
-    else ACQUIRING.set(current.parent);
+  /** Leaves the acquisition {@code token} entered: the thread's acquisition is its parent again. Null entered none. */
+  public static void exitAcquisition(Object token) {
+    if (token == null) return;
+    Acquisition parent = ((Acquisition) token).parent;
+    if (parent == null) ACQUIRING.remove();
+    else ACQUIRING.set(parent);
   }
 
   public static boolean dialingRedirect(URL url) {

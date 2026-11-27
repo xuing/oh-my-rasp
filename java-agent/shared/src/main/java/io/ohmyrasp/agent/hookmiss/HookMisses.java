@@ -44,7 +44,8 @@ import org.objectweb.asm.Opcodes;
  * <p>Each start and each {@link #stop} begins a new generation. A worker serves one generation: when the report is
  * stopped or started again it ends without taking more work, and a line it is still building is dropped before it
  * reaches the sink, so a stopped report writes nothing more. At JVM exit the event writers call {@link #awaitIdle}
- * before they drain their own queues, so a line in progress gets a bounded time to reach them.
+ * and then {@link #close} before they drain their own queues, so a line in progress gets a bounded time to reach them
+ * and nothing reaches them afterwards.
  *
  * <p>At most {@link #LIMIT} lines per JVM, then one {@code hook_miss_suppressed} line and nothing more, charged when
  * a miss is queued: the table holds a few hundred pairs, a library release that breaks a hook usually breaks one to
@@ -68,22 +69,39 @@ public final class HookMisses {
 
   private static final Object LOCK = new Object();
   private static volatile HookExpectations table;
-  // Guarded by LOCK.
-  private static HookMissSink sink;
-  private static boolean inline;
+  // Guarded by LOCK: the report's current generation, null while it is off.
+  private static Generation current;
+  // Guarded by LOCK: what this JVM reported, whichever generation reported it.
   private static final Set<HookExpectation> SEEN = new HashSet<HookExpectation>();
-  private static final List<Candidate> PENDING = new ArrayList<Candidate>();
-  // The current generation: each start and each stop begins a new one, and a worker serves only its own.
-  private static int generation;
-  // The worker of the current generation, once started; null before release() of a held report and after stop().
-  private static Thread worker;
-  // Whether the worker is building or writing a line it took from PENDING.
-  private static boolean busy;
-  // Misses are queued but the worker does not start until release(): a start that can still fail holds the report.
-  private static boolean held;
   private static int written;
   private static boolean suppressed;
   private static final AtomicLong SINK_FAILURES = new AtomicLong();
+
+  /**
+   * One start of the report, ended by {@link #stop}, {@link #close} or the next start. It owns everything a worker
+   * touches: the writer, the queue, the worker and whether a line is being written, so a worker of an ended generation
+   * can neither take a later generation's misses, nor clear its {@code busy}, nor reach its writer.
+   */
+  private static final class Generation {
+    final HookMissSink sink;
+    final boolean inline;
+    // Guarded by LOCK.
+    final List<Candidate> pending = new ArrayList<Candidate>();
+    // Guarded by LOCK: misses are queued but no worker starts until release(): a start that can still fail holds it.
+    boolean held;
+    // Guarded by LOCK: the worker, once started (published only after Thread.start() returned).
+    Thread worker;
+    // Guarded by LOCK: whether the worker is building or writing a line it took from pending.
+    boolean busy;
+    // False once the generation has ended; written under LOCK, read without it as the last check before the writer.
+    volatile boolean open = true;
+
+    Generation(HookMissSink sink, boolean inline, boolean held) {
+      this.sink = sink;
+      this.inline = inline;
+      this.held = held;
+    }
+  }
 
   private HookMisses() {}
 
@@ -114,28 +132,29 @@ public final class HookMisses {
   }
 
   private static void start(HookExpectations expectations, HookMissSink target, boolean writeInline, boolean hold) {
-    Thread previous;
-    int current;
+    if (target == null) {
+      throw new IllegalArgumentException("no writer");
+    }
+    Thread previous = null;
     synchronized (LOCK) {
-      previous = worker;
-      worker = null;
-      current = ++generation;
-      LOCK.notifyAll();
+      Generation ended = current;
+      if (ended != null) {
+        end(ended);
+        previous = ended.worker;
+      }
       SEEN.clear();
-      PENDING.clear();
       written = 0;
       suppressed = false;
       SINK_FAILURES.set(0);
-      inline = writeInline;
-      held = hold;
-      sink = target;
+      Generation next = new Generation(target, writeInline, hold);
+      current = next;
       table = expectations;
+      if (!hold && !writeInline) {
+        startWorker(next);
+      }
     }
     if (previous != null) {
       previous.interrupt();
-    }
-    if (!hold && !writeInline) {
-      startWorker(current);
     }
   }
 
@@ -145,18 +164,14 @@ public final class HookMisses {
    * created turns the report off.
    */
   public static void release() {
-    int current;
     synchronized (LOCK) {
-      if (!held) {
+      Generation generation = current;
+      if (generation == null || !generation.held) {
         return;
       }
-      held = false;
-      if (sink == null) {
-        return;
-      }
-      current = generation;
+      generation.held = false;
+      startWorker(generation);
     }
-    startWorker(current);
   }
 
   /**
@@ -165,17 +180,7 @@ public final class HookMisses {
    * not waited for: it writes nothing more once that call returns.
    */
   public static void stop() {
-    Thread previous;
-    synchronized (LOCK) {
-      table = null;
-      sink = null;
-      held = false;
-      PENDING.clear();
-      generation++;
-      previous = worker;
-      worker = null;
-      LOCK.notifyAll();
-    }
+    Thread previous = turnOff();
     if (previous != null && previous != Thread.currentThread()) {
       boolean interrupted = Thread.interrupted();
       try {
@@ -191,20 +196,56 @@ public final class HookMisses {
     }
   }
 
+  /**
+   * Closes the report's admission without waiting for anything, for a JVM that is exiting: as {@link #stop}, but the
+   * worker is only told to end. The event writers' shutdown hooks call it after {@link #awaitIdle}: from then on no
+   * miss is taken and no line reaches a writer, except one whose write call had already begun.
+   */
+  public static void close() {
+    Thread previous = turnOff();
+    if (previous != null && previous != Thread.currentThread()) {
+      previous.interrupt();
+    }
+  }
+
+  /** Ends the current generation and turns the report off; returns that generation's worker, or null. */
+  private static Thread turnOff() {
+    synchronized (LOCK) {
+      Generation ended = current;
+      current = null;
+      table = null;
+      if (ended == null) {
+        return null;
+      }
+      end(ended);
+      return ended.worker;
+    }
+  }
+
+  /** Under LOCK: {@code generation} takes and writes nothing more, and its worker wakes up to end. */
+  private static void end(Generation generation) {
+    generation.open = false;
+    generation.held = false;
+    generation.pending.clear();
+    LOCK.notifyAll();
+  }
+
   /** How long {@link #stop} waits for the worker to end. */
   static final long STOP_JOIN_MILLIS = 1000;
 
   /**
    * Waits at most {@code millis} for the worker to write what is queued and the line it is building, for a JVM that
-   * is exiting: the event writer's shutdown hook calls it before it drains its own queue. Returns at once when the
-   * report is off, held (nothing of a start that has not committed is written) or has no worker.
+   * is exiting: the event writer's shutdown hook calls it before it closes the report ({@link #close}). Returns at
+   * once when the report is off, held (nothing of a start that has not committed is written) or has no worker.
    *
    * @return whether nothing was left
    */
   public static boolean awaitIdle(long millis) {
     long deadline = System.nanoTime() + millis * 1000000L;
     synchronized (LOCK) {
-      while (worker != null && !held && sink != null && (busy || !PENDING.isEmpty())) {
+      Generation generation = current;
+      while (generation != null && current == generation && generation.worker != null && !generation.held
+          && (generation.busy || !generation.pending.isEmpty())) {
         long left = deadline - System.nanoTime();
         if (left <= 0) {
           return false;
@@ -241,7 +282,7 @@ public final class HookMisses {
    */
   public static boolean wants(HookExpectation expectation) {
     synchronized (LOCK) {
-      return table != null && sink != null && !SEEN.contains(expectation) && !(written >= LIMIT && suppressed);
+      return table != null && current != null && !SEEN.contains(expectation) && !(written >= LIMIT && suppressed);
     }
   }
 
@@ -268,9 +309,10 @@ public final class HookMisses {
       return;
     }
     Candidate now = null;
-    HookMissSink target = null;
+    Generation inlineGeneration = null;
     synchronized (LOCK) {
-      if (table == null || sink == null || !SEEN.add(expectation)) {
+      Generation generation = current;
+      if (table == null || generation == null || !SEEN.add(expectation)) {
         return;
       }
       // Charged when queued: what waits is bounded by LIMIT and one suppressed line, whatever the sink does.
@@ -282,24 +324,24 @@ public final class HookMisses {
       } else {
         return;
       }
-      if (inline) {
+      if (generation.inline) {
         now = candidate;
-        target = sink;
+        inlineGeneration = generation;
       } else {
         // Queued for the worker, which exists once the start committed; never a thread created here.
-        PENDING.add(candidate);
+        generation.pending.add(candidate);
         LOCK.notifyAll();
       }
     }
     if (now != null) {
-      process(now, target);
+      process(now, new Served(inlineGeneration));
     }
   }
 
   /** How many candidates wait for the worker, for a test of the queue's bound. */
   static int queued() {
     synchronized (LOCK) {
-      return PENDING.size();
+      return current == null ? 0 : current.pending.size();
     }
   }
 
@@ -309,45 +351,29 @@ public final class HookMisses {
   }
 
   /**
-   * Creates and starts the worker of {@code current}, on the calling thread (a start's, never a class-loading
-   * thread's): a daemon with no context loader that, where the JDK allows it (9 and later), inherits no
-   * inheritable thread-local, so no application {@code childValue} runs and no application value is kept alive by
-   * it. When that fails, or the generation has moved on meanwhile, the report is turned off or left as it is.
+   * Under LOCK, on the calling thread (a start's, never a class-loading thread's): creates and starts the worker of
+   * {@code generation} and publishes it only once it runs, so {@link #stop}, which takes the same lock, always finds
+   * either no worker or one that has started. It is a daemon with no context loader that, where the JDK allows it (9
+   * and later), inherits no inheritable thread-local, so no application {@code childValue} runs and no application
+   * value is kept alive by it. When that fails the report is turned off.
    */
-  private static void startWorker(int current) {
-    Thread created;
-    try {
-      created = newThread(new Drain(current), "ohmyrasp-hook-miss");
-      created.setDaemon(true);
-      created.setContextClassLoader(null);
-    } catch (Throwable failure) {
-      turnOff(current);
+  private static void startWorker(Generation generation) {
+    if (current != generation || !generation.open || generation.worker != null) {
       return;
     }
-    synchronized (LOCK) {
-      if (current != generation || worker != null) {
-        return;
-      }
-      worker = created;
-    }
+    Thread created;
     try {
+      created = newThread(new Drain(generation), "ohmyrasp-hook-miss");
+      created.setDaemon(true);
+      created.setContextClassLoader(null);
       created.start();
     } catch (Throwable failure) {
-      turnOff(current);
+      current = null;
+      table = null;
+      end(generation);
+      return;
     }
-  }
-
-  private static void turnOff(int current) {
-    synchronized (LOCK) {
-      if (current == generation) {
-        table = null;
-        sink = null;
-        worker = null;
-        PENDING.clear();
-        generation++;
-        LOCK.notifyAll();
-      }
-    }
+    generation.worker = created;
   }
 
   /** A thread that does not inherit inheritable thread-locals, on a JDK that has the constructor for it (9+). */
@@ -363,11 +389,11 @@ public final class HookMisses {
     }
   }
 
-  /** The worker of one generation: waits for misses and writes them, until its generation ends. */
+  /** The worker of one generation: waits for its misses and writes them, until the generation ends. */
   private static final class Drain implements Runnable {
-    private final int served;
+    private final Generation served;
 
-    Drain(int served) {
+    Drain(Generation served) {
       this.served = served;
     }
 
@@ -375,33 +401,31 @@ public final class HookMisses {
     public void run() {
       while (true) {
         Candidate next;
-        HookMissSink target;
         synchronized (LOCK) {
-          while (served == generation && PENDING.isEmpty()) {
+          while (served.open && served.pending.isEmpty()) {
             try {
               LOCK.wait();
             } catch (InterruptedException interrupted) {
-              // stop() or a new start: the generation check below decides.
-              if (served != generation) {
+              // stop(), close() or a new start: the open check decides.
+              if (!served.open) {
                 return;
               }
             }
           }
-          if (served != generation || sink == null) {
+          if (!served.open) {
             return;
           }
-          next = PENDING.remove(0);
-          target = new Served(served, sink);
-          busy = true;
+          next = served.pending.remove(0);
+          served.busy = true;
         }
         try {
-          process(next, target);
+          process(next, new Served(served));
         } catch (Throwable dropped) {
           // A diagnostic never disturbs the application: the line is lost and counted, the worker goes on.
           SINK_FAILURES.incrementAndGet();
         } finally {
           synchronized (LOCK) {
-            busy = false;
+            served.busy = false;
             LOCK.notifyAll();
           }
         }
@@ -409,41 +433,41 @@ public final class HookMisses {
     }
   }
 
-  /** The sink of one generation: a line is written only while that generation is still the current one. */
+  /**
+   * The writer of one generation: a line reaches it only while that generation is open, checked as the last step
+   * before the call (the line's own writer then checks its own admission before its output call). A generation that
+   * ends after that check lets the one call already begun finish on its own.
+   */
   private static final class Served implements HookMissSink {
-    private final int served;
-    private final HookMissSink target;
+    private final Generation served;
 
-    Served(int served, HookMissSink target) {
+    Served(Generation served) {
       this.served = served;
-      this.target = target;
     }
 
     @Override
     public void write(String diagnostic, String fields) {
-      synchronized (LOCK) {
-        if (served != generation) {
-          return;
-        }
+      if (!served.open) {
+        return;
       }
-      target.write(diagnostic, fields);
+      served.sink.write(diagnostic, fields);
     }
 
     @Override
     public boolean enterOwnIo() {
-      return target.enterOwnIo();
+      return served.sink.enterOwnIo();
     }
 
     @Override
     public void exitOwnIo(boolean entered) {
-      target.exitOwnIo(entered);
+      served.sink.exitOwnIo(entered);
     }
   }
 
   /** The worker thread while there is one. Tests only. */
   static Thread workerThread() {
     synchronized (LOCK) {
-      return worker;
+      return current == null ? null : current.worker;
     }
   }
 

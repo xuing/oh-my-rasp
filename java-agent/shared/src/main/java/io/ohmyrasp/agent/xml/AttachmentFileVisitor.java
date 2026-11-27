@@ -34,18 +34,19 @@ public final class AttachmentFileVisitor {
       };
     }
     if (!reader && !(name.equals("getInputStream") && descriptor.equals("()Ljava/io/InputStream;"))) return visitor;
-    return new ScopedMethodAdvice(Opcodes.ASM9, visitor, access, name, descriptor) {
+    return new ScopedMethodAdvice(Opcodes.ASM9, visitor, access, name, descriptor, true) {
       @Override protected void enterDispatch() {
         if (reader) {
           loadArg(0);
-          invokeStatic(hooks, Method.getMethod("void beginAttachmentReference(String)"));
+          invokeStatic(hooks, Method.getMethod("Object beginAttachmentReference(String)"));
         } else {
           loadThis();
-          invokeStatic(OBSERVER, Method.getMethod("void beginRead(Object)"));
+          invokeStatic(OBSERVER, Method.getMethod("Object beginRead(Object)"));
         }
       }
       @Override protected void exitDispatch() {
-        invokeStatic(OBSERVER, Method.getMethod(reader ? "void endReference()" : "void endRead()"));
+        loadToken();
+        invokeStatic(OBSERVER, Method.getMethod(reader ? "void endReference(Object)" : "void endRead(Object)"));
       }
     };
   }

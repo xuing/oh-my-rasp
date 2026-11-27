@@ -81,12 +81,13 @@ public final class OhMyRaspHooks {
       StackWalker.getInstance(
           Set.of(StackWalker.Option.RETAIN_CLASS_REFERENCE, StackWalker.Option.SHOW_REFLECT_FRAMES));
 
-  // The logger emit reports to in place of the shared one; tests set it, and Warmup while it runs.
+  // The logger emit reports to in place of the shared one; tests set it. The warm-up's thread needs none: events()
+  // gives it a logger of its own that writes nothing.
   private static volatile JsonEventLogger reporter;
 
   private OhMyRaspHooks() {}
 
-  /** Makes emit report to {@code logger}, or to the shared logger again when it is null. Tests and Warmup. */
+  /** Makes emit report to {@code logger}, or to the shared logger again when it is null. Tests. */
   static void reportTo(JsonEventLogger logger) {
     reporter = logger;
   }
@@ -96,7 +97,14 @@ public final class OhMyRaspHooks {
     return reporter;
   }
 
-  private static JsonEventLogger events() {
+  /**
+   * The logger this thread's reports go to: the discarding one of the warm-up's own thread (and of that thread
+   * only, whenever it still runs), else the replacement a test set, else the shared logger.
+   */
+  static JsonEventLogger events() {
+    if (Thread.currentThread() instanceof Warmup.Worker warmUp) {
+      return warmUp.sink();
+    }
     JsonEventLogger replaced = reporter;
     return replaced != null ? replaced : JsonEventLogger.get();
   }
@@ -1316,9 +1324,10 @@ public final class OhMyRaspHooks {
     }
   }
 
-  public static void beginDirectoryVisit(Object walker, java.nio.file.Path path) {
-    if (HookActivation.inactive()) return;
-    HostDirectory.visiting(walker, path, currentRequest().active());
+  /** Returns the visit it opened, the token the walker's exit passes to HostDirectory.visited, or null. */
+  public static Object beginDirectoryVisit(Object walker, java.nio.file.Path path) {
+    if (HookActivation.inactive()) return null;
+    return HostDirectory.visiting(walker, path, currentRequest().active());
   }
 
   public static void beforeDirectoryList(Object file) {
@@ -1492,15 +1501,17 @@ public final class OhMyRaspHooks {
     }
   }
 
-  public static void beginNioRead(Object path) {
-    if (HookActivation.inactive()) return;
-    HostReadPath.beginFacade(path);
+  /** Returns the facade it opened, the token the facade's exit passes to HostReadPath.endFacade, or null. */
+  public static Object beginNioRead(Object path) {
+    if (HookActivation.inactive()) return null;
+    Object facade = HostReadPath.beginFacade(path);
     try {
       if (!detectionDisabled() && HostReadPath.needsFacadeRead(path)) inspectFileRead(pathFrom(path), HostReadPath.OpenPolicy.PATH_ONLY, null);
     } catch (RuntimeException | Error failure) {
-      HostReadPath.endFacade();
+      HostReadPath.endFacade(facade);
       throw failure;
     }
+    return facade;
   }
 
   public static void beforePathRead(Object path) {
@@ -1708,9 +1719,10 @@ public final class OhMyRaspHooks {
     }
   }
 
-  public static void beginAttachmentReference(String id) {
-    if (HookActivation.inactive()) return;
-    io.ohmyrasp.agent.xml.AttachmentFileRead.beginReference(detectionDisabled() ? null : id, currentRequest());
+  /** Returns the scope it opened, the token the reader's exit passes to AttachmentFileRead.endReference, or null. */
+  public static Object beginAttachmentReference(String id) {
+    if (HookActivation.inactive()) return null;
+    return io.ohmyrasp.agent.xml.AttachmentFileRead.beginReference(detectionDisabled() ? null : id, currentRequest());
   }
 
   public static void beforeUrlDataSource(Object url) {
@@ -2754,7 +2766,7 @@ public final class OhMyRaspHooks {
     return URLEncoder.encode(value == null ? "" : value, StandardCharsets.UTF_8);
   }
 
-  private static void quiet(String hook, Throwable throwable) {
+  static void quiet(String hook, Throwable throwable) {
     JsonEventLogger events = events();
     if (events.discards()) {
       return; // the warm-up's logger: nothing is reported anywhere

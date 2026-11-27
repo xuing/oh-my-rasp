@@ -147,22 +147,22 @@ final class Java8OutsideRequestTest {
     final Path report = dir.resolve("weekly.txt");
     Files.write(report, "weekly".getBytes(StandardCharsets.UTF_8));
     final Object source = new Object();
-    io.ohmyrasp.agent.xml.AttachmentFileRead.beginReference(report.toUri().toString(), null);
+    Object reference = io.ohmyrasp.agent.xml.AttachmentFileRead.beginReference(report.toUri().toString(), null);
     try {
       io.ohmyrasp.agent.xml.AttachmentFileRead.created(source, report.toUri().toURL());
     } finally {
-      io.ohmyrasp.agent.xml.AttachmentFileRead.endReference();
+      io.ohmyrasp.agent.xml.AttachmentFileRead.endReference(reference);
     }
     final AtomicReference<Throwable> thrown = new AtomicReference<Throwable>();
     Thread reader = new Thread(new Runnable() {
       @Override public void run() {
-        io.ohmyrasp.agent.xml.AttachmentFileRead.beginRead(source);
+        Object read = io.ohmyrasp.agent.xml.AttachmentFileRead.beginRead(source);
         try {
           Java8RaspHooks.beforeFileRead(report.toString());
         } catch (Throwable failure) {
           thrown.set(failure);
         } finally {
-          io.ohmyrasp.agent.xml.AttachmentFileRead.endRead();
+          io.ohmyrasp.agent.xml.AttachmentFileRead.endRead(read);
         }
       }
     }, "attachment-reader");

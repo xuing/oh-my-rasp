@@ -28,14 +28,16 @@ final class Java8EntryOrderTest {
   @Test
   void theEntryStartsTheLineBeforeItRegistersATransformer() throws Exception {
     Map<String, List<String>> calls = calls(OhMyRaspJava8Agent.class);
-    List<String> install = calls.get("install");
-    assertTrue(install != null, "no install method: " + calls.keySet());
+    List<String> install = startSequence(calls);
     String[] order = {
       "OhMyRaspJava8Agent.appendSelfToBootstrap",
       "OhMyRaspJava8Agent.requireBootstrapDefined",
+      "RaspRuntime.claimStart",
       "Preload.classes",
       "Java8RaspLine.start",
       "OhMyRaspJava8Agent.installTransformer",
+      "RaspRuntime.writeStartupLine",
+      "HookActivation.activate",
     };
     int previous = -1;
     for (String call : order) {
@@ -45,9 +47,13 @@ final class Java8EntryOrderTest {
       previous = at;
     }
     assertEquals(1, count(install, "Java8RaspLine.start"), install.toString());
+    assertEquals(1, count(install, "HookActivation.activate"), install.toString());
     for (Map.Entry<String, List<String>> method : calls.entrySet()) {
       if (method.getValue().contains("Instrumentation.addTransformer")) {
         assertEquals("register", method.getKey(), "only register adds a transformer, and records it for the undo");
+        assertTrue(method.getValue().indexOf("List.add") >= 0
+                && method.getValue().indexOf("List.add") < method.getValue().indexOf("Instrumentation.addTransformer"),
+            "register records the transformer before it adds it: " + method.getValue());
       }
       if (method.getValue().contains("OhMyRaspJava8Agent.register")) {
         assertEquals("installTransformer", method.getKey(), "only installTransformer registers transformers");
@@ -65,7 +71,7 @@ final class Java8EntryOrderTest {
   @Test
   void theHookMissReportIsReleasedOnlyAfterTheCommitAndStoppedFirstInTheUndo() throws Exception {
     Map<String, List<String>> calls = calls(OhMyRaspJava8Agent.class);
-    List<String> install = calls.get("install");
+    List<String> install = startSequence(calls);
     int startLine = install.indexOf("RaspRuntime.writeStartupLine");
     int release = install.indexOf("HookMisses.release");
     assertTrue(install.indexOf("BackportHookMisses.start") >= 0 && startLine > install.indexOf("BackportHookMisses.start"),
@@ -73,6 +79,7 @@ final class Java8EntryOrderTest {
     assertTrue(release > startLine, "the report is released before the start committed: " + install);
     assertEquals(1, count(install, "HookMisses.release"), install.toString());
     List<String> undo = calls.get("undo");
+    assertEquals(0, undo.indexOf("HookActivation.deactivate"), "the undo turns the hooks off first: " + undo);
     int stop = undo.indexOf("HookMisses.stop");
     assertTrue(stop >= 0, "the undo does not stop the hook-miss report: " + undo);
     assertTrue(stop < undo.indexOf("Instrumentation.removeTransformer") && stop < undo.indexOf("RaspRuntime.stop"),
@@ -114,6 +121,21 @@ final class Java8EntryOrderTest {
       }
     }
     return count;
+  }
+
+  /** The calls of install(), with the call of begin(), where the line starts and commits, replaced by its own. */
+  private static List<String> startSequence(Map<String, List<String>> calls) {
+    List<String> install = calls.get("install");
+    assertTrue(install != null && calls.get("begin") != null, "no install or begin method: " + calls.keySet());
+    List<String> sequence = new ArrayList<String>();
+    for (String call : install) {
+      if (call.equals("OhMyRaspJava8Agent.begin")) {
+        sequence.addAll(calls.get("begin"));
+      } else {
+        sequence.add(call);
+      }
+    }
+    return sequence;
   }
 
   /** Method name -> the methods it calls, in bytecode order, as SimpleOwner.name. */

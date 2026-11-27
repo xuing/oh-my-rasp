@@ -70,6 +70,20 @@ final class BootstrapAgentFailureTest {
     assertFails(result, "has an empty META-INF/ohmyrasp/preload/agent-jdk25.txt");
   }
 
+  /**
+   * The undo retransforms the classes the start rewrote, which runs other agents' transformers and can stall: it
+   * does so last, after the event writer, the poller and the cloud client are stopped. The fake Instrumentation holds
+   * the undo's retransform until our threads are gone (at most 3 s) and records which were alive.
+   */
+  @Test
+  void theUndoStopsItsThreadsBeforeItRetransforms() throws Exception {
+    Result result = run("fails-after-retransform", jarWith(List.of(LISTED)));
+    assertFails(result, "modifiability cannot be read");
+    assertEquals(2, result.retransforms, "the start and its undo each retransform the class once");
+    assertEquals("", result.aliveDuringUndoRetransform,
+        "threads of ours were still running while the undo retransformed");
+  }
+
   /** Two starts that bypass the launcher, at once: exactly one starts, the other is refused and registers nothing. */
   @Test
   void twoConcurrentStartsStartOnce() throws Exception {
@@ -154,7 +168,8 @@ final class BootstrapAgentFailureTest {
     jar.closeEntry();
   }
 
-  private record Result(String ended, int transformers, String threads, boolean hookMissWritten, boolean reportOn) {}
+  private record Result(String ended, int transformers, String threads, boolean hookMissWritten, boolean reportOn,
+      int retransforms, String aliveDuringUndoRetransform) {}
 
   private Result run(String scenario, File jar, File... more) throws Exception {
     Path java = Path.of(System.getProperty("java.home"), "bin", "java");
@@ -178,7 +193,7 @@ final class BootstrapAgentFailureTest {
       if (line.startsWith("RESULT\t")) {
         String[] parts = line.split("\t", -1);
         return new Result(parts[1], Integer.parseInt(parts[2]), parts[3], Boolean.parseBoolean(parts[4]),
-            Boolean.parseBoolean(parts[5]));
+            Boolean.parseBoolean(parts[5]), Integer.parseInt(parts[6]), parts[7]);
       }
     }
     throw new AssertionError("no RESULT line from the JVM: " + text);

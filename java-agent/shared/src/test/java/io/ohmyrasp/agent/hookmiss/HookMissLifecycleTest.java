@@ -166,6 +166,96 @@ final class HookMissLifecycleTest {
     assertTrue(System.nanoTime() - began < TimeUnit.SECONDS.toNanos(1));
   }
 
+  /**
+   * A worker of an earlier start that comes back from its writer late, after a new start, cannot end the new start's
+   * work: what the new worker is writing still counts at JVM exit. (Until this round one busy flag served every
+   * generation, and the old worker's return cleared it, so the exit wait returned while the new line was in progress.)
+   */
+  @Test
+  void anOldWorkerEndingLateLeavesTheNewStartsLineInProgress() throws Exception {
+    final CountDownLatch firstWriting = new CountDownLatch(1);
+    final CountDownLatch firstGoOn = new CountDownLatch(1);
+    final CountDownLatch secondWriting = new CountDownLatch(1);
+    final CountDownLatch secondGoOn = new CountDownLatch(1);
+    HookMisses.startHeld(TABLE, new Recorder() {
+      @Override public void write(String diagnostic, String fields) {
+        firstWriting.countDown();
+        awaitUninterruptibly(firstGoOn);
+      }
+    });
+    miss("a/B", null);
+    HookMisses.release();
+    Thread first = HookMisses.workerThread();
+    assertTrue(firstWriting.await(5, TimeUnit.SECONDS), "the first worker never wrote");
+
+    HookMisses.startHeld(TABLE, new Recorder() {
+      @Override public void write(String diagnostic, String fields) {
+        secondWriting.countDown();
+        awaitUninterruptibly(secondGoOn);
+      }
+    });
+    miss("a/B", null);
+    HookMisses.release();
+    try {
+      assertTrue(secondWriting.await(5, TimeUnit.SECONDS), "the second worker never wrote");
+      firstGoOn.countDown();
+      first.join(5000);
+      assertFalse(first.isAlive(), "the first worker did not end");
+      assertFalse(HookMisses.awaitIdle(200), "the exit wait returned while the new start's line was being written");
+    } finally {
+      firstGoOn.countDown();
+      secondGoOn.countDown();
+    }
+    assertTrue(HookMisses.awaitIdle(5000));
+  }
+
+  /** After close, at JVM exit: no miss is taken, the worker ends, and nothing more is written. */
+  @Test
+  void afterCloseNoMissIsTakenAndNothingIsWritten() throws Exception {
+    Recorder recorder = new Recorder();
+    HookMisses.startHeld(TABLE, recorder);
+    HookMisses.release();
+    Thread worker = HookMisses.workerThread();
+    assertNotNull(worker);
+    assertTrue(worker.isAlive(), "release returned before the worker started");
+
+    HookMisses.close();
+    miss("a/C", null);
+
+    worker.join(5000);
+    assertFalse(worker.isAlive(), "the worker did not end after close");
+    assertNull(HookMisses.table());
+    assertNull(HookMisses.workerThread());
+    assertTrue(recorder.lines.isEmpty(), recorder.lines.toString());
+  }
+
+  /** Close does not wait for a worker stuck in its writer, and that worker writes nothing more once it comes back. */
+  @Test
+  void closeDoesNotWaitForAWorkerStuckInItsWriter() throws Exception {
+    final CountDownLatch writing = new CountDownLatch(1);
+    final CountDownLatch goOn = new CountDownLatch(1);
+    final AtomicInteger written = new AtomicInteger();
+    HookMisses.startHeld(TABLE, new Recorder() {
+      @Override public void write(String diagnostic, String fields) {
+        writing.countDown();
+        awaitUninterruptibly(goOn);
+        written.incrementAndGet();
+      }
+    });
+    miss("a/B", null);
+    miss("a/C", null);
+    HookMisses.release();
+    Thread worker = HookMisses.workerThread();
+    assertTrue(writing.await(5, TimeUnit.SECONDS));
+    long began = System.nanoTime();
+    HookMisses.close();
+    assertTrue(System.nanoTime() - began < TimeUnit.MILLISECONDS.toNanos(500), "close waited for the worker");
+    goOn.countDown();
+    worker.join(5000);
+    assertFalse(worker.isAlive());
+    assertEquals(1, written.get(), "the line queued behind the stuck one was written after close");
+  }
+
   private static void miss(String className, ProtectionDomain domain) {
     HookMisses.miss(TABLE.forClass(className)[0], "U", plainClass(className), domain, HookMisses.NO_AGENT_CALL, null);
   }

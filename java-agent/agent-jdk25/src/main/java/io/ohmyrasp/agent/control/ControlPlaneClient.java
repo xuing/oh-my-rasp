@@ -33,8 +33,11 @@ public final class ControlPlaneClient implements AutoCloseable {
   private volatile String policyId;
   private volatile int policyVersion;
   private volatile String cachedPolicy;
-  // Set by close: a request in flight then installs no policy it fetched.
+  // Set by close, under publication: a request in flight then installs no policy it fetched.
   private volatile boolean closed;
+  // Serialises close with the final install of a fetched policy (checking closed, then installing), so that once
+  // close returns no policy is installed. Held for that check and the install only: never across I/O or parsing.
+  private final Object publication = new Object();
 
   public ControlPlaneClient(ControlPlaneConfig config) {
     this(config, (policy, agentKey) -> {});
@@ -82,12 +85,12 @@ public final class ControlPlaneClient implements AutoCloseable {
   /**
    * Starts the cloud I/O on the client's own thread: registration, the first heartbeat and policy pull, then a
    * heartbeat every 30 seconds. When the executor refuses (its thread cannot be created), the client is closed and
-   * the refusal is thrown.
+   * the refusal is thrown; the heartbeats are scheduled first, so a refusal comes before anything has run.
    */
   public void startReporting() {
     try {
-      executor.execute(this::registerAndHeartbeat);
       executor.scheduleAtFixedRate(this::heartbeatQuietly, 30, 30, TimeUnit.SECONDS);
+      executor.execute(this::registerAndHeartbeat);
     } catch (RuntimeException | Error failure) {
       close();
       throw failure;
@@ -118,7 +121,9 @@ public final class ControlPlaneClient implements AutoCloseable {
 
   @Override
   public void close() {
-    closed = true;
+    synchronized (publication) {
+      closed = true;
+    }
     executor.shutdownNow();
   }
 
@@ -196,16 +201,27 @@ public final class ControlPlaneClient implements AutoCloseable {
     }
     if (response.statusCode() == 404) {
       cachedPolicy = "";
-      policyInstaller.accept(AgentPolicy.empty(), id);
+      publish(AgentPolicy.empty(), id);
       return;
     }
     requireSuccess(response, "pull policy");
     cachedPolicy = response.body();
     try {
-      policyInstaller.accept(AgentPolicy.parse(cachedPolicy), id);
+      // Parsed before publish takes its lock.
+      publish(AgentPolicy.parse(cachedPolicy), id);
     } catch (IllegalArgumentException e) {
       uploadErrorQuietly("control-plane.policy", "policy parse failed", e);
       System.err.println("[OHMYRASP] policy parse failed: " + e.getMessage());
+    }
+  }
+
+  /** Installs {@code policy} unless the client is closed; with close, one at a time, so none follows a close. */
+  private void publish(AgentPolicy policy, String agentKey) {
+    synchronized (publication) {
+      if (closed) {
+        return;
+      }
+      policyInstaller.accept(policy, agentKey);
     }
   }
 
