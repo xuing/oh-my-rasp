@@ -364,7 +364,7 @@ public final class HookMap {
     return false;
   }
 
-  private static byte[] bytes(InputStream input) throws Exception {
+  static byte[] bytes(InputStream input) throws Exception {
     try {
       ByteArrayOutputStream out = new ByteArrayOutputStream();
       byte[] buffer = new byte[16384];
@@ -378,7 +378,7 @@ public final class HookMap {
   // ---- the staged tree --------------------------------------------------------------------------
 
   /** group:artifact version jar, sorted. */
-  private static List<String[]> libraries(File root) {
+  static List<String[]> libraries(File root) {
     List<String[]> found = new ArrayList<String[]>();
     File[] groups = root.listFiles();
     if (groups == null) throw new IllegalArgumentException("no staged tree at " + root);
@@ -405,15 +405,15 @@ public final class HookMap {
   }
 
   private static int shadowed;
-  private static final String VERSIONS = "META-INF/versions/";
+  static final String VERSIONS = "META-INF/versions/";
 
   /** The entries a run of the JVM would load as classes: base entries, and versioned ones of a multi-release JAR. */
-  private static boolean multiRelease(JarFile jar) throws Exception {
+  static boolean multiRelease(JarFile jar) throws Exception {
     return jar.getManifest() != null && "true".equalsIgnoreCase(jar.getManifest().getMainAttributes().getValue("Multi-Release"));
   }
 
   /** The class name the JVM gives an entry: a versioned entry loses its META-INF/versions/N/ prefix. */
-  private static String runtimeName(String path) {
+  static String runtimeName(String path) {
     if (!path.startsWith(VERSIONS)) return path;
     int slash = path.indexOf('/', VERSIONS.length());
     return slash < 0 ? path : path.substring(slash + 1);
