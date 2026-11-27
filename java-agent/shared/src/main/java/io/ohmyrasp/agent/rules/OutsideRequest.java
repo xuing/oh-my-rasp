@@ -26,9 +26,10 @@ import java.util.Locale;
  * </ul>
  *
  * <p>The setting is the control document's top-level {@value #CONTROL_KEY} member (the host's), the policy's
- * {@code config.hardening.outside_request} (the cloud's), or for a standalone agent the agent argument
- * {@value #CONTROL_KEY}, the system property {@value #PROPERTY}, the environment variable {@value #ENVIRONMENT} or
- * the baked {@value #CONTROL_KEY} of {@code META-INF/ohmyrasp-shirudo.properties}, resolved like {@code mode}.
+ * {@code config.hardening.outside_request} (the cloud's), and at start-up the system property {@value #PROPERTY}, the
+ * environment variable {@value #ENVIRONMENT} or the baked {@value #CONTROL_KEY} of
+ * {@code META-INF/ohmyrasp-shirudo.properties}, resolved like {@code mode}; the primary line (Java 21 and 25) also reads
+ * the agent argument {@value #CONTROL_KEY} first, the backport lines read no agent argument.
  * docs/detection.md has the table of every family this classifies, with the reason for each.
  *
  * <p>Java 8 source with no lambdas: the backport lines read it from their hooks.
