@@ -553,6 +553,7 @@ public final class BackportHooks {
 
   public static void beforeFileRead(Object path) {
     if (inactive()) return;
+    if (RaspRuntime.inOwnIo()) return; // the agent's own I/O (the hook-miss worker reads a manifest): before any classification
     if (!HostReadPath.isHostPath(path)) return;
     Finding finding = classifyFileRead(pathValue(path), HostReadPath.OpenPolicy.PATH_ONLY);
     emitFileFinding(finding, LAST_LOGGED_FILE_READ, "FileInputStream.open");
@@ -866,6 +867,7 @@ public final class BackportHooks {
 
   public static void afterArchiveEntryName(String name) {
     if (inactive()) return;
+    if (RaspRuntime.inOwnIo()) return; // the agent's own I/O: before any bookkeeping of application state
     ARCHIVE_ENTRY.observe(name);
   }
 

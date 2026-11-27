@@ -3,9 +3,11 @@ package io.ohmyrasp.agent.backport;
 import io.ohmyrasp.agent.rules.OutsideRequest;
 import io.ohmyrasp.agent.util.ControlDocument;
 import java.io.File;
+import java.io.FileOutputStream;
 import java.io.FileWriter;
 import java.io.IOException;
 import java.io.PrintStream;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.InvalidPathException;
 import java.nio.file.NoSuchFileException;
@@ -367,6 +369,8 @@ public final class RaspRuntime {
   private static final long SHUTDOWN_JOIN_MILLIS = 2000L;
   // Once shutdown has begun, a write waits this long for the write lock and then gives up.
   private static final long SHUTDOWN_LOCK_MILLIS = 1000L;
+  // A diagnostic line waits this long for the write lock and is dropped when it cannot get it.
+  private static final long DIAGNOSTIC_LOCK_MILLIS = 100L;
   // Serialises appends to the log files, so concurrent writers never interleave a line.
   static final ReentrantLock WRITE_LOCK = new ReentrantLock();
   /** Appends to the log file named by the target, under {@link #WRITE_LOCK}. */
@@ -760,6 +764,52 @@ public final class RaspRuntime {
     SPOOL.offer(fileTarget, line);
   }
 
+  /**
+   * Writes one diagnostic line (the hook-miss report's, on its own worker thread) without the detections' queue: it
+   * takes no slot there, is not part of a detection batch and does not wait behind one. A console target gets it on
+   * the calling thread; a file target gets it appended as one UTF-8 write, after waiting at most 100 ms for the write
+   * lock, and the line is dropped when the lock stays busy, the event writer has shut down or the write fails.
+   */
+  public static void writeDiagnostic(String logPath, String line) {
+    started();
+    if (emitSpecialTarget(logPath, line)) {
+      return;
+    }
+    if (SPOOL.isClosed()) {
+      return;
+    }
+    boolean ownIo = enterOwnIo();
+    try {
+      File target = new File(logPath.trim());
+      File parent = target.getParentFile();
+      if (parent != null && !parent.exists() && !parent.mkdirs()) {
+        return;
+      }
+      try {
+        if (!WRITE_LOCK.tryLock(DIAGNOSTIC_LOCK_MILLIS, TimeUnit.MILLISECONDS)) {
+          return;
+        }
+      } catch (InterruptedException e) {
+        Thread.currentThread().interrupt();
+        return;
+      }
+      try {
+        FileOutputStream out = new FileOutputStream(target, true);
+        try {
+          out.write((line + System.lineSeparator()).getBytes(StandardCharsets.UTF_8));
+        } finally {
+          out.close();
+        }
+      } catch (IOException dropped) {
+        // The line is lost: a diagnostic is not worth a message on the application's console.
+      } finally {
+        WRITE_LOCK.unlock();
+      }
+    } finally {
+      exitOwnIo(ownIo);
+    }
+  }
+
   private static boolean emitSpecialTarget(String logPath, String line) {
     PrintStream stream;
     String normalized =
@@ -846,6 +896,11 @@ public final class RaspRuntime {
 
     EventSpool(Sink sink) {
       this.sink = sink;
+    }
+
+    /** Whether shutdown has begun to hand over what is queued: the writer is gone or given up on. */
+    boolean isClosed() {
+      return closed;
     }
 
     void offer(String target, String line) {
