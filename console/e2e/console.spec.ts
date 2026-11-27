@@ -176,18 +176,27 @@ async function setupConsole(page: Page, roles: string[] = ["admin"]) {
       state.applications[0].environment_ids.push("env_stage");
       return json(route, { id: "env_stage", application_id: "app_main", ...(body as object) });
     }
-    // Settings keep what a PUT stored, so a test can read a saved value back.
-    if (request.method() === "GET" && path === "/applications/app_main/settings") {
-      return json(route, { items: [{ application_id: "app_main", key: "protection.hardening", value: savedSettings[path] ?? { mode: "monitor" } }] });
+    // Settings keep what a PUT stored, so a test can read a saved value back. Like the API, an
+    // environment whose row has no outside_request resolves to the application's value and reports
+    // the member as inherited, and a null member in a PUT removes it from the row.
+    const applicationPath = "/applications/app_main/settings";
+    const environmentPath = "/applications/app_main/environments/env_prod/settings";
+    if (request.method() === "GET" && path === applicationPath) {
+      return json(route, { items: [{ application_id: "app_main", key: "protection.hardening", value: { outside_request: "block", ...(savedSettings[path] ?? { mode: "monitor" }) } }] });
     }
-    if (request.method() === "GET" && path === "/applications/app_main/environments/env_prod/settings") {
-      return json(route, { items: [{ application_id: "app_main", environment_id: "env_prod", key: "protection.hardening", value: savedSettings[path] ?? { mode: "monitor" } }] });
+    if (request.method() === "GET" && path === environmentPath) {
+      const row = savedSettings[path] ?? { mode: "monitor" };
+      const inherited = !("outside_request" in row);
+      const applicationValue = savedSettings[applicationPath]?.outside_request ?? "block";
+      return json(route, {
+        items: [{ application_id: "app_main", environment_id: "env_prod", key: "protection.hardening", value: inherited ? { ...row, outside_request: applicationValue } : row, ...(inherited ? { inherited: ["outside_request"] } : {}) }]
+      });
     }
     if (request.method() === "PUT" && path.includes("/settings")) {
-      savedSettings[path] = (body as { value?: Record<string, unknown> }).value ?? {};
-      return json(route, { application_id: "app_main", ...(body as object) });
+      const stored = Object.fromEntries(Object.entries((body as { value?: Record<string, unknown> }).value ?? {}).filter(([, member]) => member !== null));
+      savedSettings[path] = stored;
+      return json(route, { application_id: "app_main", key: (body as { key?: string }).key, value: stored });
     }
-
     if (request.method() === "GET" && path === "/agents") return json(route, { items: state.agents });
     if (request.method() === "POST" && path === "/agents/register") {
       const agent = { id: "agent_registered", application_id: "app_main", status: "online", ...(body as object) };
@@ -282,7 +291,7 @@ test("application management and environment-scoped protection use real API cont
   await page.goto("/protection");
   const hardening = page.locator("section").filter({ hasText: "Hardening" });
   await hardening.getByLabel("Mode").selectOption("enforce");
-  await expect(hardening.getByLabel("Outside an HTTP request")).toHaveValue("block");
+  await expect(hardening.getByLabel("Outside an HTTP request")).toHaveValue("inherit");
   await hardening.getByLabel("Outside an HTTP request").selectOption("log");
   await hardening.getByRole("button", { name: "Save" }).click();
   await expect(page.getByText("Settings are scoped to the selected environment.")).toBeVisible();
@@ -302,6 +311,44 @@ test("application management and environment-scoped protection use real API cont
   const reloaded = page.locator("section").filter({ hasText: "Hardening" });
   await expect(reloaded.getByLabel("Mode")).toHaveValue("enforce");
   await expect(reloaded.getByLabel("Outside an HTTP request")).toHaveValue("log");
+});
+
+test("saving another hardening setting leaves an inherited outside_request inheriting", async ({ page }) => {
+  const { requests } = await setupConsole(page);
+  await page.addInitScript(() => {
+    localStorage.setItem("ohmyrasp.console.scope", JSON.stringify({ applicationId: "app_main", environmentId: "env_prod" }));
+  });
+  await page.goto("/protection");
+  const hardening = page.locator("section").filter({ hasText: "Hardening" });
+  const outside = hardening.getByLabel("Outside an HTTP request");
+  await expect(outside).toHaveValue("inherit");
+  await expect(hardening.getByText("Inherited from the application: Block — as inside a request.")).toBeVisible();
+
+  // Edit another setting of the environment and save: outside_request is sent as null, not pinned to block.
+  await hardening.getByLabel("Mode").selectOption("enforce");
+  await hardening.getByRole("button", { name: "Save" }).click();
+  await expect(hardening.getByRole("button", { name: "Saved" })).toBeVisible();
+  const environmentSave = requests.filter((request) => request.method === "PUT" && request.path === "/applications/app_main/environments/env_prod/settings");
+  expect(environmentSave).toHaveLength(1);
+  const saved = (environmentSave[0].body as { value: Record<string, unknown> }).value;
+  expect(saved.mode).toBe("enforce");
+  expect(saved.outside_request).toBeNull();
+  await expect(outside).toHaveValue("inherit");
+
+  // Switch to the application and change its value: it has nothing to inherit from.
+  await page.getByLabel("Select environment").selectOption("");
+  await expect(outside).toHaveValue("block");
+  await expect(outside.locator("option")).toHaveCount(2);
+  await outside.selectOption("log");
+  await hardening.getByRole("button", { name: "Save" }).click();
+  await expect(hardening.getByRole("button", { name: "Saved" })).toBeVisible();
+  expect(requests.some((request) => request.method === "PUT" && request.path === "/applications/app_main/settings" && (request.body as { value?: { outside_request?: string } }).value?.outside_request === "log")).toBeTruthy();
+
+  // Back in the environment, the application's new value applies, and it is still inherited.
+  await page.getByLabel("Select environment").selectOption("env_prod");
+  await expect(outside).toHaveValue("inherit");
+  await expect(hardening.getByText("Inherited from the application: Log only — record and let it run.")).toBeVisible();
+  await expect(hardening.getByLabel("Mode")).toHaveValue("enforce");
 });
 
 test("instances expose onboarding, artifacts, mobile nav, and RBAC correctly", async ({ page }) => {

@@ -2669,22 +2669,25 @@ func (s *Store) UpsertApplicationSetting(ctx context.Context, actorID string, se
 	if err := s.validateApplicationSettingScope(ctx, tx, setting.ApplicationID, setting.EnvironmentID); err != nil {
 		return control.ApplicationSetting{}, err
 	}
-	row := tx.QueryRowContext(ctx, `
+	// Exactly one statement runs: a second QueryRowContext on the transaction while the first row is
+	// unread leaves two queries in flight on one connection, which fails with "bad connection".
+	query := `
 		INSERT INTO application_settings (application_id, environment_id, key, value, updated_by, updated_at)
 		VALUES ($1, NULLIF($2, ''), $3, $4::jsonb, NULLIF($5, ''), $6)
 		ON CONFLICT (application_id, key) WHERE environment_id IS NULL
 		DO UPDATE SET value = EXCLUDED.value, updated_by = EXCLUDED.updated_by, updated_at = EXCLUDED.updated_at
 		RETURNING application_id, COALESCE(environment_id, ''), key, value::text, COALESCE(updated_by, ''), updated_at
-	`, setting.ApplicationID, setting.EnvironmentID, setting.Key, string(body), actorID, s.now().UTC())
+	`
 	if setting.EnvironmentID != "" {
-		row = tx.QueryRowContext(ctx, `
+		query = `
 			INSERT INTO application_settings (application_id, environment_id, key, value, updated_by, updated_at)
 			VALUES ($1, $2, $3, $4::jsonb, NULLIF($5, ''), $6)
 			ON CONFLICT (application_id, environment_id, key) WHERE environment_id IS NOT NULL
 			DO UPDATE SET value = EXCLUDED.value, updated_by = EXCLUDED.updated_by, updated_at = EXCLUDED.updated_at
 			RETURNING application_id, COALESCE(environment_id, ''), key, value::text, COALESCE(updated_by, ''), updated_at
-		`, setting.ApplicationID, setting.EnvironmentID, setting.Key, string(body), actorID, s.now().UTC())
+		`
 	}
+	row := tx.QueryRowContext(ctx, query, setting.ApplicationID, setting.EnvironmentID, setting.Key, string(body), actorID, s.now().UTC())
 	updated, err := scanApplicationSetting(row)
 	if err != nil {
 		return control.ApplicationSetting{}, err
@@ -2759,31 +2762,33 @@ func (s *Store) effectiveApplicationSetting(ctx context.Context, q queryer, appI
 		setting, err := s.applicationSettingByScope(ctx, q, appID, environmentID, key)
 		if err == nil {
 			if hardening {
-				setting.Value = control.InheritHardeningMembers(setting.Value, application.Value)
+				setting.Value, setting.Inherited = control.InheritHardeningMembers(setting.Value, application.Value)
 			}
 			return setting, nil
 		}
 		if !errors.Is(err, sql.ErrNoRows) {
 			return control.ApplicationSetting{}, err
 		}
+		if hardening {
+			application.Inherited = control.InheritableHardeningMembers()
+		}
 	}
 	return application, nil
 }
 
 func (s *Store) applicationSettingByScope(ctx context.Context, q queryer, appID string, environmentID string, key string) (control.ApplicationSetting, error) {
-	row := q.QueryRowContext(ctx, `
-		SELECT application_id, COALESCE(environment_id, ''), key, value::text, COALESCE(updated_by, ''), updated_at
-		FROM application_settings
-		WHERE application_id = $1 AND key = $2 AND environment_id IS NULL
-	`, appID, normalizeSettingKey(key))
 	if environmentID != "" {
-		row = q.QueryRowContext(ctx, `
+		return scanApplicationSetting(q.QueryRowContext(ctx, `
 			SELECT application_id, COALESCE(environment_id, ''), key, value::text, COALESCE(updated_by, ''), updated_at
 			FROM application_settings
 			WHERE application_id = $1 AND key = $2 AND environment_id = $3
-		`, appID, normalizeSettingKey(key), environmentID)
+		`, appID, normalizeSettingKey(key), environmentID))
 	}
-	return scanApplicationSetting(row)
+	return scanApplicationSetting(q.QueryRowContext(ctx, `
+		SELECT application_id, COALESCE(environment_id, ''), key, value::text, COALESCE(updated_by, ''), updated_at
+		FROM application_settings
+		WHERE application_id = $1 AND key = $2 AND environment_id IS NULL
+	`, appID, normalizeSettingKey(key)))
 }
 
 func (s *Store) MaintenanceCleanup(ctx context.Context, actorID string, request control.MaintenanceCleanupRequest) (control.MaintenanceCleanupReport, error) {

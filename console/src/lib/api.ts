@@ -331,6 +331,8 @@ export interface SystemSetting {
 export interface ApplicationSetting extends SystemSetting {
   application_id: string;
   environment_id?: string;
+  /** Members of value an environment takes from the application's setting instead of its own row. */
+  inherited?: string[];
 }
 export interface ApplicationConfig {
   application_id: string;

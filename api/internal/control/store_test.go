@@ -286,3 +286,94 @@ func countDeliveriesForRule(deliveries []AlertDelivery, ruleID string) int {
 	}
 	return count
 }
+
+// An environment's protection.hardening says which members it inherits from the application, so the
+// console can tell an inherited outside_request from one the environment's row sets. The marker is
+// metadata of the setting: the config the hosts download carries the value alone.
+func TestMemoryStoreHardeningMarksInheritedMembers(t *testing.T) {
+	ctx := context.Background()
+	store := NewMemoryStoreWithSeed(func() time.Time { return time.Unix(1700000000, 0).UTC() }, MemorySeed{})
+	const hardening = "protection.hardening"
+	put := func(environmentID string, value map[string]any) ApplicationSetting {
+		t.Helper()
+		setting, err := store.UpsertApplicationSetting(ctx, "usr_admin", ApplicationSetting{ApplicationID: "app_default", EnvironmentID: environmentID, Key: hardening, Value: value})
+		if err != nil {
+			t.Fatalf("upsert %q %v: %v", environmentID, value, err)
+		}
+		return setting
+	}
+	environment := func() ApplicationSetting {
+		t.Helper()
+		settings, err := store.ListApplicationSettings(ctx, "app_default", "env_default")
+		if err != nil {
+			t.Fatalf("list environment settings: %v", err)
+		}
+		for _, setting := range settings {
+			if setting.Key == hardening {
+				return setting
+			}
+		}
+		t.Fatalf("no %s in %#v", hardening, settings)
+		return ApplicationSetting{}
+	}
+	assertEnvironment := func(label string, value string, inherited bool) {
+		t.Helper()
+		setting := environment()
+		if setting.Value["outside_request"] != value {
+			t.Fatalf("%s: expected outside_request %q, got %#v", label, value, setting.Value)
+		}
+		if got := len(setting.Inherited) == 1 && setting.Inherited[0] == "outside_request"; got != inherited {
+			t.Fatalf("%s: expected inherited=%v, got %#v", label, inherited, setting.Inherited)
+		}
+		if !inherited && len(setting.Inherited) != 0 {
+			t.Fatalf("%s: expected nothing inherited, got %#v", label, setting.Inherited)
+		}
+		config, err := store.ResolveApplicationConfig(ctx, "app_default", "env_default")
+		if err != nil {
+			t.Fatalf("%s: resolve config: %v", label, err)
+		}
+		if config.Hardening["outside_request"] != value {
+			t.Fatalf("%s: expected the agent config to carry %q, got %#v", label, value, config.Hardening)
+		}
+		if _, leaked := config.Hardening["inherited"]; leaked {
+			t.Fatalf("%s: the inherited marker reached the agent config: %#v", label, config.Hardening)
+		}
+	}
+
+	// An environment with no row of its own inherits the application's value, here the default.
+	assertEnvironment("no environment row", "block", true)
+
+	// The application's own setting has nothing to inherit from.
+	settings, err := store.ListApplicationSettings(ctx, "app_default", "")
+	if err != nil {
+		t.Fatalf("list application settings: %v", err)
+	}
+	for _, setting := range settings {
+		if len(setting.Inherited) != 0 {
+			t.Fatalf("an application setting inherits nothing, got %#v", setting)
+		}
+	}
+
+	put("", map[string]any{"mode": "monitor", "outside_request": "log"})
+	assertEnvironment("application log, no environment row", "log", true)
+
+	// Saving other members without outside_request, or with null, keeps the environment inheriting.
+	put("env_default", map[string]any{"mode": "enforce", "block_reflection_abuse": true, "block_process_execution": true})
+	assertEnvironment("environment row without the member", "log", true)
+	put("env_default", map[string]any{"mode": "enforce", "block_reflection_abuse": false, "outside_request": nil})
+	assertEnvironment("environment row with null", "log", true)
+
+	// The application switching to block reaches the environment, because nothing was pinned.
+	put("", map[string]any{"mode": "monitor", "outside_request": "block"})
+	assertEnvironment("application switched to block", "block", true)
+
+	// A value the environment's row sets is its own, and survives the application's change.
+	put("env_default", map[string]any{"mode": "enforce", "outside_request": "log"})
+	assertEnvironment("explicit environment value", "log", false)
+	put("", map[string]any{"mode": "monitor", "outside_request": "block"})
+	assertEnvironment("explicit value after an application save", "log", false)
+
+	// Null hands the member back to the application.
+	put("env_default", map[string]any{"mode": "enforce", "outside_request": nil})
+	assertEnvironment("null after explicit", "block", true)
+}
