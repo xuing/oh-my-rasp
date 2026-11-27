@@ -211,7 +211,7 @@ def main():
 
         if tested != agent_track.PRIMARY:
             # A failure after the line has started (the fifth transformer is refused) undoes the start: the
-            # transformers added are removed, the runtime's threads stop and it counts as not started.
+            # transformers added are removed, the runtime's threads stop, it no longer runs and the hooks stay off.
             classes = work / "flaky-classes"
             classes.mkdir()
             subprocess.run(["javac", "-d", str(classes), str(Path(__file__).with_name("FlakyInstrumentationAgent.java"))],
@@ -228,7 +228,7 @@ def main():
                             [tested], extra_classpath=[agent])
             run.expect([], False, [FAILED])
             report = next((line for line in run.out.splitlines() if line.startswith("flaky: ")), "")
-            if report != "flaky: added=4 removed=4 threads=0 runtime started=false":
+            if report != "flaky: added=4 left=0 threads=0 runtime running=false hooks active=false":
                 run.fail(f"expected the start undone, saw '{report}'")
 
         failing = failing_entry_jar(universal, expected, work)
