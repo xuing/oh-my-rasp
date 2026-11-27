@@ -149,14 +149,14 @@ original bytes is a `# chain:` line in the recorded map and is listed below.
 | `org.springframework:spring-expression` | 5.3.39 | 11 | 0 |
 | `org.springframework:spring-expression` | 6.2.19 | 11 | 0 |
 | `org.springframework:spring-expression` | 7.1.0 | 11 | 0 |
-| `org.springframework:spring-web` | 3.2.18.RELEASE | 4 | 20 |
-| `org.springframework:spring-web` | 4.3.30.RELEASE | 4 | 23 |
-| `org.springframework:spring-web` | 5.3.39 | 4 | 21 |
-| `org.springframework:spring-web` | 6.2.19 | 3 | 17 |
-| `org.springframework:spring-web` | 7.1.0 | 4 | 24 |
-| `org.springframework:spring-test` | 4.3.30.RELEASE | 8 | 13 |
-| `org.springframework:spring-test` | 5.3.39 | 6 | 13 |
-| `org.springframework:spring-test` | 6.2.19 | 6 | 11 |
+| `org.springframework:spring-web` | 3.2.18.RELEASE | 5 | 21 |
+| `org.springframework:spring-web` | 4.3.30.RELEASE | 5 | 24 |
+| `org.springframework:spring-web` | 5.3.39 | 8 | 25 |
+| `org.springframework:spring-web` | 6.2.19 | 7 | 21 |
+| `org.springframework:spring-web` | 7.1.0 | 8 | 28 |
+| `org.springframework:spring-test` | 4.3.30.RELEASE | 9 | 14 |
+| `org.springframework:spring-test` | 5.3.39 | 7 | 14 |
+| `org.springframework:spring-test` | 6.2.19 | 7 | 12 |
 | `org.apache.xbean:xbean-spring` | 3.18 | 6 | 0 |
 | `org.apache.xbean:xbean-spring` | 4.19 | 6 | 0 |
 | `com.caucho:hessian` | 4.0.51 | 8 | 8 |
@@ -190,8 +190,8 @@ original bytes is a `# chain:` line in the recorded map and is listed below.
 | `org.apache.activemq:activemq-openwire-legacy` | 6.1.8 | 7 | 7 |
 | `org.elasticsearch:elasticsearch` | 7.17.29 | 3 | 3 |
 | `org.elasticsearch:elasticsearch` | 8.19.23 | 4 | 4 |
-| `org.apache.spark:spark-core_2.12` | 2.4.8 | 16 | 33 |
-| `org.apache.spark:spark-core_2.12` | 3.5.10 | 16 | 34 |
+| `org.apache.spark:spark-core_2.12` | 2.4.8 | 18 | 35 |
+| `org.apache.spark:spark-core_2.12` | 3.5.10 | 18 | 36 |
 | `org.apache.hadoop:hadoop-yarn-server-resourcemanager` | 2.7.7 | 1 | 1 |
 | `org.apache.hadoop:hadoop-yarn-server-resourcemanager` | 2.8.1 | 1 | 1 |
 | `org.apache.hadoop:hadoop-yarn-server-resourcemanager` | 3.3.6 | 1 | 1 |
@@ -202,11 +202,15 @@ original bytes is a `# chain:` line in the recorded map and is listed below.
 | `jakarta.servlet:jakarta.servlet-api` | 5.0.0 | 6 | 6 |
 | `jakarta.servlet:jakarta.servlet-api` | 6.0.0 | 6 | 6 |
 | `jakarta.servlet:jakarta.servlet-api` | 6.1.0 | 6 | 6 |
-| `org.apache.tomcat:tomcat-catalina` | 7.0.109 | 9 | 18 |
-| `org.apache.tomcat:tomcat-catalina` | 8.5.100 | 7 | 17 |
-| `org.apache.tomcat:tomcat-catalina` | 9.0.124 | 7 | 17 |
-| `org.apache.tomcat:tomcat-catalina` | 10.1.62 | 7 | 17 |
-| `org.apache.tomcat:tomcat-catalina` | 11.0.29 | 7 | 17 |
+| `org.apache.tomcat:tomcat-catalina` | 7.0.109 | 17 | 26 |
+| `org.apache.tomcat:tomcat-catalina` | 8.5.100 | 15 | 25 |
+| `org.apache.tomcat:tomcat-catalina` | 9.0.124 | 15 | 25 |
+| `org.apache.tomcat:tomcat-catalina` | 10.0.27 | 15 | 25 |
+| `org.apache.tomcat:tomcat-catalina` | 10.1.62 | 15 | 25 |
+| `org.apache.tomcat:tomcat-catalina` | 11.0.29 | 15 | 25 |
+| `org.apache.tomcat.embed:tomcat-embed-core` | 9.0.124 | 24 | 34 |
+| `org.apache.tomcat.embed:tomcat-embed-core` | 10.1.62 | 24 | 34 |
+| `org.apache.tomcat.embed:tomcat-embed-core` | 11.0.29 | 24 | 34 |
 | `org.apache.shiro:shiro-web` | 1.2.4 | 0 | 1 |
 | `org.apache.shiro:shiro-web` | 1.13.0 | 0 | 1 |
 | `org.apache.shiro:shiro-web` | 2.0.6 | 0 | 1 |
@@ -225,21 +229,21 @@ original bytes is a `# chain:` line in the recorded map and is listed below.
 | `commons-fileupload:commons-fileupload` | 1.3.3 | 1 | 1 |
 | `commons-fileupload:commons-fileupload` | 1.4 | 1 | 1 |
 | `commons-fileupload:commons-fileupload` | 1.6.0 | 1 | 1 |
-| `io.undertow:undertow-servlet` | 1.4.28.Final | 3 | 13 |
-| `io.undertow:undertow-servlet` | 2.0.42.Final | 3 | 14 |
-| `io.undertow:undertow-servlet` | 2.2.39.Final | 3 | 14 |
-| `io.undertow:undertow-servlet` | 2.3.27.Final | 3 | 14 |
-| `io.undertow:undertow-servlet-jakarta` | 2.2.20.Final | 3 | 14 |
+| `io.undertow:undertow-servlet` | 1.4.28.Final | 9 | 19 |
+| `io.undertow:undertow-servlet` | 2.0.42.Final | 9 | 20 |
+| `io.undertow:undertow-servlet` | 2.2.39.Final | 9 | 20 |
+| `io.undertow:undertow-servlet` | 2.3.27.Final | 9 | 20 |
+| `io.undertow:undertow-servlet-jakarta` | 2.2.20.Final | 9 | 20 |
 | `org.eclipse.jetty:jetty-util` | 9.4.57.v20241219 | 3 | 5 |
-| `org.eclipse.jetty:jetty-server` | 9.4.57.v20241219 | 8 | 20 |
-| `org.eclipse.jetty:jetty-server` | 10.0.26 | 14 | 30 |
-| `org.eclipse.jetty:jetty-server` | 11.0.26 | 14 | 30 |
+| `org.eclipse.jetty:jetty-server` | 9.4.57.v20241219 | 10 | 22 |
+| `org.eclipse.jetty:jetty-server` | 10.0.26 | 17 | 33 |
+| `org.eclipse.jetty:jetty-server` | 11.0.26 | 17 | 33 |
 | `org.eclipse.jetty:jetty-server` | 12.0.41 | 0 | 1 |
-| `org.eclipse.jetty.ee10:jetty-ee10-servlet` | 12.0.41 | 11 | 16 |
-| `org.eclipse.jetty.ee10:jetty-ee10-servlet` | 12.1.15 | 11 | 16 |
-| `org.eclipse.jetty.ee11:jetty-ee11-servlet` | 12.1.15 | 11 | 16 |
-| `org.eclipse.jetty.ee9:jetty-ee9-nested` | 12.0.41 | 8 | 20 |
-| `org.eclipse.jetty.ee8:jetty-ee8-nested` | 12.0.41 | 8 | 20 |
+| `org.eclipse.jetty.ee10:jetty-ee10-servlet` | 12.0.41 | 14 | 19 |
+| `org.eclipse.jetty.ee10:jetty-ee10-servlet` | 12.1.15 | 17 | 22 |
+| `org.eclipse.jetty.ee11:jetty-ee11-servlet` | 12.1.15 | 17 | 22 |
+| `org.eclipse.jetty.ee9:jetty-ee9-nested` | 12.0.41 | 11 | 23 |
+| `org.eclipse.jetty.ee8:jetty-ee8-nested` | 12.0.41 | 11 | 23 |
 | `xerces:xercesImpl` | 2.9.1 | 6 | 6 |
 | `xerces:xercesImpl` | 2.11.0 | 6 | 6 |
 | `xerces:xercesImpl` | 2.12.2 | 6 | 6 |
@@ -333,18 +337,21 @@ signature); each is a place to check that the hook still covers what it did.
 | `org.apache.commons:commons-jexl` | 2.1.1 | 2.0.1 | `org/apache/commons/jexl2/UnifiedJEXL.createTemplate` |
 | `org.apache.commons:commons-jexl3` | 3.2.1 3.5.0 3.7.1 | 3.0 | `org/apache/commons/jexl3/internal/Source.<init>` |
 | `org.apache.commons:commons-jexl3` | 3.7.1 | 3.0 3.2.1 3.5.0 | `org/apache/commons/jexl3/internal/introspection/RecordGetExecutor.<init>` |
-| `org.apache.spark:spark-core_2.12` | 2.4.8 | 3.5.10 | `org/spark_project/jetty/http/MultiPartFormInputStream$MultiPart.getSubmittedFileName`<br>`org/spark_project/jetty/http/MultiPartFormInputStream.getPart`<br>`org/spark_project/jetty/http/MultiPartFormInputStream.getParts`<br>`org/spark_project/jetty/server/MultiParts$MultiPartsHttpParser.getPart`<br>and 10 more |
-| `org.apache.spark:spark-core_2.12` | 3.5.10 | 2.4.8 | `org/sparkproject/jetty/http/MultiPartFormInputStream$MultiPart.getSubmittedFileName`<br>`org/sparkproject/jetty/http/MultiPartFormInputStream.getPart`<br>`org/sparkproject/jetty/http/MultiPartFormInputStream.getParts`<br>`org/sparkproject/jetty/server/MultiParts$MultiPartsHttpParser.getPart`<br>and 10 more |
+| `org.apache.spark:spark-core_2.12` | 2.4.8 | 3.5.10 | `org/spark_project/jetty/http/MultiPartFormInputStream$MultiPart.getSubmittedFileName`<br>`org/spark_project/jetty/http/MultiPartFormInputStream.getPart`<br>`org/spark_project/jetty/http/MultiPartFormInputStream.getParts`<br>`org/spark_project/jetty/server/HttpInput.read`<br>and 11 more |
+| `org.apache.spark:spark-core_2.12` | 3.5.10 | 2.4.8 | `org/sparkproject/jetty/http/MultiPartFormInputStream$MultiPart.getSubmittedFileName`<br>`org/sparkproject/jetty/http/MultiPartFormInputStream.getPart`<br>`org/sparkproject/jetty/http/MultiPartFormInputStream.getParts`<br>`org/sparkproject/jetty/server/HttpInput.read`<br>and 11 more |
 | `org.apache.struts:struts2-core` | 2.5.30 6.3.0.2 6.9.0 | 7.0.3 | `com/opensymphony/xwork2/ognl/OgnlUtil.getValue`<br>`com/opensymphony/xwork2/ognl/OgnlUtil.setValue`<br>`com/opensymphony/xwork2/util/classloader/FileResourceStore.getFile` |
 | `org.apache.struts:struts2-core` | 7.0.3 | 2.5.30 6.3.0.2 6.9.0 | `org/apache/struts2/ognl/OgnlUtil.getValue`<br>`org/apache/struts2/ognl/OgnlUtil.setValue`<br>`org/apache/struts2/util/classloader/FileResourceStore.getFile` |
-| `org.apache.tomcat:tomcat-catalina` | 7.0.109 | 8.5.100 9.0.124 10.1.62 11.0.29 | `org/apache/catalina/websocket/WsHttpServletRequestWrapper.getPart`<br>`org/apache/catalina/websocket/WsHttpServletRequestWrapper.getParts` |
+| `org.apache.tomcat.embed:tomcat-embed-core` | 10.1.62 11.0.29 | 9.0.124 | `jakarta/servlet/ServletRequestWrapper.<init>`<br>`jakarta/servlet/ServletRequestWrapper.setRequest`<br>`jakarta/servlet/http/HttpServlet.service`<br>`jakarta/servlet/http/HttpServletRequestWrapper.getPart`<br>and 1 more |
+| `org.apache.tomcat.embed:tomcat-embed-core` | 9.0.124 | 10.1.62 11.0.29 | `javax/servlet/ServletRequestWrapper.<init>`<br>`javax/servlet/ServletRequestWrapper.setRequest`<br>`javax/servlet/http/HttpServlet.service`<br>`javax/servlet/http/HttpServletRequestWrapper.getPart`<br>and 1 more |
+| `org.apache.tomcat:tomcat-catalina` | 7.0.109 | 8.5.100 9.0.124 10.0.27 10.1.62 11.0.29 | `org/apache/catalina/connector/CoyoteInputStream.readLine`<br>`org/apache/catalina/websocket/WsHttpServletRequestWrapper.getPart`<br>`org/apache/catalina/websocket/WsHttpServletRequestWrapper.getParts` |
 | `org.apache.velocity:velocity` | 1.7 | 1.5 | `org/apache/velocity/runtime/RuntimeInstance.evaluate` |
 | `org.codehaus.janino:commons-compiler` | 3.0.16 3.1.12 | 2.7.8 | `org/codehaus/commons/compiler/util/resource/DirectoryResourceCreator.getFile` |
 | `org.codehaus.janino:janino` | 2.7.8 | 3.0.16 3.1.12 | `org/codehaus/janino/util/resource/DirectoryResourceCreator.getFile` |
 | `org.codehaus.janino:janino` | 2.7.8 3.0.16 | 3.1.12 | `org/codehaus/janino/Compiler$2.getFile` |
 | `org.codehaus.janino:janino` | 3.1.12 | 2.7.8 3.0.16 | `org/codehaus/janino/Compiler$3.getFile` |
+| `org.eclipse.jetty.ee10:jetty-ee10-servlet` | 12.1.15 | 12.0.41 | `org/eclipse/jetty/ee10/servlet/util/ServletInputStreamWrapper.read` |
 | `org.eclipse.jetty:jetty-server` | 10.0.26 11.0.26 | 9.4.57.v20241219 12.0.41 | `org/eclipse/jetty/server/MultiPartFormInputStream$MultiPart.getSubmittedFileName`<br>`org/eclipse/jetty/server/MultiPartFormInputStream.getPart`<br>`org/eclipse/jetty/server/MultiPartFormInputStream.getParts`<br>`org/eclipse/jetty/server/MultiPartInputStreamParser$MultiPart.getSubmittedFileName`<br>and 2 more |
-| `org.eclipse.jetty:jetty-server` | 9.4.57.v20241219 10.0.26 11.0.26 | 12.0.41 | `org/eclipse/jetty/server/MultiParts$MultiPartsHttpParser.getPart`<br>`org/eclipse/jetty/server/MultiParts$MultiPartsHttpParser.getParts`<br>`org/eclipse/jetty/server/MultiParts$MultiPartsUtilParser.getPart`<br>`org/eclipse/jetty/server/MultiParts$MultiPartsUtilParser.getParts`<br>and 4 more |
+| `org.eclipse.jetty:jetty-server` | 9.4.57.v20241219 10.0.26 11.0.26 | 12.0.41 | `org/eclipse/jetty/server/HttpInput.read`<br>`org/eclipse/jetty/server/MultiParts$MultiPartsHttpParser.getPart`<br>`org/eclipse/jetty/server/MultiParts$MultiPartsHttpParser.getParts`<br>`org/eclipse/jetty/server/MultiParts$MultiPartsUtilParser.getPart`<br>and 5 more |
 | `org.elasticsearch:elasticsearch` | 8.19.23 | 7.17.29 | `org/elasticsearch/common/settings/LocallyMountedSecrets.getFile` |
 | `org.glassfish:jakarta.el` | 3.0.4 | 4.0.2 | `javax/el/ELProcessor.eval`<br>`javax/el/ELProcessor.getValue`<br>`javax/el/ELProcessor.setValue` |
 | `org.mybatis:mybatis` | 3.4.6 3.5.6 3.5.19 3.6.0 | 3.2.8 | `org/apache/ibatis/executor/statement/BaseStatementHandler.prepare`<br>`org/apache/ibatis/executor/statement/SimpleStatementHandler.queryCursor` |
@@ -355,7 +362,10 @@ signature); each is a place to check that the hook still covers what it did.
 | `org.springframework:spring-beans` | 6.2.19 7.1.0 | 3.2.18.RELEASE 4.3.30.RELEASE 5.3.39 | `org/springframework/beans/factory/support/AbstractBeanDefinition.setInitMethodNames` |
 | `org.springframework:spring-context` | 3.2.18.RELEASE 4.3.30.RELEASE 5.3.39 | 6.2.19 7.1.0 | `org/springframework/remoting/rmi/RemoteInvocationSerializingExporter.doReadRemoteInvocation` |
 | `org.springframework:spring-test` | 4.3.30.RELEASE | 5.3.39 6.2.19 | `org/springframework/mock/web/portlet/MockMultipartActionRequest.getFile`<br>`org/springframework/mock/web/portlet/MockMultipartActionRequest.getFiles` |
+| `org.springframework:spring-web` | 3.2.18.RELEASE | 4.3.30.RELEASE 5.3.39 6.2.19 7.1.0 | `org/springframework/web/filter/AbstractRequestLoggingFilter$RequestCachingRequestWrapper$RequestCachingInputStream.read` |
 | `org.springframework:spring-web` | 3.2.18.RELEASE 4.3.30.RELEASE 5.3.39 | 6.2.19 7.1.0 | `org/springframework/web/multipart/commons/CommonsMultipartFile.getOriginalFilename` |
+| `org.springframework:spring-web` | 4.3.30.RELEASE 5.3.39 6.2.19 7.1.0 | 3.2.18.RELEASE | `org/springframework/web/util/ContentCachingRequestWrapper$ContentCachingInputStream.read` |
+| `org.springframework:spring-web` | 5.3.39 6.2.19 7.1.0 | 3.2.18.RELEASE 4.3.30.RELEASE | `org/springframework/web/util/ContentCachingRequestWrapper$ContentCachingInputStream.readLine` |
 | `org.springframework:spring-web` | 7.1.0 | 3.2.18.RELEASE 4.3.30.RELEASE 5.3.39 6.2.19 | `org/springframework/http/converter/multipart/PartGenerator.getParts` |
 
 ### Backport
@@ -374,20 +384,23 @@ signature); each is a place to check that the hook still covers what it did.
 | `jakarta.activation:jakarta.activation-api` | 2.0.1 2.1.3 | 1.2.2 | `jakarta/activation/URLDataSource.<init>`<br>`jakarta/activation/URLDataSource.getInputStream` |
 | `org.apache.skywalking:storage-jdbc-hikaricp-plugin` | 8.9.1 | 9.7.0 | `org/apache/skywalking/oap/server/storage/plugin/jdbc/h2/dao/H2LogQueryDAO.queryLogs` |
 | `org.apache.skywalking:storage-jdbc-hikaricp-plugin` | 9.7.0 | 8.9.1 | `org/apache/skywalking/oap/server/storage/plugin/jdbc/common/dao/JDBCLogQueryDAO.buildSQL` |
-| `org.apache.spark:spark-core_2.12` | 2.4.8 | 3.5.10 | `org/spark_project/jetty/http/MultiPartFormInputStream$MultiPart.getSubmittedFileName`<br>`org/spark_project/jetty/http/MultiPartFormInputStream.deleteParts`<br>`org/spark_project/jetty/http/MultiPartFormInputStream.getParsedParts`<br>`org/spark_project/jetty/http/MultiPartFormInputStream.getPart`<br>and 26 more |
-| `org.apache.spark:spark-core_2.12` | 3.5.10 | 2.4.8 | `org/sparkproject/jetty/http/MultiPartFormInputStream$MultiPart.getSubmittedFileName`<br>`org/sparkproject/jetty/http/MultiPartFormInputStream.deleteParts`<br>`org/sparkproject/jetty/http/MultiPartFormInputStream.getParsedParts`<br>`org/sparkproject/jetty/http/MultiPartFormInputStream.getPart`<br>and 27 more |
+| `org.apache.spark:spark-core_2.12` | 2.4.8 | 3.5.10 | `org/spark_project/jetty/http/MultiPartFormInputStream$MultiPart.getSubmittedFileName`<br>`org/spark_project/jetty/http/MultiPartFormInputStream.deleteParts`<br>`org/spark_project/jetty/http/MultiPartFormInputStream.getParsedParts`<br>`org/spark_project/jetty/http/MultiPartFormInputStream.getPart`<br>and 27 more |
+| `org.apache.spark:spark-core_2.12` | 3.5.10 | 2.4.8 | `org/sparkproject/jetty/http/MultiPartFormInputStream$MultiPart.getSubmittedFileName`<br>`org/sparkproject/jetty/http/MultiPartFormInputStream.deleteParts`<br>`org/sparkproject/jetty/http/MultiPartFormInputStream.getParsedParts`<br>`org/sparkproject/jetty/http/MultiPartFormInputStream.getPart`<br>and 28 more |
 | `org.apache.struts:struts2-core` | 2.5.30 6.3.0.2 6.9.0 | 7.0.3 | `com/opensymphony/xwork2/util/classloader/FileResourceStore.getFile` |
 | `org.apache.struts:struts2-core` | 7.0.3 | 2.5.30 6.3.0.2 6.9.0 | `org/apache/struts2/util/classloader/FileResourceStore.getFile` |
-| `org.apache.tomcat:tomcat-catalina` | 7.0.109 | 8.5.100 9.0.124 10.1.62 11.0.29 | `org/apache/catalina/connector/Request.getNoteNames`<br>`org/apache/catalina/websocket/WsHttpServletRequestWrapper.getPart`<br>`org/apache/catalina/websocket/WsHttpServletRequestWrapper.getParts` |
-| `org.apache.tomcat:tomcat-catalina` | 8.5.100 9.0.124 10.1.62 11.0.29 | 7.0.109 | `org/apache/catalina/connector/Request.getUpgradeProtocolName`<br>`org/apache/catalina/connector/Request.parseLocalesHeader` |
+| `org.apache.tomcat.embed:tomcat-embed-core` | 10.1.62 11.0.29 | 9.0.124 | `jakarta/servlet/ServletRequestWrapper.<init>`<br>`jakarta/servlet/ServletRequestWrapper.setRequest`<br>`jakarta/servlet/http/HttpServlet.service`<br>`jakarta/servlet/http/HttpServletRequestWrapper.getPart`<br>and 1 more |
+| `org.apache.tomcat.embed:tomcat-embed-core` | 9.0.124 | 10.1.62 11.0.29 | `javax/servlet/ServletRequestWrapper.<init>`<br>`javax/servlet/ServletRequestWrapper.setRequest`<br>`javax/servlet/http/HttpServlet.service`<br>`javax/servlet/http/HttpServletRequestWrapper.getPart`<br>and 1 more |
+| `org.apache.tomcat:tomcat-catalina` | 7.0.109 | 8.5.100 9.0.124 10.0.27 10.1.62 11.0.29 | `org/apache/catalina/connector/CoyoteInputStream.readLine`<br>`org/apache/catalina/connector/Request.getNoteNames`<br>`org/apache/catalina/websocket/WsHttpServletRequestWrapper.getPart`<br>`org/apache/catalina/websocket/WsHttpServletRequestWrapper.getParts` |
+| `org.apache.tomcat:tomcat-catalina` | 8.5.100 9.0.124 10.0.27 10.1.62 11.0.29 | 7.0.109 | `org/apache/catalina/connector/Request.getUpgradeProtocolName`<br>`org/apache/catalina/connector/Request.parseLocalesHeader` |
 | `org.codehaus.janino:commons-compiler` | 3.0.16 3.1.12 | 2.7.8 | `org/codehaus/commons/compiler/util/resource/DirectoryResourceCreator.getFile` |
 | `org.codehaus.janino:janino` | 2.7.8 | 3.0.16 3.1.12 | `org/codehaus/janino/util/resource/DirectoryResourceCreator.getFile` |
 | `org.codehaus.janino:janino` | 2.7.8 3.0.16 | 3.1.12 | `org/codehaus/janino/Compiler$2.getFile` |
 | `org.codehaus.janino:janino` | 3.1.12 | 2.7.8 3.0.16 | `org/codehaus/janino/Compiler$3.getFile` |
+| `org.eclipse.jetty.ee10:jetty-ee10-servlet` | 12.1.15 | 12.0.41 | `org/eclipse/jetty/ee10/servlet/util/ServletInputStreamWrapper.read` |
 | `org.eclipse.jetty:jetty-server` | 10.0.26 11.0.26 | 9.4.57.v20241219 12.0.41 | `org/eclipse/jetty/server/MultiPartFormInputStream$MultiPart.getSubmittedFileName`<br>`org/eclipse/jetty/server/MultiPartFormInputStream.delete`<br>`org/eclipse/jetty/server/MultiPartFormInputStream.getPart`<br>`org/eclipse/jetty/server/MultiPartFormInputStream.getParts`<br>and 8 more |
 | `org.eclipse.jetty:jetty-server` | 12.0.41 | 9.4.57.v20241219 10.0.26 11.0.26 | `org/eclipse/jetty/server/internal/HttpChannelState.initialize` |
 | `org.eclipse.jetty:jetty-server` | 9.4.57.v20241219 | 10.0.26 11.0.26 12.0.41 | `org/eclipse/jetty/server/Request.getPushBuilder`<br>`org/eclipse/jetty/server/Request.mergeQueryParameters` |
-| `org.eclipse.jetty:jetty-server` | 9.4.57.v20241219 10.0.26 11.0.26 | 12.0.41 | `org/eclipse/jetty/server/MultiParts$MultiPartsHttpParser.getPart`<br>`org/eclipse/jetty/server/MultiParts$MultiPartsHttpParser.getParts`<br>`org/eclipse/jetty/server/MultiParts$MultiPartsHttpParser.setNonComplianceViolationsOnRequest`<br>`org/eclipse/jetty/server/MultiParts$MultiPartsUtilParser.getPart`<br>and 13 more |
+| `org.eclipse.jetty:jetty-server` | 9.4.57.v20241219 10.0.26 11.0.26 | 12.0.41 | `org/eclipse/jetty/server/HttpInput.read`<br>`org/eclipse/jetty/server/MultiParts$MultiPartsHttpParser.getPart`<br>`org/eclipse/jetty/server/MultiParts$MultiPartsHttpParser.getParts`<br>`org/eclipse/jetty/server/MultiParts$MultiPartsHttpParser.setNonComplianceViolationsOnRequest`<br>and 14 more |
 | `org.elasticsearch:elasticsearch` | 8.19.23 | 7.17.29 | `org/elasticsearch/common/settings/LocallyMountedSecrets.getFile` |
 | `org.mybatis:mybatis` | 3.4.6 3.5.6 3.5.19 3.6.0 | 3.2.8 | `org/apache/ibatis/executor/statement/BaseStatementHandler.prepare`<br>`org/apache/ibatis/executor/statement/SimpleStatementHandler.queryCursor` |
 | `org.mybatis:mybatis` | 3.5.19 3.6.0 | 3.2.8 3.4.6 3.5.6 | `org/apache/ibatis/scripting/xmltags/TrimSqlNode$FilteredDynamicContext.lambda$applyPrefix$0`<br>`org/apache/ibatis/scripting/xmltags/TrimSqlNode$FilteredDynamicContext.lambda$applySuffix$1`<br>`org/apache/ibatis/scripting/xmltags/TrimSqlNode$FilteredDynamicContext.lambda$applySuffix$2` |
@@ -399,12 +412,12 @@ signature); each is a place to check that the hook still covers what it did.
 | `org.springframework:spring-test` | 5.3.39 | 4.3.30.RELEASE 6.2.19 | `org/springframework/test/web/client/match/ContentRequestMatchers$MultipartHelper.parse`<br>`org/springframework/test/web/client/match/ContentRequestMatchers.lambda$formData$5`<br>`org/springframework/test/web/client/match/ContentRequestMatchers.lambda$multipartData$6` |
 | `org.springframework:spring-test` | 5.3.39 6.2.19 | 4.3.30.RELEASE | `org/springframework/mock/web/MockMultipartHttpServletRequest.getMultipartHeaders`<br>`org/springframework/test/web/servlet/client/MockMvcHttpConnector.adaptRequest`<br>`org/springframework/test/web/servlet/client/MockMvcHttpConnector.adaptResponse` |
 | `org.springframework:spring-test` | 6.2.19 | 4.3.30.RELEASE 5.3.39 | `org/springframework/mock/web/MockHttpServletRequest.startAsync` |
-| `org.springframework:spring-web` | 3.2.18.RELEASE | 4.3.30.RELEASE 5.3.39 6.2.19 7.1.0 | `org/springframework/web/bind/WebDataBinder.bindMultipartFiles` |
+| `org.springframework:spring-web` | 3.2.18.RELEASE | 4.3.30.RELEASE 5.3.39 6.2.19 7.1.0 | `org/springframework/web/bind/WebDataBinder.bindMultipartFiles`<br>`org/springframework/web/filter/AbstractRequestLoggingFilter$RequestCachingRequestWrapper$RequestCachingInputStream.read` |
 | `org.springframework:spring-web` | 3.2.18.RELEASE 4.3.30.RELEASE | 5.3.39 6.2.19 7.1.0 | `org/springframework/web/bind/WebDataBinder.bindMultipart`<br>`org/springframework/web/bind/annotation/support/HandlerMethodInvoker.initBinder`<br>`org/springframework/web/bind/annotation/support/HandlerMethodInvoker.invokeHandlerMethod`<br>`org/springframework/web/bind/annotation/support/HandlerMethodInvoker.resolveRequestHeaderMap`<br>and 3 more |
 | `org.springframework:spring-web` | 3.2.18.RELEASE 4.3.30.RELEASE 5.3.39 | 6.2.19 7.1.0 | `org/springframework/web/multipart/commons/CommonsFileUploadSupport.cleanupFileItems`<br>`org/springframework/web/multipart/commons/CommonsFileUploadSupport.parseFileItems`<br>`org/springframework/web/multipart/commons/CommonsMultipartFile.getOriginalFilename` |
 | `org.springframework:spring-web` | 4.3.30.RELEASE | 3.2.18.RELEASE 5.3.39 6.2.19 7.1.0 | `org/springframework/web/bind/support/WebRequestDataBinder$Servlet3MultipartHelper.bindParts`<br>`org/springframework/web/multipart/support/MultipartResolutionDelegate$RequestPartResolver.resolvePartArray`<br>`org/springframework/web/multipart/support/MultipartResolutionDelegate$RequestPartResolver.resolvePartList` |
-| `org.springframework:spring-web` | 4.3.30.RELEASE 5.3.39 6.2.19 7.1.0 | 3.2.18.RELEASE | `org/springframework/web/method/annotation/RequestParamMethodArgumentResolver.contributeMethodArgument` |
+| `org.springframework:spring-web` | 4.3.30.RELEASE 5.3.39 6.2.19 7.1.0 | 3.2.18.RELEASE | `org/springframework/web/method/annotation/RequestParamMethodArgumentResolver.contributeMethodArgument`<br>`org/springframework/web/util/ContentCachingRequestWrapper$ContentCachingInputStream.read` |
 | `org.springframework:spring-web` | 5.3.39 | 3.2.18.RELEASE 4.3.30.RELEASE 6.2.19 7.1.0 | `org/springframework/web/method/annotation/ModelAttributeMethodProcessor.resolveConstructorArgument`<br>`org/springframework/web/method/annotation/ModelAttributeMethodProcessor.validateValueIfApplicable` |
-| `org.springframework:spring-web` | 5.3.39 6.2.19 7.1.0 | 3.2.18.RELEASE 4.3.30.RELEASE | `org/springframework/web/bind/WebDataBinder.lambda$bindMultipart$0`<br>`org/springframework/web/method/annotation/RequestParamMapMethodArgumentResolver.resolveArgument`<br>`org/springframework/web/multipart/support/MultipartResolutionDelegate.resolvePartList`<br>`org/springframework/web/multipart/support/StandardServletPartUtils.getParts`<br>and 1 more |
+| `org.springframework:spring-web` | 5.3.39 6.2.19 7.1.0 | 3.2.18.RELEASE 4.3.30.RELEASE | `org/springframework/web/bind/WebDataBinder.lambda$bindMultipart$0`<br>`org/springframework/web/method/annotation/RequestParamMapMethodArgumentResolver.resolveArgument`<br>`org/springframework/web/multipart/support/MultipartResolutionDelegate.resolvePartList`<br>`org/springframework/web/multipart/support/StandardServletPartUtils.getParts`<br>and 2 more |
 | `org.springframework:spring-web` | 6.2.19 7.1.0 | 3.2.18.RELEASE 4.3.30.RELEASE 5.3.39 | `org/springframework/web/bind/ServletRequestDataBinder$ServletRequestValueResolver.getMultipartValue` |
 | `org.springframework:spring-web` | 7.1.0 | 3.2.18.RELEASE 4.3.30.RELEASE 5.3.39 6.2.19 | `org/springframework/http/converter/multipart/MultipartHttpMessageConverter.applyDefaultCharset`<br>`org/springframework/http/converter/multipart/MultipartHttpMessageConverter.canWrite`<br>`org/springframework/http/converter/multipart/MultipartHttpMessageConverter.findConverterFor`<br>`org/springframework/http/converter/multipart/MultipartHttpMessageConverter.supportsMediaType`<br>and 3 more |
