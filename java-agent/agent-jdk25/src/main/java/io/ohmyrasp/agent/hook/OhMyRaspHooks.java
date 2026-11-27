@@ -473,10 +473,10 @@ public final class OhMyRaspHooks {
       // The request rules read the body's values where they read parameters: with the request's own, and alone,
       // so that a parameter's match does not hide a body field's inside one rule.
       RequestContext view = context.withBodyParameters();
-      for (Detection found : DETECTORS.detectRequestAll(view)) {
+      for (Detection found : DETECTORS.requestChainFindings(view)) {
         if (seen.isNew(found)) emit(Optional.of(bodyFinding(found, context, true)));
       }
-      for (Detection found : DETECTORS.detectRequestAll(context.withOnlyBodyParameters())) {
+      for (Detection found : DETECTORS.requestChainFindings(context.withOnlyBodyParameters())) {
         if (seen.isNew(found)) emit(Optional.of(bodyFinding(found, context, false)));
       }
       AgentPolicy policy = policy();
@@ -530,7 +530,7 @@ public final class OhMyRaspHooks {
         RequestContext withoutBody = new RequestContext(
             context.method(), context.uri(), context.query(), context.parameters(), context.headers());
         Set<List<Object>> keys = new java.util.HashSet<>();
-        for (Detection found : DETECTORS.detectRequestAll(withoutBody)) keys.add(key(found));
+        for (Detection found : DETECTORS.requestChainFindings(withoutBody)) keys.add(key(found));
         seen.entry = keys;
         seen.entryOf = context;
       }

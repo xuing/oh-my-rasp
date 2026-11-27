@@ -93,7 +93,7 @@ public final class DetectorEngine {
    * what each later rule finds. For a decision that must not let an earlier finding hide a later one (the
    * request body's, where the first finding is often the request's own and already reported).
    */
-  public List<Detection> detectRequestAll(RequestContext request) {
+  public List<Detection> requestChainFindings(RequestContext request) {
     List<Detection> out = new ArrayList<>(2);
     requestChain(request, out, false);
     return out;
