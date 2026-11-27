@@ -86,8 +86,8 @@ One file per rule id. Effects count the file's attack cases; rules are the ids t
 | [writeFile_generated_script](../rules/cases/writeFile_generated_script.toml) | 3 | 1 | block 2, none 1 | `writeFile_generated_script` | none 2, unreachable 1 | - |
 | [writeFile_reflect](../rules/cases/writeFile_reflect.toml) | 2 | 1 | block 2 | `writeFile_reflect` | block 2 | `file_script_write` |
 | [writeFile_script](../rules/cases/writeFile_script.toml) | 5 | 1 | block 4, log 1 | `writeFile_script` | block 4, log 1 | `file_script_write` |
-| [xml_decoder_runtime](../rules/cases/xml_decoder_runtime.toml) | 4 | 1 | block 3, log 1 | `xml_decoder_runtime` | block 3, log 1 | `xml_decoder_runtime_execution` |
-| [xml_decoder_webshell](../rules/cases/xml_decoder_webshell.toml) | 4 | 1 | block 3, log 1 | `xml_decoder_webshell`, `writeFile_script` | block 3, log 1 | `xml_decoder_script_file_write`, `file_script_write` |
+| [xml_decoder_runtime](../rules/cases/xml_decoder_runtime.toml) | 13 | 5 | block 9, log 4 | `xml_decoder_runtime` | block 9, log 4 | `xml_decoder_runtime_execution` |
+| [xml_decoder_webshell](../rules/cases/xml_decoder_webshell.toml) | 7 | 2 | block 5, log 2 | `xml_decoder_webshell`, `writeFile_script` | block 5, log 2 | `xml_decoder_script_file_write`, `file_script_write` |
 | [xpath_runtime](../rules/cases/xpath_runtime.toml) | 2 | 1 | block 2 | `xpath_runtime` | unreachable 2 | - |
 | [xxe_file](../rules/cases/xxe_file.toml) | 4 | 1 | block 3, log 1 | `xxe_protocol`, `xxe_file` | block 3, log 1 | `xxe_external_entity_protocol`, `file_sensitive_read` |
 | [xxe_protocol](../rules/cases/xxe_protocol.toml) | 3 | 1 | block 3 | `xxe_protocol` | block 3 | `xxe_external_entity_protocol` |
@@ -162,9 +162,9 @@ Each id that some case names on this engine: the attack cases that name it, the 
 | `ssrf_userinput` | 4 | 2 | block 4 | [ssrf_userinput](../rules/cases/ssrf_userinput.toml) |
 | `writeFile_generated_script` | 2 | 1 | block 2 | [writeFile_generated_script](../rules/cases/writeFile_generated_script.toml) |
 | `writeFile_reflect` | 2 | 1 | block 2 | [writeFile_reflect](../rules/cases/writeFile_reflect.toml) |
-| `writeFile_script` | 6 | 2 | block 4, log 1, log (also) 1 | [writeFile_script](../rules/cases/writeFile_script.toml), [xml_decoder_webshell](../rules/cases/xml_decoder_webshell.toml) |
-| `xml_decoder_runtime` | 4 | 1 | block 3, log 1 | [xml_decoder_runtime](../rules/cases/xml_decoder_runtime.toml) |
-| `xml_decoder_webshell` | 4 | 1 | block 3, log 1 | [xml_decoder_webshell](../rules/cases/xml_decoder_webshell.toml) |
+| `writeFile_script` | 7 | 3 | block 4, log 1, log (also) 2 | [writeFile_script](../rules/cases/writeFile_script.toml), [xml_decoder_webshell](../rules/cases/xml_decoder_webshell.toml) |
+| `xml_decoder_runtime` | 13 | 5 | block 9, log 4 | [xml_decoder_runtime](../rules/cases/xml_decoder_runtime.toml) |
+| `xml_decoder_webshell` | 7 | 2 | block 5, log 2 | [xml_decoder_webshell](../rules/cases/xml_decoder_webshell.toml) |
 | `xpath_runtime` | 2 | 1 | block 2 | [xpath_runtime](../rules/cases/xpath_runtime.toml) |
 | `xxe_file` | 1 | 1 | log 1 | [xxe_file](../rules/cases/xxe_file.toml) |
 | `xxe_protocol` | 7 | 2 | block 6, log (also) 1 | [xxe_file](../rules/cases/xxe_file.toml), [xxe_protocol](../rules/cases/xxe_protocol.toml) |
@@ -218,7 +218,7 @@ Each id that some case names on this engine: the attack cases that name it, the 
 | `deserialization_gadget_class` | 7 | 2 | block 7 | [deserialization_blacklist](../rules/cases/deserialization_blacklist.toml), [deserialization_gadget](../rules/cases/deserialization_gadget.toml) |
 | `directory_userinput` | 3 | 1 | block 3 | [directory_userinput](../rules/cases/directory_userinput.toml) |
 | `file_generated_plot_script_command` | 2 | 1 | block 2 | [file_generated_plot_script_command](../rules/cases/file_generated_plot_script_command.toml) |
-| `file_script_write` | 8 | 3 | block 6, log 1, log (also) 1 | [writeFile_reflect](../rules/cases/writeFile_reflect.toml), [writeFile_script](../rules/cases/writeFile_script.toml), [xml_decoder_webshell](../rules/cases/xml_decoder_webshell.toml) |
+| `file_script_write` | 9 | 4 | block 6, log 1, log (also) 2 | [writeFile_reflect](../rules/cases/writeFile_reflect.toml), [writeFile_script](../rules/cases/writeFile_script.toml), [xml_decoder_webshell](../rules/cases/xml_decoder_webshell.toml) |
 | `file_sensitive_read` | 9 | 4 | block 7, log 1, log (also) 1 | [readFile_unwanted](../rules/cases/readFile_unwanted.toml), [readFile_userinput](../rules/cases/readFile_userinput.toml), [xxe_file](../rules/cases/xxe_file.toml) |
 | `java_compile_runtime_execution` | 7 | 1 | block 6, log 1 | [java_compile_runtime](../rules/cases/java_compile_runtime.toml) |
 | `jdbc_derby_code_loading` | 2 | 1 | block 2 | [jdbc_derby_code_loading](../rules/cases/jdbc_derby_code_loading.toml) |
@@ -240,8 +240,8 @@ Each id that some case names on this engine: the attack cases that name it, the 
 | `ssrf_cloud_metadata` | 4 | 1 | block 3, log 1 | [ssrf_aws](../rules/cases/ssrf_aws.toml) |
 | `ssrf_loopback_admin` | 2 | 2 | block 2 | [ssrf_userinput](../rules/cases/ssrf_userinput.toml) |
 | `ssrf_request_parameter_url` | 2 | 2 | block 2 | [ssrf_userinput](../rules/cases/ssrf_userinput.toml) |
-| `xml_decoder_runtime_execution` | 4 | 1 | block 3, log 1 | [xml_decoder_runtime](../rules/cases/xml_decoder_runtime.toml) |
-| `xml_decoder_script_file_write` | 4 | 1 | block 3, log 1 | [xml_decoder_webshell](../rules/cases/xml_decoder_webshell.toml) |
+| `xml_decoder_runtime_execution` | 13 | 5 | block 9, log 4 | [xml_decoder_runtime](../rules/cases/xml_decoder_runtime.toml) |
+| `xml_decoder_script_file_write` | 7 | 2 | block 5, log 2 | [xml_decoder_webshell](../rules/cases/xml_decoder_webshell.toml) |
 | `xxe_external_entity_protocol` | 7 | 2 | block 6, log 1 | [xxe_file](../rules/cases/xxe_file.toml), [xxe_protocol](../rules/cases/xxe_protocol.toml) |
 
 Not covered on this engine, from [uncovered.toml](../rules/cases/uncovered.toml) and, for the ids marked `not wired`, from the `not_wired` object of the [catalogue](../rules/general.json):

@@ -310,7 +310,7 @@ Hook families that rewrite no method of any listed library, from
 | `Base64HookModule` | JDK-only: rewrites java.util.Base64$Decoder. |
 | `ClassLoaderHookModule` | JDK-only: rewrites java.net.URLClassLoader, sun.rmi.server.LoaderHandler and URLClassPath loaders. |
 | `FileHookModule` | JDK-only: rewrites java.io and java.nio.file classes. |
-| `JavaBeansHookModule` | JDK-only: rewrites java.beans.Expression and Statement and com.sun.beans.decoder.DocumentHandler. |
+| `JavaBeansHookModule` | JDK-only: rewrites java.beans.Expression and Statement and the com.sun.beans.decoder DocumentHandler, MethodElementHandler, PropertyElementHandler and NewElementHandler. |
 | `JmxHookModule` | JDK-only: rewrites the JDK's DefaultMBeanServerInterceptor and BadAttributeValueExpException. |
 | `JndiHookModule` | JDK-only: rewrites javax.naming.InitialContext and com.sun.jndi URL contexts. |
 | `JwtHookModule` | Not a library: its target is io.dataease.auth.filter.CommunityTokenFilter, a class of the DataEase application. |
@@ -324,7 +324,7 @@ Hook families that rewrite no method of any listed library, from
 |---|---|
 | `Java{N}Base64Transformer` | JDK-only: rewrites java.util.Base64$Decoder. |
 | `Java{N}ClassLoaderTransformer` | JDK-only: rewrites java.net.URLClassLoader, sun.rmi.server.LoaderHandler and URLClassPath loaders. |
-| `Java{N}JavaBeansTransformer` | JDK-only: rewrites java.beans.Expression and Statement and com.sun.beans.decoder.DocumentHandler. |
+| `Java{N}JavaBeansTransformer` | JDK-only: rewrites java.beans.Expression and Statement and the com.sun.beans.decoder DocumentHandler, MethodElementHandler, PropertyElementHandler and NewElementHandler. |
 | `Java{N}JmxTransformer` | JDK-only: rewrites the JDK's DefaultMBeanServerInterceptor and BadAttributeValueExpException. |
 | `Java{N}JndiTransformer` | JDK-only: rewrites javax.naming.InitialContext and com.sun.jndi URL contexts. |
 | `Java{N}JwtTransformer` | Not a library: its target is io.dataease.auth.filter.CommunityTokenFilter, a class of the DataEase application. |
