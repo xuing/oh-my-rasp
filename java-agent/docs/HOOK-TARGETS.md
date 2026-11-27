@@ -40,8 +40,9 @@ original bytes is a `# chain:` line in the recorded map and is listed below.
 ## At run time
 
 Each agent JAR carries a table derived from these maps: per hook unit, the classes it hooks on some
-recorded version and the methods it hooks there. A running agent writes one diagnostic line when it
-loads such a class and the unit hooks none of those methods, so a version the probe never saw is
+recorded version, the methods it hooks there and, for each method, the agent methods it calls from it.
+A running agent writes one diagnostic line when it loads such a class and the unit calls none of those
+agent methods from any of those methods, so a version the probe never saw is
 reported where it runs ([docs/agent.md](../../docs/agent.md#hooks-that-did-not-apply)). The probe
 runs the agent with that report on over the libraries below and fails on a version that the unit does
 not hook unless [`hook-miss.toml`](../probes/hook-targets/hook-miss.toml) explains it:
