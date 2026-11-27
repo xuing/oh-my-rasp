@@ -1,5 +1,6 @@
 package io.ohmyrasp.agent.http;
 
+import io.ohmyrasp.agent.util.Redaction;
 import java.util.Arrays;
 import java.util.Collection;
 import java.util.Collections;
@@ -20,7 +21,10 @@ import java.util.Set;
  * <li>for a finding that names the input it decided on (a request rule's {@code parameter}) or whose operand
  *     contains an input value (a sink rule that correlates request input), the name of that one input field cut
  *     to {@link #MAX_NAME_CHARS} characters ({@link #INPUT_FIELD}) and its value cut to {@link #MAX_VALUE_CHARS}
- *     ({@link #INPUT_VALUE}): the attacker's payload, which the attacker supplied;</li>
+ *     ({@link #INPUT_VALUE}): the attacker's payload, which the attacker supplied. Two things in it are not shown,
+ *     as nowhere else in an event: the value of a field that names a credential ({@code password}, {@code token}:
+ *     {@link Redaction#isCredentialName}), which is the marker alone, and the credentials of a URL in the value
+ *     ({@link Redaction#redactedUrls});</li>
  * <li>every other detail (the command, SQL, path or URL as executed, a class name, a count) only as the hook's
  *     kind and the length of the longest one ({@link #OPERAND}, {@code "command, 37 chars"}).</li>
  * </ul>
@@ -77,7 +81,7 @@ public final class BodyEvidence {
           }
         }
       }
-      return new String[] {cutName(parameter), chosen == null ? null : cutValue(chosen)};
+      return new String[] {cutName(parameter), shown(parameter, chosen)};
     }
     if (fields == null || lowered.length == 0) return null;
     String bestName = null;
@@ -91,13 +95,13 @@ public final class BodyEvidence {
         }
       }
     }
-    if (bestValue != null) return new String[] {cutName(bestName), cutValue(bestValue)};
+    if (bestValue != null) return new String[] {cutName(bestName), shown(bestName, bestValue)};
     for (Map.Entry<?, ?> field : fields.entrySet()) {
       String name = String.valueOf(field.getKey());
       if (significantName(name) && within(name, lowered)) {
         List<String> values = values(field.getValue());
         String first = values.isEmpty() ? null : values.get(0);
-        return new String[] {cutName(name), first == null ? null : cutValue(first)};
+        return new String[] {cutName(name), shown(name, first)};
       }
     }
     return null;
@@ -119,6 +123,17 @@ public final class BodyEvidence {
 
   public static String cutValue(String value) {
     return cut(value == null ? "" : value, MAX_VALUE_CHARS);
+  }
+
+  /**
+   * The value of the input {@code name} as an event shows it, or null for none: the marker alone when the name is
+   * a credential's, else the value without the credentials of a URL in it, cut. The URL is read before the cut, so
+   * a credential the cut would have split is removed whole.
+   */
+  private static String shown(String name, String value) {
+    if (value == null) return null;
+    if (Redaction.isCredentialName(name)) return Redaction.MARKER;
+    return cutValue(Redaction.redactedUrls(value));
   }
 
   private static String cut(String text, int most) {

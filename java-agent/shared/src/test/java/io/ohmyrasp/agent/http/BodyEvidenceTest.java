@@ -6,6 +6,7 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import io.ohmyrasp.agent.util.Redaction;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.LinkedHashMap;
@@ -45,6 +46,49 @@ class BodyEvidenceTest {
         BodyEvidence.matched(body, "tpl", Collections.<String>emptyList()), "else its first value");
     assertArrayEquals(new String[] {"absent", null},
         BodyEvidence.matched(body, "absent", Collections.<String>emptyList()), "a name the rule gave, without a value");
+  }
+
+  /**
+   * The matched input is the attacker's payload, but two things in it are a user's or the application's secret
+   * and reach no event: a URL's credentials (a repository URL with a token posted in a body) and the value of a
+   * field that names a credential (a password with a quote in it that a SQL rule matched).
+   */
+  @Test
+  void aMatchedValueShowsNoUrlCredentialAndNoCredentialField() {
+    Map<String, List<String>> body = new LinkedHashMap<String, List<String>>();
+    String repository = "https://deploy:tok3n-SENTINEL@git.example/app.git?access_token=SENTINEL2";
+    body.put("repository", Collections.singletonList(repository));
+    body.put("password", Collections.singletonList("x' OR '1'='1 SENTINEL3"));
+
+    String[] named = BodyEvidence.matched(body, "repository", Collections.<String>emptyList());
+    assertEquals("repository", named[0]);
+    assertFalse(named[1].contains("SENTINEL"), named[1]);
+    assertTrue(named[1].contains("git.example/app.git"), "the rest of the URL is the evidence: " + named[1]);
+
+    String[] contained = BodyEvidence.matched(body, null, Collections.singletonList("git clone " + repository));
+    assertEquals("repository", contained[0]);
+    assertFalse(contained[1].contains("SENTINEL"), contained[1]);
+
+    String[] credential = BodyEvidence.matched(body, null,
+        Collections.singletonList("SELECT 1 FROM users WHERE pw = 'x' OR '1'='1 SENTINEL3'"));
+    assertArrayEquals(new String[] {"password", Redaction.MARKER}, credential);
+    assertArrayEquals(new String[] {"password", Redaction.MARKER},
+        BodyEvidence.matched(body, "password", Collections.<String>emptyList()));
+  }
+
+  /** The URL is read before the value is cut: a credential the cut would split does not leave its first half. */
+  @Test
+  void aCredentialTheCutWouldSplitIsRemovedWhole() {
+    StringBuilder user = new StringBuilder();
+    for (int i = 0; i < BodyEvidence.MAX_VALUE_CHARS - 20; i++) user.append('u');
+    String url = "http://" + user + ":SENTINEL-first-half-SENTINEL-second-half@host.example/x";
+    Map<String, List<String>> body = new LinkedHashMap<String, List<String>>();
+    body.put("callback", Collections.singletonList(url));
+
+    String[] shown = BodyEvidence.matched(body, "callback", Collections.<String>emptyList());
+
+    assertFalse(shown[1].contains("SENTINEL"), shown[1]);
+    assertTrue(shown[1].length() <= BodyEvidence.MAX_VALUE_CHARS);
   }
 
   @Test

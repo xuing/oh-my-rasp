@@ -4647,9 +4647,9 @@ public final class BackportHooks {
     if (RaspRuntime.detectionOff()) {
       return;
     }
-    // The credentials of a URL in the detail (a JDBC URL a pool configured) are removed first, from the text as the
-    // application built it, then the body's text (publicFinding): a body value equal to a credential's name would
-    // otherwise be renamed before the redaction looks for that name, and the value after it would stay.
+    // The credentials of a URL in the detail (a JDBC URL a pool configured) are removed first, from the detail as the
+    // rule wrote it, which is all a request without a body needs. On a request with a body publicFinding then
+    // replaces the detail with an allow-list; the one input value it shows has its own URL credentials removed.
     finding = publicFinding(withoutUrlCredentials(finding));
     if (finding.extra != null) resolvedAddress = null; // derived from an operand a body may have supplied
     String logPath = RaspRuntime.resolveLogPath();

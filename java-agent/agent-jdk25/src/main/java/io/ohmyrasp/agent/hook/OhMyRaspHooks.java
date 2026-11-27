@@ -2704,11 +2704,10 @@ public final class OhMyRaspHooks {
 
   /**
    * {@code event} as it leaves the agent, in the event and in the block exception: without URL credentials
-   * ({@link #withoutUrlCredentials}), then without body text ({@link #publicView}), and without the evidence a
-   * response finding must not carry. The credentials go first, from the text as the application built it: a body
-   * value equal to a credential's name ({@code password}) would otherwise be renamed before the redaction looks for
-   * that name, and the value after it would stay. A body value the redaction cut through is still found by the
-   * body scrubber's fragment pass.
+   * ({@link #withoutUrlCredentials}), then as its public view ({@link #publicView}), and without the evidence a
+   * response finding must not carry. The credentials go first, from the details as the rule wrote them, which is
+   * all a request without a body needs. On a request with a body the public view then replaces the details with
+   * an allow-list; the one input value it shows has its own URL credentials removed ({@link BodyEvidence}).
    */
   private static Detection reportable(Detection event) {
     java.util.function.UnaryOperator<Detection> replaced = scrubberForTesting;
