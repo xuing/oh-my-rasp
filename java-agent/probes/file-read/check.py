@@ -31,15 +31,19 @@ def main():
         programs = checks if args.delete_only else [*checks, "DirectoryPolicyCheck"]
         subprocess.run(["javac", "-d", tmp, COMMON / "HttpTransportCheck.java", *(src / (c + ".java") for c in programs)], check=True)
         for name in checks:
-            for mode in ("block", "monitor"):
+            # carried: block mode with outside_request=log, the walk consumed on a thread that serves no request.
+            modes = ("block", "monitor", "carried") if name == "DirectoryWalkCheck" else ("block", "monitor")
+            for mode in modes:
                 log = Path(tmp) / f"{name}-{mode}.jsonl"
                 directory_check = name in ("DirectoryCheck", "DirectoryWalkCheck")
                 rounds = args.rounds
                 delete_check = name == "DeleteEntryCheck"
                 fixture = Path(tmp) / f"reports-{mode}"
                 scope = [f"-Dohmyrasp.file.delete_root={fixture}/tenant-reports"] if delete_check else []
+                agent_mode = ["-Dohmyrasp.mode=block", "-Dohmyrasp.outside_request=log"] if mode == "carried" \
+                    else [f"-Dohmyrasp.mode={mode}"]
                 run = subprocess.run(["java", "-Xverify:all", *scope, f"-javaagent:{agent}", "-Dohmyrasp.standalone=true",
-                                      f"-Dohmyrasp.mode={mode}", "-Dohmyrasp.log.sync=true", f"-Dohmyrasp.log={log}",
+                                      *agent_mode, "-Dohmyrasp.log.sync=true", f"-Dohmyrasp.log={log}",
                                       "-cp", tmp, name, track, mode, str(rounds), *([str(fixture)] if delete_check else [])], capture_output=True, text=True, timeout=45)
                 if run.returncode:
                     raise SystemExit(run.stdout + run.stderr)
@@ -63,7 +67,7 @@ def main():
                     if len(events) != rounds * (1 if walk else 5) or any(
                         e["algorithm"] != rule or e["details"]["path"] != "/etc"
                         or e["details"].get("decision_basis") != basis
-                        or (e["action"] == "block") != (mode == "block") for e in events
+                        or (e["action"] == "block") != (mode in ("block", "carried")) for e in events
                     ):
                         raise SystemExit(f"unexpected {name} decisions in {mode}")
                     if walk and track == "main" and any(e["request"]["uri"] != "/origin" for e in events):

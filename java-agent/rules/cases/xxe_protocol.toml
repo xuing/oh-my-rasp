@@ -6,13 +6,14 @@ op = "xml.parse"
 args = { document = "<?xml version=\"1.0\"?><!DOCTYPE r [<!ENTITY x SYSTEM \"http://127.0.0.1:{port}/entity.txt\">]><r>&x;</r>" }
 
 [case.primary]
-effect = "block"
+effect = "log"
 rule = "xxe_protocol"
+why = "An external entity fetched over a protocol with no request behind it only shows that an operation happened: a scheduled import fetches the DTD it is configured to fetch, so it logs outside a request whatever outside_request says."
 
 [case.backport]
-effect = "block"
+effect = "log"
 rule = "xxe_external_entity_protocol"
-
+why = "An external entity fetched over a protocol with no request behind it only shows that an operation happened: a scheduled import fetches the DTD it is configured to fetch, so it logs outside a request whatever outside_request says."
 [[case]]
 name = "http-entity-in-request"
 kind = "attack"
@@ -55,9 +56,11 @@ op = "xml.parse"
 args = { document = "<?xml version=\"1.0\"?><!DOCTYPE r SYSTEM \"http://127.0.0.1:{port}/ext.dtd\"><r>&remote;</r>" }
 
 [case.primary]
-effect = "block"
+effect = "log"
 rule = "xxe_protocol"
+why = "An external entity fetched over a protocol with no request behind it only shows that an operation happened: a scheduled import fetches the DTD it is configured to fetch, so it logs outside a request whatever outside_request says."
 
 [case.backport]
-effect = "block"
+effect = "log"
 rule = "xxe_external_entity_protocol"
+why = "An external entity fetched over a protocol with no request behind it only shows that an operation happened: a scheduled import fetches the DTD it is configured to fetch, so it logs outside a request whatever outside_request says."

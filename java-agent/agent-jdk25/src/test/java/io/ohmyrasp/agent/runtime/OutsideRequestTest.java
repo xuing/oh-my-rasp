@@ -128,6 +128,37 @@ final class OutsideRequestTest {
     assertFalse(blockedOnAnotherThread(new Object(), metadata), "submitted outside a request");
   }
 
+  /**
+   * A CXF XOP attachment reference that opens a host file is intrinsic: read on another thread, with no request behind
+   * it and log only, it still blocks, as on the backports.
+   */
+  @Test
+  void anAttachmentThatOpensAHostFileBlocksOutsideARequestWithLogOnly(@TempDir Path dir) throws Exception {
+    assertTrue(AgentRuntime.get().apply("{\"mode\":\"block\",\"outside_request\":\"log\"}"));
+    Path report = Files.writeString(dir.resolve("weekly.txt"), "weekly");
+    Object source = new Object();
+    io.ohmyrasp.agent.xml.AttachmentFileRead.beginReference(report.toUri().toString(), null);
+    try {
+      io.ohmyrasp.agent.xml.AttachmentFileRead.created(source, report.toUri().toURL());
+    } finally {
+      io.ohmyrasp.agent.xml.AttachmentFileRead.endReference();
+    }
+    var thrown = new java.util.concurrent.atomic.AtomicReference<Throwable>();
+    Thread reader = new Thread(() -> {
+      io.ohmyrasp.agent.xml.AttachmentFileRead.beginRead(source);
+      try {
+        OhMyRaspHooks.beforeFileRead(report.toString());
+      } catch (Throwable failure) {
+        thrown.set(failure);
+      } finally {
+        io.ohmyrasp.agent.xml.AttachmentFileRead.endRead();
+      }
+    }, "attachment-reader");
+    reader.start();
+    reader.join(10_000);
+    assertTrue(thrown.get() instanceof OhMyRaspBlockException, String.valueOf(thrown.get()));
+  }
+
   private static boolean blockedOnAnotherThread(Object exchange, URI uri) throws Exception {
     var thrown = new java.util.concurrent.atomic.AtomicReference<Throwable>();
     Thread worker = new Thread(() -> {

@@ -90,15 +90,12 @@ completes_with = ["UnsupportedOperationException", "EOFException"]
 control = { outside_request = "log" }
 
 [case.primary]
-effect = "log"
+effect = "block"
 rule = "deserialization_blacklist"
-why = "outside_request is log: outside a request the finding is logged and the operation runs"
 
 [case.backport]
-effect = "log"
+effect = "block"
 rule = "deserialization_gadget_class"
-why = "outside_request is log: outside a request the finding is logged and the operation runs"
-
 [[case]]
 name = "templates-impl-in-request-log-only"
 kind = "attack"

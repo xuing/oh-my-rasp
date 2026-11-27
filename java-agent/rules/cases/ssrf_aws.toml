@@ -6,13 +6,14 @@ op = "net.open"
 args = { url = "http://169.254.169.254/latest/meta-data/" }
 
 [case.primary]
-effect = "block"
+effect = "log"
 rule = "ssrf_aws"
+why = "The cloud metadata address alone, with no request behind it, only shows that an operation happened: cloud SDK credential providers read it at start-up, so it logs outside a request whatever outside_request says."
 
 [case.backport]
-effect = "block"
+effect = "log"
 rule = "ssrf_cloud_metadata"
-
+why = "The cloud metadata address alone, with no request behind it, only shows that an operation happened: cloud SDK credential providers read it at start-up, so it logs outside a request whatever outside_request says."
 [[case]]
 name = "metadata-address-in-request"
 kind = "attack"

@@ -137,6 +137,40 @@ final class Java8OutsideRequestTest {
     assertFalse(blockedOnAnotherThread(new Object(), metadata), "submitted outside a request");
   }
 
+  /**
+   * A CXF XOP attachment reference that opens a host file is intrinsic: read on another thread, with no request behind
+   * it and log only, it still blocks, as on the primary.
+   */
+  @Test
+  void anAttachmentThatOpensAHostFileBlocksOutsideARequestWithLogOnly() throws Exception {
+    control("{\"outside_request\":\"log\"}");
+    final Path report = dir.resolve("weekly.txt");
+    Files.write(report, "weekly".getBytes(StandardCharsets.UTF_8));
+    final Object source = new Object();
+    io.ohmyrasp.agent.xml.AttachmentFileRead.beginReference(report.toUri().toString(), null);
+    try {
+      io.ohmyrasp.agent.xml.AttachmentFileRead.created(source, report.toUri().toURL());
+    } finally {
+      io.ohmyrasp.agent.xml.AttachmentFileRead.endReference();
+    }
+    final AtomicReference<Throwable> thrown = new AtomicReference<Throwable>();
+    Thread reader = new Thread(new Runnable() {
+      @Override public void run() {
+        io.ohmyrasp.agent.xml.AttachmentFileRead.beginRead(source);
+        try {
+          Java8RaspHooks.beforeFileRead(report.toString());
+        } catch (Throwable failure) {
+          thrown.set(failure);
+        } finally {
+          io.ohmyrasp.agent.xml.AttachmentFileRead.endRead();
+        }
+      }
+    }, "attachment-reader");
+    reader.start();
+    reader.join(10_000);
+    assertTrue(thrown.get() instanceof Java8RaspBlockException, String.valueOf(thrown.get()));
+  }
+
   private static boolean blockedOnAnotherThread(final Object exchange, final URI uri) throws Exception {
     final AtomicReference<Throwable> thrown = new AtomicReference<Throwable>();
     Thread worker = new Thread(new Runnable() {

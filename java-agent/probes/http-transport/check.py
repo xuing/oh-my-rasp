@@ -41,9 +41,14 @@ def main():
             classes["HttpExchangeCheck"] = sources
         subprocess.run(["javac", "-d", directory, *(folder / (c + ".java") for c, folder in classes.items())], check=True)
         for name in classes:
-            for mode in ("block", "monitor"):
+            # carried: block mode with outside_request=log. The exchange submitted inside a request runs on a worker
+            # after the request ended; the request it carries makes it a request's finding, and it still blocks.
+            modes = ("block", "monitor", "carried") if name == "HttpExchangeCheck" else ("block", "monitor")
+            for mode in modes:
                 log = directory / f"{name}-{mode}.jsonl"
-                command = ["java", "-Xverify:all", "-Dohmyrasp.standalone=true", f"-Dohmyrasp.mode={mode}",
+                agent_mode = ["-Dohmyrasp.mode=block", "-Dohmyrasp.outside_request=log"] if mode == "carried" \
+                    else [f"-Dohmyrasp.mode={mode}"]
+                command = ["java", "-Xverify:all", "-Dohmyrasp.standalone=true", *agent_mode,
                            "-Dohmyrasp.log.sync=true", f"-Dohmyrasp.log={log}", f"-javaagent:{agent}",
                            "-cp", directory, name, track, mode]
                 run = subprocess.run(command, text=True, capture_output=True, timeout=45)
@@ -52,7 +57,8 @@ def main():
                 events = [json.loads(l) for l in log.read_text().splitlines()]
                 decisions = [e for e in events if e.get("kind") == "detection" or e.get("event") == "ohmyrasp-detection"]
                 expected = 4 if name == "HttpTransportCheck" else 1
-                if len(decisions) != expected or any((e["action"] == "block") != (mode == "block") for e in decisions):
+                if len(decisions) != expected or any((e["action"] == "block") != (mode in ("block", "carried"))
+                                                     for e in decisions):
                     raise SystemExit(f"unexpected {name} decision count or action in {mode}")
                 if name == "HttpTransportCheck":
                     metadata = "ssrf_aws" if track == "main" else f"java{track}_ssrf_cloud_metadata"
