@@ -186,7 +186,7 @@ dependencies {
     yarnProbeRuntime("org.apache.hadoop:hadoop-yarn-server-resourcemanager:$hadoop")
     yarnProbeRuntime("org.apache.hadoop:hadoop-yarn-common:$hadoop")
     yarnProbeRuntime("org.apache.hadoop:hadoop-common:$hadoop")
-    yarnProbeRuntime("javax.servlet:javax.servlet-api:3.1.0")
+    yarnProbeRuntime("javax.servlet:javax.servlet-api:4.0.1")
 }
 tasks.register<Sync>("stageYarnProbe") {
     from(yarnProbeRuntime)
