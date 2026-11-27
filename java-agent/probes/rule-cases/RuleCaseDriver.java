@@ -234,6 +234,15 @@ public class RuleCaseDriver extends HttpServlet {
   // ---- the operation ----------------------------------------------------------------------
 
   private static void perform() {
+    try {
+      performOperation();
+    } finally {
+      // A file the operation creates: check.py fails a block that left it behind, and a run that did not.
+      if (SPEC.containsKey("witness")) RESULT.put("witness", new File(spec("witness")).exists() ? "present" : "absent");
+    }
+  }
+
+  private static void performOperation() {
     String op = spec("op");
     try {
       String detail = run(op);

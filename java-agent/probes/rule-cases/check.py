@@ -433,6 +433,11 @@ def classify(case, result: dict, events: list[tuple[str, str]]) -> Actual:
         return Actual("broken", None, tuple(rules), f"an event's action is neither block nor log: {', '.join(unexpected)}")
     if outcome == "error" or outcome not in ("ran", "blocked"):
         return Actual("broken", None, tuple(rules), f"the operation failed without the agent: {note}")
+    witness, witness_path = result.get("witness"), case.args.get("witness", "")
+    if witness == "present" and outcome == "blocked":
+        return Actual("broken", None, tuple(rules), f"blocked, but the operation ran: {witness_path} exists ({note})")
+    if witness == "absent" and outcome == "ran":
+        return Actual("broken", None, tuple(rules), f"the operation did not happen: no {witness_path} ({note})")
     if outcome == "blocked":
         if not blocks:
             return Actual("broken", None, tuple(rules), f"blocked, but no event says block: {note}")

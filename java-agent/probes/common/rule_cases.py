@@ -9,7 +9,9 @@ engine does with it today:
     kind = "attack"                          # or "benign"
     via = "sink"                             # sink | request | request-sink
     op = "file.read"                         # the sink (absent when via = "request")
-    args = { path = "/etc/passwd" }          # the sink's arguments; see OPS
+    args = { path = "/etc/passwd" }          # the sink's arguments; see OPS. beans.decode also takes witness, a file
+                                             #   its document creates: the probe fails a case blocked while the file
+                                             #   exists, or run while it does not
     completes_with = ["NamingException"]     # optional: exceptions (simple names, or a superclass's) that end
                                              #   the sink when it runs and the agent let it through
                                              #   (an exception that agent code threw never counts; leave it out
@@ -77,7 +79,7 @@ OPS = {
     "base64.decode": ({"input"}, {"api"}),
     "jdbc.connect": ({"url"}, set()),
     "sql.execute": ({"sql"}, set()),
-    "beans.decode": ({"document"}, set()),
+    "beans.decode": ({"document"}, {"witness"}),
     "java.compile": ({"source"}, {"api"}),
     "xpath.evaluate": ({"expression"}, set()),
 }
