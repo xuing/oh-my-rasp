@@ -1,7 +1,10 @@
 package io.ohmyrasp.agent.hook;
 
 import io.ohmyrasp.agent.log.JsonEventLogger;
+import io.ohmyrasp.agent.runtime.AgentRuntime;
+import io.ohmyrasp.agent.runtime.DetectionMode;
 import java.io.ObjectInputFilter;
+import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
 import java.util.Collections;
 import java.util.Enumeration;
@@ -16,15 +19,20 @@ import java.util.Map;
  * Doing that here keeps it off the first request's thread.
  *
  * <p>The entries are the ones the transformers really call: servlet admission and exit
- * ({@link OhMyRaspHooks#admitServletRequest}, {@link OhMyRaspHooks#exitHttpRequest}), the request-body read pair
- * inside a POST ({@link OhMyRaspHooks#enterBodyRead}, {@link OhMyRaspHooks#exitBodyRead(int, Object, byte[], int)}),
+ * ({@link OhMyRaspHooks#admitServletRequest}, {@link OhMyRaspHooks#exitHttpRequest}), the request-body reads
+ * inside a POST as a rewritten read makes them, on a stream object of the warm-up's own that the request's recorder
+ * binds to ({@link OhMyRaspHooks#enterBodyRead(Object)} with {@link OhMyRaspHooks#exitBodyRead(int, Object, byte[],
+ * int)}, a read that throws and is released by {@link OhMyRaspHooks#abortBodyRead}, and the end of the body through a
+ * buffer read, {@link OhMyRaspHooks#enterBodyRead(Object, java.nio.Buffer)} with
+ * {@link OhMyRaspHooks#exitBodyRead(int, Object, java.nio.ByteBuffer)}),
  * the receiver-aware JDBC entry ({@link OhMyRaspHooks#beforeSql(Object, String)}) inside and outside a request,
  * and the deserialization filter wrapper ({@link DeserializationGuard#filterOrGuard},
  * {@link DeserializationGuard#checkInput(ObjectInputFilter, ObjectInputFilter.FilterInfo, java.io.ObjectInputStream)}).
  *
  * <p>No side effect on the application or anything outside the agent: it runs on a thread of its own, which ends
  * with it, so no thread-local the hooks set survives it; the hooks act for that thread alone before the start
- * commits ({@link HookActivation}); every report goes to a logger that writes nothing ({@link
+ * commits ({@link HookActivation}); the body it records is the request's own, which the request's end overwrites,
+ * on that thread; every report goes to a logger that writes nothing ({@link
  * JsonEventLogger#discarding}: no event, no telemetry, no cloud error, no stderr line); each input is a constant held
  * in memory, and no entry called here reads a file, opens a socket or starts a process. With detection off the
  * entries return at once, and the warm-up does nothing. A failure is ignored: the warm-up is an optimisation, not a
@@ -108,8 +116,20 @@ public final class Warmup {
         if (OhMyRaspHooks.admitServletRequest(post, null, false)) {
           try {
             byte[] body = form.getBytes(StandardCharsets.US_ASCII);
-            OhMyRaspHooks.exitBodyRead(body.length, OhMyRaspHooks.enterBodyRead(), body, 0);
-            OhMyRaspHooks.exitBodyRead(-1, OhMyRaspHooks.enterBodyRead(), body, 0);
+            // The recorder binds to the first object that reads inside the request, as it binds to a container's
+            // input stream: here an object of the warm-up's own, which nothing else can read from.
+            BodyStream stream = new BodyStream();
+            Object token = OhMyRaspHooks.enterBodyRead(stream);
+            if (token == null && AgentRuntime.get().mode() != DetectionMode.OFF) {
+              // With detection on the request records its body; a null token means this pass warmed nothing.
+              throw new IllegalStateException("the warm-up's body read was not recorded");
+            }
+            OhMyRaspHooks.exitBodyRead(body.length, token, body, 0);
+            // A read that throws: the handler of a rewritten read releases the recorder, and the exception goes on.
+            OhMyRaspHooks.abortBodyRead(OhMyRaspHooks.enterBodyRead(stream));
+            // The end of the body, through a read into an NIO buffer, as Tomcat's read(ByteBuffer) returns it.
+            ByteBuffer buffer = ByteBuffer.allocate(16);
+            OhMyRaspHooks.exitBodyRead(-1, OhMyRaspHooks.enterBodyRead(stream, buffer), buffer);
             OhMyRaspHooks.beforeSql(Statement.INSTANCE, "INSERT INTO items (name, count) VALUES (?, ?)");
           } finally {
             OhMyRaspHooks.exitHttpRequest();
@@ -125,6 +145,9 @@ public final class Warmup {
       default -> { }
     }
   }
+
+  /** The stream the warm-up's request reads its body from: only its identity matters to the recorder. */
+  static final class BodyStream {}
 
   /** A JDBC receiver for the receiver-aware SQL entry: an object of no driver, as an unknown driver's would be. */
   static final class Statement {
