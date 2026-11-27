@@ -12,17 +12,20 @@ import org.objectweb.asm.commons.AdviceAdapter;
 import org.objectweb.asm.commons.Method;
 
 /**
- * XMLDecoder's object graph. {@code <object>} and {@code <void>} run as {@code java.beans.Expression.getValue()} and
- * {@code Statement.execute()}, observed at their entry. Three elements reach the same operations without either:
+ * XMLDecoder's object graph. The call-producing branches of {@code <object>} and {@code <void>} run as {@code
+ * java.beans.Expression.getValue()}, observed at its entry as {@code Statement.execute()} is; their {@code field} and
+ * {@code idref} branches make no call. Three elements reach the same operations without an {@code Expression}:
  * {@code <method>} and {@code <property>} call {@code sun.reflect.misc.MethodUtil.invoke} from {@code
  * MethodElementHandler} and {@code PropertyElementHandler}, observed at each such call; {@code <new>} runs {@code
  * NewElementHandler.getValueObject(Class, Object[])}, observed at its entry (the other subclasses of that handler
  * override the method and do not call it). {@code MethodUtil.invoke} itself is not hooked: {@code Statement} calls it
- * too (already observed), and so do JMX and Swing.
+ * too (already observed), and so do JMX and Swing. {@code Expression.execute()} calls {@code invoke()} directly and is
+ * not hooked either: no decoder class calls it.
  *
- * <p>{@code <field>} is not hooked: a public field read or write starts no process and writes no file by itself, the
- * classification has nothing a field access can match, and whatever object it yields still has to pass an observed
- * element to do anything.
+ * <p>{@code <field>} is not hooked. It reads or assigns an accessible public field (an instance's or a static one), so
+ * a document can change state through it, and an access to a static field initializes the declaring class and runs
+ * its static initializer. The two XMLDecoder rules classify neither: they classify a runtime execution primitive and
+ * a script writer being constructed.
  *
  * <p>The decoder catches what these calls throw and hands it to {@code DocumentHandler.handleException}, whose entry
  * rethrows the line's block.
