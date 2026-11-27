@@ -449,6 +449,37 @@ final class AgentRuntimeTest {
    * A runtime polling {@code file}, driven by direct {@link AgentRuntime#reloadIfChanged} calls:
    * its poller thread waits a day before its first poll, so it never runs during a test.
    */
+  /** A failed start stops the runtime: the poller has ended when stop returns, and no poll changes the state after. */
+  @Test
+  void stopEndsThePollerAndNoPollPublishesAfterIt(@TempDir Path dir) throws Exception {
+    Path file = dir.resolve("control.json");
+    Files.writeString(file, "{\"mode\":\"block\"}");
+    AgentRuntime runtime = startPolling(file);
+    assertEquals(DetectionMode.BLOCK, runtime.mode());
+    Thread poller = runtime.pollerThread();
+    assertTrue(poller != null && poller.isAlive(), "the start did not start the poller");
+
+    runtime.stop();
+
+    assertFalse(poller.isAlive(), "stop returned while the poller still ran");
+    assertNull(runtime.pollerThread());
+    Files.writeString(file, "{\"mode\":\"off\"}");
+    runtime.reloadIfChanged();
+    assertFalse(runtime.apply("{\"mode\":\"monitor\"}"), "a stopped runtime applied a control document");
+    Files.delete(file);
+    runtime.reloadIfChanged();
+    assertEquals(DetectionMode.BLOCK, runtime.mode(), "a poll after stop changed the state");
+  }
+
+  /** A stop that runs before start reaches its poller keeps the poller from starting at all. */
+  @Test
+  void aStopBeforeThePollerStartsKeepsItFromStarting(@TempDir Path dir) {
+    AgentRuntime runtime = AgentRuntime.newForTesting();
+    runtime.stop();
+    runtime.start("control=" + dir.resolve("control.json") + ",control_poll_ms=86400000");
+    assertNull(runtime.pollerThread(), "a poller started after stop");
+  }
+
   static AgentRuntime startPolling(Path file) {
     AgentRuntime runtime = AgentRuntime.newForTesting();
     runtime.start("control=" + file + ",control_poll_ms=86400000");

@@ -57,6 +57,28 @@ final class Java8EntryOrderTest {
     assertTrue(calls.get("agentmain").contains("OhMyRaspJava8Agent.install"), calls.get("agentmain").toString());
   }
 
+  /**
+   * The hook-miss report is held while the start can fail: its worker is created by HookMisses.release, only after
+   * the start line is written (the commit). The undo of a failed start turns the report off (no miss taken, the
+   * queue dropped, no worker) before it removes the transformers and stops the runtime the report writes through.
+   */
+  @Test
+  void theHookMissReportIsReleasedOnlyAfterTheCommitAndStoppedFirstInTheUndo() throws Exception {
+    Map<String, List<String>> calls = calls(OhMyRaspJava8Agent.class);
+    List<String> install = calls.get("install");
+    int startLine = install.indexOf("RaspRuntime.writeStartupLine");
+    int release = install.indexOf("HookMisses.release");
+    assertTrue(install.indexOf("BackportHookMisses.start") >= 0 && startLine > install.indexOf("BackportHookMisses.start"),
+        install.toString());
+    assertTrue(release > startLine, "the report is released before the start committed: " + install);
+    assertEquals(1, count(install, "HookMisses.release"), install.toString());
+    List<String> undo = calls.get("undo");
+    int stop = undo.indexOf("HookMisses.stop");
+    assertTrue(stop >= 0, "the undo does not stop the hook-miss report: " + undo);
+    assertTrue(stop < undo.indexOf("Instrumentation.removeTransformer") && stop < undo.indexOf("RaspRuntime.stop"),
+        "the undo stops the report after the transformers or the runtime: " + undo);
+  }
+
   @Test
   void aFailedBootstrapAppendFailsTheStartBeforeAnyTransformer() throws Exception {
     final List<String> registered = new ArrayList<String>();

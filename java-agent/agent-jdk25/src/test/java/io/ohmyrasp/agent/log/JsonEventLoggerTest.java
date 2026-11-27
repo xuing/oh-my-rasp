@@ -97,6 +97,54 @@ final class JsonEventLoggerTest {
     assertTrue(console.left.await(BOUND_SECONDS, TimeUnit.SECONDS), "the writer left the stalled print");
   }
 
+  /**
+   * A start that fails cancels the logger it started. The writer is stuck mirroring an event to a console that
+   * never returns, holding the write lock, and ignores interrupts, as a write to a full pipe does: cancel returns
+   * in bounded time anyway, without the lock, and nothing queued or submitted from then on is written.
+   */
+  @Test
+  void cancelReturnsInBoundedTimeAndWritesNothingMoreWhileTheSinkIsStuck(@TempDir Path dir) throws Exception {
+    Path log = dir.resolve("events.jsonl");
+    StuckOutput console = new StuckOutput();
+    JsonEventLogger logger =
+        JsonEventLogger.newForTesting(null, log.toString(), 0, false, new PrintStream(console), quiet());
+    try {
+      logger.log(detection("before-cancel"));
+      assertTrue(console.entered.await(BOUND_SECONDS, TimeUnit.SECONDS), "the writer is stuck printing");
+      logger.log(detection("queued-at-cancel"));
+      long began = System.nanoTime();
+      Thread canceller = daemon("ohmyrasp-test-canceller", logger::cancel);
+      canceller.join(TimeUnit.SECONDS.toMillis(BOUND_SECONDS));
+      assertFalse(canceller.isAlive(), "cancel waited for a sink that does not return");
+      assertTrue(System.nanoTime() - began < TimeUnit.SECONDS.toNanos(3), "cancel waited longer than its bound");
+      logger.log(detection("after-cancel"));
+      assertEquals(List.of("before-cancel"), messages(log), "cancel wrote, or let the caller write, an event");
+    } finally {
+      console.release.countDown();
+    }
+    Thread writer = logger.writerThread();
+    writer.join(TimeUnit.SECONDS.toMillis(BOUND_SECONDS));
+    assertFalse(writer.isAlive(), "the writer did not end once its output call returned");
+    assertEquals(List.of("before-cancel"), messages(log), "the writer wrote what was queued when cancel ran");
+  }
+
+  /** Creating the logger starts nothing; start starts the writer once; a cancelled logger does not start again. */
+  @Test
+  void constructionStartsNoThreadAndStartStartsTheWriterOnce(@TempDir Path dir) throws Exception {
+    JsonEventLogger logger = JsonEventLogger.unstartedForTesting(dir.resolve("events.jsonl").toString(), quiet(), quiet());
+    assertEquals(null, logger.writerThread(), "creating the logger started its writer");
+    logger.start();
+    Thread writer = logger.writerThread();
+    assertTrue(writer != null && writer.isAlive(), "start did not start the writer");
+    logger.start();
+    assertTrue(writer == logger.writerThread(), "a second start started another writer");
+    logger.cancel();
+    writer.join(TimeUnit.SECONDS.toMillis(BOUND_SECONDS));
+    assertFalse(writer.isAlive(), "cancel left the writer running");
+    logger.start();
+    assertTrue(writer == logger.writerThread(), "a cancelled logger started again");
+  }
+
   @Test
   void anEventAfterShutdownIsWrittenOnTheCallersThread(@TempDir Path dir) throws Exception {
     Path log = dir.resolve("events.jsonl");
@@ -323,6 +371,37 @@ final class JsonEventLoggerTest {
    * An output stream whose writes signal {@code entered} and then wait until the test counts down
    * {@code release}; nothing else ends the wait. {@code left} is counted down once a write returns.
    */
+  /** An output whose writes do not return until released, whatever interrupts the writing thread. */
+  private static final class StuckOutput extends OutputStream {
+    final CountDownLatch entered = new CountDownLatch(1);
+    final CountDownLatch release = new CountDownLatch(1);
+
+    @Override
+    public void write(int b) {
+      stall();
+    }
+
+    @Override
+    public void write(byte[] bytes, int offset, int length) {
+      stall();
+    }
+
+    private void stall() {
+      entered.countDown();
+      boolean interrupted = false;
+      while (release.getCount() > 0) {
+        try {
+          release.await();
+        } catch (InterruptedException e) {
+          interrupted = true;
+        }
+      }
+      if (interrupted) {
+        Thread.currentThread().interrupt();
+      }
+    }
+  }
+
   private static final class StalledOutput extends OutputStream {
     final CountDownLatch entered = new CountDownLatch(1);
     final CountDownLatch release = new CountDownLatch(1);

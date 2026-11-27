@@ -30,12 +30,14 @@ import org.junit.jupiter.api.io.TempDir;
 final class BootstrapAgentFailureTest {
   private static final String LIST = "META-INF/ohmyrasp/preload/" + BootstrapAgent.MODULE + ".txt";
   private static final String EXPLODING = BootstrapAgentFailureMain.ExplodingInit.class.getName();
+  // A class every list holds; an empty list fails the start.
+  private static final String LISTED = io.ohmyrasp.agent.runtime.DetectionMode.class.getName();
 
   @TempDir Path work;
 
   @Test
   void aStartThatSucceedsRegistersOneTransformerAndStartsTheThreads() throws Exception {
-    Result result = run("started", jarWith(List.of()));
+    Result result = run("started", jarWith(List.of(LISTED)));
     assertTrue(result.ended.equals("started"), result.ended);
     assertEquals(1, result.transformers);
     assertTrue(result.threads.contains("ohmyrasp-control-poller"), result.threads);
@@ -44,7 +46,7 @@ final class BootstrapAgentFailureTest {
 
   @Test
   void aHookMissDuringAStartThatSucceedsIsWrittenOnceTheStartCommitted() throws Exception {
-    Result result = run("miss-then-starts", jarWith(List.of()));
+    Result result = run("miss-then-starts", jarWith(List.of(LISTED)));
     assertEquals("started", result.ended);
     assertTrue(result.hookMissWritten, "the hook miss loaded during the start was not written after it");
     assertTrue(result.reportOn);
@@ -52,7 +54,7 @@ final class BootstrapAgentFailureTest {
 
   @Test
   void aHookMissDuringAStartThatFailsIsDroppedWithTheReportAndLeavesNoThread() throws Exception {
-    Result result = run("miss-then-fails", jarWith(List.of()));
+    Result result = run("miss-then-fails", jarWith(List.of(LISTED)));
     assertFails(result, "the JVM refuses to list its classes");
   }
 
@@ -60,6 +62,29 @@ final class BootstrapAgentFailureTest {
   void aJarWithoutAListFailsBeforeAnythingStarts() throws Exception {
     Result result = run("no-list", jarWith(null));
     assertFails(result, "has no META-INF/ohmyrasp/preload/agent-jdk25.txt");
+  }
+
+  @Test
+  void aJarWithAnEmptyListFailsBeforeAnythingStarts() throws Exception {
+    Result result = run("empty-list", jarWith(List.of()));
+    assertFails(result, "has an empty META-INF/ohmyrasp/preload/agent-jdk25.txt");
+  }
+
+  /** Two starts that bypass the launcher, at once: exactly one starts, the other is refused and registers nothing. */
+  @Test
+  void twoConcurrentStartsStartOnce() throws Exception {
+    Result result = run("concurrent", jarWith(List.of(LISTED)));
+    assertTrue(result.ended.startsWith("started + threw IllegalStateException: the primary line was already "),
+        result.ended);
+    assertEquals(1, result.transformers, "the refused start registered a transformer");
+    assertTrue(result.threads.contains("ohmyrasp-event-writer"), result.threads);
+  }
+
+  /** The launcher does not retry a failed start; a start that bypasses it does not either. */
+  @Test
+  void aStartAfterAFailedStartIsRefused() throws Exception {
+    Result result = run("again-after-failure", jarWith(List.of(LISTED)), jarWith(null));
+    assertFails(result, "the primary line was already started once and failed in this JVM");
   }
 
   @Test
@@ -77,7 +102,7 @@ final class BootstrapAgentFailureTest {
 
   @Test
   void noJarToStartFromFailsBeforeAnythingStarts() throws Exception {
-    Result result = run("no-jar", jarWith(List.of()));
+    Result result = run("no-jar", jarWith(List.of(LISTED)));
     assertFails(result, "not on the bootstrap search");
   }
 
@@ -89,7 +114,7 @@ final class BootstrapAgentFailureTest {
 
   @Test
   void aFailureAfterTheTransformerIsRegisteredRemovesItAndStopsWhatTheStartStarted() throws Exception {
-    Result result = run("fails-after-transformer", jarWith(List.of()));
+    Result result = run("fails-after-transformer", jarWith(List.of(LISTED)));
     assertFails(result, "the JVM refuses to list its classes");
   }
 
@@ -131,19 +156,20 @@ final class BootstrapAgentFailureTest {
 
   private record Result(String ended, int transformers, String threads, boolean hookMissWritten, boolean reportOn) {}
 
-  private Result run(String scenario, File jar) throws Exception {
+  private Result run(String scenario, File jar, File... more) throws Exception {
     Path java = Path.of(System.getProperty("java.home"), "bin", "java");
-    Process process =
-        new ProcessBuilder(
-                java.toString(),
-                "-cp", System.getProperty("java.class.path"),
-                "-Dohmyrasp.log=" + work.resolve(scenario + "-events.jsonl"),
-                "-Dohmyrasp.control=" + work.resolve(scenario + "-control.json"),
-                BootstrapAgentFailureMain.class.getName(),
-                scenario,
-                jar.getPath())
-            .redirectErrorStream(true)
-            .start();
+    java.util.List<String> command = new java.util.ArrayList<>(List.of(
+        java.toString(),
+        "-cp", System.getProperty("java.class.path"),
+        "-Dohmyrasp.log=" + work.resolve(scenario + "-events.jsonl"),
+        "-Dohmyrasp.control=" + work.resolve(scenario + "-control.json"),
+        BootstrapAgentFailureMain.class.getName(),
+        scenario,
+        jar.getPath()));
+    for (File extra : more) {
+      command.add(extra.getPath());
+    }
+    Process process = new ProcessBuilder(command).redirectErrorStream(true).start();
     ByteArrayOutputStream output = new ByteArrayOutputStream();
     process.getInputStream().transferTo(output);
     assertTrue(process.waitFor(60, TimeUnit.SECONDS), "the JVM did not finish");

@@ -22,8 +22,25 @@ public final class OhMyRaspAgent {
     start(agentArgs, instrumentation);
   }
 
+  /**
+   * The classes the injected calls reach (and the start that turns them on). Each must resolve, through this entry's
+   * own loader, to the definition the bootstrap loader makes from the appended JAR.
+   */
+  static final String[] INJECTED_TARGETS = {
+    "io.ohmyrasp.agent.BootstrapAgent",
+    "io.ohmyrasp.agent.hook.HookActivation",
+    "io.ohmyrasp.agent.hook.OhMyRaspHooks",
+    "io.ohmyrasp.agent.hook.DeserializationGuard",
+    "io.ohmyrasp.agent.hook.GeneratedLineWrite",
+    "io.ohmyrasp.agent.hook.OhMyRaspBlockException",
+    "io.ohmyrasp.agent.file.HostDirectory",
+  };
+
   private static void start(String agentArgs, Instrumentation instrumentation) {
     File agentJar = appendSelfToBootstrap(instrumentation);
+    if (agentJar != null) {
+      requireBootstrapDefined(OhMyRaspAgent.class.getClassLoader(), INJECTED_TARGETS);
+    }
     try {
       Class<?> bootstrapAgent = Class.forName("io.ohmyrasp.agent.BootstrapAgent", true, null);
       Method start = bootstrapAgent.getMethod("start", String.class, Instrumentation.class, File.class);
@@ -40,6 +57,28 @@ public final class OhMyRaspAgent {
       throw new IllegalStateException("Unable to start OhMyRASP bootstrap agent", e);
     } catch (ReflectiveOperationException e) {
       throw new IllegalStateException("Unable to start OhMyRASP bootstrap agent", e);
+    }
+  }
+
+  /**
+   * Throws unless each class, looked up through {@code own} as the injected calls of a class that loader defines
+   * would look it up, is the one the bootstrap loader defined. A copy another loader defined first (the agent JAR is
+   * also on the application class path and the application used it before an attach) would be the one those calls
+   * reach: its activation flag is never turned on, so the hooks would stay inert there while the start reported
+   * success. The start fails instead, before anything is started, and the launcher reports it.
+   */
+  static void requireBootstrapDefined(ClassLoader own, String... classNames) {
+    for (String className : classNames) {
+      Class<?> found;
+      try {
+        found = Class.forName(className, false, own);
+      } catch (ClassNotFoundException e) {
+        throw new IllegalStateException(className + " is not on the bootstrap search after the append", e);
+      }
+      if (found.getClassLoader() != null) {
+        throw new IllegalStateException(className + " is already defined by " + found.getClassLoader()
+            + ", not the bootstrap loader: the injected calls would reach that copy, which the start does not turn on");
+      }
     }
   }
 

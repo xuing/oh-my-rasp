@@ -54,26 +54,39 @@ public final class OhMyRaspJava17Agent {
     // thread. What can fail without a trace is done above; a failure from here on undoes the start.
     boolean startedHere = Java17RaspLine.start();
     List<ClassFileTransformer> registered = new ArrayList<ClassFileTransformer>();
+    boolean hookMisses = false;
     try {
       String logPath = RaspRuntime.resolveLogPath();
       io.ohmyrasp.agent.xml.SystemArchiveOrigins.initialize(instrumentation);
-      // The hook-miss report reads its table here, before any transformer: register() wraps each one in it.
-      io.ohmyrasp.agent.backport.BackportHookMisses.start();
+      // The hook-miss report reads its table here, before any transformer: register() wraps each one in it. It is
+      // held: misses of classes loaded during the start are queued, and its worker thread is created only once the
+      // start has committed, below.
+      hookMisses = io.ohmyrasp.agent.backport.BackportHookMisses.start();
       installTransformer(instrumentation, outsideJavaBase, registered);
       RaspRuntime.writeStartupLine(logPath, startupMessage(mode, agentArgs, instrumentation));
     } catch (RuntimeException | Error failure) {
-      undo(instrumentation, registered, startedHere, failure);
+      undo(instrumentation, registered, startedHere, hookMisses, failure);
       throw failure;
     }
+    // Committed: nothing from here on can fail the start.
+    io.ohmyrasp.agent.hookmiss.HookMisses.release();
   }
 
   /**
-   * After a failure that follows the line's start: removes the transformers this start registered and, when this
-   * call started the runtime, stops it, so the launcher's start-failed holds (no thread, no transformer, hooks
+   * After a failure that follows the line's start: turns the hook-miss report off (no miss is taken any more, what
+   * was queued is dropped and it never starts a worker), removes the transformers this start registered and, when
+   * this call started the runtime, stops it, so the launcher's start-failed holds (no thread, no transformer, hooks
    * inactive). A failure on the way is added to {@code failure} as suppressed.
    */
   private static void undo(Instrumentation instrumentation, List<ClassFileTransformer> registered, boolean startedHere,
-      Throwable failure) {
+      boolean hookMisses, Throwable failure) {
+    if (hookMisses) {
+      try {
+        io.ohmyrasp.agent.hookmiss.HookMisses.stop();
+      } catch (RuntimeException | Error other) {
+        failure.addSuppressed(other);
+      }
+    }
     for (int i = registered.size() - 1; i >= 0; i--) {
       try {
         instrumentation.removeTransformer(registered.get(i));

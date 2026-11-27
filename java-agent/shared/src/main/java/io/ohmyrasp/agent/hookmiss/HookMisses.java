@@ -24,11 +24,18 @@ import org.objectweb.asm.Opcodes;
  *
  * <p>What counts as a miss is decided by the transformers: a class of the {@link HookExpectations} table that the
  * unit selects by name went through the unit and gained no call into the agent. They call {@link #miss} on the
- * class-loading thread, where it only marks the pair and queues it: no I/O, no formatting, no class of the agent
- * loaded for the first time (on a backport line every class here is preloaded). A worker thread, started when the
- * first miss is queued and ended when the queue is empty, does the rest: it lists the class's methods with the
- * names the unit looks for, reads the {@code Implementation-Version} of the JAR the class came from, and writes the
- * line through the line's {@link HookMissSink}. Anything the worker throws is dropped with its line.
+ * class-loading thread, where it only marks the pair, queues it and wakes the worker: no I/O, no formatting, no
+ * thread created, no class of the agent loaded for the first time (on a backport line every class here is
+ * preloaded). The worker thread is created once per start, on the start's own thread, when the start commits
+ * ({@link #release}; {@link #start} for a report that is not held), and waits for work from then on: it lists the
+ * class's methods with the names the unit looks for, reads the {@code Implementation-Version} of the JAR the class
+ * came from, and writes the line through the line's {@link HookMissSink}. Anything the worker throws is dropped
+ * with its line.
+ *
+ * <p>Each start and each {@link #stop} begins a new generation. A worker serves one generation: when the report is
+ * stopped or started again it ends without taking more work, and a line it is still building is dropped before it
+ * reaches the sink, so a stopped report writes nothing more. At JVM exit the event writers call {@link #awaitIdle}
+ * before they drain their own queues, so a line in progress gets a bounded time to reach them.
  *
  * <p>At most {@link #LIMIT} lines per JVM, then one {@code hook_miss_suppressed} line and nothing more: the table
  * holds a few hundred pairs, a library release that breaks a hook usually breaks one to a few classes, and the cap
@@ -56,7 +63,12 @@ public final class HookMisses {
   private static boolean inline;
   private static final Set<HookExpectation> SEEN = new HashSet<HookExpectation>();
   private static final List<Candidate> PENDING = new ArrayList<Candidate>();
-  private static boolean draining;
+  // The current generation: each start and each stop begins a new one, and a worker serves only its own.
+  private static int generation;
+  // The worker of the current generation, once started; null before release() of a held report and after stop().
+  private static Thread worker;
+  // Whether the worker is building or writing a line it took from PENDING.
+  private static boolean busy;
   // Misses are queued but the worker does not start until release(): a start that can still fail holds the report.
   private static boolean held;
   private static int written;
@@ -64,7 +76,10 @@ public final class HookMisses {
 
   private HookMisses() {}
 
-  /** Turns the report on, with the line's table and writer. A line's entry class calls it before it adds a transformer. */
+  /**
+   * Turns the report on, with the line's table and writer, and starts its worker on the calling thread. For a report
+   * that is not held: tests and tools. A line's entry class uses {@link #startHeld} and {@link #release}.
+   */
   public static void start(HookExpectations expectations, HookMissSink target) {
     start(expectations, target, false);
   }
@@ -79,16 +94,22 @@ public final class HookMisses {
 
   /**
    * As {@link #start(HookExpectations, HookMissSink)}, for a start that can still fail after its transformer is
-   * added: misses are marked and queued as usual, but no worker thread starts, and nothing is written, until
-   * {@link #release}. The start calls {@link #release} once it can no longer fail, and {@link #stop} when it fails,
-   * which drops what was queued: a failed start leaves no thread and writes no line.
+   * added: misses are marked and queued as usual, but no worker thread exists, and nothing is written, until
+   * {@link #release}. The start calls {@link #release} once it has committed, on its own thread, and {@link #stop}
+   * when it fails, which drops what was queued: a failed start leaves no thread and writes no line.
    */
   public static void startHeld(HookExpectations expectations, HookMissSink target) {
     start(expectations, target, false, true);
   }
 
   private static void start(HookExpectations expectations, HookMissSink target, boolean writeInline, boolean hold) {
+    Thread previous;
+    int current;
     synchronized (LOCK) {
+      previous = worker;
+      worker = null;
+      current = ++generation;
+      LOCK.notifyAll();
       SEEN.clear();
       PENDING.clear();
       written = 0;
@@ -98,33 +119,92 @@ public final class HookMisses {
       sink = target;
       table = expectations;
     }
+    if (previous != null) {
+      previous.interrupt();
+    }
+    if (!hold && !writeInline) {
+      startWorker(current);
+    }
   }
 
-  /** Ends the hold of {@link #startHeld}: the worker starts now when misses were queued during it. */
+  /**
+   * Ends the hold of {@link #startHeld}: the start has committed. Creates the worker here, on the start's thread,
+   * which writes what was queued during the start and waits for later misses. Never throws: a worker that cannot be
+   * created turns the report off.
+   */
   public static void release() {
-    boolean startWorker = false;
+    int current;
     synchronized (LOCK) {
       if (!held) {
         return;
       }
       held = false;
-      if (sink != null && !PENDING.isEmpty() && !draining) {
-        draining = true;
-        startWorker = true;
+      if (sink == null) {
+        return;
       }
+      current = generation;
     }
-    if (startWorker) {
-      startWorker();
-    }
+    startWorker(current);
   }
 
-  /** Turns the report off; lines not yet written are dropped. */
+  /**
+   * Turns the report off: no miss is taken from now on, what is queued is dropped, the worker ends (it is waited for
+   * at most {@code STOP_JOIN_MILLIS}) and a line it was building is not written. A worker stuck in its sink's I/O is
+   * not waited for: it writes nothing more once that call returns.
+   */
   public static void stop() {
+    Thread previous;
     synchronized (LOCK) {
       table = null;
       sink = null;
       held = false;
       PENDING.clear();
+      generation++;
+      previous = worker;
+      worker = null;
+      LOCK.notifyAll();
+    }
+    if (previous != null && previous != Thread.currentThread()) {
+      boolean interrupted = Thread.interrupted();
+      try {
+        previous.interrupt();
+        previous.join(STOP_JOIN_MILLIS);
+      } catch (InterruptedException e) {
+        interrupted = true;
+      } finally {
+        if (interrupted) {
+          Thread.currentThread().interrupt();
+        }
+      }
+    }
+  }
+
+  /** How long {@link #stop} waits for the worker to end. */
+  static final long STOP_JOIN_MILLIS = 1000;
+
+  /**
+   * Waits at most {@code millis} for the worker to write what is queued and the line it is building, for a JVM that
+   * is exiting: the event writer's shutdown hook calls it before it drains its own queue. Returns at once when the
+   * report is off, held (nothing of a start that has not committed is written) or has no worker.
+   *
+   * @return whether nothing was left
+   */
+  public static boolean awaitIdle(long millis) {
+    long deadline = System.nanoTime() + millis * 1000000L;
+    synchronized (LOCK) {
+      while (worker != null && !held && sink != null && (busy || !PENDING.isEmpty())) {
+        long left = deadline - System.nanoTime();
+        if (left <= 0) {
+          return false;
+        }
+        try {
+          LOCK.wait(Math.max(1L, left / 1000000L));
+        } catch (InterruptedException e) {
+          Thread.currentThread().interrupt();
+          return false;
+        }
+      }
+      return true;
     }
   }
 
@@ -152,7 +232,6 @@ public final class HookMisses {
       String reason, Throwable failure) {
     Candidate now = null;
     HookMissSink target = null;
-    boolean startWorker = false;
     synchronized (LOCK) {
       if (table == null || sink == null || !SEEN.add(expectation)) {
         return;
@@ -163,56 +242,151 @@ public final class HookMisses {
         now = candidate;
         target = sink;
       } else {
+        // Queued for the worker, which exists once the start committed; never a thread created here.
         PENDING.add(candidate);
-        if (!draining && !held) {
-          draining = true;
-          startWorker = true;
-        }
+        LOCK.notifyAll();
       }
     }
     if (now != null) {
       process(now, target);
-    } else if (startWorker) {
-      startWorker();
     }
   }
 
-  private static void startWorker() {
+  /**
+   * Creates and starts the worker of {@code current}, on the calling thread (a start's, never a class-loading
+   * thread's): a daemon with no context loader that, where the JDK allows it (9 and later), inherits no
+   * inheritable thread-local, so no application {@code childValue} runs and no application value is kept alive by
+   * it. When that fails, or the generation has moved on meanwhile, the report is turned off or left as it is.
+   */
+  private static void startWorker(int current) {
+    Thread created;
     try {
-      Thread worker = new Thread(new Drain(), "ohmyrasp-hook-miss");
-      worker.setDaemon(true);
-      worker.setContextClassLoader(null);
-      worker.start();
+      created = newThread(new Drain(current), "ohmyrasp-hook-miss");
+      created.setDaemon(true);
+      created.setContextClassLoader(null);
     } catch (Throwable failure) {
-      synchronized (LOCK) {
-        draining = false;
+      turnOff(current);
+      return;
+    }
+    synchronized (LOCK) {
+      if (current != generation || worker != null) {
+        return;
+      }
+      worker = created;
+    }
+    try {
+      created.start();
+    } catch (Throwable failure) {
+      turnOff(current);
+    }
+  }
+
+  private static void turnOff(int current) {
+    synchronized (LOCK) {
+      if (current == generation) {
+        table = null;
+        sink = null;
+        worker = null;
         PENDING.clear();
+        generation++;
+        LOCK.notifyAll();
       }
     }
   }
 
-  /** The worker: writes what is queued, then ends. The next miss starts another. */
+  /** A thread that does not inherit inheritable thread-locals, on a JDK that has the constructor for it (9+). */
+  private static Thread newThread(Runnable task, String name) {
+    try {
+      java.lang.reflect.Constructor<Thread> noInheritance = Thread.class.getConstructor(
+          ThreadGroup.class, Runnable.class, String.class, long.class, boolean.class);
+      return noInheritance.newInstance(null, task, name, Long.valueOf(0L), Boolean.FALSE);
+    } catch (NoSuchMethodException javaEight) {
+      return new Thread(task, name);
+    } catch (ReflectiveOperationException | RuntimeException unavailable) {
+      return new Thread(task, name);
+    }
+  }
+
+  /** The worker of one generation: waits for misses and writes them, until its generation ends. */
   private static final class Drain implements Runnable {
+    private final int served;
+
+    Drain(int served) {
+      this.served = served;
+    }
+
     @Override
     public void run() {
       while (true) {
         Candidate next;
         HookMissSink target;
         synchronized (LOCK) {
-          if (PENDING.isEmpty() || sink == null) {
-            PENDING.clear();
-            draining = false;
+          while (served == generation && PENDING.isEmpty()) {
+            try {
+              LOCK.wait();
+            } catch (InterruptedException interrupted) {
+              // stop() or a new start: the generation check below decides.
+              if (served != generation) {
+                return;
+              }
+            }
+          }
+          if (served != generation || sink == null) {
             return;
           }
           next = PENDING.remove(0);
-          target = sink;
+          target = new Served(served, sink);
+          busy = true;
         }
         try {
           process(next, target);
         } catch (Throwable dropped) {
           // A diagnostic never disturbs the application: the line is lost, the worker goes on.
+        } finally {
+          synchronized (LOCK) {
+            busy = false;
+            LOCK.notifyAll();
+          }
         }
       }
+    }
+  }
+
+  /** The sink of one generation: a line is written only while that generation is still the current one. */
+  private static final class Served implements HookMissSink {
+    private final int served;
+    private final HookMissSink target;
+
+    Served(int served, HookMissSink target) {
+      this.served = served;
+      this.target = target;
+    }
+
+    @Override
+    public void write(String diagnostic, String fields) {
+      synchronized (LOCK) {
+        if (served != generation) {
+          return;
+        }
+      }
+      target.write(diagnostic, fields);
+    }
+
+    @Override
+    public boolean enterOwnIo() {
+      return target.enterOwnIo();
+    }
+
+    @Override
+    public void exitOwnIo(boolean entered) {
+      target.exitOwnIo(entered);
+    }
+  }
+
+  /** The worker thread while there is one. Tests only. */
+  static Thread workerThread() {
+    synchronized (LOCK) {
+      return worker;
     }
   }
 

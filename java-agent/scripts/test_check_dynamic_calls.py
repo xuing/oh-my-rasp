@@ -256,6 +256,16 @@ class CommandTest(unittest.TestCase):
         self.assertIn("java17: ok; sites lambda=0, string-concat=0", out)
         self.assertIn("jdk25: primary line, recorded but not gated", out)
 
+    def test_a_string_concat_site_on_the_primary_line_fails(self):
+        # agent-jdk25 compiles with -XDstringConcat=inline: a StringConcatFactory site there means the flag is gone.
+        self.build(jdk25={"a/P": class_with("a/P", LAMBDA)})
+        self.assertEqual(self.run_cli("--update")[0], 0)
+        self.build(jdk25={"a/P": class_with("a/P", LAMBDA, CONCAT)})
+        code, out, err = self.run_cli("--check")
+        self.assertEqual(code, 1, out)
+        self.assertIn("jdk25: a/P.f()V uses " + CONCAT, err)
+        self.assertIn("string-concat=FAIL", out)
+
     def test_check_fails_for_a_new_lambda_with_actionable_message(self):
         self.build(java11={"a/Foo": class_with("a/Foo")})
         self.run_cli("--update")

@@ -32,6 +32,8 @@ public final class ControlPlaneClient implements AutoCloseable {
   private volatile String policyId;
   private volatile int policyVersion;
   private volatile String cachedPolicy;
+  // Set by close: a request in flight then installs no policy it fetched.
+  private volatile boolean closed;
 
   public ControlPlaneClient(ControlPlaneConfig config) {
     this(config, (policy, agentKey) -> {});
@@ -56,13 +58,39 @@ public final class ControlPlaneClient implements AutoCloseable {
 
   public static ControlPlaneClient start(
       ControlPlaneConfig config, BiConsumer<AgentPolicy, String> policyInstaller) {
+    ControlPlaneClient client = prepare(config, policyInstaller);
+    if (client != null) {
+      client.startReporting();
+    }
+    return client;
+  }
+
+  /**
+   * A client for {@code config}, or null when direct cloud reporting is not configured. It sends nothing and starts
+   * no thread: the agent's start prepares it, and calls {@link #startReporting} only once the start has committed,
+   * so a start that fails has sent nothing to the cloud and has nothing of it to undo but {@link #close}.
+   */
+  public static ControlPlaneClient prepare(
+      ControlPlaneConfig config, BiConsumer<AgentPolicy, String> policyInstaller) {
     if (config == null || !config.enabled()) {
       return null;
     }
-    ControlPlaneClient client = new ControlPlaneClient(config, policyInstaller);
-    client.executor.execute(client::registerAndHeartbeat);
-    client.executor.scheduleAtFixedRate(client::heartbeatQuietly, 30, 30, TimeUnit.SECONDS);
-    return client;
+    return new ControlPlaneClient(config, policyInstaller);
+  }
+
+  /**
+   * Starts the cloud I/O on the client's own thread: registration, the first heartbeat and policy pull, then a
+   * heartbeat every 30 seconds. When the executor refuses (its thread cannot be created), the client is closed and
+   * the refusal is thrown.
+   */
+  public void startReporting() {
+    try {
+      executor.execute(this::registerAndHeartbeat);
+      executor.scheduleAtFixedRate(this::heartbeatQuietly, 30, 30, TimeUnit.SECONDS);
+    } catch (RuntimeException | Error failure) {
+      close();
+      throw failure;
+    }
   }
 
   public void submit(Detection detection) {
@@ -89,6 +117,7 @@ public final class ControlPlaneClient implements AutoCloseable {
 
   @Override
   public void close() {
+    closed = true;
     executor.shutdownNow();
   }
 
@@ -161,6 +190,9 @@ public final class ControlPlaneClient implements AutoCloseable {
   private void pullPolicy() throws IOException, InterruptedException {
     String id = ensureRegistered();
     Response response = send("GET", "/agents/" + encodePath(id) + "/policy", "");
+    if (closed) {
+      return;
+    }
     if (response.statusCode() == 404) {
       cachedPolicy = "";
       policyInstaller.accept(AgentPolicy.empty(), id);

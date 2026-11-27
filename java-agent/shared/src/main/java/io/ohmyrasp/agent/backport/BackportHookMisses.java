@@ -15,14 +15,17 @@ public final class BackportHookMisses implements HookMissSink {
   BackportHookMisses() {}
 
   /**
-   * Turns the report on with the backport table, before the line registers a transformer. A table that cannot be
-   * read leaves the report off and the line starts as before: the diagnostic must not cost the protection.
+   * Turns the report on with the backport table, before the line registers a transformer, held: what a class loaded
+   * during the start reports is queued, and the report's worker thread is created only by {@link HookMisses#release},
+   * which the entry class calls once the start has committed ({@link HookMisses#stop} drops it when the start
+   * fails). A table that cannot be read leaves the report off and the line starts as before: the diagnostic must not
+   * cost the protection.
    *
    * @return whether the report is on
    */
   public static boolean start() {
     try {
-      HookMisses.start(HookExpectations.load("backport"), new BackportHookMisses());
+      HookMisses.startHeld(HookExpectations.load("backport"), new BackportHookMisses());
       return true;
     } catch (Throwable unavailable) {
       if (Boolean.getBoolean("ohmyrasp.debug")) {

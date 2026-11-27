@@ -45,8 +45,11 @@ from servlet_fixture import api_jar  # noqa: E402
 TIMEOUT = 90
 AGENT_PACKAGE = "io.ohmyrasp.agent."
 # The class name in a class-load line: "[Loaded <name> from <source>]" (Java 8 -verbose:class) or
-# "[<decorations>][class,load] <name> source: <source>" (Java 9 and later -Xlog:class+load).
+# "[<uptime>][<tid>][<level>][class,load] <name> source: <source>" (Java 9 and later, with the decorations
+# class_load_options asks for). The thread id and the source are kept to say where a late load happened.
 LOADED = re.compile(r"^\[Loaded (\S+) from |\[class,load\]\s+(\S+)")
+LOAD_THREAD = re.compile(r"^\[[^\]]*\]\[(\d+)\]")
+LOAD_SOURCE = re.compile(r"(?: from | source: )(.*?)\]?$")
 MARKS = ("RuleCaseDriver$OperationStart", "RuleCaseDriver$OperationEnd")
 # The guard fails a case on both families: a named class of the agent that loads during the operation is a
 # class missing from the line's preload list. A lambda's hidden class is reported separately, and fails a case
@@ -58,21 +61,53 @@ HIDDEN = re.compile(r"^(.*)\$\$Lambda(\$\d+)?/(0x[0-9a-f]+|\d+)$")
 
 
 def class_load_options(major: int, tmp: Path) -> list[str]:
-    """JVM options that log class loading: to standard output on Java 8, to a file on 9 and later."""
-    return ["-verbose:class"] if major <= 8 else [f"-Xlog:class+load:file={tmp / 'class-load.log'}"]
+    """JVM options that log class loading: to standard output on Java 8; on 9 and later to one file per case, with
+    the loading thread's id, and never rotated (a rotated file would lose the start of the case)."""
+    if major <= 8:
+        return ["-verbose:class"]
+    return [f"-Xlog:class+load:file={tmp / 'class-load.log'}:uptime,tid,level,tags:filecount=0"]
 
 
-def late_agent_classes(text: str) -> tuple[tuple[str, ...], tuple[str, ...]] | None:
-    """The agent classes the log shows loading between the driver's two marks, in order, as (named classes, source
-    classes of hidden lambda classes, one entry per hidden class); None when a mark is missing."""
-    names = [m.group(1) or m.group(2) for m in map(LOADED.search, text.splitlines()) if m]
-    if MARKS[0] not in names or MARKS[1] not in names:
+@dataclass
+class LateLoads:
+    named: tuple[str, ...]    # named agent classes loaded between the marks, in order
+    hidden: tuple[str, ...]   # the source class of each hidden lambda class loaded between them
+    where: dict               # named class -> "thread T, from SOURCE", for the reader of a failure
+
+
+def late_agent_classes(text: str) -> LateLoads | None:
+    """The agent classes the log shows loading between the driver's two marks. None unless the log holds exactly
+    one start mark and one end mark, the start first: a missing, repeated or reversed mark leaves no window to
+    judge, and the case is broken rather than passed. A load on a thread other than the one that loaded the marks
+    (the driver's) is still a late load, and its thread says so."""
+    loads = []
+    for line in text.splitlines():
+        m = LOADED.search(line)
+        if m:
+            thread = LOAD_THREAD.search(line)
+            source = LOAD_SOURCE.search(line)
+            loads.append((m.group(1) or m.group(2), thread.group(1) if thread else None,
+                          source.group(1) if source else ""))
+    names = [name for name, _, _ in loads]
+    if names.count(MARKS[0]) != 1 or names.count(MARKS[1]) != 1:
         return None
-    between = [name for name in names[names.index(MARKS[0]) + 1:names.index(MARKS[1])] if name.startswith(AGENT_PACKAGE)]
+    start, end = names.index(MARKS[0]), names.index(MARKS[1])
+    if start > end:
+        return None
+    driver = loads[start][1]
+    between = [load for load in loads[start + 1:end] if load[0].startswith(AGENT_PACKAGE)]
     # A lambda's class name carries a counter and an address that differ between runs: keep its source class.
-    hidden = [HIDDEN.match(name) for name in between]
-    return (tuple(name for name, m in zip(between, hidden) if not m),
-            tuple(m.group(1) for m in hidden if m))
+    named, hidden, where = [], [], {}
+    for name, thread, source in between:
+        lambda_class = HIDDEN.match(name)
+        if lambda_class:
+            hidden.append(lambda_class.group(1))
+            continue
+        named.append(name)
+        on = "thread unknown" if thread is None else f"thread {thread}" + (
+            "" if thread == driver else " (not the driver's)")
+        where.setdefault(name, f"{on}, from {source or 'unknown source'}")
+    return LateLoads(tuple(named), tuple(hidden), where)
 
 
 def engine_of(agent: Path) -> tuple[str, str | None]:
@@ -88,6 +123,7 @@ class Actual:
     also: tuple[str, ...]
     note: str               # how the operation ended, for the reader
     late: tuple[str, ...] = ()  # named agent classes that loaded during the operation
+    late_where: dict = None     # named class -> where it loaded (thread, source), for the failure message
     hidden: tuple[str, ...] = ()  # source class of each hidden lambda class that loaded during the operation
 
 
@@ -200,8 +236,9 @@ def run_case(case, agent, classpath, classes, work, track, major) -> tuple[Actua
     load_log = tmp / "class-load.log"
     late = late_agent_classes(load_log.read_text(errors="replace") if load_log.exists() else run.stdout)
     if late is None:
-        return Actual("broken", None, (), "the class-load log has no operation marks"), output
-    actual.late, actual.hidden = late
+        return Actual("broken", None, (), "the class-load log does not hold one start and one end mark, in order"), \
+            output
+    actual.late, actual.hidden, actual.late_where = late.named, late.hidden, late.where
     return actual, output
 
 
@@ -335,7 +372,9 @@ def main():
                 hidden_cases.setdefault(source, []).append(case.id)
             if late and enforced:
                 late_failures += 1
-                print(f"LATE {case.id}: agent classes loaded during the operation: {', '.join(late)}")
+                where = actual.late_where or {}
+                print(f"LATE {case.id}: agent classes loaded during the operation: "
+                      + ", ".join(f"{name} ({where[name]})" if name in where else name for name in late))
             if actual.hidden and hidden_enforced:
                 late_failures += 1
                 print(f"HIDDEN {case.id}: lambda classes created during the operation, from: "

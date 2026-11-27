@@ -13,20 +13,28 @@ public final class DeserializationGuard {
 
   /** The stream field stays unchanged. Supply a filter for the duration of the JDK check even on unfiltered streams. */
   public static ObjectInputFilter filterOrGuard(ObjectInputFilter selected) {
+    if (HookActivation.inactive()) return selected;
     return selected == null ? GUARD : selected;
   }
 
   /** Compatibility entry point for hooks without the stream receiver. */
   public static ObjectInputFilter.Status checkInput(ObjectInputFilter selected, ObjectInputFilter.FilterInfo info) {
+    if (HookActivation.inactive()) return inactiveCheck(selected, info);
     return checkInput(selected, info, null);
   }
 
   /** Invoked inside the JDK's rejection and exception handling with the stream being checked. */
   public static ObjectInputFilter.Status checkInput(ObjectInputFilter selected, ObjectInputFilter.FilterInfo info,
       ObjectInputStream stream) {
+    if (HookActivation.inactive()) return inactiveCheck(selected, info);
     ObjectInputFilter.Status status = check(info, stream);
     if (status == ObjectInputFilter.Status.REJECTED || selected == GUARD) return status;
     return selected.checkInput(info);
+  }
+
+  /** What the JDK's own check does without the agent: the selected filter decides; the guard alone decides nothing. */
+  private static ObjectInputFilter.Status inactiveCheck(ObjectInputFilter selected, ObjectInputFilter.FilterInfo info) {
+    return selected == null || selected == GUARD ? ObjectInputFilter.Status.UNDECIDED : selected.checkInput(info);
   }
 
   static ObjectInputFilter.Status check(ObjectInputFilter.FilterInfo info) {
