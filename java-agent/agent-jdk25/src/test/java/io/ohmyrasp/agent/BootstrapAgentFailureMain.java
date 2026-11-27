@@ -13,6 +13,7 @@ import java.lang.reflect.Proxy;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.TreeSet;
+import java.util.concurrent.atomic.AtomicInteger;
 import org.objectweb.asm.ClassWriter;
 import org.objectweb.asm.MethodVisitor;
 import org.objectweb.asm.Opcodes;
@@ -64,6 +65,12 @@ public final class BootstrapAgentFailureMain {
     final List<ClassFileTransformer> registered = new ArrayList<>();
     final boolean enumerationFails = scenario.equals("fails-after-transformer") || scenario.equals("miss-then-fails");
     final boolean loadsAMiss = scenario.startsWith("miss-");
+    // The start fails after it retransformed one class, so that its undo retransforms it again: the undo's call is
+    // held until the threads of ours are gone, or 3 s have passed, and what was still alive is recorded.
+    final boolean retransformThenFails = scenario.equals("fails-after-retransform");
+    final AtomicInteger retransforms = new AtomicInteger();
+    final AtomicInteger modifiableAsked = new AtomicInteger();
+    final String[] aliveDuringUndoRetransform = {""};
     final ClassLoader application = new ClassLoader(null) {};
     Instrumentation instrumentation =
         (Instrumentation) Proxy.newProxyInstance(
@@ -90,7 +97,31 @@ public final class BootstrapAgentFailureMain {
                     if (enumerationFails) {
                       throw new UnsupportedOperationException("the JVM refuses to list its classes");
                     }
-                    return new Class<?>[0];
+                    return retransformThenFails
+                        ? new Class<?>[] {java.io.FileOutputStream.class, Object.class}
+                        : new Class<?>[0];
+                  }
+                  case "isModifiableClass" -> {
+                    if (retransformThenFails && modifiableAsked.incrementAndGet() > 1) {
+                      throw new UnsupportedOperationException("modifiability cannot be read");
+                    }
+                    return Boolean.valueOf(retransformThenFails);
+                  }
+                  case "retransformClasses" -> {
+                    if (retransforms.incrementAndGet() == 2) {
+                      long give = System.nanoTime() + 3_000_000_000L;
+                      TreeSet<String> alive = ourThreads();
+                      while (!alive.isEmpty() && System.nanoTime() < give) {
+                        try {
+                          Thread.sleep(20);
+                        } catch (InterruptedException e) {
+                          Thread.currentThread().interrupt();
+                          break;
+                        }
+                        alive = ourThreads();
+                      }
+                      aliveDuringUndoRetransform[0] = String.join(",", alive);
+                    }
                   }
                   case "isRetransformClassesSupported" -> {
                     return Boolean.TRUE;
@@ -147,7 +178,8 @@ public final class BootstrapAgentFailureMain {
       hookMissWritten = hookMissIn(log);
     }
     System.out.println("RESULT\t" + ended.replace('\n', ' ') + "\t" + registered.size() + "\t" + String.join(",", threads)
-        + "\t" + hookMissWritten + "\t" + (HookMisses.table() != null));
+        + "\t" + hookMissWritten + "\t" + (HookMisses.table() != null) + "\t" + retransforms.get()
+        + "\t" + aliveDuringUndoRetransform[0]);
     System.out.flush();
     Runtime.getRuntime().halt(0);
   }

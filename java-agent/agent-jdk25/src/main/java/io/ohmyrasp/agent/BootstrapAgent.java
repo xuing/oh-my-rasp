@@ -143,7 +143,9 @@ public final class BootstrapAgent {
 
     /**
      * Undoes what the start did, each step on its own: a failing step is added to {@code failure} as suppressed
-     * and the next still runs. The hooks are turned off first; nothing here writes an event or waits on output.
+     * and the next still runs. The hooks are turned off first and the workers are stopped before the compensating
+     * retransformations, which can wait on other agents' transformers; nothing here writes an event or waits on
+     * output.
      */
     void undo(Instrumentation instrumentation, Throwable failure) {
       HookActivation.deactivate();
@@ -159,15 +161,6 @@ public final class BootstrapAgent {
           instrumentation.removeTransformer(transformer);
         } catch (RuntimeException | Error other) {
           failure.addSuppressed(other);
-        }
-        // Best effort: the classes this start retransformed get their bytecode back without this transformer. A
-        // class first loaded during the start, and a method running when it was rewritten, keep the inert calls.
-        for (Class<?> rewritten : retransformed) {
-          try {
-            instrumentation.retransformClasses(rewritten);
-          } catch (Throwable ignored) {
-            // The calls it holds stay inert.
-          }
         }
       }
       if (controlPlane != null) {
@@ -189,6 +182,19 @@ public final class BootstrapAgent {
           runtime.stop();
         } catch (RuntimeException | Error other) {
           failure.addSuppressed(other);
+        }
+      }
+      // Last, because it can run other agents' transformers and stall: by now no worker of ours is left running
+      // for it to hold up. Best effort: the classes this start retransformed get their bytecode back without this
+      // transformer. A class first loaded during the start, and a method running when it was rewritten, keep the
+      // inert calls.
+      if (transformer != null) {
+        for (Class<?> rewritten : retransformed) {
+          try {
+            instrumentation.retransformClasses(rewritten);
+          } catch (Throwable ignored) {
+            // The calls it holds stay inert.
+          }
         }
       }
     }
