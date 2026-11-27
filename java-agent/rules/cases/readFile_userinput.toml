@@ -85,7 +85,7 @@ args = { path = "/etc/hosts" }
 method = "POST"
 uri = "/app/download"
 headers = { "User-Agent" = "Mozilla/5.0 (X11; Linux x86_64) Firefox/128.0", Accept = "text/html", "Content-Type" = "application/json" }
-body = "{\"file\":\"/etc/hosts\"}"
+body = "{\"username\":\"a\",\"password\":\"hunter2-Secret\",\"file\":\"/etc/hosts\"}"
 body_api = "stream"
 
 [case.primary]

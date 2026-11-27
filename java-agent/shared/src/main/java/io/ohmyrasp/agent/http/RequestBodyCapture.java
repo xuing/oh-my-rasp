@@ -1,5 +1,6 @@
 package io.ohmyrasp.agent.http;
 
+import java.nio.Buffer;
 import java.nio.ByteBuffer;
 import java.nio.CharBuffer;
 
@@ -12,9 +13,12 @@ import java.nio.CharBuffer;
  * <p>Costs on an application thread: a read on a thread that serves no request, or one past the cap or after
  * the body completed, is one thread-local read and a branch in {@link #enter}, and a null check at exit.
  * A read inside another recorded read (a wrapper's read calling the container's, or a stream's read(byte[])
- * calling its own read()) records nothing: only the outermost read on the thread does.
+ * calling its own read()) records nothing: only the outermost read on the thread does. A read of another
+ * stream than the one the request's first read used (a mock stream, a replay of cached bytes, another
+ * request's stream in a nested dispatch) records nothing either.
  *
- * <p>Nothing here throws to the application: a failure while recording stops recording for the request.
+ * <p>Nothing here throws to the application, except {@link #enter} with the block the engine latched by
+ * {@link #deny}: a failure while recording stops recording for the request.
  * The exit methods return true when the read completed a body that has a state no decision has seen,
  * and the engine then decides the rules that read the body.
  */
@@ -71,11 +75,44 @@ public final class RequestBodyCapture {
 
   // ---- reads ---------------------------------------------------------------------------------------------------
 
-  /** At the start of a read: the recorder when this read is the outermost one of a request, else null. */
-  public static Object enter() {
+  /**
+   * At the start of a read of {@code source}: the recorder when this read is the outermost one of a request and
+   * {@code source} is the stream or reader the request reads its body from (the first one that read inside the
+   * request), else null. After a block on the request's body, every read of the request throws that block again.
+   */
+  public static Object enter(Object source) {
     RequestBody body = CURRENT.get();
-    if (body == null || !body.open) return null;
-    return body.claim() ? body : null;
+    if (body == null) return null;
+    RuntimeException denial = body.denial;
+    if (denial != null) throw denial;
+    return body.open && body.claim(source) ? body : null;
+  }
+
+  /** {@link #enter} for a read into an NIO buffer: notes where the buffer stood, where the read puts its data. */
+  public static Object enter(Object source, Buffer buffer) {
+    Object token = enter(source);
+    if (token != null) ((RequestBody) token).bufferStart = buffer == null ? -1 : buffer.position();
+    return token;
+  }
+
+  /** The read threw: the recorder is free for the request's next read. */
+  public static void abort(Object token) {
+    if (token != null) ((RequestBody) token).release();
+  }
+
+  /**
+   * The engine blocked the request on its body: from now until the request ends, every read of a body on this
+   * thread throws {@code block}, and {@link #denial} returns it to the engine's hooks.
+   */
+  public static void deny(RuntimeException block) {
+    RequestBody body = CURRENT.get();
+    if (body != null && body.active() && body.denial == null) body.denial = block;
+  }
+
+  /** The block the current request's body was denied with, or null. */
+  public static RuntimeException denial() {
+    RequestBody body = CURRENT.get();
+    return body == null ? null : body.denial;
   }
 
   public static boolean exitByte(int result, Object token) {

@@ -26,6 +26,9 @@ public final class RequestContext {
   private volatile RequestBodySnapshot given;
   // parameters() with the body's values added, for the snapshot it was made from.
   private volatile Inputs inputs;
+  // The version of the recorded body state the request rules were last decided on for this context (one context
+  // per servlet dispatch: a state decided under an include is decided again for the route it returns to).
+  private int bodyDecided;
 
   public RequestContext(
       String method,
@@ -86,6 +89,32 @@ public final class RequestContext {
     if (snapshot != null) recorded = snapshot;
   }
 
+  /** Drops the recorded body state: the dispatch this context belongs to has ended. */
+  public void forgetBody() {
+    recorded = null;
+    inputs = null;
+    bodyDecided = 0;
+  }
+
+  /**
+   * Whether the request rules still have to be decided on body state {@code version} for this context; true at
+   * most once per state. Called by the thread that serves the request.
+   */
+  public boolean decideBody(int version) {
+    if (version == bodyDecided) return false;
+    bodyDecided = version;
+    return true;
+  }
+
+  /**
+   * This request without any body: the context itself when it carries none, else a copy with the method, URI,
+   * query, parameters and headers only. An event carries this, so that a queued event keeps no body text.
+   */
+  public RequestContext withoutBody() {
+    if (recorded == null && body.isEmpty()) return this;
+    return new RequestContext(method, uri, query, parameters, headers);
+  }
+
   /** The body state this context carries, or null when it has none. */
   public RequestBodySnapshot bodySnapshot() {
     RequestBodySnapshot seen = recorded;
@@ -114,16 +143,17 @@ public final class RequestContext {
       merged = parameters;
     } else {
       var copy = new LinkedHashMap<String, List<String>>(parameters);
-      values.parameters().forEach((name, items) -> {
-        List<String> before = copy.get(name);
+      // A loop, not a lambda: this runs on the first body a request reads, where a call site would link.
+      for (Map.Entry<String, List<String>> field : values.parameters().entrySet()) {
+        List<String> before = copy.get(field.getKey());
         if (before == null) {
-          copy.put(name, items);
+          copy.put(field.getKey(), field.getValue());
         } else {
           var joined = new ArrayList<String>(before);
-          joined.addAll(items);
-          copy.put(name, Collections.unmodifiableList(joined));
+          joined.addAll(field.getValue());
+          copy.put(field.getKey(), Collections.unmodifiableList(joined));
         }
-      });
+      }
       merged = Collections.unmodifiableMap(copy);
     }
     inputs = new Inputs(snapshot, merged);
@@ -138,6 +168,15 @@ public final class RequestContext {
   public RequestContext withBodyParameters() {
     RequestBodySnapshot snapshot = bodySnapshot();
     var view = new RequestContext(method, uri, query, inputParameters(), headers, "");
+    if (snapshot != null) view.recorded = snapshot;
+    return view;
+  }
+
+  /** This request with the body's names and values as its only parameters: see {@link #withBodyParameters}. */
+  public RequestContext withOnlyBodyParameters() {
+    RequestBodySnapshot snapshot = bodySnapshot();
+    Map<String, List<String>> fields = snapshot == null ? Map.of() : snapshot.values().parameters();
+    var view = new RequestContext(method, uri, query, fields, headers, "");
     if (snapshot != null) view.recorded = snapshot;
     return view;
   }

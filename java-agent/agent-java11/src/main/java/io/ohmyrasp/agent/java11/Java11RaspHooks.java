@@ -26,8 +26,16 @@ public final class Java11RaspHooks {
     BackportHooks.afterHttpRequest();
   }
 
-  public static Object enterBodyRead() {
-    return BackportHooks.enterBodyRead();
+  public static Object enterBodyRead(Object source) {
+    return BackportHooks.enterBodyRead(source);
+  }
+
+  public static Object enterBodyRead(Object source, java.nio.Buffer buffer) {
+    return BackportHooks.enterBodyRead(source, buffer);
+  }
+
+  public static void abortBodyRead(Object token) {
+    BackportHooks.abortBodyRead(token);
   }
 
   public static void exitBodyRead(int result, Object token) {

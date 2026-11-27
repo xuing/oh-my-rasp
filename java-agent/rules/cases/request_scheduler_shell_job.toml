@@ -43,7 +43,7 @@ via = "request"
 method = "POST"
 uri = "/run"
 headers = { "User-Agent" = "Mozilla/5.0 (X11; Linux x86_64) Firefox/128.0", Accept = "text/html", "Content-Type" = "application/json" }
-body = "{\"jobId\":\"1\",\"executorHandler\":\"demoJobHandler\",\"executorParams\":\"demoJobHandler\",\"glueType\":\"GLUE_SHELL\",\"glueSource\":\"touch /tmp/success\",\"logId\":\"1\"}"
+body = "{\"username\":\"a\",\"password\":\"hunter2-Secret\",\"jobId\":\"1\",\"executorHandler\":\"demoJobHandler\",\"executorParams\":\"demoJobHandler\",\"glueType\":\"GLUE_SHELL\",\"glueSource\":\"touch /tmp/success\",\"logId\":\"1\"}"
 body_api = "stream"
 
 [case.primary]

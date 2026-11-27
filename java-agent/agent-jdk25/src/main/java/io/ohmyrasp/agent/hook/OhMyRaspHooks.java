@@ -25,6 +25,7 @@ import io.ohmyrasp.agent.detect.RemoteResourceDetector;
 import io.ohmyrasp.agent.detect.ResponseContentDetector;
 import io.ohmyrasp.agent.detect.SqlRequestIndicators;
 import io.ohmyrasp.agent.http.ArchiveUploadPolicy;
+import io.ohmyrasp.agent.http.BodyEvidence;
 import io.ohmyrasp.agent.http.RequestBody;
 import io.ohmyrasp.agent.http.RequestBodyCapture;
 import io.ohmyrasp.agent.http.RequestBodySnapshot;
@@ -124,6 +125,7 @@ public final class OhMyRaspHooks {
       DISPATCH.enteredApplication();
       RequestBodyCapture.applicationEntered(outermost, request, !detectionDisabled());
     } catch (RuntimeException | Error failure) {
+      forgetBody();
       DISPATCH.exit();
       RequestBodyCapture.dispatchExited(!DISPATCH.inRequest());
       throw failure;
@@ -383,15 +385,50 @@ public final class OhMyRaspHooks {
 
   public static void exitHttpRequest() {
     if (HookActivation.inactive()) return;
+    forgetBody();
     DISPATCH.exit();
     RequestBodyCapture.dispatchExited(!DISPATCH.inRequest());
   }
 
-  // ---- request body: what the application's own read calls returned (RequestBodyVisitor injects these) ----
+  /**
+   * The dispatch leaving this thread drops the body state its request context holds: a context that an
+   * operation carried onto another thread (an HTTP exchange, a directory walk) keeps no body past the dispatch.
+   */
+  private static void forgetBody() {
+    RequestContext context = REQUEST.get();
+    if (context != null) context.forgetBody();
+  }
 
-  public static Object enterBodyRead() {
-    if (HookActivation.inactive()) return null;
-    return RequestBodyCapture.enter();
+  // ---- request body: what the application's own read calls returned (RequestBodyVisitor injects these) ----
+  // None of these throws to the application but the block: a read after a block on its request's body throws
+  // that block again, and a read whose recording completes a body state with a blocking finding throws it.
+
+  public static Object enterBodyRead(Object source) {
+    try {
+      return RequestBodyCapture.enter(source);
+    } catch (OhMyRaspBlockException blocked) {
+      throw blocked;
+    } catch (Throwable ignored) {
+      return null;
+    }
+  }
+
+  public static Object enterBodyRead(Object source, java.nio.Buffer buffer) {
+    try {
+      return RequestBodyCapture.enter(source, buffer);
+    } catch (OhMyRaspBlockException blocked) {
+      throw blocked;
+    } catch (Throwable ignored) {
+      return null;
+    }
+  }
+
+  public static void abortBodyRead(Object token) {
+    try {
+      RequestBodyCapture.abort(token);
+    } catch (Throwable ignored) {
+      // The application's own exception goes on.
+    }
   }
 
   public static void exitBodyRead(int result, Object token) {
@@ -441,71 +478,168 @@ public final class OhMyRaspHooks {
     } catch (OhMyRaspBlockException blocked) {
       throw blocked;
     } catch (Throwable throwable) {
-      quiet("requestBody", throwable);
+      quietBody(throwable);
     }
   }
 
   /**
-   * Gives the request context the body read so far and, when that state is new to every decision, decides the
-   * request rules on it first: so a body-only rule is decided before any other hook decides with the new bytes.
+   * Gives the request context the body read so far and, when this dispatch has not decided that state yet,
+   * decides the request rules on it first: so a body-only rule is decided before any other hook decides with the
+   * new bytes. Every finding of the request chain on the body is reported once per request (not only the
+   * chain's first, which an earlier, already reported or ignored finding would hide), except a finding the
+   * request gives without its body (the servlet entry's). A block throws from here, and every later read of the
+   * request's body throws it again.
    */
   private static void settleBody(RequestContext context, RequestBody body) {
     RequestBodySnapshot snapshot = body.snapshot();
     if (snapshot == null) return;
     context.observeBody(snapshot);
-    if (!body.pending()) return;
-    body.markDecided();
+    if (!context.decideBody(snapshot.version())) return;
     if (detectionDisabled()) return;
     long started = System.nanoTime();
     try {
-      // The request rules read the body's values where they read parameters; the event names the request itself.
+      BodyFindings seen = BodyFindings.of(body, context);
+      // The request rules read the body's values where they read parameters: with the request's own, and alone,
+      // so that a parameter's match does not hide a body field's inside one rule.
       RequestContext view = context.withBodyParameters();
-      Optional<Detection> finding = DETECTORS.detectRequest(view).map(found -> reportedFor(found, context));
-      if (finding.isPresent() && bodyFinding(context, body, finding.orElseThrow())) emit(finding);
+      for (Detection found : DETECTORS.requestChainFindings(view)) {
+        if (seen.isNew(found)) emit(Optional.of(bodyFinding(found, context, true)));
+      }
+      for (Detection found : DETECTORS.requestChainFindings(context.withOnlyBodyParameters())) {
+        if (seen.isNew(found)) emit(Optional.of(bodyFinding(found, context, false)));
+      }
       AgentPolicy policy = policy();
+      if (policy.selectsAlgorithm("xss_userinput")) {
+        Optional<Detection> markup = ResponseContentDetector.detectMarkupParameter(view);
+        if (markup.isPresent() && seen.isNew(markup.orElseThrow())) {
+          emit(Optional.of(bodyFinding(markup.orElseThrow(), context, true)));
+        }
+      }
       if (policy.loaded()) {
-        for (Detection candidate : SqlRequestIndicators.sqlRequestMetadata(view, policy::selectsAlgorithm)) {
-          Detection reported = reportedFor(candidate, context);
-          if (bodyFinding(context, body, reported)) emit(Optional.of(reported));
+        for (Detection candidate : SqlRequestIndicators.sqlRequestMetadata(view, new SelectedBy(policy))) {
+          if (seen.isNew(candidate)) emit(Optional.of(bodyFinding(candidate, context, true)));
         }
       }
     } catch (OhMyRaspBlockException blocked) {
+      RequestBodyCapture.deny(blocked);
       throw blocked;
     } catch (Throwable throwable) {
-      quiet("requestBody", throwable);
+      quietBody(throwable);
     }
     events().sampleHookLatency("http_request_body", elapsedMicros(started));
   }
 
-  /** The finding as an event carries it: about the request itself, whose parameters hold no body value. */
-  private static Detection reportedFor(Detection found, RequestContext context) {
-    return new Detection(found.timestamp(), found.hook(), found.algorithm(), found.action(), found.confidence(),
-        found.message(), new RequestContext(context.method(), context.uri(), context.query(), context.parameters(),
-            context.headers()), found.details());
+  /** The algorithms a policy selects; a class, not a method reference, so that no call site links on a request. */
+  private static final class SelectedBy implements java.util.function.Predicate<String> {
+    private final AgentPolicy policy;
+
+    SelectedBy(AgentPolicy policy) {
+      this.policy = policy;
+    }
+
+    @Override public boolean test(String algorithm) {
+      return policy.selectsAlgorithm(algorithm);
+    }
   }
 
   /**
-   * Whether a request finding is the body's to report: not one the request gives without its body (the servlet
-   * entry decided that one), and not one an earlier state of this body reported.
+   * The body findings one request has reported, and those its parameters give without the body: kept on the
+   * request's body recorder, which drops them when the request ends.
    */
-  @SuppressWarnings("unchecked")
-  private static boolean bodyFinding(RequestContext context, RequestBody body, Detection finding) {
-    List<Object> key = List.of(finding.algorithm(), finding.details());
-    Set<List<Object>> reported = (Set<List<Object>>) body.engineState;
-    if (reported != null && reported.contains(key)) return false;
-    RequestContext withoutBody = new RequestContext(
-        context.method(), context.uri(), context.query(), context.parameters(), context.headers());
-    Optional<Detection> before = "request_sql_sort_injection".equals(finding.algorithm())
-        || "request_sql_identifier_injection".equals(finding.algorithm())
-        ? Optional.empty() : DETECTORS.detectRequest(withoutBody);
-    if (before.isPresent() && before.orElseThrow().algorithm().equals(finding.algorithm())
-        && before.orElseThrow().details().equals(finding.details())) return false;
-    if (reported == null) {
-      reported = new java.util.HashSet<>();
-      body.engineState = reported;
+  private static final class BodyFindings {
+    private final Set<List<Object>> reported = new java.util.HashSet<>();
+    private RequestContext entryOf;
+    private Set<List<Object>> entry = Set.of();
+
+    static BodyFindings of(RequestBody body, RequestContext context) {
+      BodyFindings seen = body.engineState instanceof BodyFindings kept ? kept : new BodyFindings();
+      body.engineState = seen;
+      if (seen.entryOf != context) {
+        // What the request chain finds on this dispatch's request without its body: the servlet entry's.
+        RequestContext withoutBody = new RequestContext(
+            context.method(), context.uri(), context.query(), context.parameters(), context.headers());
+        Set<List<Object>> keys = new java.util.HashSet<>();
+        for (Detection found : DETECTORS.requestChainFindings(withoutBody)) keys.add(key(found));
+        seen.entry = keys;
+        seen.entryOf = context;
+      }
+      return seen;
     }
-    reported.add(key);
-    return true;
+
+    /** Whether the finding is the body's to report and was not reported yet; it is from now on. */
+    boolean isNew(Detection found) {
+      List<Object> key = key(found);
+      return !entry.contains(key) && reported.add(key);
+    }
+
+    private static List<Object> key(Detection found) {
+      return List.of(found.algorithm(), found.details());
+    }
+  }
+
+  /**
+   * The finding as an event carries it: the request without the body's names and values among the parameters.
+   * On the view with the request's own parameters ({@code merged}) the request is as the detector left it, its
+   * redactions kept; on the view of the body's alone it is the request's own. The details are made public when
+   * the event is recorded.
+   */
+  private static Detection bodyFinding(Detection found, RequestContext context, boolean merged) {
+    RequestContext decided = found.request() == null || !merged ? context : found.request();
+    Map<String, List<String>> shown = new java.util.LinkedHashMap<>();
+    for (Map.Entry<String, List<String>> parameter : decided.parameters().entrySet()) {
+      List<String> own = context.parameters().get(parameter.getKey());
+      if (own == null) continue; // a body field
+      List<String> values = parameter.getValue();
+      // The body's values follow the parameter's own (RequestContext.inputParameters).
+      shown.put(parameter.getKey(), values.subList(0, Math.min(values.size(), own.size())));
+    }
+    return new Detection(found.timestamp(), found.hook(), found.algorithm(), found.action(), found.confidence(),
+        found.message(), new RequestContext(context.method(), context.uri(), context.query(), shown,
+            decided.headers()), found.details());
+  }
+
+  /**
+   * The detection as it leaves the agent (event, cloud upload, block exception, block page): no body text in its
+   * details or message (see {@link BodyEvidence}) and no body state in its request context, which a queued event
+   * would otherwise keep past the request. When this fails, the details and message are dropped whole.
+   */
+  static Detection publicView(Detection event) {
+    RequestContext request = event.request();
+    try {
+      RequestBodySnapshot body = request == null ? null : request.bodySnapshot();
+      if (body == null) {
+        RequestBody current = RequestBodyCapture.current();
+        body = current == null ? null : current.lastSnapshot();
+      }
+      RequestContext shown = request == null ? null : request.withoutBody();
+      if (body == null) {
+        return shown == request ? event : new Detection(event.timestamp(), event.hook(), event.algorithm(),
+            event.action(), event.confidence(), event.message(), shown, event.details());
+      }
+      Set<String> names = request == null ? Set.of() : request.parameters().keySet();
+      List<String> kept = request == null ? List.of()
+          : List.of(request.method(), request.uri(), request.query());
+      BodyEvidence evidence = BodyEvidence.of(body, names, kept);
+      Map<String, String> details = new java.util.LinkedHashMap<>();
+      for (Map.Entry<String, String> detail : event.details().entrySet()) {
+        details.put(detail.getKey(), BodyEvidence.RULE_CONSTANTS.contains(detail.getKey())
+            ? detail.getValue() : evidence.scrub(detail.getValue()));
+      }
+      return new Detection(event.timestamp(), event.hook(), event.algorithm(), event.action(), event.confidence(),
+          evidence.scrubMessage(event.message()), shown, details);
+    } catch (Throwable failure) {
+      return new Detection(event.timestamp(), event.hook(), event.algorithm(), event.action(), event.confidence(),
+          "", request == null ? null : RequestContext.empty(), Map.of());
+    }
+  }
+
+  /** A failure on the body path is reported by its class alone: an exception message could quote the body. */
+  private static void quietBody(Throwable throwable) {
+    try {
+      quiet("requestBody", new IllegalStateException(throwable.getClass().getName()));
+    } catch (Throwable ignored) {
+      // Reporting a failure never fails the application's read.
+    }
   }
 
   public static void beforeSpringProcessStart(ProcessBuilder builder) {
@@ -2491,7 +2625,7 @@ public final class OhMyRaspHooks {
     // Blocking is decided. Nothing that fails while the event is built, redacted or recorded, or
     // while the response is redirected, stops the block: the event is lost, or the block is not
     // redirected.
-    Detection blocked = recorded;
+    Detection blocked = publicView(recorded);
     try {
       blocked = report(recorded, started, ruleEvaluationUs);
     } catch (Throwable reportingFailure) {
@@ -2506,9 +2640,12 @@ public final class OhMyRaspHooks {
     throw new OhMyRaspBlockException(blocked, redirected);
   }
 
-  /** Records {@code event} without the evidence a response finding must not carry; returns what was recorded. */
+  /**
+   * Records {@code event} without the evidence a response finding must not carry and without body text (see
+   * {@link #publicView}); returns what was recorded.
+   */
   private static Detection report(Detection event, long started, long ruleEvaluationUs) {
-    Detection recorded = event;
+    Detection recorded = publicView(event);
     if ("response_dataLeak".equals(recorded.algorithm()) || "xss_echo".equals(recorded.algorithm())) {
       Map<String, String> evidence = "response_dataLeak".equals(recorded.algorithm())
           ? Map.of("kind", recorded.details().get("kind")) : Map.of("decision_basis", "verbatim_request_markup");

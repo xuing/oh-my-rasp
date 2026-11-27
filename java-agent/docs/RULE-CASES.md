@@ -24,7 +24,7 @@ One file per rule id. Effects count the file's attack cases; rules are the ids t
 | [command_common](../rules/cases/command_common.toml) | 6 | 2 | block 5, log 1 | `command_common` | block 5, log 1 | `command_execution_exploit_primitive` |
 | [command_dnslog](../rules/cases/command_dnslog.toml) | 2 | 1 | block 2 | `command_dnslog` | unreachable 2 | - |
 | [command_error](../rules/cases/command_error.toml) | 2 | 1 | block 2 | `command_error` | unreachable 2 | - |
-| [command_userinput](../rules/cases/command_userinput.toml) | 8 | 2 | block 6, none 2 | `command_userinput` | block 6, none 2 | `command_execution_shell_meta` |
+| [command_userinput](../rules/cases/command_userinput.toml) | 9 | 2 | block 7, none 2 | `command_userinput` | block 7, none 2 | `command_execution_shell_meta` |
 | [deleteFile_userinput](../rules/cases/deleteFile_userinput.toml) | 3 | 1 | block 2, none 1 | `deleteFile_userinput` | block 2, none 1 | `deleteFile_userinput` |
 | [deserialization_blacklist](../rules/cases/deserialization_blacklist.toml) | 6 | 1 | block 4, log 1, none 1 | `deserialization_blacklist` | block 4, log 1, none 1 | `deserialization_gadget_class` |
 | [deserialization_gadget](../rules/cases/deserialization_gadget.toml) | 2 | 1 | block 2 | `deserialization_gadget` | block 2 | `deserialization_gadget_class` |
@@ -104,7 +104,7 @@ Each id that some case names on this engine: the attack cases that name it, the 
 | `command_common` | 6 | 2 | block 5, log 1 | [command_common](../rules/cases/command_common.toml) |
 | `command_dnslog` | 2 | 1 | block 2 | [command_dnslog](../rules/cases/command_dnslog.toml) |
 | `command_error` | 2 | 1 | block 2 | [command_error](../rules/cases/command_error.toml) |
-| `command_userinput` | 6 | 2 | block 6 | [command_userinput](../rules/cases/command_userinput.toml) |
+| `command_userinput` | 7 | 2 | block 7 | [command_userinput](../rules/cases/command_userinput.toml) |
 | `deleteFile_userinput` | 2 | 1 | block 2 | [deleteFile_userinput](../rules/cases/deleteFile_userinput.toml) |
 | `deserialization_blacklist` | 5 | 1 | block 4, log 1 | [deserialization_blacklist](../rules/cases/deserialization_blacklist.toml) |
 | `deserialization_gadget` | 2 | 1 | block 2 | [deserialization_gadget](../rules/cases/deserialization_gadget.toml) |
@@ -213,7 +213,7 @@ Each id that some case names on this engine: the attack cases that name it, the 
 | `base64_avx512_tail_underflow` | 2 | 1 | block 2 | [base64_avx512_tail_underflow](../rules/cases/base64_avx512_tail_underflow.toml) |
 | `classloader_remote_codebase` | 4 | 1 | block 3, log 1 | [classloader_remote](../rules/cases/classloader_remote.toml) |
 | `command_execution_exploit_primitive` | 6 | 2 | block 5, log 1 | [command_common](../rules/cases/command_common.toml) |
-| `command_execution_shell_meta` | 6 | 2 | block 6 | [command_userinput](../rules/cases/command_userinput.toml) |
+| `command_execution_shell_meta` | 7 | 2 | block 7 | [command_userinput](../rules/cases/command_userinput.toml) |
 | `deleteFile_userinput` | 2 | 1 | block 2 | [deleteFile_userinput](../rules/cases/deleteFile_userinput.toml) |
 | `deserialization_gadget_class` | 7 | 2 | block 6, log 1 | [deserialization_blacklist](../rules/cases/deserialization_blacklist.toml), [deserialization_gadget](../rules/cases/deserialization_gadget.toml) |
 | `directory_userinput` | 3 | 1 | block 3 | [directory_userinput](../rules/cases/directory_userinput.toml) |

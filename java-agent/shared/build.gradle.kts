@@ -45,3 +45,20 @@ val generateLauncherEntries = tasks.register<JavaExec>("generateLauncherEntries"
 sourceSets.main {
     output.dir(mapOf("builtBy" to generateLauncherEntries), launcherEntriesDir)
 }
+
+// Tomcat's own request-body classes, one Tomcat line each (the versions probes/hook-targets/libraries.toml records
+// for tomcat-embed-core): RequestBodyVisitorTest rewrites the real CoyoteInputStream and reads through Tomcat's
+// own InputBuffer, whose read(ByteBuffer) contract the recorder must follow.
+val tomcatBodyLines = mapOf("9" to "9.0.124", "10" to "10.1.62", "11" to "11.0.29")
+val tomcatBodyClasspaths = tomcatBodyLines.map { (line, version) ->
+    val configuration = configurations.create("tomcatBody$line") { isTransitive = false }
+    dependencies.add(configuration.name, "org.apache.tomcat.embed:tomcat-embed-core:$version")
+    line to configuration.incoming.files
+}
+tasks.test {
+    tomcatBodyClasspaths.forEach { (_, files) -> inputs.files(files) }
+    val paths = tomcatBodyClasspaths
+    jvmArgumentProviders.add(CommandLineArgumentProvider {
+        paths.map { (line, files) -> "-Dohmyrasp.test.tomcat$line=${files.asPath}" }
+    })
+}
