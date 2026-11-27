@@ -436,7 +436,7 @@ public final class HookVerify {
       String unit = by.isEmpty() ? "-" : String.join("+", by);
       if (by.isEmpty()) {
         if (!shape.mayStayUntouched) {
-          failures.add("fail\tsynthetic\t" + shape.name + "\t-\t" + shape.className + "\tno transformer of this line rewrote it; "
+          failures.add("fail\t-\tsynthetic\t" + shape.name + "\t" + shape.className + "\tno transformer of this line rewrote it; "
               + "the shape no longer reaches the request-body hook");
         }
         System.out.println("synthetic " + shape.name + ": left untouched");

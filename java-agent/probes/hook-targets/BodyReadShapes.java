@@ -18,7 +18,9 @@ import java.util.List;
  * <li>a: a synchronized block (MONITORENTER on this) around a try with a catch and a finally whose handlers load
  *     this and an int local, then MONITOREXIT and rethrow, as javac writes it;</li>
  * <li>b: an exception range that covers the IRETURN (and for the reader, readLine's ARETURN), whose handler uses
- *     this and a local;</li>
+ *     this and a local. A rewrite that resumes after its exit hook with a frame naming every local TOP puts that
+ *     frame inside the range, and the JVM rejects the handler ("Stack map does not match the one at exception
+ *     handler");</li>
  * <li>c: reads that call the rewritten read: {@code read([B)I} calls {@code this.read(b, 0, b.length)} and
  *     {@code read()I} calls {@code read([BII)I};</li>
  * <li>d: a tableswitch with a return in each case;</li>
