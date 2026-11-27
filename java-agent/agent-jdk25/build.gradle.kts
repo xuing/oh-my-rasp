@@ -45,6 +45,9 @@ tasks.register<Sync>("stageC3p0Probe") {
 // Build once with the JDK 25 toolchain for both supported LTS runtimes.
 tasks.withType<JavaCompile>().configureEach {
     options.release.set(21)
+    // StringBuilder concatenation, not StringConcatFactory: an invokedynamic concat site links on its first use,
+    // and several of this line's hooks run inside JDK calls (scripts/check-dynamic-calls.py counts what is left).
+    options.compilerArgs.add("-XDstringConcat=inline")
 }
 
 tasks.jar {

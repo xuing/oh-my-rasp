@@ -9,8 +9,10 @@ the driver's marks around the operation, not everything in the event file.
 Each case JVM also logs class loading (-verbose:class on Java 8, -Xlog:class+load on 9 and later), and the
 driver loads a marker class at each end of the operation. A class of the agent (io.ohmyrasp.agent.) that
 loads between the marks loaded inside a hook or a transformer, inside the JDK call the hook instruments,
-where loading a class can re-enter the hook: on a backport line the case fails and names the class, since those
-lines load at start what their hooks use. On the primary line the classes are reported (ENFORCED_ENGINES).
+where loading a class can re-enter the hook: the case fails and names the class, on every line, since each loads at
+start, from the list in its JAR, what its hooks use. A lambda's hidden class (Foo$$Lambda/0x...) cannot be on a list,
+because it does not exist until its call site first runs; those are counted per source class and reported, and they
+fail a case only on the lines in ENFORCED_HIDDEN (none of the primary's: it still has lambdas and method references).
 
 Known gaps of the class-load check: hooks reached while the driver sets up, before its first mark (the
 listener socket, the stub JDBC driver), are not checked; and no case exercises the completion of
@@ -46,11 +48,13 @@ AGENT_PACKAGE = "io.ohmyrasp.agent."
 # "[<decorations>][class,load] <name> source: <source>" (Java 9 and later -Xlog:class+load).
 LOADED = re.compile(r"^\[Loaded (\S+) from |\[class,load\]\s+(\S+)")
 MARKS = ("RuleCaseDriver$OperationStart", "RuleCaseDriver$OperationEnd")
-# The guard fails a case on the backport lines. On the primary line it reports and does not fail: the primary
-# loads its detectors at start but has no full preload list yet, because initialising all of its classes at start
-# cost 82 to 92 ms on JDK 25. Its lambda classes would stay outside any list in any case: a lambda's class does
-# not exist until its call site first runs.
-ENFORCED_ENGINES = ("backport",)
+# The guard fails a case on both families: a named class of the agent that loads during the operation is a
+# class missing from the line's preload list. A lambda's hidden class is reported separately, and fails a case
+# only on the families named in ENFORCED_HIDDEN: the backports compile without invokedynamic call sites, so any
+# hidden class there is a regression; the primary still has lambdas and method references in code its hooks reach.
+ENFORCED_ENGINES = ("backport", "primary")
+ENFORCED_HIDDEN = ("backport",)
+HIDDEN = re.compile(r"^(.*)\$\$Lambda(\$\d+)?/(0x[0-9a-f]+|\d+)$")
 
 
 def class_load_options(major: int, tmp: Path) -> list[str]:
@@ -58,15 +62,17 @@ def class_load_options(major: int, tmp: Path) -> list[str]:
     return ["-verbose:class"] if major <= 8 else [f"-Xlog:class+load:file={tmp / 'class-load.log'}"]
 
 
-def late_agent_classes(text: str) -> tuple[str, ...] | None:
-    """Agent classes the log shows loading between the driver's two marks, in order; None when a mark is missing."""
+def late_agent_classes(text: str) -> tuple[tuple[str, ...], tuple[str, ...]] | None:
+    """The agent classes the log shows loading between the driver's two marks, in order, as (named classes, source
+    classes of hidden lambda classes, one entry per hidden class); None when a mark is missing."""
     names = [m.group(1) or m.group(2) for m in map(LOADED.search, text.splitlines()) if m]
     if MARKS[0] not in names or MARKS[1] not in names:
         return None
-    between = names[names.index(MARKS[0]) + 1:names.index(MARKS[1])]
-    # A lambda's class name carries a counter and an address that differ between runs.
-    return tuple(re.sub(r"\$\$Lambda(\$\d+)?/(0x[0-9a-f]+|\d+)$", "$$Lambda", name)
-                 for name in between if name.startswith(AGENT_PACKAGE))
+    between = [name for name in names[names.index(MARKS[0]) + 1:names.index(MARKS[1])] if name.startswith(AGENT_PACKAGE)]
+    # A lambda's class name carries a counter and an address that differ between runs: keep its source class.
+    hidden = [HIDDEN.match(name) for name in between]
+    return (tuple(name for name, m in zip(between, hidden) if not m),
+            tuple(m.group(1) for m in hidden if m))
 
 
 def engine_of(agent: Path) -> tuple[str, str | None]:
@@ -81,7 +87,8 @@ class Actual:
     rule: str | None
     also: tuple[str, ...]
     note: str               # how the operation ended, for the reader
-    late: tuple[str, ...] = ()  # agent classes that loaded during the operation
+    late: tuple[str, ...] = ()  # named agent classes that loaded during the operation
+    hidden: tuple[str, ...] = ()  # source class of each hidden lambda class that loaded during the operation
 
 
 def spec_lines(case: rule_cases.Case, tmp: Path, classes: Path) -> str:
@@ -184,7 +191,7 @@ def run_case(case, agent, classpath, classes, work, track, major) -> tuple[Actua
     late = late_agent_classes(load_log.read_text(errors="replace") if load_log.exists() else run.stdout)
     if late is None:
         return Actual("broken", None, (), "the class-load log has no operation marks"), output
-    actual.late = late
+    actual.late, actual.hidden = late
     return actual, output
 
 
@@ -298,7 +305,10 @@ def main():
         failures = 0
         late_failures = 0
         late_by_class: dict[str, list[str]] = {}
+        hidden_by_source: dict[str, list[int]] = {}   # per source class, how many hidden classes each case loaded
+        hidden_cases: dict[str, list[str]] = {}
         enforced = engine in ENFORCED_ENGINES
+        hidden_enforced = engine in ENFORCED_HIDDEN
         for case, (actual, output) in zip(cases, results):
             expect = case.expect[engine]
             if args.print_actual:
@@ -307,9 +317,16 @@ def main():
             late = list(dict.fromkeys(actual.late))
             for name in late:
                 late_by_class.setdefault(name, []).append(case.id)
+            for source in dict.fromkeys(actual.hidden):
+                hidden_by_source.setdefault(source, []).append(actual.hidden.count(source))
+                hidden_cases.setdefault(source, []).append(case.id)
             if late and enforced:
                 late_failures += 1
                 print(f"LATE {case.id}: agent classes loaded during the operation: {', '.join(late)}")
+            if actual.hidden and hidden_enforced:
+                late_failures += 1
+                print(f"HIDDEN {case.id}: lambda classes created during the operation, from: "
+                      f"{', '.join(dict.fromkeys(actual.hidden))}")
             if not matches(expect, actual):
                 failures += 1
                 print(f"FAIL {case.id} ({case.kind}, via {case.via}) on the {engine}\n"
@@ -328,6 +345,15 @@ def main():
           + ("" if enforced else f"; reported, not enforced on the {engine} line (see ENFORCED_ENGINES)"))
     for name, ids in sorted(late_by_class.items()):
         print(f"  late {name}: {len(ids)} case(s), first {ids[0]}")
+    # The most hidden classes one case loaded from a source class is the least number of lambda sites it has that
+    # the cases reach; the same class from two cases may be two sites or one.
+    sites = {source: max(counts) for source, counts in hidden_by_source.items()}
+    print(f"{sum(sites.values())} hidden lambda class(es) at least, from {len(sites)} source class(es), created during "
+          "an operation" + ("" if hidden_enforced else f"; reported, not enforced on the {engine} line "
+                                                       "(see ENFORCED_HIDDEN)"))
+    for source, count in sorted(sites.items()):
+        print(f"  hidden {source}: {count} lambda class(es) in one case, {len(hidden_cases[source])} case(s), "
+              f"first {hidden_cases[source][0]}")
     if failures or late_failures:
         raise SystemExit(f"{failures} rule case(s) differ from what their file declares; "
                          f"{late_failures} loaded an agent class during the operation")
