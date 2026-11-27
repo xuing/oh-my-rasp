@@ -331,6 +331,9 @@ public final class OhMyRaspJava8Agent {
     retransformByName(instrumentation, io.ohmyrasp.agent.jmx.JmxDispatchVisitor.TARGET.replace('/', '.'));
 
     retransformByName(instrumentation, "com.sun.beans.decoder.DocumentHandler");
+    retransformByName(instrumentation, "com.sun.beans.decoder.MethodElementHandler");
+    retransformByName(instrumentation, "com.sun.beans.decoder.PropertyElementHandler");
+    retransformByName(instrumentation, "com.sun.beans.decoder.NewElementHandler");
     Class<?>[] loadedClasses = instrumentation.getAllLoadedClasses();
     java.util.Set<Class<?>> multipartOwners = io.ohmyrasp.agent.http.MultipartFilename.loadedOwners(loadedClasses);
     for (Class<?> loaded : loadedClasses) {

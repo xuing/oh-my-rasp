@@ -419,6 +419,15 @@ public final class Java11RaspHooks {
     BackportHooks.beforeJavaBeansStatement(statement, stackClassNames);
   }
 
+  public static Object[] beforeXmlDecoderInvoke(
+      Object[] arguments, java.lang.reflect.Method method, Object target) {
+    return BackportHooks.beforeXmlDecoderInvoke(arguments, method, target);
+  }
+
+  public static void beforeXmlDecoderNew(Class<?> type, Object[] arguments) {
+    BackportHooks.beforeXmlDecoderNew(type, arguments);
+  }
+
   public static void rethrowIfJava11RaspBlock(Object throwable) {
     BackportHooks.rethrowIfBlock(throwable);
   }

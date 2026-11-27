@@ -2019,6 +2019,38 @@ public final class OhMyRaspHooks {
     }
   }
 
+  /**
+   * XMLDecoder's {@code <method>} and {@code <property>} elements, just before the decoder's own {@code
+   * MethodUtil.invoke(method, target, arguments)}: returns {@code arguments}, which that call then takes. The caller
+   * is a class of the decoder itself, so no stack is walked to find XMLDecoder.
+   */
+  public static Object[] beforeXmlDecoderInvoke(Object[] arguments, Method method, Object target) {
+    if (HookActivation.inactive()) return arguments;
+    xmlDecoderOperation(target, method == null ? "" : method.getName(), arguments, "beforeXmlDecoderInvoke");
+    return arguments;
+  }
+
+  /** XMLDecoder's {@code <new class="...">} element, before it looks up the constructor (as above, no stack walk). */
+  public static void beforeXmlDecoderNew(Class<?> type, Object[] arguments) {
+    if (HookActivation.inactive()) return;
+    xmlDecoderOperation(type, "new", arguments, "beforeXmlDecoderNew");
+  }
+
+  private static void xmlDecoderOperation(Object target, String methodName, Object[] arguments, String hook) {
+    if (detectionDisabled()) {
+      return;
+    }
+    try {
+      emit(
+          DeserializationDetector.detectXmlDecoderOperation(
+              javaBeansTargetType(target), methodName, javaBeansArguments(target, arguments), currentRequest()));
+    } catch (OhMyRaspBlockException blocked) {
+      throw blocked;
+    } catch (Throwable throwable) {
+      quiet(hook, throwable);
+    }
+  }
+
   public static void rethrowIfOhMyRaspBlock(Object throwable) {
     if (HookActivation.inactive()) return;
     Throwable current = throwable instanceof Throwable value ? value : null;

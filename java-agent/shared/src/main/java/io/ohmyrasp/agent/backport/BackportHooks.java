@@ -1475,14 +1475,44 @@ public final class BackportHooks {
               stackClassNames);
       emitXmlDecoderFinding(finding);
     } catch (Throwable throwable) {
-      if (line().isBlock(throwable)) {
-        throw (RuntimeException) throwable;
-      }
-      if (Boolean.getBoolean("ohmyrasp.debug")) {
-        // On a request with a body, the exception's message may quote it: its class alone.
-        System.err.println(line().logPrefix + " JavaBeans hook failed: "
-            + (requestHasBody() ? throwable.getClass().getName() : String.valueOf(throwable)));
-      }
+      javaBeansHookFailed(throwable);
+    }
+  }
+
+  /**
+   * XMLDecoder's {@code <method>} and {@code <property>} elements, just before the decoder's own {@code
+   * MethodUtil.invoke(method, target, arguments)}: returns {@code arguments}, which that call then takes. The caller
+   * is a class of the decoder itself, so no stack is walked to find XMLDecoder.
+   */
+  public static Object[] beforeXmlDecoderInvoke(Object[] arguments, Method method, Object target) {
+    if (inactive()) return arguments;
+    xmlDecoderOperation(target, method == null ? "" : method.getName(), arguments);
+    return arguments;
+  }
+
+  /** XMLDecoder's {@code <new class="...">} element, before it looks up the constructor (as above, no stack walk). */
+  public static void beforeXmlDecoderNew(Class<?> type, Object[] arguments) {
+    if (inactive()) return;
+    xmlDecoderOperation(type, "new", arguments);
+  }
+
+  private static void xmlDecoderOperation(Object target, String methodName, Object[] arguments) {
+    try {
+      emitXmlDecoderFinding(classifyXmlDecoderOperation(
+          javaBeansTargetType(target), methodName, javaBeansArguments(target, arguments)));
+    } catch (Throwable throwable) {
+      javaBeansHookFailed(throwable);
+    }
+  }
+
+  private static void javaBeansHookFailed(Throwable throwable) {
+    if (line().isBlock(throwable)) {
+      throw (RuntimeException) throwable;
+    }
+    if (Boolean.getBoolean("ohmyrasp.debug")) {
+      // On a request with a body, the exception's message may quote it: its class alone.
+      System.err.println(line().logPrefix + " JavaBeans hook failed: "
+          + (requestHasBody() ? throwable.getClass().getName() : String.valueOf(throwable)));
     }
   }
 
@@ -2262,6 +2292,11 @@ public final class BackportHooks {
     if (!isXmlDecoderStack(stackClassNames)) {
       return null;
     }
+    return classifyXmlDecoderOperation(targetType, methodName, arguments);
+  }
+
+  /** An operation of an XMLDecoder object graph: target type, method name ({@code new} for a constructor), arguments. */
+  private static Finding classifyXmlDecoderOperation(String targetType, String methodName, List<String> arguments) {
     String normalizedTarget = normalizeJavaTypeName(targetType);
     String normalizedMethod = lower(methodName);
     List<String> safeArguments = arguments == null ? new ArrayList<String>() : arguments;

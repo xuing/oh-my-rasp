@@ -699,6 +699,23 @@ final class DeserializationDetectorTest {
     assertTrue(result.isEmpty());
   }
 
+  /** The decoder's own element handlers call this one: they need no stack to say the caller is XMLDecoder. */
+  @Test
+  void classifiesAnXmlDecoderOperationWithoutAStack() {
+    assertAlgorithm(
+        DeserializationDetector.detectXmlDecoderOperation(
+            "java.lang.ProcessBuilder", "start", List.of("id"), request()),
+        "xml_decoder_runtime");
+    assertAlgorithm(
+        DeserializationDetector.detectXmlDecoderOperation(
+            "java.io.PrintWriter", "new", List.of("/tmp/shell.jsp"), request()),
+        "xml_decoder_webshell");
+    assertTrue(
+        DeserializationDetector.detectXmlDecoderOperation(
+                "java.lang.StringBuilder", "new", List.of("weekly"), request())
+            .isEmpty());
+  }
+
   /** Outside a request the rule decides as the backport lines do. */
   @Test
   void detectsBackgroundXmlDecoderRuntime() {

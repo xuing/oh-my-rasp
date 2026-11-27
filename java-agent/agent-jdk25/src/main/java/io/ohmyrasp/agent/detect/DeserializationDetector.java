@@ -568,6 +568,18 @@ public final class DeserializationDetector {
     if (!isXmlDecoderStack(stackClassNames)) {
       return Optional.empty();
     }
+    return detectXmlDecoderOperation(targetType, methodName, arguments, request);
+  }
+
+  /**
+   * An operation of an XMLDecoder object graph: target type, method name ({@code new} for a constructor) and
+   * arguments, for a caller that is XMLDecoder's own code and so needs no stack to say so.
+   */
+  public static Optional<Detection> detectXmlDecoderOperation(
+      String targetType, String methodName, List<String> arguments, RequestContext request) {
+    if (request == null) {
+      return Optional.empty();
+    }
     String normalizedTarget = normalizeJavaTypeName(targetType);
     String normalizedMethod = lower(methodName);
     List<String> safeArguments = arguments == null ? List.of() : arguments;
