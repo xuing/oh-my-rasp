@@ -47,10 +47,10 @@ def main():
                 if track == "main" and check == "XmlRpcReadCheck":
                     local = events.pop() if events else {}
                     details = local.get("details", {})
-                    if (local.get("action") != ("log" if mode == "block" else "monitor")
+                    if (local.get("action") != mode
                             or local.get("algorithm") != typed or "stream_operation" in details
                             or details.get("class") != "org.apache.commons.beanutils.BeanComparator"):
-                        raise SystemExit(f"unblocked local stream reported an incorrect decision: {local}")
+                        raise SystemExit(f"local stream outside a request reported an incorrect decision: {local}")
                 typed_count = 2 if check == "XmlRpcReadCheck" else 1
                 expected = [typed] * typed_count
                 bases = []
