@@ -5,6 +5,7 @@ import io.ohmyrasp.agent.file.EscapingPath;
 import io.ohmyrasp.agent.file.ArchiveEntryContext;
 import io.ohmyrasp.agent.file.HostReadPath;
 import io.ohmyrasp.agent.file.ScriptFileWrite;
+import io.ohmyrasp.agent.rules.OutsideRequest;
 import io.ohmyrasp.agent.file.HostDirectory;
 import io.ohmyrasp.agent.jmx.JmxDispatch;
 import io.ohmyrasp.agent.naming.LookupRoute;
@@ -289,7 +290,7 @@ public final class BackportHooks {
     if (finding == null) return;
     Finding entry = classifyHttpRequest(servletRequest, request.entryParameters);
     if (entry != null && entry.algorithm.equals(finding.algorithm) && entry.detailValue.equals(finding.detailValue)) return;
-    String action = shouldBlock() ? "block" : "log";
+    String action = shouldBlock(finding) ? "block" : "log";
     if (!"block".equals(action) && repeats(finding.detailValue, LAST_LOGGED_REQUEST.get())) return;
     LAST_LOGGED_REQUEST.set(finding.detailValue);
     appendEvent(finding, "HttpServlet.requestBody", action);
@@ -348,7 +349,7 @@ public final class BackportHooks {
     if (finding == null) {
       return;
     }
-    String action = shouldBlock() ? "block" : "log";
+    String action = shouldBlock(finding, request != null) ? "block" : "log";
     String previous = LAST_LOGGED_REQUEST.get();
     if (!"block".equals(action) && repeats(finding.detailValue, previous)) {
       return;
@@ -391,7 +392,7 @@ public final class BackportHooks {
     if (RaspRuntime.detectionOff() || DISPATCH.inspectingRequest()) return;
     Finding finding = archiveOnly ? classifyArchiveUpload(filename) : classifyFileUpload(filename);
     if (finding == null) return;
-    String action = shouldBlock() ? "block" : "log";
+    String action = shouldBlock(finding) ? "block" : "log";
     if (MultipartFilename.eligible()) {
       if (!"block".equals(action) && MultipartFilename.repeated(DISPATCH.servletRequest(), filename,
           finding.algorithm, finding.decisionBasis == null ? "" : finding.decisionBasis, finding.policyDigest)) return;
@@ -414,7 +415,8 @@ public final class BackportHooks {
     if (RaspRuntime.detectionOff() || !SparkSubmitRole.denied(creation, request, requestApi)) return;
     Finding finding = new Finding(rule("request_remote_job_submission"), 95,
         "Spark job submission lacks the deployment's required role", "operation", "handleSubmit", "required_submit_role_denied");
-    boolean block = shouldBlock();
+    // The handler holds the HTTP request: inside a request with or without a servlet frame, as on the primary.
+    boolean block = shouldBlock(finding, request != null);
     appendEvent(finding, "SparkRest.handleSubmit", block ? "block" : "log");
     if (block) throw line().block("OhMyRASP blocked unauthorized Spark submission");
   }
@@ -429,7 +431,7 @@ public final class BackportHooks {
     Finding finding = new Finding(rule("request_remote_job_submission"), 95,
         "YARN job submission lacks the deployment's required role", "operation", "SubmitApplicationRequest.newInstance",
         "required_submit_role_denied");
-    boolean block = shouldBlock();
+    boolean block = shouldBlock(finding, request != null);
     appendEvent(finding, "RMWebServices.submitApplication", block ? "block" : "log");
     if (block) throw line().block("OhMyRASP blocked unauthorized YARN submission");
   }
@@ -440,7 +442,7 @@ public final class BackportHooks {
     Finding finding = new Finding(rule("command_execution_exploit_primitive"), 95,
         "Spring dispatched an HTTP-defined initializer to ProcessBuilder.start",
         "method", "ProcessBuilder.start", "remote_bean_init_dispatch");
-    boolean block = shouldBlock();
+    boolean block = shouldBlock(finding);
     appendEvent(finding, "Spring.initMethod", block ? "block" : "log");
     if (block) throw line().block("OhMyRASP blocked a Spring process initializer");
   }
@@ -452,7 +454,7 @@ public final class BackportHooks {
     if (finding == null) return;
     String api = io.ohmyrasp.agent.process.ProcessLaunch.api();
     if (api == null) return;
-    boolean block = shouldBlock();
+    boolean block = shouldBlock(finding);
     appendEvent(finding, api, block ? "block" : "log", null, argv.length);
     if (block) throw line().block("OhMyRASP blocked a process launch");
   }
@@ -494,7 +496,7 @@ public final class BackportHooks {
     if (url == null || operation == null || RaspRuntime.detectionOff()) return;
     Finding finding = classifyJndiLookup(url, operation);
     if (finding == null) return;
-    boolean block = shouldBlock();
+    boolean block = shouldBlock(finding);
     appendEvent(finding, "declared_lookup".equals(operation) ? "InitialContext.lookup" : operation, block ? "block" : "log");
     if (block) throw line().block("OhMyRASP blocked a remote JNDI lookup");
   }
@@ -509,7 +511,7 @@ public final class BackportHooks {
     Finding finding = new Finding(rule("deserialization_protocol_class"), 100,
         "OpenWire selected a non-Throwable constructor for an exception",
         "class", selected.getName(), "non_throwable_constructor");
-    boolean block = shouldBlock();
+    boolean block = shouldBlock(finding);
     appendEvent(finding, "OpenWire.createThrowable", block ? "block" : "log");
     if (block) throw line().block("OhMyRASP blocked an invalid OpenWire exception type");
   }
@@ -533,7 +535,7 @@ public final class BackportHooks {
     if (!StreamTypeNames.listed(name) || !BeanShellTypes.permitsTypeCheck(selected)) return false;
     Finding finding = new Finding(rule("deserialization_gadget_class"), deserializationConfidence(name),
         "Stream resolver selected a listed serialization type", "class", name, basis);
-    boolean block = shouldBlock();
+    boolean block = shouldBlock(finding);
     appendEvent(finding, hook, block ? "block" : "log");
     if (block) throw line().block("OhMyRASP blocked a listed serialization type");
     return true;
@@ -546,7 +548,7 @@ public final class BackportHooks {
     if (RaspRuntime.detectionOff() || !io.ohmyrasp.agent.rules.product.hessian.HessianAllocationTypes.listed(selected)) return;
     Finding finding = new Finding(rule("deserialization_hessian_type"), 95,
         "Hessian selected a listed type for allocation", "class", selected.getName(), basis);
-    boolean block = shouldBlock();
+    boolean block = shouldBlock(finding);
     appendEvent(finding, "Hessian.allocate", block ? "block" : "log");
     if (block) throw line().block("OhMyRASP blocked a listed Hessian allocation");
   }
@@ -594,7 +596,8 @@ public final class BackportHooks {
     if (root.isEmpty()) return;
     Finding finding = new Finding(rule("directory_userinput"), 90, "Request selected a protected directory listing",
         "path", root, direct ? "selected_directory" : "selected_directory_walk");
-    boolean block = shouldBlock();
+    // A walk created inside a request carries that request (its origin) onto the thread that consumes it.
+    boolean block = shouldBlock(finding, walk != null && walk.origin != null);
     String operation = opened == null ? "FileSystem.list" : relative ? "SecureDirectoryStream.open" : "DirectoryStream.open";
     appendEvent(finding, operation, block ? "block" : "log");
     if (block) throw line().block("OhMyRASP blocked a directory listing");
@@ -622,7 +625,7 @@ public final class BackportHooks {
       if (directory != null && !HostDelete.hasEntry(directory, path, removeDirectory)) return;
       Finding finding = new Finding("deleteFile_userinput", 85, "Request selected an entry outside the base directory",
           "path", entry.path(), "escaping_entry");
-      boolean block = shouldBlock();
+      boolean block = shouldBlock(finding);
       appendEvent(finding, directory == null ? "host_entry_removal" : "descriptor_relative_unlink", block ? "block" : "log");
       if (block) throw line().block("OhMyRASP blocked a file removal");
       return;
@@ -664,7 +667,7 @@ public final class BackportHooks {
       if (!attempt.hasDirective() || RaspRuntime.detectionOff()) return;
       Finding finding = new Finding(rule("file_generated_plot_script_command"), 91,
           "A plot directive reached its open output stream", "path", attempt.path(), "plot_stream_write");
-      boolean block = shouldBlock();
+      boolean block = shouldBlock(finding);
       appendEvent(finding, "FileOutputStream.write", block ? "block" : "log");
       if (block) throw line().block("OhMyRASP blocked a plot directive");
     } catch (RuntimeException | Error failure) {
@@ -741,7 +744,10 @@ public final class BackportHooks {
     if (inactive()) return;
     if (RaspRuntime.detectionOff()) return;
     List<String> urls = requestUrls();
-    HTTP_SUBMISSIONS.capture(exchange, urls);
+    // A submission inside a request carries that request onto the thread that runs the exchange, whether or not
+    // the request supplied a URL, as on the primary: the exchange's finding is then inside a request.
+    HTTP_SUBMISSIONS.capture(exchange, urls != null ? urls
+        : DISPATCH.inRequest() ? java.util.Collections.<String>emptyList() : null);
     if (urls != null && uri != null && urls.contains(urlParts(uri).comparisonKey)) {
       HttpTransportObservation.selectedSubmission(exchange, uri);
     }
@@ -772,9 +778,11 @@ public final class BackportHooks {
   }
 
   private static void inspectHttpExchange(Object exchange, java.net.URI uri, String peer) {
-    Finding finding = classifyUrlOpen(uri, HTTP_SUBMISSIONS.origin(exchange), peer, HttpTransportObservation.changedOrigin(exchange, uri));
+    List<String> origin = HTTP_SUBMISSIONS.origin(exchange);
+    Finding finding = classifyUrlOpen(uri, origin, peer, HttpTransportObservation.changedOrigin(exchange, uri));
+    // An exchange submitted inside a request carries it (origin): inside a request on whatever thread runs it.
     if (finding != null) emitHttpDestination(finding, "HTTP.acquireExchange",
-        peer == null ? "http_exchange_acquire" : "http_resolved_route", shouldBlock(), peer);
+        peer == null ? "http_exchange_acquire" : "http_resolved_route", shouldBlock(finding, origin != null), peer);
   }
 
   public static void beforeUrlConnectionFactory(URL url) {
@@ -819,7 +827,7 @@ public final class BackportHooks {
     if (RaspRuntime.detectionOff()) return;
     Finding finding = classifyUrlOpen(url, requestUrls(), peer, redirected);
     if (finding == null) return;
-    boolean block = shouldBlock();
+    boolean block = shouldBlock(finding);
     if (!block && HttpTransportObservation.repeated(connection, url, CURRENT_REQUEST.get(), finding.algorithm, write)) return;
     emitHttpDestination(finding, write ? "HTTP.writeRequest" : (peer == null ? "HTTP.acquireTransport" : "HTTP.connect"), basis, block, peer);
   }
@@ -837,7 +845,7 @@ public final class BackportHooks {
     if (finding == null) {
       return;
     }
-    String action = shouldBlock() ? "block" : "log";
+    String action = shouldBlock(finding) ? "block" : "log";
     String previous = LAST_LOGGED_URL.get();
     if (!"block".equals(action) && repeats(finding.detailValue, previous)) {
       return;
@@ -856,7 +864,7 @@ public final class BackportHooks {
     if (finding == null) {
       return;
     }
-    String action = shouldBlock() ? "block" : "log";
+    String action = shouldBlock(finding) ? "block" : "log";
     appendEvent(finding, "ParserConfig.checkAutoType.getResourceAsStream", action);
     if ("block".equals(action)) {
       throw line().block(
@@ -913,7 +921,7 @@ public final class BackportHooks {
     if (finding == null) {
       return;
     }
-    String action = shouldBlock() ? "block" : "log";
+    String action = shouldBlock(finding) ? "block" : "log";
     if ("mapper_substitution_at_jdbc".equals(finding.decisionBasis)) {
       if (!"block".equals(action) && MyBatisSqlTrace.repeatedObservation(sql, finding.algorithm)) return;
     } else if (!"block".equals(action) && io.ohmyrasp.agent.sql.JdbcObservation.repeated(receiver, sql)) {
@@ -954,7 +962,7 @@ public final class BackportHooks {
                 + ",alphabet="
                 + (isURL ? "URL-safe" : "standard")
                 + ",cve=CVE-2026-114938");
-    String action = shouldBlock() ? "block" : "log";
+    String action = shouldBlock(finding) ? "block" : "log";
     String previous = LAST_LOGGED_BASE64.get();
     if (!"block".equals(action) && repeats(finding.detailValue, previous)) {
       return;
@@ -1049,7 +1057,7 @@ public final class BackportHooks {
     if (finding == null) {
       return;
     }
-    String action = shouldBlock() ? "block" : "log";
+    String action = shouldBlock(finding) ? "block" : "log";
     String previous = LAST_LOGGED_SQL_IDENTIFIER.get();
     if (!"block".equals(action) && repeats(finding.detailValue, previous)) {
       return;
@@ -1066,7 +1074,7 @@ public final class BackportHooks {
     if (finding == null) {
       return;
     }
-    String action = shouldBlock() ? "block" : "log";
+    String action = shouldBlock(finding) ? "block" : "log";
     String previous = LAST_LOGGED_JDBC.get();
     if (!"block".equals(action) && repeats(finding.detailValue, previous)) {
       return;
@@ -1115,7 +1123,7 @@ public final class BackportHooks {
     if (finding == null) {
       return;
     }
-    String action = shouldBlock() ? "block" : "log";
+    String action = shouldBlock(finding) ? "block" : "log";
     String previous = LAST_LOGGED_SCRIPT.get();
     if (!"block".equals(action) && repeats(finding.detailValue, previous)) {
       return;
@@ -1133,7 +1141,7 @@ public final class BackportHooks {
     if (finding == null) {
       return;
     }
-    String action = shouldBlock() ? "block" : "log";
+    String action = shouldBlock(finding) ? "block" : "log";
     String previous = LAST_LOGGED_JEXL.get();
     if (!"block".equals(action) && repeats(finding.detailValue, previous)) {
       return;
@@ -1151,7 +1159,7 @@ public final class BackportHooks {
     if (finding == null) {
       return;
     }
-    String action = shouldBlock() ? "block" : "log";
+    String action = shouldBlock(finding) ? "block" : "log";
     String previous = LAST_LOGGED_EL.get();
     if (!"block".equals(action) && repeats(finding.detailValue, previous)) {
       return;
@@ -1207,7 +1215,7 @@ public final class BackportHooks {
     if (RaspRuntime.detectionOff() || !ScriptFileWrite.isScriptFile(normalizePath(path)) || !scope.selects(path)) return;
     Finding finding = new Finding(rule("jmx_script_file_write"), 90,
         "A managed operation opens its selected script destination for writing", "path", path, "selected_write_open");
-    boolean block = shouldBlock();
+    boolean block = shouldBlock(finding);
     appendEvent(finding, operation, block ? "block" : "log");
     if (block) throw line().block("OhMyRASP blocked a managed file write");
   }
@@ -1234,7 +1242,7 @@ public final class BackportHooks {
     if (finding == null) {
       return;
     }
-    String action = shouldBlock() ? "block" : "log";
+    String action = shouldBlock(finding) ? "block" : "log";
     String previous = LAST_LOGGED_JMX.get();
     if (!"block".equals(action) && repeats(finding.detailValue, previous)) {
       return;
@@ -1255,7 +1263,7 @@ public final class BackportHooks {
     Finding finding = new Finding(rule("request_jwt_verification_failure"), 95,
         "Authentication filter continued the request after rejecting its credential",
         "exception", rejection, "rejected_token_dispatch");
-    boolean block = shouldBlock();
+    boolean block = shouldBlock(finding, request != null);
     appendEvent(finding, "FilterChain.doFilter", block ? "block" : "log");
     if (block) throw line().block("OhMyRASP blocked continuation after credential rejection");
   }
@@ -1325,7 +1333,7 @@ public final class BackportHooks {
     if (finding == null) {
       return;
     }
-    String action = shouldBlock() ? "block" : "log";
+    String action = shouldBlock(finding) ? "block" : "log";
     String previous = LAST_LOGGED_XXE.get();
     if (!"block".equals(action) && repeats(finding.detailValue, previous)) {
       return;
@@ -1342,7 +1350,7 @@ public final class BackportHooks {
     if (finding == null) {
       return;
     }
-    String action = shouldBlock() ? "block" : "log";
+    String action = shouldBlock(finding) ? "block" : "log";
     String previous = LAST_LOGGED_COMMAND.get();
     if (!"block".equals(action) && repeats(finding.detailValue, previous)) {
       return;
@@ -1836,7 +1844,7 @@ public final class BackportHooks {
   private static void emitClassLoaderFinding(String value, String mechanism) {
     Finding finding = classifyClassLoaderSource(value, mechanism);
     if (finding == null) return;
-    boolean block = shouldBlock();
+    boolean block = shouldBlock(finding);
     appendEvent(finding, mechanism, block ? "block" : "log");
     if (block) throw line().block("OhMyRASP blocked a remote classloader codebase");
   }
@@ -2015,7 +2023,7 @@ public final class BackportHooks {
     if (finding == null) {
       return;
     }
-    String action = shouldBlock() ? "block" : "log";
+    String action = shouldBlock(finding) ? "block" : "log";
     String previous = LAST_LOGGED_JAVA_COMPILE.get();
     if (!"block".equals(action) && repeats(finding.detailValue, previous)) {
       return;
@@ -2096,7 +2104,7 @@ public final class BackportHooks {
     if (finding == null) {
       return;
     }
-    String action = shouldBlock() ? "block" : "log";
+    String action = shouldBlock(finding) ? "block" : "log";
     String previous = LAST_LOGGED_XML_DECODER.get();
     if (!"block".equals(action) && repeats(finding.detailValue, previous)) {
       return;
@@ -4171,7 +4179,7 @@ public final class BackportHooks {
     if (finding == null) {
       return;
     }
-    String action = shouldBlock() ? "block" : "log";
+    String action = shouldBlock(finding) ? "block" : "log";
     if ("attachment_file_open".equals(finding.decisionBasis)) {
       if (!"block".equals(action) && io.ohmyrasp.agent.xml.AttachmentFileRead.repeated()) return;
     } else if ((lastLoggedPath == LAST_LOGGED_FILE_READ || lastLoggedPath == null)
@@ -4371,11 +4379,25 @@ public final class BackportHooks {
   }
 
   /**
-   * Whether a finding blocks: blocking is allowed, and the thread serves an HTTP request or the
-   * control setting {@code outside_request} says block (the default).
+   * Whether {@code finding} blocks, with the thread's request as its only request evidence: see
+   * {@link #shouldBlock(Finding, boolean)}.
    */
-  private static boolean shouldBlock() {
-    return RaspRuntime.findingBlocks(RaspRuntime.legacyBlockFlag(), DISPATCH.inRequest());
+  private static boolean shouldBlock(Finding finding) {
+    return shouldBlock(finding, false);
+  }
+
+  /**
+   * Whether {@code finding} blocks: blocking is allowed, and its block scope allows it, by the one definition both
+   * engines use ({@link OutsideRequest}). It has request evidence when the thread serves an HTTP request or
+   * {@code heldRequest}: the hook carries the request that started the operation onto this thread (an HTTP client
+   * exchange, a walk a request selected) or holds the HTTP request itself (Spark, YARN, DataEase, servlet entry).
+   * Outside a request its class decides: intrinsic blocks, operation-only logs, context-dependent follows
+   * {@code outside_request}.
+   */
+  private static boolean shouldBlock(Finding finding, boolean heldRequest) {
+    int scope = finding == null ? OutsideRequest.CONTEXT
+        : OutsideRequest.scope(OutsideRequest.family(finding.algorithm), finding.decisionBasis);
+    return RaspRuntime.findingBlocks(RaspRuntime.legacyBlockFlag(), heldRequest || DISPATCH.inRequest(), scope);
   }
 
   /**

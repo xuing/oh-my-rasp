@@ -2,7 +2,7 @@ package io.ohmyrasp.agent.hook;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
-import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import io.ohmyrasp.agent.log.JsonEventLogger;
@@ -34,9 +34,9 @@ final class WarmupTest {
 
     // The control: the same logger and the same setting do write an event for a real detection, so an empty
     // log after the warm-up means the warm-up detected nothing and not that nothing could be written. It is made
-    // outside a request, where block mode blocks too (outside_request is block by default).
+    // outside a request, where a metadata destination alone is an operation-only finding: logged, not blocked.
     URL metadata = new URL("http://169.254.169.254/latest/meta-data/");
-    assertThrows(OhMyRaspBlockException.class, () -> OhMyRaspHooks.beforeUrlOpen(metadata));
+    assertDoesNotThrow(() -> OhMyRaspHooks.beforeUrlOpen(metadata));
     assertTrue(Files.size(log) > 0, "the control detection was not written");
     Files.delete(log);
 

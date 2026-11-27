@@ -613,17 +613,18 @@ public final class RaspRuntime {
   }
 
   /**
-   * Whether a finding blocks here: {@link #blockingAllowed(boolean)}, and either the thread serves
-   * an HTTP request or {@code outside_request} says block. One read of the control settings.
+   * Whether a finding of block-scope class {@code scope} ({@link OutsideRequest#scope}) blocks here:
+   * {@link #blockingAllowed(boolean)}, and {@link OutsideRequest#mayBlock} with the request evidence and the
+   * {@code outside_request} in force. One read of the control settings.
    */
-  static boolean findingBlocks(boolean legacyEnvFlag, boolean inRequest) {
+  static boolean findingBlocks(boolean legacyEnvFlag, boolean requestEvidence, int scope) {
     if (inOwnIo()) {
       return false;
     }
     Started state = started();
     Settings settings = state.control.settings();
     return blockingAllowed(state.initial.standalone, settings.mode, legacyEnvFlag)
-        && (inRequest || settings.outsideRequestBlocks);
+        && OutsideRequest.mayBlock(scope, requestEvidence, settings.outsideRequestBlocks);
   }
 
   static boolean blockingAllowed(boolean standalone, Mode currentMode, boolean legacyEnvFlag) {

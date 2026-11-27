@@ -1,24 +1,35 @@
 package io.ohmyrasp.agent.java8;
 
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import io.ohmyrasp.agent.backport.ControlAccess;
+import java.net.URI;
+import java.net.URL;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.concurrent.atomic.AtomicReference;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 /**
- * The control setting {@code outside_request} on the backport lines: a finding on a thread that serves no HTTP
- * request blocks by default, and only logs when the control file says {@code log}; inside a request nothing
- * changes. The primary agent reads the same setting (OutsideRequestTest there).
+ * Block scope on the backport lines, as on the primary (OutsideRequestTest there): a finding with request evidence
+ * blocks wherever it runs; outside a request an intrinsic finding blocks whatever {@code outside_request} says, an
+ * operation-only finding logs whatever it says, and a context-dependent one follows it (block by default).
  */
 final class Java8OutsideRequestTest {
   private static final String RMI = "rmi://127.0.0.1:1099/Exploit";
+  private static final String PASSWD = "/etc/passwd";
+  private static final String METADATA = "http://169.254.169.254/latest/meta-data/";
+
+  /** The one method of a servlet request the YARN submission check calls. */
+  public interface RoleRequest {
+    boolean isUserInRole(String role);
+  }
 
   @TempDir Path dir;
   private Path log;
@@ -35,21 +46,23 @@ final class Java8OutsideRequestTest {
     ControlAccess.poll(dir.resolve("no-control-file.json"));
     System.clearProperty("ohmyrasp.java8.log");
     System.clearProperty("ohmyrasp.java8.block");
+    System.clearProperty("ohmyrasp.yarn.submitRole");
   }
 
   @Test
-  void aFindingOutsideARequestBlocksByDefault() {
-    assertThrows(Java8RaspBlockException.class, () -> Java8RaspHooks.beforeJndiLookup(RMI));
+  void aContextFindingOutsideARequestBlocksByDefault() {
+    assertThrows(Java8RaspBlockException.class, () -> Java8RaspHooks.beforeFileRead(PASSWD));
     assertTrue(events().contains("\"action\":\"block\""));
   }
 
   @Test
-  void logOnlyOutsideARequestRecordsTheFindingAndLetsTheOperationRun() throws Exception {
+  void logOnlyOutsideARequestRecordsAContextFindingAndLetsTheOperationRun() throws Exception {
     control("{\"outside_request\":\"log\"}");
 
-    Java8RaspHooks.beforeJndiLookup(RMI);
+    // Another path than the other tests: a backport logs the same path once a second on one thread.
+    Java8RaspHooks.beforeFileRead("/etc/shadow");
 
-    assertTrue(events().contains("\"algorithm\":\"java8_jndi_remote_lookup\""));
+    assertTrue(events().contains("\"algorithm\":\"java8_file_sensitive_read\""));
     assertTrue(events().contains("\"action\":\"log\""));
   }
 
@@ -58,20 +71,98 @@ final class Java8OutsideRequestTest {
     control("{\"outside_request\":\"log\"}");
     Java8RaspHooks.beforeHttpRequest(new Java8RaspHooksTest.RequestStub("GET", "/reports", "id=7"));
     try {
-      assertThrows(Java8RaspBlockException.class, () -> Java8RaspHooks.beforeJndiLookup(RMI));
+      assertThrows(Java8RaspBlockException.class, () -> Java8RaspHooks.beforeFileRead(PASSWD));
     } finally {
       Java8RaspHooks.afterHttpRequest();
     }
+  }
+
+  /** A remote JNDI name is the exploit itself: log only does not turn it off. */
+  @Test
+  void anIntrinsicFindingBlocksOutsideARequestWithLogOnly() throws Exception {
+    control("{\"outside_request\":\"log\"}");
+
+    assertThrows(Java8RaspBlockException.class, () -> Java8RaspHooks.beforeJndiLookup(RMI));
+    assertTrue(events().contains("\"algorithm\":\"java8_jndi_remote_lookup\""));
+    assertTrue(events().contains("\"action\":\"block\""));
+  }
+
+  /** A cloud SDK reads instance metadata at start-up: outside a request that is logged whatever the setting. */
+  @Test
+  void anOperationOnlyFindingLogsOutsideARequestAndBlocksInsideOne() throws Exception {
+    Java8RaspHooks.beforeUrlOpen(new URL(METADATA));
+    assertTrue(events().contains("\"algorithm\":\"java8_ssrf_cloud_metadata\""));
+    assertTrue(events().contains("\"action\":\"log\""));
+
+    Java8RaspHooks.beforeHttpRequest(new Java8RaspHooksTest.RequestStub("GET", "/reports", "id=7"));
+    try {
+      assertThrows(Java8RaspBlockException.class, () -> Java8RaspHooks.beforeUrlOpen(new URL(METADATA)));
+    } finally {
+      Java8RaspHooks.afterHttpRequest();
+    }
+  }
+
+  /** The YARN handler holds the HTTP request: a denial is inside a request with no servlet frame tracked. */
+  @Test
+  void aHookThatHoldsTheRequestDecidesInsideARequestWithoutAServletFrame() throws Exception {
+    control("{\"outside_request\":\"log\"}");
+    System.setProperty("ohmyrasp.yarn.submitRole", "submitter");
+    RoleRequest request = new RoleRequest() {
+      @Override public boolean isUserInRole(String role) {
+        return false;
+      }
+    };
+
+    assertThrows(Java8RaspBlockException.class,
+        () -> Java8RaspHooks.afterYarnSubmitPrepared(new Object(), request, RoleRequest.class));
+    assertTrue(events().contains("\"algorithm\":\"java8_request_remote_job_submission\""));
+  }
+
+  /**
+   * An HTTP client exchange submitted inside a request carries it onto the thread that runs the exchange: the
+   * metadata destination blocks there with log only, as on the primary. Submitted outside a request it logs.
+   */
+  @Test
+  void anExchangeSubmittedInsideARequestIsInsideItOnTheThreadThatRunsIt() throws Exception {
+    control("{\"outside_request\":\"log\"}");
+    URI metadata = URI.create(METADATA);
+    Object carried = new Object();
+    Java8RaspHooks.beforeHttpRequest(new Java8RaspHooksTest.RequestStub("GET", "/reports", "id=7"));
+    try {
+      Java8RaspHooks.captureHttpSubmission(carried, metadata);
+    } finally {
+      Java8RaspHooks.afterHttpRequest();
+    }
+    assertTrue(blockedOnAnotherThread(carried, metadata), "submitted in a request");
+    assertFalse(blockedOnAnotherThread(new Object(), metadata), "submitted outside a request");
+  }
+
+  private static boolean blockedOnAnotherThread(final Object exchange, final URI uri) throws Exception {
+    final AtomicReference<Throwable> thrown = new AtomicReference<Throwable>();
+    Thread worker = new Thread(new Runnable() {
+      @Override public void run() {
+        try {
+          Java8RaspHooks.beforeHttpExchange(exchange, new Object(), uri);
+        } catch (Throwable failure) {
+          thrown.set(failure);
+        }
+      }
+    }, "exchange-worker");
+    worker.start();
+    worker.join(10_000);
+    Throwable failure = thrown.get();
+    if (failure != null && !(failure instanceof Java8RaspBlockException)) throw new AssertionError(failure);
+    return failure != null;
   }
 
   @Test
   void aDocumentWithoutTheSettingReturnsToTheStartUpValue() throws Exception {
     control("{\"outside_request\":\"log\"}");
     control("{\"outside_request\":\"sometimes\",\"revision\":2}");
-    Java8RaspHooks.beforeJndiLookup(RMI);
+    Java8RaspHooks.beforeFileRead(PASSWD);
 
     control("{\"revision\":3}");
-    assertThrows(Java8RaspBlockException.class, () -> Java8RaspHooks.beforeJndiLookup(RMI));
+    assertThrows(Java8RaspBlockException.class, () -> Java8RaspHooks.beforeFileRead(PASSWD));
   }
 
   private void control(String json) throws Exception {
