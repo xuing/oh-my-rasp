@@ -170,6 +170,8 @@ for line in sys.stdin:
     details.pop("input_field", None)
     details.pop("input_value", None)
     event["details"] = details
+    if isinstance(event.get("request"), dict):
+        event["request"].pop("headers", None)  # the request'"'"'s own headers (Host: 127.0.0.1:<port>)
     found = re.search(r"hunter2|Secret|username|password|127\.0\.0\.1|getRuntime", json.dumps(event))
     if found:
         print(found.group(0))
