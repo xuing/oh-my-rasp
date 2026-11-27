@@ -94,7 +94,8 @@ Each package injects ASM bytecode hooks at JVM class-load / retransform time acr
 
 - **`ohmyrasp`** blocks as the line it starts does: the Java 8, 11 and 17 lines on those JVMs, the primary line on Java 21 and later.
 - **`ohmyrasp-java8`, `ohmyrasp-java11`, `ohmyrasp-java17`**: With baked-in `mode=block`, exploit-grade sink detections (command execution, sensitive file reads/script writes, remote JNDI, deserialization gadgets, SQLi/JDBC, XXE, SSRF, Base64 CVE-2026-114938, and servlet path/JWT/cookie checks) throw `Java*RaspBlockException` both inside HTTP requests and in standalone JVMs.
-- **`ohmyrasp-jdk21`, `ohmyrasp-jdk25`** use the evidence available at the hook and the active policy to decide whether to block. Some rules can enforce outside an HTTP request, including class checks on an XML-RPC object stream. [Detection policies](../../docs/detection.md#deserialization-defenses)
+- **`ohmyrasp-jdk21`, `ohmyrasp-jdk25`** use the evidence available at the hook and the active policy to decide whether to block.
+- **Every track** blocks a finding outside an HTTP request (a scheduled job, a consumer, start-up code) as inside one; a few rules too broad to block without request input block only inside one. `ohmyrasp` bakes `outside_request` (`--outside-request log` at build time records those findings and lets the operation run). [Outside an HTTP request](../../docs/detection.md#outside-an-http-request)
 
 ## Standalone Profile (`META-INF/ohmyrasp-shirudo.properties`)
 

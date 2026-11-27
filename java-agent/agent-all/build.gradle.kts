@@ -130,6 +130,12 @@ val shirudoMode = (providers.gradleProperty("shirudoMode").orNull ?: "block").tr
 require(shirudoMode in setOf("block", "monitor")) {
     "shirudoMode must be 'block' or 'monitor', got: '$shirudoMode'"
 }
+// Whether a finding outside an HTTP request blocks (block) or is only logged (log), on every line; see
+// io.ohmyrasp.agent.rules.OutsideRequest. Under lock_config only the baked value counts.
+val shirudoOutsideRequest = (providers.gradleProperty("shirudoOutsideRequest").orNull ?: "block").trim().lowercase()
+require(shirudoOutsideRequest in setOf("block", "log")) {
+    "shirudoOutsideRequest must be 'block' or 'log', got: '$shirudoOutsideRequest'"
+}
 val shirudoLockConfig = (providers.gradleProperty("shirudoLockConfig").orNull ?: "true").trim().lowercase()
 require(shirudoLockConfig in setOf("true", "false")) {
     "shirudoLockConfig must be 'true' or 'false', got: '$shirudoLockConfig'"
@@ -143,8 +149,10 @@ val generateShirudoDefaults = tasks.register("generateShirudoDefaults") {
     val outDir = shirudoGeneratedDir
     // Local copies: a task action that reads the script's own properties cannot be stored in the configuration cache.
     val mode = shirudoMode
+    val outsideRequest = shirudoOutsideRequest
     val lockConfig = shirudoLockConfig
     inputs.property("shirudoMode", mode)
+    inputs.property("shirudoOutsideRequest", outsideRequest)
     inputs.property("shirudoLockConfig", lockConfig)
     outputs.dir(outDir)
     doLast {
@@ -155,6 +163,7 @@ val generateShirudoDefaults = tasks.register("generateShirudoDefaults") {
             standalone=true
             lock_config=$lockConfig
             mode=$mode
+            outside_request=$outsideRequest
             control=none
             log=stderr
             latency_sample=0
@@ -188,6 +197,7 @@ val verifyAgentAllJars = tasks.register("verifyAgentAllJars") {
     val limits = majorLimits
     val externalLimit = externalMajorLimit
     val mode = shirudoMode
+    val outsideRequest = shirudoOutsideRequest
     val lockConfig = shirudoLockConfig
     val launcherClass = launcher
     val excludedEntries = otherLauncherEntries
@@ -196,6 +206,7 @@ val verifyAgentAllJars = tasks.register("verifyAgentAllJars") {
     inputs.file(shirudo)
     inputs.files(configurations.runtimeClasspath)
     inputs.property("shirudoMode", mode)
+    inputs.property("shirudoOutsideRequest", outsideRequest)
     inputs.property("shirudoLockConfig", lockConfig)
     doLast {
         // Which input each packaged class comes from decides how new its class file may be.
@@ -268,7 +279,7 @@ val verifyAgentAllJars = tasks.register("verifyAgentAllJars") {
                 val props = Properties()
                 jar.getInputStream(jar.getJarEntry(propertiesEntry)).use { props.load(it.reader(Charsets.UTF_8)) }
                 val expected = mapOf(
-                    "standalone" to "true", "lock_config" to lockConfig, "mode" to mode,
+                    "standalone" to "true", "lock_config" to lockConfig, "mode" to mode, "outside_request" to outsideRequest,
                     "control" to "none", "log" to "stderr", "latency_sample" to "0",
                 )
                 for ((key, value) in expected) {
