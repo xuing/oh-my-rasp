@@ -26,6 +26,6 @@ final class RequestBodyHookModule implements HookModule {
   public MethodVisitor visitMethod(
       String className, MethodVisitor methodVisitor, int access, String methodName, String descriptor) {
     return RequestBodyVisitor.wrap(
-        RequestBodyVisitor.isReader(className), methodVisitor, access, methodName, descriptor, HOOKS);
+        RequestBodyVisitor.isReader(className), methodVisitor, className, access, methodName, descriptor, HOOKS);
   }
 }

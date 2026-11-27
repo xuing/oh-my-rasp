@@ -11,6 +11,10 @@ import java.util.Locale;
  *
  * <p>One object per thread, made the first time the thread serves a request and reused for each request after
  * it; nothing is recorded until the request's first body byte, and the buffers grow to the cap and no further.
+ * Only one source is recorded per request: the stream or reader whose read came first inside the request
+ * ({@link #claim}); reads of any other object on the thread are not recorded. When the request ends, or the
+ * thread starts another request, the recorded bytes and characters are overwritten with zeros, buffers larger
+ * than {@link #KEPT_CAPACITY} are dropped, and the snapshot, source and request references are cleared.
  * Bytes (from the servlet input stream) or characters (from a container reader that does not read through the
  * stream) are kept up to {@link #MAX_UNITS}; past it nothing more is recorded and {@link #truncated} is set.
  * A body whose content type is not text (multipart, octet-stream, images, any type not listed in
@@ -18,13 +22,20 @@ import java.util.Locale;
  *
  * <p>The body is complete when the bytes recorded reach the request's Content-Length, when a read returns end
  * of stream, or when the cap is reached; recording stops then, so a wrapper that re-serves a body it already
- * read whole is not recorded twice. Each record makes a new state ({@link #version}); the engines decide the
- * rules that read the body at most once per state ({@link #pending}, {@link #markDecided}).
+ * read whole is not recorded twice. Each record makes a new state ({@link #version}), and so does the end of the
+ * body (the decoding of a complete body can differ from that of its prefix). The engines decide the rules that
+ * read the body at most once per state and dispatch. At most {@link #MAX_STATES} states before the body is
+ * complete get a snapshot of their own; after that the last one stands until the body completes, whose final
+ * state always gets one. That bounds the work a request's body causes on its thread (see docs/agent.md).
  */
 public final class RequestBody {
   /** The cap: bytes on the stream path, characters on the reader path. */
   public static final int MAX_UNITS = 8192;
+  /** The states before the body completes that get a snapshot (and a decision) of their own. */
+  public static final int MAX_STATES = 16;
   private static final int FIRST_CAPACITY = 1024;
+  /** A buffer this size or smaller is kept, zeroed, for the thread's next request; a larger one is dropped. */
+  static final int KEPT_CAPACITY = FIRST_CAPACITY;
 
   static final int UNKNOWN = 0;
   static final int NONE = 1;
@@ -41,6 +52,16 @@ public final class RequestBody {
   boolean open;
 
   private Object servletRequest;
+  // The stream or reader the request's body is read from: the first that read inside the request.
+  private Object source;
+  // Where the NIO buffer of the current read stood when the read started; -1 when the read is not into one.
+  int bufferStart = -1;
+  // The block the engine threw on this request's body: every later read of the request throws it again.
+  RuntimeException denial;
+  // The last record was a line from readLine, whose terminator is recorded when another record follows.
+  private boolean lineOpen;
+  // Snapshots built for states before the body completed (see MAX_STATES).
+  private int builds;
   private int kind;
   private String encoding;
   private long contentLength;
@@ -55,7 +76,6 @@ public final class RequestBody {
   private boolean truncated;
 
   private int version;
-  private int decided;
   private RequestBodySnapshot snapshot;
   /** Whatever the engine keeps between decisions of one request (the last finding it reported). */
   public Object engineState;
@@ -83,6 +103,12 @@ public final class RequestBody {
   }
 
   private void reset() {
+    wipe();
+    source = null;
+    bufferStart = -1;
+    denial = null;
+    lineOpen = false;
+    builds = 0;
     active = false;
     inspecting = false;
     reading = false;
@@ -97,18 +123,39 @@ public final class RequestBody {
     charBytes = 0;
     truncated = false;
     version = 0;
-    decided = 0;
     snapshot = null;
     engineState = null;
+  }
+
+  /** Overwrites what was recorded and drops a buffer too large to keep for the next request. */
+  private void wipe() {
+    if (bytes != null) {
+      java.util.Arrays.fill(bytes, 0, Math.min(byteCount, bytes.length), (byte) 0);
+      if (bytes.length > KEPT_CAPACITY) bytes = null;
+    }
+    if (chars != null) {
+      java.util.Arrays.fill(chars, 0, Math.min(charCount, chars.length), '\0');
+      if (chars.length > KEPT_CAPACITY) chars = null;
+    }
+  }
+
+  /** Whether a request is being recorded (the outermost dispatch entered with detection on). */
+  boolean active() {
+    return active;
   }
 
   private void recompute() {
     open = active && !inspecting && !done && !reading;
   }
 
-  /** The outermost read starts: reads it makes on this or a wrapped stream are not recorded again. */
-  boolean claim() {
-    if (!open) return false;
+  /**
+   * The outermost read of {@code from} starts: reads it makes on this or a wrapped stream are not recorded again.
+   * The first read inside the request names the source; a read of any other object is not recorded.
+   */
+  boolean claim(Object from) {
+    if (!open || from == null) return false;
+    if (source == null) source = from;
+    else if (source != from) return false;
     reading = true;
     open = false;
     return true;
@@ -147,16 +194,24 @@ public final class RequestBody {
     return afterBytes();
   }
 
-  /** The {@code count} bytes a read just put into {@code buffer}, which end at its position. */
+  /**
+   * The {@code count} bytes a read just put into {@code buffer}, which start where the buffer's position stood
+   * when the read started ({@link #bufferStart}). That holds for both contracts in use: a read that advances the
+   * position past the bytes (the NIO convention), and Tomcat's, which restores the position and sets the limit
+   * after the bytes. The buffer itself is not touched: the bytes are copied through a duplicate.
+   */
   boolean recordBuffer(ByteBuffer buffer, int count) {
+    int start = bufferStart;
+    bufferStart = -1;
     if (count < 0) return finish();
-    if (count == 0 || buffer == null || buffer.position() < count) return false;
+    if (count == 0 || buffer == null || start < 0 || start > buffer.capacity() - count) return false;
     if (!admit(false)) return false;
     int take = Math.min(count, MAX_UNITS - byteCount);
     if (take > 0) {
       ensureBytes(take);
       ByteBuffer view = buffer.duplicate();
-      view.position(buffer.position() - count);
+      view.limit(view.capacity());
+      view.position(start);
       view.get(bytes, byteCount, take);
       byteCount += take;
       version++;
@@ -168,6 +223,7 @@ public final class RequestBody {
   boolean recordChar(int value) {
     if (value < 0) return finish();
     if (!admit(true)) return false;
+    closeLine();
     if (charCount >= MAX_UNITS) return cap();
     ensureChars(1);
     chars[charCount++] = (char) value;
@@ -180,6 +236,7 @@ public final class RequestBody {
     if (count < 0) return finish();
     if (count == 0 || source == null || offset < 0 || offset > source.length - count) return false;
     if (!admit(true)) return false;
+    closeLine();
     int take = Math.min(count, MAX_UNITS - charCount);
     if (take > 0) {
       ensureChars(take);
@@ -192,15 +249,20 @@ public final class RequestBody {
     return afterChars();
   }
 
+  /** The {@code count} characters a read just put into {@code buffer}: see {@link #recordBuffer}. */
   boolean recordCharBuffer(CharBuffer buffer, int count) {
+    int start = bufferStart;
+    bufferStart = -1;
     if (count < 0) return finish();
-    if (count == 0 || buffer == null || buffer.position() < count) return false;
+    if (count == 0 || buffer == null || start < 0 || start > buffer.capacity() - count) return false;
     if (!admit(true)) return false;
+    closeLine();
     int take = Math.min(count, MAX_UNITS - charCount);
     if (take > 0) {
       ensureChars(take);
       CharBuffer view = buffer.duplicate();
-      view.position(buffer.position() - count);
+      view.limit(view.capacity());
+      view.position(start);
       view.get(chars, charCount, take);
       countCharBytes(chars, charCount, take);
       charCount += take;
@@ -210,42 +272,52 @@ public final class RequestBody {
     return afterChars();
   }
 
-  /** A line from a reader's readLine (null at end of stream); its terminator, which readLine drops, as one newline. */
+  /**
+   * A line from a reader's readLine (null at end of stream). readLine drops the line's terminator, and the last
+   * line of a body may have none: the terminator is recorded as one newline only when another record follows
+   * ({@link #closeLine}), and counted as one byte towards Content-Length (a CRLF body completes by end of stream).
+   */
   boolean recordLine(String line) {
     if (line == null) return finish();
     if (!admit(true)) return false;
-    int count = line.length() + 1;
+    closeLine();
+    int count = line.length();
     int take = Math.min(count, MAX_UNITS - charCount);
     if (take > 0) {
       ensureChars(take);
-      int fromLine = Math.min(take, line.length());
-      line.getChars(0, fromLine, chars, charCount);
-      if (take > fromLine) chars[charCount + fromLine] = '\n';
+      line.getChars(0, take, chars, charCount);
       countCharBytes(chars, charCount, take);
       charCount += take;
       version++;
     }
     if (take < count) return cap();
+    lineOpen = true;
     return afterChars();
+  }
+
+  /** The previous record was a line and another record follows: its terminator was there. */
+  private void closeLine() {
+    if (!lineOpen) return;
+    lineOpen = false;
+    if (charCount >= MAX_UNITS) return;
+    ensureChars(1);
+    chars[charCount++] = '\n';
+    countCharBytes(chars, charCount - 1, 1);
+    version++;
   }
 
   /** A whole array a read returned: readAllBytes, which reads to end of stream ({@code toEnd}), or readNBytes. */
   boolean recordAll(byte[] all, boolean toEnd) {
     if (all == null) return false;
     boolean due = all.length > 0 && recordBytes(all, 0, all.length);
-    return toEnd ? finish() : due;
+    return toEnd ? finish() || due : due;
   }
 
   // ---- state for the engines ----------------------------------------------------------------------------------
 
-  /** Whether a state was recorded that no decision has seen yet. */
-  public boolean pending() {
-    return version != decided;
-  }
-
-  /** The current state is being decided: until more is recorded, nothing is pending. */
-  public void markDecided() {
-    decided = version;
+  /** The last snapshot built, without building one: for taking body text out of what an event carries. */
+  public RequestBodySnapshot lastSnapshot() {
+    return snapshot;
   }
 
   public int version() {
@@ -266,11 +338,16 @@ public final class RequestBody {
     return done;
   }
 
-  /** The text and values recorded so far, or null before the first body byte. Built once per state. */
+  /**
+   * The text and values recorded so far, or null before the first body byte. Built once per state, and for at
+   * most {@link #MAX_STATES} states before the body completes: past that, the last one built stands until the
+   * body is complete. An engine decides a snapshot whose version it has not decided yet.
+   */
   public RequestBodySnapshot snapshot() {
     if (version == 0) return null;
     RequestBodySnapshot current = snapshot;
-    if (current != null && current.version() == version) return current;
+    if (current != null && (current.version() == version || (!done && builds >= MAX_STATES))) return current;
+    if (!done) builds++;
     String text = charMode ? new String(chars, 0, charCount) : BodyText.decode(bytes, byteCount, encoding, done && !truncated);
     current = new RequestBodySnapshot(text, kind, version, truncated);
     snapshot = current;
@@ -304,7 +381,7 @@ public final class RequestBody {
     if (charCount >= MAX_UNITS) return cap();
     // The characters' size in the request's encoding reached Content-Length: decide now, but keep recording,
     // since the estimate can be off when the container decodes with another charset than the one it reports.
-    return contentLength >= 0 && bytesPerChar >= 0 && charBytes >= contentLength && pending();
+    return contentLength >= 0 && bytesPerChar >= 0 && charBytes >= contentLength;
   }
 
   private boolean cap() {
@@ -313,10 +390,15 @@ public final class RequestBody {
     return finish();
   }
 
+  /** The body is complete (or recording stopped): a new state, the complete one, when there is a body. */
   private boolean finish() {
+    if (done) return false;
     done = true;
+    lineOpen = false;
     recompute();
-    return version > 0 && pending();
+    if (version == 0) return false;
+    version++;
+    return true;
   }
 
   private void countCharBytes(char[] source, int from, int count) {
@@ -336,7 +418,10 @@ public final class RequestBody {
     if (bytes != null && bytes.length >= needed) return;
     int size = Math.min(MAX_UNITS, Math.max(needed, bytes == null ? FIRST_CAPACITY : bytes.length * 2));
     byte[] grown = new byte[size];
-    if (bytes != null) System.arraycopy(bytes, 0, grown, 0, byteCount);
+    if (bytes != null) {
+      System.arraycopy(bytes, 0, grown, 0, byteCount);
+      java.util.Arrays.fill(bytes, 0, byteCount, (byte) 0); // the old copy is garbage now: leave nothing in it
+    }
     bytes = grown;
   }
 
@@ -345,7 +430,10 @@ public final class RequestBody {
     if (chars != null && chars.length >= needed) return;
     int size = Math.min(MAX_UNITS, Math.max(needed, chars == null ? FIRST_CAPACITY : chars.length * 2));
     char[] grown = new char[size];
-    if (chars != null) System.arraycopy(chars, 0, grown, 0, charCount);
+    if (chars != null) {
+      System.arraycopy(chars, 0, grown, 0, charCount);
+      java.util.Arrays.fill(chars, 0, charCount, '\0');
+    }
     chars = grown;
   }
 

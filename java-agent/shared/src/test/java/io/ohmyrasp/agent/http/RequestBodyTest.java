@@ -16,6 +16,9 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 
 class RequestBodyTest {
+  /** The stream the request reads its body from in these tests. */
+  static final Object SOURCE = new Object();
+
   /** What the recorder asks a servlet request, through the same public method names. */
   public static final class FakeRequest {
     private final String contentType;
@@ -54,7 +57,7 @@ class RequestBodyTest {
   }
 
   private static boolean read(byte[] bytes, int offset, int count) {
-    Object token = RequestBodyCapture.enter();
+    Object token = RequestBodyCapture.enter(SOURCE);
     assertNotNull(token, "the read is recorded");
     return RequestBodyCapture.exitBytes(count, token, bytes, offset);
   }
@@ -62,7 +65,7 @@ class RequestBodyTest {
   @Test
   void nothingIsRecordedOnAThreadThatServesNoRequest() {
     RequestBodyCapture.dispatchExited(true);
-    assertNull(RequestBodyCapture.enter());
+    assertNull(RequestBodyCapture.enter(SOURCE));
     assertFalse(RequestBodyCapture.exitBytes(3, null, new byte[3], 0));
   }
 
@@ -79,7 +82,7 @@ class RequestBodyTest {
           RequestBodyCapture.dispatchEntered();
           RequestBodyCapture.applicationEntered(true, new FakeRequest("application/json", "UTF-8", 10, null), true);
           seen[0] = bytes.get(RequestBodyCapture.current());
-          Object token = RequestBodyCapture.enter();
+          Object token = RequestBodyCapture.enter(SOURCE);
           RequestBodyCapture.exitBytes(-1, token, null, 0);
           seen[1] = bytes.get(RequestBodyCapture.current());
         } catch (Exception failure) {
@@ -99,14 +102,13 @@ class RequestBodyTest {
     byte[] json = "{\"host\":\"127.0.0.1; id\"}".getBytes(StandardCharsets.UTF_8);
     RequestBody body = request("application/json", null, json.length);
     assertFalse(read(json, 0, 10));
-    assertTrue(body.pending());
+    int prefix = body.snapshot().version();
     assertTrue(read(json, 10, json.length - 10), "the read that reaches Content-Length completes the body");
+    assertTrue(body.snapshot().version() > prefix);
     assertTrue(body.done());
-    assertNull(RequestBodyCapture.enter(), "a completed body records nothing more: a wrapper's replay is not counted");
+    assertNull(RequestBodyCapture.enter(SOURCE), "a completed body records nothing more: a wrapper's replay is not counted");
     assertEquals("{\"host\":\"127.0.0.1; id\"}", body.snapshot().text());
     assertEquals(Collections.singletonList("127.0.0.1; id"), body.snapshot().values().values());
-    body.markDecided();
-    assertFalse(body.pending());
   }
 
   @Test
@@ -127,7 +129,7 @@ class RequestBodyTest {
     assertTrue(body.truncated());
     assertEquals(RequestBody.MAX_UNITS, body.snapshot().text().length());
     assertTrue(body.snapshot().truncated());
-    assertNull(RequestBodyCapture.enter(), "past the cap a read is a thread-local read and a branch");
+    assertNull(RequestBodyCapture.enter(SOURCE), "past the cap a read is a thread-local read and a branch");
   }
 
   @Test
@@ -142,13 +144,13 @@ class RequestBodyTest {
   @Test
   void aReadInsideARecordedReadIsNotRecordedAgain() {
     RequestBody body = request("text/plain", null, -1);
-    Object outer = RequestBodyCapture.enter();
+    Object outer = RequestBodyCapture.enter(SOURCE);
     assertNotNull(outer);
-    assertNull(RequestBodyCapture.enter(), "the wrapped stream's read, inside the wrapper's");
+    assertNull(RequestBodyCapture.enter(SOURCE), "the wrapped stream's read, inside the wrapper's");
     RequestBodyCapture.exitBytes(2, null, "ab".getBytes(StandardCharsets.UTF_8), 0);
     RequestBodyCapture.exitBytes(2, outer, "ab".getBytes(StandardCharsets.UTF_8), 0);
     assertEquals("ab", body.snapshot().text());
-    assertNotNull(RequestBodyCapture.enter(), "the next outermost read records again");
+    assertNotNull(RequestBodyCapture.enter(SOURCE), "the next outermost read records again");
   }
 
   @Test
@@ -198,59 +200,61 @@ class RequestBodyTest {
   void readsDuringTheAgentsOwnInspectionAreNotRecorded() {
     request("application/x-www-form-urlencoded", null, -1);
     RequestBodyCapture.dispatchEntered(); // a nested dispatch is being inspected
-    assertNull(RequestBodyCapture.enter());
+    assertNull(RequestBodyCapture.enter(SOURCE));
     RequestBodyCapture.applicationEntered(false, null, true);
-    assertNotNull(RequestBodyCapture.enter());
+    assertNotNull(RequestBodyCapture.enter(SOURCE));
   }
 
   @Test
   void detectionOffRecordsNothing() {
     RequestBodyCapture.dispatchEntered();
     RequestBodyCapture.applicationEntered(true, new FakeRequest("application/json", null, 3, null), false);
-    assertNull(RequestBodyCapture.enter());
+    assertNull(RequestBodyCapture.enter(SOURCE));
   }
 
   @Test
   void theReaderPathRecordsCharactersAndLines() {
     RequestBody body = request("application/json", "UTF-8", -1);
-    Object token = RequestBodyCapture.enter();
+    Object token = RequestBodyCapture.enter(SOURCE);
     RequestBodyCapture.exitChars(4, token, "{\"a\":".toCharArray(), 1);
-    token = RequestBodyCapture.enter();
+    token = RequestBodyCapture.enter(SOURCE);
     RequestBodyCapture.exitChar('x', token);
-    token = RequestBodyCapture.enter();
+    token = RequestBodyCapture.enter(SOURCE);
     assertFalse(RequestBodyCapture.exitLine("\"b\"}", token));
-    token = RequestBodyCapture.enter();
+    token = RequestBodyCapture.enter(SOURCE);
     assertTrue(RequestBodyCapture.exitLine(null, token));
-    assertEquals("\"a\":x\"b\"}\n", body.snapshot().text());
+    assertEquals("\"a\":x\"b\"}", body.snapshot().text(), "readLine's last line had no terminator to record");
   }
 
   @Test
   void aReaderCompletesByContentLengthInUtf8ButKeepsRecording() {
     String text = "{\"q\":\"\u00e9\"}"; // 10 bytes in UTF-8, 9 chars
     RequestBody body = request("application/json", "UTF-8", text.getBytes(StandardCharsets.UTF_8).length);
-    Object token = RequestBodyCapture.enter();
+    Object token = RequestBodyCapture.enter(SOURCE);
     assertTrue(RequestBodyCapture.exitChars(text.length(), token, text.toCharArray(), 0));
     assertFalse(body.done());
-    body.markDecided();
-    token = RequestBodyCapture.enter();
-    assertFalse(RequestBodyCapture.exitChar(-1, token), "end of stream with nothing new: nothing to decide");
+    int estimated = body.snapshot().version();
+    token = RequestBodyCapture.enter(SOURCE);
+    assertTrue(RequestBodyCapture.exitChar(-1, token), "end of stream completes the body: a state of its own");
+    assertTrue(body.snapshot().version() > estimated);
   }
 
   @Test
   void byteBuffersAndWholeArraysAreRecorded() {
     RequestBody body = request("text/plain", null, -1);
     ByteBuffer buffer = ByteBuffer.allocate(16);
-    buffer.put("xxab".getBytes(StandardCharsets.UTF_8));
-    Object token = RequestBodyCapture.enter();
+    buffer.put("xx".getBytes(StandardCharsets.UTF_8));
+    Object token = RequestBodyCapture.enter(SOURCE, buffer);
+    buffer.put("ab".getBytes(StandardCharsets.UTF_8)); // a read that advances the position past its bytes
     RequestBodyCapture.exitBuffer(2, token, buffer);
-    token = RequestBodyCapture.enter();
+    token = RequestBodyCapture.enter(SOURCE);
     assertTrue(RequestBodyCapture.exitAll("cd".getBytes(StandardCharsets.UTF_8), token, true));
     assertEquals("abcd", body.snapshot().text());
     RequestBodyCapture.dispatchExited(true);
     RequestBody chars = request("text/plain", null, -1);
     CharBuffer read = CharBuffer.allocate(8);
+    token = RequestBodyCapture.enter(SOURCE, read);
     read.put("hey");
-    token = RequestBodyCapture.enter();
     RequestBodyCapture.exitCharBuffer(3, token, read);
     assertEquals("hey", chars.snapshot().text());
   }
@@ -271,10 +275,190 @@ class RequestBodyTest {
     RequestBody body = request("text/plain", null, -1);
     read("ab".getBytes(StandardCharsets.UTF_8), 0, 2);
     RequestBodyCapture.dispatchExited(true);
-    assertNull(RequestBodyCapture.enter());
+    assertNull(RequestBodyCapture.enter(SOURCE));
     RequestBody next = request("text/plain", null, -1);
     assertSame(body, next, "one recorder per thread");
     assertNull(next.snapshot());
-    assertFalse(next.pending());
+    assertEquals(0, next.version());
+  }
+
+  // ---- review fixes: the buffer contract, ownership, exceptions, retention, final states, budget ----------------
+
+  /** Tomcat's read(ByteBuffer): the bytes go in at the position, which is restored; the limit ends after them. */
+  private static int tomcatRead(ByteBuffer to, byte[] data) {
+    to.put(data);
+    to.limit(to.position());
+    to.position(to.position() - data.length);
+    return data.length;
+  }
+
+  @Test
+  void aBufferReadIsRecordedFromWhereTheBufferStoodOnBothContracts() {
+    byte[] data = "{\"cmd\":\"id\"}".getBytes(StandardCharsets.UTF_8);
+    for (boolean direct : new boolean[] {false, true}) {
+      for (int position : new int[] {0, 7}) {
+        for (boolean tomcat : new boolean[] {false, true}) {
+          RequestBody body = request("application/json", "UTF-8", data.length);
+          ByteBuffer buffer = direct ? ByteBuffer.allocateDirect(64) : ByteBuffer.allocate(64);
+          while (buffer.hasRemaining()) buffer.put((byte) 'x'); // bytes before the read's position are not the body
+          buffer.clear();
+          buffer.position(position);
+          Object token = RequestBodyCapture.enter(SOURCE, buffer);
+          int count;
+          if (tomcat) {
+            count = tomcatRead(buffer, data);
+          } else {
+            buffer.put(data);
+            count = data.length;
+          }
+          int positionAfter = buffer.position();
+          int limitAfter = buffer.limit();
+          assertTrue(RequestBodyCapture.exitBuffer(count, token, buffer));
+          String label = (direct ? "direct" : "heap") + " position " + position + (tomcat ? " tomcat" : " nio");
+          assertEquals("{\"cmd\":\"id\"}", body.snapshot().text(), label);
+          assertEquals(positionAfter, buffer.position(), "the recorder leaves the position: " + label);
+          assertEquals(limitAfter, buffer.limit(), "the recorder leaves the limit: " + label);
+          RequestBodyCapture.dispatchExited(true);
+        }
+      }
+    }
+  }
+
+  @Test
+  void onlyTheStreamTheRequestReadFirstIsRecorded() {
+    RequestBody body = request("text/plain", null, -1);
+    read("ab".getBytes(StandardCharsets.UTF_8), 0, 2);
+    Object mock = new Object();
+    assertNull(RequestBodyCapture.enter(mock), "another stream read on the thread: a mock, a replay, another request's");
+    assertNotNull(RequestBodyCapture.enter(SOURCE), "the request's own stream still records");
+    RequestBodyCapture.dispatchExited(true);
+    request("text/plain", null, -1);
+    Object token = RequestBodyCapture.enter(mock);
+    assertNotNull(token, "the next request binds to the stream it reads first");
+    RequestBodyCapture.exitBytes(1, token, new byte[] {'z'}, 0);
+    assertNull(RequestBodyCapture.enter(SOURCE));
+  }
+
+  @Test
+  void aReadThatThrowsReleasesTheRecorderForTheRetry() {
+    RequestBody body = request("text/plain", null, -1);
+    Object failed = RequestBodyCapture.enter(SOURCE);
+    assertNotNull(failed);
+    RequestBodyCapture.abort(failed); // what the rewritten method's handler does when the read throws
+    read("ok".getBytes(StandardCharsets.UTF_8), 0, 2);
+    assertEquals("ok", body.snapshot().text(), "the retry is recorded");
+  }
+
+  @Test
+  void aDeniedRequestThrowsTheSameBlockOnEveryLaterRead() {
+    request("application/json", null, -1);
+    RuntimeException block = new RuntimeException("blocked");
+    RequestBodyCapture.deny(block);
+    try {
+      RequestBodyCapture.enter(SOURCE);
+      throw new AssertionError("the read went on");
+    } catch (RuntimeException thrown) {
+      assertSame(block, thrown);
+    }
+    try {
+      RequestBodyCapture.enter(new Object());
+      throw new AssertionError("a read of another stream went on");
+    } catch (RuntimeException thrown) {
+      assertSame(block, thrown);
+    }
+    RequestBodyCapture.dispatchExited(true);
+    request("application/json", null, -1);
+    assertNotNull(RequestBodyCapture.enter(SOURCE), "the next request is not denied");
+  }
+
+  private static Object field(RequestBody body, String name) throws Exception {
+    java.lang.reflect.Field field = RequestBody.class.getDeclaredField(name);
+    field.setAccessible(true);
+    return field.get(body);
+  }
+
+  @Test
+  void theEndOfTheRequestOverwritesTheRecordedBytesAndCharacters() throws Exception {
+    byte[] secret = "{\"password\":\"hunter2-Secret\"}".getBytes(StandardCharsets.UTF_8);
+    RequestBody body = request("application/json", null, -1);
+    read(secret, 0, secret.length);
+    byte[] kept = (byte[]) field(body, "bytes");
+    RequestBodyCapture.dispatchExited(true);
+    for (byte b : kept) assertEquals(0, b, "a byte of the last request is left on the idle thread");
+    assertSame(kept, field(body, "bytes"), "a small buffer is kept, zeroed, for the next request");
+
+    request("text/plain", null, -1);
+    Object token = RequestBodyCapture.enter(SOURCE);
+    RequestBodyCapture.exitChars(6, token, "secret".toCharArray(), 0);
+    char[] chars = (char[]) field(body, "chars");
+    RequestBodyCapture.dispatchExited(true);
+    for (char c : chars) assertEquals('\0', c);
+
+    byte[] large = new byte[5000];
+    Arrays.fill(large, (byte) 's');
+    request("text/plain", null, -1);
+    read(large, 0, 1000);
+    byte[] small = (byte[]) field(body, "bytes");
+    read(large, 1000, 4000); // grows the buffer: the old copy is overwritten
+    for (byte b : small) assertEquals(0, b, "the buffer the recorder grew out of keeps nothing");
+    byte[] grown = (byte[]) field(body, "bytes");
+    RequestBodyCapture.dispatchExited(true);
+    for (byte b : grown) assertEquals(0, b);
+    assertNull(field(body, "bytes"), "a buffer larger than the kept size is dropped");
+    assertNull(field(body, "source"));
+    assertNull(body.lastSnapshot());
+    assertNull(body.servletRequest());
+  }
+
+  @Test
+  void aThreadReusedWithoutAnEndStillStartsClean() throws Exception {
+    RequestBody body = request("text/plain", null, -1);
+    read("secret".getBytes(StandardCharsets.UTF_8), 0, 6);
+    byte[] kept = (byte[]) field(body, "bytes");
+    // The next request starts on the thread without the last one having ended (an exit hook that did not run).
+    RequestBodyCapture.dispatchEntered();
+    RequestBodyCapture.applicationEntered(true, new FakeRequest("text/plain", null, -1, null), true);
+    for (byte b : kept) assertEquals(0, b);
+  }
+
+  @Test
+  void endOfStreamMakesTheCompleteBodyAStateOfItsOwn() {
+    byte[] text = "{\"q\":\"\u00e9\"}".getBytes(StandardCharsets.UTF_8);
+    RequestBody body = request("application/json", null, -1);
+    assertFalse(read(text, 0, text.length), "no Content-Length: the body may go on");
+    RequestBodySnapshot prefix = body.snapshot();
+    Object token = RequestBodyCapture.enter(SOURCE);
+    assertTrue(RequestBodyCapture.exitBytes(-1, token, null, 0), "end of stream: the complete body is decided");
+    assertTrue(body.snapshot().version() > prefix.version(), "a prefix decided before end of stream is decided again");
+    token = RequestBodyCapture.enter(SOURCE);
+    assertNull(token, "nothing is recorded after the end");
+  }
+
+  @Test
+  void aLineIsFollowedByItsTerminatorOnlyWhenAnotherRecordFollows() {
+    RequestBody body = request("text/plain", "UTF-8", -1);
+    Object token = RequestBodyCapture.enter(SOURCE);
+    RequestBodyCapture.exitLine("a", token);
+    token = RequestBodyCapture.enter(SOURCE);
+    RequestBodyCapture.exitLine("b", token);
+    token = RequestBodyCapture.enter(SOURCE);
+    RequestBodyCapture.exitLine(null, token);
+    assertEquals("a\nb", body.snapshot().text());
+  }
+
+  @Test
+  void theStatesBeforeCompletionThatGetASnapshotAreBounded() {
+    byte[] text = new byte[200];
+    Arrays.fill(text, (byte) 'a');
+    RequestBody body = request("text/plain", null, text.length);
+    java.util.Set<RequestBodySnapshot> built = java.util.Collections.newSetFromMap(
+        new java.util.IdentityHashMap<RequestBodySnapshot, Boolean>());
+    for (int i = 0; i < text.length - 1; i++) {
+      read(text, i, 1); // one byte per read, and a hook that decides after each
+      built.add(body.snapshot());
+    }
+    assertEquals(RequestBody.MAX_STATES, built.size());
+    assertTrue(read(text, text.length - 1, 1));
+    assertEquals(text.length, body.snapshot().text().length(), "the complete body always gets its snapshot");
   }
 }

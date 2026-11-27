@@ -83,9 +83,32 @@ public final class DetectorEngine {
           "systemclassloader");
 
   public Optional<Detection> detectRequest(RequestContext request) {
+    List<Detection> out = new ArrayList<>(1);
+    requestChain(request, out, true);
+    return out.isEmpty() ? Optional.empty() : Optional.of(out.get(0));
+  }
+
+  /**
+   * Every finding of the request chain, in chain order: what {@link #detectRequest} would return first, then
+   * what each later rule finds. For a decision that must not let an earlier finding hide a later one (the
+   * request body's, where the first finding is often the request's own and already reported).
+   */
+  public List<Detection> detectRequestAll(RequestContext request) {
+    List<Detection> out = new ArrayList<>(2);
+    requestChain(request, out, false);
+    return out;
+  }
+
+  /** Adds {@code finding}; true when the chain stops at it (first match only). */
+  private static boolean add(List<Detection> out, boolean firstOnly, Detection finding) {
+    out.add(finding);
+    return firstOnly;
+  }
+
+  private void requestChain(RequestContext request, List<Detection> out, boolean firstOnly) {
     String userAgent = request.header("user-agent").orElse("").toLowerCase(Locale.ROOT);
     if (looksLikeInternalIdentityBypass(userAgent, request)) {
-      return Optional.of(
+      if (add(out, firstOnly, 
           Detection.log(
               "request",
               "request_internal_identity",
@@ -95,56 +118,56 @@ public final class DetectorEngine {
               Map.of(
                   "userAgent", userAgent,
                   "uri", abbreviate(request.uri()),
-                  "method", request.method())));
+                  "method", request.method())))) return;
     }
     Optional<Detection> jwtFinding = CredentialDetector.defaultSignedTokenFinding(request);
-    if (jwtFinding.isPresent()) return jwtFinding;
+    if (jwtFinding.isPresent() && add(out, firstOnly, jwtFinding.orElseThrow())) return;
     Optional<Detection> cookieFinding = CredentialDetector.defaultEncryptedCookieFinding(request);
-    if (cookieFinding.isPresent()) return cookieFinding;
+    if (cookieFinding.isPresent() && add(out, firstOnly, cookieFinding.orElseThrow())) return;
     Optional<Detection> stateFinding = SerializedRequestState.serializedClientStateFinding(request);
-    if (stateFinding.isPresent()) return stateFinding;
+    if (stateFinding.isPresent() && add(out, firstOnly, stateFinding.orElseThrow())) return;
     Optional<Detection> credentialFinding = CredentialDetector.defaultCredentialFinding(request);
-    if (credentialFinding.isPresent()) return credentialFinding;
+    if (credentialFinding.isPresent() && add(out, firstOnly, credentialFinding.orElseThrow())) return;
     Optional<Detection> emptyFinding = CredentialDetector.emptyCredentialFinding(request);
-    if (emptyFinding.isPresent()) return emptyFinding;
+    if (emptyFinding.isPresent() && add(out, firstOnly, emptyFinding.orElseThrow())) return;
     Optional<String> beanPollution = request.parameters().keySet().stream()
         .filter(DetectorEngine::looksLikeJavaBeanPollution)
         .findFirst();
     if (beanPollution.isPresent()) {
       RequestContext redactedRequest = redactJavaBeanPollutionRequest(request);
-      return Optional.of(
+      if (add(out, firstOnly, 
           Detection.log(
               "request",
               "request_java_bean_pollution",
               95,
               "Request parameter attempts to bind Java classloader metadata",
               redactedRequest,
-              Map.of("parameter", abbreviate(beanPollution.orElseThrow()))));
+              Map.of("parameter", abbreviate(beanPollution.orElseThrow()))))) return;
     }
     Optional<Detection> configurationFinding = RequestConfigurationDetector.configuration(request);
-    if (configurationFinding.isPresent()) return configurationFinding;
+    if (configurationFinding.isPresent() && add(out, firstOnly, configurationFinding.orElseThrow())) return;
     Optional<Detection> loaderFinding = RequestTemplateDetector.loader(request);
-    if (loaderFinding.isPresent()) return loaderFinding;
+    if (loaderFinding.isPresent() && add(out, firstOnly, loaderFinding.orElseThrow())) return;
     Optional<Detection> messageSelectorFinding = RequestConfigurationDetector.messageSelector(request);
-    if (messageSelectorFinding.isPresent()) return messageSelectorFinding;
+    if (messageSelectorFinding.isPresent() && add(out, firstOnly, messageSelectorFinding.orElseThrow())) return;
     Optional<Detection> headerFinding = RequestExpressionDetector.header(request);
-    if (headerFinding.isPresent()) return headerFinding;
+    if (headerFinding.isPresent() && add(out, firstOnly, headerFinding.orElseThrow())) return;
     Optional<Detection> namingFinding = RequestConfigurationDetector.naming(request);
-    if (namingFinding.isPresent()) return namingFinding;
+    if (namingFinding.isPresent() && add(out, firstOnly, namingFinding.orElseThrow())) return;
     Optional<Detection> contentFinding = RequestTemplateDetector.content(request);
-    if (contentFinding.isPresent()) return contentFinding;
+    if (contentFinding.isPresent() && add(out, firstOnly, contentFinding.orElseThrow())) return;
     Optional<Detection> parametersAndPathFinding = RequestExpressionDetector.parametersAndPath(request);
-    if (parametersAndPathFinding.isPresent()) return parametersAndPathFinding;
+    if (parametersAndPathFinding.isPresent() && add(out, firstOnly, parametersAndPathFinding.orElseThrow())) return;
     Optional<Detection> bindingFinding = RequestPayloadDetector.binding(request);
-    if (bindingFinding.isPresent()) return bindingFinding;
+    if (bindingFinding.isPresent() && add(out, firstOnly, bindingFinding.orElseThrow())) return;
     Optional<Detection> resourceFinding = RequestResourceDetector.resource(request);
-    if (resourceFinding.isPresent()) return resourceFinding;
+    if (resourceFinding.isPresent() && add(out, firstOnly, resourceFinding.orElseThrow())) return;
     Optional<Detection> spatialFilterFinding = RequestExpressionDetector.spatialFilter(request);
-    if (spatialFilterFinding.isPresent()) return spatialFilterFinding;
+    if (spatialFilterFinding.isPresent() && add(out, firstOnly, spatialFilterFinding.orElseThrow())) return;
     Optional<SetupStateResetMatch> setupStateReset = setupStateReset(request);
     if (setupStateReset.isPresent()) {
       SetupStateResetMatch match = setupStateReset.orElseThrow();
-      return Optional.of(
+      if (add(out, firstOnly, 
           Detection.log(
               "request",
               "request_setup_state_reset",
@@ -155,12 +178,12 @@ public final class DetectorEngine {
                   "parameter", abbreviate(match.parameter()),
                   "value", match.value(),
                   "uri", abbreviate(request.uri()),
-                  "method", request.method())));
+                  "method", request.method())))) return;
     }
     Optional<ServerSideScriptPutMatch> scriptPut = serverSideScriptPut(request);
     if (scriptPut.isPresent()) {
       ServerSideScriptPutMatch match = scriptPut.orElseThrow();
-      return Optional.of(
+      if (add(out, firstOnly, 
           Detection.log(
               "request",
               "request_server_side_script_put",
@@ -170,14 +193,14 @@ public final class DetectorEngine {
               Map.of(
                   "path", abbreviate(match.path()),
                   "uri", abbreviate(request.uri()),
-                  "method", request.method())));
+                  "method", request.method())))) return;
     }
     Optional<UploadFilenameOverrideMatch> uploadFilenameOverride =
         uploadFilenameOverride(request);
     if (uploadFilenameOverride.isPresent()) {
       UploadFilenameOverrideMatch match = uploadFilenameOverride.orElseThrow();
       RequestContext redactedRequest = redactUploadFilenameOverrideRequest(request);
-      return Optional.of(
+      if (add(out, firstOnly, 
           Detection.log(
               "request",
               "request_upload_filename_override",
@@ -189,12 +212,12 @@ public final class DetectorEngine {
                   "targetType", match.targetType(),
                   "valueLength", String.valueOf(match.valueLength()),
                   "uri", abbreviate(request.uri()),
-                  "method", request.method())));
+                  "method", request.method())))) return;
     }
     Optional<Map.Entry<String, String>> internalForward = requestControlledInternalForward(request);
     if (internalForward.isPresent()) {
       Map.Entry<String, String> forward = internalForward.orElseThrow();
-      return Optional.of(
+      if (add(out, firstOnly, 
           Detection.log(
               "request",
               "request_internal_forward",
@@ -205,12 +228,12 @@ public final class DetectorEngine {
                   "parameter", forward.getKey(),
                   "target", abbreviate(forward.getValue()),
                   "uri", abbreviate(request.uri()),
-                  "method", request.method())));
+                  "method", request.method())))) return;
     }
     Optional<InternalResourceMatch> internalResource = protectedInternalResourceRequest(request);
     if (internalResource.isPresent()) {
       InternalResourceMatch match = internalResource.orElseThrow();
-      return Optional.of(
+      if (add(out, firstOnly, 
           Detection.log(
               "request",
               "request_internal_resource",
@@ -222,11 +245,11 @@ public final class DetectorEngine {
                   "resource", match.resource(),
                   "variant", match.variant(),
                   "uri", abbreviate(request.uri()),
-                  "method", request.method())));
+                  "method", request.method())))) return;
     }
     Optional<String> confusingPath = confusingRequestPath(request.uri());
     if (confusingPath.isPresent()) {
-      return Optional.of(
+      if (add(out, firstOnly, 
           Detection.log(
               "request",
               "request_path_confusion",
@@ -235,9 +258,8 @@ public final class DetectorEngine {
               request,
               Map.of(
                   "uri", abbreviate(request.uri()),
-                  "decoded", abbreviate(confusingPath.orElseThrow()))));
+                  "decoded", abbreviate(confusingPath.orElseThrow()))))) return;
     }
-    return Optional.empty();
   }
 
   public Optional<Detection> detectScannerUserAgent(RequestContext request) {

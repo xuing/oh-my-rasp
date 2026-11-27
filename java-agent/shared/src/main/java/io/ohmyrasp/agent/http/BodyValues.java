@@ -2,9 +2,11 @@ package io.ohmyrasp.agent.http;
 
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 /**
  * The values a recorded request body offers for matching against a sink argument, by content type:
@@ -199,6 +201,8 @@ public final class BodyValues {
     final List<String> names = new ArrayList<String>();
     final List<String> values = new ArrayList<String>();
     final Map<String, List<String>> parameters = new LinkedHashMap<String, List<String>>();
+    // Each name and value pair kept, so that a repeated one costs a hash lookup and not a scan of its list.
+    final Set<Pair> seen = new HashSet<Pair>();
     boolean cut;
 
     boolean full() {
@@ -228,7 +232,8 @@ public final class BodyValues {
       if (under == null) {
         under = new ArrayList<String>(1);
         parameters.put(name, under);
-      } else if (under.contains(value)) {
+      }
+      if (!seen.add(new Pair(name, value))) {
         return true; // the same value again under the same name adds nothing to match
       }
       values.add(value);
@@ -245,6 +250,27 @@ public final class BodyValues {
       }
       return new BodyValues(Collections.unmodifiableList(names), Collections.unmodifiableList(values),
           Collections.unmodifiableMap(frozen), cut);
+    }
+  }
+
+  /** A name and a value, compared by both. */
+  private static final class Pair {
+    final String name;
+    final String value;
+
+    Pair(String name, String value) {
+      this.name = name;
+      this.value = value;
+    }
+
+    @Override public boolean equals(Object other) {
+      if (!(other instanceof Pair)) return false;
+      Pair pair = (Pair) other;
+      return name.equals(pair.name) && value.equals(pair.value);
+    }
+
+    @Override public int hashCode() {
+      return name.hashCode() * 31 + value.hashCode();
     }
   }
 }

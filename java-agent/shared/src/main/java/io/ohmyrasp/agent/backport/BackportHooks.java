@@ -18,6 +18,7 @@ import io.ohmyrasp.agent.rules.general.PlotWrite;
 import io.ohmyrasp.agent.jmx.JmxWriteScope;
 import io.ohmyrasp.agent.file.HostDelete;
 import io.ohmyrasp.agent.http.ArchiveUploadPolicy;
+import io.ohmyrasp.agent.http.BodyEvidence;
 import io.ohmyrasp.agent.http.RequestBody;
 import io.ohmyrasp.agent.http.RequestBodyCapture;
 import io.ohmyrasp.agent.http.RequestBodySnapshot;
@@ -46,9 +47,12 @@ import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.util.ArrayList;
 import java.util.Base64;
+import java.util.Collections;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Set;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import javax.crypto.Cipher;
@@ -209,9 +213,39 @@ public final class BackportHooks {
   }
 
   // ---- request body: what the application's own read calls returned (RequestBodyVisitor injects these) ----
+  // None of these throws to the application but the line's block: a read after a block on its request's body
+  // throws that block again, and a read whose recording completes a body state with a blocking finding throws it.
 
-  public static Object enterBodyRead() {
-    return inactive() ? null : RequestBodyCapture.enter();
+  public static Object enterBodyRead(Object source) {
+    if (inactive()) return null;
+    try {
+      return RequestBodyCapture.enter(source);
+    } catch (RuntimeException denied) {
+      if (line().isBlock(denied)) throw denied;
+      return null;
+    } catch (Throwable ignored) {
+      return null;
+    }
+  }
+
+  public static Object enterBodyRead(Object source, java.nio.Buffer buffer) {
+    if (inactive()) return null;
+    try {
+      return RequestBodyCapture.enter(source, buffer);
+    } catch (RuntimeException denied) {
+      if (line().isBlock(denied)) throw denied;
+      return null;
+    } catch (Throwable ignored) {
+      return null;
+    }
+  }
+
+  public static void abortBodyRead(Object token) {
+    try {
+      RequestBodyCapture.abort(token);
+    } catch (Throwable ignored) {
+      // The application's own exception goes on.
+    }
   }
 
   public static void exitBodyRead(int result, Object token) {
@@ -257,10 +291,30 @@ public final class BackportHooks {
     }
   }
 
-  /** The URLs the current request supplies, its body's included, after deciding a body state no decision has seen. */
+  /**
+   * The URLs the current request supplies, its body's included, after deciding a body state no decision has seen.
+   * The body's are derived from the current body state each time (cached per state), not kept in the dispatch's
+   * slot, so that a nested dispatch's exit does not restore a list without them.
+   */
   private static List<String> requestUrls() {
     settleBody();
-    return CURRENT_REQUEST_URLS.get();
+    List<String> own = CURRENT_REQUEST_URLS.get();
+    RequestBody body = RequestBodyCapture.current();
+    RequestBodySnapshot snapshot = body == null ? null : body.lastSnapshot();
+    if (snapshot == null) return own;
+    BodyState state = BodyState.of(body);
+    if (state.urlsOf != snapshot) {
+      state.urls = requestControlledUrls(BackportRequestBody.withParameters(null, snapshot.values()));
+      state.urlsOf = snapshot;
+    }
+    if (state.urls.isEmpty()) return own;
+    if (own == null || own.isEmpty()) return state.urls;
+    List<String> joined = new ArrayList<String>(own);
+    for (String url : state.urls) {
+      if (joined.size() >= 16) break;
+      if (!joined.contains(url)) joined.add(url);
+    }
+    return joined;
   }
 
   /** The request input of the current request, after deciding a body state no decision has seen yet. */
@@ -270,32 +324,90 @@ public final class BackportHooks {
   }
 
   /**
-   * Decides the request rules on a body state no decision has seen: the rules read the body's names and values
-   * where they read parameters, as on the primary line. A finding the parameters alone give is the servlet
-   * entry's, and is not reported again; the event carries the rule's own detail, never the body.
+   * Decides the request rules on a body state this dispatch has not decided: the rules that read parameters read
+   * the body's names and values with the request's own (and the body's alone, so that a parameter's match does
+   * not hide a body field's), as on the primary line. Every new finding is reported once per request; one the
+   * parameters give without the body is the servlet entry's and is not reported again. The event names the body
+   * field the evidence came from, never its value (see writeDetection). A block throws from here, and every later
+   * read of the request's body throws it again.
    */
   private static void settleBody() {
     RequestBody body = RequestBodyCapture.current();
-    if (body == null || !body.pending()) return;
-    RequestBodySnapshot snapshot = body.snapshot();
+    if (body == null || body.version() == 0) return;
     RequestSnapshot request = CURRENT_REQUEST.get();
-    body.markDecided();
-    if (snapshot == null || request == null || RaspRuntime.detectionOff()) return;
-    Map<Object, Object> parameters = BackportRequestBody.withParameters(request.entryParameters, snapshot.values());
-    List<String> urls = requestControlledUrls(parameters);
-    if (!urls.isEmpty()) CURRENT_REQUEST_URLS.set(urls);
+    if (request == null) return;
+    RequestBodySnapshot snapshot = body.snapshot();
+    if (snapshot == null || snapshot.version() == request.bodyDecided) return;
+    request.bodyDecided = snapshot.version();
+    if (RaspRuntime.detectionOff()) return;
     Object servletRequest = DISPATCH.servletRequest() != null ? DISPATCH.servletRequest() : body.servletRequest();
-    Finding finding = classifyHttpRequest(servletRequest, parameters);
-    if (finding == null) return;
-    Finding entry = classifyHttpRequest(servletRequest, request.entryParameters);
-    if (entry != null && entry.algorithm.equals(finding.algorithm) && entry.detailValue.equals(finding.detailValue)) return;
-    String action = shouldBlock() ? "block" : "log";
-    if (!"block".equals(action) && repeats(finding.detailValue, LAST_LOGGED_REQUEST.get())) return;
-    LAST_LOGGED_REQUEST.set(finding.detailValue);
-    appendEvent(finding, "HttpServlet.requestBody", action);
-    if ("block".equals(action)) {
-      throw line().block("OhMyRASP " + line().displayName + " blocked a suspicious request body");
+    BodyState state = BodyState.of(body);
+    Map<Object, Object> merged = BackportRequestBody.withParameters(request.entryParameters, snapshot.values());
+    Map<Object, Object> bodyOnly = BackportRequestBody.withParameters(null, snapshot.values());
+    for (Finding finding : bodyFindings(servletRequest, merged, bodyOnly, request.entryParameters)) {
+      if (!state.reported.add(finding.algorithm + '\0' + finding.detailValue)) continue;
+      String action = shouldBlock() ? "block" : "log";
+      appendEvent(finding, "HttpServlet.requestBody", action);
+      if ("block".equals(action)) {
+        RuntimeException block = line().block("OhMyRASP " + line().displayName + " blocked a suspicious request body");
+        RequestBodyCapture.deny(block);
+        throw block;
+      }
     }
+  }
+
+  /** What one request's body decisions keep: the findings reported, and the body's URLs for one state. */
+  private static final class BodyState {
+    final Set<String> reported = new HashSet<String>();
+    RequestBodySnapshot urlsOf;
+    List<String> urls = Collections.<String>emptyList();
+
+    static BodyState of(RequestBody body) {
+      Object kept = body.engineState;
+      if (kept instanceof BodyState) return (BodyState) kept;
+      BodyState state = new BodyState();
+      body.engineState = state;
+      return state;
+    }
+  }
+
+  /**
+   * The findings of the request rules that read parameters, on the request's parameters with the body's and on
+   * the body's alone, in the chain's order, without one that the same rule gives on the parameters alone.
+   * The rules that read only the request line, cookies or headers decided at the servlet entry.
+   */
+  private static List<Finding> bodyFindings(Object request, Map<?, ?> merged, Map<?, ?> bodyOnly, Map<?, ?> entry) {
+    List<Finding> found = new ArrayList<Finding>(2);
+    if (request == null) return found;
+    String uri = requestUri(request);
+    if (uri.length() == 0) return found;
+    String query = requestQuery(request);
+    for (int rule = 0; rule < PARAMETER_RULES; rule++) {
+      Finding before = parameterRule(rule, request, uri, query, entry);
+      Finding withBody = parameterRule(rule, request, uri, query, merged);
+      if (withBody != null && !sameFinding(before, withBody)) found.add(withBody);
+      Finding ofBody = parameterRule(rule, request, uri, query, bodyOnly);
+      if (ofBody != null && !sameFinding(before, ofBody) && !sameFinding(withBody, ofBody)) found.add(ofBody);
+    }
+    return found;
+  }
+
+  private static final int PARAMETER_RULES = 5;
+
+  /** The rules of classifyHttpRequest that read parameters, in its order. */
+  private static Finding parameterRule(int rule, Object request, String uri, String query, Map<?, ?> parameters) {
+    switch (rule) {
+      case 0: return classifyTypedPayloadDeserializationRequest(parameters, uri);
+      case 1: return classifyDebugProcessLaunchRequest(request, uri, query, parameters);
+      case 2: return classifyOgcFilterSqlInjectionRequest(parameters, uri);
+      case 3: return classifyTemplateSourceRequest(parameters, uri);
+      default: return classifyInternalForwardRequest(parameters, uri);
+    }
+  }
+
+  private static boolean sameFinding(Finding left, Finding right) {
+    return left != null && right != null && left.algorithm.equals(right.algorithm)
+        && left.detailValue.equals(right.detailValue);
   }
 
   /**
@@ -361,7 +473,9 @@ public final class BackportHooks {
   }
 
   public static void afterHttpRequest() {
-    if (inactive()) return;
+    // A dispatch entered while the runtime ran is left even when the runtime has stopped since: its request
+    // state, the body recorded among it, does not stay on the thread.
+    if (inactive() && !DISPATCH.inRequest()) return;
     exitRequest();
   }
 
@@ -4213,6 +4327,9 @@ public final class BackportHooks {
 
   private static final class RequestSnapshot {
     String lastUpload;
+    // The version of the body state this dispatch decided last (one snapshot per dispatch: a state decided under
+    // an include is decided again for the route it returns to).
+    int bodyDecided;
     final Map<?, ?> entryParameters;
     final List<String> sqlInputs;
     final List<String> parameterValues;
@@ -4411,6 +4528,7 @@ public final class BackportHooks {
     if (RaspRuntime.detectionOff()) {
       return;
     }
+    finding = publicFinding(finding);
     String logPath = RaspRuntime.resolveLogPath();
     String event =
         "{"
@@ -4447,6 +4565,32 @@ public final class BackportHooks {
             + "}"
             + "}";
     RaspRuntime.writeEvent(logPath, event);
+  }
+
+  /**
+   * The finding as an event carries it: without the text of the body the request has read (see BodyEvidence):
+   * the field a value came from is named, the value is not. When this fails, the detail and message are dropped.
+   */
+  private static Finding publicFinding(Finding finding) {
+    try {
+      RequestBody body = RequestBodyCapture.current();
+      RequestBodySnapshot snapshot = body == null ? null : body.lastSnapshot();
+      if (snapshot == null) return finding;
+      RequestSnapshot request = CURRENT_REQUEST.get();
+      Set<String> names = new HashSet<String>();
+      if (request != null && request.entryParameters != null) {
+        for (Object name : request.entryParameters.keySet()) names.add(String.valueOf(name));
+      }
+      BodyEvidence evidence = BodyEvidence.of(snapshot, names, null);
+      String detail = evidence.scrub(finding.detailValue);
+      String message = evidence.scrubMessage(finding.message);
+      if (detail.equals(finding.detailValue) && message.equals(finding.message)) return finding;
+      return new Finding(finding.algorithm, finding.confidence, message, finding.detailKey, detail,
+          finding.decisionBasis, finding.policyDigest);
+    } catch (Throwable failure) {
+      return new Finding(finding.algorithm, finding.confidence, "", finding.detailKey, "", finding.decisionBasis,
+          finding.policyDigest);
+    }
   }
 
   private static boolean hasText(String value) {

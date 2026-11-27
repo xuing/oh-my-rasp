@@ -37,7 +37,7 @@ public final class Java8RequestBodyTransformer implements ClassFileTransformer {
             String[] exceptions) {
           MethodVisitor original = super.visitMethod(access, name, descriptor, signature, exceptions);
           if (original == null) return null;
-          MethodVisitor result = RequestBodyVisitor.wrap(containerReader, original, access, name, descriptor, HOOKS);
+          MethodVisitor result = RequestBodyVisitor.wrap(containerReader, original, className, access, name, descriptor, HOOKS);
           if (result != original) changed[0] = true;
           return result;
         }
