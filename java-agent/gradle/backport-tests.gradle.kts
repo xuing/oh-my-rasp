@@ -14,6 +14,13 @@ val testSources = extensions.getByType<SourceSetContainer>().named("test")
 // line before any test runs), so every line reads them as they are.
 testSources.configure { resources.srcDir(rootProject.file("backport-tests/src/test/resources")) }
 
+// Java8InjectedCallsTest takes the library side of its inventory of injected agent calls from the recorded map.
+tasks.named<Test>("test") {
+    val backportHookMap = rootProject.file("probes/hook-targets/recorded/backport.txt")
+    inputs.file(backportHookMap).withPropertyName("backportHookMap").withPathSensitivity(PathSensitivity.RELATIVE)
+    systemProperty("ohmyrasp.hookTargets.backport", backportHookMap.path)
+}
+
 val line = name.removePrefix("agent-java")
 if (line == "8") {
     testSources.configure { java.srcDir(canonicalTests) }
