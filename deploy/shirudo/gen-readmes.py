@@ -499,7 +499,7 @@ def render_top_readme(
     w(f"- **`{UNIVERSAL_PKG}`** blocks as the line it starts does: the Java 8, 11 and 17 lines on those JVMs, the primary line on Java 21 and later.")
     w("- **`ohmyrasp-java8`, `ohmyrasp-java11`, `ohmyrasp-java17`**: With baked-in `mode=block`, exploit-grade sink detections (command execution, sensitive file reads/script writes, remote JNDI, deserialization gadgets, SQLi/JDBC, XXE, SSRF, Base64 CVE-2026-114938, and servlet path/JWT/cookie checks) throw `Java*RaspBlockException` both inside HTTP requests and in standalone JVMs.")
     w("- **`ohmyrasp-jdk21`, `ohmyrasp-jdk25`** use the evidence available at the hook and the active policy to decide whether to block.")
-    w("- **Every track** decides a finding outside an HTTP request (a scheduled job, a consumer, start-up code) the same way: one whose argument is the exploit itself blocks, one that only shows an operation happened (a cloud metadata address, a remote DTD) is logged, the rest blocks as inside a request. "
+    w("- **Every track** decides a finding outside an HTTP request (a scheduled job, a consumer, start-up code) the same way: one whose argument is the exploit itself blocks, a cloud provider's own credential client reading instance metadata is logged, the rest (a remote class, a remote DTD, the metadata address included) blocks as inside a request. "
       f"`{UNIVERSAL_PKG}` bakes `outside_request` (`--outside-request log` at build time records those last findings and lets the operation run). [Outside an HTTP request](../../docs/detection.md#outside-an-http-request)")
     w("")
     w("## Standalone Profile (`META-INF/ohmyrasp-shirudo.properties`)")
