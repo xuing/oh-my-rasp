@@ -89,7 +89,7 @@ final class HookActivationTest {
     assertNull(OhMyRaspHooks.enterBodyRead(new Object()), "an inactive body read records nothing");
     assertNull(OhMyRaspHooks.enterBodyRead(new Object(), java.nio.ByteBuffer.allocate(4)),
         "an inactive buffer read records nothing");
-    OhMyRaspHooks.abortBodyRead(new Object()); // inert: a token the recorder never gave is not even looked at
+    OhMyRaspHooks.abortBodyRead(); // inert
     assertNull(OhMyRaspHooks.beginGeneratedLines(Path.of("/tmp/x.sh")));
     Object value = new Object();
     assertSame(value, OhMyRaspHooks.jmxAttributeDisplayReceiver(value));

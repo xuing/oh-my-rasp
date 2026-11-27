@@ -34,8 +34,8 @@ public final class Java11RaspHooks {
     return BackportHooks.enterBodyRead(source, buffer);
   }
 
-  public static void abortBodyRead(Object token) {
-    BackportHooks.abortBodyRead(token);
+  public static void abortBodyRead() {
+    BackportHooks.abortBodyRead();
   }
 
   public static void exitBodyRead(int result, Object token) {

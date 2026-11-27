@@ -241,9 +241,10 @@ public final class BackportHooks {
     }
   }
 
-  public static void abortBodyRead(Object token) {
+  /** The read threw; the rewritten method throws the same throwable on after this returns (it never throws). */
+  public static void abortBodyRead() {
     try {
-      RequestBodyCapture.abort(token);
+      RequestBodyCapture.abort();
     } catch (Throwable ignored) {
       // The application's own exception goes on.
     }

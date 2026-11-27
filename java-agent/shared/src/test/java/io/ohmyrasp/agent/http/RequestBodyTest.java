@@ -13,6 +13,7 @@ import java.nio.charset.StandardCharsets;
 import java.util.Arrays;
 import java.util.Collections;
 import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.Assumptions;
 import org.junit.jupiter.api.Test;
 
 class RequestBodyTest {
@@ -344,31 +345,182 @@ class RequestBodyTest {
     RequestBody body = request("text/plain", null, -1);
     Object failed = RequestBodyCapture.enter(SOURCE);
     assertNotNull(failed);
-    RequestBodyCapture.abort(failed); // what the rewritten method's handler does when the read throws
+    RequestBodyCapture.abort(); // what the rewritten method's handler does when the read throws
     read("ok".getBytes(StandardCharsets.UTF_8), 0, 2);
     assertEquals("ok", body.snapshot().text(), "the retry is recorded");
   }
 
   @Test
-  void aDeniedRequestThrowsTheSameBlockOnEveryLaterRead() {
+  void anInnerReadThatThrowsDoesNotReleaseTheOuterReadsClaim() {
+    RequestBody body = request("text/plain", null, -1);
+    Object outer = RequestBodyCapture.enter(SOURCE);
+    assertNotNull(outer);
+    assertNull(RequestBodyCapture.enter(SOURCE), "the read the outer read makes");
+    RequestBodyCapture.abort(); // the inner read threw, and the outer read caught it
+    assertNull(RequestBodyCapture.enter(SOURCE), "the outer read still holds the claim: its next inner read records nothing");
+    RequestBodyCapture.exitByte('a', null);
+    RequestBodyCapture.exitBytes(2, outer, "ab".getBytes(StandardCharsets.UTF_8), 0);
+    assertEquals("ab", body.snapshot().text(), "the outer read's bytes, once");
+  }
+
+  /** One unrelated read that fails to return data, in each way a read can, before the request's own stream. */
+  @Test
+  void aReadThatReturnsNoDataClaimsNothing() {
+    for (int way = 0; way < 4; way++) {
+      RequestBody body = request("text/plain", null, 2);
+      Object unrelated = new Object();
+      Object token = RequestBodyCapture.enter(unrelated);
+      assertNotNull(token, "a candidate while no read returned data");
+      switch (way) {
+        case 0: RequestBodyCapture.abort(); break;                                        // it threw
+        case 1: assertFalse(RequestBodyCapture.exitBytes(0, token, new byte[4], 0)); break; // it read nothing
+        case 2: assertFalse(RequestBodyCapture.exitBytes(-1, token, new byte[4], 0)); break; // end of its stream
+        default: assertFalse(RequestBodyCapture.exitAll(new byte[0], token, true)); break;  // readAllBytes, empty
+      }
+      assertFalse(body.done(), "way " + way + ": the unrelated stream did not end the request's body");
+      assertTrue(read("ok".getBytes(StandardCharsets.UTF_8), 0, 2), "way " + way + ": the request's own stream records");
+      assertEquals("ok", body.snapshot().text());
+      assertNull(RequestBodyCapture.enter(unrelated), "way " + way + ": the stream that returned data owns the body");
+      RequestBodyCapture.dispatchExited(true);
+    }
+  }
+
+  @Test
+  void theStreamThatReturnsDataFirstOwnsTheBodyInEitherOrder() {
+    Object other = new Object();
+    for (boolean ownFirst : new boolean[] {true, false}) {
+      RequestBody body = request("text/plain", null, -1);
+      Object first = ownFirst ? SOURCE : other;
+      Object second = ownFirst ? other : SOURCE;
+      Object token = RequestBodyCapture.enter(first);
+      RequestBodyCapture.exitBytes(1, token, new byte[] {'1'}, 0);
+      assertNull(RequestBodyCapture.enter(second), "the other stream records nothing");
+      RequestBodyCapture.exitBytes(1, null, new byte[] {'2'}, 0);
+      token = RequestBodyCapture.enter(first);
+      RequestBodyCapture.exitBytes(1, token, new byte[] {'3'}, 0);
+      assertEquals("13", body.snapshot().text());
+      RequestBodyCapture.dispatchExited(true);
+    }
+  }
+
+  /**
+   * An include or forward of the same request: the container hands the servlet a wrapper around the request (here
+   * the servlet API's own HttpServletRequestWrapper, from Tomcat's embedded JAR) and the recorder stays the same.
+   */
+  @Test
+  void anIncludeOfTheSameRequestSharesItsRecorder() throws Exception {
+    String path = System.getProperty("ohmyrasp.test.tomcat10");
+    Assumptions.assumeTrue(path != null && !path.isEmpty(), "the build passes no Tomcat classpath");
+    java.util.List<java.net.URL> urls = new java.util.ArrayList<java.net.URL>();
+    for (String part : path.split(java.io.File.pathSeparator)) urls.add(new java.io.File(part).toURI().toURL());
+    ClassLoader loader = new java.net.URLClassLoader(urls.toArray(new java.net.URL[0]), RequestBodyTest.class.getClassLoader());
+    Class<?> api = loader.loadClass("jakarta.servlet.http.HttpServletRequest");
+    Object outer = java.lang.reflect.Proxy.newProxyInstance(loader, new Class<?>[] {api},
+        new java.lang.reflect.InvocationHandler() {
+          @Override public Object invoke(Object proxy, java.lang.reflect.Method method, Object[] arguments) {
+            Class<?> type = method.getReturnType();
+            if (type == long.class) return -1L;
+            if (type == int.class) return -1;
+            if (type == boolean.class) return false;
+            if ("getContentType".equals(method.getName())) return "text/plain";
+            return null;
+          }
+        });
+    Object wrapper = loader.loadClass("jakarta.servlet.http.HttpServletRequestWrapper").getConstructor(api)
+        .newInstance(outer);
+    Object wrapperOfWrapper = loader.loadClass("jakarta.servlet.http.HttpServletRequestWrapper").getConstructor(api)
+        .newInstance(wrapper);
+    assertTrue(RequestBodyCapture.sameRequest(outer, wrapperOfWrapper), "a wrapper chain reaches the request");
+    assertTrue(RequestBodyCapture.sameRequest(wrapper, outer), "and the request is reached from its wrapper");
+    assertFalse(RequestBodyCapture.sameRequest(outer, new FakeRequest("text/plain", null, -1, null)));
+
+    RequestBody body = request(outer);
+    read("ab".getBytes(StandardCharsets.UTF_8), 0, 2);
+    RequestBodyCapture.dispatchEntered();
+    RequestBodyCapture.applicationEntered(false, wrapperOfWrapper, true);
+    assertSame(body, RequestBodyCapture.current(), "the include's wrapped request is the same request");
+    read("cd".getBytes(StandardCharsets.UTF_8), 0, 2);
+    RequestBodyCapture.dispatchExited(false);
+    assertSame(body, RequestBodyCapture.current());
+    assertEquals("abcd", body.snapshot().text(), "one body, read across the include");
+  }
+
+  @Test
+  void aDistinctRequestInsideAnotherGetsARecorderOfItsOwnUntilItsDispatchLeaves() {
+    RequestBody outer = request("text/plain", null, -1);
+    read("ab".getBytes(StandardCharsets.UTF_8), 0, 2);
+    RequestBodySnapshot outerState = outer.snapshot();
+    // A request object that is not the outer one and wraps nothing of it.
+    RequestBodyCapture.dispatchEntered();
+    RequestBodyCapture.applicationEntered(false, new FakeRequest("application/json", null, -1, null), true);
+    RequestBody inner = RequestBodyCapture.current();
+    assertNotNull(inner);
+    assertTrue(inner != outer, "a recorder of its own");
+    assertNull(inner.snapshot(), "the inner request has read nothing");
+    Object other = new Object();
+    Object token = RequestBodyCapture.enter(other);
+    assertNotNull(token, "the inner request binds to its own stream");
+    RequestBodyCapture.exitBytes(4, token, "{\"x\"".getBytes(StandardCharsets.UTF_8), 0);
+    assertEquals("{\"x\"", inner.snapshot().text());
+    // An include of the inner request (its own object) stays on the inner recorder.
+    RequestBodyCapture.dispatchEntered();
+    RequestBodyCapture.applicationEntered(false, null, true);
+    assertSame(inner, RequestBodyCapture.current());
+    RequestBodyCapture.dispatchExited(false);
+    assertSame(inner, RequestBodyCapture.current());
+    RequestBodyCapture.dispatchExited(false);
+    assertSame(outer, RequestBodyCapture.current(), "the outer request's recorder is current again");
+    assertSame(outerState, outer.snapshot(), "and unchanged");
+    assertNull(inner.snapshot(), "the inner request's record is dropped when its dispatch leaves");
+    assertNotNull(RequestBodyCapture.enter(SOURCE), "the outer request's stream records again");
+  }
+
+  @Test
+  void aDeniedRequestThrowsTheSameBlockOnEveryLaterReadOfItsStream() {
     request("application/json", null, -1);
+    read("{".getBytes(StandardCharsets.UTF_8), 0, 1);
     RuntimeException block = new RuntimeException("blocked");
     RequestBodyCapture.deny(block);
-    try {
-      RequestBodyCapture.enter(SOURCE);
-      throw new AssertionError("the read went on");
-    } catch (RuntimeException thrown) {
-      assertSame(block, thrown);
+    for (int i = 0; i < 2; i++) {
+      try {
+        RequestBodyCapture.enter(SOURCE);
+        throw new AssertionError("the read went on");
+      } catch (RuntimeException thrown) {
+        assertSame(block, thrown);
+      }
     }
-    try {
-      RequestBodyCapture.enter(new Object());
-      throw new AssertionError("a read of another stream went on");
-    } catch (RuntimeException thrown) {
-      assertSame(block, thrown);
-    }
+    assertNull(RequestBodyCapture.enter(new Object()), "a read of another stream is not interrupted");
+    RequestBodyCapture.exitBytes(1, null, new byte[] {'x'}, 0);
+    RequestBodyCapture.dispatchEntered(); // a nested dispatch: the agent's own parameter lookup reads the stream
+    assertNull(RequestBodyCapture.enter(SOURCE), "the agent's own inspection is not interrupted");
+    RequestBodyCapture.exitBytes(-1, null, new byte[1], 0);
+    RequestBodyCapture.dispatchExited(false);
     RequestBodyCapture.dispatchExited(true);
     request("application/json", null, -1);
     assertNotNull(RequestBodyCapture.enter(SOURCE), "the next request is not denied");
+  }
+
+  /**
+   * A failure while a read is recorded stops recording and releases the claim. No input makes the recorder fail,
+   * so the failure is made by corrupting its buffer: the next copy into it throws.
+   */
+  @Test
+  void aFailureWhileRecordingStopsRecordingAndReleasesTheClaim() throws Exception {
+    RequestBody body = request("text/plain", null, -1);
+    read("ab".getBytes(StandardCharsets.UTF_8), 0, 2);
+    java.lang.reflect.Field bytes = RequestBody.class.getDeclaredField("bytes");
+    bytes.setAccessible(true);
+    bytes.set(body, new byte[1]); // shorter than the two bytes recorded: growing it throws
+    Object token = RequestBodyCapture.enter(SOURCE);
+    assertNotNull(token);
+    assertTrue(RequestBodyCapture.exitBytes(2, token, "cd".getBytes(StandardCharsets.UTF_8), 0),
+        "the failure ends the body: its last state is decided");
+    assertTrue(body.done());
+    assertNull(RequestBodyCapture.enter(SOURCE), "recording stopped");
+    RequestBodyCapture.exitBytes(1, null, new byte[1], 0);
+    java.lang.reflect.Field claim = RequestBody.class.getDeclaredField("claimDepth");
+    claim.setAccessible(true);
+    assertEquals(0, claim.getInt(body), "the failed read released its claim");
   }
 
   private static Object field(RequestBody body, String name) throws Exception {

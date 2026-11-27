@@ -11,10 +11,14 @@ import java.util.Locale;
  *
  * <p>One object per thread, made the first time the thread serves a request and reused for each request after
  * it; nothing is recorded until the request's first body byte, and the buffers grow to the cap and no further.
- * Only one source is recorded per request: the stream or reader whose read came first inside the request
- * ({@link #claim}); reads of any other object on the thread are not recorded. When the request ends, or the
- * thread starts another request, the recorded bytes and characters are overwritten with zeros, buffers larger
- * than {@link #KEPT_CAPACITY} are dropped, and the snapshot, source and request references are cleared.
+ * A distinct request served inside another one on the same thread (a dispatch whose request is not the outer
+ * request or a wrapper of it) gets a recorder of its own for as long as its dispatch lasts ({@link #parent}).
+ * Only one source is recorded per request: the stream or reader whose read was the first to return data inside
+ * the request ({@link #claim}, then {@link #own}); a read that throws, returns nothing or returns end of stream
+ * before that claims nothing, and reads of any other object on the thread are not recorded. When the request
+ * ends, or the thread starts another request, the recorded bytes and characters are overwritten with zeros,
+ * buffers larger than {@link #KEPT_CAPACITY} are dropped, and the snapshot, source and request references are
+ * cleared.
  * Bytes (from the servlet input stream) or characters (from a container reader that does not read through the
  * stream) are kept up to {@link #MAX_UNITS}; past it nothing more is recorded and {@link #truncated} is set.
  * A body whose content type is not text (multipart, octet-stream, images, any type not listed in
@@ -33,6 +37,11 @@ public final class RequestBody {
   public static final int MAX_UNITS = 8192;
   /** The states before the body completes that get a snapshot (and a decision) of their own. */
   public static final int MAX_STATES = 16;
+  /**
+   * The rule evaluations the body states of one request may cause, over every dispatch of the request: past it,
+   * no body state of the request is decided again ({@link #evaluate}).
+   */
+  public static final int MAX_EVALUATIONS = 2 * MAX_STATES + 2;
   private static final int FIRST_CAPACITY = 1024;
   /** A buffer this size or smaller is kept, zeroed, for the thread's next request; a larger one is dropped. */
   static final int KEPT_CAPACITY = FIRST_CAPACITY;
@@ -47,13 +56,25 @@ public final class RequestBody {
   // Thread confinement: every field is read and written by the thread that serves the request.
   private boolean active;
   private boolean inspecting;
-  private boolean reading;
   private boolean done;
   boolean open;
 
+  // The recorder of the request this one's dispatch was served inside, while that dispatch lasts; else null.
+  RequestBody parent;
+  // Dispatches of this recorder's request entered on the thread and not left yet.
+  int dispatches;
+  // Rewritten reads in progress on the thread (entered and not yet returned or thrown out of), and the depth of
+  // the one that holds the claim (0: none). The claim is released by the read at that depth only.
+  private int depth;
+  private int claimDepth;
+
   private Object servletRequest;
-  // The stream or reader the request's body is read from: the first that read inside the request.
+  // The stream or reader the request's body is read from: the first whose read returned data inside the request.
   private Object source;
+  // The source of the read that holds the claim, which becomes the source when the read returns data.
+  private Object candidate;
+  // Rule evaluations caused by this request's body states (see MAX_EVALUATIONS).
+  private int evaluations;
   // Where the NIO buffer of the current read stood when the read started; -1 when the read is not into one.
   int bufferStart = -1;
   // The block the engine threw on this request's body: every later read of the request throws it again.
@@ -88,12 +109,14 @@ public final class RequestBody {
     reset();
     servletRequest = request;
     active = true;
+    dispatches = 1;
     recompute();
   }
 
   void end() {
     reset();
     servletRequest = null;
+    dispatches = 0;
     recompute();
   }
 
@@ -105,13 +128,16 @@ public final class RequestBody {
   private void reset() {
     wipe();
     source = null;
+    candidate = null;
+    depth = 0;
+    claimDepth = 0;
+    evaluations = 0;
     bufferStart = -1;
     denial = null;
     lineOpen = false;
     builds = 0;
     active = false;
     inspecting = false;
-    reading = false;
     done = false;
     kind = UNKNOWN;
     encoding = null;
@@ -145,33 +171,76 @@ public final class RequestBody {
   }
 
   private void recompute() {
-    open = active && !inspecting && !done && !reading;
+    open = active && !inspecting && !done && claimDepth == 0;
+  }
+
+  boolean inspecting() {
+    return inspecting;
+  }
+
+  /** Whether {@code from} is the stream or reader whose data this request recorded. */
+  boolean owns(Object from) {
+    return from != null && source == from;
   }
 
   /**
-   * The outermost read of {@code from} starts: reads it makes on this or a wrapped stream are not recorded again.
-   * The first read inside the request names the source; a read of any other object is not recorded.
+   * A rewritten read of {@code from} starts; true when it holds the claim, as the outermost read of the
+   * request's source (or of a candidate for it while no read returned data yet): reads it makes on this or a
+   * wrapped stream are not recorded again, and a read of any other object than the source is not recorded.
+   * Every call is matched by one {@link #leave} or {@link #abort}.
    */
   boolean claim(Object from) {
-    if (!open || from == null) return false;
-    if (source == null) source = from;
-    else if (source != from) return false;
-    reading = true;
-    open = false;
+    depth++;
+    if (!open || from == null || (source != null && source != from)) return false;
+    candidate = from;
+    claimDepth = depth;
+    recompute();
     return true;
   }
 
+  /** The read that holds the claim returned: whatever it recorded, the next read may claim. */
   void release() {
-    reading = false;
+    if (claimDepth > 0) depth = claimDepth;
+    claimDepth = 0;
+    candidate = null;
+    leave();
+  }
+
+  /** A read that does not hold the claim returned. */
+  void leave() {
+    if (depth > 0) depth--;
     recompute();
+  }
+
+  /** A read threw: when it is the one that holds the claim, the next read may claim. */
+  void abort() {
+    if (claimDepth > 0 && claimDepth == depth) {
+      claimDepth = 0;
+      candidate = null;
+    }
+    leave();
+  }
+
+  /**
+   * The read that holds the claim returned data: its source is the request's from now on. False when another
+   * source returned data first (the claim then records nothing).
+   */
+  private boolean own() {
+    if (source == null) source = candidate;
+    return source != null && source == candidate;
+  }
+
+  /** End of stream from the read that holds the claim: the body ends only when it is the source's. */
+  private boolean ended() {
+    return source != null && source == candidate && finish();
   }
 
   // ---- what a read returned -----------------------------------------------------------------------------------
 
   /** One byte (or end of stream when {@code value} is negative); true when the body is complete and undecided. */
   boolean recordByte(int value) {
-    if (value < 0) return finish();
-    if (!admit(false)) return false;
+    if (value < 0) return ended();
+    if (!own() || !admit(false)) return false;
     if (byteCount >= MAX_UNITS) return cap();
     ensureBytes(1);
     bytes[byteCount++] = (byte) value;
@@ -180,9 +249,9 @@ public final class RequestBody {
   }
 
   boolean recordBytes(byte[] source, int offset, int count) {
-    if (count < 0) return finish();
+    if (count < 0) return ended();
     if (count == 0 || source == null || offset < 0 || offset > source.length - count) return false;
-    if (!admit(false)) return false;
+    if (!own() || !admit(false)) return false;
     int take = Math.min(count, MAX_UNITS - byteCount);
     if (take > 0) {
       ensureBytes(take);
@@ -203,9 +272,9 @@ public final class RequestBody {
   boolean recordBuffer(ByteBuffer buffer, int count) {
     int start = bufferStart;
     bufferStart = -1;
-    if (count < 0) return finish();
+    if (count < 0) return ended();
     if (count == 0 || buffer == null || start < 0 || start > buffer.capacity() - count) return false;
-    if (!admit(false)) return false;
+    if (!own() || !admit(false)) return false;
     int take = Math.min(count, MAX_UNITS - byteCount);
     if (take > 0) {
       ensureBytes(take);
@@ -221,8 +290,8 @@ public final class RequestBody {
   }
 
   boolean recordChar(int value) {
-    if (value < 0) return finish();
-    if (!admit(true)) return false;
+    if (value < 0) return ended();
+    if (!own() || !admit(true)) return false;
     closeLine();
     if (charCount >= MAX_UNITS) return cap();
     ensureChars(1);
@@ -233,9 +302,9 @@ public final class RequestBody {
   }
 
   boolean recordChars(char[] source, int offset, int count) {
-    if (count < 0) return finish();
+    if (count < 0) return ended();
     if (count == 0 || source == null || offset < 0 || offset > source.length - count) return false;
-    if (!admit(true)) return false;
+    if (!own() || !admit(true)) return false;
     closeLine();
     int take = Math.min(count, MAX_UNITS - charCount);
     if (take > 0) {
@@ -253,9 +322,9 @@ public final class RequestBody {
   boolean recordCharBuffer(CharBuffer buffer, int count) {
     int start = bufferStart;
     bufferStart = -1;
-    if (count < 0) return finish();
+    if (count < 0) return ended();
     if (count == 0 || buffer == null || start < 0 || start > buffer.capacity() - count) return false;
-    if (!admit(true)) return false;
+    if (!own() || !admit(true)) return false;
     closeLine();
     int take = Math.min(count, MAX_UNITS - charCount);
     if (take > 0) {
@@ -278,8 +347,8 @@ public final class RequestBody {
    * ({@link #closeLine}), and counted as one byte towards Content-Length (a CRLF body completes by end of stream).
    */
   boolean recordLine(String line) {
-    if (line == null) return finish();
-    if (!admit(true)) return false;
+    if (line == null) return ended();
+    if (!own() || !admit(true)) return false;
     closeLine();
     int count = line.length();
     int take = Math.min(count, MAX_UNITS - charCount);
@@ -310,7 +379,17 @@ public final class RequestBody {
   boolean recordAll(byte[] all, boolean toEnd) {
     if (all == null) return false;
     boolean due = all.length > 0 && recordBytes(all, 0, all.length);
-    return toEnd ? finish() || due : due;
+    return toEnd ? ended() || due : due;
+  }
+
+  /**
+   * Whether the request's body may cause one more rule evaluation; counts it when it may. At most
+   * {@link #MAX_EVALUATIONS} per request, over all its dispatches.
+   */
+  public boolean evaluate() {
+    if (evaluations >= MAX_EVALUATIONS) return false;
+    evaluations++;
+    return true;
   }
 
   // ---- state for the engines ----------------------------------------------------------------------------------
@@ -387,6 +466,11 @@ public final class RequestBody {
   private boolean cap() {
     // Truncated unless Content-Length says the cap holds the whole body.
     truncated = !(contentLength >= 0 && (charMode ? charBytes : byteCount) >= contentLength);
+    return finish();
+  }
+
+  /** Recording failed: record nothing more; true when that makes a state no decision has seen. */
+  boolean stop() {
     return finish();
   }
 

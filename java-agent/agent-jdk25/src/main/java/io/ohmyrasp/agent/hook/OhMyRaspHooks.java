@@ -425,10 +425,11 @@ public final class OhMyRaspHooks {
     }
   }
 
-  public static void abortBodyRead(Object token) {
+  /** The read threw; the rewritten method throws the same throwable on after this returns (it never throws). */
+  public static void abortBodyRead() {
     if (HookActivation.inactive()) return;
     try {
-      RequestBodyCapture.abort(token);
+      RequestBodyCapture.abort();
     } catch (Throwable ignored) {
       // The application's own exception goes on.
     }
