@@ -716,16 +716,22 @@ io.undertow:undertow-servlet 1.4.28.Final io/undertow/servlet/spec/PartImpl getH
 io.undertow:undertow-servlet 1.4.28.Final io/undertow/servlet/spec/PartImpl getSubmittedFileName ()Ljava/lang/String; -> io/ohmyrasp/agent/hook/OhMyRaspHooks.inspectMultipartFilename @ MultipartUploadHookModule
 io.undertow:undertow-servlet 1.4.28.Final io/undertow/servlet/spec/PartImpl getSubmittedFileName ()Ljava/lang/String; -> io/ohmyrasp/agent/http/MultipartFilename.enter @ MultipartUploadHookModule
 io.undertow:undertow-servlet 1.4.28.Final io/undertow/servlet/spec/PartImpl getSubmittedFileName ()Ljava/lang/String; -> io/ohmyrasp/agent/http/MultipartFilename.exit x2 @ MultipartUploadHookModule
+io.undertow:undertow-servlet 1.4.28.Final io/undertow/servlet/spec/ServletInputStreamImpl read ()I -> io/ohmyrasp/agent/hook/OhMyRaspHooks.abortBodyRead @ RequestBodyHookModule
 io.undertow:undertow-servlet 1.4.28.Final io/undertow/servlet/spec/ServletInputStreamImpl read ()I -> io/ohmyrasp/agent/hook/OhMyRaspHooks.enterBodyRead @ RequestBodyHookModule
 io.undertow:undertow-servlet 1.4.28.Final io/undertow/servlet/spec/ServletInputStreamImpl read ()I -> io/ohmyrasp/agent/hook/OhMyRaspHooks.exitBodyRead x2 @ RequestBodyHookModule
+io.undertow:undertow-servlet 1.4.28.Final io/undertow/servlet/spec/ServletInputStreamImpl read ([B)I -> io/ohmyrasp/agent/hook/OhMyRaspHooks.abortBodyRead @ RequestBodyHookModule
 io.undertow:undertow-servlet 1.4.28.Final io/undertow/servlet/spec/ServletInputStreamImpl read ([B)I -> io/ohmyrasp/agent/hook/OhMyRaspHooks.enterBodyRead @ RequestBodyHookModule
 io.undertow:undertow-servlet 1.4.28.Final io/undertow/servlet/spec/ServletInputStreamImpl read ([B)I -> io/ohmyrasp/agent/hook/OhMyRaspHooks.exitBodyRead @ RequestBodyHookModule
+io.undertow:undertow-servlet 1.4.28.Final io/undertow/servlet/spec/ServletInputStreamImpl read ([BII)I -> io/ohmyrasp/agent/hook/OhMyRaspHooks.abortBodyRead @ RequestBodyHookModule
 io.undertow:undertow-servlet 1.4.28.Final io/undertow/servlet/spec/ServletInputStreamImpl read ([BII)I -> io/ohmyrasp/agent/hook/OhMyRaspHooks.enterBodyRead @ RequestBodyHookModule
 io.undertow:undertow-servlet 1.4.28.Final io/undertow/servlet/spec/ServletInputStreamImpl read ([BII)I -> io/ohmyrasp/agent/hook/OhMyRaspHooks.exitBodyRead x3 @ RequestBodyHookModule
+io.undertow:undertow-servlet 1.4.28.Final io/undertow/servlet/spec/UpgradeServletInputStream read ()I -> io/ohmyrasp/agent/hook/OhMyRaspHooks.abortBodyRead @ RequestBodyHookModule
 io.undertow:undertow-servlet 1.4.28.Final io/undertow/servlet/spec/UpgradeServletInputStream read ()I -> io/ohmyrasp/agent/hook/OhMyRaspHooks.enterBodyRead @ RequestBodyHookModule
 io.undertow:undertow-servlet 1.4.28.Final io/undertow/servlet/spec/UpgradeServletInputStream read ()I -> io/ohmyrasp/agent/hook/OhMyRaspHooks.exitBodyRead x2 @ RequestBodyHookModule
+io.undertow:undertow-servlet 1.4.28.Final io/undertow/servlet/spec/UpgradeServletInputStream read ([B)I -> io/ohmyrasp/agent/hook/OhMyRaspHooks.abortBodyRead @ RequestBodyHookModule
 io.undertow:undertow-servlet 1.4.28.Final io/undertow/servlet/spec/UpgradeServletInputStream read ([B)I -> io/ohmyrasp/agent/hook/OhMyRaspHooks.enterBodyRead @ RequestBodyHookModule
 io.undertow:undertow-servlet 1.4.28.Final io/undertow/servlet/spec/UpgradeServletInputStream read ([B)I -> io/ohmyrasp/agent/hook/OhMyRaspHooks.exitBodyRead @ RequestBodyHookModule
+io.undertow:undertow-servlet 1.4.28.Final io/undertow/servlet/spec/UpgradeServletInputStream read ([BII)I -> io/ohmyrasp/agent/hook/OhMyRaspHooks.abortBodyRead @ RequestBodyHookModule
 io.undertow:undertow-servlet 1.4.28.Final io/undertow/servlet/spec/UpgradeServletInputStream read ([BII)I -> io/ohmyrasp/agent/hook/OhMyRaspHooks.enterBodyRead @ RequestBodyHookModule
 io.undertow:undertow-servlet 1.4.28.Final io/undertow/servlet/spec/UpgradeServletInputStream read ([BII)I -> io/ohmyrasp/agent/hook/OhMyRaspHooks.exitBodyRead x3 @ RequestBodyHookModule
 io.undertow:undertow-servlet 2.0.42.Final io/undertow/servlet/spec/HttpServletRequestImpl getAttributeNames ()Ljava/util/Enumeration; -> io/ohmyrasp/agent/hook/OhMyRaspHooks.afterMultipartAccess @ (shared visitors)
@@ -745,16 +751,22 @@ io.undertow:undertow-servlet 2.0.42.Final io/undertow/servlet/spec/PartImpl getH
 io.undertow:undertow-servlet 2.0.42.Final io/undertow/servlet/spec/PartImpl getSubmittedFileName ()Ljava/lang/String; -> io/ohmyrasp/agent/hook/OhMyRaspHooks.inspectMultipartFilename @ MultipartUploadHookModule
 io.undertow:undertow-servlet 2.0.42.Final io/undertow/servlet/spec/PartImpl getSubmittedFileName ()Ljava/lang/String; -> io/ohmyrasp/agent/http/MultipartFilename.enter @ MultipartUploadHookModule
 io.undertow:undertow-servlet 2.0.42.Final io/undertow/servlet/spec/PartImpl getSubmittedFileName ()Ljava/lang/String; -> io/ohmyrasp/agent/http/MultipartFilename.exit x2 @ MultipartUploadHookModule
+io.undertow:undertow-servlet 2.0.42.Final io/undertow/servlet/spec/ServletInputStreamImpl read ()I -> io/ohmyrasp/agent/hook/OhMyRaspHooks.abortBodyRead @ RequestBodyHookModule
 io.undertow:undertow-servlet 2.0.42.Final io/undertow/servlet/spec/ServletInputStreamImpl read ()I -> io/ohmyrasp/agent/hook/OhMyRaspHooks.enterBodyRead @ RequestBodyHookModule
 io.undertow:undertow-servlet 2.0.42.Final io/undertow/servlet/spec/ServletInputStreamImpl read ()I -> io/ohmyrasp/agent/hook/OhMyRaspHooks.exitBodyRead x2 @ RequestBodyHookModule
+io.undertow:undertow-servlet 2.0.42.Final io/undertow/servlet/spec/ServletInputStreamImpl read ([B)I -> io/ohmyrasp/agent/hook/OhMyRaspHooks.abortBodyRead @ RequestBodyHookModule
 io.undertow:undertow-servlet 2.0.42.Final io/undertow/servlet/spec/ServletInputStreamImpl read ([B)I -> io/ohmyrasp/agent/hook/OhMyRaspHooks.enterBodyRead @ RequestBodyHookModule
 io.undertow:undertow-servlet 2.0.42.Final io/undertow/servlet/spec/ServletInputStreamImpl read ([B)I -> io/ohmyrasp/agent/hook/OhMyRaspHooks.exitBodyRead @ RequestBodyHookModule
+io.undertow:undertow-servlet 2.0.42.Final io/undertow/servlet/spec/ServletInputStreamImpl read ([BII)I -> io/ohmyrasp/agent/hook/OhMyRaspHooks.abortBodyRead @ RequestBodyHookModule
 io.undertow:undertow-servlet 2.0.42.Final io/undertow/servlet/spec/ServletInputStreamImpl read ([BII)I -> io/ohmyrasp/agent/hook/OhMyRaspHooks.enterBodyRead @ RequestBodyHookModule
 io.undertow:undertow-servlet 2.0.42.Final io/undertow/servlet/spec/ServletInputStreamImpl read ([BII)I -> io/ohmyrasp/agent/hook/OhMyRaspHooks.exitBodyRead x3 @ RequestBodyHookModule
+io.undertow:undertow-servlet 2.0.42.Final io/undertow/servlet/spec/UpgradeServletInputStream read ()I -> io/ohmyrasp/agent/hook/OhMyRaspHooks.abortBodyRead @ RequestBodyHookModule
 io.undertow:undertow-servlet 2.0.42.Final io/undertow/servlet/spec/UpgradeServletInputStream read ()I -> io/ohmyrasp/agent/hook/OhMyRaspHooks.enterBodyRead @ RequestBodyHookModule
 io.undertow:undertow-servlet 2.0.42.Final io/undertow/servlet/spec/UpgradeServletInputStream read ()I -> io/ohmyrasp/agent/hook/OhMyRaspHooks.exitBodyRead x2 @ RequestBodyHookModule
+io.undertow:undertow-servlet 2.0.42.Final io/undertow/servlet/spec/UpgradeServletInputStream read ([B)I -> io/ohmyrasp/agent/hook/OhMyRaspHooks.abortBodyRead @ RequestBodyHookModule
 io.undertow:undertow-servlet 2.0.42.Final io/undertow/servlet/spec/UpgradeServletInputStream read ([B)I -> io/ohmyrasp/agent/hook/OhMyRaspHooks.enterBodyRead @ RequestBodyHookModule
 io.undertow:undertow-servlet 2.0.42.Final io/undertow/servlet/spec/UpgradeServletInputStream read ([B)I -> io/ohmyrasp/agent/hook/OhMyRaspHooks.exitBodyRead @ RequestBodyHookModule
+io.undertow:undertow-servlet 2.0.42.Final io/undertow/servlet/spec/UpgradeServletInputStream read ([BII)I -> io/ohmyrasp/agent/hook/OhMyRaspHooks.abortBodyRead @ RequestBodyHookModule
 io.undertow:undertow-servlet 2.0.42.Final io/undertow/servlet/spec/UpgradeServletInputStream read ([BII)I -> io/ohmyrasp/agent/hook/OhMyRaspHooks.enterBodyRead @ RequestBodyHookModule
 io.undertow:undertow-servlet 2.0.42.Final io/undertow/servlet/spec/UpgradeServletInputStream read ([BII)I -> io/ohmyrasp/agent/hook/OhMyRaspHooks.exitBodyRead x3 @ RequestBodyHookModule
 io.undertow:undertow-servlet 2.2.39.Final io/undertow/servlet/spec/HttpServletRequestImpl getAttributeNames ()Ljava/util/Enumeration; -> io/ohmyrasp/agent/hook/OhMyRaspHooks.afterMultipartAccess @ (shared visitors)
@@ -774,16 +786,22 @@ io.undertow:undertow-servlet 2.2.39.Final io/undertow/servlet/spec/PartImpl getH
 io.undertow:undertow-servlet 2.2.39.Final io/undertow/servlet/spec/PartImpl getSubmittedFileName ()Ljava/lang/String; -> io/ohmyrasp/agent/hook/OhMyRaspHooks.inspectMultipartFilename @ MultipartUploadHookModule
 io.undertow:undertow-servlet 2.2.39.Final io/undertow/servlet/spec/PartImpl getSubmittedFileName ()Ljava/lang/String; -> io/ohmyrasp/agent/http/MultipartFilename.enter @ MultipartUploadHookModule
 io.undertow:undertow-servlet 2.2.39.Final io/undertow/servlet/spec/PartImpl getSubmittedFileName ()Ljava/lang/String; -> io/ohmyrasp/agent/http/MultipartFilename.exit x2 @ MultipartUploadHookModule
+io.undertow:undertow-servlet 2.2.39.Final io/undertow/servlet/spec/ServletInputStreamImpl read ()I -> io/ohmyrasp/agent/hook/OhMyRaspHooks.abortBodyRead @ RequestBodyHookModule
 io.undertow:undertow-servlet 2.2.39.Final io/undertow/servlet/spec/ServletInputStreamImpl read ()I -> io/ohmyrasp/agent/hook/OhMyRaspHooks.enterBodyRead @ RequestBodyHookModule
 io.undertow:undertow-servlet 2.2.39.Final io/undertow/servlet/spec/ServletInputStreamImpl read ()I -> io/ohmyrasp/agent/hook/OhMyRaspHooks.exitBodyRead x2 @ RequestBodyHookModule
+io.undertow:undertow-servlet 2.2.39.Final io/undertow/servlet/spec/ServletInputStreamImpl read ([B)I -> io/ohmyrasp/agent/hook/OhMyRaspHooks.abortBodyRead @ RequestBodyHookModule
 io.undertow:undertow-servlet 2.2.39.Final io/undertow/servlet/spec/ServletInputStreamImpl read ([B)I -> io/ohmyrasp/agent/hook/OhMyRaspHooks.enterBodyRead @ RequestBodyHookModule
 io.undertow:undertow-servlet 2.2.39.Final io/undertow/servlet/spec/ServletInputStreamImpl read ([B)I -> io/ohmyrasp/agent/hook/OhMyRaspHooks.exitBodyRead @ RequestBodyHookModule
+io.undertow:undertow-servlet 2.2.39.Final io/undertow/servlet/spec/ServletInputStreamImpl read ([BII)I -> io/ohmyrasp/agent/hook/OhMyRaspHooks.abortBodyRead @ RequestBodyHookModule
 io.undertow:undertow-servlet 2.2.39.Final io/undertow/servlet/spec/ServletInputStreamImpl read ([BII)I -> io/ohmyrasp/agent/hook/OhMyRaspHooks.enterBodyRead @ RequestBodyHookModule
 io.undertow:undertow-servlet 2.2.39.Final io/undertow/servlet/spec/ServletInputStreamImpl read ([BII)I -> io/ohmyrasp/agent/hook/OhMyRaspHooks.exitBodyRead x3 @ RequestBodyHookModule
+io.undertow:undertow-servlet 2.2.39.Final io/undertow/servlet/spec/UpgradeServletInputStream read ()I -> io/ohmyrasp/agent/hook/OhMyRaspHooks.abortBodyRead @ RequestBodyHookModule
 io.undertow:undertow-servlet 2.2.39.Final io/undertow/servlet/spec/UpgradeServletInputStream read ()I -> io/ohmyrasp/agent/hook/OhMyRaspHooks.enterBodyRead @ RequestBodyHookModule
 io.undertow:undertow-servlet 2.2.39.Final io/undertow/servlet/spec/UpgradeServletInputStream read ()I -> io/ohmyrasp/agent/hook/OhMyRaspHooks.exitBodyRead x2 @ RequestBodyHookModule
+io.undertow:undertow-servlet 2.2.39.Final io/undertow/servlet/spec/UpgradeServletInputStream read ([B)I -> io/ohmyrasp/agent/hook/OhMyRaspHooks.abortBodyRead @ RequestBodyHookModule
 io.undertow:undertow-servlet 2.2.39.Final io/undertow/servlet/spec/UpgradeServletInputStream read ([B)I -> io/ohmyrasp/agent/hook/OhMyRaspHooks.enterBodyRead @ RequestBodyHookModule
 io.undertow:undertow-servlet 2.2.39.Final io/undertow/servlet/spec/UpgradeServletInputStream read ([B)I -> io/ohmyrasp/agent/hook/OhMyRaspHooks.exitBodyRead @ RequestBodyHookModule
+io.undertow:undertow-servlet 2.2.39.Final io/undertow/servlet/spec/UpgradeServletInputStream read ([BII)I -> io/ohmyrasp/agent/hook/OhMyRaspHooks.abortBodyRead @ RequestBodyHookModule
 io.undertow:undertow-servlet 2.2.39.Final io/undertow/servlet/spec/UpgradeServletInputStream read ([BII)I -> io/ohmyrasp/agent/hook/OhMyRaspHooks.enterBodyRead @ RequestBodyHookModule
 io.undertow:undertow-servlet 2.2.39.Final io/undertow/servlet/spec/UpgradeServletInputStream read ([BII)I -> io/ohmyrasp/agent/hook/OhMyRaspHooks.exitBodyRead x3 @ RequestBodyHookModule
 io.undertow:undertow-servlet 2.3.27.Final io/undertow/servlet/spec/HttpServletRequestImpl getAttributeNames ()Ljava/util/Enumeration; -> io/ohmyrasp/agent/hook/OhMyRaspHooks.afterMultipartAccess @ (shared visitors)
@@ -803,16 +821,22 @@ io.undertow:undertow-servlet 2.3.27.Final io/undertow/servlet/spec/PartImpl getH
 io.undertow:undertow-servlet 2.3.27.Final io/undertow/servlet/spec/PartImpl getSubmittedFileName ()Ljava/lang/String; -> io/ohmyrasp/agent/hook/OhMyRaspHooks.inspectMultipartFilename @ MultipartUploadHookModule
 io.undertow:undertow-servlet 2.3.27.Final io/undertow/servlet/spec/PartImpl getSubmittedFileName ()Ljava/lang/String; -> io/ohmyrasp/agent/http/MultipartFilename.enter @ MultipartUploadHookModule
 io.undertow:undertow-servlet 2.3.27.Final io/undertow/servlet/spec/PartImpl getSubmittedFileName ()Ljava/lang/String; -> io/ohmyrasp/agent/http/MultipartFilename.exit x2 @ MultipartUploadHookModule
+io.undertow:undertow-servlet 2.3.27.Final io/undertow/servlet/spec/ServletInputStreamImpl read ()I -> io/ohmyrasp/agent/hook/OhMyRaspHooks.abortBodyRead @ RequestBodyHookModule
 io.undertow:undertow-servlet 2.3.27.Final io/undertow/servlet/spec/ServletInputStreamImpl read ()I -> io/ohmyrasp/agent/hook/OhMyRaspHooks.enterBodyRead @ RequestBodyHookModule
 io.undertow:undertow-servlet 2.3.27.Final io/undertow/servlet/spec/ServletInputStreamImpl read ()I -> io/ohmyrasp/agent/hook/OhMyRaspHooks.exitBodyRead x2 @ RequestBodyHookModule
+io.undertow:undertow-servlet 2.3.27.Final io/undertow/servlet/spec/ServletInputStreamImpl read ([B)I -> io/ohmyrasp/agent/hook/OhMyRaspHooks.abortBodyRead @ RequestBodyHookModule
 io.undertow:undertow-servlet 2.3.27.Final io/undertow/servlet/spec/ServletInputStreamImpl read ([B)I -> io/ohmyrasp/agent/hook/OhMyRaspHooks.enterBodyRead @ RequestBodyHookModule
 io.undertow:undertow-servlet 2.3.27.Final io/undertow/servlet/spec/ServletInputStreamImpl read ([B)I -> io/ohmyrasp/agent/hook/OhMyRaspHooks.exitBodyRead @ RequestBodyHookModule
+io.undertow:undertow-servlet 2.3.27.Final io/undertow/servlet/spec/ServletInputStreamImpl read ([BII)I -> io/ohmyrasp/agent/hook/OhMyRaspHooks.abortBodyRead @ RequestBodyHookModule
 io.undertow:undertow-servlet 2.3.27.Final io/undertow/servlet/spec/ServletInputStreamImpl read ([BII)I -> io/ohmyrasp/agent/hook/OhMyRaspHooks.enterBodyRead @ RequestBodyHookModule
 io.undertow:undertow-servlet 2.3.27.Final io/undertow/servlet/spec/ServletInputStreamImpl read ([BII)I -> io/ohmyrasp/agent/hook/OhMyRaspHooks.exitBodyRead x3 @ RequestBodyHookModule
+io.undertow:undertow-servlet 2.3.27.Final io/undertow/servlet/spec/UpgradeServletInputStream read ()I -> io/ohmyrasp/agent/hook/OhMyRaspHooks.abortBodyRead @ RequestBodyHookModule
 io.undertow:undertow-servlet 2.3.27.Final io/undertow/servlet/spec/UpgradeServletInputStream read ()I -> io/ohmyrasp/agent/hook/OhMyRaspHooks.enterBodyRead @ RequestBodyHookModule
 io.undertow:undertow-servlet 2.3.27.Final io/undertow/servlet/spec/UpgradeServletInputStream read ()I -> io/ohmyrasp/agent/hook/OhMyRaspHooks.exitBodyRead x2 @ RequestBodyHookModule
+io.undertow:undertow-servlet 2.3.27.Final io/undertow/servlet/spec/UpgradeServletInputStream read ([B)I -> io/ohmyrasp/agent/hook/OhMyRaspHooks.abortBodyRead @ RequestBodyHookModule
 io.undertow:undertow-servlet 2.3.27.Final io/undertow/servlet/spec/UpgradeServletInputStream read ([B)I -> io/ohmyrasp/agent/hook/OhMyRaspHooks.enterBodyRead @ RequestBodyHookModule
 io.undertow:undertow-servlet 2.3.27.Final io/undertow/servlet/spec/UpgradeServletInputStream read ([B)I -> io/ohmyrasp/agent/hook/OhMyRaspHooks.exitBodyRead @ RequestBodyHookModule
+io.undertow:undertow-servlet 2.3.27.Final io/undertow/servlet/spec/UpgradeServletInputStream read ([BII)I -> io/ohmyrasp/agent/hook/OhMyRaspHooks.abortBodyRead @ RequestBodyHookModule
 io.undertow:undertow-servlet 2.3.27.Final io/undertow/servlet/spec/UpgradeServletInputStream read ([BII)I -> io/ohmyrasp/agent/hook/OhMyRaspHooks.enterBodyRead @ RequestBodyHookModule
 io.undertow:undertow-servlet 2.3.27.Final io/undertow/servlet/spec/UpgradeServletInputStream read ([BII)I -> io/ohmyrasp/agent/hook/OhMyRaspHooks.exitBodyRead x3 @ RequestBodyHookModule
 io.undertow:undertow-servlet-jakarta 2.2.20.Final io/undertow/servlet/spec/HttpServletRequestImpl getAttributeNames ()Ljava/util/Enumeration; -> io/ohmyrasp/agent/hook/OhMyRaspHooks.afterMultipartAccess @ (shared visitors)
@@ -832,16 +856,22 @@ io.undertow:undertow-servlet-jakarta 2.2.20.Final io/undertow/servlet/spec/PartI
 io.undertow:undertow-servlet-jakarta 2.2.20.Final io/undertow/servlet/spec/PartImpl getSubmittedFileName ()Ljava/lang/String; -> io/ohmyrasp/agent/hook/OhMyRaspHooks.inspectMultipartFilename @ MultipartUploadHookModule
 io.undertow:undertow-servlet-jakarta 2.2.20.Final io/undertow/servlet/spec/PartImpl getSubmittedFileName ()Ljava/lang/String; -> io/ohmyrasp/agent/http/MultipartFilename.enter @ MultipartUploadHookModule
 io.undertow:undertow-servlet-jakarta 2.2.20.Final io/undertow/servlet/spec/PartImpl getSubmittedFileName ()Ljava/lang/String; -> io/ohmyrasp/agent/http/MultipartFilename.exit x2 @ MultipartUploadHookModule
+io.undertow:undertow-servlet-jakarta 2.2.20.Final io/undertow/servlet/spec/ServletInputStreamImpl read ()I -> io/ohmyrasp/agent/hook/OhMyRaspHooks.abortBodyRead @ RequestBodyHookModule
 io.undertow:undertow-servlet-jakarta 2.2.20.Final io/undertow/servlet/spec/ServletInputStreamImpl read ()I -> io/ohmyrasp/agent/hook/OhMyRaspHooks.enterBodyRead @ RequestBodyHookModule
 io.undertow:undertow-servlet-jakarta 2.2.20.Final io/undertow/servlet/spec/ServletInputStreamImpl read ()I -> io/ohmyrasp/agent/hook/OhMyRaspHooks.exitBodyRead x2 @ RequestBodyHookModule
+io.undertow:undertow-servlet-jakarta 2.2.20.Final io/undertow/servlet/spec/ServletInputStreamImpl read ([B)I -> io/ohmyrasp/agent/hook/OhMyRaspHooks.abortBodyRead @ RequestBodyHookModule
 io.undertow:undertow-servlet-jakarta 2.2.20.Final io/undertow/servlet/spec/ServletInputStreamImpl read ([B)I -> io/ohmyrasp/agent/hook/OhMyRaspHooks.enterBodyRead @ RequestBodyHookModule
 io.undertow:undertow-servlet-jakarta 2.2.20.Final io/undertow/servlet/spec/ServletInputStreamImpl read ([B)I -> io/ohmyrasp/agent/hook/OhMyRaspHooks.exitBodyRead @ RequestBodyHookModule
+io.undertow:undertow-servlet-jakarta 2.2.20.Final io/undertow/servlet/spec/ServletInputStreamImpl read ([BII)I -> io/ohmyrasp/agent/hook/OhMyRaspHooks.abortBodyRead @ RequestBodyHookModule
 io.undertow:undertow-servlet-jakarta 2.2.20.Final io/undertow/servlet/spec/ServletInputStreamImpl read ([BII)I -> io/ohmyrasp/agent/hook/OhMyRaspHooks.enterBodyRead @ RequestBodyHookModule
 io.undertow:undertow-servlet-jakarta 2.2.20.Final io/undertow/servlet/spec/ServletInputStreamImpl read ([BII)I -> io/ohmyrasp/agent/hook/OhMyRaspHooks.exitBodyRead x3 @ RequestBodyHookModule
+io.undertow:undertow-servlet-jakarta 2.2.20.Final io/undertow/servlet/spec/UpgradeServletInputStream read ()I -> io/ohmyrasp/agent/hook/OhMyRaspHooks.abortBodyRead @ RequestBodyHookModule
 io.undertow:undertow-servlet-jakarta 2.2.20.Final io/undertow/servlet/spec/UpgradeServletInputStream read ()I -> io/ohmyrasp/agent/hook/OhMyRaspHooks.enterBodyRead @ RequestBodyHookModule
 io.undertow:undertow-servlet-jakarta 2.2.20.Final io/undertow/servlet/spec/UpgradeServletInputStream read ()I -> io/ohmyrasp/agent/hook/OhMyRaspHooks.exitBodyRead x2 @ RequestBodyHookModule
+io.undertow:undertow-servlet-jakarta 2.2.20.Final io/undertow/servlet/spec/UpgradeServletInputStream read ([B)I -> io/ohmyrasp/agent/hook/OhMyRaspHooks.abortBodyRead @ RequestBodyHookModule
 io.undertow:undertow-servlet-jakarta 2.2.20.Final io/undertow/servlet/spec/UpgradeServletInputStream read ([B)I -> io/ohmyrasp/agent/hook/OhMyRaspHooks.enterBodyRead @ RequestBodyHookModule
 io.undertow:undertow-servlet-jakarta 2.2.20.Final io/undertow/servlet/spec/UpgradeServletInputStream read ([B)I -> io/ohmyrasp/agent/hook/OhMyRaspHooks.exitBodyRead @ RequestBodyHookModule
+io.undertow:undertow-servlet-jakarta 2.2.20.Final io/undertow/servlet/spec/UpgradeServletInputStream read ([BII)I -> io/ohmyrasp/agent/hook/OhMyRaspHooks.abortBodyRead @ RequestBodyHookModule
 io.undertow:undertow-servlet-jakarta 2.2.20.Final io/undertow/servlet/spec/UpgradeServletInputStream read ([BII)I -> io/ohmyrasp/agent/hook/OhMyRaspHooks.enterBodyRead @ RequestBodyHookModule
 io.undertow:undertow-servlet-jakarta 2.2.20.Final io/undertow/servlet/spec/UpgradeServletInputStream read ([BII)I -> io/ohmyrasp/agent/hook/OhMyRaspHooks.exitBodyRead x3 @ RequestBodyHookModule
 jakarta.activation:jakarta.activation-api 1.2.2 javax/activation/URLDataSource <init> (Ljava/net/URL;)V -> io/ohmyrasp/agent/hook/OhMyRaspHooks.beforeUrlDataSource @ XmlAttachmentHookModule
@@ -1207,8 +1237,10 @@ org.apache.spark:spark-core_2.12 2.4.8 org/spark_project/jetty/plus/security/Dat
 org.apache.spark:spark-core_2.12 2.4.8 org/spark_project/jetty/plus/security/DataSourceLoginService prepareTables ()V -> io/ohmyrasp/agent/hook/OhMyRaspHooks.beforeSql x4 @ (shared visitors)
 org.apache.spark:spark-core_2.12 2.4.8 org/spark_project/jetty/security/JDBCLoginService loadRoleInfo (Lorg/spark_project/jetty/security/AbstractLoginService$UserPrincipal;)[Ljava/lang/String; -> io/ohmyrasp/agent/hook/OhMyRaspHooks.beforeSql @ (shared visitors)
 org.apache.spark:spark-core_2.12 2.4.8 org/spark_project/jetty/security/JDBCLoginService loadUserInfo (Ljava/lang/String;)Lorg/spark_project/jetty/security/AbstractLoginService$UserPrincipal; -> io/ohmyrasp/agent/hook/OhMyRaspHooks.beforeSql @ (shared visitors)
+org.apache.spark:spark-core_2.12 2.4.8 org/spark_project/jetty/server/HttpInput read ()I -> io/ohmyrasp/agent/hook/OhMyRaspHooks.abortBodyRead @ RequestBodyHookModule
 org.apache.spark:spark-core_2.12 2.4.8 org/spark_project/jetty/server/HttpInput read ()I -> io/ohmyrasp/agent/hook/OhMyRaspHooks.enterBodyRead @ RequestBodyHookModule
 org.apache.spark:spark-core_2.12 2.4.8 org/spark_project/jetty/server/HttpInput read ()I -> io/ohmyrasp/agent/hook/OhMyRaspHooks.exitBodyRead @ RequestBodyHookModule
+org.apache.spark:spark-core_2.12 2.4.8 org/spark_project/jetty/server/HttpInput read ([BII)I -> io/ohmyrasp/agent/hook/OhMyRaspHooks.abortBodyRead @ RequestBodyHookModule
 org.apache.spark:spark-core_2.12 2.4.8 org/spark_project/jetty/server/HttpInput read ([BII)I -> io/ohmyrasp/agent/hook/OhMyRaspHooks.enterBodyRead @ RequestBodyHookModule
 org.apache.spark:spark-core_2.12 2.4.8 org/spark_project/jetty/server/HttpInput read ([BII)I -> io/ohmyrasp/agent/hook/OhMyRaspHooks.exitBodyRead @ RequestBodyHookModule
 org.apache.spark:spark-core_2.12 2.4.8 org/spark_project/jetty/server/MultiParts$MultiPartsHttpParser getPart (Ljava/lang/String;)Ljavax/servlet/http/Part; -> io/ohmyrasp/agent/hook/OhMyRaspHooks.afterMultipartLookup @ MultipartUploadHookModule
@@ -1267,8 +1299,10 @@ org.apache.spark:spark-core_2.12 3.5.10 org/sparkproject/jetty/plus/security/Dat
 org.apache.spark:spark-core_2.12 3.5.10 org/sparkproject/jetty/plus/security/DataSourceLoginService prepareTables ()V -> io/ohmyrasp/agent/hook/OhMyRaspHooks.beforeSql x4 @ (shared visitors)
 org.apache.spark:spark-core_2.12 3.5.10 org/sparkproject/jetty/security/JDBCLoginService loadRoleInfo (Lorg/sparkproject/jetty/security/AbstractLoginService$UserPrincipal;)[Ljava/lang/String; -> io/ohmyrasp/agent/hook/OhMyRaspHooks.beforeSql @ (shared visitors)
 org.apache.spark:spark-core_2.12 3.5.10 org/sparkproject/jetty/security/JDBCLoginService loadUserInfo (Ljava/lang/String;)Lorg/sparkproject/jetty/security/AbstractLoginService$UserPrincipal; -> io/ohmyrasp/agent/hook/OhMyRaspHooks.beforeSql @ (shared visitors)
+org.apache.spark:spark-core_2.12 3.5.10 org/sparkproject/jetty/server/HttpInput read ()I -> io/ohmyrasp/agent/hook/OhMyRaspHooks.abortBodyRead @ RequestBodyHookModule
 org.apache.spark:spark-core_2.12 3.5.10 org/sparkproject/jetty/server/HttpInput read ()I -> io/ohmyrasp/agent/hook/OhMyRaspHooks.enterBodyRead @ RequestBodyHookModule
 org.apache.spark:spark-core_2.12 3.5.10 org/sparkproject/jetty/server/HttpInput read ()I -> io/ohmyrasp/agent/hook/OhMyRaspHooks.exitBodyRead @ RequestBodyHookModule
+org.apache.spark:spark-core_2.12 3.5.10 org/sparkproject/jetty/server/HttpInput read ([BII)I -> io/ohmyrasp/agent/hook/OhMyRaspHooks.abortBodyRead @ RequestBodyHookModule
 org.apache.spark:spark-core_2.12 3.5.10 org/sparkproject/jetty/server/HttpInput read ([BII)I -> io/ohmyrasp/agent/hook/OhMyRaspHooks.enterBodyRead @ RequestBodyHookModule
 org.apache.spark:spark-core_2.12 3.5.10 org/sparkproject/jetty/server/HttpInput read ([BII)I -> io/ohmyrasp/agent/hook/OhMyRaspHooks.exitBodyRead @ RequestBodyHookModule
 org.apache.spark:spark-core_2.12 3.5.10 org/sparkproject/jetty/server/MultiParts$MultiPartsHttpParser getPart (Ljava/lang/String;)Ljavax/servlet/http/Part; -> io/ohmyrasp/agent/hook/OhMyRaspHooks.afterMultipartLookup @ MultipartUploadHookModule
@@ -1343,20 +1377,28 @@ org.apache.tomcat.embed:tomcat-embed-core 10.1.62 jakarta/servlet/http/HttpServl
 org.apache.tomcat.embed:tomcat-embed-core 10.1.62 jakarta/servlet/http/HttpServlet service (Ljakarta/servlet/http/HttpServletRequest;Ljakarta/servlet/http/HttpServletResponse;)V -> io/ohmyrasp/agent/hook/OhMyRaspHooks.exitHttpRequest x2 @ ServletHookModule
 org.apache.tomcat.embed:tomcat-embed-core 10.1.62 jakarta/servlet/http/HttpServletRequestWrapper getPart (Ljava/lang/String;)Ljakarta/servlet/http/Part; -> io/ohmyrasp/agent/hook/OhMyRaspHooks.afterMultipartLookup @ MultipartUploadHookModule
 org.apache.tomcat.embed:tomcat-embed-core 10.1.62 jakarta/servlet/http/HttpServletRequestWrapper getParts ()Ljava/util/Collection; -> io/ohmyrasp/agent/hook/OhMyRaspHooks.afterMultipartLookup @ MultipartUploadHookModule
+org.apache.tomcat.embed:tomcat-embed-core 10.1.62 org/apache/catalina/connector/CoyoteInputStream read ()I -> io/ohmyrasp/agent/hook/OhMyRaspHooks.abortBodyRead @ RequestBodyHookModule
 org.apache.tomcat.embed:tomcat-embed-core 10.1.62 org/apache/catalina/connector/CoyoteInputStream read ()I -> io/ohmyrasp/agent/hook/OhMyRaspHooks.enterBodyRead @ RequestBodyHookModule
 org.apache.tomcat.embed:tomcat-embed-core 10.1.62 org/apache/catalina/connector/CoyoteInputStream read ()I -> io/ohmyrasp/agent/hook/OhMyRaspHooks.exitBodyRead x2 @ RequestBodyHookModule
+org.apache.tomcat.embed:tomcat-embed-core 10.1.62 org/apache/catalina/connector/CoyoteInputStream read (Ljava/nio/ByteBuffer;)I -> io/ohmyrasp/agent/hook/OhMyRaspHooks.abortBodyRead @ RequestBodyHookModule
 org.apache.tomcat.embed:tomcat-embed-core 10.1.62 org/apache/catalina/connector/CoyoteInputStream read (Ljava/nio/ByteBuffer;)I -> io/ohmyrasp/agent/hook/OhMyRaspHooks.enterBodyRead @ RequestBodyHookModule
 org.apache.tomcat.embed:tomcat-embed-core 10.1.62 org/apache/catalina/connector/CoyoteInputStream read (Ljava/nio/ByteBuffer;)I -> io/ohmyrasp/agent/hook/OhMyRaspHooks.exitBodyRead x2 @ RequestBodyHookModule
+org.apache.tomcat.embed:tomcat-embed-core 10.1.62 org/apache/catalina/connector/CoyoteInputStream read ([B)I -> io/ohmyrasp/agent/hook/OhMyRaspHooks.abortBodyRead @ RequestBodyHookModule
 org.apache.tomcat.embed:tomcat-embed-core 10.1.62 org/apache/catalina/connector/CoyoteInputStream read ([B)I -> io/ohmyrasp/agent/hook/OhMyRaspHooks.enterBodyRead @ RequestBodyHookModule
 org.apache.tomcat.embed:tomcat-embed-core 10.1.62 org/apache/catalina/connector/CoyoteInputStream read ([B)I -> io/ohmyrasp/agent/hook/OhMyRaspHooks.exitBodyRead @ RequestBodyHookModule
+org.apache.tomcat.embed:tomcat-embed-core 10.1.62 org/apache/catalina/connector/CoyoteInputStream read ([BII)I -> io/ohmyrasp/agent/hook/OhMyRaspHooks.abortBodyRead @ RequestBodyHookModule
 org.apache.tomcat.embed:tomcat-embed-core 10.1.62 org/apache/catalina/connector/CoyoteInputStream read ([BII)I -> io/ohmyrasp/agent/hook/OhMyRaspHooks.enterBodyRead @ RequestBodyHookModule
 org.apache.tomcat.embed:tomcat-embed-core 10.1.62 org/apache/catalina/connector/CoyoteInputStream read ([BII)I -> io/ohmyrasp/agent/hook/OhMyRaspHooks.exitBodyRead x2 @ RequestBodyHookModule
+org.apache.tomcat.embed:tomcat-embed-core 10.1.62 org/apache/catalina/connector/CoyoteReader read ()I -> io/ohmyrasp/agent/hook/OhMyRaspHooks.abortBodyRead @ RequestBodyHookModule
 org.apache.tomcat.embed:tomcat-embed-core 10.1.62 org/apache/catalina/connector/CoyoteReader read ()I -> io/ohmyrasp/agent/hook/OhMyRaspHooks.enterBodyRead @ RequestBodyHookModule
 org.apache.tomcat.embed:tomcat-embed-core 10.1.62 org/apache/catalina/connector/CoyoteReader read ()I -> io/ohmyrasp/agent/hook/OhMyRaspHooks.exitBodyChars @ RequestBodyHookModule
+org.apache.tomcat.embed:tomcat-embed-core 10.1.62 org/apache/catalina/connector/CoyoteReader read ([C)I -> io/ohmyrasp/agent/hook/OhMyRaspHooks.abortBodyRead @ RequestBodyHookModule
 org.apache.tomcat.embed:tomcat-embed-core 10.1.62 org/apache/catalina/connector/CoyoteReader read ([C)I -> io/ohmyrasp/agent/hook/OhMyRaspHooks.enterBodyRead @ RequestBodyHookModule
 org.apache.tomcat.embed:tomcat-embed-core 10.1.62 org/apache/catalina/connector/CoyoteReader read ([C)I -> io/ohmyrasp/agent/hook/OhMyRaspHooks.exitBodyChars @ RequestBodyHookModule
+org.apache.tomcat.embed:tomcat-embed-core 10.1.62 org/apache/catalina/connector/CoyoteReader read ([CII)I -> io/ohmyrasp/agent/hook/OhMyRaspHooks.abortBodyRead @ RequestBodyHookModule
 org.apache.tomcat.embed:tomcat-embed-core 10.1.62 org/apache/catalina/connector/CoyoteReader read ([CII)I -> io/ohmyrasp/agent/hook/OhMyRaspHooks.enterBodyRead @ RequestBodyHookModule
 org.apache.tomcat.embed:tomcat-embed-core 10.1.62 org/apache/catalina/connector/CoyoteReader read ([CII)I -> io/ohmyrasp/agent/hook/OhMyRaspHooks.exitBodyChars @ RequestBodyHookModule
+org.apache.tomcat.embed:tomcat-embed-core 10.1.62 org/apache/catalina/connector/CoyoteReader readLine ()Ljava/lang/String; -> io/ohmyrasp/agent/hook/OhMyRaspHooks.abortBodyRead @ RequestBodyHookModule
 org.apache.tomcat.embed:tomcat-embed-core 10.1.62 org/apache/catalina/connector/CoyoteReader readLine ()Ljava/lang/String; -> io/ohmyrasp/agent/hook/OhMyRaspHooks.enterBodyRead @ RequestBodyHookModule
 org.apache.tomcat.embed:tomcat-embed-core 10.1.62 org/apache/catalina/connector/CoyoteReader readLine ()Ljava/lang/String; -> io/ohmyrasp/agent/hook/OhMyRaspHooks.exitBodyLine x2 @ RequestBodyHookModule
 org.apache.tomcat.embed:tomcat-embed-core 10.1.62 org/apache/catalina/connector/Request getLocale ()Ljava/util/Locale; -> io/ohmyrasp/agent/hook/OhMyRaspHooks.afterMultipartAccess @ (shared visitors)
@@ -1400,10 +1442,13 @@ org.apache.tomcat.embed:tomcat-embed-core 10.1.62 org/apache/catalina/users/Data
 org.apache.tomcat.embed:tomcat-embed-core 10.1.62 org/apache/catalina/users/DataSourceUserDatabase getUsers ()Ljava/util/Iterator; -> io/ohmyrasp/agent/hook/OhMyRaspHooks.beforeSql @ (shared visitors)
 org.apache.tomcat.embed:tomcat-embed-core 10.1.62 org/apache/catalina/users/DataSourceUserDatabase saveInternal (Ljava/sql/Connection;)V -> io/ohmyrasp/agent/hook/OhMyRaspHooks.beforeSql x25 @ (shared visitors)
 org.apache.tomcat.embed:tomcat-embed-core 10.1.62 org/apache/catalina/valves/JDBCAccessLogValve open ()V -> io/ohmyrasp/agent/hook/OhMyRaspHooks.beforeSql x2 @ (shared visitors)
+org.apache.tomcat.embed:tomcat-embed-core 10.1.62 org/apache/coyote/http11/upgrade/UpgradeServletInputStream read ()I -> io/ohmyrasp/agent/hook/OhMyRaspHooks.abortBodyRead @ RequestBodyHookModule
 org.apache.tomcat.embed:tomcat-embed-core 10.1.62 org/apache/coyote/http11/upgrade/UpgradeServletInputStream read ()I -> io/ohmyrasp/agent/hook/OhMyRaspHooks.enterBodyRead @ RequestBodyHookModule
 org.apache.tomcat.embed:tomcat-embed-core 10.1.62 org/apache/coyote/http11/upgrade/UpgradeServletInputStream read ()I -> io/ohmyrasp/agent/hook/OhMyRaspHooks.exitBodyRead @ RequestBodyHookModule
+org.apache.tomcat.embed:tomcat-embed-core 10.1.62 org/apache/coyote/http11/upgrade/UpgradeServletInputStream read ([BII)I -> io/ohmyrasp/agent/hook/OhMyRaspHooks.abortBodyRead @ RequestBodyHookModule
 org.apache.tomcat.embed:tomcat-embed-core 10.1.62 org/apache/coyote/http11/upgrade/UpgradeServletInputStream read ([BII)I -> io/ohmyrasp/agent/hook/OhMyRaspHooks.enterBodyRead @ RequestBodyHookModule
 org.apache.tomcat.embed:tomcat-embed-core 10.1.62 org/apache/coyote/http11/upgrade/UpgradeServletInputStream read ([BII)I -> io/ohmyrasp/agent/hook/OhMyRaspHooks.exitBodyRead x2 @ RequestBodyHookModule
+org.apache.tomcat.embed:tomcat-embed-core 10.1.62 org/apache/coyote/http11/upgrade/UpgradeServletInputStream readLine ([BII)I -> io/ohmyrasp/agent/hook/OhMyRaspHooks.abortBodyRead @ RequestBodyHookModule
 org.apache.tomcat.embed:tomcat-embed-core 10.1.62 org/apache/coyote/http11/upgrade/UpgradeServletInputStream readLine ([BII)I -> io/ohmyrasp/agent/hook/OhMyRaspHooks.enterBodyRead @ RequestBodyHookModule
 org.apache.tomcat.embed:tomcat-embed-core 10.1.62 org/apache/coyote/http11/upgrade/UpgradeServletInputStream readLine ([BII)I -> io/ohmyrasp/agent/hook/OhMyRaspHooks.exitBodyRead x3 @ RequestBodyHookModule
 org.apache.tomcat.embed:tomcat-embed-core 11.0.29 jakarta/servlet/ServletRequestWrapper <init> (Ljakarta/servlet/ServletRequest;)V -> io/ohmyrasp/agent/http/MultipartFilename.wrapped @ MultipartUploadHookModule
@@ -1414,20 +1459,28 @@ org.apache.tomcat.embed:tomcat-embed-core 11.0.29 jakarta/servlet/http/HttpServl
 org.apache.tomcat.embed:tomcat-embed-core 11.0.29 jakarta/servlet/http/HttpServlet service (Ljakarta/servlet/http/HttpServletRequest;Ljakarta/servlet/http/HttpServletResponse;)V -> io/ohmyrasp/agent/hook/OhMyRaspHooks.exitHttpRequest x2 @ ServletHookModule
 org.apache.tomcat.embed:tomcat-embed-core 11.0.29 jakarta/servlet/http/HttpServletRequestWrapper getPart (Ljava/lang/String;)Ljakarta/servlet/http/Part; -> io/ohmyrasp/agent/hook/OhMyRaspHooks.afterMultipartLookup @ MultipartUploadHookModule
 org.apache.tomcat.embed:tomcat-embed-core 11.0.29 jakarta/servlet/http/HttpServletRequestWrapper getParts ()Ljava/util/Collection; -> io/ohmyrasp/agent/hook/OhMyRaspHooks.afterMultipartLookup @ MultipartUploadHookModule
+org.apache.tomcat.embed:tomcat-embed-core 11.0.29 org/apache/catalina/connector/CoyoteInputStream read ()I -> io/ohmyrasp/agent/hook/OhMyRaspHooks.abortBodyRead @ RequestBodyHookModule
 org.apache.tomcat.embed:tomcat-embed-core 11.0.29 org/apache/catalina/connector/CoyoteInputStream read ()I -> io/ohmyrasp/agent/hook/OhMyRaspHooks.enterBodyRead @ RequestBodyHookModule
 org.apache.tomcat.embed:tomcat-embed-core 11.0.29 org/apache/catalina/connector/CoyoteInputStream read ()I -> io/ohmyrasp/agent/hook/OhMyRaspHooks.exitBodyRead @ RequestBodyHookModule
+org.apache.tomcat.embed:tomcat-embed-core 11.0.29 org/apache/catalina/connector/CoyoteInputStream read (Ljava/nio/ByteBuffer;)I -> io/ohmyrasp/agent/hook/OhMyRaspHooks.abortBodyRead @ RequestBodyHookModule
 org.apache.tomcat.embed:tomcat-embed-core 11.0.29 org/apache/catalina/connector/CoyoteInputStream read (Ljava/nio/ByteBuffer;)I -> io/ohmyrasp/agent/hook/OhMyRaspHooks.enterBodyRead @ RequestBodyHookModule
 org.apache.tomcat.embed:tomcat-embed-core 11.0.29 org/apache/catalina/connector/CoyoteInputStream read (Ljava/nio/ByteBuffer;)I -> io/ohmyrasp/agent/hook/OhMyRaspHooks.exitBodyRead @ RequestBodyHookModule
+org.apache.tomcat.embed:tomcat-embed-core 11.0.29 org/apache/catalina/connector/CoyoteInputStream read ([B)I -> io/ohmyrasp/agent/hook/OhMyRaspHooks.abortBodyRead @ RequestBodyHookModule
 org.apache.tomcat.embed:tomcat-embed-core 11.0.29 org/apache/catalina/connector/CoyoteInputStream read ([B)I -> io/ohmyrasp/agent/hook/OhMyRaspHooks.enterBodyRead @ RequestBodyHookModule
 org.apache.tomcat.embed:tomcat-embed-core 11.0.29 org/apache/catalina/connector/CoyoteInputStream read ([B)I -> io/ohmyrasp/agent/hook/OhMyRaspHooks.exitBodyRead @ RequestBodyHookModule
+org.apache.tomcat.embed:tomcat-embed-core 11.0.29 org/apache/catalina/connector/CoyoteInputStream read ([BII)I -> io/ohmyrasp/agent/hook/OhMyRaspHooks.abortBodyRead @ RequestBodyHookModule
 org.apache.tomcat.embed:tomcat-embed-core 11.0.29 org/apache/catalina/connector/CoyoteInputStream read ([BII)I -> io/ohmyrasp/agent/hook/OhMyRaspHooks.enterBodyRead @ RequestBodyHookModule
 org.apache.tomcat.embed:tomcat-embed-core 11.0.29 org/apache/catalina/connector/CoyoteInputStream read ([BII)I -> io/ohmyrasp/agent/hook/OhMyRaspHooks.exitBodyRead @ RequestBodyHookModule
+org.apache.tomcat.embed:tomcat-embed-core 11.0.29 org/apache/catalina/connector/CoyoteReader read ()I -> io/ohmyrasp/agent/hook/OhMyRaspHooks.abortBodyRead @ RequestBodyHookModule
 org.apache.tomcat.embed:tomcat-embed-core 11.0.29 org/apache/catalina/connector/CoyoteReader read ()I -> io/ohmyrasp/agent/hook/OhMyRaspHooks.enterBodyRead @ RequestBodyHookModule
 org.apache.tomcat.embed:tomcat-embed-core 11.0.29 org/apache/catalina/connector/CoyoteReader read ()I -> io/ohmyrasp/agent/hook/OhMyRaspHooks.exitBodyChars @ RequestBodyHookModule
+org.apache.tomcat.embed:tomcat-embed-core 11.0.29 org/apache/catalina/connector/CoyoteReader read ([C)I -> io/ohmyrasp/agent/hook/OhMyRaspHooks.abortBodyRead @ RequestBodyHookModule
 org.apache.tomcat.embed:tomcat-embed-core 11.0.29 org/apache/catalina/connector/CoyoteReader read ([C)I -> io/ohmyrasp/agent/hook/OhMyRaspHooks.enterBodyRead @ RequestBodyHookModule
 org.apache.tomcat.embed:tomcat-embed-core 11.0.29 org/apache/catalina/connector/CoyoteReader read ([C)I -> io/ohmyrasp/agent/hook/OhMyRaspHooks.exitBodyChars @ RequestBodyHookModule
+org.apache.tomcat.embed:tomcat-embed-core 11.0.29 org/apache/catalina/connector/CoyoteReader read ([CII)I -> io/ohmyrasp/agent/hook/OhMyRaspHooks.abortBodyRead @ RequestBodyHookModule
 org.apache.tomcat.embed:tomcat-embed-core 11.0.29 org/apache/catalina/connector/CoyoteReader read ([CII)I -> io/ohmyrasp/agent/hook/OhMyRaspHooks.enterBodyRead @ RequestBodyHookModule
 org.apache.tomcat.embed:tomcat-embed-core 11.0.29 org/apache/catalina/connector/CoyoteReader read ([CII)I -> io/ohmyrasp/agent/hook/OhMyRaspHooks.exitBodyChars @ RequestBodyHookModule
+org.apache.tomcat.embed:tomcat-embed-core 11.0.29 org/apache/catalina/connector/CoyoteReader readLine ()Ljava/lang/String; -> io/ohmyrasp/agent/hook/OhMyRaspHooks.abortBodyRead @ RequestBodyHookModule
 org.apache.tomcat.embed:tomcat-embed-core 11.0.29 org/apache/catalina/connector/CoyoteReader readLine ()Ljava/lang/String; -> io/ohmyrasp/agent/hook/OhMyRaspHooks.enterBodyRead @ RequestBodyHookModule
 org.apache.tomcat.embed:tomcat-embed-core 11.0.29 org/apache/catalina/connector/CoyoteReader readLine ()Ljava/lang/String; -> io/ohmyrasp/agent/hook/OhMyRaspHooks.exitBodyLine x2 @ RequestBodyHookModule
 org.apache.tomcat.embed:tomcat-embed-core 11.0.29 org/apache/catalina/connector/Request getLocale ()Ljava/util/Locale; -> io/ohmyrasp/agent/hook/OhMyRaspHooks.afterMultipartAccess @ (shared visitors)
@@ -1471,10 +1524,13 @@ org.apache.tomcat.embed:tomcat-embed-core 11.0.29 org/apache/catalina/users/Data
 org.apache.tomcat.embed:tomcat-embed-core 11.0.29 org/apache/catalina/users/DataSourceUserDatabase getUsers ()Ljava/util/Iterator; -> io/ohmyrasp/agent/hook/OhMyRaspHooks.beforeSql @ (shared visitors)
 org.apache.tomcat.embed:tomcat-embed-core 11.0.29 org/apache/catalina/users/DataSourceUserDatabase saveInternal (Ljava/sql/Connection;)V -> io/ohmyrasp/agent/hook/OhMyRaspHooks.beforeSql x25 @ (shared visitors)
 org.apache.tomcat.embed:tomcat-embed-core 11.0.29 org/apache/catalina/valves/JDBCAccessLogValve open ()V -> io/ohmyrasp/agent/hook/OhMyRaspHooks.beforeSql x2 @ (shared visitors)
+org.apache.tomcat.embed:tomcat-embed-core 11.0.29 org/apache/coyote/http11/upgrade/UpgradeServletInputStream read ()I -> io/ohmyrasp/agent/hook/OhMyRaspHooks.abortBodyRead @ RequestBodyHookModule
 org.apache.tomcat.embed:tomcat-embed-core 11.0.29 org/apache/coyote/http11/upgrade/UpgradeServletInputStream read ()I -> io/ohmyrasp/agent/hook/OhMyRaspHooks.enterBodyRead @ RequestBodyHookModule
 org.apache.tomcat.embed:tomcat-embed-core 11.0.29 org/apache/coyote/http11/upgrade/UpgradeServletInputStream read ()I -> io/ohmyrasp/agent/hook/OhMyRaspHooks.exitBodyRead @ RequestBodyHookModule
+org.apache.tomcat.embed:tomcat-embed-core 11.0.29 org/apache/coyote/http11/upgrade/UpgradeServletInputStream read ([BII)I -> io/ohmyrasp/agent/hook/OhMyRaspHooks.abortBodyRead @ RequestBodyHookModule
 org.apache.tomcat.embed:tomcat-embed-core 11.0.29 org/apache/coyote/http11/upgrade/UpgradeServletInputStream read ([BII)I -> io/ohmyrasp/agent/hook/OhMyRaspHooks.enterBodyRead @ RequestBodyHookModule
 org.apache.tomcat.embed:tomcat-embed-core 11.0.29 org/apache/coyote/http11/upgrade/UpgradeServletInputStream read ([BII)I -> io/ohmyrasp/agent/hook/OhMyRaspHooks.exitBodyRead x2 @ RequestBodyHookModule
+org.apache.tomcat.embed:tomcat-embed-core 11.0.29 org/apache/coyote/http11/upgrade/UpgradeServletInputStream readLine ([BII)I -> io/ohmyrasp/agent/hook/OhMyRaspHooks.abortBodyRead @ RequestBodyHookModule
 org.apache.tomcat.embed:tomcat-embed-core 11.0.29 org/apache/coyote/http11/upgrade/UpgradeServletInputStream readLine ([BII)I -> io/ohmyrasp/agent/hook/OhMyRaspHooks.enterBodyRead @ RequestBodyHookModule
 org.apache.tomcat.embed:tomcat-embed-core 11.0.29 org/apache/coyote/http11/upgrade/UpgradeServletInputStream readLine ([BII)I -> io/ohmyrasp/agent/hook/OhMyRaspHooks.exitBodyRead x3 @ RequestBodyHookModule
 org.apache.tomcat.embed:tomcat-embed-core 9.0.124 javax/servlet/ServletRequestWrapper <init> (Ljavax/servlet/ServletRequest;)V -> io/ohmyrasp/agent/http/MultipartFilename.wrapped @ MultipartUploadHookModule
@@ -1485,20 +1541,28 @@ org.apache.tomcat.embed:tomcat-embed-core 9.0.124 javax/servlet/http/HttpServlet
 org.apache.tomcat.embed:tomcat-embed-core 9.0.124 javax/servlet/http/HttpServlet service (Ljavax/servlet/http/HttpServletRequest;Ljavax/servlet/http/HttpServletResponse;)V -> io/ohmyrasp/agent/hook/OhMyRaspHooks.exitHttpRequest x2 @ ServletHookModule
 org.apache.tomcat.embed:tomcat-embed-core 9.0.124 javax/servlet/http/HttpServletRequestWrapper getPart (Ljava/lang/String;)Ljavax/servlet/http/Part; -> io/ohmyrasp/agent/hook/OhMyRaspHooks.afterMultipartLookup @ MultipartUploadHookModule
 org.apache.tomcat.embed:tomcat-embed-core 9.0.124 javax/servlet/http/HttpServletRequestWrapper getParts ()Ljava/util/Collection; -> io/ohmyrasp/agent/hook/OhMyRaspHooks.afterMultipartLookup @ MultipartUploadHookModule
+org.apache.tomcat.embed:tomcat-embed-core 9.0.124 org/apache/catalina/connector/CoyoteInputStream read ()I -> io/ohmyrasp/agent/hook/OhMyRaspHooks.abortBodyRead @ RequestBodyHookModule
 org.apache.tomcat.embed:tomcat-embed-core 9.0.124 org/apache/catalina/connector/CoyoteInputStream read ()I -> io/ohmyrasp/agent/hook/OhMyRaspHooks.enterBodyRead @ RequestBodyHookModule
 org.apache.tomcat.embed:tomcat-embed-core 9.0.124 org/apache/catalina/connector/CoyoteInputStream read ()I -> io/ohmyrasp/agent/hook/OhMyRaspHooks.exitBodyRead x2 @ RequestBodyHookModule
+org.apache.tomcat.embed:tomcat-embed-core 9.0.124 org/apache/catalina/connector/CoyoteInputStream read (Ljava/nio/ByteBuffer;)I -> io/ohmyrasp/agent/hook/OhMyRaspHooks.abortBodyRead @ RequestBodyHookModule
 org.apache.tomcat.embed:tomcat-embed-core 9.0.124 org/apache/catalina/connector/CoyoteInputStream read (Ljava/nio/ByteBuffer;)I -> io/ohmyrasp/agent/hook/OhMyRaspHooks.enterBodyRead @ RequestBodyHookModule
 org.apache.tomcat.embed:tomcat-embed-core 9.0.124 org/apache/catalina/connector/CoyoteInputStream read (Ljava/nio/ByteBuffer;)I -> io/ohmyrasp/agent/hook/OhMyRaspHooks.exitBodyRead x2 @ RequestBodyHookModule
+org.apache.tomcat.embed:tomcat-embed-core 9.0.124 org/apache/catalina/connector/CoyoteInputStream read ([B)I -> io/ohmyrasp/agent/hook/OhMyRaspHooks.abortBodyRead @ RequestBodyHookModule
 org.apache.tomcat.embed:tomcat-embed-core 9.0.124 org/apache/catalina/connector/CoyoteInputStream read ([B)I -> io/ohmyrasp/agent/hook/OhMyRaspHooks.enterBodyRead @ RequestBodyHookModule
 org.apache.tomcat.embed:tomcat-embed-core 9.0.124 org/apache/catalina/connector/CoyoteInputStream read ([B)I -> io/ohmyrasp/agent/hook/OhMyRaspHooks.exitBodyRead @ RequestBodyHookModule
+org.apache.tomcat.embed:tomcat-embed-core 9.0.124 org/apache/catalina/connector/CoyoteInputStream read ([BII)I -> io/ohmyrasp/agent/hook/OhMyRaspHooks.abortBodyRead @ RequestBodyHookModule
 org.apache.tomcat.embed:tomcat-embed-core 9.0.124 org/apache/catalina/connector/CoyoteInputStream read ([BII)I -> io/ohmyrasp/agent/hook/OhMyRaspHooks.enterBodyRead @ RequestBodyHookModule
 org.apache.tomcat.embed:tomcat-embed-core 9.0.124 org/apache/catalina/connector/CoyoteInputStream read ([BII)I -> io/ohmyrasp/agent/hook/OhMyRaspHooks.exitBodyRead x2 @ RequestBodyHookModule
+org.apache.tomcat.embed:tomcat-embed-core 9.0.124 org/apache/catalina/connector/CoyoteReader read ()I -> io/ohmyrasp/agent/hook/OhMyRaspHooks.abortBodyRead @ RequestBodyHookModule
 org.apache.tomcat.embed:tomcat-embed-core 9.0.124 org/apache/catalina/connector/CoyoteReader read ()I -> io/ohmyrasp/agent/hook/OhMyRaspHooks.enterBodyRead @ RequestBodyHookModule
 org.apache.tomcat.embed:tomcat-embed-core 9.0.124 org/apache/catalina/connector/CoyoteReader read ()I -> io/ohmyrasp/agent/hook/OhMyRaspHooks.exitBodyChars @ RequestBodyHookModule
+org.apache.tomcat.embed:tomcat-embed-core 9.0.124 org/apache/catalina/connector/CoyoteReader read ([C)I -> io/ohmyrasp/agent/hook/OhMyRaspHooks.abortBodyRead @ RequestBodyHookModule
 org.apache.tomcat.embed:tomcat-embed-core 9.0.124 org/apache/catalina/connector/CoyoteReader read ([C)I -> io/ohmyrasp/agent/hook/OhMyRaspHooks.enterBodyRead @ RequestBodyHookModule
 org.apache.tomcat.embed:tomcat-embed-core 9.0.124 org/apache/catalina/connector/CoyoteReader read ([C)I -> io/ohmyrasp/agent/hook/OhMyRaspHooks.exitBodyChars @ RequestBodyHookModule
+org.apache.tomcat.embed:tomcat-embed-core 9.0.124 org/apache/catalina/connector/CoyoteReader read ([CII)I -> io/ohmyrasp/agent/hook/OhMyRaspHooks.abortBodyRead @ RequestBodyHookModule
 org.apache.tomcat.embed:tomcat-embed-core 9.0.124 org/apache/catalina/connector/CoyoteReader read ([CII)I -> io/ohmyrasp/agent/hook/OhMyRaspHooks.enterBodyRead @ RequestBodyHookModule
 org.apache.tomcat.embed:tomcat-embed-core 9.0.124 org/apache/catalina/connector/CoyoteReader read ([CII)I -> io/ohmyrasp/agent/hook/OhMyRaspHooks.exitBodyChars @ RequestBodyHookModule
+org.apache.tomcat.embed:tomcat-embed-core 9.0.124 org/apache/catalina/connector/CoyoteReader readLine ()Ljava/lang/String; -> io/ohmyrasp/agent/hook/OhMyRaspHooks.abortBodyRead @ RequestBodyHookModule
 org.apache.tomcat.embed:tomcat-embed-core 9.0.124 org/apache/catalina/connector/CoyoteReader readLine ()Ljava/lang/String; -> io/ohmyrasp/agent/hook/OhMyRaspHooks.enterBodyRead @ RequestBodyHookModule
 org.apache.tomcat.embed:tomcat-embed-core 9.0.124 org/apache/catalina/connector/CoyoteReader readLine ()Ljava/lang/String; -> io/ohmyrasp/agent/hook/OhMyRaspHooks.exitBodyLine x2 @ RequestBodyHookModule
 org.apache.tomcat.embed:tomcat-embed-core 9.0.124 org/apache/catalina/connector/Request getLocale ()Ljava/util/Locale; -> io/ohmyrasp/agent/hook/OhMyRaspHooks.afterMultipartAccess @ (shared visitors)
@@ -1550,26 +1614,37 @@ org.apache.tomcat.embed:tomcat-embed-core 9.0.124 org/apache/catalina/users/Data
 org.apache.tomcat.embed:tomcat-embed-core 9.0.124 org/apache/catalina/users/DataSourceUserDatabase getUsers ()Ljava/util/Iterator; -> io/ohmyrasp/agent/hook/OhMyRaspHooks.beforeSql @ (shared visitors)
 org.apache.tomcat.embed:tomcat-embed-core 9.0.124 org/apache/catalina/users/DataSourceUserDatabase saveInternal (Ljava/sql/Connection;)V -> io/ohmyrasp/agent/hook/OhMyRaspHooks.beforeSql x25 @ (shared visitors)
 org.apache.tomcat.embed:tomcat-embed-core 9.0.124 org/apache/catalina/valves/JDBCAccessLogValve open ()V -> io/ohmyrasp/agent/hook/OhMyRaspHooks.beforeSql x2 @ (shared visitors)
+org.apache.tomcat.embed:tomcat-embed-core 9.0.124 org/apache/coyote/http11/upgrade/UpgradeServletInputStream read ()I -> io/ohmyrasp/agent/hook/OhMyRaspHooks.abortBodyRead @ RequestBodyHookModule
 org.apache.tomcat.embed:tomcat-embed-core 9.0.124 org/apache/coyote/http11/upgrade/UpgradeServletInputStream read ()I -> io/ohmyrasp/agent/hook/OhMyRaspHooks.enterBodyRead @ RequestBodyHookModule
 org.apache.tomcat.embed:tomcat-embed-core 9.0.124 org/apache/coyote/http11/upgrade/UpgradeServletInputStream read ()I -> io/ohmyrasp/agent/hook/OhMyRaspHooks.exitBodyRead @ RequestBodyHookModule
+org.apache.tomcat.embed:tomcat-embed-core 9.0.124 org/apache/coyote/http11/upgrade/UpgradeServletInputStream read ([BII)I -> io/ohmyrasp/agent/hook/OhMyRaspHooks.abortBodyRead @ RequestBodyHookModule
 org.apache.tomcat.embed:tomcat-embed-core 9.0.124 org/apache/coyote/http11/upgrade/UpgradeServletInputStream read ([BII)I -> io/ohmyrasp/agent/hook/OhMyRaspHooks.enterBodyRead @ RequestBodyHookModule
 org.apache.tomcat.embed:tomcat-embed-core 9.0.124 org/apache/coyote/http11/upgrade/UpgradeServletInputStream read ([BII)I -> io/ohmyrasp/agent/hook/OhMyRaspHooks.exitBodyRead x2 @ RequestBodyHookModule
+org.apache.tomcat.embed:tomcat-embed-core 9.0.124 org/apache/coyote/http11/upgrade/UpgradeServletInputStream readLine ([BII)I -> io/ohmyrasp/agent/hook/OhMyRaspHooks.abortBodyRead @ RequestBodyHookModule
 org.apache.tomcat.embed:tomcat-embed-core 9.0.124 org/apache/coyote/http11/upgrade/UpgradeServletInputStream readLine ([BII)I -> io/ohmyrasp/agent/hook/OhMyRaspHooks.enterBodyRead @ RequestBodyHookModule
 org.apache.tomcat.embed:tomcat-embed-core 9.0.124 org/apache/coyote/http11/upgrade/UpgradeServletInputStream readLine ([BII)I -> io/ohmyrasp/agent/hook/OhMyRaspHooks.exitBodyRead x3 @ RequestBodyHookModule
+org.apache.tomcat:tomcat-catalina 10.0.27 org/apache/catalina/connector/CoyoteInputStream read ()I -> io/ohmyrasp/agent/hook/OhMyRaspHooks.abortBodyRead @ RequestBodyHookModule
 org.apache.tomcat:tomcat-catalina 10.0.27 org/apache/catalina/connector/CoyoteInputStream read ()I -> io/ohmyrasp/agent/hook/OhMyRaspHooks.enterBodyRead @ RequestBodyHookModule
 org.apache.tomcat:tomcat-catalina 10.0.27 org/apache/catalina/connector/CoyoteInputStream read ()I -> io/ohmyrasp/agent/hook/OhMyRaspHooks.exitBodyRead x2 @ RequestBodyHookModule
+org.apache.tomcat:tomcat-catalina 10.0.27 org/apache/catalina/connector/CoyoteInputStream read (Ljava/nio/ByteBuffer;)I -> io/ohmyrasp/agent/hook/OhMyRaspHooks.abortBodyRead @ RequestBodyHookModule
 org.apache.tomcat:tomcat-catalina 10.0.27 org/apache/catalina/connector/CoyoteInputStream read (Ljava/nio/ByteBuffer;)I -> io/ohmyrasp/agent/hook/OhMyRaspHooks.enterBodyRead @ RequestBodyHookModule
 org.apache.tomcat:tomcat-catalina 10.0.27 org/apache/catalina/connector/CoyoteInputStream read (Ljava/nio/ByteBuffer;)I -> io/ohmyrasp/agent/hook/OhMyRaspHooks.exitBodyRead x2 @ RequestBodyHookModule
+org.apache.tomcat:tomcat-catalina 10.0.27 org/apache/catalina/connector/CoyoteInputStream read ([B)I -> io/ohmyrasp/agent/hook/OhMyRaspHooks.abortBodyRead @ RequestBodyHookModule
 org.apache.tomcat:tomcat-catalina 10.0.27 org/apache/catalina/connector/CoyoteInputStream read ([B)I -> io/ohmyrasp/agent/hook/OhMyRaspHooks.enterBodyRead @ RequestBodyHookModule
 org.apache.tomcat:tomcat-catalina 10.0.27 org/apache/catalina/connector/CoyoteInputStream read ([B)I -> io/ohmyrasp/agent/hook/OhMyRaspHooks.exitBodyRead @ RequestBodyHookModule
+org.apache.tomcat:tomcat-catalina 10.0.27 org/apache/catalina/connector/CoyoteInputStream read ([BII)I -> io/ohmyrasp/agent/hook/OhMyRaspHooks.abortBodyRead @ RequestBodyHookModule
 org.apache.tomcat:tomcat-catalina 10.0.27 org/apache/catalina/connector/CoyoteInputStream read ([BII)I -> io/ohmyrasp/agent/hook/OhMyRaspHooks.enterBodyRead @ RequestBodyHookModule
 org.apache.tomcat:tomcat-catalina 10.0.27 org/apache/catalina/connector/CoyoteInputStream read ([BII)I -> io/ohmyrasp/agent/hook/OhMyRaspHooks.exitBodyRead x2 @ RequestBodyHookModule
+org.apache.tomcat:tomcat-catalina 10.0.27 org/apache/catalina/connector/CoyoteReader read ()I -> io/ohmyrasp/agent/hook/OhMyRaspHooks.abortBodyRead @ RequestBodyHookModule
 org.apache.tomcat:tomcat-catalina 10.0.27 org/apache/catalina/connector/CoyoteReader read ()I -> io/ohmyrasp/agent/hook/OhMyRaspHooks.enterBodyRead @ RequestBodyHookModule
 org.apache.tomcat:tomcat-catalina 10.0.27 org/apache/catalina/connector/CoyoteReader read ()I -> io/ohmyrasp/agent/hook/OhMyRaspHooks.exitBodyChars @ RequestBodyHookModule
+org.apache.tomcat:tomcat-catalina 10.0.27 org/apache/catalina/connector/CoyoteReader read ([C)I -> io/ohmyrasp/agent/hook/OhMyRaspHooks.abortBodyRead @ RequestBodyHookModule
 org.apache.tomcat:tomcat-catalina 10.0.27 org/apache/catalina/connector/CoyoteReader read ([C)I -> io/ohmyrasp/agent/hook/OhMyRaspHooks.enterBodyRead @ RequestBodyHookModule
 org.apache.tomcat:tomcat-catalina 10.0.27 org/apache/catalina/connector/CoyoteReader read ([C)I -> io/ohmyrasp/agent/hook/OhMyRaspHooks.exitBodyChars @ RequestBodyHookModule
+org.apache.tomcat:tomcat-catalina 10.0.27 org/apache/catalina/connector/CoyoteReader read ([CII)I -> io/ohmyrasp/agent/hook/OhMyRaspHooks.abortBodyRead @ RequestBodyHookModule
 org.apache.tomcat:tomcat-catalina 10.0.27 org/apache/catalina/connector/CoyoteReader read ([CII)I -> io/ohmyrasp/agent/hook/OhMyRaspHooks.enterBodyRead @ RequestBodyHookModule
 org.apache.tomcat:tomcat-catalina 10.0.27 org/apache/catalina/connector/CoyoteReader read ([CII)I -> io/ohmyrasp/agent/hook/OhMyRaspHooks.exitBodyChars @ RequestBodyHookModule
+org.apache.tomcat:tomcat-catalina 10.0.27 org/apache/catalina/connector/CoyoteReader readLine ()Ljava/lang/String; -> io/ohmyrasp/agent/hook/OhMyRaspHooks.abortBodyRead @ RequestBodyHookModule
 org.apache.tomcat:tomcat-catalina 10.0.27 org/apache/catalina/connector/CoyoteReader readLine ()Ljava/lang/String; -> io/ohmyrasp/agent/hook/OhMyRaspHooks.enterBodyRead @ RequestBodyHookModule
 org.apache.tomcat:tomcat-catalina 10.0.27 org/apache/catalina/connector/CoyoteReader readLine ()Ljava/lang/String; -> io/ohmyrasp/agent/hook/OhMyRaspHooks.exitBodyLine x2 @ RequestBodyHookModule
 org.apache.tomcat:tomcat-catalina 10.0.27 org/apache/catalina/connector/Request getLocale ()Ljava/util/Locale; -> io/ohmyrasp/agent/hook/OhMyRaspHooks.afterMultipartAccess @ (shared visitors)
@@ -1608,20 +1683,28 @@ org.apache.tomcat:tomcat-catalina 10.0.27 org/apache/catalina/users/DataSourceUs
 org.apache.tomcat:tomcat-catalina 10.0.27 org/apache/catalina/users/DataSourceUserDatabase getUsers ()Ljava/util/Iterator; -> io/ohmyrasp/agent/hook/OhMyRaspHooks.beforeSql @ (shared visitors)
 org.apache.tomcat:tomcat-catalina 10.0.27 org/apache/catalina/users/DataSourceUserDatabase saveInternal (Ljava/sql/Connection;)V -> io/ohmyrasp/agent/hook/OhMyRaspHooks.beforeSql x25 @ (shared visitors)
 org.apache.tomcat:tomcat-catalina 10.0.27 org/apache/catalina/valves/JDBCAccessLogValve open ()V -> io/ohmyrasp/agent/hook/OhMyRaspHooks.beforeSql x2 @ (shared visitors)
+org.apache.tomcat:tomcat-catalina 10.1.62 org/apache/catalina/connector/CoyoteInputStream read ()I -> io/ohmyrasp/agent/hook/OhMyRaspHooks.abortBodyRead @ RequestBodyHookModule
 org.apache.tomcat:tomcat-catalina 10.1.62 org/apache/catalina/connector/CoyoteInputStream read ()I -> io/ohmyrasp/agent/hook/OhMyRaspHooks.enterBodyRead @ RequestBodyHookModule
 org.apache.tomcat:tomcat-catalina 10.1.62 org/apache/catalina/connector/CoyoteInputStream read ()I -> io/ohmyrasp/agent/hook/OhMyRaspHooks.exitBodyRead x2 @ RequestBodyHookModule
+org.apache.tomcat:tomcat-catalina 10.1.62 org/apache/catalina/connector/CoyoteInputStream read (Ljava/nio/ByteBuffer;)I -> io/ohmyrasp/agent/hook/OhMyRaspHooks.abortBodyRead @ RequestBodyHookModule
 org.apache.tomcat:tomcat-catalina 10.1.62 org/apache/catalina/connector/CoyoteInputStream read (Ljava/nio/ByteBuffer;)I -> io/ohmyrasp/agent/hook/OhMyRaspHooks.enterBodyRead @ RequestBodyHookModule
 org.apache.tomcat:tomcat-catalina 10.1.62 org/apache/catalina/connector/CoyoteInputStream read (Ljava/nio/ByteBuffer;)I -> io/ohmyrasp/agent/hook/OhMyRaspHooks.exitBodyRead x2 @ RequestBodyHookModule
+org.apache.tomcat:tomcat-catalina 10.1.62 org/apache/catalina/connector/CoyoteInputStream read ([B)I -> io/ohmyrasp/agent/hook/OhMyRaspHooks.abortBodyRead @ RequestBodyHookModule
 org.apache.tomcat:tomcat-catalina 10.1.62 org/apache/catalina/connector/CoyoteInputStream read ([B)I -> io/ohmyrasp/agent/hook/OhMyRaspHooks.enterBodyRead @ RequestBodyHookModule
 org.apache.tomcat:tomcat-catalina 10.1.62 org/apache/catalina/connector/CoyoteInputStream read ([B)I -> io/ohmyrasp/agent/hook/OhMyRaspHooks.exitBodyRead @ RequestBodyHookModule
+org.apache.tomcat:tomcat-catalina 10.1.62 org/apache/catalina/connector/CoyoteInputStream read ([BII)I -> io/ohmyrasp/agent/hook/OhMyRaspHooks.abortBodyRead @ RequestBodyHookModule
 org.apache.tomcat:tomcat-catalina 10.1.62 org/apache/catalina/connector/CoyoteInputStream read ([BII)I -> io/ohmyrasp/agent/hook/OhMyRaspHooks.enterBodyRead @ RequestBodyHookModule
 org.apache.tomcat:tomcat-catalina 10.1.62 org/apache/catalina/connector/CoyoteInputStream read ([BII)I -> io/ohmyrasp/agent/hook/OhMyRaspHooks.exitBodyRead x2 @ RequestBodyHookModule
+org.apache.tomcat:tomcat-catalina 10.1.62 org/apache/catalina/connector/CoyoteReader read ()I -> io/ohmyrasp/agent/hook/OhMyRaspHooks.abortBodyRead @ RequestBodyHookModule
 org.apache.tomcat:tomcat-catalina 10.1.62 org/apache/catalina/connector/CoyoteReader read ()I -> io/ohmyrasp/agent/hook/OhMyRaspHooks.enterBodyRead @ RequestBodyHookModule
 org.apache.tomcat:tomcat-catalina 10.1.62 org/apache/catalina/connector/CoyoteReader read ()I -> io/ohmyrasp/agent/hook/OhMyRaspHooks.exitBodyChars @ RequestBodyHookModule
+org.apache.tomcat:tomcat-catalina 10.1.62 org/apache/catalina/connector/CoyoteReader read ([C)I -> io/ohmyrasp/agent/hook/OhMyRaspHooks.abortBodyRead @ RequestBodyHookModule
 org.apache.tomcat:tomcat-catalina 10.1.62 org/apache/catalina/connector/CoyoteReader read ([C)I -> io/ohmyrasp/agent/hook/OhMyRaspHooks.enterBodyRead @ RequestBodyHookModule
 org.apache.tomcat:tomcat-catalina 10.1.62 org/apache/catalina/connector/CoyoteReader read ([C)I -> io/ohmyrasp/agent/hook/OhMyRaspHooks.exitBodyChars @ RequestBodyHookModule
+org.apache.tomcat:tomcat-catalina 10.1.62 org/apache/catalina/connector/CoyoteReader read ([CII)I -> io/ohmyrasp/agent/hook/OhMyRaspHooks.abortBodyRead @ RequestBodyHookModule
 org.apache.tomcat:tomcat-catalina 10.1.62 org/apache/catalina/connector/CoyoteReader read ([CII)I -> io/ohmyrasp/agent/hook/OhMyRaspHooks.enterBodyRead @ RequestBodyHookModule
 org.apache.tomcat:tomcat-catalina 10.1.62 org/apache/catalina/connector/CoyoteReader read ([CII)I -> io/ohmyrasp/agent/hook/OhMyRaspHooks.exitBodyChars @ RequestBodyHookModule
+org.apache.tomcat:tomcat-catalina 10.1.62 org/apache/catalina/connector/CoyoteReader readLine ()Ljava/lang/String; -> io/ohmyrasp/agent/hook/OhMyRaspHooks.abortBodyRead @ RequestBodyHookModule
 org.apache.tomcat:tomcat-catalina 10.1.62 org/apache/catalina/connector/CoyoteReader readLine ()Ljava/lang/String; -> io/ohmyrasp/agent/hook/OhMyRaspHooks.enterBodyRead @ RequestBodyHookModule
 org.apache.tomcat:tomcat-catalina 10.1.62 org/apache/catalina/connector/CoyoteReader readLine ()Ljava/lang/String; -> io/ohmyrasp/agent/hook/OhMyRaspHooks.exitBodyLine x2 @ RequestBodyHookModule
 org.apache.tomcat:tomcat-catalina 10.1.62 org/apache/catalina/connector/Request getLocale ()Ljava/util/Locale; -> io/ohmyrasp/agent/hook/OhMyRaspHooks.afterMultipartAccess @ (shared visitors)
@@ -1665,20 +1748,28 @@ org.apache.tomcat:tomcat-catalina 10.1.62 org/apache/catalina/users/DataSourceUs
 org.apache.tomcat:tomcat-catalina 10.1.62 org/apache/catalina/users/DataSourceUserDatabase getUsers ()Ljava/util/Iterator; -> io/ohmyrasp/agent/hook/OhMyRaspHooks.beforeSql @ (shared visitors)
 org.apache.tomcat:tomcat-catalina 10.1.62 org/apache/catalina/users/DataSourceUserDatabase saveInternal (Ljava/sql/Connection;)V -> io/ohmyrasp/agent/hook/OhMyRaspHooks.beforeSql x25 @ (shared visitors)
 org.apache.tomcat:tomcat-catalina 10.1.62 org/apache/catalina/valves/JDBCAccessLogValve open ()V -> io/ohmyrasp/agent/hook/OhMyRaspHooks.beforeSql x2 @ (shared visitors)
+org.apache.tomcat:tomcat-catalina 11.0.29 org/apache/catalina/connector/CoyoteInputStream read ()I -> io/ohmyrasp/agent/hook/OhMyRaspHooks.abortBodyRead @ RequestBodyHookModule
 org.apache.tomcat:tomcat-catalina 11.0.29 org/apache/catalina/connector/CoyoteInputStream read ()I -> io/ohmyrasp/agent/hook/OhMyRaspHooks.enterBodyRead @ RequestBodyHookModule
 org.apache.tomcat:tomcat-catalina 11.0.29 org/apache/catalina/connector/CoyoteInputStream read ()I -> io/ohmyrasp/agent/hook/OhMyRaspHooks.exitBodyRead @ RequestBodyHookModule
+org.apache.tomcat:tomcat-catalina 11.0.29 org/apache/catalina/connector/CoyoteInputStream read (Ljava/nio/ByteBuffer;)I -> io/ohmyrasp/agent/hook/OhMyRaspHooks.abortBodyRead @ RequestBodyHookModule
 org.apache.tomcat:tomcat-catalina 11.0.29 org/apache/catalina/connector/CoyoteInputStream read (Ljava/nio/ByteBuffer;)I -> io/ohmyrasp/agent/hook/OhMyRaspHooks.enterBodyRead @ RequestBodyHookModule
 org.apache.tomcat:tomcat-catalina 11.0.29 org/apache/catalina/connector/CoyoteInputStream read (Ljava/nio/ByteBuffer;)I -> io/ohmyrasp/agent/hook/OhMyRaspHooks.exitBodyRead @ RequestBodyHookModule
+org.apache.tomcat:tomcat-catalina 11.0.29 org/apache/catalina/connector/CoyoteInputStream read ([B)I -> io/ohmyrasp/agent/hook/OhMyRaspHooks.abortBodyRead @ RequestBodyHookModule
 org.apache.tomcat:tomcat-catalina 11.0.29 org/apache/catalina/connector/CoyoteInputStream read ([B)I -> io/ohmyrasp/agent/hook/OhMyRaspHooks.enterBodyRead @ RequestBodyHookModule
 org.apache.tomcat:tomcat-catalina 11.0.29 org/apache/catalina/connector/CoyoteInputStream read ([B)I -> io/ohmyrasp/agent/hook/OhMyRaspHooks.exitBodyRead @ RequestBodyHookModule
+org.apache.tomcat:tomcat-catalina 11.0.29 org/apache/catalina/connector/CoyoteInputStream read ([BII)I -> io/ohmyrasp/agent/hook/OhMyRaspHooks.abortBodyRead @ RequestBodyHookModule
 org.apache.tomcat:tomcat-catalina 11.0.29 org/apache/catalina/connector/CoyoteInputStream read ([BII)I -> io/ohmyrasp/agent/hook/OhMyRaspHooks.enterBodyRead @ RequestBodyHookModule
 org.apache.tomcat:tomcat-catalina 11.0.29 org/apache/catalina/connector/CoyoteInputStream read ([BII)I -> io/ohmyrasp/agent/hook/OhMyRaspHooks.exitBodyRead @ RequestBodyHookModule
+org.apache.tomcat:tomcat-catalina 11.0.29 org/apache/catalina/connector/CoyoteReader read ()I -> io/ohmyrasp/agent/hook/OhMyRaspHooks.abortBodyRead @ RequestBodyHookModule
 org.apache.tomcat:tomcat-catalina 11.0.29 org/apache/catalina/connector/CoyoteReader read ()I -> io/ohmyrasp/agent/hook/OhMyRaspHooks.enterBodyRead @ RequestBodyHookModule
 org.apache.tomcat:tomcat-catalina 11.0.29 org/apache/catalina/connector/CoyoteReader read ()I -> io/ohmyrasp/agent/hook/OhMyRaspHooks.exitBodyChars @ RequestBodyHookModule
+org.apache.tomcat:tomcat-catalina 11.0.29 org/apache/catalina/connector/CoyoteReader read ([C)I -> io/ohmyrasp/agent/hook/OhMyRaspHooks.abortBodyRead @ RequestBodyHookModule
 org.apache.tomcat:tomcat-catalina 11.0.29 org/apache/catalina/connector/CoyoteReader read ([C)I -> io/ohmyrasp/agent/hook/OhMyRaspHooks.enterBodyRead @ RequestBodyHookModule
 org.apache.tomcat:tomcat-catalina 11.0.29 org/apache/catalina/connector/CoyoteReader read ([C)I -> io/ohmyrasp/agent/hook/OhMyRaspHooks.exitBodyChars @ RequestBodyHookModule
+org.apache.tomcat:tomcat-catalina 11.0.29 org/apache/catalina/connector/CoyoteReader read ([CII)I -> io/ohmyrasp/agent/hook/OhMyRaspHooks.abortBodyRead @ RequestBodyHookModule
 org.apache.tomcat:tomcat-catalina 11.0.29 org/apache/catalina/connector/CoyoteReader read ([CII)I -> io/ohmyrasp/agent/hook/OhMyRaspHooks.enterBodyRead @ RequestBodyHookModule
 org.apache.tomcat:tomcat-catalina 11.0.29 org/apache/catalina/connector/CoyoteReader read ([CII)I -> io/ohmyrasp/agent/hook/OhMyRaspHooks.exitBodyChars @ RequestBodyHookModule
+org.apache.tomcat:tomcat-catalina 11.0.29 org/apache/catalina/connector/CoyoteReader readLine ()Ljava/lang/String; -> io/ohmyrasp/agent/hook/OhMyRaspHooks.abortBodyRead @ RequestBodyHookModule
 org.apache.tomcat:tomcat-catalina 11.0.29 org/apache/catalina/connector/CoyoteReader readLine ()Ljava/lang/String; -> io/ohmyrasp/agent/hook/OhMyRaspHooks.enterBodyRead @ RequestBodyHookModule
 org.apache.tomcat:tomcat-catalina 11.0.29 org/apache/catalina/connector/CoyoteReader readLine ()Ljava/lang/String; -> io/ohmyrasp/agent/hook/OhMyRaspHooks.exitBodyLine x2 @ RequestBodyHookModule
 org.apache.tomcat:tomcat-catalina 11.0.29 org/apache/catalina/connector/Request getLocale ()Ljava/util/Locale; -> io/ohmyrasp/agent/hook/OhMyRaspHooks.afterMultipartAccess @ (shared visitors)
@@ -1722,20 +1813,28 @@ org.apache.tomcat:tomcat-catalina 11.0.29 org/apache/catalina/users/DataSourceUs
 org.apache.tomcat:tomcat-catalina 11.0.29 org/apache/catalina/users/DataSourceUserDatabase getUsers ()Ljava/util/Iterator; -> io/ohmyrasp/agent/hook/OhMyRaspHooks.beforeSql @ (shared visitors)
 org.apache.tomcat:tomcat-catalina 11.0.29 org/apache/catalina/users/DataSourceUserDatabase saveInternal (Ljava/sql/Connection;)V -> io/ohmyrasp/agent/hook/OhMyRaspHooks.beforeSql x25 @ (shared visitors)
 org.apache.tomcat:tomcat-catalina 11.0.29 org/apache/catalina/valves/JDBCAccessLogValve open ()V -> io/ohmyrasp/agent/hook/OhMyRaspHooks.beforeSql x2 @ (shared visitors)
+org.apache.tomcat:tomcat-catalina 7.0.109 org/apache/catalina/connector/CoyoteInputStream read ()I -> io/ohmyrasp/agent/hook/OhMyRaspHooks.abortBodyRead @ RequestBodyHookModule
 org.apache.tomcat:tomcat-catalina 7.0.109 org/apache/catalina/connector/CoyoteInputStream read ()I -> io/ohmyrasp/agent/hook/OhMyRaspHooks.enterBodyRead @ RequestBodyHookModule
 org.apache.tomcat:tomcat-catalina 7.0.109 org/apache/catalina/connector/CoyoteInputStream read ()I -> io/ohmyrasp/agent/hook/OhMyRaspHooks.exitBodyRead x2 @ RequestBodyHookModule
+org.apache.tomcat:tomcat-catalina 7.0.109 org/apache/catalina/connector/CoyoteInputStream read ([B)I -> io/ohmyrasp/agent/hook/OhMyRaspHooks.abortBodyRead @ RequestBodyHookModule
 org.apache.tomcat:tomcat-catalina 7.0.109 org/apache/catalina/connector/CoyoteInputStream read ([B)I -> io/ohmyrasp/agent/hook/OhMyRaspHooks.enterBodyRead @ RequestBodyHookModule
 org.apache.tomcat:tomcat-catalina 7.0.109 org/apache/catalina/connector/CoyoteInputStream read ([B)I -> io/ohmyrasp/agent/hook/OhMyRaspHooks.exitBodyRead x2 @ RequestBodyHookModule
+org.apache.tomcat:tomcat-catalina 7.0.109 org/apache/catalina/connector/CoyoteInputStream read ([BII)I -> io/ohmyrasp/agent/hook/OhMyRaspHooks.abortBodyRead @ RequestBodyHookModule
 org.apache.tomcat:tomcat-catalina 7.0.109 org/apache/catalina/connector/CoyoteInputStream read ([BII)I -> io/ohmyrasp/agent/hook/OhMyRaspHooks.enterBodyRead @ RequestBodyHookModule
 org.apache.tomcat:tomcat-catalina 7.0.109 org/apache/catalina/connector/CoyoteInputStream read ([BII)I -> io/ohmyrasp/agent/hook/OhMyRaspHooks.exitBodyRead x2 @ RequestBodyHookModule
+org.apache.tomcat:tomcat-catalina 7.0.109 org/apache/catalina/connector/CoyoteInputStream readLine ([BII)I -> io/ohmyrasp/agent/hook/OhMyRaspHooks.abortBodyRead @ RequestBodyHookModule
 org.apache.tomcat:tomcat-catalina 7.0.109 org/apache/catalina/connector/CoyoteInputStream readLine ([BII)I -> io/ohmyrasp/agent/hook/OhMyRaspHooks.enterBodyRead @ RequestBodyHookModule
 org.apache.tomcat:tomcat-catalina 7.0.109 org/apache/catalina/connector/CoyoteInputStream readLine ([BII)I -> io/ohmyrasp/agent/hook/OhMyRaspHooks.exitBodyRead @ RequestBodyHookModule
+org.apache.tomcat:tomcat-catalina 7.0.109 org/apache/catalina/connector/CoyoteReader read ()I -> io/ohmyrasp/agent/hook/OhMyRaspHooks.abortBodyRead @ RequestBodyHookModule
 org.apache.tomcat:tomcat-catalina 7.0.109 org/apache/catalina/connector/CoyoteReader read ()I -> io/ohmyrasp/agent/hook/OhMyRaspHooks.enterBodyRead @ RequestBodyHookModule
 org.apache.tomcat:tomcat-catalina 7.0.109 org/apache/catalina/connector/CoyoteReader read ()I -> io/ohmyrasp/agent/hook/OhMyRaspHooks.exitBodyChars @ RequestBodyHookModule
+org.apache.tomcat:tomcat-catalina 7.0.109 org/apache/catalina/connector/CoyoteReader read ([C)I -> io/ohmyrasp/agent/hook/OhMyRaspHooks.abortBodyRead @ RequestBodyHookModule
 org.apache.tomcat:tomcat-catalina 7.0.109 org/apache/catalina/connector/CoyoteReader read ([C)I -> io/ohmyrasp/agent/hook/OhMyRaspHooks.enterBodyRead @ RequestBodyHookModule
 org.apache.tomcat:tomcat-catalina 7.0.109 org/apache/catalina/connector/CoyoteReader read ([C)I -> io/ohmyrasp/agent/hook/OhMyRaspHooks.exitBodyChars @ RequestBodyHookModule
+org.apache.tomcat:tomcat-catalina 7.0.109 org/apache/catalina/connector/CoyoteReader read ([CII)I -> io/ohmyrasp/agent/hook/OhMyRaspHooks.abortBodyRead @ RequestBodyHookModule
 org.apache.tomcat:tomcat-catalina 7.0.109 org/apache/catalina/connector/CoyoteReader read ([CII)I -> io/ohmyrasp/agent/hook/OhMyRaspHooks.enterBodyRead @ RequestBodyHookModule
 org.apache.tomcat:tomcat-catalina 7.0.109 org/apache/catalina/connector/CoyoteReader read ([CII)I -> io/ohmyrasp/agent/hook/OhMyRaspHooks.exitBodyChars @ RequestBodyHookModule
+org.apache.tomcat:tomcat-catalina 7.0.109 org/apache/catalina/connector/CoyoteReader readLine ()Ljava/lang/String; -> io/ohmyrasp/agent/hook/OhMyRaspHooks.abortBodyRead @ RequestBodyHookModule
 org.apache.tomcat:tomcat-catalina 7.0.109 org/apache/catalina/connector/CoyoteReader readLine ()Ljava/lang/String; -> io/ohmyrasp/agent/hook/OhMyRaspHooks.enterBodyRead @ RequestBodyHookModule
 org.apache.tomcat:tomcat-catalina 7.0.109 org/apache/catalina/connector/CoyoteReader readLine ()Ljava/lang/String; -> io/ohmyrasp/agent/hook/OhMyRaspHooks.exitBodyLine x2 @ RequestBodyHookModule
 org.apache.tomcat:tomcat-catalina 7.0.109 org/apache/catalina/connector/Request getLocale ()Ljava/util/Locale; -> io/ohmyrasp/agent/hook/OhMyRaspHooks.afterMultipartAccess @ (shared visitors)
@@ -1770,20 +1869,28 @@ org.apache.tomcat:tomcat-catalina 7.0.109 org/apache/catalina/session/Persistent
 org.apache.tomcat:tomcat-catalina 7.0.109 org/apache/catalina/valves/JDBCAccessLogValve open ()V -> io/ohmyrasp/agent/hook/OhMyRaspHooks.beforeSql x2 @ (shared visitors)
 org.apache.tomcat:tomcat-catalina 7.0.109 org/apache/catalina/websocket/WsHttpServletRequestWrapper getPart (Ljava/lang/String;)Ljavax/servlet/http/Part; -> io/ohmyrasp/agent/hook/OhMyRaspHooks.afterMultipartLookup @ MultipartUploadHookModule
 org.apache.tomcat:tomcat-catalina 7.0.109 org/apache/catalina/websocket/WsHttpServletRequestWrapper getParts ()Ljava/util/Collection; -> io/ohmyrasp/agent/hook/OhMyRaspHooks.afterMultipartLookup @ MultipartUploadHookModule
+org.apache.tomcat:tomcat-catalina 8.5.100 org/apache/catalina/connector/CoyoteInputStream read ()I -> io/ohmyrasp/agent/hook/OhMyRaspHooks.abortBodyRead @ RequestBodyHookModule
 org.apache.tomcat:tomcat-catalina 8.5.100 org/apache/catalina/connector/CoyoteInputStream read ()I -> io/ohmyrasp/agent/hook/OhMyRaspHooks.enterBodyRead @ RequestBodyHookModule
 org.apache.tomcat:tomcat-catalina 8.5.100 org/apache/catalina/connector/CoyoteInputStream read ()I -> io/ohmyrasp/agent/hook/OhMyRaspHooks.exitBodyRead x2 @ RequestBodyHookModule
+org.apache.tomcat:tomcat-catalina 8.5.100 org/apache/catalina/connector/CoyoteInputStream read (Ljava/nio/ByteBuffer;)I -> io/ohmyrasp/agent/hook/OhMyRaspHooks.abortBodyRead @ RequestBodyHookModule
 org.apache.tomcat:tomcat-catalina 8.5.100 org/apache/catalina/connector/CoyoteInputStream read (Ljava/nio/ByteBuffer;)I -> io/ohmyrasp/agent/hook/OhMyRaspHooks.enterBodyRead @ RequestBodyHookModule
 org.apache.tomcat:tomcat-catalina 8.5.100 org/apache/catalina/connector/CoyoteInputStream read (Ljava/nio/ByteBuffer;)I -> io/ohmyrasp/agent/hook/OhMyRaspHooks.exitBodyRead x2 @ RequestBodyHookModule
+org.apache.tomcat:tomcat-catalina 8.5.100 org/apache/catalina/connector/CoyoteInputStream read ([B)I -> io/ohmyrasp/agent/hook/OhMyRaspHooks.abortBodyRead @ RequestBodyHookModule
 org.apache.tomcat:tomcat-catalina 8.5.100 org/apache/catalina/connector/CoyoteInputStream read ([B)I -> io/ohmyrasp/agent/hook/OhMyRaspHooks.enterBodyRead @ RequestBodyHookModule
 org.apache.tomcat:tomcat-catalina 8.5.100 org/apache/catalina/connector/CoyoteInputStream read ([B)I -> io/ohmyrasp/agent/hook/OhMyRaspHooks.exitBodyRead @ RequestBodyHookModule
+org.apache.tomcat:tomcat-catalina 8.5.100 org/apache/catalina/connector/CoyoteInputStream read ([BII)I -> io/ohmyrasp/agent/hook/OhMyRaspHooks.abortBodyRead @ RequestBodyHookModule
 org.apache.tomcat:tomcat-catalina 8.5.100 org/apache/catalina/connector/CoyoteInputStream read ([BII)I -> io/ohmyrasp/agent/hook/OhMyRaspHooks.enterBodyRead @ RequestBodyHookModule
 org.apache.tomcat:tomcat-catalina 8.5.100 org/apache/catalina/connector/CoyoteInputStream read ([BII)I -> io/ohmyrasp/agent/hook/OhMyRaspHooks.exitBodyRead x2 @ RequestBodyHookModule
+org.apache.tomcat:tomcat-catalina 8.5.100 org/apache/catalina/connector/CoyoteReader read ()I -> io/ohmyrasp/agent/hook/OhMyRaspHooks.abortBodyRead @ RequestBodyHookModule
 org.apache.tomcat:tomcat-catalina 8.5.100 org/apache/catalina/connector/CoyoteReader read ()I -> io/ohmyrasp/agent/hook/OhMyRaspHooks.enterBodyRead @ RequestBodyHookModule
 org.apache.tomcat:tomcat-catalina 8.5.100 org/apache/catalina/connector/CoyoteReader read ()I -> io/ohmyrasp/agent/hook/OhMyRaspHooks.exitBodyChars @ RequestBodyHookModule
+org.apache.tomcat:tomcat-catalina 8.5.100 org/apache/catalina/connector/CoyoteReader read ([C)I -> io/ohmyrasp/agent/hook/OhMyRaspHooks.abortBodyRead @ RequestBodyHookModule
 org.apache.tomcat:tomcat-catalina 8.5.100 org/apache/catalina/connector/CoyoteReader read ([C)I -> io/ohmyrasp/agent/hook/OhMyRaspHooks.enterBodyRead @ RequestBodyHookModule
 org.apache.tomcat:tomcat-catalina 8.5.100 org/apache/catalina/connector/CoyoteReader read ([C)I -> io/ohmyrasp/agent/hook/OhMyRaspHooks.exitBodyChars @ RequestBodyHookModule
+org.apache.tomcat:tomcat-catalina 8.5.100 org/apache/catalina/connector/CoyoteReader read ([CII)I -> io/ohmyrasp/agent/hook/OhMyRaspHooks.abortBodyRead @ RequestBodyHookModule
 org.apache.tomcat:tomcat-catalina 8.5.100 org/apache/catalina/connector/CoyoteReader read ([CII)I -> io/ohmyrasp/agent/hook/OhMyRaspHooks.enterBodyRead @ RequestBodyHookModule
 org.apache.tomcat:tomcat-catalina 8.5.100 org/apache/catalina/connector/CoyoteReader read ([CII)I -> io/ohmyrasp/agent/hook/OhMyRaspHooks.exitBodyChars @ RequestBodyHookModule
+org.apache.tomcat:tomcat-catalina 8.5.100 org/apache/catalina/connector/CoyoteReader readLine ()Ljava/lang/String; -> io/ohmyrasp/agent/hook/OhMyRaspHooks.abortBodyRead @ RequestBodyHookModule
 org.apache.tomcat:tomcat-catalina 8.5.100 org/apache/catalina/connector/CoyoteReader readLine ()Ljava/lang/String; -> io/ohmyrasp/agent/hook/OhMyRaspHooks.enterBodyRead @ RequestBodyHookModule
 org.apache.tomcat:tomcat-catalina 8.5.100 org/apache/catalina/connector/CoyoteReader readLine ()Ljava/lang/String; -> io/ohmyrasp/agent/hook/OhMyRaspHooks.exitBodyLine x2 @ RequestBodyHookModule
 org.apache.tomcat:tomcat-catalina 8.5.100 org/apache/catalina/connector/Request getLocale ()Ljava/util/Locale; -> io/ohmyrasp/agent/hook/OhMyRaspHooks.afterMultipartAccess @ (shared visitors)
@@ -1823,20 +1930,28 @@ org.apache.tomcat:tomcat-catalina 8.5.100 org/apache/catalina/session/JDBCStore 
 org.apache.tomcat:tomcat-catalina 8.5.100 org/apache/catalina/session/JDBCStore save (Lorg/apache/catalina/Session;)V -> io/ohmyrasp/agent/hook/OhMyRaspHooks.beforeSql @ (shared visitors)
 org.apache.tomcat:tomcat-catalina 8.5.100 org/apache/catalina/session/PersistentManagerBase swapIn (Ljava/lang/String;)Lorg/apache/catalina/Session; -> io/ohmyrasp/agent/hook/OhMyRaspHooks.beforeSessionDeserialization @ SessionHookModule
 org.apache.tomcat:tomcat-catalina 8.5.100 org/apache/catalina/valves/JDBCAccessLogValve open ()V -> io/ohmyrasp/agent/hook/OhMyRaspHooks.beforeSql x2 @ (shared visitors)
+org.apache.tomcat:tomcat-catalina 9.0.124 org/apache/catalina/connector/CoyoteInputStream read ()I -> io/ohmyrasp/agent/hook/OhMyRaspHooks.abortBodyRead @ RequestBodyHookModule
 org.apache.tomcat:tomcat-catalina 9.0.124 org/apache/catalina/connector/CoyoteInputStream read ()I -> io/ohmyrasp/agent/hook/OhMyRaspHooks.enterBodyRead @ RequestBodyHookModule
 org.apache.tomcat:tomcat-catalina 9.0.124 org/apache/catalina/connector/CoyoteInputStream read ()I -> io/ohmyrasp/agent/hook/OhMyRaspHooks.exitBodyRead x2 @ RequestBodyHookModule
+org.apache.tomcat:tomcat-catalina 9.0.124 org/apache/catalina/connector/CoyoteInputStream read (Ljava/nio/ByteBuffer;)I -> io/ohmyrasp/agent/hook/OhMyRaspHooks.abortBodyRead @ RequestBodyHookModule
 org.apache.tomcat:tomcat-catalina 9.0.124 org/apache/catalina/connector/CoyoteInputStream read (Ljava/nio/ByteBuffer;)I -> io/ohmyrasp/agent/hook/OhMyRaspHooks.enterBodyRead @ RequestBodyHookModule
 org.apache.tomcat:tomcat-catalina 9.0.124 org/apache/catalina/connector/CoyoteInputStream read (Ljava/nio/ByteBuffer;)I -> io/ohmyrasp/agent/hook/OhMyRaspHooks.exitBodyRead x2 @ RequestBodyHookModule
+org.apache.tomcat:tomcat-catalina 9.0.124 org/apache/catalina/connector/CoyoteInputStream read ([B)I -> io/ohmyrasp/agent/hook/OhMyRaspHooks.abortBodyRead @ RequestBodyHookModule
 org.apache.tomcat:tomcat-catalina 9.0.124 org/apache/catalina/connector/CoyoteInputStream read ([B)I -> io/ohmyrasp/agent/hook/OhMyRaspHooks.enterBodyRead @ RequestBodyHookModule
 org.apache.tomcat:tomcat-catalina 9.0.124 org/apache/catalina/connector/CoyoteInputStream read ([B)I -> io/ohmyrasp/agent/hook/OhMyRaspHooks.exitBodyRead @ RequestBodyHookModule
+org.apache.tomcat:tomcat-catalina 9.0.124 org/apache/catalina/connector/CoyoteInputStream read ([BII)I -> io/ohmyrasp/agent/hook/OhMyRaspHooks.abortBodyRead @ RequestBodyHookModule
 org.apache.tomcat:tomcat-catalina 9.0.124 org/apache/catalina/connector/CoyoteInputStream read ([BII)I -> io/ohmyrasp/agent/hook/OhMyRaspHooks.enterBodyRead @ RequestBodyHookModule
 org.apache.tomcat:tomcat-catalina 9.0.124 org/apache/catalina/connector/CoyoteInputStream read ([BII)I -> io/ohmyrasp/agent/hook/OhMyRaspHooks.exitBodyRead x2 @ RequestBodyHookModule
+org.apache.tomcat:tomcat-catalina 9.0.124 org/apache/catalina/connector/CoyoteReader read ()I -> io/ohmyrasp/agent/hook/OhMyRaspHooks.abortBodyRead @ RequestBodyHookModule
 org.apache.tomcat:tomcat-catalina 9.0.124 org/apache/catalina/connector/CoyoteReader read ()I -> io/ohmyrasp/agent/hook/OhMyRaspHooks.enterBodyRead @ RequestBodyHookModule
 org.apache.tomcat:tomcat-catalina 9.0.124 org/apache/catalina/connector/CoyoteReader read ()I -> io/ohmyrasp/agent/hook/OhMyRaspHooks.exitBodyChars @ RequestBodyHookModule
+org.apache.tomcat:tomcat-catalina 9.0.124 org/apache/catalina/connector/CoyoteReader read ([C)I -> io/ohmyrasp/agent/hook/OhMyRaspHooks.abortBodyRead @ RequestBodyHookModule
 org.apache.tomcat:tomcat-catalina 9.0.124 org/apache/catalina/connector/CoyoteReader read ([C)I -> io/ohmyrasp/agent/hook/OhMyRaspHooks.enterBodyRead @ RequestBodyHookModule
 org.apache.tomcat:tomcat-catalina 9.0.124 org/apache/catalina/connector/CoyoteReader read ([C)I -> io/ohmyrasp/agent/hook/OhMyRaspHooks.exitBodyChars @ RequestBodyHookModule
+org.apache.tomcat:tomcat-catalina 9.0.124 org/apache/catalina/connector/CoyoteReader read ([CII)I -> io/ohmyrasp/agent/hook/OhMyRaspHooks.abortBodyRead @ RequestBodyHookModule
 org.apache.tomcat:tomcat-catalina 9.0.124 org/apache/catalina/connector/CoyoteReader read ([CII)I -> io/ohmyrasp/agent/hook/OhMyRaspHooks.enterBodyRead @ RequestBodyHookModule
 org.apache.tomcat:tomcat-catalina 9.0.124 org/apache/catalina/connector/CoyoteReader read ([CII)I -> io/ohmyrasp/agent/hook/OhMyRaspHooks.exitBodyChars @ RequestBodyHookModule
+org.apache.tomcat:tomcat-catalina 9.0.124 org/apache/catalina/connector/CoyoteReader readLine ()Ljava/lang/String; -> io/ohmyrasp/agent/hook/OhMyRaspHooks.abortBodyRead @ RequestBodyHookModule
 org.apache.tomcat:tomcat-catalina 9.0.124 org/apache/catalina/connector/CoyoteReader readLine ()Ljava/lang/String; -> io/ohmyrasp/agent/hook/OhMyRaspHooks.enterBodyRead @ RequestBodyHookModule
 org.apache.tomcat:tomcat-catalina 9.0.124 org/apache/catalina/connector/CoyoteReader readLine ()Ljava/lang/String; -> io/ohmyrasp/agent/hook/OhMyRaspHooks.exitBodyLine x2 @ RequestBodyHookModule
 org.apache.tomcat:tomcat-catalina 9.0.124 org/apache/catalina/connector/Request getLocale ()Ljava/util/Locale; -> io/ohmyrasp/agent/hook/OhMyRaspHooks.afterMultipartAccess @ (shared visitors)
@@ -1993,10 +2108,13 @@ org.eclipse.jetty.ee10:jetty-ee10-servlet 12.0.41 org/eclipse/jetty/ee10/servlet
 org.eclipse.jetty.ee10:jetty-ee10-servlet 12.0.41 org/eclipse/jetty/ee10/servlet/Dispatcher$ForwardRequest getParts ()Ljava/util/Collection; -> io/ohmyrasp/agent/hook/OhMyRaspHooks.afterMultipartLookup @ MultipartUploadHookModule
 org.eclipse.jetty.ee10:jetty-ee10-servlet 12.0.41 org/eclipse/jetty/ee10/servlet/Dispatcher$IncludeRequest getPart (Ljava/lang/String;)Ljakarta/servlet/http/Part; -> io/ohmyrasp/agent/hook/OhMyRaspHooks.afterMultipartLookup @ MultipartUploadHookModule
 org.eclipse.jetty.ee10:jetty-ee10-servlet 12.0.41 org/eclipse/jetty/ee10/servlet/Dispatcher$IncludeRequest getParts ()Ljava/util/Collection; -> io/ohmyrasp/agent/hook/OhMyRaspHooks.afterMultipartLookup @ MultipartUploadHookModule
+org.eclipse.jetty.ee10:jetty-ee10-servlet 12.0.41 org/eclipse/jetty/ee10/servlet/HttpInput read ()I -> io/ohmyrasp/agent/hook/OhMyRaspHooks.abortBodyRead @ RequestBodyHookModule
 org.eclipse.jetty.ee10:jetty-ee10-servlet 12.0.41 org/eclipse/jetty/ee10/servlet/HttpInput read ()I -> io/ohmyrasp/agent/hook/OhMyRaspHooks.enterBodyRead @ RequestBodyHookModule
 org.eclipse.jetty.ee10:jetty-ee10-servlet 12.0.41 org/eclipse/jetty/ee10/servlet/HttpInput read ()I -> io/ohmyrasp/agent/hook/OhMyRaspHooks.exitBodyRead @ RequestBodyHookModule
+org.eclipse.jetty.ee10:jetty-ee10-servlet 12.0.41 org/eclipse/jetty/ee10/servlet/HttpInput read (Ljava/nio/ByteBuffer;)I -> io/ohmyrasp/agent/hook/OhMyRaspHooks.abortBodyRead @ RequestBodyHookModule
 org.eclipse.jetty.ee10:jetty-ee10-servlet 12.0.41 org/eclipse/jetty/ee10/servlet/HttpInput read (Ljava/nio/ByteBuffer;)I -> io/ohmyrasp/agent/hook/OhMyRaspHooks.enterBodyRead @ RequestBodyHookModule
 org.eclipse.jetty.ee10:jetty-ee10-servlet 12.0.41 org/eclipse/jetty/ee10/servlet/HttpInput read (Ljava/nio/ByteBuffer;)I -> io/ohmyrasp/agent/hook/OhMyRaspHooks.exitBodyRead @ RequestBodyHookModule
+org.eclipse.jetty.ee10:jetty-ee10-servlet 12.0.41 org/eclipse/jetty/ee10/servlet/HttpInput read ([BII)I -> io/ohmyrasp/agent/hook/OhMyRaspHooks.abortBodyRead @ RequestBodyHookModule
 org.eclipse.jetty.ee10:jetty-ee10-servlet 12.0.41 org/eclipse/jetty/ee10/servlet/HttpInput read ([BII)I -> io/ohmyrasp/agent/hook/OhMyRaspHooks.enterBodyRead @ RequestBodyHookModule
 org.eclipse.jetty.ee10:jetty-ee10-servlet 12.0.41 org/eclipse/jetty/ee10/servlet/HttpInput read ([BII)I -> io/ohmyrasp/agent/hook/OhMyRaspHooks.exitBodyRead @ RequestBodyHookModule
 org.eclipse.jetty.ee10:jetty-ee10-servlet 12.0.41 org/eclipse/jetty/ee10/servlet/ServletApiRequest getLocale ()Ljava/util/Locale; -> io/ohmyrasp/agent/hook/OhMyRaspHooks.afterMultipartAccess @ (shared visitors)
@@ -2018,10 +2136,13 @@ org.eclipse.jetty.ee10:jetty-ee10-servlet 12.1.15 org/eclipse/jetty/ee10/servlet
 org.eclipse.jetty.ee10:jetty-ee10-servlet 12.1.15 org/eclipse/jetty/ee10/servlet/Dispatcher$ForwardRequest getParts ()Ljava/util/Collection; -> io/ohmyrasp/agent/hook/OhMyRaspHooks.afterMultipartLookup @ MultipartUploadHookModule
 org.eclipse.jetty.ee10:jetty-ee10-servlet 12.1.15 org/eclipse/jetty/ee10/servlet/Dispatcher$IncludeRequest getPart (Ljava/lang/String;)Ljakarta/servlet/http/Part; -> io/ohmyrasp/agent/hook/OhMyRaspHooks.afterMultipartLookup @ MultipartUploadHookModule
 org.eclipse.jetty.ee10:jetty-ee10-servlet 12.1.15 org/eclipse/jetty/ee10/servlet/Dispatcher$IncludeRequest getParts ()Ljava/util/Collection; -> io/ohmyrasp/agent/hook/OhMyRaspHooks.afterMultipartLookup @ MultipartUploadHookModule
+org.eclipse.jetty.ee10:jetty-ee10-servlet 12.1.15 org/eclipse/jetty/ee10/servlet/HttpInput read ()I -> io/ohmyrasp/agent/hook/OhMyRaspHooks.abortBodyRead @ RequestBodyHookModule
 org.eclipse.jetty.ee10:jetty-ee10-servlet 12.1.15 org/eclipse/jetty/ee10/servlet/HttpInput read ()I -> io/ohmyrasp/agent/hook/OhMyRaspHooks.enterBodyRead @ RequestBodyHookModule
 org.eclipse.jetty.ee10:jetty-ee10-servlet 12.1.15 org/eclipse/jetty/ee10/servlet/HttpInput read ()I -> io/ohmyrasp/agent/hook/OhMyRaspHooks.exitBodyRead @ RequestBodyHookModule
+org.eclipse.jetty.ee10:jetty-ee10-servlet 12.1.15 org/eclipse/jetty/ee10/servlet/HttpInput read (Ljava/nio/ByteBuffer;)I -> io/ohmyrasp/agent/hook/OhMyRaspHooks.abortBodyRead @ RequestBodyHookModule
 org.eclipse.jetty.ee10:jetty-ee10-servlet 12.1.15 org/eclipse/jetty/ee10/servlet/HttpInput read (Ljava/nio/ByteBuffer;)I -> io/ohmyrasp/agent/hook/OhMyRaspHooks.enterBodyRead @ RequestBodyHookModule
 org.eclipse.jetty.ee10:jetty-ee10-servlet 12.1.15 org/eclipse/jetty/ee10/servlet/HttpInput read (Ljava/nio/ByteBuffer;)I -> io/ohmyrasp/agent/hook/OhMyRaspHooks.exitBodyRead @ RequestBodyHookModule
+org.eclipse.jetty.ee10:jetty-ee10-servlet 12.1.15 org/eclipse/jetty/ee10/servlet/HttpInput read ([BII)I -> io/ohmyrasp/agent/hook/OhMyRaspHooks.abortBodyRead @ RequestBodyHookModule
 org.eclipse.jetty.ee10:jetty-ee10-servlet 12.1.15 org/eclipse/jetty/ee10/servlet/HttpInput read ([BII)I -> io/ohmyrasp/agent/hook/OhMyRaspHooks.enterBodyRead @ RequestBodyHookModule
 org.eclipse.jetty.ee10:jetty-ee10-servlet 12.1.15 org/eclipse/jetty/ee10/servlet/HttpInput read ([BII)I -> io/ohmyrasp/agent/hook/OhMyRaspHooks.exitBodyRead @ RequestBodyHookModule
 org.eclipse.jetty.ee10:jetty-ee10-servlet 12.1.15 org/eclipse/jetty/ee10/servlet/ServletApiRequest getLocale ()Ljava/util/Locale; -> io/ohmyrasp/agent/hook/OhMyRaspHooks.afterMultipartAccess @ (shared visitors)
@@ -2037,10 +2158,13 @@ org.eclipse.jetty.ee10:jetty-ee10-servlet 12.1.15 org/eclipse/jetty/ee10/servlet
 org.eclipse.jetty.ee10:jetty-ee10-servlet 12.1.15 org/eclipse/jetty/ee10/servlet/ServletMultiPartFormData$ServletPart getSubmittedFileName ()Ljava/lang/String; -> io/ohmyrasp/agent/hook/OhMyRaspHooks.inspectMultipartFilename @ MultipartUploadHookModule
 org.eclipse.jetty.ee10:jetty-ee10-servlet 12.1.15 org/eclipse/jetty/ee10/servlet/ServletMultiPartFormData$ServletPart getSubmittedFileName ()Ljava/lang/String; -> io/ohmyrasp/agent/http/MultipartFilename.enter @ MultipartUploadHookModule
 org.eclipse.jetty.ee10:jetty-ee10-servlet 12.1.15 org/eclipse/jetty/ee10/servlet/ServletMultiPartFormData$ServletPart getSubmittedFileName ()Ljava/lang/String; -> io/ohmyrasp/agent/http/MultipartFilename.exit x2 @ MultipartUploadHookModule
+org.eclipse.jetty.ee10:jetty-ee10-servlet 12.1.15 org/eclipse/jetty/ee10/servlet/util/ServletInputStreamWrapper read ()I -> io/ohmyrasp/agent/hook/OhMyRaspHooks.abortBodyRead @ RequestBodyHookModule
 org.eclipse.jetty.ee10:jetty-ee10-servlet 12.1.15 org/eclipse/jetty/ee10/servlet/util/ServletInputStreamWrapper read ()I -> io/ohmyrasp/agent/hook/OhMyRaspHooks.enterBodyRead @ RequestBodyHookModule
 org.eclipse.jetty.ee10:jetty-ee10-servlet 12.1.15 org/eclipse/jetty/ee10/servlet/util/ServletInputStreamWrapper read ()I -> io/ohmyrasp/agent/hook/OhMyRaspHooks.exitBodyRead @ RequestBodyHookModule
+org.eclipse.jetty.ee10:jetty-ee10-servlet 12.1.15 org/eclipse/jetty/ee10/servlet/util/ServletInputStreamWrapper read ([B)I -> io/ohmyrasp/agent/hook/OhMyRaspHooks.abortBodyRead @ RequestBodyHookModule
 org.eclipse.jetty.ee10:jetty-ee10-servlet 12.1.15 org/eclipse/jetty/ee10/servlet/util/ServletInputStreamWrapper read ([B)I -> io/ohmyrasp/agent/hook/OhMyRaspHooks.enterBodyRead @ RequestBodyHookModule
 org.eclipse.jetty.ee10:jetty-ee10-servlet 12.1.15 org/eclipse/jetty/ee10/servlet/util/ServletInputStreamWrapper read ([B)I -> io/ohmyrasp/agent/hook/OhMyRaspHooks.exitBodyRead @ RequestBodyHookModule
+org.eclipse.jetty.ee10:jetty-ee10-servlet 12.1.15 org/eclipse/jetty/ee10/servlet/util/ServletInputStreamWrapper read ([BII)I -> io/ohmyrasp/agent/hook/OhMyRaspHooks.abortBodyRead @ RequestBodyHookModule
 org.eclipse.jetty.ee10:jetty-ee10-servlet 12.1.15 org/eclipse/jetty/ee10/servlet/util/ServletInputStreamWrapper read ([BII)I -> io/ohmyrasp/agent/hook/OhMyRaspHooks.enterBodyRead @ RequestBodyHookModule
 org.eclipse.jetty.ee10:jetty-ee10-servlet 12.1.15 org/eclipse/jetty/ee10/servlet/util/ServletInputStreamWrapper read ([BII)I -> io/ohmyrasp/agent/hook/OhMyRaspHooks.exitBodyRead @ RequestBodyHookModule
 org.eclipse.jetty.ee11:jetty-ee11-servlet 12.1.15 org/eclipse/jetty/ee11/servlet/Dispatcher$AsyncRequest getPart (Ljava/lang/String;)Ljakarta/servlet/http/Part; -> io/ohmyrasp/agent/hook/OhMyRaspHooks.afterMultipartLookup @ MultipartUploadHookModule
@@ -2049,10 +2173,13 @@ org.eclipse.jetty.ee11:jetty-ee11-servlet 12.1.15 org/eclipse/jetty/ee11/servlet
 org.eclipse.jetty.ee11:jetty-ee11-servlet 12.1.15 org/eclipse/jetty/ee11/servlet/Dispatcher$ForwardRequest getParts ()Ljava/util/Collection; -> io/ohmyrasp/agent/hook/OhMyRaspHooks.afterMultipartLookup @ MultipartUploadHookModule
 org.eclipse.jetty.ee11:jetty-ee11-servlet 12.1.15 org/eclipse/jetty/ee11/servlet/Dispatcher$IncludeRequest getPart (Ljava/lang/String;)Ljakarta/servlet/http/Part; -> io/ohmyrasp/agent/hook/OhMyRaspHooks.afterMultipartLookup @ MultipartUploadHookModule
 org.eclipse.jetty.ee11:jetty-ee11-servlet 12.1.15 org/eclipse/jetty/ee11/servlet/Dispatcher$IncludeRequest getParts ()Ljava/util/Collection; -> io/ohmyrasp/agent/hook/OhMyRaspHooks.afterMultipartLookup @ MultipartUploadHookModule
+org.eclipse.jetty.ee11:jetty-ee11-servlet 12.1.15 org/eclipse/jetty/ee11/servlet/HttpInput read ()I -> io/ohmyrasp/agent/hook/OhMyRaspHooks.abortBodyRead @ RequestBodyHookModule
 org.eclipse.jetty.ee11:jetty-ee11-servlet 12.1.15 org/eclipse/jetty/ee11/servlet/HttpInput read ()I -> io/ohmyrasp/agent/hook/OhMyRaspHooks.enterBodyRead @ RequestBodyHookModule
 org.eclipse.jetty.ee11:jetty-ee11-servlet 12.1.15 org/eclipse/jetty/ee11/servlet/HttpInput read ()I -> io/ohmyrasp/agent/hook/OhMyRaspHooks.exitBodyRead @ RequestBodyHookModule
+org.eclipse.jetty.ee11:jetty-ee11-servlet 12.1.15 org/eclipse/jetty/ee11/servlet/HttpInput read (Ljava/nio/ByteBuffer;)I -> io/ohmyrasp/agent/hook/OhMyRaspHooks.abortBodyRead @ RequestBodyHookModule
 org.eclipse.jetty.ee11:jetty-ee11-servlet 12.1.15 org/eclipse/jetty/ee11/servlet/HttpInput read (Ljava/nio/ByteBuffer;)I -> io/ohmyrasp/agent/hook/OhMyRaspHooks.enterBodyRead @ RequestBodyHookModule
 org.eclipse.jetty.ee11:jetty-ee11-servlet 12.1.15 org/eclipse/jetty/ee11/servlet/HttpInput read (Ljava/nio/ByteBuffer;)I -> io/ohmyrasp/agent/hook/OhMyRaspHooks.exitBodyRead @ RequestBodyHookModule
+org.eclipse.jetty.ee11:jetty-ee11-servlet 12.1.15 org/eclipse/jetty/ee11/servlet/HttpInput read ([BII)I -> io/ohmyrasp/agent/hook/OhMyRaspHooks.abortBodyRead @ RequestBodyHookModule
 org.eclipse.jetty.ee11:jetty-ee11-servlet 12.1.15 org/eclipse/jetty/ee11/servlet/HttpInput read ([BII)I -> io/ohmyrasp/agent/hook/OhMyRaspHooks.enterBodyRead @ RequestBodyHookModule
 org.eclipse.jetty.ee11:jetty-ee11-servlet 12.1.15 org/eclipse/jetty/ee11/servlet/HttpInput read ([BII)I -> io/ohmyrasp/agent/hook/OhMyRaspHooks.exitBodyRead @ RequestBodyHookModule
 org.eclipse.jetty.ee11:jetty-ee11-servlet 12.1.15 org/eclipse/jetty/ee11/servlet/ServletApiRequest getLocale ()Ljava/util/Locale; -> io/ohmyrasp/agent/hook/OhMyRaspHooks.afterMultipartAccess @ (shared visitors)
@@ -2068,16 +2195,22 @@ org.eclipse.jetty.ee11:jetty-ee11-servlet 12.1.15 org/eclipse/jetty/ee11/servlet
 org.eclipse.jetty.ee11:jetty-ee11-servlet 12.1.15 org/eclipse/jetty/ee11/servlet/ServletMultiPartFormData$ServletPart getSubmittedFileName ()Ljava/lang/String; -> io/ohmyrasp/agent/hook/OhMyRaspHooks.inspectMultipartFilename @ MultipartUploadHookModule
 org.eclipse.jetty.ee11:jetty-ee11-servlet 12.1.15 org/eclipse/jetty/ee11/servlet/ServletMultiPartFormData$ServletPart getSubmittedFileName ()Ljava/lang/String; -> io/ohmyrasp/agent/http/MultipartFilename.enter @ MultipartUploadHookModule
 org.eclipse.jetty.ee11:jetty-ee11-servlet 12.1.15 org/eclipse/jetty/ee11/servlet/ServletMultiPartFormData$ServletPart getSubmittedFileName ()Ljava/lang/String; -> io/ohmyrasp/agent/http/MultipartFilename.exit x2 @ MultipartUploadHookModule
+org.eclipse.jetty.ee11:jetty-ee11-servlet 12.1.15 org/eclipse/jetty/ee11/servlet/util/ServletInputStreamWrapper read ()I -> io/ohmyrasp/agent/hook/OhMyRaspHooks.abortBodyRead @ RequestBodyHookModule
 org.eclipse.jetty.ee11:jetty-ee11-servlet 12.1.15 org/eclipse/jetty/ee11/servlet/util/ServletInputStreamWrapper read ()I -> io/ohmyrasp/agent/hook/OhMyRaspHooks.enterBodyRead @ RequestBodyHookModule
 org.eclipse.jetty.ee11:jetty-ee11-servlet 12.1.15 org/eclipse/jetty/ee11/servlet/util/ServletInputStreamWrapper read ()I -> io/ohmyrasp/agent/hook/OhMyRaspHooks.exitBodyRead @ RequestBodyHookModule
+org.eclipse.jetty.ee11:jetty-ee11-servlet 12.1.15 org/eclipse/jetty/ee11/servlet/util/ServletInputStreamWrapper read ([B)I -> io/ohmyrasp/agent/hook/OhMyRaspHooks.abortBodyRead @ RequestBodyHookModule
 org.eclipse.jetty.ee11:jetty-ee11-servlet 12.1.15 org/eclipse/jetty/ee11/servlet/util/ServletInputStreamWrapper read ([B)I -> io/ohmyrasp/agent/hook/OhMyRaspHooks.enterBodyRead @ RequestBodyHookModule
 org.eclipse.jetty.ee11:jetty-ee11-servlet 12.1.15 org/eclipse/jetty/ee11/servlet/util/ServletInputStreamWrapper read ([B)I -> io/ohmyrasp/agent/hook/OhMyRaspHooks.exitBodyRead @ RequestBodyHookModule
+org.eclipse.jetty.ee11:jetty-ee11-servlet 12.1.15 org/eclipse/jetty/ee11/servlet/util/ServletInputStreamWrapper read ([BII)I -> io/ohmyrasp/agent/hook/OhMyRaspHooks.abortBodyRead @ RequestBodyHookModule
 org.eclipse.jetty.ee11:jetty-ee11-servlet 12.1.15 org/eclipse/jetty/ee11/servlet/util/ServletInputStreamWrapper read ([BII)I -> io/ohmyrasp/agent/hook/OhMyRaspHooks.enterBodyRead @ RequestBodyHookModule
 org.eclipse.jetty.ee11:jetty-ee11-servlet 12.1.15 org/eclipse/jetty/ee11/servlet/util/ServletInputStreamWrapper read ([BII)I -> io/ohmyrasp/agent/hook/OhMyRaspHooks.exitBodyRead @ RequestBodyHookModule
+org.eclipse.jetty.ee8:jetty-ee8-nested 12.0.41 org/eclipse/jetty/ee8/nested/HttpInput read ()I -> io/ohmyrasp/agent/hook/OhMyRaspHooks.abortBodyRead @ RequestBodyHookModule
 org.eclipse.jetty.ee8:jetty-ee8-nested 12.0.41 org/eclipse/jetty/ee8/nested/HttpInput read ()I -> io/ohmyrasp/agent/hook/OhMyRaspHooks.enterBodyRead @ RequestBodyHookModule
 org.eclipse.jetty.ee8:jetty-ee8-nested 12.0.41 org/eclipse/jetty/ee8/nested/HttpInput read ()I -> io/ohmyrasp/agent/hook/OhMyRaspHooks.exitBodyRead @ RequestBodyHookModule
+org.eclipse.jetty.ee8:jetty-ee8-nested 12.0.41 org/eclipse/jetty/ee8/nested/HttpInput read (Ljava/nio/ByteBuffer;)I -> io/ohmyrasp/agent/hook/OhMyRaspHooks.abortBodyRead @ RequestBodyHookModule
 org.eclipse.jetty.ee8:jetty-ee8-nested 12.0.41 org/eclipse/jetty/ee8/nested/HttpInput read (Ljava/nio/ByteBuffer;)I -> io/ohmyrasp/agent/hook/OhMyRaspHooks.enterBodyRead @ RequestBodyHookModule
 org.eclipse.jetty.ee8:jetty-ee8-nested 12.0.41 org/eclipse/jetty/ee8/nested/HttpInput read (Ljava/nio/ByteBuffer;)I -> io/ohmyrasp/agent/hook/OhMyRaspHooks.exitBodyRead @ RequestBodyHookModule
+org.eclipse.jetty.ee8:jetty-ee8-nested 12.0.41 org/eclipse/jetty/ee8/nested/HttpInput read ([BII)I -> io/ohmyrasp/agent/hook/OhMyRaspHooks.abortBodyRead @ RequestBodyHookModule
 org.eclipse.jetty.ee8:jetty-ee8-nested 12.0.41 org/eclipse/jetty/ee8/nested/HttpInput read ([BII)I -> io/ohmyrasp/agent/hook/OhMyRaspHooks.enterBodyRead @ RequestBodyHookModule
 org.eclipse.jetty.ee8:jetty-ee8-nested 12.0.41 org/eclipse/jetty/ee8/nested/HttpInput read ([BII)I -> io/ohmyrasp/agent/hook/OhMyRaspHooks.exitBodyRead @ RequestBodyHookModule
 org.eclipse.jetty.ee8:jetty-ee8-nested 12.0.41 org/eclipse/jetty/ee8/nested/MultiPartFormInputStream delete ()V -> io/ohmyrasp/agent/hook/OhMyRaspHooks.afterMultipartAccess x4 @ (shared visitors)
@@ -2105,10 +2238,13 @@ org.eclipse.jetty.ee8:jetty-ee8-nested 12.0.41 org/eclipse/jetty/ee8/nested/Requ
 org.eclipse.jetty.ee8:jetty-ee8-nested 12.0.41 org/eclipse/jetty/ee8/nested/Request removeAttribute (Ljava/lang/String;)V -> io/ohmyrasp/agent/hook/OhMyRaspHooks.afterMultipartAccess x2 @ (shared visitors)
 org.eclipse.jetty.ee8:jetty-ee8-nested 12.0.41 org/eclipse/jetty/ee8/nested/Request reportComplianceViolations ()V -> io/ohmyrasp/agent/hook/OhMyRaspHooks.afterMultipartAccess x2 @ (shared visitors)
 org.eclipse.jetty.ee8:jetty-ee8-nested 12.0.41 org/eclipse/jetty/ee8/nested/Request setAttribute (Ljava/lang/String;Ljava/lang/Object;)V -> io/ohmyrasp/agent/hook/OhMyRaspHooks.afterMultipartAccess x2 @ (shared visitors)
+org.eclipse.jetty.ee9:jetty-ee9-nested 12.0.41 org/eclipse/jetty/ee9/nested/HttpInput read ()I -> io/ohmyrasp/agent/hook/OhMyRaspHooks.abortBodyRead @ RequestBodyHookModule
 org.eclipse.jetty.ee9:jetty-ee9-nested 12.0.41 org/eclipse/jetty/ee9/nested/HttpInput read ()I -> io/ohmyrasp/agent/hook/OhMyRaspHooks.enterBodyRead @ RequestBodyHookModule
 org.eclipse.jetty.ee9:jetty-ee9-nested 12.0.41 org/eclipse/jetty/ee9/nested/HttpInput read ()I -> io/ohmyrasp/agent/hook/OhMyRaspHooks.exitBodyRead @ RequestBodyHookModule
+org.eclipse.jetty.ee9:jetty-ee9-nested 12.0.41 org/eclipse/jetty/ee9/nested/HttpInput read (Ljava/nio/ByteBuffer;)I -> io/ohmyrasp/agent/hook/OhMyRaspHooks.abortBodyRead @ RequestBodyHookModule
 org.eclipse.jetty.ee9:jetty-ee9-nested 12.0.41 org/eclipse/jetty/ee9/nested/HttpInput read (Ljava/nio/ByteBuffer;)I -> io/ohmyrasp/agent/hook/OhMyRaspHooks.enterBodyRead @ RequestBodyHookModule
 org.eclipse.jetty.ee9:jetty-ee9-nested 12.0.41 org/eclipse/jetty/ee9/nested/HttpInput read (Ljava/nio/ByteBuffer;)I -> io/ohmyrasp/agent/hook/OhMyRaspHooks.exitBodyRead @ RequestBodyHookModule
+org.eclipse.jetty.ee9:jetty-ee9-nested 12.0.41 org/eclipse/jetty/ee9/nested/HttpInput read ([BII)I -> io/ohmyrasp/agent/hook/OhMyRaspHooks.abortBodyRead @ RequestBodyHookModule
 org.eclipse.jetty.ee9:jetty-ee9-nested 12.0.41 org/eclipse/jetty/ee9/nested/HttpInput read ([BII)I -> io/ohmyrasp/agent/hook/OhMyRaspHooks.enterBodyRead @ RequestBodyHookModule
 org.eclipse.jetty.ee9:jetty-ee9-nested 12.0.41 org/eclipse/jetty/ee9/nested/HttpInput read ([BII)I -> io/ohmyrasp/agent/hook/OhMyRaspHooks.exitBodyRead @ RequestBodyHookModule
 org.eclipse.jetty.ee9:jetty-ee9-nested 12.0.41 org/eclipse/jetty/ee9/nested/MultiPartFormInputStream delete ()V -> io/ohmyrasp/agent/hook/OhMyRaspHooks.afterMultipartAccess x4 @ (shared visitors)
@@ -2136,10 +2272,13 @@ org.eclipse.jetty.ee9:jetty-ee9-nested 12.0.41 org/eclipse/jetty/ee9/nested/Requ
 org.eclipse.jetty.ee9:jetty-ee9-nested 12.0.41 org/eclipse/jetty/ee9/nested/Request removeAttribute (Ljava/lang/String;)V -> io/ohmyrasp/agent/hook/OhMyRaspHooks.afterMultipartAccess x2 @ (shared visitors)
 org.eclipse.jetty.ee9:jetty-ee9-nested 12.0.41 org/eclipse/jetty/ee9/nested/Request reportComplianceViolations ()V -> io/ohmyrasp/agent/hook/OhMyRaspHooks.afterMultipartAccess x2 @ (shared visitors)
 org.eclipse.jetty.ee9:jetty-ee9-nested 12.0.41 org/eclipse/jetty/ee9/nested/Request setAttribute (Ljava/lang/String;Ljava/lang/Object;)V -> io/ohmyrasp/agent/hook/OhMyRaspHooks.afterMultipartAccess x2 @ (shared visitors)
+org.eclipse.jetty:jetty-server 10.0.26 org/eclipse/jetty/server/HttpInput read ()I -> io/ohmyrasp/agent/hook/OhMyRaspHooks.abortBodyRead @ RequestBodyHookModule
 org.eclipse.jetty:jetty-server 10.0.26 org/eclipse/jetty/server/HttpInput read ()I -> io/ohmyrasp/agent/hook/OhMyRaspHooks.enterBodyRead @ RequestBodyHookModule
 org.eclipse.jetty:jetty-server 10.0.26 org/eclipse/jetty/server/HttpInput read ()I -> io/ohmyrasp/agent/hook/OhMyRaspHooks.exitBodyRead @ RequestBodyHookModule
+org.eclipse.jetty:jetty-server 10.0.26 org/eclipse/jetty/server/HttpInput read (Ljava/nio/ByteBuffer;)I -> io/ohmyrasp/agent/hook/OhMyRaspHooks.abortBodyRead @ RequestBodyHookModule
 org.eclipse.jetty:jetty-server 10.0.26 org/eclipse/jetty/server/HttpInput read (Ljava/nio/ByteBuffer;)I -> io/ohmyrasp/agent/hook/OhMyRaspHooks.enterBodyRead @ RequestBodyHookModule
 org.eclipse.jetty:jetty-server 10.0.26 org/eclipse/jetty/server/HttpInput read (Ljava/nio/ByteBuffer;)I -> io/ohmyrasp/agent/hook/OhMyRaspHooks.exitBodyRead @ RequestBodyHookModule
+org.eclipse.jetty:jetty-server 10.0.26 org/eclipse/jetty/server/HttpInput read ([BII)I -> io/ohmyrasp/agent/hook/OhMyRaspHooks.abortBodyRead @ RequestBodyHookModule
 org.eclipse.jetty:jetty-server 10.0.26 org/eclipse/jetty/server/HttpInput read ([BII)I -> io/ohmyrasp/agent/hook/OhMyRaspHooks.enterBodyRead @ RequestBodyHookModule
 org.eclipse.jetty:jetty-server 10.0.26 org/eclipse/jetty/server/HttpInput read ([BII)I -> io/ohmyrasp/agent/hook/OhMyRaspHooks.exitBodyRead @ RequestBodyHookModule
 org.eclipse.jetty:jetty-server 10.0.26 org/eclipse/jetty/server/MultiPartFormInputStream delete ()V -> io/ohmyrasp/agent/hook/OhMyRaspHooks.afterMultipartAccess x4 @ (shared visitors)
@@ -2187,10 +2326,13 @@ org.eclipse.jetty:jetty-server 10.0.26 org/eclipse/jetty/server/session/JDBCSess
 org.eclipse.jetty:jetty-server 10.0.26 org/eclipse/jetty/server/session/JDBCSessionDataStore$SessionTableSchema getUpdateSessionStatement (Ljava/sql/Connection;Ljava/lang/String;Lorg/eclipse/jetty/server/session/SessionContext;)Ljava/sql/PreparedStatement; -> io/ohmyrasp/agent/hook/OhMyRaspHooks.beforeSql @ (shared visitors)
 org.eclipse.jetty:jetty-server 10.0.26 org/eclipse/jetty/server/session/JDBCSessionDataStore$SessionTableSchema getUpdateStatement (Ljava/sql/Connection;Ljava/lang/String;Lorg/eclipse/jetty/server/session/SessionContext;)Ljava/sql/PreparedStatement; -> io/ohmyrasp/agent/hook/OhMyRaspHooks.beforeSql @ (shared visitors)
 org.eclipse.jetty:jetty-server 10.0.26 org/eclipse/jetty/server/session/JDBCSessionDataStore$SessionTableSchema prepareTables ()V -> io/ohmyrasp/agent/hook/OhMyRaspHooks.beforeSql x4 @ (shared visitors)
+org.eclipse.jetty:jetty-server 11.0.26 org/eclipse/jetty/server/HttpInput read ()I -> io/ohmyrasp/agent/hook/OhMyRaspHooks.abortBodyRead @ RequestBodyHookModule
 org.eclipse.jetty:jetty-server 11.0.26 org/eclipse/jetty/server/HttpInput read ()I -> io/ohmyrasp/agent/hook/OhMyRaspHooks.enterBodyRead @ RequestBodyHookModule
 org.eclipse.jetty:jetty-server 11.0.26 org/eclipse/jetty/server/HttpInput read ()I -> io/ohmyrasp/agent/hook/OhMyRaspHooks.exitBodyRead @ RequestBodyHookModule
+org.eclipse.jetty:jetty-server 11.0.26 org/eclipse/jetty/server/HttpInput read (Ljava/nio/ByteBuffer;)I -> io/ohmyrasp/agent/hook/OhMyRaspHooks.abortBodyRead @ RequestBodyHookModule
 org.eclipse.jetty:jetty-server 11.0.26 org/eclipse/jetty/server/HttpInput read (Ljava/nio/ByteBuffer;)I -> io/ohmyrasp/agent/hook/OhMyRaspHooks.enterBodyRead @ RequestBodyHookModule
 org.eclipse.jetty:jetty-server 11.0.26 org/eclipse/jetty/server/HttpInput read (Ljava/nio/ByteBuffer;)I -> io/ohmyrasp/agent/hook/OhMyRaspHooks.exitBodyRead @ RequestBodyHookModule
+org.eclipse.jetty:jetty-server 11.0.26 org/eclipse/jetty/server/HttpInput read ([BII)I -> io/ohmyrasp/agent/hook/OhMyRaspHooks.abortBodyRead @ RequestBodyHookModule
 org.eclipse.jetty:jetty-server 11.0.26 org/eclipse/jetty/server/HttpInput read ([BII)I -> io/ohmyrasp/agent/hook/OhMyRaspHooks.enterBodyRead @ RequestBodyHookModule
 org.eclipse.jetty:jetty-server 11.0.26 org/eclipse/jetty/server/HttpInput read ([BII)I -> io/ohmyrasp/agent/hook/OhMyRaspHooks.exitBodyRead @ RequestBodyHookModule
 org.eclipse.jetty:jetty-server 11.0.26 org/eclipse/jetty/server/MultiPartFormInputStream delete ()V -> io/ohmyrasp/agent/hook/OhMyRaspHooks.afterMultipartAccess x4 @ (shared visitors)
@@ -2239,8 +2381,10 @@ org.eclipse.jetty:jetty-server 11.0.26 org/eclipse/jetty/server/session/JDBCSess
 org.eclipse.jetty:jetty-server 11.0.26 org/eclipse/jetty/server/session/JDBCSessionDataStore$SessionTableSchema getUpdateStatement (Ljava/sql/Connection;Ljava/lang/String;Lorg/eclipse/jetty/server/session/SessionContext;)Ljava/sql/PreparedStatement; -> io/ohmyrasp/agent/hook/OhMyRaspHooks.beforeSql @ (shared visitors)
 org.eclipse.jetty:jetty-server 11.0.26 org/eclipse/jetty/server/session/JDBCSessionDataStore$SessionTableSchema prepareTables ()V -> io/ohmyrasp/agent/hook/OhMyRaspHooks.beforeSql x4 @ (shared visitors)
 org.eclipse.jetty:jetty-server 12.0.41 org/eclipse/jetty/server/internal/HttpChannelState initialize ()V -> io/ohmyrasp/agent/hook/OhMyRaspHooks.afterMultipartAccess @ (shared visitors)
+org.eclipse.jetty:jetty-server 9.4.57.v20241219 org/eclipse/jetty/server/HttpInput read ()I -> io/ohmyrasp/agent/hook/OhMyRaspHooks.abortBodyRead @ RequestBodyHookModule
 org.eclipse.jetty:jetty-server 9.4.57.v20241219 org/eclipse/jetty/server/HttpInput read ()I -> io/ohmyrasp/agent/hook/OhMyRaspHooks.enterBodyRead @ RequestBodyHookModule
 org.eclipse.jetty:jetty-server 9.4.57.v20241219 org/eclipse/jetty/server/HttpInput read ()I -> io/ohmyrasp/agent/hook/OhMyRaspHooks.exitBodyRead @ RequestBodyHookModule
+org.eclipse.jetty:jetty-server 9.4.57.v20241219 org/eclipse/jetty/server/HttpInput read ([BII)I -> io/ohmyrasp/agent/hook/OhMyRaspHooks.abortBodyRead @ RequestBodyHookModule
 org.eclipse.jetty:jetty-server 9.4.57.v20241219 org/eclipse/jetty/server/HttpInput read ([BII)I -> io/ohmyrasp/agent/hook/OhMyRaspHooks.enterBodyRead @ RequestBodyHookModule
 org.eclipse.jetty:jetty-server 9.4.57.v20241219 org/eclipse/jetty/server/HttpInput read ([BII)I -> io/ohmyrasp/agent/hook/OhMyRaspHooks.exitBodyRead @ RequestBodyHookModule
 org.eclipse.jetty:jetty-server 9.4.57.v20241219 org/eclipse/jetty/server/MultiParts$MultiPartsHttpParser getPart (Ljava/lang/String;)Ljavax/servlet/http/Part; -> io/ohmyrasp/agent/hook/OhMyRaspHooks.afterMultipartLookup @ MultipartUploadHookModule
@@ -2872,6 +3016,7 @@ org.springframework:spring-expression 7.1.0 org/springframework/expression/spel/
 org.springframework:spring-expression 7.1.0 org/springframework/expression/spel/standard/SpelExpression setValue (Ljava/lang/Object;Ljava/lang/Object;)V -> io/ohmyrasp/agent/hook/OhMyRaspHooks.beforeExpressionEvaluation @ ExpressionHookModule
 org.springframework:spring-expression 7.1.0 org/springframework/expression/spel/standard/SpelExpression setValue (Lorg/springframework/expression/EvaluationContext;Ljava/lang/Object;)V -> io/ohmyrasp/agent/hook/OhMyRaspHooks.beforeExpressionEvaluation @ ExpressionHookModule
 org.springframework:spring-expression 7.1.0 org/springframework/expression/spel/standard/SpelExpression setValue (Lorg/springframework/expression/EvaluationContext;Ljava/lang/Object;Ljava/lang/Object;)V -> io/ohmyrasp/agent/hook/OhMyRaspHooks.beforeExpressionEvaluation @ ExpressionHookModule
+org.springframework:spring-test 4.3.30.RELEASE org/springframework/mock/web/DelegatingServletInputStream read ()I -> io/ohmyrasp/agent/hook/OhMyRaspHooks.abortBodyRead @ RequestBodyHookModule
 org.springframework:spring-test 4.3.30.RELEASE org/springframework/mock/web/DelegatingServletInputStream read ()I -> io/ohmyrasp/agent/hook/OhMyRaspHooks.enterBodyRead @ RequestBodyHookModule
 org.springframework:spring-test 4.3.30.RELEASE org/springframework/mock/web/DelegatingServletInputStream read ()I -> io/ohmyrasp/agent/hook/OhMyRaspHooks.exitBodyRead @ RequestBodyHookModule
 org.springframework:spring-test 4.3.30.RELEASE org/springframework/mock/web/MockHttpServletRequest addParameters (Ljava/util/Map;)V -> io/ohmyrasp/agent/hook/OhMyRaspHooks.afterMultipartAccess x2 @ (shared visitors)
@@ -2892,6 +3037,7 @@ org.springframework:spring-test 4.3.30.RELEASE org/springframework/mock/web/Mock
 org.springframework:spring-test 4.3.30.RELEASE org/springframework/mock/web/portlet/MockMultipartActionRequest getFile (Ljava/lang/String;)Lorg/springframework/web/multipart/MultipartFile; -> io/ohmyrasp/agent/hook/OhMyRaspHooks.afterMultipartLookup @ MultipartUploadHookModule
 org.springframework:spring-test 4.3.30.RELEASE org/springframework/mock/web/portlet/MockMultipartActionRequest getFileNames ()Ljava/util/Iterator; -> io/ohmyrasp/agent/hook/OhMyRaspHooks.afterMultipartAccess @ (shared visitors)
 org.springframework:spring-test 4.3.30.RELEASE org/springframework/mock/web/portlet/MockMultipartActionRequest getFiles (Ljava/lang/String;)Ljava/util/List; -> io/ohmyrasp/agent/hook/OhMyRaspHooks.afterMultipartLookup x2 @ MultipartUploadHookModule
+org.springframework:spring-test 5.3.39 org/springframework/mock/web/DelegatingServletInputStream read ()I -> io/ohmyrasp/agent/hook/OhMyRaspHooks.abortBodyRead @ RequestBodyHookModule
 org.springframework:spring-test 5.3.39 org/springframework/mock/web/DelegatingServletInputStream read ()I -> io/ohmyrasp/agent/hook/OhMyRaspHooks.enterBodyRead @ RequestBodyHookModule
 org.springframework:spring-test 5.3.39 org/springframework/mock/web/DelegatingServletInputStream read ()I -> io/ohmyrasp/agent/hook/OhMyRaspHooks.exitBodyRead @ RequestBodyHookModule
 org.springframework:spring-test 5.3.39 org/springframework/mock/web/MockHttpServletRequest getPart (Ljava/lang/String;)Ljavax/servlet/http/Part; -> io/ohmyrasp/agent/hook/OhMyRaspHooks.afterMultipartLookup @ MultipartUploadHookModule
@@ -2912,6 +3058,7 @@ org.springframework:spring-test 5.3.39 org/springframework/test/web/client/match
 org.springframework:spring-test 5.3.39 org/springframework/test/web/client/match/ContentRequestMatchers$MultipartHelper parse (Lorg/springframework/http/client/ClientHttpRequest;)Lorg/springframework/util/MultiValueMap; -> io/ohmyrasp/agent/hook/OhMyRaspHooks.afterMultipartAccess x6 @ (shared visitors)
 org.springframework:spring-test 5.3.39 org/springframework/test/web/servlet/client/MockMvcHttpConnector adaptRequest (Lorg/springframework/http/HttpMethod;Ljava/net/URI;Ljava/util/function/Function;)Lorg/springframework/test/web/servlet/RequestBuilder; -> io/ohmyrasp/agent/hook/OhMyRaspHooks.afterMultipartAccess x4 @ (shared visitors)
 org.springframework:spring-test 5.3.39 org/springframework/test/web/servlet/client/MockMvcHttpConnector adaptResponse (Lorg/springframework/test/web/servlet/MvcResult;)Lorg/springframework/mock/http/client/reactive/MockClientHttpResponse; -> io/ohmyrasp/agent/hook/OhMyRaspHooks.afterMultipartAccess x4 @ (shared visitors)
+org.springframework:spring-test 6.2.19 org/springframework/mock/web/DelegatingServletInputStream read ()I -> io/ohmyrasp/agent/hook/OhMyRaspHooks.abortBodyRead @ RequestBodyHookModule
 org.springframework:spring-test 6.2.19 org/springframework/mock/web/DelegatingServletInputStream read ()I -> io/ohmyrasp/agent/hook/OhMyRaspHooks.enterBodyRead @ RequestBodyHookModule
 org.springframework:spring-test 6.2.19 org/springframework/mock/web/DelegatingServletInputStream read ()I -> io/ohmyrasp/agent/hook/OhMyRaspHooks.exitBodyRead @ RequestBodyHookModule
 org.springframework:spring-test 6.2.19 org/springframework/mock/web/MockHttpServletRequest getPart (Ljava/lang/String;)Ljakarta/servlet/http/Part; -> io/ohmyrasp/agent/hook/OhMyRaspHooks.afterMultipartLookup @ MultipartUploadHookModule
@@ -2938,6 +3085,7 @@ org.springframework:spring-web 3.2.18.RELEASE org/springframework/web/bind/annot
 org.springframework:spring-web 3.2.18.RELEASE org/springframework/web/bind/annotation/support/HandlerMethodInvoker resolveRequestParam (Ljava/lang/String;ZLjava/lang/String;Lorg/springframework/core/MethodParameter;Lorg/springframework/web/context/request/NativeWebRequest;Ljava/lang/Object;)Ljava/lang/Object; -> io/ohmyrasp/agent/hook/OhMyRaspHooks.afterMultipartAccess @ (shared visitors)
 org.springframework:spring-web 3.2.18.RELEASE org/springframework/web/bind/annotation/support/HandlerMethodInvoker resolveRequestParamMap (Ljava/lang/Class;Lorg/springframework/web/context/request/NativeWebRequest;)Ljava/util/Map; -> io/ohmyrasp/agent/hook/OhMyRaspHooks.afterMultipartAccess x4 @ (shared visitors)
 org.springframework:spring-web 3.2.18.RELEASE org/springframework/web/bind/annotation/support/HandlerMethodInvoker updateModelAttributes (Ljava/lang/Object;Ljava/util/Map;Lorg/springframework/ui/ExtendedModelMap;Lorg/springframework/web/context/request/NativeWebRequest;)V -> io/ohmyrasp/agent/hook/OhMyRaspHooks.afterMultipartAccess x2 @ (shared visitors)
+org.springframework:spring-web 3.2.18.RELEASE org/springframework/web/filter/AbstractRequestLoggingFilter$RequestCachingRequestWrapper$RequestCachingInputStream read ()I -> io/ohmyrasp/agent/hook/OhMyRaspHooks.abortBodyRead @ RequestBodyHookModule
 org.springframework:spring-web 3.2.18.RELEASE org/springframework/web/filter/AbstractRequestLoggingFilter$RequestCachingRequestWrapper$RequestCachingInputStream read ()I -> io/ohmyrasp/agent/hook/OhMyRaspHooks.enterBodyRead @ RequestBodyHookModule
 org.springframework:spring-web 3.2.18.RELEASE org/springframework/web/filter/AbstractRequestLoggingFilter$RequestCachingRequestWrapper$RequestCachingInputStream read ()I -> io/ohmyrasp/agent/hook/OhMyRaspHooks.exitBodyRead @ RequestBodyHookModule
 org.springframework:spring-web 3.2.18.RELEASE org/springframework/web/method/annotation/RequestParamMethodArgumentResolver resolveName (Ljava/lang/String;Lorg/springframework/core/MethodParameter;Lorg/springframework/web/context/request/NativeWebRequest;)Ljava/lang/Object; -> io/ohmyrasp/agent/hook/OhMyRaspHooks.afterMultipartAccess @ (shared visitors)
@@ -2983,6 +3131,7 @@ org.springframework:spring-web 4.3.30.RELEASE org/springframework/web/multipart/
 org.springframework:spring-web 4.3.30.RELEASE org/springframework/web/multipart/support/StandardMultipartHttpServletRequest$StandardMultipartFile getOriginalFilename ()Ljava/lang/String; -> io/ohmyrasp/agent/http/MultipartFilename.enter @ MultipartUploadHookModule
 org.springframework:spring-web 4.3.30.RELEASE org/springframework/web/multipart/support/StandardMultipartHttpServletRequest$StandardMultipartFile getOriginalFilename ()Ljava/lang/String; -> io/ohmyrasp/agent/http/MultipartFilename.exit x2 @ MultipartUploadHookModule
 org.springframework:spring-web 4.3.30.RELEASE org/springframework/web/multipart/support/StandardServletMultipartResolver cleanupMultipart (Lorg/springframework/web/multipart/MultipartHttpServletRequest;)V -> io/ohmyrasp/agent/hook/OhMyRaspHooks.afterMultipartAccess x2 @ (shared visitors)
+org.springframework:spring-web 4.3.30.RELEASE org/springframework/web/util/ContentCachingRequestWrapper$ContentCachingInputStream read ()I -> io/ohmyrasp/agent/hook/OhMyRaspHooks.abortBodyRead @ RequestBodyHookModule
 org.springframework:spring-web 4.3.30.RELEASE org/springframework/web/util/ContentCachingRequestWrapper$ContentCachingInputStream read ()I -> io/ohmyrasp/agent/hook/OhMyRaspHooks.enterBodyRead @ RequestBodyHookModule
 org.springframework:spring-web 4.3.30.RELEASE org/springframework/web/util/ContentCachingRequestWrapper$ContentCachingInputStream read ()I -> io/ohmyrasp/agent/hook/OhMyRaspHooks.exitBodyRead @ RequestBodyHookModule
 org.springframework:spring-web 5.3.39 org/springframework/web/bind/WebDataBinder lambda$bindMultipart$0 (Lorg/springframework/beans/MutablePropertyValues;Ljava/lang/String;Ljava/util/List;)V -> io/ohmyrasp/agent/hook/OhMyRaspHooks.afterMultipartAccess @ (shared visitors)
@@ -3010,12 +3159,16 @@ org.springframework:spring-web 5.3.39 org/springframework/web/multipart/support/
 org.springframework:spring-web 5.3.39 org/springframework/web/multipart/support/StandardServletPartUtils getParts (Ljavax/servlet/http/HttpServletRequest;)Lorg/springframework/util/MultiValueMap; -> io/ohmyrasp/agent/hook/OhMyRaspHooks.afterMultipartAccess x2 @ (shared visitors)
 org.springframework:spring-web 5.3.39 org/springframework/web/multipart/support/StandardServletPartUtils getParts (Ljavax/servlet/http/HttpServletRequest;Ljava/lang/String;)Ljava/util/List; -> io/ohmyrasp/agent/hook/OhMyRaspHooks.afterMultipartAccess x2 @ (shared visitors)
 org.springframework:spring-web 5.3.39 org/springframework/web/multipart/support/StandardServletPartUtils lambda$bindParts$0 (ZLorg/springframework/beans/MutablePropertyValues;Ljava/lang/String;Ljava/util/List;)V -> io/ohmyrasp/agent/hook/OhMyRaspHooks.afterMultipartAccess @ (shared visitors)
+org.springframework:spring-web 5.3.39 org/springframework/web/util/ContentCachingRequestWrapper$ContentCachingInputStream read ()I -> io/ohmyrasp/agent/hook/OhMyRaspHooks.abortBodyRead @ RequestBodyHookModule
 org.springframework:spring-web 5.3.39 org/springframework/web/util/ContentCachingRequestWrapper$ContentCachingInputStream read ()I -> io/ohmyrasp/agent/hook/OhMyRaspHooks.enterBodyRead @ RequestBodyHookModule
 org.springframework:spring-web 5.3.39 org/springframework/web/util/ContentCachingRequestWrapper$ContentCachingInputStream read ()I -> io/ohmyrasp/agent/hook/OhMyRaspHooks.exitBodyRead @ RequestBodyHookModule
+org.springframework:spring-web 5.3.39 org/springframework/web/util/ContentCachingRequestWrapper$ContentCachingInputStream read ([B)I -> io/ohmyrasp/agent/hook/OhMyRaspHooks.abortBodyRead @ RequestBodyHookModule
 org.springframework:spring-web 5.3.39 org/springframework/web/util/ContentCachingRequestWrapper$ContentCachingInputStream read ([B)I -> io/ohmyrasp/agent/hook/OhMyRaspHooks.enterBodyRead @ RequestBodyHookModule
 org.springframework:spring-web 5.3.39 org/springframework/web/util/ContentCachingRequestWrapper$ContentCachingInputStream read ([B)I -> io/ohmyrasp/agent/hook/OhMyRaspHooks.exitBodyRead @ RequestBodyHookModule
+org.springframework:spring-web 5.3.39 org/springframework/web/util/ContentCachingRequestWrapper$ContentCachingInputStream read ([BII)I -> io/ohmyrasp/agent/hook/OhMyRaspHooks.abortBodyRead @ RequestBodyHookModule
 org.springframework:spring-web 5.3.39 org/springframework/web/util/ContentCachingRequestWrapper$ContentCachingInputStream read ([BII)I -> io/ohmyrasp/agent/hook/OhMyRaspHooks.enterBodyRead @ RequestBodyHookModule
 org.springframework:spring-web 5.3.39 org/springframework/web/util/ContentCachingRequestWrapper$ContentCachingInputStream read ([BII)I -> io/ohmyrasp/agent/hook/OhMyRaspHooks.exitBodyRead @ RequestBodyHookModule
+org.springframework:spring-web 5.3.39 org/springframework/web/util/ContentCachingRequestWrapper$ContentCachingInputStream readLine ([BII)I -> io/ohmyrasp/agent/hook/OhMyRaspHooks.abortBodyRead @ RequestBodyHookModule
 org.springframework:spring-web 5.3.39 org/springframework/web/util/ContentCachingRequestWrapper$ContentCachingInputStream readLine ([BII)I -> io/ohmyrasp/agent/hook/OhMyRaspHooks.enterBodyRead @ RequestBodyHookModule
 org.springframework:spring-web 5.3.39 org/springframework/web/util/ContentCachingRequestWrapper$ContentCachingInputStream readLine ([BII)I -> io/ohmyrasp/agent/hook/OhMyRaspHooks.exitBodyRead @ RequestBodyHookModule
 org.springframework:spring-web 6.2.19 org/springframework/web/bind/ServletRequestDataBinder$ServletRequestValueResolver getMultipartValue (Ljava/lang/String;)Ljava/lang/Object; -> io/ohmyrasp/agent/hook/OhMyRaspHooks.afterMultipartAccess x2 @ (shared visitors)
@@ -3037,12 +3190,16 @@ org.springframework:spring-web 6.2.19 org/springframework/web/multipart/support/
 org.springframework:spring-web 6.2.19 org/springframework/web/multipart/support/StandardServletPartUtils getParts (Ljakarta/servlet/http/HttpServletRequest;)Lorg/springframework/util/MultiValueMap; -> io/ohmyrasp/agent/hook/OhMyRaspHooks.afterMultipartAccess x2 @ (shared visitors)
 org.springframework:spring-web 6.2.19 org/springframework/web/multipart/support/StandardServletPartUtils getParts (Ljakarta/servlet/http/HttpServletRequest;Ljava/lang/String;)Ljava/util/List; -> io/ohmyrasp/agent/hook/OhMyRaspHooks.afterMultipartAccess x2 @ (shared visitors)
 org.springframework:spring-web 6.2.19 org/springframework/web/multipart/support/StandardServletPartUtils lambda$bindParts$0 (ZLorg/springframework/beans/MutablePropertyValues;Ljava/lang/String;Ljava/util/List;)V -> io/ohmyrasp/agent/hook/OhMyRaspHooks.afterMultipartAccess @ (shared visitors)
+org.springframework:spring-web 6.2.19 org/springframework/web/util/ContentCachingRequestWrapper$ContentCachingInputStream read ()I -> io/ohmyrasp/agent/hook/OhMyRaspHooks.abortBodyRead @ RequestBodyHookModule
 org.springframework:spring-web 6.2.19 org/springframework/web/util/ContentCachingRequestWrapper$ContentCachingInputStream read ()I -> io/ohmyrasp/agent/hook/OhMyRaspHooks.enterBodyRead @ RequestBodyHookModule
 org.springframework:spring-web 6.2.19 org/springframework/web/util/ContentCachingRequestWrapper$ContentCachingInputStream read ()I -> io/ohmyrasp/agent/hook/OhMyRaspHooks.exitBodyRead @ RequestBodyHookModule
+org.springframework:spring-web 6.2.19 org/springframework/web/util/ContentCachingRequestWrapper$ContentCachingInputStream read ([B)I -> io/ohmyrasp/agent/hook/OhMyRaspHooks.abortBodyRead @ RequestBodyHookModule
 org.springframework:spring-web 6.2.19 org/springframework/web/util/ContentCachingRequestWrapper$ContentCachingInputStream read ([B)I -> io/ohmyrasp/agent/hook/OhMyRaspHooks.enterBodyRead @ RequestBodyHookModule
 org.springframework:spring-web 6.2.19 org/springframework/web/util/ContentCachingRequestWrapper$ContentCachingInputStream read ([B)I -> io/ohmyrasp/agent/hook/OhMyRaspHooks.exitBodyRead @ RequestBodyHookModule
+org.springframework:spring-web 6.2.19 org/springframework/web/util/ContentCachingRequestWrapper$ContentCachingInputStream read ([BII)I -> io/ohmyrasp/agent/hook/OhMyRaspHooks.abortBodyRead @ RequestBodyHookModule
 org.springframework:spring-web 6.2.19 org/springframework/web/util/ContentCachingRequestWrapper$ContentCachingInputStream read ([BII)I -> io/ohmyrasp/agent/hook/OhMyRaspHooks.enterBodyRead @ RequestBodyHookModule
 org.springframework:spring-web 6.2.19 org/springframework/web/util/ContentCachingRequestWrapper$ContentCachingInputStream read ([BII)I -> io/ohmyrasp/agent/hook/OhMyRaspHooks.exitBodyRead @ RequestBodyHookModule
+org.springframework:spring-web 6.2.19 org/springframework/web/util/ContentCachingRequestWrapper$ContentCachingInputStream readLine ([BII)I -> io/ohmyrasp/agent/hook/OhMyRaspHooks.abortBodyRead @ RequestBodyHookModule
 org.springframework:spring-web 6.2.19 org/springframework/web/util/ContentCachingRequestWrapper$ContentCachingInputStream readLine ([BII)I -> io/ohmyrasp/agent/hook/OhMyRaspHooks.enterBodyRead @ RequestBodyHookModule
 org.springframework:spring-web 6.2.19 org/springframework/web/util/ContentCachingRequestWrapper$ContentCachingInputStream readLine ([BII)I -> io/ohmyrasp/agent/hook/OhMyRaspHooks.exitBodyRead @ RequestBodyHookModule
 org.springframework:spring-web 7.1.0 org/springframework/http/converter/multipart/MultipartHttpMessageConverter applyDefaultCharset ()V -> io/ohmyrasp/agent/hook/OhMyRaspHooks.afterMultipartAccess x2 @ (shared visitors)
@@ -3071,12 +3228,16 @@ org.springframework:spring-web 7.1.0 org/springframework/web/multipart/support/S
 org.springframework:spring-web 7.1.0 org/springframework/web/multipart/support/StandardServletPartUtils getParts (Ljakarta/servlet/http/HttpServletRequest;)Lorg/springframework/util/MultiValueMap; -> io/ohmyrasp/agent/hook/OhMyRaspHooks.afterMultipartAccess x2 @ (shared visitors)
 org.springframework:spring-web 7.1.0 org/springframework/web/multipart/support/StandardServletPartUtils getParts (Ljakarta/servlet/http/HttpServletRequest;Ljava/lang/String;)Ljava/util/List; -> io/ohmyrasp/agent/hook/OhMyRaspHooks.afterMultipartAccess x2 @ (shared visitors)
 org.springframework:spring-web 7.1.0 org/springframework/web/multipart/support/StandardServletPartUtils lambda$bindParts$0 (ZLorg/springframework/beans/MutablePropertyValues;Ljava/lang/String;Ljava/util/List;)V -> io/ohmyrasp/agent/hook/OhMyRaspHooks.afterMultipartAccess @ (shared visitors)
+org.springframework:spring-web 7.1.0 org/springframework/web/util/ContentCachingRequestWrapper$ContentCachingInputStream read ()I -> io/ohmyrasp/agent/hook/OhMyRaspHooks.abortBodyRead @ RequestBodyHookModule
 org.springframework:spring-web 7.1.0 org/springframework/web/util/ContentCachingRequestWrapper$ContentCachingInputStream read ()I -> io/ohmyrasp/agent/hook/OhMyRaspHooks.enterBodyRead @ RequestBodyHookModule
 org.springframework:spring-web 7.1.0 org/springframework/web/util/ContentCachingRequestWrapper$ContentCachingInputStream read ()I -> io/ohmyrasp/agent/hook/OhMyRaspHooks.exitBodyRead @ RequestBodyHookModule
+org.springframework:spring-web 7.1.0 org/springframework/web/util/ContentCachingRequestWrapper$ContentCachingInputStream read ([B)I -> io/ohmyrasp/agent/hook/OhMyRaspHooks.abortBodyRead @ RequestBodyHookModule
 org.springframework:spring-web 7.1.0 org/springframework/web/util/ContentCachingRequestWrapper$ContentCachingInputStream read ([B)I -> io/ohmyrasp/agent/hook/OhMyRaspHooks.enterBodyRead @ RequestBodyHookModule
 org.springframework:spring-web 7.1.0 org/springframework/web/util/ContentCachingRequestWrapper$ContentCachingInputStream read ([B)I -> io/ohmyrasp/agent/hook/OhMyRaspHooks.exitBodyRead @ RequestBodyHookModule
+org.springframework:spring-web 7.1.0 org/springframework/web/util/ContentCachingRequestWrapper$ContentCachingInputStream read ([BII)I -> io/ohmyrasp/agent/hook/OhMyRaspHooks.abortBodyRead @ RequestBodyHookModule
 org.springframework:spring-web 7.1.0 org/springframework/web/util/ContentCachingRequestWrapper$ContentCachingInputStream read ([BII)I -> io/ohmyrasp/agent/hook/OhMyRaspHooks.enterBodyRead @ RequestBodyHookModule
 org.springframework:spring-web 7.1.0 org/springframework/web/util/ContentCachingRequestWrapper$ContentCachingInputStream read ([BII)I -> io/ohmyrasp/agent/hook/OhMyRaspHooks.exitBodyRead @ RequestBodyHookModule
+org.springframework:spring-web 7.1.0 org/springframework/web/util/ContentCachingRequestWrapper$ContentCachingInputStream readLine ([BII)I -> io/ohmyrasp/agent/hook/OhMyRaspHooks.abortBodyRead @ RequestBodyHookModule
 org.springframework:spring-web 7.1.0 org/springframework/web/util/ContentCachingRequestWrapper$ContentCachingInputStream readLine ([BII)I -> io/ohmyrasp/agent/hook/OhMyRaspHooks.enterBodyRead @ RequestBodyHookModule
 org.springframework:spring-web 7.1.0 org/springframework/web/util/ContentCachingRequestWrapper$ContentCachingInputStream readLine ([BII)I -> io/ohmyrasp/agent/hook/OhMyRaspHooks.exitBodyRead @ RequestBodyHookModule
 org.yaml:snakeyaml 1.17 org/yaml/snakeyaml/constructor/Constructor getClassForName (Ljava/lang/String;)Ljava/lang/Class; -> io/ohmyrasp/agent/hook/OhMyRaspHooks.beforePolymorphicType @ PolymorphicDeserializationHookModule
