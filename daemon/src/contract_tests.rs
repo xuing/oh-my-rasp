@@ -458,11 +458,14 @@ fn expectations() -> Vec<Expect> {
     vec![
         e("primary/detection-block-request.json", "detection", "writeFile", "writeFile_script", "block", 90, Some(1234), at, "critical", Detection),
         e("primary/detection-monitor-no-request.json", "detection", "ssrf", "ssrf_aws", "log", 100, Some(1234), at, "critical", Detection),
+        // The strings that mark a diagnostic, inside the escaped data of a detection: still a detection.
+        e("primary/detection-reserved-strings.json", "detection", "ssrf", "ssrf_obfuscate", "log", 70, Some(1234), at, "medium", Detection),
         e("primary/telemetry.json", "telemetry", "http_request", "hook_latency", "observe", 0, Some(1234), at, "low", Telemetry),
         // The backports write `"event":"ohmyrasp-detection"` and no `kind`, and the time as epoch
         // milliseconds.
         e("backport/detection-block-request.json", "detection", "ProcessBuilder.start", "javaN_command_execution_shell_meta", "block", 85, None, at, "high", Detection),
         e("backport/detection-monitor-no-request.json", "detection", "ProcessBuilder.start", "javaN_command_execution_exploit_primitive", "log", 95, None, at, "critical", Detection),
+        e("backport/detection-reserved-strings.json", "detection", "ProcessBuilder.start", "javaN_command_execution_exploit_primitive", "log", 95, None, at, "critical", Detection),
         e("backport/telemetry.json", "telemetry", "http_request", "hook_latency", "observe", 0, Some(1234), at, "low", Telemetry),
         // The start line has no `kind` and no `timestamp`: the daemon reads it from its `event`
         // member as a lifecycle line, which is not a detection.
@@ -543,6 +546,55 @@ fn every_golden_event_line_parses_to_what_the_daemon_reads() {
             serde_json::from_str::<Value>(line).unwrap(),
             "{name} raw line kept verbatim"
         );
+    }
+}
+
+/// The writers escape what an application controls, so the strings the daemon reads at the top level
+/// to recognise a diagnostic (`"kind":"diagnostic"`, `"event":"ohmyrasp-hook-miss"`) can only be
+/// inside a string of a detection. The two fixtures hold them there, written by the real writers;
+/// the daemon reads their top level only and keeps them detections, recorded and uploaded.
+#[test]
+fn reserved_strings_inside_escaped_detection_data_do_not_make_a_diagnostic() {
+    for name in [
+        "primary/detection-reserved-strings.json",
+        "backport/detection-reserved-strings.json",
+    ] {
+        let (_, line) = golden_events()
+            .into_iter()
+            .find(|(file, _)| file == name)
+            .unwrap_or_else(|| panic!("{name} is missing"));
+        for reserved in [
+            r#"\"kind\":\"diagnostic\""#,
+            r#"\"event\":\"ohmyrasp-hook-miss\""#,
+            r#"\"diagnostic\":\"hook_miss\""#,
+        ] {
+            assert!(
+                line.contains(reserved),
+                "{name} holds {reserved} inside a string of the detection: {line}"
+            );
+        }
+        let event = AgentEvent::parse_line(7, RECEIVED_AT.into(), &line).unwrap();
+        assert_eq!(event.class(), EventClass::Detection, "{name}");
+        assert!(
+            event.raw.get("diagnostic").is_none(),
+            "{name}: no top-level member"
+        );
+        assert_ne!(
+            event.raw.get("kind").and_then(Value::as_str),
+            Some("diagnostic"),
+            "{name}"
+        );
+
+        let store = EventStore::new(10);
+        let mut offered = 0;
+        crate::route(event, &store, |_| offered += 1);
+        let stats = store.stats();
+        assert_eq!(
+            (offered, stats.detections, stats.retained),
+            (1, 1, 1),
+            "{name}"
+        );
+        assert_eq!(stats.diagnostics, 0, "{name}");
     }
 }
 

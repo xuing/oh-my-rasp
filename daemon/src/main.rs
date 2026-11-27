@@ -32,7 +32,7 @@ use crate::config::Config;
 use crate::console::AppState;
 use crate::control::Controller;
 use crate::model::{AgentEvent, EventClass};
-use crate::store::EventStore;
+use crate::store::{DiagnosticOutcome, EventStore};
 use crate::util::now_rfc3339;
 
 const VERSION: &str = env!("CARGO_PKG_VERSION");
@@ -156,9 +156,9 @@ fn route(event: AgentEvent, store: &EventStore, offer: impl FnOnce(AgentEvent)) 
         // A hook that did not apply: the status view and the log only, never the attack log, the
         // detection counters or the cloud (the cloud has no channel for agent health).
         EventClass::Diagnostic => {
-            let new = store.record_diagnostic(&event);
+            let outcome = store.record_diagnostic(&event);
             match event.hook_miss() {
-                Some(miss) if new => tracing::warn!(
+                Some(miss) if outcome == DiagnosticOutcome::NewHookMiss => tracing::warn!(
                     unit = ?miss.unit,
                     class = ?miss.class,
                     code_source = ?miss.code_source,
@@ -169,9 +169,11 @@ fn route(event: AgentEvent, store: &EventStore, offer: impl FnOnce(AgentEvent)) 
                     "a hook did not apply to a library class, so its protection is off for it; \
                      report the library and its version"
                 ),
-                None if event.is_hook_miss_suppressed() => tracing::warn!(
+                // Once, when the flag of the status view turns on: it is daemon-wide, so a second
+                // JVM that reaches its limit adds nothing to say.
+                None if outcome == DiagnosticOutcome::FirstSuppression => tracing::warn!(
                     "an agent stopped reporting hooks that did not apply; further ones in its \
-                     JVM are not listed"
+                     JVM are not listed (the status view says so from now on)"
                 ),
                 _ => {}
             }
@@ -242,9 +244,10 @@ mod tests {
         let store = EventStore::new(10);
         let mut offered = 0;
         let lines = [
-            r#"{"kind":"diagnostic","diagnostic":"hook_miss","unit":"U","class":"a.B","reason":"no_agent_call","algorithm":"a","action":"block"}"#,
+            r#"{"kind":"diagnostic","diagnostic":"hook_miss","unit":"U","class":"a.B","reason":"no_agent_call"}"#,
             r#"{"event":"ohmyrasp-hook-miss","unit":"U","class":"a.B","reason":"no_agent_call"}"#,
             r#"{"kind":"diagnostic","diagnostic":"hook_miss_suppressed","limit":32}"#,
+            r#"{"event":"ohmyrasp-hook-miss-suppressed","limit":32}"#,
         ];
         for (seq, line) in lines.iter().enumerate() {
             let event = AgentEvent::parse_line(seq as u64 + 1, "t".into(), line).unwrap();
@@ -252,7 +255,7 @@ mod tests {
         }
         let stats = store.stats();
         assert_eq!(offered, 0, "not offered to the uploader");
-        assert_eq!(stats.diagnostics, 3);
+        assert_eq!(stats.diagnostics, 4);
         assert_eq!(
             stats.hook_misses.len(),
             1,
@@ -266,5 +269,28 @@ mod tests {
             stats.ignored_kinds.is_empty(),
             "a diagnostic is a known kind"
         );
+    }
+
+    /// A record shaped like a detection takes the detection route whatever diagnostic marker it
+    /// carries: the attack log, the counters and the upload.
+    #[test]
+    fn a_detection_shaped_record_is_recorded_and_offered_whatever_diagnostic_marker_it_carries() {
+        let store = EventStore::new(10);
+        let mut offered = 0;
+        let lines = [
+            r#"{"event":"ohmyrasp-hook-miss","hook":"h","algorithm":"a","action":"block"}"#,
+            r#"{"kind":"diagnostic","diagnostic":"hook_miss","hook":"h","algorithm":"a","action":"log"}"#,
+            r#"{"kind":"diagnostic","event":"ohmyrasp-detection","hook":"h","algorithm":"a","action":"block"}"#,
+        ];
+        for (seq, line) in lines.iter().enumerate() {
+            let event = AgentEvent::parse_line(seq as u64 + 1, "t".into(), line).unwrap();
+            route(event, &store, |_| offered += 1);
+        }
+        let stats = store.stats();
+        assert_eq!(offered, 3, "offered to the uploader");
+        assert_eq!((stats.total, stats.detections, stats.blocks), (3, 3, 2));
+        assert_eq!(stats.retained, 3, "in the attack log");
+        assert_eq!(stats.diagnostics, 0);
+        assert!(stats.hook_misses.is_empty() && !stats.hook_misses_suppressed);
     }
 }

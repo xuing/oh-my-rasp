@@ -17,10 +17,23 @@ const MAX_IGNORED_LABELS: usize = 32;
 const MAX_IGNORED_LABEL_CHARS: usize = 64;
 /// Where the kinds past [`MAX_IGNORED_LABELS`] are counted.
 pub const OTHER_IGNORED: &str = "(other)";
-/// The most distinct (unit, class, code source) hook misses `hook_misses` keeps. A further new
-/// pair is only counted in `hook_misses_dropped`, so many JVMs, each reporting its own set, cannot
-/// grow the list.
+/// The most distinct hook misses `hook_misses` keeps, each by its unit, class and the identity of the
+/// code it came from (file name, path and `Implementation-Version`). A line for a further new miss
+/// is only counted in `hook_misses_dropped`, a count of lines, so many JVMs, each reporting its own
+/// set, cannot grow the list.
 const MAX_HOOK_MISSES: usize = 64;
+
+/// What the store did with one diagnostic line, for the caller that logs.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum DiagnosticOutcome {
+    /// A hook miss no earlier line named: it is now in `hook_misses`.
+    NewHookMiss,
+    /// The first line saying that an agent stopped reporting further misses: it set
+    /// `hook_misses_suppressed`.
+    FirstSuppression,
+    /// Anything else: a repeat, a miss past the bound, a later suppression line, another diagnostic.
+    Counted,
+}
 
 pub struct EventStore {
     capacity: usize,
@@ -64,14 +77,15 @@ pub struct Counter {
 }
 
 /// A hook that did not apply, as the status view keeps it: what the agent reported, when the
-/// daemon first read it and how many lines named the same (unit, class, code source).
+/// daemon first read it and how many lines named the same unit, class and code (file name, path and
+/// version).
 #[derive(Debug, Clone, Serialize)]
 pub struct HookMissEntry {
     #[serde(flatten)]
     pub miss: HookMiss,
     /// When the daemon first read a line for this pair.
     pub first_seen: String,
-    /// How many lines named this pair (the agents write one per JVM; several JVMs add up).
+    /// How many lines named this miss (the agents write one per JVM; several JVMs add up).
     pub count: u64,
 }
 
@@ -208,40 +222,49 @@ impl EventStore {
     }
 
     /// Count an agent diagnostic line. It is not retained in the attack log, not counted as a
-    /// detection and not uploaded. A hook miss is kept per (unit, class, code source) and returns
-    /// true when that pair is new and kept, so the caller logs it once; the line that says further
-    /// misses are suppressed sets `hook_misses_suppressed`. Any other diagnostic is only counted
-    /// in the total.
-    pub fn record_diagnostic(&self, event: &AgentEvent) -> bool {
+    /// detection and not uploaded. A hook miss is kept per unit, class and code identity (file name,
+    /// path and version, so two JARs of one file name, or two versions, are two entries) and the
+    /// outcome says when that miss is new and kept, so the caller logs it once; the first line that
+    /// says further misses are suppressed sets `hook_misses_suppressed` and says so, so the caller
+    /// warns once. Any other diagnostic is only counted in the total.
+    pub fn record_diagnostic(&self, event: &AgentEvent) -> DiagnosticOutcome {
         let miss = event.hook_miss();
         let mut inner = self.inner.lock().expect("store mutex");
         inner.diagnostics += 1;
         if event.is_hook_miss_suppressed() {
+            let first = !inner.hook_misses_suppressed;
             inner.hook_misses_suppressed = true;
+            return if first {
+                DiagnosticOutcome::FirstSuppression
+            } else {
+                DiagnosticOutcome::Counted
+            };
         }
         let Some(miss) = miss else {
-            return false;
+            return DiagnosticOutcome::Counted;
         };
         let same = |kept: &HookMissEntry| {
             kept.miss.unit == miss.unit
                 && kept.miss.class == miss.class
                 && kept.miss.code_source == miss.code_source
+                && kept.miss.code_source_path == miss.code_source_path
+                && kept.miss.implementation_version == miss.implementation_version
         };
         if let Some(kept) = inner.hook_misses.iter_mut().find(|kept| same(kept)) {
             kept.count += 1;
-            return false;
+            return DiagnosticOutcome::Counted;
         }
         if inner.hook_misses.len() >= MAX_HOOK_MISSES {
             inner.hook_misses_dropped += 1;
             tracing::debug!(unit = ?miss.unit, class = ?miss.class, "hook-miss list full; counting only");
-            return false;
+            return DiagnosticOutcome::Counted;
         }
         inner.hook_misses.push(HookMissEntry {
             miss,
             first_seen: event.received_at.clone(),
             count: 1,
         });
-        true
+        DiagnosticOutcome::NewHookMiss
     }
 
     /// Most-recent-first slice of retained events, optionally filtered.
@@ -407,6 +430,20 @@ mod tests {
         AgentEvent::parse_line(seq, format!("t{seq}"), &raw.to_string()).unwrap()
     }
 
+    /// A miss that names the code it came from by file name, path and version.
+    fn located_miss_event(seq: u64, path: &str, version: Option<&str>) -> AgentEvent {
+        let raw = json!({
+            "kind": "diagnostic", "diagnostic": "hook_miss", "unit": "U", "class": "a.C",
+            "reason": "no_agent_call", "code_source": "x.jar", "code_source_path": path,
+            "implementation_version": version,
+        });
+        AgentEvent::parse_line(seq, format!("t{seq}"), &raw.to_string()).unwrap()
+    }
+
+    fn is_new(outcome: DiagnosticOutcome) -> bool {
+        outcome == DiagnosticOutcome::NewHookMiss
+    }
+
     /// Many JVMs, each reporting its own classes, cannot grow the list: past the limit a new pair
     /// is only counted, and a pair already kept keeps counting.
     #[test]
@@ -419,12 +456,21 @@ mod tests {
                 &format!("a.C{seq}"),
                 Some("x.jar"),
             ));
-            assert_eq!(new, seq < MAX_HOOK_MISSES as u64, "pair {seq}");
+            assert_eq!(is_new(new), seq < MAX_HOOK_MISSES as u64, "pair {seq}");
         }
-        assert!(!store.record_diagnostic(&hook_miss_event(0, "U", "a.C0", Some("x.jar"))));
+        assert!(!is_new(store.record_diagnostic(&hook_miss_event(
+            0,
+            "U",
+            "a.C0",
+            Some("x.jar")
+        ))));
         let stats = store.stats();
         assert_eq!(stats.hook_misses.len(), MAX_HOOK_MISSES);
-        assert_eq!(stats.hook_misses_dropped, 10_000 - MAX_HOOK_MISSES as u64);
+        assert_eq!(
+            stats.hook_misses_dropped,
+            10_000 - MAX_HOOK_MISSES as u64,
+            "a count of lines, not of distinct misses"
+        );
         assert_eq!(stats.diagnostics, 10_001);
         assert_eq!(stats.hook_misses[0].count, 2, "a kept pair keeps counting");
         assert_eq!(stats.hook_misses[0].first_seen, "t0");
@@ -437,11 +483,33 @@ mod tests {
     #[test]
     fn a_hook_miss_is_one_entry_per_unit_class_and_code_source() {
         let store = EventStore::new(10);
-        assert!(store.record_diagnostic(&hook_miss_event(1, "U", "a.C", Some("x-1.jar"))));
-        assert!(!store.record_diagnostic(&hook_miss_event(2, "U", "a.C", Some("x-1.jar"))));
-        assert!(store.record_diagnostic(&hook_miss_event(3, "U", "a.C", Some("x-2.jar"))));
-        assert!(store.record_diagnostic(&hook_miss_event(4, "U", "a.C", None)));
-        assert!(store.record_diagnostic(&hook_miss_event(5, "V", "a.C", Some("x-1.jar"))));
+        assert!(is_new(store.record_diagnostic(&hook_miss_event(
+            1,
+            "U",
+            "a.C",
+            Some("x-1.jar")
+        ))));
+        assert!(!is_new(store.record_diagnostic(&hook_miss_event(
+            2,
+            "U",
+            "a.C",
+            Some("x-1.jar")
+        ))));
+        assert!(is_new(store.record_diagnostic(&hook_miss_event(
+            3,
+            "U",
+            "a.C",
+            Some("x-2.jar")
+        ))));
+        assert!(is_new(
+            store.record_diagnostic(&hook_miss_event(4, "U", "a.C", None))
+        ));
+        assert!(is_new(store.record_diagnostic(&hook_miss_event(
+            5,
+            "V",
+            "a.C",
+            Some("x-1.jar")
+        ))));
         let stats = store.stats();
         let counts: Vec<u64> = stats.hook_misses.iter().map(|m| m.count).collect();
         assert_eq!(counts, [2, 1, 1, 1]);
@@ -454,15 +522,52 @@ mod tests {
         assert_eq!(first["count"], 2);
     }
 
+    /// Two JARs of one file name, in different places or of different versions, are two misses: the
+    /// file name alone does not say which library the line is about.
+    #[test]
+    fn jars_of_one_file_name_are_told_apart_by_path_and_version() {
+        let store = EventStore::new(10);
+        assert!(is_new(store.record_diagnostic(&located_miss_event(
+            1,
+            "/a/x.jar",
+            Some("1.0")
+        ))));
+        assert!(!is_new(store.record_diagnostic(&located_miss_event(
+            2,
+            "/a/x.jar",
+            Some("1.0")
+        ))));
+        assert!(
+            is_new(store.record_diagnostic(&located_miss_event(3, "/b/x.jar", Some("1.0")))),
+            "another path"
+        );
+        assert!(
+            is_new(store.record_diagnostic(&located_miss_event(4, "/a/x.jar", Some("2.0")))),
+            "another version"
+        );
+        assert!(
+            is_new(store.record_diagnostic(&located_miss_event(5, "/a/x.jar", None))),
+            "no version"
+        );
+        let counts: Vec<u64> = store.stats().hook_misses.iter().map(|m| m.count).collect();
+        assert_eq!(counts, [2, 1, 1, 1]);
+    }
+
     #[test]
     fn the_suppressed_line_sets_the_flag_and_is_otherwise_only_counted() {
         let store = EventStore::new(10);
         let line = r#"{"event":"ohmyrasp-hook-miss-suppressed","limit":32}"#;
         let event = AgentEvent::parse_line(1, "t".into(), line).unwrap();
-        assert!(!store.record_diagnostic(&event));
+        assert_eq!(
+            store.record_diagnostic(&event),
+            DiagnosticOutcome::FirstSuppression
+        );
         let stats = store.stats();
         assert!(stats.hook_misses_suppressed);
         assert_eq!((stats.diagnostics, stats.hook_misses.len()), (1, 0));
+        // A JVM after the first says it again: counted, and the transition has happened.
+        assert_eq!(store.record_diagnostic(&event), DiagnosticOutcome::Counted);
+        assert_eq!(store.stats().diagnostics, 2);
     }
 
     #[test]
