@@ -392,6 +392,11 @@ public final class RequestBody {
     return true;
   }
 
+  /** The rule evaluations the request's body states caused so far. */
+  public int evaluations() {
+    return evaluations;
+  }
+
   // ---- state for the engines ----------------------------------------------------------------------------------
 
   /** The last snapshot built, without building one: for taking body text out of what an event carries. */

@@ -17,12 +17,13 @@ import org.junit.jupiter.api.Test;
  * The work a request body costs its thread, worst case: bodies of the cap's size built to be expensive, read one
  * byte at a time with a hook that decides after every byte (the pattern that decided every prefix before the
  * state budget), through the primary's whole request chain. Prints one line per body, "BODY-COST name ms
- * states", which docs/agent.md quotes; fails only past a bound far above what was measured, so that a change
- * that makes the work grow with the body's length again shows.
+ * evaluations", which docs/detection.md quotes. Fails when a request's body states cause more rule evaluations than
+ * RequestBody.MAX_EVALUATIONS (counted by the recorder, not assumed), and past a time bound far above what was
+ * measured, so that a change that makes the work grow with the body's length again shows.
  */
 final class OhMyRaspHooksRequestBodyCostTest {
   private static final Object STREAM = new Object();
-  private static final long BOUND_MS = 4000;
+  private static final long BOUND_MS = 1000;
 
   @BeforeEach
   void quiet() {
@@ -57,6 +58,9 @@ final class OhMyRaspHooksRequestBodyCostTest {
     return bodies;
   }
 
+  /** The evaluations the last request's body states caused. */
+  private static int evaluations;
+
   /** One request: the body read one byte at a time, a deciding hook after each byte, then end of stream. */
   private static long byteAtATime(String body) {
     byte[] bytes = body.getBytes(StandardCharsets.UTF_8);
@@ -71,6 +75,7 @@ final class OhMyRaspHooksRequestBodyCostTest {
     }
     Object token = OhMyRaspHooks.enterBodyRead(STREAM);
     OhMyRaspHooks.exitBodyRead(-1, token, bytes, 0);
+    evaluations = io.ohmyrasp.agent.http.RequestBodyCapture.current().evaluations();
     OhMyRaspHooks.exitHttpRequest();
     return (System.nanoTime() - started) / 1_000_000;
   }
@@ -81,9 +86,14 @@ final class OhMyRaspHooksRequestBodyCostTest {
     for (String body : bodies.values()) byteAtATime(body); // warm the JIT, as a server that has run a while is
     for (Map.Entry<String, String> body : bodies.entrySet()) {
       long worst = 0;
-      for (int run = 0; run < 3; run++) worst = Math.max(worst, byteAtATime(body.getValue()));
+      int most = 0;
+      for (int run = 0; run < 3; run++) {
+        worst = Math.max(worst, byteAtATime(body.getValue()));
+        most = Math.max(most, evaluations);
+      }
       System.out.println("BODY-COST " + body.getKey() + " " + worst + " ms, " + body.getValue().length()
-          + " bytes read one at a time, " + (RequestBody.MAX_STATES + 1) + " states decided at most");
+          + " bytes read one at a time, " + most + " rule evaluations (cap " + RequestBody.MAX_EVALUATIONS + ")");
+      assertTrue(most > 0 && most <= RequestBody.MAX_EVALUATIONS, body.getKey() + ": " + most + " evaluations");
       assertTrue(worst < BOUND_MS, body.getKey() + " took " + worst + " ms");
     }
   }

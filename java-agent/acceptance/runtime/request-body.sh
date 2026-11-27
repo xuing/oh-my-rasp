@@ -11,8 +11,8 @@
 #                                                          and Undertow 2.3; PATCH /customers/1 and
 #                                                          POST /app/rest/debug/processes only read their body
 #
-# A block is checked for what it leaves: a fresh event that names the rule and carries none of the body's text, the
-# status the client gets, and, for a block thrown from inside the application's read (a rule on the body alone),
+# A block is checked for what it leaves: a fresh event that names the rule and carries no text of the body but the
+# one field the rule matched (its input_field and input_value; see docs/detection.md), the status the client gets, and, for a block thrown from inside the application's read (a rule on the body alone),
 # what follows it. Each server runs one worker thread (Jetty a small pool) so that the requests after the block run
 # on the thread that threw it: on the same curl connection a benign request is served (the blocked response was
 # complete, whether the server kept the connection or closed it), a benign body passes with no event, and the same
@@ -156,8 +156,9 @@ send() {
   response=$(cat "$out" 2>/dev/null || true)
 }
 
-# The text of the bodies below that no event's message or details may carry: the canary password and pieces of the
-# attacks' values. (The request's own headers, the Host header among them, are not body text.)
+# The text of the bodies below that no event may carry anywhere but in the one field the rule matched (its
+# input_field and input_value details): the other fields' names and values, the canary password among them, and
+# pieces of the attacks' values. (The request's own headers, the Host header among them, are not body text.)
 leaked() {
   python3 -c '
 import json, re, sys
@@ -165,12 +166,14 @@ for line in sys.stdin:
     if not line.strip():
         continue
     event = json.loads(line)
-    texts = [event.get("message", "")] + [v for v in (event.get("details") or {}).values() if isinstance(v, str)]
-    for text in texts:
-        found = re.search(r"hunter2-Secret|127\.0\.0\.1|getRuntime", text)
-        if found:
-            print(found.group(0))
-            sys.exit()
+    details = dict(event.get("details") or {})
+    details.pop("input_field", None)
+    details.pop("input_value", None)
+    event["details"] = details
+    found = re.search(r"hunter2|Secret|username|password|127\.0\.0\.1|getRuntime", json.dumps(event))
+    if found:
+        print(found.group(0))
+        sys.exit()
 ' <<<"$1"
 }
 
