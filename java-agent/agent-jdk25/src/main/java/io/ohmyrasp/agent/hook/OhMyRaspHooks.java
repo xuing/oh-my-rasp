@@ -25,6 +25,9 @@ import io.ohmyrasp.agent.detect.RemoteResourceDetector;
 import io.ohmyrasp.agent.detect.ResponseContentDetector;
 import io.ohmyrasp.agent.detect.SqlRequestIndicators;
 import io.ohmyrasp.agent.http.ArchiveUploadPolicy;
+import io.ohmyrasp.agent.http.RequestBody;
+import io.ohmyrasp.agent.http.RequestBodyCapture;
+import io.ohmyrasp.agent.http.RequestBodySnapshot;
 import io.ohmyrasp.agent.http.MultipartFilename;
 import io.ohmyrasp.agent.http.ServletDispatchScope;
 import io.ohmyrasp.agent.net.HttpTransportObservation;
@@ -106,12 +109,16 @@ public final class OhMyRaspHooks {
   }
 
   private static void enterHttpRequest(Object request, Object response, boolean genericService) {
+    boolean outermost = !DISPATCH.inRequest();
     DISPATCH.enter(request, genericService);
+    RequestBodyCapture.dispatchEntered();
     try {
       inspectHttpRequest(request, response);
       DISPATCH.enteredApplication();
+      RequestBodyCapture.applicationEntered(outermost, request, !detectionDisabled());
     } catch (RuntimeException | Error failure) {
       DISPATCH.exit();
+      RequestBodyCapture.dispatchExited(!DISPATCH.inRequest());
       throw failure;
     }
   }
@@ -355,6 +362,119 @@ public final class OhMyRaspHooks {
 
   public static void exitHttpRequest() {
     DISPATCH.exit();
+    RequestBodyCapture.dispatchExited(!DISPATCH.inRequest());
+  }
+
+  // ---- request body: what the application's own read calls returned (RequestBodyVisitor injects these) ----
+
+  public static Object enterBodyRead() {
+    return RequestBodyCapture.enter();
+  }
+
+  public static void exitBodyRead(int result, Object token) {
+    if (RequestBodyCapture.exitByte(result, token)) bodyCompleted();
+  }
+
+  public static void exitBodyRead(int result, Object token, byte[] buffer, int offset) {
+    if (RequestBodyCapture.exitBytes(result, token, buffer, offset)) bodyCompleted();
+  }
+
+  public static void exitBodyRead(int result, Object token, java.nio.ByteBuffer buffer) {
+    if (RequestBodyCapture.exitBuffer(result, token, buffer)) bodyCompleted();
+  }
+
+  public static void exitBodyRead(byte[] result, Object token, boolean toEnd) {
+    if (RequestBodyCapture.exitAll(result, token, toEnd)) bodyCompleted();
+  }
+
+  public static void exitBodyChars(int result, Object token) {
+    if (RequestBodyCapture.exitChar(result, token)) bodyCompleted();
+  }
+
+  public static void exitBodyChars(int result, Object token, char[] buffer, int offset) {
+    if (RequestBodyCapture.exitChars(result, token, buffer, offset)) bodyCompleted();
+  }
+
+  public static void exitBodyChars(int result, Object token, java.nio.CharBuffer buffer) {
+    if (RequestBodyCapture.exitCharBuffer(result, token, buffer)) bodyCompleted();
+  }
+
+  public static void exitBodyLine(String result, Object token) {
+    if (RequestBodyCapture.exitLine(result, token)) bodyCompleted();
+  }
+
+  /** The read completed the body: decide the rules that read it, inside the application's read call. */
+  private static void bodyCompleted() {
+    try {
+      if (!detectionDisabled()) currentRequest();
+    } catch (OhMyRaspBlockException blocked) {
+      throw blocked;
+    } catch (Throwable throwable) {
+      quiet("requestBody", throwable);
+    }
+  }
+
+  /**
+   * Gives the request context the body read so far and, when that state is new to every decision, decides the
+   * request rules on it first: so a body-only rule is decided before any other hook decides with the new bytes.
+   */
+  private static void settleBody(RequestContext context, RequestBody body) {
+    RequestBodySnapshot snapshot = body.snapshot();
+    if (snapshot == null) return;
+    context.observeBody(snapshot);
+    if (!body.pending()) return;
+    body.markDecided();
+    if (detectionDisabled()) return;
+    long started = System.nanoTime();
+    try {
+      // The request rules read the body's values where they read parameters; the event names the request itself.
+      RequestContext view = context.withBodyParameters();
+      Optional<Detection> finding = DETECTORS.detectRequest(view).map(found -> reportedFor(found, context));
+      if (finding.isPresent() && bodyFinding(context, body, finding.orElseThrow())) emit(finding);
+      AgentPolicy policy = policy();
+      if (policy.loaded()) {
+        for (Detection candidate : SqlRequestIndicators.sqlRequestMetadata(view, policy::selectsAlgorithm)) {
+          Detection reported = reportedFor(candidate, context);
+          if (bodyFinding(context, body, reported)) emit(Optional.of(reported));
+        }
+      }
+    } catch (OhMyRaspBlockException blocked) {
+      throw blocked;
+    } catch (Throwable throwable) {
+      quiet("requestBody", throwable);
+    }
+    JsonEventLogger.get().sampleHookLatency("http_request_body", elapsedMicros(started));
+  }
+
+  /** The finding as an event carries it: about the request itself, whose parameters hold no body value. */
+  private static Detection reportedFor(Detection found, RequestContext context) {
+    return new Detection(found.timestamp(), found.hook(), found.algorithm(), found.action(), found.confidence(),
+        found.message(), new RequestContext(context.method(), context.uri(), context.query(), context.parameters(),
+            context.headers()), found.details());
+  }
+
+  /**
+   * Whether a request finding is the body's to report: not one the request gives without its body (the servlet
+   * entry decided that one), and not one an earlier state of this body reported.
+   */
+  @SuppressWarnings("unchecked")
+  private static boolean bodyFinding(RequestContext context, RequestBody body, Detection finding) {
+    List<Object> key = List.of(finding.algorithm(), finding.details());
+    Set<List<Object>> reported = (Set<List<Object>>) body.engineState;
+    if (reported != null && reported.contains(key)) return false;
+    RequestContext withoutBody = new RequestContext(
+        context.method(), context.uri(), context.query(), context.parameters(), context.headers());
+    Optional<Detection> before = "request_sql_sort_injection".equals(finding.algorithm())
+        || "request_sql_identifier_injection".equals(finding.algorithm())
+        ? Optional.empty() : DETECTORS.detectRequest(withoutBody);
+    if (before.isPresent() && before.orElseThrow().algorithm().equals(finding.algorithm())
+        && before.orElseThrow().details().equals(finding.details())) return false;
+    if (reported == null) {
+      reported = new java.util.HashSet<>();
+      body.engineState = reported;
+    }
+    reported.add(key);
+    return true;
   }
 
   public static void beforeSpringProcessStart(ProcessBuilder builder) {
@@ -1780,7 +1900,10 @@ public final class OhMyRaspHooks {
   }
 
   public static RequestContext currentRequest() {
-    return REQUEST.get();
+    RequestContext context = REQUEST.get();
+    RequestBody body = RequestBodyCapture.current();
+    if (body != null && body.version() > 0 && context.active()) settleBody(context, body);
+    return context;
   }
 
   private static RequestContext buildRequestContext(Object request) throws ReflectiveOperationException {

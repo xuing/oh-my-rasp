@@ -1,5 +1,8 @@
 package io.ohmyrasp.agent.model;
 
+import io.ohmyrasp.agent.http.BodyValues;
+import io.ohmyrasp.agent.http.RequestBody;
+import io.ohmyrasp.agent.http.RequestBodySnapshot;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.LinkedHashMap;
@@ -9,13 +12,20 @@ import java.util.Map;
 import java.util.Optional;
 
 public final class RequestContext {
-  private static final int MAX_BODY_CHARS = 8192;
+  /** The body cap, the same on every agent line: see {@link RequestBody#MAX_UNITS}. */
+  private static final int MAX_BODY_CHARS = RequestBody.MAX_UNITS;
   private final String method;
   private final String uri;
   private final String query;
   private final Map<String, List<String>> parameters;
   private final Map<String, String> headers;
   private final String body;
+  // What the application has read of the body so far, set by the request-body hooks; null before the first byte.
+  private volatile RequestBodySnapshot recorded;
+  // The body this context was built with, as a snapshot, made on first use.
+  private volatile RequestBodySnapshot given;
+  // parameters() with the body's values added, for the snapshot it was made from.
+  private volatile Inputs inputs;
 
   public RequestContext(
       String method,
@@ -65,9 +75,74 @@ public final class RequestContext {
     return headers;
   }
 
+  /** The request body: what the application has read of it so far, or the body this context was built with. */
   public String body() {
-    return body;
+    RequestBodySnapshot seen = recorded;
+    return seen != null ? seen.text() : body;
   }
+
+  /** Records the state of the body the application has read; the request-body hooks call it. */
+  public void observeBody(RequestBodySnapshot snapshot) {
+    if (snapshot != null) recorded = snapshot;
+  }
+
+  /** The body state this context carries, or null when it has none. */
+  public RequestBodySnapshot bodySnapshot() {
+    RequestBodySnapshot seen = recorded;
+    if (seen != null) return seen;
+    if (body.isEmpty()) return null;
+    RequestBodySnapshot made = given;
+    if (made == null) {
+      made = RequestBodySnapshot.of(body, headers.get("content-type"));
+      given = made;
+    }
+    return made;
+  }
+
+  /**
+   * The request input a sink argument is matched against: the parameters, and the names and values extracted
+   * from the body (see {@link BodyValues}) as more parameters, under the name each was found under.
+   */
+  public Map<String, List<String>> inputParameters() {
+    RequestBodySnapshot snapshot = bodySnapshot();
+    if (snapshot == null) return parameters;
+    Inputs cached = inputs;
+    if (cached != null && cached.snapshot == snapshot) return cached.parameters;
+    BodyValues values = snapshot.values();
+    Map<String, List<String>> merged;
+    if (values.isEmpty()) {
+      merged = parameters;
+    } else {
+      var copy = new LinkedHashMap<String, List<String>>(parameters);
+      values.parameters().forEach((name, items) -> {
+        List<String> before = copy.get(name);
+        if (before == null) {
+          copy.put(name, items);
+        } else {
+          var joined = new ArrayList<String>(before);
+          joined.addAll(items);
+          copy.put(name, Collections.unmodifiableList(joined));
+        }
+      });
+      merged = Collections.unmodifiableMap(copy);
+    }
+    inputs = new Inputs(snapshot, merged);
+    return merged;
+  }
+
+  /**
+   * This request as the request rules see its body: the body's names and values added to the parameters (see
+   * {@link #inputParameters}), and the body text. Only for deciding: an event names the request itself, whose
+   * parameters hold no body value.
+   */
+  public RequestContext withBodyParameters() {
+    RequestBodySnapshot snapshot = bodySnapshot();
+    var view = new RequestContext(method, uri, query, inputParameters(), headers, "");
+    if (snapshot != null) view.recorded = snapshot;
+    return view;
+  }
+
+  private record Inputs(RequestBodySnapshot snapshot, Map<String, List<String>> parameters) {}
 
   public boolean active() {
     return !method.isBlank() || !uri.isBlank();
@@ -97,7 +172,7 @@ public final class RequestContext {
       return false;
     }
     String normalized = value.toLowerCase(Locale.ROOT);
-    for (Map.Entry<String, List<String>> entry : parameters.entrySet()) {
+    for (Map.Entry<String, List<String>> entry : inputParameters().entrySet()) {
       String name = entry.getKey();
       if (isSignificantParameterName(name) && normalized.contains(name.toLowerCase(Locale.ROOT))) {
         return true;
@@ -110,10 +185,10 @@ public final class RequestContext {
         }
       }
     }
+    String text = body();
     if (value.length() >= 8
-        && body != null
-        && !body.isBlank()
-        && body.toLowerCase(Locale.ROOT).contains(normalized)) {
+        && !text.isBlank()
+        && text.toLowerCase(Locale.ROOT).contains(normalized)) {
       return true;
     }
     return false;

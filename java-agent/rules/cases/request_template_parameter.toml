@@ -47,8 +47,8 @@ body = "{\"q\":\"1\",\"wt\":\"velocity\",\"v.template\":\"custom\",\"v.template.
 body_api = "stream"
 
 [case.primary]
-effect = "none"
-why = "the same input blocks as a query parameter but passes as a JSON body: the agent's request context has no body (no hook reads the input stream or the reader), so body fields are never read"
+effect = "block"
+rule = "request_template_parameter"
 
 [case.backport]
 effect = "none"

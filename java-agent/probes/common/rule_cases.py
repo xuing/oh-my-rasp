@@ -25,7 +25,13 @@ engine does with it today:
     params = { file = ["/etc/passwd"] }
     headers = { "User-Agent" = "curl/8.0" }  # a value or a list of values
     body = "{\"a\":1}"                       # optional: the request body, which the handler reads like an application
-    body_api = "reader"                      # stream (the default) or reader: getInputStream() or getReader()
+    body_api = "reader"                      # stream (the default) or reader: getInputStream() or getReader(), which
+                                             #   is a reader over the stub input stream, as Jetty and Undertow serve it
+    body_chunk = 7                           # optional: the stub stream returns at most this many bytes per
+                                             #   read(byte[], int, int), and the handler reads with array reads
+    body_read = "content-length"             # optional: all (the default: to end of stream), content-length (exactly
+                                             #   that many bytes, never asking past them) or none (never reads it)
+    body_repeat = 3                          # optional: the body is the string repeated this many times
     attributes = { "javax.servlet.include.request_uri" = "/WEB-INF/web.xml" }
 
     [case.primary]                           # and [case.backport]
@@ -73,7 +79,9 @@ OPS = {
     "xpath.evaluate": ({"expression"}, set()),
 }
 CASE_KEYS = {"name", "kind", "via", "op", "args", "completes_with", "properties", "setup", "stubs", "request", *ENGINES}
-REQUEST_KEYS = {"method", "uri", "query", "params", "headers", "attributes", "body", "body_api"}
+REQUEST_KEYS = {"method", "uri", "query", "params", "headers", "attributes", "body", "body_api", "body_chunk",
+                "body_read", "body_repeat"}
+BODY_READS = ("all", "content-length", "none")
 EXPECT_KEYS = {"effect", "rule", "also", "why"}
 
 
@@ -195,6 +203,11 @@ def parse(file: str, text: str) -> tuple[list[Case], list[str]]:
                     errors.append(f"{where}: request body is a string")
                 if "body_api" in request and (request["body_api"] not in ("stream", "reader") or "body" not in request):
                     errors.append(f"{where}: request body_api is stream or reader, and needs a body")
+                for key in ("body_chunk", "body_repeat"):
+                    if key in request and (type(request[key]) is not int or request[key] < 1 or "body" not in request):
+                        errors.append(f"{where}: request {key} is a positive integer, and needs a body")
+                if "body_read" in request and (request["body_read"] not in BODY_READS or "body" not in request):
+                    errors.append(f"{where}: request body_read is one of {', '.join(BODY_READS)}, and needs a body")
                 for key in ("params", "headers", "attributes"):
                     table = request.get(key, {})
                     if not isinstance(table, dict) or not all(_strings(v) for v in table.values()):

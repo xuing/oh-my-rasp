@@ -11,8 +11,8 @@ body = "<map>\n  <entry>\n    <jdk.nashorn.internal.objects.NativeString>\n     
 body_api = "stream"
 
 [case.primary]
-effect = "none"
-why = "the agent's request context has no body (no hook reads the input stream or the reader), so a rule decided from the body alone cannot fire"
+effect = "block"
+rule = "request_xml_polymorphic_gadget"
 
 [case.backport]
 effect = "none"
@@ -31,8 +31,8 @@ body = "<map>\n  <entry>\n    <jdk.nashorn.internal.objects.NativeString>\n     
 body_api = "reader"
 
 [case.primary]
-effect = "none"
-why = "the agent's request context has no body (no hook reads the input stream or the reader), so a rule decided from the body alone cannot fire"
+effect = "block"
+rule = "request_xml_polymorphic_gadget"
 
 [case.backport]
 effect = "none"
@@ -53,6 +53,25 @@ body_api = "stream"
 [case.primary]
 effect = "none"
 
+
+[case.backport]
+effect = "none"
+
+[[case]]
+name = "benign-large-binary-upload"
+kind = "benign"
+via = "request"
+
+[case.request]
+method = "POST"
+uri = "/orders/3/attachment"
+headers = { "User-Agent" = "Mozilla/5.0 (X11; Linux x86_64) Firefox/128.0", "Content-Type" = "application/octet-stream" }
+body = "\u0000\u0001\u0002<map><entry><next class=\"java.lang.ProcessBuilder\"><command><string>id</string></command></next></entry></map>\u00ff\u00fe"
+body_repeat = 4000
+body_chunk = 8192
+
+[case.primary]
+effect = "none"
 
 [case.backport]
 effect = "none"

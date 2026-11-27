@@ -105,7 +105,10 @@ def spec_lines(case: rule_cases.Case, tmp: Path, classes: Path) -> str:
         if query is not None:
             pairs.append(("request.query", sub(query)))
         if "body" in r:
-            pairs += [("request.body", sub(r["body"])), ("request.bodyApi", r.get("body_api", "stream"))]
+            pairs += [("request.body", sub(r["body"]) * r.get("body_repeat", 1)),
+                      ("request.bodyApi", r.get("body_api", "stream")), ("request.bodyRead", r.get("body_read", "all"))]
+            if "body_chunk" in r:
+                pairs.append(("request.bodyChunk", str(r["body_chunk"])))
         params = r.get("params")
         if params is None:
             params = {}
@@ -206,6 +209,9 @@ def classify(case, result: dict, events: list[tuple[str, str]]) -> Actual:
     entry, handler, op, ending = result.get("entry"), result.get("handler"), result.get("op"), result.get("ending", "")
     if case.via == "sink":
         outcome, note = op, ending
+    elif handler == "yes" and result.get("body", "").startswith("blocked"):
+        # The agent's exception ended the application's own read of the body: the read decided the body.
+        outcome, note = "blocked", f"in the handler, while it read the body ({result['body']})"
     elif handler == "yes":
         outcome, note = ("ran", "handler ran") if case.via == "request" else (op, f"in the handler: {ending}")
         if "body" in result:

@@ -149,12 +149,14 @@ class WiringTest(unittest.TestCase):
         arities = {key[2] for key in rule_wiring.reachable_methods() if key[:2] == ("OhMyRaspHooks", "beforeProcessBuilderStart")}
         self.assertEqual({1, 2}, arities)
 
-    def test_a_request_body_enters_the_detectors_through_no_reachable_method(self):
-        # The servlet entry builds its context without a body; the entries that take one are called by no hook module.
-        # If this fails, a hook now supplies a body: measure the body-only rules (rule_wiring.BODY_ONLY) again with
-        # the rule-cases probe, and take off not_wired those that fire.
-        self.assertEqual(set(), rule_wiring.request_body_sources())
-        self.assertLessEqual(rule_wiring.BODY_ONLY.keys(), rule_catalogue.not_wired().keys())
+    def test_the_request_body_hooks_give_the_detectors_a_body(self):
+        # The body the application reads reaches a request context through the request-body hooks (the exitBody*
+        # entries RequestBodyVisitor injects), so the body-only rules (rule_wiring.BODY_ONLY) are reachable and none
+        # of them is marked not wired. If this fails, that path is gone: measure the body-only rules again with the
+        # rule-cases probe and mark those that no longer fire.
+        self.assertIn(("OhMyRaspHooks", "settleBody", 2), rule_wiring.request_body_sources())
+        self.assertTrue(rule_wiring.is_reachable("OhMyRaspHooks", "exitBodyRead"))
+        self.assertFalse(rule_wiring.BODY_ONLY.keys() & rule_catalogue.not_wired().keys())
 
     def test_a_compatibility_stub_is_not_a_capability(self):
         self.assertIn(("DeserializationDetector", "detectHessianType"), rule_wiring.empty_stubs())

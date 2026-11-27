@@ -27,7 +27,7 @@ final class FilePaths {
 
   static boolean requestControlsReadPath(String path, RequestContext request, boolean sensitive, boolean reportDirect) {
     String target = HostReadPath.inputName(path);
-    for (List<String> values : request.parameters().values()) {
+    for (List<String> values : request.inputParameters().values()) {
       for (String value : values) {
         String candidate = HostReadPath.inputName(value);
         if (candidate.isEmpty()) {

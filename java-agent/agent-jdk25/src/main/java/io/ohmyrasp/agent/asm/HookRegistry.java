@@ -38,7 +38,8 @@ public final class HookRegistry {
               new YarnSubmitHookModule(),
               new MultipartUploadHookModule(),
               new XmlAttachmentHookModule(),
-              new XxeHookModule()));
+              new XxeHookModule(),
+              new RequestBodyHookModule()));
 
   private final List<HookModule> modules;
 
@@ -73,7 +74,28 @@ public final class HookRegistry {
       int access,
       String methodName,
       String descriptor, boolean jdbcImplementation) {
+    return visitMethod(className, null, true, methodVisitor, access, methodName, descriptor, jdbcImplementation);
+  }
+
+  /**
+   * {@code superName} is the class's direct superclass; {@code bodyHooks} is false for a class whose loader
+   * cannot see the agent (see RequestBodyVisitor.loaderSeesAgent), which the request-body module leaves alone.
+   */
+  MethodVisitor visitMethod(
+      String className,
+      String superName,
+      boolean bodyHooks,
+      MethodVisitor methodVisitor,
+      int access,
+      String methodName,
+      String descriptor, boolean jdbcImplementation) {
     for (HookModule module : modules) {
+      if (module instanceof RequestBodyHookModule) {
+        if (!bodyHooks || !module.matchesClass(className, superName)) continue;
+        MethodVisitor next = module.visitMethod(className, methodVisitor, access, methodName, descriptor);
+        if (next != methodVisitor) return next;
+        continue;
+      }
       boolean jdbcMethod = jdbcImplementation && module instanceof SqlHookModule
           && (access & Opcodes.ACC_STATIC) == 0
           && (JdbcSqlMethod.preparesSql(methodName, descriptor) || JdbcSqlMethod.executesSql(methodName, descriptor));

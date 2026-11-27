@@ -24,11 +24,11 @@ One file per rule id. Effects count the file's attack cases; rules are the ids t
 | [command_common](../rules/cases/command_common.toml) | 4 | 2 | block 1, log 3 | `command_common` | block 4 | `command_execution_exploit_primitive` |
 | [command_dnslog](../rules/cases/command_dnslog.toml) | 2 | 1 | block 1, log 1 | `command_dnslog` | unreachable 2 | - |
 | [command_error](../rules/cases/command_error.toml) | 2 | 1 | block 1, log 1 | `command_error` | unreachable 2 | - |
-| [command_userinput](../rules/cases/command_userinput.toml) | 3 | 1 | block 1, none 2 | `command_userinput` | block 1, none 2 | `command_execution_shell_meta` |
-| [deleteFile_userinput](../rules/cases/deleteFile_userinput.toml) | 3 | 1 | block 1, none 2 | `deleteFile_userinput` | block 1, none 2 | `deleteFile_userinput` |
+| [command_userinput](../rules/cases/command_userinput.toml) | 8 | 2 | block 6, none 2 | `command_userinput` | block 1, none 7 | `command_execution_shell_meta` |
+| [deleteFile_userinput](../rules/cases/deleteFile_userinput.toml) | 3 | 1 | block 2, none 1 | `deleteFile_userinput` | block 1, none 2 | `deleteFile_userinput` |
 | [deserialization_blacklist](../rules/cases/deserialization_blacklist.toml) | 4 | 1 | block 1, log 2, none 1 | `deserialization_blacklist` | block 3, none 1 | `deserialization_gadget_class` |
 | [deserialization_gadget](../rules/cases/deserialization_gadget.toml) | 2 | 1 | block 1, log 1 | `deserialization_gadget` | block 2 | `deserialization_gadget_class` |
-| [directory_userinput](../rules/cases/directory_userinput.toml) | 5 | 1 | block 2, none 3 | `directory_userinput` | block 2, none 3 | `directory_userinput` |
+| [directory_userinput](../rules/cases/directory_userinput.toml) | 5 | 1 | block 3, none 2 | `directory_userinput` | block 2, none 3 | `directory_userinput` |
 | [file_generated_plot_script_command](../rules/cases/file_generated_plot_script_command.toml) | 2 | 1 | unreachable 2 | - | block 2 | `file_generated_plot_script_command` |
 | [java_compile_runtime](../rules/cases/java_compile_runtime.toml) | 5 | 1 | block 4, none 1 | `java_compile_runtime` | block 5 | `java_compile_runtime_execution` |
 | [jdbc_derby_code_loading](../rules/cases/jdbc_derby_code_loading.toml) | 2 | 1 | unreachable 2 | - | block 2 | `jdbc_derby_code_loading` |
@@ -36,15 +36,15 @@ One file per rule id. Effects count the file's attack cases; rules are the ids t
 | [jdbc_mysql_deserialization](../rules/cases/jdbc_mysql_deserialization.toml) | 3 | 1 | block 1, none 2 | `jdbc_mysql_deserialization` | block 3 | `jdbc_mysql_deserialization` |
 | [jndi_disable_all](../rules/cases/jndi_disable_all.toml) | 3 | 1 | block 1, log 2 | `jndi_disable_all` | block 3 | `jndi_remote_lookup` |
 | [readFile_unwanted](../rules/cases/readFile_unwanted.toml) | 3 | 1 | block 1, none 2 | `readFile_unwanted` | block 3 | `file_sensitive_read` |
-| [readFile_userinput](../rules/cases/readFile_userinput.toml) | 3 | 2 | block 2, none 1 | `readFile_userinput` | block 2, none 1 | `file_sensitive_read` |
-| [request_debug_process_launch](../rules/cases/request_debug_process_launch.toml) | 2 | 1 | block 1, none 1 | `request_debug_process_launch` | block 1, none 1 | `request_debug_process_launch` |
+| [readFile_userinput](../rules/cases/readFile_userinput.toml) | 3 | 2 | block 3 | `readFile_userinput` | block 2, none 1 | `file_sensitive_read` |
+| [request_debug_process_launch](../rules/cases/request_debug_process_launch.toml) | 2 | 1 | block 2 | `request_debug_process_launch` | block 1, none 1 | `request_debug_process_launch` |
 | [request_default_credential](../rules/cases/request_default_credential.toml) | 1 | 1 | block 1 | `request_default_credential` | unreachable 1 | - |
 | [request_default_crypto_cookie](../rules/cases/request_default_crypto_cookie.toml) | 1 | 1 | block 1 | `request_default_crypto_cookie` | block 1 | `request_default_crypto_cookie` |
 | [request_default_jwt_secret](../rules/cases/request_default_jwt_secret.toml) | 1 | 1 | block 1 | `request_default_jwt_secret` | block 1 | `request_default_jwt_secret` |
-| [request_dynamic_script_config](../rules/cases/request_dynamic_script_config.toml) | 2 | 1 | block 1, none 1 | `request_dynamic_script_config` | none 1, unreachable 1 | - |
+| [request_dynamic_script_config](../rules/cases/request_dynamic_script_config.toml) | 2 | 1 | block 2 | `request_dynamic_script_config` | none 1, unreachable 1 | - |
 | [request_empty_credential_bypass](../rules/cases/request_empty_credential_bypass.toml) | 1 | 1 | block 1 | `request_empty_credential_bypass` | unreachable 1 | - |
 | [request_expression_header](../rules/cases/request_expression_header.toml) | 1 | 1 | block 1 | `request_expression_header` | unreachable 1 | - |
-| [request_expression_parameter](../rules/cases/request_expression_parameter.toml) | 2 | 1 | block 1, none 1 | `request_expression_parameter` | none 1, unreachable 1 | - |
+| [request_expression_parameter](../rules/cases/request_expression_parameter.toml) | 2 | 1 | block 2 | `request_expression_parameter` | none 1, unreachable 1 | - |
 | [request_expression_parameter_name](../rules/cases/request_expression_parameter_name.toml) | 1 | 1 | block 1 | `request_expression_parameter_name` | unreachable 1 | - |
 | [request_expression_path](../rules/cases/request_expression_path.toml) | 1 | 1 | block 1 | `request_expression_path` | unreachable 1 | - |
 | [request_forged_include_attribute](../rules/cases/request_forged_include_attribute.toml) | 1 | 1 | block 1 | `request_forged_include_attribute` | block 1 | `request_forged_include_attribute` |
@@ -53,27 +53,27 @@ One file per rule id. Effects count the file's attack cases; rules are the ids t
 | [request_internal_resource](../rules/cases/request_internal_resource.toml) | 2 | 1 | block 2 | `request_internal_resource` | block 1, none 1 | `request_path_confusion` |
 | [request_java_bean_pollution](../rules/cases/request_java_bean_pollution.toml) | 1 | 1 | block 1 | `request_java_bean_pollution` | unreachable 1 | - |
 | [request_jndi_lookup](../rules/cases/request_jndi_lookup.toml) | 2 | 1 | block 2 | `request_jndi_lookup` | unreachable 2 | - |
-| [request_json_patch_expression](../rules/cases/request_json_patch_expression.toml) | 2 | 1 | none 2 | - | none 2 | - |
-| [request_message_selector_expression](../rules/cases/request_message_selector_expression.toml) | 2 | 1 | none 2 | - | none 2 | - |
+| [request_json_patch_expression](../rules/cases/request_json_patch_expression.toml) | 4 | 2 | block 3, none 1 | `request_json_patch_expression` | none 4 | - |
+| [request_message_selector_expression](../rules/cases/request_message_selector_expression.toml) | 2 | 1 | block 2 | `request_message_selector_expression` | none 2 | - |
 | [request_ogc_filter_sql_injection](../rules/cases/request_ogc_filter_sql_injection.toml) | 1 | 1 | block 1 | `request_ogc_filter_sql_injection` | block 1 | `request_ogc_filter_sql_injection` |
 | [request_path_confusion](../rules/cases/request_path_confusion.toml) | 2 | 1 | block 2 | `request_path_confusion` | block 2 | `request_path_confusion` |
 | [request_plot_command_injection](../rules/cases/request_plot_command_injection.toml) | 1 | 1 | block 1 | `request_plot_command_injection` | unreachable 1 | - |
 | [request_remote_content_stream](../rules/cases/request_remote_content_stream.toml) | 1 | 1 | block 1 | `request_remote_content_stream` | unreachable 1 | - |
 | [request_remote_import_script_write](../rules/cases/request_remote_import_script_write.toml) | 1 | 1 | block 1 | `request_remote_import_script_write` | unreachable 1 | - |
 | [request_repository_webroot_write](../rules/cases/request_repository_webroot_write.toml) | 1 | 1 | block 1 | `request_repository_webroot_write` | unreachable 1 | - |
-| [request_scheduler_shell_job](../rules/cases/request_scheduler_shell_job.toml) | 2 | 1 | block 1, none 1 | `request_scheduler_shell_job` | none 1, unreachable 1 | - |
+| [request_scheduler_shell_job](../rules/cases/request_scheduler_shell_job.toml) | 2 | 1 | block 2 | `request_scheduler_shell_job` | none 1, unreachable 1 | - |
 | [request_serialized_client_state](../rules/cases/request_serialized_client_state.toml) | 1 | 1 | block 1 | `request_serialized_client_state` | unreachable 1 | - |
 | [request_server_side_script_put](../rules/cases/request_server_side_script_put.toml) | 1 | 1 | block 1 | `request_server_side_script_put` | unreachable 1 | - |
 | [request_session_file_deserialization](../rules/cases/request_session_file_deserialization.toml) | 1 | 1 | unreachable 1 | - | block 1 | `request_session_file_deserialization` |
 | [request_setup_state_reset](../rules/cases/request_setup_state_reset.toml) | 1 | 1 | block 1 | `request_setup_state_reset` | unreachable 1 | - |
-| [request_template_loader_enable](../rules/cases/request_template_loader_enable.toml) | 2 | 1 | block 1, none 1 | `request_template_loader_enable` | none 1, unreachable 1 | - |
-| [request_template_parameter](../rules/cases/request_template_parameter.toml) | 2 | 1 | block 1, none 1 | `request_template_parameter` | none 1, unreachable 1 | - |
+| [request_template_loader_enable](../rules/cases/request_template_loader_enable.toml) | 2 | 1 | block 2 | `request_template_loader_enable` | none 1, unreachable 1 | - |
+| [request_template_parameter](../rules/cases/request_template_parameter.toml) | 2 | 1 | block 2 | `request_template_parameter` | none 1, unreachable 1 | - |
 | [request_template_source](../rules/cases/request_template_source.toml) | 2 | 1 | block 2 | `request_template_source` | block 1, none 1 | `request_template_source` |
 | [request_typed_parameter_deserialization](../rules/cases/request_typed_parameter_deserialization.toml) | 1 | 1 | block 1 | `request_typed_parameter_deserialization` | unreachable 1 | - |
-| [request_typed_payload_deserialization](../rules/cases/request_typed_payload_deserialization.toml) | 2 | 1 | block 1, none 1 | `request_typed_payload_deserialization` | block 1, none 1 | `request_typed_payload_deserialization` |
+| [request_typed_payload_deserialization](../rules/cases/request_typed_payload_deserialization.toml) | 2 | 1 | block 2 | `request_typed_payload_deserialization` | block 1, none 1 | `request_typed_payload_deserialization` |
 | [request_upload_filename_override](../rules/cases/request_upload_filename_override.toml) | 1 | 1 | block 1 | `request_upload_filename_override` | unreachable 1 | - |
-| [request_xml_polymorphic_gadget](../rules/cases/request_xml_polymorphic_gadget.toml) | 2 | 1 | none 2 | - | none 2 | - |
-| [request_xxe_payload](../rules/cases/request_xxe_payload.toml) | 2 | 1 | block 1, none 1 | `request_xxe_payload` | none 1, unreachable 1 | - |
+| [request_xml_polymorphic_gadget](../rules/cases/request_xml_polymorphic_gadget.toml) | 2 | 2 | block 2 | `request_xml_polymorphic_gadget` | none 2 | - |
+| [request_xxe_payload](../rules/cases/request_xxe_payload.toml) | 2 | 1 | block 2 | `request_xxe_payload` | none 1, unreachable 1 | - |
 | [sql_derby_code_execution](../rules/cases/sql_derby_code_execution.toml) | 2 | 1 | block 1, none 1 | `sql_derby_code_execution` | unreachable 2 | - |
 | [sql_h2_code_execution](../rules/cases/sql_h2_code_execution.toml) | 2 | 1 | block 2 | `sql_h2_code_execution` | unreachable 2 | - |
 | [sql_policy](../rules/cases/sql_policy.toml) | 2 | 1 | block 2 | `sql_policy` | block 2 | `sql_statement_injection` |
@@ -82,7 +82,7 @@ One file per rule id. Effects count the file's attack cases; rules are the ids t
 | [ssrf_common](../rules/cases/ssrf_common.toml) | 2 | 1 | block 1, log 1 | `ssrf_common` | unreachable 2 | - |
 | [ssrf_obfuscate](../rules/cases/ssrf_obfuscate.toml) | 2 | 1 | block 1, log 1 | `ssrf_obfuscate` | unreachable 2 | - |
 | [ssrf_protocol](../rules/cases/ssrf_protocol.toml) | 2 | 1 | block 1, log 1 | `ssrf_protocol` | unreachable 2 | - |
-| [ssrf_userinput](../rules/cases/ssrf_userinput.toml) | 4 | 2 | block 3, none 1 | `ssrf_userinput` | block 3, none 1 | `ssrf_loopback_admin`, `ssrf_request_parameter_url` |
+| [ssrf_userinput](../rules/cases/ssrf_userinput.toml) | 4 | 2 | block 4 | `ssrf_userinput` | block 3, none 1 | `ssrf_loopback_admin`, `ssrf_request_parameter_url` |
 | [writeFile_generated_script](../rules/cases/writeFile_generated_script.toml) | 3 | 1 | block 2, none 1 | `writeFile_generated_script` | none 2, unreachable 1 | - |
 | [writeFile_reflect](../rules/cases/writeFile_reflect.toml) | 2 | 1 | block 1, log 1 | `writeFile_reflect` | block 2 | `file_script_write` |
 | [writeFile_script](../rules/cases/writeFile_script.toml) | 3 | 1 | block 1, none 2 | `writeFile_script` | block 3 | `file_script_write` |
@@ -104,25 +104,25 @@ Each id that some case names on this engine: the attack cases that name it, the 
 | `command_common` | 4 | 2 | block 1, log 3 | [command_common](../rules/cases/command_common.toml) |
 | `command_dnslog` | 2 | 1 | block 1, log 1 | [command_dnslog](../rules/cases/command_dnslog.toml) |
 | `command_error` | 2 | 1 | block 1, log 1 | [command_error](../rules/cases/command_error.toml) |
-| `command_userinput` | 1 | 1 | block 1 | [command_userinput](../rules/cases/command_userinput.toml) |
-| `deleteFile_userinput` | 1 | 1 | block 1 | [deleteFile_userinput](../rules/cases/deleteFile_userinput.toml) |
+| `command_userinput` | 6 | 2 | block 6 | [command_userinput](../rules/cases/command_userinput.toml) |
+| `deleteFile_userinput` | 2 | 1 | block 2 | [deleteFile_userinput](../rules/cases/deleteFile_userinput.toml) |
 | `deserialization_blacklist` | 3 | 1 | block 1, log 2 | [deserialization_blacklist](../rules/cases/deserialization_blacklist.toml) |
 | `deserialization_gadget` | 2 | 1 | block 1, log 1 | [deserialization_gadget](../rules/cases/deserialization_gadget.toml) |
-| `directory_userinput` | 2 | 1 | block 2 | [directory_userinput](../rules/cases/directory_userinput.toml) |
+| `directory_userinput` | 3 | 1 | block 3 | [directory_userinput](../rules/cases/directory_userinput.toml) |
 | `java_compile_runtime` | 4 | 1 | block 4 | [java_compile_runtime](../rules/cases/java_compile_runtime.toml) |
 | `jdbc_h2_init` | 2 | 1 | block 1, log 1 | [jdbc_h2_init](../rules/cases/jdbc_h2_init.toml) |
 | `jdbc_mysql_deserialization` | 1 | 1 | block 1 | [jdbc_mysql_deserialization](../rules/cases/jdbc_mysql_deserialization.toml) |
 | `jndi_disable_all` | 3 | 1 | block 1, log 2 | [jndi_disable_all](../rules/cases/jndi_disable_all.toml) |
 | `readFile_unwanted` | 1 | 1 | block 1 | [readFile_unwanted](../rules/cases/readFile_unwanted.toml) |
-| `readFile_userinput` | 2 | 2 | block 2 | [readFile_userinput](../rules/cases/readFile_userinput.toml) |
-| `request_debug_process_launch` | 1 | 1 | block 1 | [request_debug_process_launch](../rules/cases/request_debug_process_launch.toml) |
+| `readFile_userinput` | 3 | 2 | block 3 | [readFile_userinput](../rules/cases/readFile_userinput.toml) |
+| `request_debug_process_launch` | 2 | 1 | block 2 | [request_debug_process_launch](../rules/cases/request_debug_process_launch.toml) |
 | `request_default_credential` | 1 | 1 | block 1 | [request_default_credential](../rules/cases/request_default_credential.toml) |
 | `request_default_crypto_cookie` | 1 | 1 | block 1 | [request_default_crypto_cookie](../rules/cases/request_default_crypto_cookie.toml) |
 | `request_default_jwt_secret` | 1 | 1 | block 1 | [request_default_jwt_secret](../rules/cases/request_default_jwt_secret.toml) |
-| `request_dynamic_script_config` | 1 | 1 | block 1 | [request_dynamic_script_config](../rules/cases/request_dynamic_script_config.toml) |
+| `request_dynamic_script_config` | 2 | 1 | block 2 | [request_dynamic_script_config](../rules/cases/request_dynamic_script_config.toml) |
 | `request_empty_credential_bypass` | 1 | 1 | block 1 | [request_empty_credential_bypass](../rules/cases/request_empty_credential_bypass.toml) |
 | `request_expression_header` | 1 | 1 | block 1 | [request_expression_header](../rules/cases/request_expression_header.toml) |
-| `request_expression_parameter` | 1 | 1 | block 1 | [request_expression_parameter](../rules/cases/request_expression_parameter.toml) |
+| `request_expression_parameter` | 2 | 1 | block 2 | [request_expression_parameter](../rules/cases/request_expression_parameter.toml) |
 | `request_expression_parameter_name` | 1 | 1 | block 1 | [request_expression_parameter_name](../rules/cases/request_expression_parameter_name.toml) |
 | `request_expression_path` | 1 | 1 | block 1 | [request_expression_path](../rules/cases/request_expression_path.toml) |
 | `request_forged_include_attribute` | 1 | 1 | block 1 | [request_forged_include_attribute](../rules/cases/request_forged_include_attribute.toml) |
@@ -131,23 +131,26 @@ Each id that some case names on this engine: the attack cases that name it, the 
 | `request_internal_resource` | 2 | 1 | block 2 | [request_internal_resource](../rules/cases/request_internal_resource.toml) |
 | `request_java_bean_pollution` | 1 | 1 | block 1 | [request_java_bean_pollution](../rules/cases/request_java_bean_pollution.toml) |
 | `request_jndi_lookup` | 2 | 1 | block 2 | [request_jndi_lookup](../rules/cases/request_jndi_lookup.toml) |
+| `request_json_patch_expression` | 3 | 2 | block 3 | [request_json_patch_expression](../rules/cases/request_json_patch_expression.toml) |
+| `request_message_selector_expression` | 2 | 1 | block 2 | [request_message_selector_expression](../rules/cases/request_message_selector_expression.toml) |
 | `request_ogc_filter_sql_injection` | 1 | 1 | block 1 | [request_ogc_filter_sql_injection](../rules/cases/request_ogc_filter_sql_injection.toml) |
 | `request_path_confusion` | 2 | 1 | block 2 | [request_path_confusion](../rules/cases/request_path_confusion.toml) |
 | `request_plot_command_injection` | 1 | 1 | block 1 | [request_plot_command_injection](../rules/cases/request_plot_command_injection.toml) |
 | `request_remote_content_stream` | 1 | 1 | block 1 | [request_remote_content_stream](../rules/cases/request_remote_content_stream.toml) |
 | `request_remote_import_script_write` | 1 | 1 | block 1 | [request_remote_import_script_write](../rules/cases/request_remote_import_script_write.toml) |
 | `request_repository_webroot_write` | 1 | 1 | block 1 | [request_repository_webroot_write](../rules/cases/request_repository_webroot_write.toml) |
-| `request_scheduler_shell_job` | 1 | 1 | block 1 | [request_scheduler_shell_job](../rules/cases/request_scheduler_shell_job.toml) |
+| `request_scheduler_shell_job` | 2 | 1 | block 2 | [request_scheduler_shell_job](../rules/cases/request_scheduler_shell_job.toml) |
 | `request_serialized_client_state` | 1 | 1 | block 1 | [request_serialized_client_state](../rules/cases/request_serialized_client_state.toml) |
 | `request_server_side_script_put` | 1 | 1 | block 1 | [request_server_side_script_put](../rules/cases/request_server_side_script_put.toml) |
 | `request_setup_state_reset` | 1 | 1 | block 1 | [request_setup_state_reset](../rules/cases/request_setup_state_reset.toml) |
-| `request_template_loader_enable` | 1 | 1 | block 1 | [request_template_loader_enable](../rules/cases/request_template_loader_enable.toml) |
-| `request_template_parameter` | 1 | 1 | block 1 | [request_template_parameter](../rules/cases/request_template_parameter.toml) |
+| `request_template_loader_enable` | 2 | 1 | block 2 | [request_template_loader_enable](../rules/cases/request_template_loader_enable.toml) |
+| `request_template_parameter` | 2 | 1 | block 2 | [request_template_parameter](../rules/cases/request_template_parameter.toml) |
 | `request_template_source` | 2 | 1 | block 2 | [request_template_source](../rules/cases/request_template_source.toml) |
 | `request_typed_parameter_deserialization` | 1 | 1 | block 1 | [request_typed_parameter_deserialization](../rules/cases/request_typed_parameter_deserialization.toml) |
-| `request_typed_payload_deserialization` | 1 | 1 | block 1 | [request_typed_payload_deserialization](../rules/cases/request_typed_payload_deserialization.toml) |
+| `request_typed_payload_deserialization` | 2 | 1 | block 2 | [request_typed_payload_deserialization](../rules/cases/request_typed_payload_deserialization.toml) |
 | `request_upload_filename_override` | 1 | 1 | block 1 | [request_upload_filename_override](../rules/cases/request_upload_filename_override.toml) |
-| `request_xxe_payload` | 1 | 1 | block 1 | [request_xxe_payload](../rules/cases/request_xxe_payload.toml) |
+| `request_xml_polymorphic_gadget` | 2 | 2 | block 2 | [request_xml_polymorphic_gadget](../rules/cases/request_xml_polymorphic_gadget.toml) |
+| `request_xxe_payload` | 2 | 1 | block 2 | [request_xxe_payload](../rules/cases/request_xxe_payload.toml) |
 | `sql_derby_code_execution` | 1 | 1 | block 1 | [sql_derby_code_execution](../rules/cases/sql_derby_code_execution.toml) |
 | `sql_h2_code_execution` | 2 | 1 | block 2 | [sql_h2_code_execution](../rules/cases/sql_h2_code_execution.toml) |
 | `sql_policy` | 3 | 2 | block 3 | [sql_policy](../rules/cases/sql_policy.toml), [sql_userinput](../rules/cases/sql_userinput.toml) |
@@ -156,7 +159,7 @@ Each id that some case names on this engine: the attack cases that name it, the 
 | `ssrf_common` | 2 | 1 | block 1, log 1 | [ssrf_common](../rules/cases/ssrf_common.toml) |
 | `ssrf_obfuscate` | 2 | 1 | block 1, log 1 | [ssrf_obfuscate](../rules/cases/ssrf_obfuscate.toml) |
 | `ssrf_protocol` | 2 | 1 | block 1, log 1 | [ssrf_protocol](../rules/cases/ssrf_protocol.toml) |
-| `ssrf_userinput` | 3 | 2 | block 3 | [ssrf_userinput](../rules/cases/ssrf_userinput.toml) |
+| `ssrf_userinput` | 4 | 2 | block 4 | [ssrf_userinput](../rules/cases/ssrf_userinput.toml) |
 | `writeFile_generated_script` | 2 | 1 | block 2 | [writeFile_generated_script](../rules/cases/writeFile_generated_script.toml) |
 | `writeFile_reflect` | 2 | 1 | block 1, log 1 | [writeFile_reflect](../rules/cases/writeFile_reflect.toml) |
 | `writeFile_script` | 1 | 1 | block 1 | [writeFile_script](../rules/cases/writeFile_script.toml) |
@@ -168,7 +171,7 @@ Each id that some case names on this engine: the attack cases that name it, the 
 
 Not covered on this engine, from [uncovered.toml](../rules/cases/uncovered.toml) and, for the ids marked `not wired`, from the `not_wired` object of the [catalogue](../rules/general.json):
 
-- selected only by a loaded policy; the cases run with no policy: `command_reflect`, `deserialization_http_object_stream`, `directory_reflect`, `directory_unwanted`, `readFile_outsideWebroot`, `request_scanner`, `xss_userinput`
+- selected only by a loaded policy; the cases run with no policy: `command_reflect`, `deserialization_http_object_stream`, `directory_reflect`, `directory_unwanted`, `readFile_outsideWebroot`, `request_scanner`, `request_sql_identifier_injection`, `request_sql_sort_injection`, `xss_userinput`
 - decided from a Windows named data stream path and selected only by a loaded policy; the probes run on Linux with no policy: `writeFile_NTFS`
 - needs an expression engine on the driver's class path (EL, JEXL, Jiffle, OGNL, Groovy or MVEL, Spring Expression, Velocity); the JDK ships none of them: `el_runtime`, `jexl_runtime`, `jiffle_runtime`, `ognl_blacklist`, `ognl_length_limit`, `script_runtime`, `spel_runtime`, `template_runtime`
 - needs Rhino or a standalone Nashorn on the driver's class path; JDK 21 and 25 ship no JavaScript engine: `javascript_runtime`
@@ -190,8 +193,6 @@ Not covered on this engine, from [uncovered.toml](../rules/cases/uncovered.toml)
 - not wired: No hook module injects a call to OhMyRaspHooks.beforeLoadLibrary; only the playground servlet calls it: `loadLibrary_unc`
 - not wired: No code emits it: the OGNL path (CodeExecutionDetector.detectOgnl) reports ognl_blacklist or ognl_length_limit: `ognl_runtime`
 - not wired: No hook module injects a call to OhMyRaspHooks.beforeRename; only the playground servlet calls it: `rename_webshell`
-- not wired: The request context the servlet entry builds has no body: no hook module reads the request input stream or reader, so a rule decided from the body alone never sees one (measured with the rule-cases probe: a body the handler reads through getInputStream() and through getReader() fires nothing on JDK 25 or Java 17): `request_json_patch_expression`, `request_message_selector_expression`, `request_xml_polymorphic_gadget`
-- not wired: The request context the servlet entry builds has no body: no hook module reads the request input stream or reader, so a rule decided from the body alone never sees one (measured with the rule-cases probe: a body the handler reads through getInputStream() and through getReader() fires nothing on JDK 25 or Java 17); the rule is also selected only by a loaded policy: `request_sql_identifier_injection`, `request_sql_sort_injection`
 - not wired: No hook module injects a call to OhMyRaspHooks.beforeResponseDataLeak; only the playground servlet and the servlet-admission probe's stub servlet call it: `response_dataLeak`
 - not wired: No hook module injects a call to OhMyRaspHooks.beforeSqlException; only the playground servlet calls it: `sql_exception`
 - not wired: No hook module injects a call to OhMyRaspHooks.beforeSqlRegex; only the playground servlet calls it: `sql_regex`
@@ -212,7 +213,7 @@ Each id that some case names on this engine: the attack cases that name it, the 
 | `base64_avx512_tail_underflow` | 2 | 1 | block 2 | [base64_avx512_tail_underflow](../rules/cases/base64_avx512_tail_underflow.toml) |
 | `classloader_remote_codebase` | 2 | 1 | block 2 | [classloader_remote](../rules/cases/classloader_remote.toml) |
 | `command_execution_exploit_primitive` | 4 | 2 | block 4 | [command_common](../rules/cases/command_common.toml) |
-| `command_execution_shell_meta` | 1 | 1 | block 1 | [command_userinput](../rules/cases/command_userinput.toml) |
+| `command_execution_shell_meta` | 1 | 2 | block 1 | [command_userinput](../rules/cases/command_userinput.toml) |
 | `deleteFile_userinput` | 1 | 1 | block 1 | [deleteFile_userinput](../rules/cases/deleteFile_userinput.toml) |
 | `deserialization_gadget_class` | 5 | 2 | block 5 | [deserialization_blacklist](../rules/cases/deserialization_blacklist.toml), [deserialization_gadget](../rules/cases/deserialization_gadget.toml) |
 | `directory_userinput` | 2 | 1 | block 2 | [directory_userinput](../rules/cases/directory_userinput.toml) |
@@ -260,8 +261,32 @@ Attack cases whose effect differs between the primary and the backports, grouped
 
 | Case | Path | Input | Primary | Backports | Why |
 |---|---|---|---|---|---|
+| [command_userinput](../rules/cases/command_userinput.toml) `request-shell-syntax-in-form-body-read-by-the-handler` | request-sink | `POST /app/ping; Content-Type: application/x-www-form-urlencoded; process.exec sh -c echo 127.0.0.1; id` | block `command_userinput` | none | backport: the backport lines record no request body yet, so a body value never reaches the sink correlation |
+| [command_userinput](../rules/cases/command_userinput.toml) `request-shell-syntax-in-json-body` | request-sink | `POST /app/ping; Content-Type: application/json; process.exec sh -c echo 127.0.0.1; id` | block `command_userinput` | none | backport: the same input blocks as a query parameter but passes as a JSON body: the agent's request context has no body (no hook reads the input stream or the reader), so body fields are never read |
+| [command_userinput](../rules/cases/command_userinput.toml) `request-shell-syntax-in-json-body-via-reader` | request-sink | `POST /app/ping; Content-Type: application/json; process.exec sh -c echo 127.0.0.1; id` | block `command_userinput` | none | backport: the backport lines record no request body yet, so a body value never reaches the sink correlation |
+| [command_userinput](../rules/cases/command_userinput.toml) `request-shell-syntax-split-across-reads` | request-sink | `POST /app/ping; Content-Type: application/json; process.exec sh -c echo 127.0.0.1; id` | block `command_userinput` | none | backport: the backport lines record no request body yet, so a body value never reaches the sink correlation |
+| [command_userinput](../rules/cases/command_userinput.toml) `request-shell-syntax-with-multibyte-character-split-across-reads` | request-sink | `POST /app/ping; Content-Type: application/json; process.exec sh -c echo 中文; id` | block `command_userinput` | none | backport: the backport lines record no request body yet, so a body value never reaches the sink correlation |
+| [deleteFile_userinput](../rules/cases/deleteFile_userinput.toml) `request-escapes-delete-root-in-json-body` | request-sink | `POST /app/reports/delete; Content-Type: application/json; file.delete {tmp}/root/tenant-reports/catalog/../../weekly.csv` | block `deleteFile_userinput` | none | backport: the same input blocks as a query parameter but passes as a JSON body: the agent's request context has no body (no hook reads the input stream or the reader), so body fields are never read |
+| [directory_userinput](../rules/cases/directory_userinput.toml) `request-lists-etc-in-json-body` | request-sink | `POST /app/browse; Content-Type: application/json; file.list /etc` | block `directory_userinput` | none | backport: the same input blocks as a query parameter but passes as a JSON body: the agent's request context has no body (no hook reads the input stream or the reader), so body fields are never read |
+| [readFile_userinput](../rules/cases/readFile_userinput.toml) `request-selects-hosts-in-json-body` | request-sink | `POST /app/download; Content-Type: application/json; file.read /etc/hosts` | block `readFile_userinput` | none | backport: the same input blocks as a query parameter but passes as a JSON body: the agent's request context has no body (no hook reads the input stream or the reader), so body fields are never read |
+| [request_debug_process_launch](../rules/cases/request_debug_process_launch.toml) `debug-process-exe-path-in-json-body` | request | `POST /app/rest/debug/processes; Content-Type: application/json` | block `request_debug_process_launch` | none | backport: the same input blocks as a query parameter but passes as a JSON body: the agent's request context has no body (no hook reads the input stream or the reader), so body fields are never read |
+| [request_dynamic_script_config](../rules/cases/request_dynamic_script_config.toml) `jenkins-check-script-execute-in-json-body` | request | `POST /securityRealm/user/admin/descriptorByName/org.jenkinsci.plugins.scriptsecurity.sandbox.groovy.SecureGroovyScript/checkScript; Content-Type: application...` | block `request_dynamic_script_config` | none | backport: the same input blocks as a query parameter but passes as a JSON body: the agent's request context has no body (no hook reads the input stream or the reader), so body fields are never read |
+| [request_expression_parameter](../rules/cases/request_expression_parameter.toml) `wfs-value-reference-exec-in-json-body` | request | `POST /geoserver/wfs; Content-Type: application/json` | block `request_expression_parameter` | none | backport: the same input blocks as a query parameter but passes as a JSON body: the agent's request context has no body (no hook reads the input stream or the reader), so body fields are never read |
 | [request_internal_resource](../rules/cases/request_internal_resource.toml) `double-encoded-web-inf-query` | request | `GET /static?/%2557EB-INF/web.xml` | block `request_internal_resource` | none | backport: the backports' path-confusion check reads the request path, not a resource named in the query string |
+| [request_json_patch_expression](../rules/cases/request_json_patch_expression.toml) `json-patch-path-expression-read-to-content-length` | request | `PATCH /customers/1; Content-Type: application/json-patch+json` | block `request_json_patch_expression` | none | backport: the backport lines have no rule that decides from a JSON patch document |
+| [request_json_patch_expression](../rules/cases/request_json_patch_expression.toml) `json-patch-path-expression-via-input-stream` | request | `PATCH /customers/1; Content-Type: application/json-patch+json` | block `request_json_patch_expression` | none | backport: the agent's request context has no body (no hook reads the input stream or the reader), so a rule decided from the body alone cannot fire |
+| [request_json_patch_expression](../rules/cases/request_json_patch_expression.toml) `json-patch-path-expression-via-reader` | request | `PATCH /customers/1; Content-Type: application/json-patch+json` | block `request_json_patch_expression` | none | backport: the agent's request context has no body (no hook reads the input stream or the reader), so a rule decided from the body alone cannot fire |
+| [request_message_selector_expression](../rules/cases/request_message_selector_expression.toml) `stomp-selector-expression-via-input-stream` | request | `POST /gs-guide-websocket/123/abc/xhr_send; Content-Type: application/json` | block `request_message_selector_expression` | none | backport: the agent's request context has no body (no hook reads the input stream or the reader), so a rule decided from the body alone cannot fire |
+| [request_message_selector_expression](../rules/cases/request_message_selector_expression.toml) `stomp-selector-expression-via-reader` | request | `POST /gs-guide-websocket/123/abc/xhr_send; Content-Type: application/json` | block `request_message_selector_expression` | none | backport: the agent's request context has no body (no hook reads the input stream or the reader), so a rule decided from the body alone cannot fire |
+| [request_scheduler_shell_job](../rules/cases/request_scheduler_shell_job.toml) `glue-shell-job-in-json-body` | request | `POST /run; Content-Type: application/json` | block `request_scheduler_shell_job` | none | backport: the same input blocks as a query parameter but passes as a JSON body: the agent's request context has no body (no hook reads the input stream or the reader), so body fields are never read |
+| [request_template_loader_enable](../rules/cases/request_template_loader_enable.toml) `velocity-loader-enable-parameter-in-json-body` | request | `POST /solr/demo/config; Content-Type: application/json` | block `request_template_loader_enable` | none | backport: the same input blocks as a query parameter but passes as a JSON body: the agent's request context has no body (no hook reads the input stream or the reader), so body fields are never read |
+| [request_template_parameter](../rules/cases/request_template_parameter.toml) `velocity-template-runtime-in-json-body` | request | `POST /solr/demo/select; Content-Type: application/json` | block `request_template_parameter` | none | backport: the same input blocks as a query parameter but passes as a JSON body: the agent's request context has no body (no hook reads the input stream or the reader), so body fields are never read |
 | [request_template_source](../rules/cases/request_template_source.toml) `locale-traversal` | request | `GET /CFIDE/administrator/enter.cfm?locale=../../../../../../../../../../etc/passwd%00en` | block `request_template_source` | none | backport: the backports accept only a remote URL as a template source, not a path traversal |
+| [request_typed_payload_deserialization](../rules/cases/request_typed_payload_deserialization.toml) `wddx-rowset-jndi-in-json-body` | request | `POST /CFIDE/adminapi/accessmanager.cfc; Content-Type: application/json` | block `request_typed_payload_deserialization` | none | backport: the same input blocks as a query parameter but passes as a JSON body: the agent's request context has no body (no hook reads the input stream or the reader), so body fields are never read |
+| [request_xml_polymorphic_gadget](../rules/cases/request_xml_polymorphic_gadget.toml) `xstream-gadget-via-input-stream` | request | `POST /orders/3/edit; Content-Type: application/xml` | block `request_xml_polymorphic_gadget` | none | backport: the agent's request context has no body (no hook reads the input stream or the reader), so a rule decided from the body alone cannot fire |
+| [request_xml_polymorphic_gadget](../rules/cases/request_xml_polymorphic_gadget.toml) `xstream-gadget-via-reader` | request | `POST /orders/3/edit; Content-Type: application/xml` | block `request_xml_polymorphic_gadget` | none | backport: the agent's request context has no body (no hook reads the input stream or the reader), so a rule decided from the body alone cannot fire |
+| [request_xxe_payload](../rules/cases/request_xxe_payload.toml) `external-entity-parameter-in-json-body` | request | `POST /solr/demo/select; Content-Type: application/json` | block `request_xxe_payload` | none | backport: the same input blocks as a query parameter but passes as a JSON body: the agent's request context has no body (no hook reads the input stream or the reader), so body fields are never read |
+| [ssrf_userinput](../rules/cases/ssrf_userinput.toml) `request-selects-loopback-admin-in-json-body` | request-sink | `POST /app/fetch; Content-Type: application/json; net.open http://127.0.0.1:{port}/actuator/env` | block `ssrf_userinput` | none | backport: the same input blocks as a query parameter but passes as a JSON body: the agent's request context has no body (no hook reads the input stream or the reader), so body fields are never read |
 | [writeFile_generated_script](../rules/cases/writeFile_generated_script.toml) `request-plot-system-call` | request-sink | `GET /q?yrange=%5B0%3Asystem%28%27id%27%29%5D; file.write (Files.write) {tmp}/charts/chart.plot, set yrange [0:system('id')] ` | block `writeFile_generated_script` | none | backport: the backports watch plot directives written through FileOutputStream only, not through Files.write |
 
 ### Primary block, backports unreachable

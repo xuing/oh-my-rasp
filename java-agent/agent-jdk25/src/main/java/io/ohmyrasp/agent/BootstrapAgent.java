@@ -104,7 +104,8 @@ public final class BootstrapAgent {
         continue;
       }
       String name = loaded.getName();
-      if (hookRegistry.isRetransformTarget(name) || multipartOwners.contains(loaded) || JdbcSqlMethod.isJdbcImplementation(loaded)) {
+      if (hookRegistry.isRetransformTarget(name) || multipartOwners.contains(loaded) || JdbcSqlMethod.isJdbcImplementation(loaded)
+          || io.ohmyrasp.agent.http.RequestBodyVisitor.loadedTarget(loaded)) {
         try {
           instrumentation.retransformClasses(loaded);
         } catch (Throwable throwable) {
