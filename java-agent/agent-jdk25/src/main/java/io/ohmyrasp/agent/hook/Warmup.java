@@ -22,7 +22,7 @@ import java.util.Map;
  * ({@link OhMyRaspHooks#admitServletRequest}, {@link OhMyRaspHooks#exitHttpRequest}), the request-body reads
  * inside a POST as a rewritten read makes them, on a stream object of the warm-up's own that the request's recorder
  * binds to ({@link OhMyRaspHooks#enterBodyRead(Object)} with {@link OhMyRaspHooks#exitBodyRead(int, Object, byte[],
- * int)}, a read that throws and is released by {@link OhMyRaspHooks#abortBodyRead}, and the end of the body through a
+ * int)}, a read that throws and is released by {@link OhMyRaspHooks#abortBodyRead()}, and the end of the body through a
  * buffer read, {@link OhMyRaspHooks#enterBodyRead(Object, java.nio.Buffer)} with
  * {@link OhMyRaspHooks#exitBodyRead(int, Object, java.nio.ByteBuffer)}),
  * the receiver-aware JDBC entry ({@link OhMyRaspHooks#beforeSql(Object, String)}) inside and outside a request,
@@ -167,7 +167,8 @@ public final class Warmup {
             }
             OhMyRaspHooks.exitBodyRead(body.length, token, body, 0);
             // A read that throws: the handler of a rewritten read releases the recorder, and the exception goes on.
-            OhMyRaspHooks.abortBodyRead(OhMyRaspHooks.enterBodyRead(stream));
+            OhMyRaspHooks.enterBodyRead(stream);
+            OhMyRaspHooks.abortBodyRead();
             // The end of the body, through a read into an NIO buffer, as Tomcat's read(ByteBuffer) returns it.
             ByteBuffer buffer = ByteBuffer.allocate(16);
             OhMyRaspHooks.exitBodyRead(-1, OhMyRaspHooks.enterBodyRead(stream, buffer), buffer);

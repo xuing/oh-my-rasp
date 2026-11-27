@@ -14,10 +14,17 @@ start, from the list in its JAR, what its hooks use. A lambda's hidden class (Fo
 because it does not exist until its call site first runs; those are counted per source class and reported, and they
 fail a case only on the lines in ENFORCED_HIDDEN (none of the primary's: it still has lambdas and method references).
 
-A case with a request body is also broken when a detection's message or details (but the keys that hold a rule's
-own constants, and the body:<name> and [body:<field>] markers that name a body field) carry text of that body: a string value of a JSON body three characters or longer, a value of a form
-body, an eight-character piece of any other body, or the canary password the JSON cases carry. An event names the
-body field its evidence came from, never the value.
+A case with a request body is also broken when an event carries text of that body other than the one input field
+the event names as matched (its input_field and input_value details). The texts looked for are every key and value of
+the body (of a JSON body, a form body, or the body's text when it is neither) of three characters or more, and the
+canary password the JSON cases carry, each as is, lower- and upper-cased, percent-encoded and percent-decoded,
+JSON-escaped and JSON-unescaped; and every three-character piece of each value longer than four characters, ignoring
+case (any longer substring contains one). A text that the case's request line or headers also contain is not looked
+for: an event may show those. Not searched, because they hold only fixed vocabulary: the rule id, hook and action,
+the details of a rule's own constants (BodyEvidence.RULE_CONSTANTS), an operand shown as "<kind>, <n> chars", and the
+fixed message of an event built from structured evidence (BodyEvidence.fixedMessage, mirrored in FIXED_MESSAGE). The
+three-character pieces are looked for only in events built from structured evidence: an event made before the
+application read the body carries the rule's own wording, whose words share three-letter pieces with many values.
 
 Known gaps of the class-load check: hooks reached while the driver sets up, before its first mark (the
 listener socket, the stub JDBC driver), are not checked; and no case exercises the completion of
@@ -38,7 +45,7 @@ import time
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from pathlib import Path
-from urllib.parse import parse_qsl
+from urllib.parse import parse_qsl, quote, quote_plus, unquote, unquote_plus
 
 HERE = Path(__file__).resolve().parent
 COMMON = HERE.parent / "common"
@@ -68,16 +75,19 @@ HIDDEN = re.compile(r"^(.*)\$\$Lambda(\$\d+)?/(0x[0-9a-f]+|\d+)$")
 CANARY = "hunter2-Secret"
 # Detail keys whose values are a rule's own constants (BodyEvidence.RULE_CONSTANTS): not request text.
 RULE_CONSTANTS = {"decision_basis", "policy_basis", "process_operation", "argument_count", "multipart_source",
-                  "archive_policy_sha256", "method"}
+                  "archive_policy_sha256", "kind"}
+ALLOWED = ("input_field", "input_value")
+OPERAND = re.compile(r"^[A-Za-z_.]+, \d+ chars$")
+# BodyEvidence.fixedMessage: the message of an event built from structured evidence.
+FIXED_MESSAGE = "Rule {} matched a request that has a body; its operands are withheld"
 PLACEHOLDER = re.compile(r"\{\w+\}")
-# What an event shows of a body by design: a field's name (body:<name>) and the marker of a value ([body:<field>]).
-# A name may contain text that is also a value ("v.template.custom" and "custom"): it is left out of the check.
-BODY_MARKERS = re.compile(r"\[body(?::[^\]]*)?\]|body:[^\s,\]\"]+")
+MIN_TEXT = 3
+PIECE = 3
 
 
-def body_texts(body: str, content_type: str) -> list[str]:
-    """The texts of a request body that no event may carry (see the module docstring)."""
-    texts = [CANARY]
+def body_parts(body: str, content_type: str) -> tuple[list[str], list[str]]:
+    """The keys and values of a request body (see the module docstring)."""
+    keys, values = [], [CANARY]
     try:
         document = json.loads(body)
     except ValueError:
@@ -85,43 +95,117 @@ def body_texts(body: str, content_type: str) -> list[str]:
     if document is not None and not isinstance(document, (str, int, float, bool)):
         def walk(value):
             if isinstance(value, dict):
-                for item in value.values():
+                for key, item in value.items():
+                    keys.append(str(key))
                     walk(item)
             elif isinstance(value, list):
                 for item in value:
                     walk(item)
-            elif isinstance(value, str) and len(value) >= 3:
-                texts.append(value)
+            elif isinstance(value, str):
+                values.append(value)
         walk(document)
     elif "x-www-form-urlencoded" in content_type.lower():
-        texts += [value for _, value in parse_qsl(body.strip(), keep_blank_values=True) if len(value) >= 3]
+        for key, value in parse_qsl(body.strip(), keep_blank_values=True):
+            keys.append(key)
+            values.append(value)
     else:
-        text = body.strip()
-        texts += [text[i:i + 8] for i in range(0, max(0, len(text) - 7))]
-    # A value with a placeholder the driver fills ({port}) is checked by its literal pieces.
-    pieces = []
-    for text in texts:
-        parts = PLACEHOLDER.split(text)
-        pieces += [text] if len(parts) == 1 else [part for part in parts if len(part) >= 8]
-    return pieces
+        values.append(body.strip())
+    # A text with a placeholder the driver fills ({port}) is looked for by its literal pieces.
+    def literal(texts):
+        out = []
+        for text in texts:
+            out += [part for part in PLACEHOLDER.split(text) if len(part) >= MIN_TEXT]
+        return out
+    return literal(keys), literal(values)
+
+
+def transformations(text: str) -> set[str]:
+    """The text as is, case-changed, percent-encoded and -decoded, JSON-escaped and -unescaped."""
+    out = {text, text.lower(), text.upper(), quote(text, safe=""), quote_plus(text, safe=""), unquote(text),
+           unquote_plus(text), json.dumps(text)[1:-1], json.dumps(text, ensure_ascii=False)[1:-1]}
+    try:
+        out.add(json.loads('"' + text + '"'))
+    except ValueError:
+        pass
+    return {item for item in out if len(item) >= MIN_TEXT}
+
+
+def pieces(values: list[str]) -> set[str]:
+    """Every three-character piece, lower-cased, of each value longer than four characters."""
+    out = set()
+    for value in values:
+        if len(value) > 4:
+            lowered = value.lower()
+            out.update(lowered[i:i + PIECE] for i in range(len(lowered) - PIECE + 1))
+    return out
+
+
+def event_texts(event: dict) -> tuple[list[tuple[str, str]], bool]:
+    """The (where, text) pairs of an event that are searched, and whether it is built from structured evidence."""
+    algorithm = str(event.get("algorithm", ""))
+    message = str(event.get("message", ""))
+    structured = message == FIXED_MESSAGE.format(algorithm)
+    details = event.get("details") or {}
+    allowed = [str(details[key]) for key in ALLOWED if isinstance(details.get(key), str) and details.get(key)]
+    out = [] if structured else [("message", message)]
+    for key, value in details.items():
+        if key in RULE_CONSTANTS or key in ALLOWED or not isinstance(value, str):
+            continue
+        if key == "operand" and OPERAND.match(value):
+            continue
+        out.append((f"details.{key}", value))
+    request = event.get("request") or {}
+    if isinstance(request, dict):
+        for key in ("uri", "query", "body"):
+            if isinstance(request.get(key), str):
+                out.append((f"request.{key}", request[key]))
+        for group in ("parameters", "headers"):
+            items = request.get(group) or {}
+            if isinstance(items, dict):
+                for name, value in items.items():
+                    out.append((f"request.{group}", str(name)))
+                    for item in value if isinstance(value, list) else [value]:
+                        out.append((f"request.{group}.{name}", str(item)))
+    # The matched field's own name and value may be shown: taken out of every searched text.
+    cleaned = []
+    for where, text in out:
+        for shown in allowed:
+            text = text.replace(shown, " ")
+        cleaned.append((where, text))
+    return cleaned, structured
 
 
 def body_text_in_events(case: rule_cases.Case, events: list[dict]) -> str | None:
-    """The first body text a detection carries, as 'rule: field', or None."""
+    """The first body text an event carries, as 'rule: where carries text', or None."""
     request = case.request or {}
     if "body" not in request:
         return None
-    content_type = next((v for k, v in (request.get("headers") or {}).items() if k.lower() == "content-type"), "")
-    texts = body_texts(request["body"], content_type)
+    headers = request.get("headers") or {}
+    content_type = next((v for k, v in headers.items() if k.lower() == "content-type"), "")
+    keys, values = body_parts(request["body"], content_type)
+    # What the case's request line and headers hold is not the body's: an event may show it.
+    own = " ".join([str(request.get(k, "")) for k in ("method", "uri", "query")]
+                   + [f"{k} {v}" for k, v in headers.items()]).lower()
+    whole = set()
+    for text in keys + values:
+        whole |= transformations(text)
+    whole = {text.lower() for text in whole if text.lower() not in own}
+    short = {piece for piece in pieces(values) if piece not in own}
     for event in events:
-        fields = [("message", event.get("message", ""))]
-        fields += [(key, value) for key, value in (event.get("details") or {}).items()
-                   if key not in RULE_CONSTANTS and isinstance(value, str)]
-        for key, value in fields:
-            value = BODY_MARKERS.sub(" ", value)
-            for text in texts:
-                if text in value:
-                    return f"{event.get('algorithm')}: {key} carries {text[:24]!r}"
+        details = event.get("details") or {}
+        allowed = " ".join(str(details.get(key, "")) for key in ALLOWED).lower()
+        texts, structured = event_texts(event)
+        for where, text in texts:
+            lowered = text.lower()
+            for needle in whole:
+                if needle in allowed:
+                    continue
+                if needle in lowered:
+                    return f"{event.get('algorithm')}: {where} carries {needle[:24]!r}"
+            if structured:
+                for piece in short:
+                    if piece not in allowed and piece in lowered:
+                        return f"{event.get('algorithm')}: {where} carries the piece {piece!r} of a body value"
     return None
 
 

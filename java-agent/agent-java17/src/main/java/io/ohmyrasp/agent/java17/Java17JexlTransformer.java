@@ -76,18 +76,29 @@ public final class Java17JexlTransformer implements ClassFileTransformer {
   }
 
   private static final class JexlClassVisitor extends ClassVisitor {
+    private String owner;
+
     JexlClassVisitor(ClassVisitor delegate) {
       super(Opcodes.ASM9, delegate);
+    }
+
+    @Override
+    public void visit(int version, int access, String name, String signature, String superName,
+        String[] interfaces) {
+      owner = name;
+      super.visit(version, access, name, signature, superName, interfaces);
     }
 
     @Override
     public MethodVisitor visitMethod(
         int access, String name, String descriptor, String signature, String[] exceptions) {
       MethodVisitor methodVisitor = super.visitMethod(access, name, descriptor, signature, exceptions);
-      if (methodVisitor == null || (access & Opcodes.ACC_ABSTRACT) != 0 || !isEvaluationMethod(name)) {
+      if (methodVisitor == null
+          || (access & (Opcodes.ACC_ABSTRACT | Opcodes.ACC_NATIVE | Opcodes.ACC_STATIC)) != 0
+          || !isEvaluationMethod(name)) {
         return methodVisitor;
       }
-      return new ReflectiveAdviceAdapter(Opcodes.ASM9, methodVisitor, access, name, descriptor) {
+      return new ReflectiveAdviceAdapter(Opcodes.ASM9, methodVisitor, owner, access, name, descriptor) {
         @Override
         protected void onMethodEnter() {
           invokeReflectiveHook();
@@ -100,10 +111,48 @@ public final class Java17JexlTransformer implements ClassFileTransformer {
     }
   }
 
+  /**
+   * Calls the hook reflectively at the start of the method. The injected code uses no local of its own and gives
+   * every branch target a full stack map frame with the method's entry locals, so the rewritten method verifies
+   * on class files that need stack map frames (version 50 and later), without recomputing the method's own.
+   */
   private abstract static class ReflectiveAdviceAdapter extends AdviceAdapter {
+    private final Object[] entryLocals;
+
     ReflectiveAdviceAdapter(
-        int api, MethodVisitor methodVisitor, int access, String name, String descriptor) {
+        int api, MethodVisitor methodVisitor, String owner, int access, String name, String descriptor) {
       super(api, methodVisitor, access, name, descriptor);
+      Type[] arguments = Type.getArgumentTypes(descriptor);
+      entryLocals = new Object[arguments.length + 1];
+      entryLocals[0] = owner;
+      for (int i = 0; i < arguments.length; i++) {
+        entryLocals[i + 1] = frameType(arguments[i]);
+      }
+    }
+
+    private static Object frameType(Type type) {
+      switch (type.getSort()) {
+        case Type.BOOLEAN:
+        case Type.CHAR:
+        case Type.BYTE:
+        case Type.SHORT:
+        case Type.INT:
+          return Opcodes.INTEGER;
+        case Type.FLOAT:
+          return Opcodes.FLOAT;
+        case Type.LONG:
+          return Opcodes.LONG;
+        case Type.DOUBLE:
+          return Opcodes.DOUBLE;
+        default:
+          return type.getInternalName();
+      }
+    }
+
+    /** A full frame: the entry locals, and {@code stack} (an internal name) or nothing on the stack. */
+    private void frame(String stack) {
+      Object[] onStack = stack == null ? new Object[0] : new Object[] {stack};
+      visitFrame(Opcodes.F_NEW, entryLocals.length, entryLocals.clone(), onStack.length, onStack);
     }
 
     protected final void invokeReflectiveHook() {
@@ -144,40 +193,39 @@ public final class Java17JexlTransformer implements ClassFileTransformer {
       goTo(done);
 
       visitLabel(invocationTargetHandler);
-      int exception = newLocal(INVOCATION_TARGET_EXCEPTION);
-      storeLocal(exception);
-      loadLocal(exception);
+      frame("java/lang/reflect/InvocationTargetException");
       invokeVirtual(INVOCATION_TARGET_EXCEPTION, GET_CAUSE);
-      int cause = newLocal(THROWABLE);
-      storeLocal(cause);
 
       var notRuntimeException = new Label();
-      loadLocal(cause);
+      dup();
       instanceOf(RUNTIME_EXCEPTION);
       ifZCmp(Opcodes.IFEQ, notRuntimeException);
-      loadLocal(cause);
       checkCast(RUNTIME_EXCEPTION);
       visitInsn(Opcodes.ATHROW);
 
       visitLabel(notRuntimeException);
+      frame("java/lang/Throwable");
       var notError = new Label();
-      loadLocal(cause);
+      dup();
       instanceOf(ERROR);
       ifZCmp(Opcodes.IFEQ, notError);
-      loadLocal(cause);
       checkCast(ERROR);
       visitInsn(Opcodes.ATHROW);
 
       visitLabel(notError);
+      frame("java/lang/Throwable");
       newInstance(RUNTIME_EXCEPTION);
-      dup();
-      loadLocal(cause);
+      visitInsn(Opcodes.DUP_X1);
+      swap();
       invokeConstructor(RUNTIME_EXCEPTION, RUNTIME_EXCEPTION_INIT);
       visitInsn(Opcodes.ATHROW);
 
       visitLabel(throwableHandler);
+      frame("java/lang/Throwable");
       pop();
       visitLabel(done);
+      frame(null);
+      visitInsn(Opcodes.NOP); // the method's own first frame, if it has one at its first instruction, is not here
     }
   }
 }

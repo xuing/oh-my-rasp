@@ -262,5 +262,22 @@ class StagedTreeTest(unittest.TestCase):
         self.assertEqual(problems, ["not staged: g/a/2", "staged but not in libraries.toml: g/a/3"])
 
 
+class VerifyDependencyTest(unittest.TestCase):
+    def test_probe_toml_stages_each_pinned_dependency_once(self):
+        # check.py pins the digest, probe.toml says where run.py stages the JAR: the two lists must be the same.
+        fixtures = [f for f in tomllib.loads((PROBE / "probe.toml").read_text())["fixture"] if f["flag"] == "--verify-dependency"]
+        staged = [f["stage"][1] for f in fixtures]
+        self.assertEqual(sorted(staged), sorted(check.VERIFY_DEPENDENCIES))
+        for fixture in fixtures:
+            _, artifact, version = fixture["stage"][1].split(":")
+            self.assertEqual(fixture["stage"], ["--download-dependency", fixture["stage"][1], "{path}"])
+            # build/runtime-probes/*.jar is what agent.yml carries to the runtime matrix.
+            self.assertEqual(fixture["path"], f"build/runtime-probes/hook-verify-{artifact}-{version}.jar")
+
+    def test_a_coordinate_that_is_not_pinned_is_refused(self):
+        with self.assertRaises(SystemExit):
+            check.download_dependency("org.example:unpinned:1.0", Path(tempfile.gettempdir()) / "never-written.jar")
+
+
 if __name__ == "__main__":
     unittest.main()

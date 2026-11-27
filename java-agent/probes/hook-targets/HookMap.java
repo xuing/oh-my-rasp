@@ -61,7 +61,7 @@ import java.util.jar.JarFile;
 public final class HookMap {
   private static final String AGENT = "io/ohmyrasp/agent/";
   private static final String SHADED_ASM = "io/ohmyrasp/agent/shaded/asm/";
-  private static final String COMMON = "(shared visitors)";
+  static final String COMMON = "(shared visitors)";
 
   /** One hook family: a HookModule of the primary agent or a transformer class of a backport. */
   interface Unit {
@@ -69,7 +69,7 @@ public final class HookMap {
     byte[] apply(String owner, byte[] bytes) throws Exception;
   }
 
-  private static final class Transform implements Unit {
+  static final class Transform implements Unit {
     private final String name;
     private final Object transformer;
     private final Method method;
@@ -106,7 +106,7 @@ public final class HookMap {
 
   // ---- finding the agent's transformers ----------------------------------------------------------
 
-  private static List<Unit> primaryModules() throws Exception {
+  static List<Unit> primaryModules() throws Exception {
     Class<?> registryType = Class.forName("io.ohmyrasp.agent.asm.HookRegistry");
     Object defaults = registryType.getMethod("defaults").invoke(null);
     java.lang.reflect.Field field = registryType.getDeclaredField("modules");
@@ -197,7 +197,7 @@ public final class HookMap {
     return registered;
   }
 
-  private static List<Unit> registeredTransformers(JarFile agent, String entry) throws Exception {
+  static List<Unit> registeredTransformers(JarFile agent, String entry) throws Exception {
     List<Unit> units = new ArrayList<Unit>();
     for (String type : registeredTypes(agent, entry)) {
       units.add(new Transform(type.substring(type.lastIndexOf('/') + 1), Class.forName(type.replace('/', '.')).getConstructor().newInstance()));

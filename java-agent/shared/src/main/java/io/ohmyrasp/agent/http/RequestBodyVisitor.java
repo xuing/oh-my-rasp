@@ -1,15 +1,10 @@
 package io.ohmyrasp.agent.http;
 
-import java.util.ArrayList;
-import java.util.List;
-import org.objectweb.asm.AnnotationVisitor;
 import org.objectweb.asm.Label;
 import org.objectweb.asm.MethodVisitor;
 import org.objectweb.asm.Opcodes;
 import org.objectweb.asm.Type;
-import org.objectweb.asm.TypePath;
 import org.objectweb.asm.commons.AdviceAdapter;
-import org.objectweb.asm.commons.AnalyzerAdapter;
 import org.objectweb.asm.commons.Method;
 
 /**
@@ -27,32 +22,40 @@ import org.objectweb.asm.commons.Method;
  * The methods are the read methods a class declares itself, with the signatures of InputStream and
  * ServletInputStream (read, readLine, readAllBytes, readNBytes, read(ByteBuffer)) or of Reader (read,
  * read(CharBuffer), readLine). Inherited ones are not rewritten: InputStream's read(byte[]) calls the class's
- * own read(). A class that overrides a read method without calling one of these (an indirect subclass of
- * ServletInputStream) is not seen. Classes of the bootstrap loader and of OSGi framework loaders, which cannot
- * see the agent's classes, are left alone.
+ * own read(). A read method of an indirect subclass of ServletInputStream (a subclass of a container's stream)
+ * is not rewritten, and its data is seen only when it calls a read method of a direct subclass. Classes of the
+ * bootstrap loader and of OSGi framework loaders, which cannot see the agent's classes, are left alone. Static,
+ * abstract, native and bridge methods and constructors are never rewritten.
  *
- * <p>What the rewritten method does, in order:
+ * <p>What the rewritten method does. The original code and its exception table stay as they were: no branch and
+ * no stack map frame is added inside them, and no original handler is moved, so a class the JVM accepted
+ * before is accepted after (the {@code hook-targets} probe verifies every rewritten library class on each JDK).
  * <ol>
- * <li>{@code token = enterBodyRead(this)} (for a buffer read, {@code enterBodyRead(this, buffer)}, which notes
- *     where the buffer stood): the recorder of the request this thread serves, or null. The call is guarded: an
- *     Error from it (the hooks class cannot be linked from this loader) leaves the token null, and only a
- *     RuntimeException, which the hooks throw only as the line's block, reaches the caller.</li>
- * <li>The original code, unchanged. Every exception it lets out passes through one handler, entered after the
- *     method's own handlers, that calls {@code abortBodyRead(token)} when the token is set (which releases the
- *     recorder for the next read) and rethrows the same throwable.</li>
- * <li>At each return, the value is kept, {@code exitBodyRead(value, token, ...)} records it under the same
- *     guard as the entry (a RuntimeException, the line's block, is thrown from outside the method's own
- *     handlers; anything else is dropped), and the kept value is returned.</li>
+ * <li>Before the original code: the arguments a later record needs are copied to locals of their own (a read
+ *     may reassign its parameters), then {@code token = enterBodyRead(this)} (for a buffer read,
+ *     {@code enterBodyRead(this, buffer)}), straight-line.</li>
+ * <li>At each return: the returned value is duplicated and {@code exitBodyRead(value, token, ...)}, which
+ *     returns nothing, is called, straight-line; the original return then returns the original value.</li>
+ * <li>One handler, entered last in the exception table (after every original handler, which keep their order
+ *     and priority) and covering the original code: its frame declares every local unset and one Throwable on
+ *     the stack; it stores the throwable in a slot above every other local, calls {@code abortBodyRead()} and
+ *     throws the same throwable again. It reads no other local, {@code this} included.</li>
  * </ol>
+ * The hooks are plain static methods whose Java bodies catch every throwable of the agent's own code and throw
+ * only the line's block (the entry and exit hooks) or nothing (the release hook). An application handler around
+ * a return inside the read can catch that block; the block is latched (see {@link RequestBodyCapture#deny}) and
+ * the next read of the same stream throws it again. The local sorter numbers a method's locals densely in the
+ * order they are used, so the added ones stay far below the class format's limit of 65535 slots for any method
+ * within the 65535-byte code limit; one that would pass it fails the transform, and the class is left as it was.
  */
 public final class RequestBodyVisitor {
   public static final String COYOTE_READER = "org/apache/catalina/connector/CoyoteReader";
   private static final Type OBJECT = Type.getType(Object.class);
-  private static final Type THROWABLE = Type.getType(Throwable.class);
-  private static final Type RUNTIME_EXCEPTION = Type.getType(RuntimeException.class);
+  private static final String THROWABLE = "java/lang/Throwable";
+  private static final int MAX_LOCAL_SLOTS = 0xFFFF;
   private static final Method ENTER = Method.getMethod("Object enterBodyRead(Object)");
   private static final Method ENTER_BUFFER = Method.getMethod("Object enterBodyRead(Object, java.nio.Buffer)");
-  private static final Method ABORT = Method.getMethod("void abortBodyRead(Object)");
+  private static final Method ABORT = Method.getMethod("void abortBodyRead()");
   private static final Method EXIT_BYTE = Method.getMethod("void exitBodyRead(int, Object)");
   private static final Method EXIT_BYTES = Method.getMethod("void exitBodyRead(int, Object, byte[], int)");
   private static final Method EXIT_BUFFER = Method.getMethod("void exitBodyRead(int, Object, java.nio.ByteBuffer)");
@@ -99,55 +102,38 @@ public final class RequestBodyVisitor {
    * not a read method of this kind of source. {@code owner} is the internal name of the class being rewritten
    * and {@code hooks} the line's hooks class, which has the enterBodyRead, abortBodyRead, exitBodyRead,
    * exitBodyChars and exitBodyLine methods named above. The class reader must expand frames
-   * ({@code ClassReader.EXPAND_FRAMES}): the rewritten method carries the frames of its new branches.
+   * ({@code ClassReader.EXPAND_FRAMES}): the local variable sorter renumbers the method's locals in its frames.
    */
   public static MethodVisitor wrap(boolean reader, MethodVisitor visitor, String owner, int access, String name,
       String descriptor, Type hooks) {
     if ((access & (Opcodes.ACC_STATIC | Opcodes.ACC_ABSTRACT | Opcodes.ACC_NATIVE | Opcodes.ACC_BRIDGE)) != 0
-        || "<init>".equals(name)) {
+        || "<init>".equals(name) || "<clinit>".equals(name)) {
       return visitor;
     }
     Shape shape = reader ? readerShape(name, descriptor) : streamShape(name, descriptor);
     if (shape == null) return visitor;
-    Advice advice = new Advice(visitor, owner, access, name, descriptor, shape, hooks);
-    // The analyzer sees the original instructions only: it tells the advice what is on the stack at a return.
-    AnalyzerAdapter analyzer = new AnalyzerAdapter(owner, access, name, descriptor, advice);
-    advice.analyzer = analyzer;
-    return analyzer;
+    return new Advice(visitor, access, name, descriptor, shape, hooks);
   }
 
   /** One rewritten read method. */
   private static final class Advice extends AdviceAdapter {
     private final Shape shape;
     private final Type hooks;
-    private final Type returnType;
-    private final Object[] entryLocals;
-    AnalyzerAdapter analyzer;
 
     private int token = -1;
     private int array = -1;
     private int offset = -1;
-    private int kept = -1;
     private Label start;
-    // The method's own handlers, entered after the exit guards (which must come first) and before the handler
-    // that covers the whole method (which must come last).
-    private final List<Object[]> ownHandlers = new ArrayList<Object[]>();
-    private final List<Label[]> exitGuards = new ArrayList<Label[]>();
 
-    Advice(MethodVisitor visitor, String owner, int access, String name, String descriptor, Shape shape, Type hooks) {
+    Advice(MethodVisitor visitor, int access, String name, String descriptor, Shape shape, Type hooks) {
       super(Opcodes.ASM9, visitor, access, name, descriptor);
       this.shape = shape;
       this.hooks = hooks;
-      this.returnType = Type.getReturnType(descriptor);
-      Type[] arguments = Type.getArgumentTypes(descriptor);
-      entryLocals = new Object[arguments.length + 1];
-      entryLocals[0] = owner;
-      for (int i = 0; i < arguments.length; i++) entryLocals[i + 1] = frameType(arguments[i]);
     }
 
     @Override protected void onMethodEnter() {
-      // Every local the advice adds is set here, before any of the method's code, so that every frame of the
-      // method (which names the added locals with their types) holds wherever it applies.
+      // Every local the advice adds is set here, before any of the method's code, so that the type the local
+      // sorter gives it in each of the method's frames holds wherever that frame applies.
       if (shape.array != null) {
         loadArg(0);
         array = newLocal(shape.array);
@@ -159,14 +145,6 @@ public final class RequestBodyVisitor {
         storeLocal(offset);
       }
       token = newLocal(OBJECT);
-      visitInsn(Opcodes.ACONST_NULL);
-      storeLocal(token);
-      kept = newLocal(returnType);
-      if (returnType.getSort() == Type.OBJECT || returnType.getSort() == Type.ARRAY) visitInsn(Opcodes.ACONST_NULL);
-      else push(0);
-      storeLocal(kept);
-
-      Label from = mark();
       loadThis();
       if (shape.buffer) {
         loadArg(0);
@@ -175,143 +153,38 @@ public final class RequestBodyVisitor {
         invokeStatic(hooks, ENTER);
       }
       storeLocal(token);
-      Label to = mark();
-      Label after = new Label();
-      goTo(after);
-      Label handler = mark();
-      frame(entryLocals, THROWABLE);
-      dropUnlessBlock(entryLocals);
-      visitInsn(Opcodes.POP);
-      visitLabel(after);
-      frame(entryLocals, null);
-      visitInsn(Opcodes.NOP); // the method's own first frame, if it has one at its first instruction, is not here
-      visitTryCatchBlockNow(from, to, handler, null);
       start = mark();
     }
 
     @Override protected void onMethodExit(int opcode) {
       if (opcode == ATHROW) return;
-      if (!onlyTheReturnValue()) {
-        // Code a Java compiler does not write: something is under the value. Record without the guard.
-        dup();
-        pushExitArguments();
-        invokeStatic(hooks, shape.exit);
-        return;
-      }
-      storeLocal(kept);
-      Label from = mark();
-      loadLocal(kept);
-      pushExitArguments();
-      invokeStatic(hooks, shape.exit);
-      Label to = mark();
-      Label resume = mark();
-      frame(new Object[0], null);
-      loadLocal(kept);
-      exitGuards.add(new Label[] {from, to, resume});
-    }
-
-    private void pushExitArguments() {
+      // The returned value is on top of the stack; whatever is under it stays there.
+      dup();
       loadLocal(token);
       if (shape.array != null) loadLocal(array);
       if (shape.offset) loadLocal(offset);
       else if (shape.zeroOffset) push(0);
       if (shape.toEnd != null) push(shape.toEnd.booleanValue());
-    }
-
-    /** Whether the stack holds the return value and nothing under it, as at every return javac writes. */
-    private boolean onlyTheReturnValue() {
-      List<Object> stack = analyzer == null ? null : analyzer.stack;
-      if (stack == null) return false;
-      return stack.size() == returnType.getSize();
-    }
-
-    /**
-     * On the stack: a throwable, with {@code locals} as the handler's frame named them. A RuntimeException (the
-     * line's block) is thrown on; anything else stays on the stack for the caller to drop.
-     */
-    private void dropUnlessBlock(Object[] locals) {
-      Label drop = new Label();
-      dup();
-      instanceOf(RUNTIME_EXCEPTION);
-      visitJumpInsn(Opcodes.IFEQ, drop);
-      visitInsn(Opcodes.ATHROW);
-      visitLabel(drop);
-      frame(locals, THROWABLE);
-    }
-
-    /**
-     * A full frame: {@code locals} are the method's own locals in its own numbering (null: those at entry), the
-     * added locals are named by the local sorter; {@code stack} is one throwable or nothing.
-     */
-    private void frame(Object[] locals, Type stack) {
-      Object[] own = locals == null ? entryLocals : locals;
-      Object[] onStack = stack == null ? new Object[0] : new Object[] {stack.getInternalName()};
-      visitFrame(Opcodes.F_NEW, own.length, own, onStack.length, onStack);
-    }
-
-    @Override public void visitTryCatchBlock(Label from, Label to, Label handler, String type) {
-      ownHandlers.add(new Object[] {from, to, handler, type});
-    }
-
-    @Override public AnnotationVisitor visitTryCatchAnnotation(int typeRef, TypePath typePath, String descriptor,
-        boolean visible) {
-      return null; // the handlers are entered later, in a new order; their type annotations are not kept
-    }
-
-    private void visitTryCatchBlockNow(Label from, Label to, Label handler, String type) {
-      super.visitTryCatchBlock(from, to, handler, type);
+      invokeStatic(hooks, shape.exit);
     }
 
     @Override public void visitMaxs(int maxStack, int maxLocals) {
-      Label end = mark();
-      // Every exception the method lets out: release the recorder, then the same throwable goes on.
-      Label release = mark();
-      frame(new Object[0], THROWABLE);
-      Label rethrow = new Label();
-      loadLocal(token);
-      ifNull(rethrow);
-      loadLocal(token);
-      invokeStatic(hooks, ABORT);
-      visitLabel(rethrow);
-      frame(new Object[0], THROWABLE);
-      visitInsn(Opcodes.ATHROW);
-      // The exit guards' handlers, out of every range of the method's own handlers.
-      List<Label> exitHandlers = new ArrayList<Label>();
-      for (Label[] guard : exitGuards) {
-        Label handler = mark();
-        exitHandlers.add(handler);
-        frame(new Object[0], THROWABLE);
-        dropUnlessBlock(new Object[0]);
-        visitInsn(Opcodes.POP);
-        goTo(guard[2]);
+      // Every exception the method lets out: release the recorder, then the same throwable goes on. Written
+      // to the next visitor directly, past the local sorter, so that the frame stays as written (every local
+      // unset) and the slot is the first one above every local the method has after sorting.
+      int thrown = nextLocal;
+      if (thrown + 1 > MAX_LOCAL_SLOTS) {
+        throw new IllegalStateException("too many locals to rewrite " + getName());
       }
-      for (int i = 0; i < exitGuards.size(); i++) {
-        visitTryCatchBlockNow(exitGuards.get(i)[0], exitGuards.get(i)[1], exitHandlers.get(i), null);
-      }
-      for (Object[] own : ownHandlers) {
-        visitTryCatchBlockNow((Label) own[0], (Label) own[1], (Label) own[2], (String) own[3]);
-      }
-      visitTryCatchBlockNow(start, end, release, null);
-      super.visitMaxs(maxStack, maxLocals);
-    }
-
-    private static Object frameType(Type type) {
-      switch (type.getSort()) {
-        case Type.BOOLEAN:
-        case Type.CHAR:
-        case Type.BYTE:
-        case Type.SHORT:
-        case Type.INT:
-          return Opcodes.INTEGER;
-        case Type.FLOAT:
-          return Opcodes.FLOAT;
-        case Type.LONG:
-          return Opcodes.LONG;
-        case Type.DOUBLE:
-          return Opcodes.DOUBLE;
-        default:
-          return type.getInternalName();
-      }
+      Label end = new Label();
+      mv.visitLabel(end);
+      mv.visitFrame(Opcodes.F_NEW, 0, new Object[0], 1, new Object[] {THROWABLE});
+      mv.visitVarInsn(Opcodes.ASTORE, thrown);
+      mv.visitMethodInsn(Opcodes.INVOKESTATIC, hooks.getInternalName(), ABORT.getName(), ABORT.getDescriptor(), false);
+      mv.visitVarInsn(Opcodes.ALOAD, thrown);
+      mv.visitInsn(Opcodes.ATHROW);
+      mv.visitTryCatchBlock(start, end, end, null);
+      super.visitMaxs(maxStack, Math.max(maxLocals, thrown + 1));
     }
   }
 

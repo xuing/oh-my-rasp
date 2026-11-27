@@ -97,8 +97,8 @@ public final class JdbcDetector {
                   "requestControlled", String.valueOf(requestControlled))));
     }
     boolean structuralSqlInjection = statement.hasTruncatedLiteral()
-        || (statement.hasConstantDisjunction() && request.inputParameters().values().stream()
-            .flatMap(List::stream).noneMatch(statement::isSubmittedConsoleSelect));
+        || (statement.hasConstantDisjunction() && consoleInputs(request).stream()
+            .noneMatch(statement::isSubmittedConsoleSelect));
     if (structuralSqlInjection || statement.matchesSinkPolicy()) {
       return Optional.of(
           Detection.log(
@@ -110,6 +110,16 @@ public final class JdbcDetector {
               Map.of("query", abbreviate(query))));
     }
     return Optional.empty();
+  }
+
+  /**
+   * The inputs the H2 console's exemption compares a SELECT with: the request's parameters, through which the
+   * console submits its editor's text. Never a field of a body the application read.
+   */
+  static List<String> consoleInputs(RequestContext request) {
+    List<String> inputs = new java.util.ArrayList<>();
+    for (List<String> values : request.parameters().values()) inputs.addAll(values);
+    return inputs;
   }
 
   private static boolean requestBodyControlsSql(SqlStatement statement, RequestContext request) {

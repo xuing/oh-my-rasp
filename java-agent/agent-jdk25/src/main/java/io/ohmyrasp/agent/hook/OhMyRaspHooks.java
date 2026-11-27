@@ -433,10 +433,11 @@ public final class OhMyRaspHooks {
     }
   }
 
-  public static void abortBodyRead(Object token) {
+  /** The read threw; the rewritten method throws the same throwable on after this returns (it never throws). */
+  public static void abortBodyRead() {
     if (HookActivation.inactive()) return;
     try {
-      RequestBodyCapture.abort(token);
+      RequestBodyCapture.abort();
     } catch (Throwable ignored) {
       // The application's own exception goes on.
     }
@@ -496,45 +497,47 @@ public final class OhMyRaspHooks {
   /**
    * Gives the request context the body read so far and, when this dispatch has not decided that state yet,
    * decides the request rules on it first: so a body-only rule is decided before any other hook decides with the
-   * new bytes. Every finding of the request chain on the body is reported once per request (not only the
-   * chain's first, which an earlier, already reported or ignored finding would hide), except a finding the
-   * request gives without its body (the servlet entry's). A block throws from here, and every later read of the
-   * request's body throws it again.
+   * new bytes. Every finding of the request chain on the body is reported once per request, dispatch and policy
+   * (not only the chain's first, which an earlier, already reported or ignored finding would hide), except the
+   * one finding the servlet entry reported for the request without its body. A state counts as decided once its
+   * evaluation completed (or blocked); one that failed is decided again at the next hook. At most
+   * {@link RequestBody#MAX_EVALUATIONS} evaluations per request. A block throws from here, and every later read
+   * of the request's body stream throws it again.
    */
   private static void settleBody(RequestContext context, RequestBody body) {
     RequestBodySnapshot snapshot = body.snapshot();
     if (snapshot == null) return;
     context.observeBody(snapshot);
-    if (!context.decideBody(snapshot.version())) return;
+    int decided = context.bodyDecided();
+    if (snapshot.version() == decided) return;
     if (detectionDisabled()) return;
+    // In progress: a hook that this evaluation reaches does not start it again.
+    context.bodyDecided(snapshot.version());
+    if (!body.evaluate()) return;
     long started = System.nanoTime();
     try {
       BodyFindings seen = BodyFindings.of(body, context);
+      AgentPolicy policy = policy();
       // The request rules read the body's values where they read parameters: with the request's own, and alone,
       // so that a parameter's match does not hide a body field's inside one rule.
       RequestContext view = context.withBodyParameters();
-      for (Detection found : DETECTORS.requestChainFindings(view)) {
-        if (seen.isNew(found)) emit(Optional.of(bodyFinding(found, context, true)));
-      }
-      for (Detection found : DETECTORS.requestChainFindings(context.withOnlyBodyParameters())) {
-        if (seen.isNew(found)) emit(Optional.of(bodyFinding(found, context, false)));
-      }
-      AgentPolicy policy = policy();
+      RequestContext bodyOnly = context.withOnlyBodyParameters();
+      for (Detection found : DETECTORS.requestChainFindings(view)) seen.emitOnce(found, context, policy);
+      for (Detection found : DETECTORS.requestChainFindings(bodyOnly)) seen.emitOnce(found, context, policy);
       if (policy.selectsAlgorithm("xss_userinput")) {
-        Optional<Detection> markup = ResponseContentDetector.detectMarkupParameter(view);
-        if (markup.isPresent() && seen.isNew(markup.orElseThrow())) {
-          emit(Optional.of(bodyFinding(markup.orElseThrow(), context, true)));
-        }
+        seen.emitOnce(ResponseContentDetector.detectMarkupParameter(view), context, policy);
+        seen.emitOnce(ResponseContentDetector.detectMarkupParameter(bodyOnly), context, policy);
       }
       if (policy.loaded()) {
         for (Detection candidate : SqlRequestIndicators.sqlRequestMetadata(view, new SelectedBy(policy))) {
-          if (seen.isNew(candidate)) emit(Optional.of(bodyFinding(candidate, context, true)));
+          seen.emitOnce(candidate, context, policy);
         }
       }
     } catch (OhMyRaspBlockException blocked) {
       RequestBodyCapture.deny(blocked);
       throw blocked;
     } catch (Throwable throwable) {
+      context.bodyDecided(decided); // not decided: the next hook decides it again, within the request's budget
       quietBody(throwable);
     }
     events().sampleHookLatency("http_request_body", elapsedMicros(started));
@@ -554,33 +557,49 @@ public final class OhMyRaspHooks {
   }
 
   /**
-   * The body findings one request has reported, and those its parameters give without the body: kept on the
-   * request's body recorder, which drops them when the request ends.
+   * The body findings one request has reported, per dispatch and policy, and the finding the servlet entry of a
+   * dispatch reported for the request without its body: kept on the request's body recorder, which drops them
+   * when the request ends.
    */
   private static final class BodyFindings {
     private final Set<List<Object>> reported = new java.util.HashSet<>();
-    private RequestContext entryOf;
-    private Set<List<Object>> entry = Set.of();
+    private final Map<RequestContext, List<Object>> admitted = new java.util.IdentityHashMap<>();
 
     static BodyFindings of(RequestBody body, RequestContext context) {
       BodyFindings seen = body.engineState instanceof BodyFindings kept ? kept : new BodyFindings();
       body.engineState = seen;
-      if (seen.entryOf != context) {
-        // What the request chain finds on this dispatch's request without its body: the servlet entry's.
+      if (!seen.admitted.containsKey(context)) {
+        // What the servlet entry reported for this dispatch's request without its body: the chain's first finding,
+        // when the policy and the runtime switches let it be reported.
         RequestContext withoutBody = new RequestContext(
             context.method(), context.uri(), context.query(), context.parameters(), context.headers());
-        Set<List<Object>> keys = new java.util.HashSet<>();
-        for (Detection found : DETECTORS.requestChainFindings(withoutBody)) keys.add(key(found));
-        seen.entry = keys;
-        seen.entryOf = context;
+        Optional<Detection> first = DETECTORS.detectRequest(withoutBody);
+        seen.admitted.put(context, first.isPresent() && reportable(first.orElseThrow()) ? key(first.orElseThrow()) : List.of());
       }
       return seen;
     }
 
-    /** Whether the finding is the body's to report and was not reported yet; it is from now on. */
-    boolean isNew(Detection found) {
-      List<Object> key = key(found);
-      return !entry.contains(key) && reported.add(key);
+    /** Emits the finding unless the servlet entry reported it or this dispatch reported it under this policy. */
+    void emitOnce(Optional<Detection> found, RequestContext context, AgentPolicy policy) {
+      if (found.isPresent()) emitOnce(found.orElseThrow(), context, policy);
+    }
+
+    void emitOnce(Detection found, RequestContext context, AgentPolicy policy) {
+      List<Object> finding = key(found);
+      if (finding.equals(admitted.get(context))) return;
+      List<Object> once = List.of(finding, new Identity(context), new Identity(policy));
+      if (reported.contains(once)) return;
+      try {
+        emit(Optional.of(found));
+      } finally {
+        reported.add(once);
+      }
+    }
+
+    private static boolean reportable(Detection found) {
+      AgentRuntime.ControlState runtime = AgentRuntime.get().state();
+      return runtime.detectionEnabled() && runtime.isAlgorithmEnabled(found.algorithm())
+          && !runtime.policy().evaluate(found, runtime.policyAgentKey()).ignored();
     }
 
     private static List<Object> key(Detection found) {
@@ -588,59 +607,61 @@ public final class OhMyRaspHooks {
     }
   }
 
-  /**
-   * The finding as an event carries it: the request without the body's names and values among the parameters.
-   * On the view with the request's own parameters ({@code merged}) the request is as the detector left it, its
-   * redactions kept; on the view of the body's alone it is the request's own. The details are made public when
-   * the event is recorded.
-   */
-  private static Detection bodyFinding(Detection found, RequestContext context, boolean merged) {
-    RequestContext decided = found.request() == null || !merged ? context : found.request();
-    Map<String, List<String>> shown = new java.util.LinkedHashMap<>();
-    for (Map.Entry<String, List<String>> parameter : decided.parameters().entrySet()) {
-      List<String> own = context.parameters().get(parameter.getKey());
-      if (own == null) continue; // a body field
-      List<String> values = parameter.getValue();
-      // The body's values follow the parameter's own (RequestContext.inputParameters).
-      shown.put(parameter.getKey(), values.subList(0, Math.min(values.size(), own.size())));
+  /** An object compared by identity, inside a key compared by value (a class, not a record: no call site links). */
+  private static final class Identity {
+    private final Object of;
+
+    Identity(Object of) {
+      this.of = of;
     }
-    return new Detection(found.timestamp(), found.hook(), found.algorithm(), found.action(), found.confidence(),
-        found.message(), new RequestContext(context.method(), context.uri(), context.query(), shown,
-            decided.headers()), found.details());
+
+    @Override public boolean equals(Object other) {
+      return other instanceof Identity identity && identity.of == of;
+    }
+
+    @Override public int hashCode() {
+      return System.identityHashCode(of);
+    }
   }
 
   /**
-   * The detection as it leaves the agent (event, cloud upload, block exception, block page): no body text in its
-   * details or message (see {@link BodyEvidence}) and no body state in its request context, which a queued event
-   * would otherwise keep past the request. When this fails, the details and message are dropped whole.
+   * The detection as it leaves the agent (event, cloud upload, block exception, block page). A detection on a
+   * request with a body (one the agent recorded, a form the container parsed, or an operation carried from such
+   * a request) is built from an allow-list ({@link BodyEvidence}): the rule's fields, a fixed message, the rule
+   * constants among its details, the one input field it matched with its value, and its operands as a kind and a
+   * length; the request as its method, URI, query and headers. Any other detection is as the rule made it, with
+   * a copy of its request that holds no body state, so that a queued event keeps no live context. When this
+   * fails, the details and message are dropped whole.
    */
   static Detection publicView(Detection event) {
     RequestContext request = event.request();
     try {
-      RequestBodySnapshot body = request == null ? null : request.bodySnapshot();
-      if (body == null) {
-        RequestBody current = RequestBodyCapture.current();
-        body = current == null ? null : current.lastSnapshot();
+      RequestBody current = RequestBodyCapture.current();
+      boolean bodied = (request != null && request.bodyDerived()) || (current != null && current.version() > 0);
+      if (!bodied) {
+        return new Detection(event.timestamp(), event.hook(), event.algorithm(), event.action(), event.confidence(),
+            event.message(), request == null ? null : request.withoutBody(), event.details());
       }
-      RequestContext shown = request == null ? null : request.withoutBody();
-      if (body == null) {
-        return shown == request ? event : new Detection(event.timestamp(), event.hook(), event.algorithm(),
-            event.action(), event.confidence(), event.message(), shown, event.details());
-      }
-      Set<String> names = request == null ? Set.of() : request.parameters().keySet();
-      List<String> kept = request == null ? List.of()
-          : List.of(request.method(), request.uri(), request.query());
-      BodyEvidence evidence = BodyEvidence.of(body, names, kept);
       Map<String, String> details = new java.util.LinkedHashMap<>();
+      List<String> operands = new java.util.ArrayList<>();
       for (Map.Entry<String, String> detail : event.details().entrySet()) {
-        details.put(detail.getKey(), BodyEvidence.RULE_CONSTANTS.contains(detail.getKey())
-            ? detail.getValue() : evidence.scrub(detail.getValue()));
+        if (BodyEvidence.RULE_CONSTANTS.contains(detail.getKey())) details.put(detail.getKey(), detail.getValue());
+        else if (!BodyEvidence.PARAMETER.equals(detail.getKey())) operands.add(detail.getValue());
       }
+      String[] input = request == null ? null : BodyEvidence.matched(request.inputParameters(),
+          event.details().get(BodyEvidence.PARAMETER), operands);
+      if (input != null) {
+        details.put(BodyEvidence.INPUT_FIELD, input[0]);
+        if (input[1] != null) details.put(BodyEvidence.INPUT_VALUE, input[1]);
+      }
+      String operand = BodyEvidence.operand(event.hook(), operands);
+      if (operand != null) details.put(BodyEvidence.OPERAND, operand);
       return new Detection(event.timestamp(), event.hook(), event.algorithm(), event.action(), event.confidence(),
-          evidence.scrubMessage(event.message()), shown, details);
+          BodyEvidence.fixedMessage(event.algorithm()), request == null ? null : request.publicEnvelope(),
+          Map.copyOf(details));
     } catch (Throwable failure) {
       return new Detection(event.timestamp(), event.hook(), event.algorithm(), event.action(), event.confidence(),
-          "", request == null ? null : RequestContext.empty(), Map.of());
+          BodyEvidence.fixedMessage(event.algorithm()), request == null ? null : RequestContext.empty(), Map.of());
     }
   }
 
@@ -2218,7 +2239,27 @@ public final class OhMyRaspHooks {
     String query = invokeString(ServletContracts.of(request), request, "getQueryString").orElse("");
     Map<String, List<String>> parameters = readParameterMap(request, query);
     Map<String, String> headers = readHeaders(request);
-    return new RequestContext(method, uri, query, parameters, headers);
+    RequestContext context = new RequestContext(method, uri, query, parameters, headers);
+    return formContent(method, headers.get("content-type")) && parsedFromBody(parameters, query)
+        ? context.withFormBody() : context;
+  }
+
+  /** Whether a container parses this request's body into parameters: a form or multipart body, not on GET or HEAD. */
+  private static boolean formContent(String method, String contentType) {
+    if ("GET".equalsIgnoreCase(method) || "HEAD".equalsIgnoreCase(method) || contentType == null) return false;
+    String type = contentType.trim().toLowerCase(Locale.ROOT);
+    return type.startsWith("application/x-www-form-urlencoded") || type.startsWith("multipart/");
+  }
+
+  /** Whether the container's parameters hold any name or value the query string does not: a parsed body's. */
+  private static boolean parsedFromBody(Map<String, List<String>> parameters, String query) {
+    if (parameters.isEmpty()) return false;
+    Map<String, List<String>> fromQuery = ServletQueryParameters.parse(query);
+    for (Map.Entry<String, List<String>> parameter : parameters.entrySet()) {
+      List<String> inQuery = fromQuery.get(parameter.getKey());
+      if (inQuery == null || parameter.getValue().size() > inQuery.size()) return true;
+    }
+    return false;
   }
 
   private static Map<String, List<String>> readParameterMap(Object request, String query)
@@ -2771,9 +2812,23 @@ public final class OhMyRaspHooks {
     if (events.discards()) {
       return; // the warm-up's logger: nothing is reported anywhere
     }
-    events.reportError(hook, throwable);
+    // A failure on a request with a body may quote it (a sink's exception message): its class alone.
+    Throwable shown = requestBodyMayBeIn() ? new IllegalStateException(throwable.getClass().getName()) : throwable;
+    events.reportError(hook, shown);
     if (Boolean.getBoolean("ohmyrasp.debug")) {
-      System.err.println("[OHMYRASP] hook failure in " + hook + ": " + throwable);
+      System.err.println("[OHMYRASP] hook failure in " + hook + ": " + shown);
+    }
+  }
+
+  /** Whether the request this thread serves has a body, recorded or parsed by the container (see publicView). */
+  private static boolean requestBodyMayBeIn() {
+    try {
+      RequestBody current = RequestBodyCapture.current();
+      if (current != null && current.version() > 0) return true;
+      RequestContext context = REQUEST.get();
+      return context != null && context.bodyDerived();
+    } catch (Throwable unknown) {
+      return true;
     }
   }
 }

@@ -4,6 +4,7 @@ import static io.ohmyrasp.agent.detect.DetectorTestSupport.assertAlgorithm;
 import static io.ohmyrasp.agent.detect.DetectorTestSupport.jsonString;
 import static io.ohmyrasp.agent.detect.DetectorTestSupport.request;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import io.ohmyrasp.agent.model.RequestContext;
@@ -348,5 +349,18 @@ final class JdbcDetectorTest {
     assertAlgorithm(JdbcDetector.detectSql("select id from orders where id = 42 -- and active", context),
         "sql_userinput");
     assertTrue(JdbcDetector.detectSql("select id from orders where reference = '42 --'", context).isEmpty());
+  }
+
+  /** The H2 console submits its editor's SELECT as a request parameter: a body field is not that source. */
+  @Test
+  void theConsoleExemptionReadsTheRequestParametersAndNoBodyField() {
+    RequestContext request = new RequestContext("POST", "/h2-console/query.do", "",
+        java.util.Map.of("sql", java.util.List.of("SELECT * FROM t WHERE 1=1 OR 1=1")), java.util.Map.of(),
+        "{\"sql\":\"SELECT * FROM u WHERE 1=1 OR 1=1\"}");
+    java.util.List<String> inputs = JdbcDetector.consoleInputs(request);
+    assertTrue(inputs.contains("SELECT * FROM t WHERE 1=1 OR 1=1"), inputs.toString());
+    assertTrue(request.inputParameters().get("sql").contains("SELECT * FROM u WHERE 1=1 OR 1=1"),
+        "the body's field is a request input for the sink rules");
+    assertFalse(inputs.contains("SELECT * FROM u WHERE 1=1 OR 1=1"), "but not for the console's exemption: " + inputs);
   }
 }

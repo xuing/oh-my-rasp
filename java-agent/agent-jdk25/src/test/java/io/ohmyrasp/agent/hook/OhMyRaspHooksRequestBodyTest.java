@@ -96,24 +96,103 @@ final class OhMyRaspHooksRequestBodyTest {
     assertFalse(recorded.contains("hunter2-Secret"), "the event carries the body: " + recorded);
   }
 
+  /**
+   * The event of a finding on a request with a body shows the one field it matched, with that field's value (the
+   * attacker's payload), and nothing else of the body: not another field's name or value, not the command as
+   * executed. The same holds for the block exception and the block page it redirects to.
+   */
   @Test
-  void theCanaryBodyLeavesNoValueInTheEventOrTheBlock() {
+  void theCanaryBodyShowsOnlyTheMatchedFieldInTheEventTheBlockAndTheBlockPage() {
     System.setProperty("ohmyrasp.block", "true");
     byte[] body = CANARY_BODY.getBytes(StandardCharsets.UTF_8);
-    OhMyRaspHooks.enterHttpRequest(new BodyRequest("/app/ping", "application/json", body.length),
-        new OhMyRaspHooksPolicyTest.FakeResponse());
+    OhMyRaspHooksPolicyTest.FakeResponse response = new OhMyRaspHooksPolicyTest.FakeResponse();
+    OhMyRaspHooks.enterHttpRequest(new BodyRequest("/app/ping", "application/json", body.length), response);
     read(body);
     OhMyRaspBlockException blocked = assertThrows(OhMyRaspBlockException.class,
         () -> OhMyRaspHooks.beforeProcessBuilderStart(new ProcessBuilder("sh", "-c", "echo 127.0.0.1; id")));
     String recorded = eventText();
     assertTrue(recorded.contains("\"algorithm\":\"command_userinput\""), recorded);
-    for (String value : List.of("hunter2-Secret", "127.0.0.1; id", "127.0.0.1")) {
-      assertFalse(recorded.contains(value), "the event carries " + value + ": " + recorded);
-      assertFalse(String.valueOf(blocked.getMessage()).contains(value), blocked.getMessage());
-      assertFalse(blocked.detection().details().toString().contains(value), blocked.detection().details().toString());
+    assertTrue(recorded.contains("\"input_field\":\"cmd\""), recorded);
+    assertTrue(recorded.contains("\"input_value\":\"127.0.0.1; id\""), recorded);
+    assertTrue(recorded.contains("\"operand\":\"command, "), "the command as a kind and a length: " + recorded);
+    assertFalse(recorded.contains("echo"), "the command as executed: " + recorded);
+    String shown = blocked.getMessage() + " " + blocked.detection().message() + " " + blocked.detection().details()
+        + " " + blocked.detection().request().parameters() + " " + response.location();
+    for (String secret : List.of("hunter2", "Secret", "username", "password")) {
+      assertFalse(recorded.contains(secret), "the event carries " + secret + ": " + recorded);
+      assertFalse(shown.contains(secret), "the block carries " + secret + ": " + shown);
     }
-    assertTrue(recorded.contains("[body:cmd]"), "the event names the field the evidence came from: " + recorded);
+    assertFalse(String.valueOf(response.location()).contains("127.0.0.1"), "the block page shows no input: " + response.location());
     assertEquals("", blocked.detection().request().body(), "the block's detection keeps no body");
+  }
+
+  /** Form fields the container parsed from a body are body-derived: the event shows no parameter map. */
+  @Test
+  void aFormTheContainerParsedCountsAsABody() {
+    System.setProperty("ohmyrasp.block", "true");
+    OhMyRaspHooks.enterHttpRequest(new FormRequest(Map.of("note", new String[] {"hunter2-Secret"},
+        "cmd", new String[] {"127.0.0.1; id"})), new OhMyRaspHooksPolicyTest.FakeResponse());
+    assertThrows(OhMyRaspBlockException.class,
+        () -> OhMyRaspHooks.beforeProcessBuilderStart(new ProcessBuilder("sh", "-c", "echo 127.0.0.1; id")));
+    String recorded = eventText();
+    assertTrue(recorded.contains("\"input_field\":\"cmd\""), recorded);
+    assertFalse(recorded.contains("hunter2"), recorded);
+    assertFalse(recorded.contains("note"), recorded);
+  }
+
+  /** A POST whose container parsed a form body: the parameters are not in the query string. */
+  public static class FormRequest {
+    private final Map<String, String[]> parameters;
+
+    FormRequest(Map<String, String[]> parameters) {
+      this.parameters = parameters;
+    }
+
+    public String getMethod() { return "POST"; }
+    public String getRequestURI() { return "/app/ping"; }
+    public String getQueryString() { return "lang=en"; }
+    public Map<String, String[]> getParameterMap() {
+      Map<String, String[]> all = new java.util.LinkedHashMap<>(parameters);
+      all.put("lang", new String[] {"en"});
+      return all;
+    }
+    public Enumeration<String> getHeaderNames() { return Collections.enumeration(List.of("content-type")); }
+    public String getHeader(String name) {
+      return "content-type".equalsIgnoreCase(name) ? "application/x-www-form-urlencoded" : null;
+    }
+    public String getContentType() { return "application/x-www-form-urlencoded"; }
+    public String getCharacterEncoding() { return "UTF-8"; }
+    public long getContentLengthLong() { return 40; }
+  }
+
+  /** A request without a body keeps its event as the rule made it, operands included. */
+  @Test
+  void aRequestWithoutABodyKeepsItsOperands() {
+    System.setProperty("ohmyrasp.block", "true");
+    OhMyRaspHooks.enterHttpRequest(new QueryRequest("cmd=127.0.0.1%3B+id"), new OhMyRaspHooksPolicyTest.FakeResponse());
+    assertThrows(OhMyRaspBlockException.class,
+        () -> OhMyRaspHooks.beforeProcessBuilderStart(new ProcessBuilder("sh", "-c", "echo 127.0.0.1; id")));
+    String recorded = eventText();
+    assertTrue(recorded.contains("echo 127.0.0.1; id"), "the command, as before: " + recorded);
+    assertFalse(recorded.contains("input_field"), recorded);
+  }
+
+  /** A GET whose only parameters are its query string's. */
+  public static final class QueryRequest {
+    private final String query;
+
+    QueryRequest(String query) {
+      this.query = query;
+    }
+
+    public String getMethod() { return "GET"; }
+    public String getRequestURI() { return "/app/ping"; }
+    public String getQueryString() { return query; }
+    public Map<String, String[]> getParameterMap() {
+      return Map.of("cmd", new String[] {"127.0.0.1; id"});
+    }
+    public Enumeration<String> getHeaderNames() { return Collections.enumeration(List.of()); }
+    public String getHeader(String name) { return null; }
   }
 
   @Test
@@ -125,8 +204,7 @@ final class OhMyRaspHooksRequestBodyTest {
     read(body);
     String recorded = eventText();
     assertTrue(recorded.contains("request_json_patch_expression"), recorded);
-    assertFalse(recorded.contains("hunter2-Secret"), recorded);
-    assertFalse(recorded.contains("getRuntime"), "a fragment of the body: " + recorded);
+    assertFalse(recorded.contains("hunter2"), "another field's value: " + recorded);
     assertFalse(recorded.contains("\"parameters\":{\"path\""), "a body field among the event's parameters: " + recorded);
   }
 
@@ -144,8 +222,8 @@ final class OhMyRaspHooksRequestBodyTest {
     String recorded = eventText().substring(atEntry.length());
     assertTrue(recorded.contains("\"algorithm\":\"request_expression_parameter\""), "the body's finding: " + recorded);
     assertFalse(recorded.contains("request_internal_identity"), "the entry's finding is not reported again: " + recorded);
-    assertTrue(recorded.contains("Request parameter carries a runtime expression payload"),
-        "the rule's own message stays readable: " + recorded);
+    assertTrue(recorded.contains(io.ohmyrasp.agent.http.BodyEvidence.fixedMessage("request_expression_parameter")),
+        "the rule's fixed message: " + recorded);
   }
 
   @Test
@@ -176,6 +254,12 @@ final class OhMyRaspHooksRequestBodyTest {
     OhMyRaspHooks.exitHttpRequest();
     assertEquals("", carried.body(), "the dispatch ended: the carried context dropped the body");
     assertNull(carried.bodySnapshot());
+    assertTrue(carried.bodyDerived(), "an event of the carried operation is still built as on a request with a body");
+    var detection = io.ohmyrasp.agent.model.Detection.log("ssrf", "ssrf_userinput", 90, "SSRF to http://10.0.0.1/",
+        carried, Map.of("url", "http://10.0.0.1/?q=hunter2-Secret"));
+    var shown = OhMyRaspHooks.publicView(detection);
+    assertFalse(shown.toString().contains("hunter2"), shown.toString());
+    assertFalse(shown.toString().contains("10.0.0.1"), "the operand as executed: " + shown);
   }
 
   /** A request with a User-Agent, for rules that read it. */

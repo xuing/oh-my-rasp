@@ -45,35 +45,71 @@ import org.objectweb.asm.Type;
 class RequestBodyVisitorTest {
   private static final Type HOOKS = Type.getType(Hooks.class);
 
-  /** The hooks the rewritten methods call: the capture, with failures to inject on demand. */
+  /** The block of this test's line: the only throwable the hooks let out. */
+  public static final class Block extends RuntimeException {
+    Block(String message) {
+      super(message);
+    }
+  }
+
+  /**
+   * The hooks the rewritten methods call: the capture, with failures to inject on demand. Each is written as the
+   * lines' hooks are: its Java body catches every throwable and lets out only the line's block.
+   */
   public static final class Hooks {
     static volatile Error enterError;
     static volatile Error exitError;
-    static volatile RuntimeException exitBlock;
+    static volatile Error abortError;
+    static volatile Block exitBlock;
     static final List<Integer> completed = new ArrayList<Integer>();
+    static final java.util.concurrent.atomic.AtomicInteger aborts = new java.util.concurrent.atomic.AtomicInteger();
 
     private Hooks() {}
 
     public static Object enterBodyRead(Object source) {
-      if (enterError != null) throw enterError;
-      return RequestBodyCapture.enter(source);
+      try {
+        if (enterError != null) throw enterError;
+        return RequestBodyCapture.enter(source);
+      } catch (Block block) {
+        throw block;
+      } catch (Throwable dropped) {
+        return null;
+      }
     }
 
     public static Object enterBodyRead(Object source, Buffer buffer) {
-      if (enterError != null) throw enterError;
-      return RequestBodyCapture.enter(source, buffer);
+      try {
+        if (enterError != null) throw enterError;
+        return RequestBodyCapture.enter(source, buffer);
+      } catch (Block block) {
+        throw block;
+      } catch (Throwable dropped) {
+        return null;
+      }
     }
 
-    public static void abortBodyRead(Object token) {
-      RequestBodyCapture.abort(token);
+    public static void abortBodyRead() {
+      try {
+        aborts.incrementAndGet();
+        if (abortError != null) throw abortError;
+        RequestBodyCapture.abort();
+      } catch (Throwable dropped) {
+        // The application's own throwable goes on.
+      }
     }
 
     private static void exited(boolean complete, int result) {
-      if (exitError != null) throw exitError;
-      if (complete) completed.add(result);
-      if (exitBlock != null && complete) {
-        RequestBodyCapture.deny(exitBlock);
-        throw exitBlock;
+      try {
+        if (exitError != null) throw exitError;
+        if (complete) completed.add(result);
+        if (exitBlock != null && complete) {
+          RequestBodyCapture.deny(exitBlock);
+          throw exitBlock;
+        }
+      } catch (Block block) {
+        throw block;
+      } catch (Throwable dropped) {
+        // Recording never fails the application's read.
       }
     }
 
@@ -116,16 +152,23 @@ class RequestBodyVisitorTest {
     public int position;
     public int calls;
     public int failAt = -1;
+    public Throwable failure = new IOException("the connection hiccupped");
+
+    private void fail() throws IOException {
+      if (failure instanceof IOException) throw (IOException) failure;
+      if (failure instanceof RuntimeException) throw (RuntimeException) failure;
+      throw (Error) failure;
+    }
 
     @Override public int read() throws IOException {
       calls++;
-      if (calls == failAt) throw new IOException("the connection hiccupped");
+      if (calls == failAt) fail();
       return position < data.length ? data[position++] & 0xff : -1;
     }
 
     @Override public int read(byte[] buffer, int offset, int length) throws IOException {
       calls++;
-      if (calls == failAt) throw new IOException("the connection hiccupped");
+      if (calls == failAt) fail();
       if (position >= data.length) return -1;
       int count = Math.min(length, data.length - position);
       System.arraycopy(data, position, buffer, offset, count);
@@ -197,8 +240,10 @@ class RequestBodyVisitorTest {
   void reset() {
     Hooks.enterError = null;
     Hooks.exitError = null;
+    Hooks.abortError = null;
     Hooks.exitBlock = null;
     Hooks.completed.clear();
+    Hooks.aborts.set(0);
     RequestBodyCapture.dispatchExited(true);
   }
 
@@ -292,13 +337,16 @@ class RequestBodyVisitorTest {
     InputStream in = rewritten(ScriptedStream.class);
     set(in, "data", data);
     set(in, "failAt", 1);
+    IOException hiccup = new IOException("the connection hiccupped");
+    set(in, "failure", hiccup);
     byte[] buffer = new byte[64];
     try {
       in.read(buffer, 0, buffer.length);
       fail("the application's read must throw its own exception");
     } catch (IOException own) {
-      assertEquals("the connection hiccupped", own.getMessage(), "the same throwable, unchanged");
+      assertSame(hiccup, own, "the same throwable object, not a copy or a wrapper");
     }
+    assertEquals(1, Hooks.aborts.get(), "the release hook ran once");
     assertEquals(data.length, in.read(buffer, 0, buffer.length));
     assertEquals("{\"cmd\":\"id\"}", body.snapshot().text(), "the retry after the failure is recorded");
     assertEquals(1, Hooks.completed.size());
@@ -331,17 +379,21 @@ class RequestBodyVisitorTest {
     assertArrayEquals("cd".getBytes(StandardCharsets.UTF_8), buffer);
     assertEquals('e', in.read(), "single-byte reads too");
     Hooks.exitError = null;
-    assertEquals('f', in.read(), "the recorder was not left claimed by the failed exit");
+    assertEquals('f', in.read());
     assertEquals("cdef", body.snapshot().text(), "only the reads whose entry hook ran are recorded");
   }
 
+  /**
+   * javac ends a try range before the return it protects ({@code CatchingStream.read()}): the exit hook is outside
+   * it, and the block reaches the caller. (A range that covers the return is {@link #shapes}' first case.)
+   */
   @Test
-  void theBlockIsThrownPastTheReadsOwnHandlerAndEveryLaterReadThrowsItToo() throws Exception {
+  void theBlockIsThrownPastAHandlerThatEndsBeforeTheReturnAndEveryLaterReadThrowsItToo() throws Exception {
     byte[] data = "x".getBytes(StandardCharsets.UTF_8);
     request("text/plain", data.length);
     InputStream in = rewritten(CatchingStream.class);
     set(in, "data", data);
-    RuntimeException block = new RuntimeException("the line's block");
+    Block block = new Block("the line's block");
     Hooks.exitBlock = block;
     try {
       in.read();
@@ -370,6 +422,327 @@ class RequestBodyVisitorTest {
     assertEquals(data.length, read.invoke(in, buffer));
     assertEquals(5, buffer.position());
     assertEquals("{\"a\":\"b\"}", body.snapshot().text());
+  }
+
+  @Test
+  void aFailingReleaseHookNeverReplacesTheApplicationsThrowable() throws Exception {
+    Throwable[] failures = {new IOException("own"), new IllegalStateException("own"), new StackOverflowError(),
+        new Block("a block from deeper in the application")};
+    for (Throwable failure : failures) {
+      request("text/plain", -1);
+      InputStream in = rewritten(ScriptedStream.class);
+      set(in, "data", "abc".getBytes(StandardCharsets.UTF_8));
+      set(in, "failAt", 1);
+      set(in, "failure", failure);
+      Hooks.abortError = new NoClassDefFoundError("the release failed inside the hook");
+      try {
+        in.read(new byte[4], 0, 4);
+        fail("the read returned");
+      } catch (Throwable thrown) {
+        assertSame(failure, thrown, "the application's own " + failure.getClass().getSimpleName());
+      }
+      assertEquals(1, Hooks.aborts.get());
+      Hooks.aborts.set(0);
+      RequestBodyCapture.dispatchExited(true);
+    }
+  }
+
+  // ---- bytecode shapes javac does not write, built with ASM: each must verify after the rewrite ------------------
+
+  /** What the shapes below read from; the shapes extend it and declare only their read methods. */
+  public static class ShapeBase extends InputStream {
+    public byte[] data = new byte[0];
+    public int position;
+    public int errors;
+
+    public int fill(byte[] buffer, int offset, int length) {
+      if (position >= data.length) return -1;
+      int count = Math.min(length, data.length - position);
+      System.arraycopy(data, position, buffer, offset, count);
+      position += count;
+      return count;
+    }
+
+    public int next() {
+      return position < data.length ? data[position++] & 0xff : -1;
+    }
+
+    @Override public int read() {
+      return next();
+    }
+  }
+
+  private static final String BASE = Type.getInternalName(ShapeBase.class);
+
+  private static ClassWriter shapeClass(String name) {
+    ClassWriter writer = new ClassWriter(ClassWriter.COMPUTE_FRAMES) {
+      @Override protected String getCommonSuperClass(String left, String right) {
+        return "java/lang/Object";
+      }
+    };
+    writer.visit(Opcodes.V1_8, Opcodes.ACC_PUBLIC | Opcodes.ACC_SUPER, name, null, BASE, null);
+    MethodVisitor init = writer.visitMethod(Opcodes.ACC_PUBLIC, "<init>", "()V", null, null);
+    init.visitCode();
+    init.visitVarInsn(Opcodes.ALOAD, 0);
+    init.visitMethodInsn(Opcodes.INVOKESPECIAL, BASE, "<init>", "()V", false);
+    init.visitInsn(Opcodes.RETURN);
+    init.visitMaxs(0, 0);
+    init.visitEnd();
+    return writer;
+  }
+
+  /**
+   * A synchronized read whose own handler covers its IRETURN and uses the receiver and a local: the shape that
+   * failed verification when the rewrite put a frame with every local unset inside the original try range.
+   */
+  static byte[] synchronizedReadWithAHandlerOverItsReturn(String name) {
+    ClassWriter writer = shapeClass(name);
+    MethodVisitor m = writer.visitMethod(Opcodes.ACC_PUBLIC | Opcodes.ACC_SYNCHRONIZED, "read", "([BII)I", null, null);
+    m.visitCode();
+    org.objectweb.asm.Label from = new org.objectweb.asm.Label();
+    org.objectweb.asm.Label to = new org.objectweb.asm.Label();
+    org.objectweb.asm.Label handler = new org.objectweb.asm.Label();
+    m.visitTryCatchBlock(from, to, handler, "java/lang/RuntimeException");
+    m.visitInsn(Opcodes.ICONST_M1);
+    m.visitVarInsn(Opcodes.ISTORE, 4);
+    m.visitLabel(from);
+    m.visitVarInsn(Opcodes.ALOAD, 0);
+    m.visitVarInsn(Opcodes.ALOAD, 1);
+    m.visitVarInsn(Opcodes.ILOAD, 2);
+    m.visitVarInsn(Opcodes.ILOAD, 3);
+    m.visitMethodInsn(Opcodes.INVOKEVIRTUAL, name, "fill", "([BII)I", false);
+    m.visitVarInsn(Opcodes.ISTORE, 4);
+    m.visitVarInsn(Opcodes.ILOAD, 4);
+    m.visitInsn(Opcodes.IRETURN);
+    m.visitLabel(to);
+    m.visitLabel(handler);
+    m.visitVarInsn(Opcodes.ASTORE, 5);
+    m.visitVarInsn(Opcodes.ALOAD, 0);
+    m.visitInsn(Opcodes.DUP);
+    m.visitFieldInsn(Opcodes.GETFIELD, name, "errors", "I");
+    m.visitInsn(Opcodes.ICONST_1);
+    m.visitInsn(Opcodes.IADD);
+    m.visitFieldInsn(Opcodes.PUTFIELD, name, "errors", "I");
+    m.visitVarInsn(Opcodes.ILOAD, 4);
+    m.visitInsn(Opcodes.IRETURN);
+    m.visitMaxs(0, 0);
+    m.visitEnd();
+    return writer.toByteArray();
+  }
+
+  /** read() through a tableswitch whose cases return. */
+  static byte[] readWithATableSwitch(String name) {
+    ClassWriter writer = shapeClass(name);
+    MethodVisitor m = writer.visitMethod(Opcodes.ACC_PUBLIC, "read", "()I", null, null);
+    m.visitCode();
+    org.objectweb.asm.Label[] cases = {new org.objectweb.asm.Label(), new org.objectweb.asm.Label(), new org.objectweb.asm.Label()};
+    org.objectweb.asm.Label other = new org.objectweb.asm.Label();
+    m.visitVarInsn(Opcodes.ALOAD, 0);
+    m.visitFieldInsn(Opcodes.GETFIELD, name, "position", "I");
+    m.visitInsn(Opcodes.ICONST_3);
+    m.visitInsn(Opcodes.IREM);
+    m.visitTableSwitchInsn(0, 2, other, cases);
+    for (org.objectweb.asm.Label each : cases) {
+      m.visitLabel(each);
+      m.visitVarInsn(Opcodes.ALOAD, 0);
+      m.visitMethodInsn(Opcodes.INVOKEVIRTUAL, name, "next", "()I", false);
+      m.visitInsn(Opcodes.IRETURN);
+    }
+    m.visitLabel(other);
+    m.visitInsn(Opcodes.ICONST_M1);
+    m.visitInsn(Opcodes.IRETURN);
+    m.visitMaxs(0, 0);
+    m.visitEnd();
+    return writer.toByteArray();
+  }
+
+  /** read(byte[]) calls read(byte[], int, int), which calls read() per byte: three rewritten reads nested. */
+  static byte[] readsThatCallRewrittenReads(String name) {
+    ClassWriter writer = shapeClass(name);
+    MethodVisitor m = writer.visitMethod(Opcodes.ACC_PUBLIC, "read", "([B)I", null, null);
+    m.visitCode();
+    m.visitVarInsn(Opcodes.ALOAD, 0);
+    m.visitVarInsn(Opcodes.ALOAD, 1);
+    m.visitInsn(Opcodes.ICONST_0);
+    m.visitVarInsn(Opcodes.ALOAD, 1);
+    m.visitInsn(Opcodes.ARRAYLENGTH);
+    m.visitMethodInsn(Opcodes.INVOKEVIRTUAL, name, "read", "([BII)I", false);
+    m.visitInsn(Opcodes.IRETURN);
+    m.visitMaxs(0, 0);
+    m.visitEnd();
+    m = writer.visitMethod(Opcodes.ACC_PUBLIC, "read", "([BII)I", null, null);
+    m.visitCode();
+    org.objectweb.asm.Label loop = new org.objectweb.asm.Label();
+    org.objectweb.asm.Label store = new org.objectweb.asm.Label();
+    org.objectweb.asm.Label done = new org.objectweb.asm.Label();
+    m.visitInsn(Opcodes.ICONST_0);
+    m.visitVarInsn(Opcodes.ISTORE, 4);
+    m.visitLabel(loop);
+    m.visitVarInsn(Opcodes.ILOAD, 4);
+    m.visitVarInsn(Opcodes.ILOAD, 3);
+    m.visitJumpInsn(Opcodes.IF_ICMPGE, done);
+    m.visitVarInsn(Opcodes.ALOAD, 0);
+    m.visitMethodInsn(Opcodes.INVOKEVIRTUAL, name, "read", "()I", false);
+    m.visitVarInsn(Opcodes.ISTORE, 5);
+    m.visitVarInsn(Opcodes.ILOAD, 5);
+    m.visitJumpInsn(Opcodes.IFGE, store);
+    m.visitVarInsn(Opcodes.ILOAD, 4);
+    m.visitJumpInsn(Opcodes.IFNE, done);
+    m.visitInsn(Opcodes.ICONST_M1);
+    m.visitInsn(Opcodes.IRETURN);
+    m.visitLabel(store);
+    m.visitVarInsn(Opcodes.ALOAD, 1);
+    m.visitVarInsn(Opcodes.ILOAD, 2);
+    m.visitVarInsn(Opcodes.ILOAD, 4);
+    m.visitInsn(Opcodes.IADD);
+    m.visitVarInsn(Opcodes.ILOAD, 5);
+    m.visitInsn(Opcodes.I2B);
+    m.visitInsn(Opcodes.BASTORE);
+    m.visitIincInsn(4, 1);
+    m.visitJumpInsn(Opcodes.GOTO, loop);
+    m.visitLabel(done);
+    m.visitVarInsn(Opcodes.ILOAD, 4);
+    m.visitInsn(Opcodes.IRETURN);
+    m.visitMaxs(0, 0);
+    m.visitEnd();
+    m = writer.visitMethod(Opcodes.ACC_PUBLIC, "read", "()I", null, null);
+    m.visitCode();
+    m.visitVarInsn(Opcodes.ALOAD, 0);
+    m.visitMethodInsn(Opcodes.INVOKEVIRTUAL, name, "next", "()I", false);
+    m.visitInsn(Opcodes.IRETURN);
+    m.visitMaxs(0, 0);
+    m.visitEnd();
+    return writer.toByteArray();
+  }
+
+  /** read(byte[], int, int) that stores a String in the array's slot and a long over the offset's and length's. */
+  static byte[] readThatReassignsItsParameterSlots(String name) {
+    ClassWriter writer = shapeClass(name);
+    MethodVisitor m = writer.visitMethod(Opcodes.ACC_PUBLIC, "read", "([BII)I", null, null);
+    m.visitCode();
+    m.visitVarInsn(Opcodes.ALOAD, 0);
+    m.visitVarInsn(Opcodes.ALOAD, 1);
+    m.visitVarInsn(Opcodes.ILOAD, 2);
+    m.visitVarInsn(Opcodes.ILOAD, 3);
+    m.visitMethodInsn(Opcodes.INVOKEVIRTUAL, name, "fill", "([BII)I", false);
+    m.visitVarInsn(Opcodes.ISTORE, 4);
+    m.visitLdcInsn("not the array any more");
+    m.visitVarInsn(Opcodes.ASTORE, 1);
+    m.visitLdcInsn(Long.valueOf(7L));
+    m.visitVarInsn(Opcodes.LSTORE, 2);
+    m.visitVarInsn(Opcodes.ILOAD, 4);
+    m.visitInsn(Opcodes.IRETURN);
+    m.visitMaxs(0, 0);
+    m.visitEnd();
+    return writer.toByteArray();
+  }
+
+  /** read() that uses local slot 65534, so that its max_locals is the class format's limit. */
+  static byte[] readWithTheMostLocals(String name) {
+    ClassWriter writer = shapeClass(name);
+    MethodVisitor m = writer.visitMethod(Opcodes.ACC_PUBLIC, "read", "()I", null, null);
+    m.visitCode();
+    m.visitVarInsn(Opcodes.ALOAD, 0);
+    m.visitMethodInsn(Opcodes.INVOKEVIRTUAL, name, "next", "()I", false);
+    m.visitVarInsn(Opcodes.ISTORE, 65534);
+    m.visitVarInsn(Opcodes.ILOAD, 65534);
+    m.visitInsn(Opcodes.IRETURN);
+    m.visitMaxs(0, 0);
+    m.visitEnd();
+    return writer.toByteArray();
+  }
+
+  /** Defines classes from bytes; anything else comes from the test's loader. */
+  static final class BytesLoader extends ClassLoader {
+    BytesLoader() {
+      super(RequestBodyVisitorTest.class.getClassLoader());
+    }
+
+    Class<?> define(String name, byte[] bytes) {
+      return defineClass(name.replace('/', '.'), bytes, 0, bytes.length);
+    }
+  }
+
+  /** Defines the class, makes the JVM link (and so verify) it, and makes one of it. */
+  private static ShapeBase verified(String name, byte[] bytes) throws Exception {
+    Class<?> type = new BytesLoader().define(name, bytes);
+    type.getDeclaredMethods(); // links the class: a VerifyError is thrown here
+    return (ShapeBase) type.getConstructor().newInstance();
+  }
+
+  @Test
+  void shapes() throws Exception {
+    byte[] data = "{\"cmd\":\"id\"}".getBytes(StandardCharsets.UTF_8);
+
+    String name = "io/ohmyrasp/test/SynchronizedCovered";
+    byte[] original = synchronizedReadWithAHandlerOverItsReturn(name);
+    verified(name, original);
+    RequestBody body = request("application/json", data.length);
+    ShapeBase in = verified(name, rewrite(original, false));
+    in.data = data;
+    byte[] buffer = new byte[64];
+    assertEquals(data.length, in.read(buffer, 0, 64));
+    assertEquals(new String(data, StandardCharsets.UTF_8), body.snapshot().text());
+    RequestBodyCapture.dispatchExited(true);
+    // A block at that return: the read's own handler catches it (it covers the return), the read returns, and the
+    // block is latched: the next read of the stream throws the same block.
+    request("application/json", data.length);
+    in = verified(name, rewrite(original, false));
+    in.data = data;
+    Block block = new Block("the line's block");
+    Hooks.exitBlock = block;
+    assertEquals(data.length, in.read(buffer, 0, 64), "the read's own handler returned its local");
+    assertEquals(1, in.errors, "the handler ran, with its receiver");
+    Hooks.exitBlock = null;
+    try {
+      in.read(buffer, 0, 64);
+      fail("the next read went on");
+    } catch (Block thrown) {
+      assertSame(block, thrown);
+    }
+    RequestBodyCapture.dispatchExited(true);
+
+    name = "io/ohmyrasp/test/TableSwitch";
+    original = readWithATableSwitch(name);
+    verified(name, original);
+    body = request("application/json", data.length);
+    in = verified(name, rewrite(original, false));
+    in.data = data;
+    for (int i = 0; i < data.length; i++) assertEquals(data[i], (byte) in.read());
+    assertEquals(new String(data, StandardCharsets.UTF_8), body.snapshot().text());
+    RequestBodyCapture.dispatchExited(true);
+
+    name = "io/ohmyrasp/test/Nested";
+    original = readsThatCallRewrittenReads(name);
+    verified(name, original);
+    body = request("application/json", data.length);
+    in = verified(name, rewrite(original, false));
+    in.data = data;
+    assertEquals(data.length, in.read(new byte[data.length]));
+    assertEquals(new String(data, StandardCharsets.UTF_8), body.snapshot().text(), "recorded once, by the outermost read");
+    RequestBodyCapture.dispatchExited(true);
+
+    name = "io/ohmyrasp/test/Reassigned";
+    original = readThatReassignsItsParameterSlots(name);
+    verified(name, original);
+    body = request("application/json", data.length);
+    in = verified(name, rewrite(original, false));
+    in.data = data;
+    assertEquals(data.length, in.read(new byte[64], 0, 64));
+    assertEquals(new String(data, StandardCharsets.UTF_8), body.snapshot().text(), "the array and offset as the read got them");
+    RequestBodyCapture.dispatchExited(true);
+
+    // The local sorter numbers the method's locals in the order they are used: slot 65534 becomes a low one, and
+    // the rewritten method needs few slots. (No method within the 65535-byte code limit uses enough distinct
+    // locals to push the added ones past the slot limit; the visitor refuses such a method all the same.)
+    name = "io/ohmyrasp/test/MostLocals";
+    original = readWithTheMostLocals(name);
+    verified(name, original);
+    body = request("application/json", data.length);
+    in = verified(name, rewrite(original, false));
+    in.data = data;
+    assertEquals(data[0], (byte) in.read());
+    assertEquals("{", body.snapshot().text());
   }
 
   // ---- Tomcat's own classes -------------------------------------------------------------------------------------
