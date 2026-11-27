@@ -357,6 +357,9 @@ final class RequestPayloadDetector {
       return Optional.empty();
     }
     String inspected = value.length() > 8192 ? value.substring(0, 8192) : value;
+    if (!mayCarryBindingSyntax(inspected)) {
+      return Optional.empty();
+    }
     for (String variant : decodedVariants(inspected)) {
       if (!typedPayloadBindingSyntax(variant)) {
         continue;
@@ -371,6 +374,22 @@ final class RequestPayloadDetector {
       }
     }
     return Optional.empty();
+  }
+
+  /**
+   * Whether some decoding of the value can hold binding syntax: each form typedPayloadBindingSyntax accepts needs
+   * one of these characters, and percent-decoding, the only decoding applied, needs a '%' to produce one.
+   */
+  private static boolean mayCarryBindingSyntax(String value) {
+    for (int i = 0; i < value.length(); i++) {
+      switch (value.charAt(i)) {
+        case '<', '=', '"', '\'', '!', '@', '%' -> {
+          return true;
+        }
+        default -> { }
+      }
+    }
+    return false;
   }
 
   private static boolean typedPayloadBindingSyntax(String value) {

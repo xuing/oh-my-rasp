@@ -131,6 +131,7 @@ public final class FpReport {
             Case.tainted("<p>&lt;script&gt;</p>", "<script>")),
             (c, r) -> ResponseContentDetector.detectXssEcho(c.payload(), r)),
         new Category("Request parameters", requestParamCorpus(), (c, r) -> ENGINE.detectRequest(r)),
+        new Category("Request bodies", requestBodyCorpus(), (c, r) -> requestBody(c)),
         new Category(
             "Base64 decoding",
             base64Corpus(),
@@ -439,6 +440,47 @@ public final class FpReport {
         Case.tainted("<ul><li>one</li><li>two</li></ul>", "<ul><li>one</li><li>two</li></ul>"),
         Case.tainted("prices: a < b, c > d", "prices: a < b, c > d"),
         Case.tainted("online surveys and onboarding tips", "online surveys and onboarding tips"));
+  }
+
+  /**
+   * Bodies an application reads, with the content type their shape names: the request rules run on the body
+   * as the agents decide a body state (its values added to the parameters), then ordinary sinks run in that
+   * request, some reusing a body value as applications do (a host to ping, a report file name, a customer name).
+   */
+  private static Optional<Detection> requestBody(Case c) {
+    RequestContext request = new RequestContext("POST", "/api/orders", "", Map.of(),
+        Map.of("content-type", contentType(c.payload()), "user-agent", "Mozilla/5.0"), c.payload());
+    Optional<Detection> found = ENGINE.detectRequest(request.withBodyParameters());
+    if (found.isEmpty()) found = ProcessDetector.detectCommand(List.of("ping", "-c", "1", "127.0.0.1"), request);
+    if (found.isEmpty()) found = ProcessDetector.detectCommand(List.of("/bin/sh", "-c", "convert weekly.png weekly.pdf"), request);
+    if (found.isEmpty()) found = FileAccessDetector.detectFileRead("/srv/app/reports/weekly.csv", request, false);
+    if (found.isEmpty()) found = JdbcDetector.detectSql("SELECT id, name FROM customers WHERE name = 'Ada Lovelace' ORDER BY id", request);
+    if (found.isEmpty()) found = NetworkDestinationDetector.detectUrl("https://api.example.com/v1/rates?currency=EUR", request);
+    if (found.isEmpty()) found = HostFileMutationDetector.detectFileWrite("/srv/app/uploads/weekly.pdf", request);
+    return found;
+  }
+
+  private static String contentType(String body) {
+    if (body.startsWith("[{\"op\"")) return "application/json-patch+json";
+    if (body.startsWith("{") || body.startsWith("[")) return "application/json";
+    if (body.startsWith("<")) return "application/xml";
+    return body.contains("=") && !body.contains(" ") ? "application/x-www-form-urlencoded" : "text/plain";
+  }
+
+  private static List<Case> requestBodyCorpus() {
+    return List.of(
+        Case.of("{\"host\":\"127.0.0.1\",\"count\":1}"),
+        Case.of("{\"report\":\"weekly.csv\",\"format\":\"pdf\",\"name\":\"Ada Lovelace\"}"),
+        Case.of("{\"note\":\"run `ls -la; cat /etc/hosts` && echo done | tee /tmp/x\",\"tags\":[\"ops\",\"a&b\"]}"),
+        Case.of("{\"query\":\"SELECT * FROM t WHERE a = 1 OR 1=1 -- comment\",\"sort\":\"name desc\"}"),
+        Case.of("{\"links\":[\"https://example.com/docs?page=2&lang=en\",\"http://localhost:8080/health\"],\"callback\":\"https://hooks.example.com/x\"}"),
+        Case.of("{\"paths\":[\"/var/log/app/server.log\",\"../shared/readme.md\",\"C:\\\\Users\\\\me\\\\notes.txt\"]}"),
+        Case.of("{\"template\":\"Hello ${name}, your order #{id} ships on {{date}}\",\"expression\":\"price * qty\"}"),
+        Case.of("{\"user\":{\"name\":\"\u00c5sa\",\"city\":\"\u6771\u4eac\",\"emoji\":\"\ud83d\ude00\"},\"password\":\"correct horse\"}"),
+        Case.of("[{\"op\":\"replace\",\"path\":\"/lastname\",\"value\":\"vulhub\"},{\"op\":\"add\",\"path\":\"/tags/-\",\"value\":\"x\"}]"),
+        Case.of("host=127.0.0.1&report=weekly.csv&note=a%26b+%7C+c"),
+        Case.of("<order><id>3</id><note>ships &amp; tracks</note><type>express</type></order>"),
+        Case.of("weekly report: cat /etc/hosts is an example; DROP is a verb here"));
   }
 
   private static List<Case> base64Corpus() {

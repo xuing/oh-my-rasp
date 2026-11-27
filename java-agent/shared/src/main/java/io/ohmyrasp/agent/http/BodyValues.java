@@ -12,7 +12,7 @@ import java.util.Map;
  * ({@code application/x-www-form-urlencoded}) gives its decoded names and values; any other text gives
  * itself, trimmed, as one value. {@link #parameters()} pairs each value with the name it was found under
  * (a JSON leaf with the nearest member key, "" at the top level), so a body can stand where request
- * parameters are consulted. Bounded: at most {@link #MAX_ITEMS} names and values together, each cut to
+ * parameters are consulted; a value repeated under the same name is kept once. Bounded: at most {@link #MAX_ITEMS} names and values together, each cut to
  * {@link #MAX_VALUE_CHARS} characters, and JSON containers nested at most {@link #MAX_DEPTH} deep (the
  * scan stops at a deeper one and keeps what it found before).
  */
@@ -224,12 +224,14 @@ public final class BodyValues {
         value = value.substring(0, MAX_VALUE_CHARS);
         cut = true;
       }
-      values.add(value);
       List<String> under = parameters.get(name);
       if (under == null) {
         under = new ArrayList<String>(1);
         parameters.put(name, under);
+      } else if (under.contains(value)) {
+        return true; // the same value again under the same name adds nothing to match
       }
+      values.add(value);
       under.add(value);
       return true;
     }

@@ -43,7 +43,7 @@ A second OhMyRASP package on the same host is harmless. One line starts per JVM,
 
 For JDK 21, extract `ohmyrasp-jdk21-shirudo.tar.gz` to sign the staged package with your operator keys.
 
-Benign-traffic precision across the curated engine corpus: **0 / 194** false positives across **26** categories (0.0%; see [FALSE-POSITIVE-REPORT.md](../../java-agent/docs/FALSE-POSITIVE-REPORT.md)).
+Benign-traffic precision across the curated engine corpus: **0 / 206** false positives across **27** categories (0.0%; see [FALSE-POSITIVE-REPORT.md](../../java-agent/docs/FALSE-POSITIVE-REPORT.md)).
 
 ## Check that it is active
 
