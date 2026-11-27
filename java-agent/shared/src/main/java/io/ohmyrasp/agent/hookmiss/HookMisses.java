@@ -1,17 +1,22 @@
 package io.ohmyrasp.agent.hookmiss;
 
+import java.io.ByteArrayInputStream;
+import java.io.ByteArrayOutputStream;
 import java.io.File;
 import java.io.IOException;
-import java.net.URISyntaxException;
+import java.io.InputStream;
 import java.net.URL;
+import java.nio.charset.StandardCharsets;
 import java.security.CodeSource;
 import java.security.ProtectionDomain;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.jar.JarFile;
 import java.util.jar.Manifest;
+import java.util.zip.ZipEntry;
 import org.objectweb.asm.ClassReader;
 import org.objectweb.asm.ClassVisitor;
 import org.objectweb.asm.MethodVisitor;
@@ -22,17 +27,22 @@ import org.objectweb.asm.Opcodes;
  * instrument a loaded library class did not, so a library release that renamed or changed a hooked method is
  * reported where it runs instead of passing silently.
  *
- * <p>What counts as a miss is decided by the transformers: a class of the {@link HookExpectations} table that the
- * unit selects by name went through the unit and gained no call into the agent. They call {@link #miss} on the
- * class-loading thread, where it only marks the pair and queues it: no I/O, no formatting, no class of the agent
- * loaded for the first time (on a backport line every class here is preloaded). A worker thread, started when the
- * first miss is queued and ended when the queue is empty, does the rest: it lists the class's methods with the
- * names the unit looks for, reads the {@code Implementation-Version} of the JAR the class came from, and writes the
- * line through the line's {@link HookMissSink}. Anything the worker throws is dropped with its line.
+ * <p>What counts as a miss is decided by the transformers, after their own work is done: a class of the
+ * {@link HookExpectations} table that the unit selects went through the unit and none of the methods the unit is
+ * recorded instrumenting there calls the agent methods the unit is recorded adding ({@link AgentCalls}). They call
+ * {@link #miss} on the class-loading thread, where it copies a few bounded strings out of the class and its code
+ * source (the methods with the names the unit looks for, the location), marks the pair and queues it: no I/O, no
+ * lock the writer holds across I/O, no class of the agent loaded for the first time (on a backport line every class
+ * here is preloaded), and nothing kept that refers to the class's loader. A worker thread, started when the first
+ * miss is queued and ended when the queue is empty, does the rest: it reads the {@code Implementation-Version} of a
+ * plain JAR (marked as the agent's own I/O, bounded by the JAR's and the manifest's size) and writes the line through
+ * the line's {@link HookMissSink}, which has its own bounded path and never uses the detections' queue. Anything the
+ * worker's sink throws drops its line and is counted ({@link #sinkFailures}).
  *
- * <p>At most {@link #LIMIT} lines per JVM, then one {@code hook_miss_suppressed} line and nothing more: the table
- * holds a few hundred pairs, a library release that breaks a hook usually breaks one to a few classes, and the cap
- * keeps a JVM that runs many such libraries to a few dozen lines (each a few hundred bytes to about 2 KiB).
+ * <p>At most {@link #LIMIT} lines per JVM, then one {@code hook_miss_suppressed} line and nothing more, charged when
+ * a miss is queued: the table holds a few hundred pairs, a library release that breaks a hook usually breaks one to
+ * a few classes, and the cap keeps a JVM that runs many such libraries to a few dozen lines (each a few hundred
+ * bytes to about 2 KiB) and the queue to that many small candidates.
  */
 public final class HookMisses {
   /** The most hook-miss lines a JVM writes before the one suppressed line. */
@@ -61,6 +71,7 @@ public final class HookMisses {
   private static boolean held;
   private static int written;
   private static boolean suppressed;
+  private static final AtomicLong SINK_FAILURES = new AtomicLong();
 
   private HookMisses() {}
 
@@ -93,6 +104,7 @@ public final class HookMisses {
       PENDING.clear();
       written = 0;
       suppressed = false;
+      SINK_FAILURES.set(0);
       inline = writeInline;
       held = hold;
       sink = target;
@@ -143,13 +155,38 @@ public final class HookMisses {
   }
 
   /**
+   * Whether a miss of {@code expectation} would be kept now: the report is on, the pair has not been reported in
+   * this JVM and the limit has not made suppression final. A transformer asks before it reads a class for a
+   * verdict, so a pair already reported costs a lookup and no scan.
+   */
+  public static boolean wants(HookExpectation expectation) {
+    synchronized (LOCK) {
+      return table != null && sink != null && !SEEN.contains(expectation) && !(written >= LIMIT && suppressed);
+    }
+  }
+
+  /**
    * On the class-loading thread: {@code unit}, the unit of {@code expectation} under its own name (a backport
    * transformer's carries its line's number), did not instrument the class in {@code classFile}, the bytes it was
-   * given. Marks the pair and queues it; a pair already reported in this JVM is ignored. {@code failure} is what
-   * the transform threw, or null.
+   * given. Reads what the line will say from {@code classFile} and {@code domain} now, as a few bounded strings, and
+   * keeps neither of them or anything that refers to the class's loader; then marks the pair and queues it. A pair
+   * already reported in this JVM is ignored, and so is one the table exempts for this class (see
+   * {@link HookExpectation#absentIsVersionGap}), which does not use the pair up, so a broken release loaded after an
+   * older exempt one is still reported. {@code failure} is what the transform threw, or null.
+   *
+   * <p>The first qualifying miss of a (unit, class) pair is the one reported, whichever class loader, library
+   * version or retransformation it comes from: the report says that a hook did not apply somewhere in this JVM,
+   * and {@code code_source} and {@code implementation_version} say where.
    */
   public static void miss(HookExpectation expectation, String unit, byte[] classFile, ProtectionDomain domain,
       String reason, Throwable failure) {
+    if (!wants(expectation)) {
+      return;
+    }
+    Candidate candidate = Candidate.of(expectation, unit, classFile, domain, reason, failure);
+    if (candidate == null) {
+      return;
+    }
     Candidate now = null;
     HookMissSink target = null;
     boolean startWorker = false;
@@ -157,8 +194,15 @@ public final class HookMisses {
       if (table == null || sink == null || !SEEN.add(expectation)) {
         return;
       }
-      Candidate candidate = new Candidate(expectation, unit, classFile, domain, reason,
-          failure == null ? null : failure.getClass().getName());
+      // Charged when queued: what waits is bounded by LIMIT and one suppressed line, whatever the sink does.
+      if (written < LIMIT) {
+        written++;
+      } else if (!suppressed) {
+        suppressed = true;
+        candidate = Candidate.suppressedLine();
+      } else {
+        return;
+      }
       if (inline) {
         now = candidate;
         target = sink;
@@ -175,6 +219,18 @@ public final class HookMisses {
     } else if (startWorker) {
       startWorker();
     }
+  }
+
+  /** How many candidates wait for the worker, for a test of the queue's bound. */
+  static int queued() {
+    synchronized (LOCK) {
+      return PENDING.size();
+    }
+  }
+
+  /** How many lines the sink failed to take (it threw, on the worker); they were dropped and are not retried. */
+  public static long sinkFailures() {
+    return SINK_FAILURES.get();
   }
 
   private static void startWorker() {
@@ -210,70 +266,102 @@ public final class HookMisses {
         try {
           process(next, target);
         } catch (Throwable dropped) {
-          // A diagnostic never disturbs the application: the line is lost, the worker goes on.
+          // A diagnostic never disturbs the application: the line is lost and counted, the worker goes on.
+          SINK_FAILURES.incrementAndGet();
         }
       }
     }
   }
 
-  /** One queued miss: what the class-loading thread kept, to be read later. */
+  /**
+   * One queued miss: a few bounded strings the class-loading thread copied from the class and its code source. It
+   * holds no class file, {@code ProtectionDomain}, {@code Class} or class loader, so a candidate that waits for a
+   * stalled worker cannot keep an application's loader, and with at most {@code LIMIT + 1} queued and each text at
+   * most {@link #MAX_TEXT} characters, the queue holds a few hundred KiB at most.
+   */
   private static final class Candidate {
+    /** The pair, from the shipped table; null for the one suppressed line. */
     final HookExpectation expectation;
     final String unit;
-    final byte[] classFile;
-    final ProtectionDomain domain;
     final String reason;
     final String exception;
+    /** The methods of the class with a name the unit looks for, at most {@link #MAX_LISTED}. */
+    final List<String> found;
+    /** How many more there were. */
+    final int foundOmitted;
+    /** Where the class came from; null when it has no code source. */
+    final Origin origin;
 
-    Candidate(HookExpectation expectation, String unit, byte[] classFile, ProtectionDomain domain, String reason,
-        String exception) {
+    private Candidate(HookExpectation expectation, String unit, String reason, String exception, List<String> found,
+        int foundOmitted, Origin origin) {
       this.expectation = expectation;
       this.unit = unit;
-      this.classFile = classFile;
-      this.domain = domain;
       this.reason = reason;
       this.exception = exception;
+      this.found = found;
+      this.foundOmitted = foundOmitted;
+      this.origin = origin;
+    }
+
+    static Candidate suppressedLine() {
+      return new Candidate(null, null, null, null, null, 0, null);
+    }
+
+    /** The candidate for a miss, or null when the pair is exempt for this class. */
+    static Candidate of(HookExpectation expectation, String unit, byte[] classFile, ProtectionDomain domain,
+        String reason, Throwable failure) {
+      Found methods = methodsNamed(classFile, expectation);
+      if (expectation.absentIsVersionGap && methods != null && methods.shown.isEmpty()
+          && !TRANSFORM_FAILED.equals(reason)) {
+        return null; // a release before the hooked code existed: see HookExpectation.absentIsVersionGap
+      }
+      String exception = failure == null ? null : cut(failure.getClass().getName());
+      return new Candidate(expectation, cut(unit), reason, exception,
+          methods == null ? new ArrayList<String>(0) : methods.shown, methods == null ? 0 : methods.omitted,
+          Origin.of(domain));
     }
   }
 
+  /** The most methods and the omitted count that {@link #methodsNamed} found. */
+  static final class Found {
+    final List<String> shown = new ArrayList<String>();
+    int omitted;
+  }
+
+  /**
+   * One queued line, on the worker. The line's methods and origin were copied when it was queued; only the
+   * manifest of a plain JAR file is read here.
+   */
   static void process(Candidate candidate, HookMissSink target) {
-    HookExpectation expectation = candidate.expectation;
-    List<String> found = methodsNamed(candidate.classFile, expectation);
-    if (expectation.absentIsVersionGap && found != null && found.isEmpty() && !TRANSFORM_FAILED.equals(candidate.reason)) {
-      return; // a release before the hooked code existed: see HookExpectation.absentIsVersionGap
-    }
-    boolean last;
-    synchronized (LOCK) {
-      if (written < LIMIT) {
-        written++;
-        last = false;
-      } else if (!suppressed) {
-        suppressed = true;
-        last = true;
-      } else {
-        return;
-      }
-    }
-    if (last) {
+    if (candidate.expectation == null) {
       target.write("hook_miss_suppressed", "\"limit\":" + LIMIT + ",\"message\":"
           + quote("More hooks did not apply to the classes they were meant for; further hook-miss lines in this JVM are suppressed."));
       return;
     }
-    target.write("hook_miss", fields(candidate, found, origin(candidate.domain, target)));
+    String version = candidate.origin == null ? null : candidate.origin.version(target);
+    target.write("hook_miss", fields(candidate, version));
   }
 
-  /** The methods of the class whose names the unit looks for, as name and descriptor; null when ASM cannot read it. */
-  static List<String> methodsNamed(byte[] classFile, final HookExpectation expectation) {
-    if (classFile == null) {
+  /**
+   * The methods of the class whose names the unit looks for, as name and descriptor, at most {@link #MAX_LISTED}
+   * of them and a count of the others; null when ASM cannot read the class or it is larger than
+   * {@link AgentCalls#MAX_CLASS_BYTES}.
+   */
+  static Found methodsNamed(byte[] classFile, final HookExpectation expectation) {
+    if (classFile == null || classFile.length > AgentCalls.MAX_CLASS_BYTES) {
       return null;
     }
-    final List<String> found = new ArrayList<String>();
+    final Found found = new Found();
     try {
       new ClassReader(classFile).accept(new ClassVisitor(Opcodes.ASM9) {
         @Override
         public MethodVisitor visitMethod(int access, String name, String descriptor, String signature, String[] exceptions) {
           if (expectation.looksFor(name)) {
-            found.add(name + descriptor);
+            if (found.shown.size() < MAX_LISTED) {
+              found.shown.add(cut(name + descriptor));
+            } else {
+              found.omitted++;
+            }
           }
           return null;
         }
@@ -284,53 +372,150 @@ public final class HookMisses {
     return found;
   }
 
-  /** Where a class came from: its code source location, the file name, and the JAR's Implementation-Version. */
-  static final class Origin {
-    String path;
-    String name;
-    String version;
-  }
+  /** The largest JAR file whose manifest is read, in bytes; a larger one has no {@code implementation_version}. */
+  static final long MAX_JAR_BYTES = 256L << 20;
+  /** The largest manifest read, in bytes. */
+  static final int MAX_MANIFEST_BYTES = 64 << 10;
 
-  static Origin origin(ProtectionDomain domain, HookMissSink target) {
-    CodeSource source = domain == null ? null : domain.getCodeSource();
-    URL location = source == null ? null : source.getLocation();
-    if (location == null) {
-      return null;
+  /**
+   * Where a class came from, as plain strings: its code source location (no query, no fragment, no credentials)
+   * and the file name. Taken from the location's own fields on the class-loading thread, so a custom URL handler
+   * is never asked to render it.
+   */
+  static final class Origin {
+    final String path;
+    final String name;
+    /** The file of a plain {@code file:} location, else null. */
+    final File file;
+
+    private Origin(String path, boolean plainFile) {
+      this.path = cut(path);
+      this.name = cut(lastSegment(path));
+      this.file = plainFile ? new File(path) : null;
     }
-    Origin origin = new Origin();
-    File file = null;
-    if ("file".equals(location.getProtocol())) {
+
+    static Origin of(ProtectionDomain domain) {
       try {
-        file = new File(location.toURI());
-      } catch (URISyntaxException | IllegalArgumentException e) {
-        file = new File(location.getPath());
+        CodeSource source = domain == null ? null : domain.getCodeSource();
+        URL location = source == null ? null : source.getLocation();
+        if (location == null) {
+          return null;
+        }
+        String protocol = location.getProtocol();
+        String path = location.getPath();
+        if (path == null) {
+          path = "";
+        }
+        if ("file".equals(protocol)) {
+          return new Origin(filePath(path), true);
+        }
+        String host = location.getHost();
+        String where = host == null || host.isEmpty() ? "" : "//" + host + (location.getPort() < 0 ? "" : ":" + location.getPort());
+        return new Origin(withoutCredentials(protocol + ":" + where + path), false);
+      } catch (Throwable unreadable) {
+        return null;
       }
-      origin.path = file.getPath();
-    } else {
-      origin.path = location.toString();
     }
-    origin.name = lastSegment(origin.path);
-    if (file != null && file.getName().endsWith(".jar")) {
+
+    /**
+     * The JAR's {@code Implementation-Version}, read on the worker with the agent's own-I/O mark set before the first
+     * file call. Null when the location is not a plain {@code .jar} file, the JAR is larger than
+     * {@link #MAX_JAR_BYTES}, its manifest is larger than {@link #MAX_MANIFEST_BYTES} or anything fails: the line
+     * still names the file. The read is bounded by those sizes, not by a clock.
+     */
+    String version(HookMissSink target) {
+      if (file == null || !file.getName().endsWith(".jar")) {
+        return null;
+      }
       boolean ownIo = target.enterOwnIo();
       try {
-        if (file.isFile()) {
-          JarFile jar = new JarFile(file, false);
-          try {
-            Manifest manifest = jar.getManifest();
-            if (manifest != null) {
-              origin.version = manifest.getMainAttributes().getValue("Implementation-Version");
-            }
-          } finally {
-            jar.close();
+        if (!file.isFile() || file.length() > MAX_JAR_BYTES) {
+          return null;
+        }
+        JarFile jar = new JarFile(file, false);
+        try {
+          ZipEntry entry = jar.getEntry("META-INF/MANIFEST.MF");
+          if (entry == null) {
+            return null;
           }
+          byte[] manifest = readAtMost(jar.getInputStream(entry), MAX_MANIFEST_BYTES);
+          return manifest == null ? null
+              : new Manifest(new ByteArrayInputStream(manifest)).getMainAttributes().getValue("Implementation-Version");
+        } finally {
+          jar.close();
         }
       } catch (IOException | RuntimeException unreadable) {
-        // No version: the line still names the file.
+        return null; // No version: the line still names the file.
       } finally {
         target.exitOwnIo(ownIo);
       }
     }
-    return origin;
+  }
+
+  /** All of {@code in}, closed, or null when it is longer than {@code limit} bytes. */
+  private static byte[] readAtMost(InputStream in, int limit) throws IOException {
+    try {
+      ByteArrayOutputStream out = new ByteArrayOutputStream();
+      byte[] buffer = new byte[4096];
+      for (int n = in.read(buffer); n > 0; n = in.read(buffer)) {
+        out.write(buffer, 0, n);
+        if (out.size() > limit) {
+          return null;
+        }
+      }
+      return out.toByteArray();
+    } finally {
+      in.close();
+    }
+  }
+
+  /** The path of a {@code file:} URL, percent-decoded as UTF-8 and, on Windows, without the slash before the drive. */
+  static String filePath(String urlPath) {
+    String path = urlPath;
+    if (path.indexOf('%') >= 0) {
+      ByteArrayOutputStream out = new ByteArrayOutputStream(path.length());
+      int i = 0;
+      while (i < path.length()) {
+        char ch = path.charAt(i);
+        int high = ch == '%' && i + 2 < path.length() ? Character.digit(path.charAt(i + 1), 16) : -1;
+        int low = high >= 0 ? Character.digit(path.charAt(i + 2), 16) : -1;
+        if (low >= 0) {
+          out.write(high * 16 + low);
+          i += 3;
+        } else {
+          int length = Character.isHighSurrogate(ch) && i + 1 < path.length() ? 2 : 1;
+          byte[] bytes = path.substring(i, i + length).getBytes(StandardCharsets.UTF_8);
+          out.write(bytes, 0, bytes.length);
+          i += length;
+        }
+      }
+      path = new String(out.toByteArray(), StandardCharsets.UTF_8);
+    }
+    if (File.separatorChar == '\\' && path.length() > 2 && path.charAt(0) == '/' && path.charAt(2) == ':') {
+      path = path.substring(1);
+    }
+    return new File(path).getPath();
+  }
+
+  /** {@code text} without the {@code user:password@} of any {@code scheme://user:password@host} in it. */
+  static String withoutCredentials(String text) {
+    StringBuilder out = new StringBuilder(text.length());
+    int from = 0;
+    while (true) {
+      int scheme = text.indexOf("://", from);
+      if (scheme < 0) {
+        break;
+      }
+      int start = scheme + 3;
+      int end = start;
+      while (end < text.length() && text.charAt(end) != '/' && text.charAt(end) != '!') {
+        end++;
+      }
+      int at = text.lastIndexOf('@', end - 1);
+      out.append(text, from, start);
+      from = at >= start && at < end ? at + 1 : start;
+    }
+    return out.append(text, from, text.length()).toString();
   }
 
   /** The last path segment of a location: {@code x.jar} of {@code jar:file:/app.jar!/BOOT-INF/lib/x.jar!/}. */
@@ -343,7 +528,7 @@ public final class HookMisses {
     return trimmed.substring(slash + 1);
   }
 
-  static String fields(Candidate candidate, List<String> found, Origin origin) {
+  static String fields(Candidate candidate, String version) {
     HookExpectation expectation = candidate.expectation;
     String className = expectation.className.replace('/', '.');
     StringBuilder out = new StringBuilder(512);
@@ -354,14 +539,21 @@ public final class HookMisses {
       out.append(",\"exception\":").append(quote(candidate.exception));
     }
     out.append(",\"looked_for\":");
-    list(out, expectation.methods);
+    int lookedOmitted = list(out, expectation.methods, expectation.methods.length);
     out.append(",\"found\":");
-    list(out, found == null ? new String[0] : found.toArray(new String[0]));
+    list(out, candidate.found.toArray(new String[0]), candidate.found.size());
+    if (lookedOmitted > 0) {
+      out.append(",\"looked_for_omitted\":").append(lookedOmitted);
+    }
+    if (candidate.foundOmitted > 0) {
+      out.append(",\"found_omitted\":").append(candidate.foundOmitted);
+    }
+    Origin origin = candidate.origin;
     if (origin != null) {
       out.append(",\"code_source\":").append(quote(origin.name));
       out.append(",\"code_source_path\":").append(quote(origin.path));
-      if (origin.version != null) {
-        out.append(",\"implementation_version\":").append(quote(origin.version));
+      if (version != null) {
+        out.append(",\"implementation_version\":").append(quote(version));
       }
     }
     out.append(",\"message\":").append(quote("Hook " + candidate.unit + " did not apply to " + className
@@ -370,27 +562,41 @@ public final class HookMisses {
     return out.toString();
   }
 
-  private static void list(StringBuilder out, String[] values) {
+  /** Writes at most {@link #MAX_LISTED} of {@code values} as a JSON array; returns how many it left out. */
+  private static int list(StringBuilder out, String[] values, int count) {
     out.append('[');
-    int shown = Math.min(values.length, MAX_LISTED);
+    int shown = Math.min(count, MAX_LISTED);
     for (int i = 0; i < shown; i++) {
       if (i > 0) {
         out.append(',');
       }
       out.append(quote(values[i]));
     }
-    if (values.length > shown) {
-      out.append(',').append(quote("... " + (values.length - shown) + " more"));
-    }
     out.append(']');
+    return count - shown;
   }
 
-  /** A JSON string, cut to {@link #MAX_TEXT} characters. */
-  static String quote(String value) {
-    String text = value == null ? "" : value;
-    if (text.length() > MAX_TEXT) {
-      text = text.substring(0, MAX_TEXT);
+  /** {@code text} cut to {@link #MAX_TEXT} characters, never between the two halves of a surrogate pair. */
+  static String cut(String text) {
+    if (text == null) {
+      return "";
     }
+    if (text.length() <= MAX_TEXT) {
+      return text;
+    }
+    int end = MAX_TEXT;
+    if (Character.isHighSurrogate(text.charAt(end - 1))) {
+      end--;
+    }
+    return text.substring(0, end);
+  }
+
+  /**
+   * A JSON string, cut to {@link #MAX_TEXT} characters on a code point boundary, with every unpaired surrogate
+   * replaced by U+FFFD so the line is valid UTF-8 whatever the text held.
+   */
+  static String quote(String value) {
+    String text = cut(value);
     StringBuilder out = new StringBuilder(text.length() + 2);
     out.append('"');
     for (int i = 0; i < text.length(); i++) {
@@ -419,6 +625,14 @@ public final class HookMisses {
               out.append('0');
             }
             out.append(hex);
+          } else if (Character.isHighSurrogate(ch)) {
+            if (i + 1 < text.length() && Character.isLowSurrogate(text.charAt(i + 1))) {
+              out.append(ch).append(text.charAt(++i));
+            } else {
+              out.append('\uFFFD');
+            }
+          } else if (Character.isLowSurrogate(ch)) {
+            out.append('\uFFFD');
           } else {
             out.append(ch);
           }
