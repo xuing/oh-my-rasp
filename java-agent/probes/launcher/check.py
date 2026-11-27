@@ -246,7 +246,7 @@ def main():
             entry = f"META-INF/ohmyrasp/preload/{PRELOAD_MODULES[line]}.txt"
             stripped = jar_without(jar, entry, work / f"no-list-{line}-{jar.name}")
             run = probe.run(f"{jar.name} without its preload list fails the start cleanly", AGENT_OPTIONS,
-                            [stripped], [])
+                            [stripped], [line])
             run.expect([], False, [FAILED])
             failure = run.launcher[0]
             if failure["line"] != agent_track.LINE_NAMES[line] or entry not in failure["message"]:
