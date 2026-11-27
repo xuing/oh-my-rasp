@@ -92,6 +92,11 @@
       <button data-mode="monitor">Monitor</button>
       <button data-mode="block">Block</button>
     </div>
+    <span class="mono" style="color:var(--muted); font-size:12px;" title="Findings on threads that serve no HTTP request: scheduled jobs, consumers, start-up code">outside a request</span>
+    <div class="seg" id="outsideSeg">
+      <button data-outside="block">Block</button>
+      <button data-outside="log">Log only</button>
+    </div>
   </div>
 </header>
 
@@ -180,10 +185,17 @@ function applyControl(c){
     const on = b.dataset.mode === c.mode;
     b.className = on ? ('on-'+c.mode) : '';
   }
+  const outside = c.outside_request || 'block';
+  for(const b of document.querySelectorAll('#outsideSeg button')){
+    b.className = b.dataset.outside === outside ? (outside === 'block' ? 'on-block' : 'on-monitor') : '';
+  }
 }
 
 document.querySelectorAll('#modeSeg button').forEach(b => {
   b.onclick = () => postControl({mode: b.dataset.mode});
+});
+document.querySelectorAll('#outsideSeg button').forEach(b => {
+  b.onclick = () => postControl({outside_request: b.dataset.outside});
 });
 $('pauseBtn').onclick = () => { paused = !paused; $('pauseBtn').textContent = paused ? 'Resume' : 'Pause';
   $('liveDot').className = 'dot ' + (paused ? 'paused' : 'live'); };

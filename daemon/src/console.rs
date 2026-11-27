@@ -19,7 +19,9 @@ use axum::routing::get;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 
-use crate::control::{ControlState, ControlStatus, ControlTooLarge, Controller, Mode};
+use crate::control::{
+    ControlState, ControlStatus, ControlTooLarge, Controller, Mode, OutsideRequest,
+};
 use crate::store::EventStore;
 use crate::uploader::{CloudStatus, CloudStatusHandle};
 
@@ -163,6 +165,8 @@ async fn control_get(State(state): State<Arc<AppState>>) -> Json<ControlState> {
 #[derive(Debug, Deserialize)]
 struct ControlUpdate {
     mode: Option<String>,
+    /// `block` or `log`: whether a finding outside an HTTP request blocks.
+    outside_request: Option<String>,
     #[serde(default)]
     algorithms: Option<BTreeMap<String, bool>>,
 }
@@ -190,9 +194,23 @@ async fn control_post(
         },
         None => None,
     };
+    let outside_request = match &update.outside_request {
+        Some(raw) => match OutsideRequest::parse(raw) {
+            Some(value) => Some(value),
+            None => {
+                return Err((
+                    StatusCode::BAD_REQUEST,
+                    Json(ApiError {
+                        error: format!("invalid outside_request: {raw} (expected block or log)"),
+                    }),
+                ));
+            }
+        },
+        None => None,
+    };
     state
         .controller
-        .update(mode, update.algorithms)
+        .update_with(mode, outside_request, update.algorithms)
         .map(Json)
         .map_err(|err| {
             // A change that would make the document larger than the agents read conflicts with
@@ -345,5 +363,51 @@ mod tests {
             json!(crate::control::MAX_CONTROL_BYTES)
         );
         assert!(refused["size_bytes"].as_u64().unwrap() > refused["limit_bytes"].as_u64().unwrap());
+    }
+
+    async fn post_control(app: Router, body: Value) -> (StatusCode, Value) {
+        let resp = app
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/api/control")
+                    .header(CONTENT_TYPE, "application/json")
+                    .body(Body::from(body.to_string()))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        let status = resp.status();
+        let bytes = axum::body::to_bytes(resp.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        (status, serde_json::from_slice(&bytes).unwrap())
+    }
+
+    /// The console sets `outside_request` as it sets the mode, and refuses a word the agents do not
+    /// accept instead of writing it.
+    #[tokio::test]
+    async fn the_console_sets_outside_request_and_refuses_an_unknown_value() {
+        let state = test_state();
+        let app = router(state.clone());
+        assert_eq!(
+            get_json(app.clone(), "/api/control").await["outside_request"],
+            "block"
+        );
+
+        let (status, body) = post_control(app.clone(), json!({ "outside_request": "LOG" })).await;
+        assert_eq!(status, StatusCode::OK);
+        assert_eq!(body["outside_request"], "log");
+        assert_eq!(body["mode"], "monitor", "the mode is left as it was");
+
+        let (status, body) =
+            post_control(app.clone(), json!({ "outside_request": "sometimes" })).await;
+        assert_eq!(status, StatusCode::BAD_REQUEST);
+        assert!(body["error"].as_str().unwrap().contains("outside_request"));
+        assert_eq!(
+            state.controller.snapshot().outside_request.as_str(),
+            "log",
+            "unchanged"
+        );
     }
 }

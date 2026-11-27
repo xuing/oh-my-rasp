@@ -67,6 +67,18 @@ final class ControlContractTest {
       for (String algorithm : list(expected, document + ".enabled")) {
         assertTrue(state.isAlgorithmEnabled(algorithm), document + ": " + algorithm + " is enabled");
       }
+      String outside = expected.getProperty(document + ".outside_request");
+      if ("unknown".equals(outside)) {
+        // A value nobody accepts changes nothing: the start-up value, or what an earlier document set.
+        assertTrue(state.outsideRequestBlocks(), document + " outside_request keeps the start-up value");
+        AgentRuntime primed = AgentRuntime.newForTesting();
+        primed.reloadIfChanged(place("control/outside-request-log.json"));
+        primed.reloadIfChanged(place("control/hand-edited/" + document + ".json"));
+        assertFalse(primed.state().outsideRequestBlocks(), document + " outside_request keeps log");
+        assertEquals(DetectionMode.BLOCK, primed.state().mode(), document + " still applies its mode");
+      } else {
+        assertEquals(outside, outsideRequest(state), document + " outside_request");
+      }
     }
   }
 
@@ -142,8 +154,13 @@ final class ControlContractTest {
     assertTrue(before == after, name + " was applied: a rejected document published a new state");
   }
 
+  private static String outsideRequest(AgentRuntime.ControlState state) {
+    return state.outsideRequestBlocks() ? "block" : "log";
+  }
+
   private void assertState(String document, Properties expected, AgentRuntime runtime) {
     AgentRuntime.ControlState state = runtime.state();
+    assertEquals(expected.getProperty(document + ".outside_request"), outsideRequest(state), document + " outside_request");
     String mode = expected.getProperty(document + ".mode");
     assertEquals(mode, state.mode() == null ? null : state.mode().name().toLowerCase(Locale.ROOT), document + " mode");
     assertEquals(Long.parseLong(expected.getProperty(document + ".revision")), state.revision(), document + " revision");

@@ -1,5 +1,6 @@
 {
   "mode": "block",
+  "outside_request": "block",
   "algorithms": {
     "sql_userinput": false,
     "xss_userinput": true
