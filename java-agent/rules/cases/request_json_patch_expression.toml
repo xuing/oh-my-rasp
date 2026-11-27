@@ -107,7 +107,7 @@ via = "request"
 method = "POST"
 uri = "/api/notes"
 headers = { "User-Agent" = "Mozilla/5.0 (X11; Linux x86_64) Firefox/128.0", "Content-Type" = "application/json; charset=UTF-8" }
-body = "{\"title\":\"Deploy notes\",\"links\":[\"https://example.com/docs?page=2&lang=en\",\"http://localhost:8080/health\"],\"paths\":[\"/var/log/app/server.log\",\"C:\\\\Users\\\\me\\\\notes.txt\",\"../shared/readme.md\"],\"sql\":\"SELECT id, name FROM users WHERE id = 1 ORDER BY name DESC\",\"shell\":\"cd /srv/app && ./gradlew build | tee build.log; echo $?\",\"op\":\"replace\",\"path\":\"/lastname\",\"tags\":{\"café\":\"中文\"}}"
+body = "{\"username\":\"a\",\"password\":\"hunter2-Secret\",\"title\":\"Deploy notes\",\"links\":[\"https://example.com/docs?page=2&lang=en\",\"http://localhost:8080/health\"],\"paths\":[\"/var/log/app/server.log\",\"C:\\\\Users\\\\me\\\\notes.txt\",\"../shared/readme.md\"],\"sql\":\"SELECT id, name FROM users WHERE id = 1 ORDER BY name DESC\",\"shell\":\"cd /srv/app && ./gradlew build | tee build.log; echo $?\",\"op\":\"replace\",\"path\":\"/lastname\",\"tags\":{\"café\":\"中文\"}}"
 body_api = "stream"
 
 [case.primary]

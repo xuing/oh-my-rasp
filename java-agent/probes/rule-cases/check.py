@@ -14,6 +14,11 @@ start, from the list in its JAR, what its hooks use. A lambda's hidden class (Fo
 because it does not exist until its call site first runs; those are counted per source class and reported, and they
 fail a case only on the lines in ENFORCED_HIDDEN (none of the primary's: it still has lambdas and method references).
 
+A case with a request body is also broken when a detection's message or details (but the keys that hold a rule's
+own constants) carry text of that body: a string value of a JSON body three characters or longer, a value of a form
+body, an eight-character piece of any other body, or the canary password the JSON cases carry. An event names the
+body field its evidence came from, never the value.
+
 Known gaps of the class-load check: hooks reached while the driver sets up, before its first mark (the
 listener socket, the stub JDBC driver), are not checked; and no case exercises the completion of
 HttpClient.sendAsync, the restoration of a nested servlet dispatch, MyBatis mapper substitution or the
@@ -55,6 +60,62 @@ MARKS = ("RuleCaseDriver$OperationStart", "RuleCaseDriver$OperationEnd")
 ENFORCED_ENGINES = ("backport", "primary")
 ENFORCED_HIDDEN = ("backport",)
 HIDDEN = re.compile(r"^(.*)\$\$Lambda(\$\d+)?/(0x[0-9a-f]+|\d+)$")
+
+
+CANARY = "hunter2-Secret"
+# Detail keys whose values are a rule's own constants (BodyEvidence.RULE_CONSTANTS): not request text.
+RULE_CONSTANTS = {"decision_basis", "policy_basis", "process_operation", "argument_count", "multipart_source",
+                  "archive_policy_sha256", "method"}
+PLACEHOLDER = re.compile(r"\{\w+\}")
+
+
+def body_texts(body: str, content_type: str) -> list[str]:
+    """The texts of a request body that no event may carry (see the module docstring)."""
+    texts = [CANARY]
+    try:
+        document = json.loads(body)
+    except ValueError:
+        document = None
+    if document is not None and not isinstance(document, (str, int, float, bool)):
+        def walk(value):
+            if isinstance(value, dict):
+                for item in value.values():
+                    walk(item)
+            elif isinstance(value, list):
+                for item in value:
+                    walk(item)
+            elif isinstance(value, str) and len(value) >= 3:
+                texts.append(value)
+        walk(document)
+    elif "x-www-form-urlencoded" in content_type.lower():
+        texts += [value for _, value in parse_qsl(body.strip(), keep_blank_values=True) if len(value) >= 3]
+    else:
+        text = body.strip()
+        texts += [text[i:i + 8] for i in range(0, max(0, len(text) - 7))]
+    # A value with a placeholder the driver fills ({port}) is checked by its literal pieces.
+    pieces = []
+    for text in texts:
+        parts = PLACEHOLDER.split(text)
+        pieces += [text] if len(parts) == 1 else [part for part in parts if len(part) >= 8]
+    return pieces
+
+
+def body_text_in_events(case: rule_cases.Case, events: list[dict]) -> str | None:
+    """The first body text a detection carries, as 'rule: field', or None."""
+    request = case.request or {}
+    if "body" not in request:
+        return None
+    content_type = next((v for k, v in (request.get("headers") or {}).items() if k.lower() == "content-type"), "")
+    texts = body_texts(request["body"], content_type)
+    for event in events:
+        fields = [("message", event.get("message", ""))]
+        fields += [(key, value) for key, value in (event.get("details") or {}).items()
+                   if key not in RULE_CONSTANTS and isinstance(value, str)]
+        for key, value in fields:
+            for text in texts:
+                if text in value:
+                    return f"{event.get('algorithm')}: {key} carries {text[:24]!r}"
+    return None
 
 
 def class_load_options(major: int, tmp: Path) -> list[str]:
@@ -197,6 +258,9 @@ def run_case(case, agent, classpath, classes, work, track, major) -> tuple[Actua
         return rule[len(prefix):] if prefix and rule.startswith(prefix) else rule
 
     actual = classify(case, result, [(family(e["algorithm"]), e["action"]) for e in events])
+    leak = body_text_in_events(case, events)
+    if leak:
+        actual = Actual("broken", actual.rule, actual.also, f"an event carries request-body text ({leak})")
     load_log = tmp / "class-load.log"
     late = late_agent_classes(load_log.read_text(errors="replace") if load_log.exists() else run.stdout)
     if late is None:

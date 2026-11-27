@@ -43,7 +43,7 @@ via = "request"
 method = "POST"
 uri = "/solr/demo/select"
 headers = { "User-Agent" = "Mozilla/5.0 (X11; Linux x86_64) Firefox/128.0", Accept = "text/html", "Content-Type" = "application/json" }
-body = "{\"wt\":\"xml\",\"defType\":\"xmlparser\",\"q\":\"<?xml version=\\\"1.0\\\"?><!DOCTYPE message [<!ENTITY xxe SYSTEM \\\"file:///etc/passwd\\\">]><message>&xxe;</message>\"}"
+body = "{\"username\":\"a\",\"password\":\"hunter2-Secret\",\"wt\":\"xml\",\"defType\":\"xmlparser\",\"q\":\"<?xml version=\\\"1.0\\\"?><!DOCTYPE message [<!ENTITY xxe SYSTEM \\\"file:///etc/passwd\\\">]><message>&xxe;</message>\"}"
 body_api = "stream"
 
 [case.primary]
