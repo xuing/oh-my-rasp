@@ -9,6 +9,8 @@ import io.ohmyrasp.agent.runtime.AgentRuntime;
 import io.ohmyrasp.agent.runtime.ShirudoDefaults;
 import java.io.IOException;
 import java.io.PrintStream;
+import java.nio.ByteBuffer;
+import java.nio.channels.FileChannel;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -28,26 +30,25 @@ import java.util.concurrent.locks.ReentrantLock;
  * Writes security events to the local NDJSON spool the daemon tails, and to
  * stdout.
  *
- * <p>All I/O happens on a dedicated background daemon thread fed by a bounded
- * queue, so the protected request never blocks on a file write, a {@code
- * System.out.println}, or a control-plane upload. The blocking/allow decision is
- * still made synchronously in the hook (see {@code OhMyRaspHooks}); only the
- * reporting is asynchronous. If the queue is full (a sustained event storm) the
- * event is dropped and counted rather than stalling business logic.
+ * <p>For a file target, all output of a detection happens on a dedicated background daemon thread fed by a bounded
+ * queue, so the protected request never blocks on a file write, a {@code System.out.println}, or a control-plane
+ * upload (sync mode, for acceptance runs, writes on the caller's thread; so does a console target). The
+ * blocking/allow decision is still made synchronously in the hook (see {@code OhMyRaspHooks}); only the reporting
+ * is asynchronous. If the queue is full (a sustained event storm) the event is dropped and counted rather than
+ * stalling business logic. At JVM exit the shutdown hook writes nothing itself: it lets that thread drain the queue
+ * for a bounded time. Diagnostics take a path of their own ({@link #recordDiagnostic}).
  */
 public final class JsonEventLogger {
   private static final JsonEventLogger INSTANCE = new JsonEventLogger();
-  // The shutdown hook waits this long for the writer to finish the batch it holds.
+  // At JVM exit, how long the shutdown hook lets the writer drain what was queued before the hook returns. The hook
+  // does no output itself: what the writer has not taken by then is dropped and counted.
   private static final long SHUTDOWN_JOIN_MILLIS = 2000;
   // cancel waits at most this long for the writer to end; a writer stuck in an output call is left to it.
   private static final long CANCEL_JOIN_MILLIS = 1000;
-  // At JVM exit, the hook-miss report may hand its pending lines to this logger for this long before it drains.
+  // At JVM exit, how long the hook-miss report may take to finish a line it is writing before its admission closes.
   private static final long DIAGNOSTIC_HANDOFF_MILLIS = 500;
   // Once shutdown has begun, a write waits this long for the write lock and then gives up.
   private static final long SHUTDOWN_LOCK_MILLIS = 1000;
-  // A diagnostic line waits this long for a lock and is dropped when it cannot get it: a detection never waits for
-  // more than the one short line a diagnostic is writing, and a diagnostic never waits for a stalled writer.
-  private static final long DIAGNOSTIC_LOCK_MILLIS = 100;
   private static final String REDACTED = "[redacted]";
   private static final Set<String> SENSITIVE_HEADER_NAMES =
       Set.of(
@@ -83,11 +84,11 @@ public final class JsonEventLogger {
   private final AtomicLong dropped = new AtomicLong();
   private final AtomicLong diagnosticsDropped = new AtomicLong();
   private final AtomicLong sampleCounter = new AtomicLong();
-  // Serialises file and console output, so concurrent writers never interleave a line.
+  // Serialises detection output to the file and the console, so concurrent writers never interleave a line. A
+  // diagnostic never takes it (see recordDiagnostic).
   final ReentrantLock writeLock = new ReentrantLock();
-  // Serialises diagnostic lines on the console, apart from writeLock: a stalled pipe holds this one, not the
-  // detections' lock.
-  private final ReentrantLock diagnosticConsoleLock = new ReentrantLock();
+  // How a diagnostic line reaches the spool file: one append, on the hook-miss worker's thread. Tests replace it.
+  volatile DiagnosticOutput diagnosticOutput = FileAppend.INSTANCE;
   private final boolean syncWrites;
   private final int latencySampleRate;
   private final PrintStream customOut;
@@ -98,11 +99,15 @@ public final class JsonEventLogger {
   // always for a target without a queue. Guarded by lifecycle; written once.
   private volatile Thread writer;
   private Thread shutdownHook;
+  // Set by the writer when it ends: an event queued after that would never be taken.
+  private volatile boolean writerDone;
   // Guarded by lifecycle: the shutdown hook has begun, so no start succeeds any more.
   private boolean shutdownBegan;
+  // Cleared when the JVM's exit begins: the writer drains what is queued and ends.
   private volatile boolean running = true;
-  // Set by shutdown once the writer is gone or given up on: from then on events are written on
-  // the caller's thread, and writes wait only a bounded time for the write lock.
+  // The admission, closed when the JVM's exit begins: from then on an event for the queue is dropped and counted
+  // (a sync-mode or console write still happens on the caller's thread), no diagnostic is written, and writes wait
+  // only a bounded time for the write lock.
   private volatile boolean closed;
   // Set by cancel, for a start that failed: every event from then on is dropped, and nothing is written.
   private volatile boolean cancelled;
@@ -201,28 +206,30 @@ public final class JsonEventLogger {
         started = true;
         return;
       }
-      if (writer != null) {
+      if (started) {
         return;
       }
       if (shutdownBegan) {
         throw new IllegalStateException("the JVM is shutting down: the event writer does not start");
       }
       Thread hook = new Thread(this::shutdownForExit, "ohmyrasp-event-writer-shutdown");
-      Runtime.getRuntime().addShutdownHook(hook);
       Thread thread = new Thread(this::drainLoop, "ohmyrasp-event-writer");
       thread.setDaemon(true);
+      // Both handles are recorded before either is registered or started, so cancel(), the undo of a failed start,
+      // removes and stops whichever of them got that far, whatever step below fails.
+      shutdownHook = hook;
+      writer = thread;
+      Runtime.getRuntime().addShutdownHook(hook);
       try {
         thread.start();
       } catch (RuntimeException | Error failure) {
         try {
           Runtime.getRuntime().removeShutdownHook(hook);
         } catch (IllegalStateException shuttingDown) {
-          // The hook runs and finds no writer.
+          // The hook runs and finds no writer to wait for.
         }
         throw failure;
       }
-      shutdownHook = hook;
-      writer = thread;
       started = true;
     }
   }
@@ -334,17 +341,18 @@ public final class JsonEventLogger {
    * <fields>}}, where {@code fields} is JSON members without braces. The hook-miss report is its only writer, and
    * calls this on its own worker thread.
    *
-   * <p>A diagnostic has a path of its own and never shares the detections': it does not take a slot of the detection
-   * queue, it is not part of a detection batch (so a line that could not be encoded cannot make a batch with
-   * detections fail), and it waits at most 100 ms for a lock and is dropped, and counted
-   * in {@link #diagnosticsDroppedCount}, when the logger has not started or was cancelled (a start that failed),
-   * when it is closing, the lock stays busy or the write fails. It goes
-   * to the spool file, or, for a console target, to the console under a lock of its own. It is never mirrored to the
-   * console of a file target (it names source paths) and never goes to the direct-cloud client.
+   * <p>A diagnostic shares nothing with the detections that could make one of them wait: not their queue, not their
+   * batch (so a line that could not be encoded cannot make a batch fail), not their write lock, not their console
+   * stream. A file target gets the line as one UTF-8 append of its own, one write call (a detection batch is one
+   * write call too, so neither splits the other's lines). A console or {@code none} target gets nothing: a
+   * diagnostic stalled in the stream the detections are written to would hold them up. The line is also dropped when
+   * the logger has not started, was cancelled (a start that failed), or is closing at JVM exit, checked again just
+   * before the output call, and when the write fails. Each dropped line is counted in
+   * {@link #diagnosticsDroppedCount}. It never goes to the direct-cloud client.
    */
   public void recordDiagnostic(String diagnostic, String fields) {
     try {
-      if (!started || cancelled || !running || closed || target == LogTarget.NONE) {
+      if (!started || cancelled || closed || target != LogTarget.FILE) {
         diagnosticsDropped.incrementAndGet();
         return;
       }
@@ -354,14 +362,21 @@ public final class JsonEventLogger {
       field(builder, "kind", "diagnostic").append(',');
       field(builder, "diagnostic", diagnostic).append(',');
       builder.append(fields).append('}');
-      String json = withoutUnpairedSurrogates(builder.toString());
+      byte[] line = (withoutUnpairedSurrogates(builder.toString()) + System.lineSeparator())
+          .getBytes(StandardCharsets.UTF_8);
       boolean ownIo = AgentOwnIo.enter();
       try {
-        boolean written =
-            target == LogTarget.FILE ? writeDiagnosticToFile(json) : writeDiagnosticToConsole(json);
-        if (!written) {
-          diagnosticsDropped.incrementAndGet();
+        Path parent = logPath.getParent();
+        if (parent != null) {
+          Files.createDirectories(parent);
         }
+        if (cancelled || closed) {
+          diagnosticsDropped.incrementAndGet(); // a failed start or the JVM's exit came first: nothing more is written
+          return;
+        }
+        diagnosticOutput.append(logPath, line);
+      } catch (IOException e) {
+        diagnosticsDropped.incrementAndGet();
       } finally {
         AgentOwnIo.exit(ownIo);
       }
@@ -370,59 +385,33 @@ public final class JsonEventLogger {
     }
   }
 
-  private boolean writeDiagnosticToFile(String json) {
-    try {
-      if (!writeLock.tryLock(DIAGNOSTIC_LOCK_MILLIS, TimeUnit.MILLISECONDS)) {
-        return false;
-      }
-    } catch (InterruptedException e) {
-      Thread.currentThread().interrupt();
-      return false;
-    }
-    try {
-      if (cancelled) {
-        return false; // cancelled while this line waited for the lock: a failed start writes nothing
-      }
-      Path parent = logPath.getParent();
-      if (parent != null) {
-        Files.createDirectories(parent);
-      }
-      Files.writeString(
-          logPath,
-          json + System.lineSeparator(),
-          StandardCharsets.UTF_8,
-          StandardOpenOption.CREATE,
-          StandardOpenOption.APPEND);
-      return true;
-    } catch (IOException e) {
-      return false;
-    } finally {
-      writeLock.unlock();
+  /** How a diagnostic line reaches its file. */
+  interface DiagnosticOutput {
+    void append(Path path, byte[] line) throws IOException;
+  }
+
+  /** One append to the file, as {@link #appendBytes} makes it. */
+  private static final class FileAppend implements DiagnosticOutput {
+    static final FileAppend INSTANCE = new FileAppend();
+
+    @Override
+    public void append(Path path, byte[] line) throws IOException {
+      appendBytes(path, line);
     }
   }
 
-  private boolean writeDiagnosticToConsole(String json) {
-    try {
-      if (!diagnosticConsoleLock.tryLock(DIAGNOSTIC_LOCK_MILLIS, TimeUnit.MILLISECONDS)) {
-        return false;
+  /**
+   * One append of {@code bytes} to {@code path}: a file opened with O_APPEND and one channel write of the whole array,
+   * which the JDK hands to one write call, so what another writer appends at the same time lands before or after it,
+   * never inside it.
+   */
+  static void appendBytes(Path path, byte[] bytes) throws IOException {
+    try (FileChannel channel = FileChannel.open(path, StandardOpenOption.CREATE, StandardOpenOption.WRITE,
+        StandardOpenOption.APPEND)) {
+      ByteBuffer buffer = ByteBuffer.wrap(bytes);
+      while (buffer.hasRemaining()) {
+        channel.write(buffer);
       }
-    } catch (InterruptedException e) {
-      Thread.currentThread().interrupt();
-      return false;
-    }
-    try {
-      if (cancelled) {
-        return false; // cancelled while this line waited for the lock: a failed start writes nothing
-      }
-      String line = "[OHMYRASP] " + json + System.lineSeparator();
-      if (target == LogTarget.STDERR) {
-        errStream().print(line);
-      } else {
-        outStream().print(line);
-      }
-      return true;
-    } finally {
-      diagnosticConsoleLock.unlock();
     }
   }
 
@@ -465,16 +454,21 @@ public final class JsonEventLogger {
       flush(List.of(sample));
       return;
     }
-    if (syncWrites || closed) {
+    if (syncWrites) {
       flush(List.of(sample));
+      return;
+    }
+    if (closed) {
+      dropped.incrementAndGet(); // the JVM's exit closed the queue: its writer takes nothing more
       return;
     }
     if (!queue.offer(sample)) {
       dropped.incrementAndGet();
+      return;
     }
-    if (closed) {
-      // Shutdown may have drained the queue before this event arrived: write what is left.
-      flushRest();
+    if (closed && writerDone && queue.remove(sample)) {
+      // The admission closed while this event was queued, and the writer has already ended.
+      dropped.incrementAndGet();
     }
   }
 
@@ -493,29 +487,35 @@ public final class JsonEventLogger {
     }
   }
 
+  /**
+   * The writer: every file and console output of a queued event happens here. Ends when the logger is cancelled, or
+   * once the JVM's exit has begun and the queue is empty; until then it drains what was queued.
+   */
   private void drainLoop() {
     List<Sample> batch = new ArrayList<>(64);
-    // Stops once shutdown begins; the shutdown hook writes what is still queued.
-    while (running) {
-      try {
-        Sample first = queue.poll(200, TimeUnit.MILLISECONDS);
-        if (first == null) {
-          continue;
+    try {
+      while (!cancelled && (running || !queue.isEmpty())) {
+        try {
+          Sample first = queue.poll(200, TimeUnit.MILLISECONDS);
+          if (first == null) {
+            continue;
+          }
+          batch.clear();
+          batch.add(first);
+          queue.drainTo(batch, 511);
+          if (cancelled) {
+            return; // a failed start: what was queued is dropped, nothing is written
+          }
+          flush(batch);
+        } catch (InterruptedException e) {
+          // cancel() interrupts, and the loop condition ends the writer; nothing else ends it while events can come.
+        } catch (RuntimeException e) {
+          // Never let the writer thread die from a transient failure.
+          errStream().println("[OHMYRASP] event writer error: " + e);
         }
-        batch.clear();
-        batch.add(first);
-        queue.drainTo(batch, 511);
-        if (cancelled) {
-          return; // a failed start: what was queued is dropped, nothing is written
-        }
-        flush(batch);
-      } catch (InterruptedException e) {
-        Thread.currentThread().interrupt();
-        return;
-      } catch (RuntimeException e) {
-        // Never let the writer thread die from a transient failure.
-        errStream().println("[OHMYRASP] event writer error: " + e);
       }
+    } finally {
+      writerDone = true;
     }
   }
 
@@ -554,18 +554,16 @@ public final class JsonEventLogger {
     // One lock for both outputs, so concurrent writers never interleave a line.
     if ((fileOutput || consoleOutput) && lockWrites()) {
       try {
+        if (cancelled) {
+          return; // cancelled while this batch waited for the lock: a failed start writes nothing
+        }
         if (fileOutput) {
           try {
             Path parent = logPath.getParent();
             if (parent != null) {
               Files.createDirectories(parent);
             }
-            Files.writeString(
-                logPath,
-                fileBuffer.toString(),
-                StandardCharsets.UTF_8,
-                StandardOpenOption.CREATE,
-                StandardOpenOption.APPEND);
+            appendBytes(logPath, fileBuffer.toString().getBytes(StandardCharsets.UTF_8));
           } catch (IOException e) {
             if (!cancelled) {
               errStream().println("[OHMYRASP] failed to write event log: " + e);
@@ -663,16 +661,20 @@ public final class JsonEventLogger {
   }
 
   /**
-   * The JVM shutdown hook's work. Under the lifecycle lock first, so a start in progress finishes and no start
-   * succeeds afterwards; then the hook-miss report may hand over what it holds, for a bounded time, so a line it
-   * was writing is queued before the queue is drained; then the queue is drained as {@link #shutdown(long)} says.
+   * The JVM shutdown hook's work. It writes nothing itself and holds no lock while it waits, so a stalled file or
+   * console cannot hold up the JVM's exit beyond its two bounded waits. Under the lifecycle lock, briefly, first: a
+   * start in progress finishes and no start succeeds afterwards. Then the hook-miss report gets
+   * {@value #DIAGNOSTIC_HANDOFF_MILLIS} ms to finish a line it is writing on its own thread and is closed, so no
+   * diagnostic is written afterwards; then the queue is closed and drained by the writer as {@link #shutdown(long)}
+   * says, within {@value #SHUTDOWN_JOIN_MILLIS} ms.
    */
-  private void shutdownForExit() {
+  void shutdownForExit() {
     synchronized (lifecycle) {
       shutdownBegan = true;
     }
     try {
       io.ohmyrasp.agent.hookmiss.HookMisses.awaitIdle(DIAGNOSTIC_HANDOFF_MILLIS);
+      io.ohmyrasp.agent.hookmiss.HookMisses.close();
     } catch (Throwable ignored) {
       // A diagnostic never holds up the events.
     }
@@ -728,38 +730,35 @@ public final class JsonEventLogger {
   }
 
   /**
-   * Stops the writer, waits up to {@code joinMillis} for it to finish the batch it holds, then
-   * writes what is still queued, waiting a bounded time for the write lock, so events queued at
-   * exit still reach the spool. An event submitted after that is written on the caller's thread.
-   * Each event leaves the queue once, so none is written twice. A batch the writer still holds
-   * when the wait ends, because it is stalled in an output call, can be lost.
+   * Closes the admission, so what is queued now is the writer's last work, and waits up to {@code joinMillis} for
+   * the writer, a daemon thread, to write it and end. It writes nothing and takes no lock itself: what the writer has
+   * not taken from the queue by then is dropped and counted, and a writer stalled in an output call is left to it.
+   * An event submitted afterwards is dropped and counted, except in sync mode or for a console target, which write
+   * on the caller's thread as always. Each event leaves the queue once, so none is written twice.
    */
   void shutdown(long joinMillis) {
+    closed = true;
     running = false;
     Thread current;
     synchronized (lifecycle) {
       current = writer;
     }
     if (current != null && current != Thread.currentThread()) {
+      boolean interrupted = Thread.interrupted();
       try {
         current.join(joinMillis);
       } catch (InterruptedException e) {
-        Thread.currentThread().interrupt();
+        interrupted = true;
+      } finally {
+        if (interrupted) {
+          Thread.currentThread().interrupt();
+        }
       }
     }
-    closed = true;
-    flushRest();
-  }
-
-  /** Writes everything still queued. */
-  private void flushRest() {
-    if (cancelled) {
-      return;
-    }
-    List<Sample> remaining = new ArrayList<>();
-    queue.drainTo(remaining);
-    if (!remaining.isEmpty()) {
-      flush(remaining);
+    if (queue != null) {
+      List<Sample> left = new ArrayList<>();
+      queue.drainTo(left);
+      dropped.addAndGet(left.size());
     }
   }
 

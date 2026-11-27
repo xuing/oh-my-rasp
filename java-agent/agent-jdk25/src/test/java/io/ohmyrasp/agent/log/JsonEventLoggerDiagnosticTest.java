@@ -17,15 +17,18 @@ import java.nio.file.Path;
 import java.time.Instant;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.locks.ReentrantLock;
+import org.junit.jupiter.api.Assumptions;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 /**
- * The agent's diagnostic lines (the hook-miss report's) have a path of their own in the event logger: they never
- * take a slot of the detection queue, never share a batch with detections, never wait for the detections' lock
- * longer than a short bound, and are dropped, and counted, when they cannot be written.
+ * The agent's diagnostic lines (the hook-miss report's) have a path of their own in the event logger that shares
+ * nothing a detection waits for: they never take a slot of the detection queue, never share a batch with detections,
+ * never take the detections' lock, never go to the console the detections are printed to, and are dropped, and
+ * counted, when they cannot be written. A diagnostic stalled in its own output call holds up no detection.
  */
 final class JsonEventLoggerDiagnosticTest {
   private static final long BOUND_SECONDS = 5;
@@ -79,12 +82,13 @@ final class JsonEventLoggerDiagnosticTest {
   }
 
   /**
-   * The detection lock is held, as by a writer stalled in a file call. A diagnostic does not wait behind it for
-   * more than a short bound, is dropped and counted, takes no slot of the detection queue, and the detections that
-   * were waiting are written when the lock is released.
+   * The detection lock is held, as by a writer stalled in a file call. A diagnostic does not wait for it: it is
+   * written at once, takes no slot of the detection queue, and the detections that were waiting are written when the
+   * lock is released.
    */
   @Test
-  void aDiagnosticNeverWaitsBehindAStalledDetectionWriterAndTakesNoDetectionSlot(@TempDir Path dir) throws Exception {
+  void aDiagnosticIsWrittenWhileADetectionWriterHoldsItsLockAndTakesNoDetectionSlot(@TempDir Path dir)
+      throws Exception {
     Path log = dir.resolve("events.jsonl");
     JsonEventLogger logger = JsonEventLogger.newForTesting(null, log.toString(), 0, false, quiet(), quiet());
     logger.writeLock.lock();
@@ -95,23 +99,96 @@ final class JsonEventLoggerDiagnosticTest {
         logger.log(detection("queued-" + i));
       }
 
-      // From another thread: the lock is reentrant, and the report's worker is never the writer.
       Thread worker = new Thread(() -> logger.recordDiagnostic("hook_miss", FIELDS), "ohmyrasp-test-hook-miss");
       worker.setDaemon(true);
-      long started = System.nanoTime();
       worker.start();
       worker.join(TimeUnit.SECONDS.toMillis(BOUND_SECONDS));
-      long millis = TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - started);
-      assertFalse(worker.isAlive(), "the diagnostic never returned");
-
-      assertTrue(millis < 2000, "a diagnostic waited " + millis + " ms behind the detections' lock");
-      assertEquals(1, logger.diagnosticsDroppedCount(), "dropped, and counted apart from detections");
+      assertFalse(worker.isAlive(), "the diagnostic waited for the detections' lock");
+      assertTrue(Files.readString(log).contains("\"diagnostic\":\"hook_miss\""), "written while the lock is held");
+      assertEquals(0, logger.diagnosticsDroppedCount());
       assertEquals(0, logger.droppedCount(), "no detection was dropped, and the diagnostic took no slot of their queue");
     } finally {
       logger.writeLock.unlock();
     }
     logger.shutdown(TimeUnit.SECONDS.toMillis(BOUND_SECONDS));
-    assertEquals(101, Files.readAllLines(log).size(), "every detection reached the spool, and no diagnostic");
+    List<String> lines = Files.readAllLines(log);
+    assertEquals(102, lines.size(), "every detection reached the spool, and the diagnostic once");
+  }
+
+  /**
+   * A diagnostic stalled for good in its own output call, with a detection behind it on each path: written inline (sync
+   * mode) and through the writer thread. Both are written at once, and the JVM exit hook's part still returns within
+   * its wait.
+   */
+  @Test
+  void detectionsBehindADiagnosticStalledInItsOutputAreWritten(@TempDir Path dir) throws Exception {
+    for (boolean sync : new boolean[] {true, false}) {
+      Path log = dir.resolve("events-" + sync + ".jsonl");
+      JsonEventLogger logger = JsonEventLogger.newForTesting(null, log.toString(), 0, sync, quiet(), quiet());
+      CountDownLatch entered = new CountDownLatch(1);
+      CountDownLatch never = new CountDownLatch(1);
+      logger.diagnosticOutput = (path, line) -> {
+        entered.countDown();
+        try {
+          never.await();
+        } catch (InterruptedException e) {
+          Thread.currentThread().interrupt();
+        }
+      };
+      Thread worker = new Thread(() -> logger.recordDiagnostic("hook_miss", FIELDS), "ohmyrasp-test-hook-miss");
+      worker.setDaemon(true);
+      worker.start();
+      try {
+        assertTrue(entered.await(BOUND_SECONDS, TimeUnit.SECONDS), "the diagnostic never reached its output");
+        logger.log(detection("behind-" + sync));
+        long started = System.nanoTime();
+        logger.shutdown(500);
+        long millis = TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - started);
+        assertTrue(millis < 2000, "shutdown took " + millis + " ms with a diagnostic stalled");
+        assertTrue(Files.readString(log).contains("behind-" + sync), "sync=" + sync + ": the detection was not written");
+        assertEquals(0, logger.droppedCount());
+      } finally {
+        never.countDown();
+        worker.join(TimeUnit.SECONDS.toMillis(BOUND_SECONDS));
+      }
+    }
+  }
+
+  /**
+   * The real output, stalled: the spool is a FIFO nobody reads, so opening it for writing blocks. While a diagnostic
+   * is stuck there, the detections' lock is free (until this round the diagnostic held it across the open).
+   */
+  @Test
+  void aDiagnosticStuckOpeningTheSpoolHoldsNoDetectionLock(@TempDir Path dir) throws Exception {
+    Path fifo = dir.resolve("events.fifo");
+    Assumptions.assumeTrue(new ProcessBuilder("mkfifo", fifo.toString()).start().waitFor() == 0, "no mkfifo");
+    JsonEventLogger logger = JsonEventLogger.newForTesting(null, fifo.toString(), 0, true, quiet(), quiet());
+    Thread worker = new Thread(() -> logger.recordDiagnostic("hook_miss", FIELDS), "ohmyrasp-test-hook-miss");
+    worker.setDaemon(true);
+    worker.start();
+    try {
+      long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(BOUND_SECONDS);
+      while (!inOpen(worker) && System.nanoTime() < deadline) {
+        Thread.sleep(5);
+      }
+      assertTrue(inOpen(worker), "the diagnostic never reached the open of the FIFO");
+      assertFalse(logger.writeLock.isLocked(), "a diagnostic stalled in its output holds the detections' lock");
+    } finally {
+      // Opened read-write, the FIFO never blocks this open, and it lets the diagnostic's open finish.
+      try (var reader = new java.io.RandomAccessFile(fifo.toFile(), "rw")) {
+        worker.join(TimeUnit.SECONDS.toMillis(BOUND_SECONDS));
+      }
+    }
+  }
+
+  private static boolean inOpen(Thread thread) {
+    for (StackTraceElement frame : thread.getStackTrace()) {
+      if (frame.getMethodName().startsWith("open") && (frame.getClassName().startsWith("sun.nio.")
+          || frame.getClassName().startsWith("java.nio.") || frame.getClassName().startsWith("java.io."))) {
+        return true;
+      }
+    }
+    return false;
   }
 
   @Test
@@ -164,32 +241,34 @@ final class JsonEventLoggerDiagnosticTest {
     assertFalse(Files.exists(log), "nothing written to the spool");
     assertEquals("", err.toString(StandardCharsets.UTF_8), "nothing printed");
 
-    console.start();
-    console.recordDiagnostic("hook_miss", FIELDS);
-    assertTrue(err.toString(StandardCharsets.UTF_8).contains("\"kind\":\"diagnostic\""), "written once started");
-    assertEquals(1, console.diagnosticsDroppedCount());
+    file.start();
+    file.recordDiagnostic("hook_miss", FIELDS);
+    assertTrue(Files.readString(log).contains("\"kind\":\"diagnostic\""), "written once started");
+    assertEquals(1, file.diagnosticsDroppedCount());
+    file.cancel();
   }
 
-  /** A cancel that comes while the line waits for the write lock still leaves the spool without it. */
+  /**
+   * A cancel (the undo of a failed start) that comes while the writer's batch waits for the write lock: the batch is
+   * not written when the lock comes free. The writer checks the cancellation again once it holds the lock.
+   */
   @Test
-  void aCancelWhileTheDiagnosticWaitsForTheLockWritesNothing(@TempDir Path dir) throws Exception {
+  void aCancelWhileADetectionBatchWaitsForTheLockWritesNothing(@TempDir Path dir) throws Exception {
     Path log = dir.resolve("events.jsonl");
-    JsonEventLogger logger = JsonEventLogger.newForTesting(null, log.toString(), 0, true, quiet(), quiet());
-    Thread worker;
+    JsonEventLogger logger = JsonEventLogger.newForTesting(null, log.toString(), 0, false, quiet(), quiet());
+    Thread writer = logger.writerThread();
     logger.writeLock.lock();
     try {
-      worker = new Thread(() -> logger.recordDiagnostic("hook_miss", FIELDS), "ohmyrasp-test-hook-miss");
-      worker.start();
+      logger.log(detection("waiting-for-the-lock"));
       awaitQueuedOn(logger.writeLock);
       logger.cancel();
     } finally {
       logger.writeLock.unlock();
     }
-    worker.join(TimeUnit.SECONDS.toMillis(BOUND_SECONDS));
+    writer.join(TimeUnit.SECONDS.toMillis(BOUND_SECONDS));
 
-    assertFalse(worker.isAlive());
-    assertEquals(1, logger.diagnosticsDroppedCount());
-    assertFalse(Files.exists(log) && Files.readString(log).contains("diagnostic"), "nothing written");
+    assertFalse(writer.isAlive());
+    assertFalse(Files.exists(log), "a cancelled logger wrote the batch that waited for the lock");
   }
 
   /** A file target mirrors detections to the console; a diagnostic, which names source paths, stays in the spool. */
@@ -208,24 +287,22 @@ final class JsonEventLoggerDiagnosticTest {
     assertTrue(Files.readString(log).contains("\"diagnostic\":\"hook_miss\""));
   }
 
-  /** On a console target the line is printed under a lock of its own, so the detections' lock does not hold it up. */
+  /**
+   * On a console target a diagnostic is dropped and counted: it would share the stream the detections are printed to,
+   * and a diagnostic stalled there would hold them up.
+   */
   @Test
-  void aConsoleTargetPrintsTheDiagnosticWhileTheDetectionLockIsHeld() throws Exception {
+  void aConsoleTargetDropsTheDiagnostic() throws Exception {
     ByteArrayOutputStream err = new ByteArrayOutputStream();
     JsonEventLogger logger = JsonEventLogger.newForTesting(null, "stderr", 0, true, quiet(), new PrintStream(err));
-    logger.writeLock.lock();
-    try {
-      Thread worker = new Thread(() -> logger.recordDiagnostic("hook_miss", FIELDS), "ohmyrasp-test-hook-miss");
-      worker.start();
-      worker.join(TimeUnit.SECONDS.toMillis(BOUND_SECONDS));
-      assertFalse(worker.isAlive(), "the diagnostic waited for the detections' lock");
-    } finally {
-      logger.writeLock.unlock();
-    }
+
+    logger.recordDiagnostic("hook_miss", FIELDS);
+    logger.log(detection("printed"));
 
     String shown = err.toString(StandardCharsets.UTF_8);
-    assertTrue(shown.startsWith("[OHMYRASP] {") && shown.contains("\"kind\":\"diagnostic\""), shown);
-    assertEquals(0, logger.diagnosticsDroppedCount());
+    assertFalse(shown.contains("\"kind\":\"diagnostic\""), shown);
+    assertTrue(shown.contains("printed"), shown);
+    assertEquals(1, logger.diagnosticsDroppedCount());
   }
 
   @Test

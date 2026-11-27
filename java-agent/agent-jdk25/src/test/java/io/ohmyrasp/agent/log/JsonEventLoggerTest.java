@@ -19,6 +19,7 @@ import java.util.Map;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.locks.ReentrantLock;
+import org.junit.jupiter.api.Assumptions;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -145,13 +146,81 @@ final class JsonEventLoggerTest {
     assertTrue(writer == logger.writerThread(), "a cancelled logger started again");
   }
 
+  /**
+   * After the JVM's exit began, an event for the queue is dropped and counted: the shutdown hook writes nothing, and an
+   * application thread does not take over the writer's output either. (Until this round it was written on the
+   * caller's thread.) Sync mode still writes on the caller's thread.
+   */
   @Test
-  void anEventAfterShutdownIsWrittenOnTheCallersThread(@TempDir Path dir) throws Exception {
+  void anEventAfterShutdownIsDroppedAndCounted(@TempDir Path dir) throws Exception {
     Path log = dir.resolve("events.jsonl");
     JsonEventLogger logger = JsonEventLogger.newForTesting(null, log.toString(), 0, false, quiet(), quiet());
     logger.shutdown(TimeUnit.SECONDS.toMillis(BOUND_SECONDS));
     logger.log(detection("after-shutdown"));
-    assertEquals(List.of("after-shutdown"), messages(log), "the late event is on disk when log returns");
+    assertEquals(List.of(), messages(log));
+    assertEquals(1, logger.droppedCount());
+
+    Path syncLog = dir.resolve("sync.jsonl");
+    JsonEventLogger sync = JsonEventLogger.newForTesting(null, syncLog.toString(), 0, true, quiet(), quiet());
+    sync.shutdown(TimeUnit.SECONDS.toMillis(BOUND_SECONDS));
+    sync.log(detection("sync-after-shutdown"));
+    assertEquals(List.of("sync-after-shutdown"), messages(syncLog));
+  }
+
+  /**
+   * The JVM exit hook with a spool that blocks forever: a FIFO nobody reads, whose open never returns. Events are
+   * queued that no writer holds (a logger whose writer is not running), so only the hook could write them. The hook
+   * returns within its bounded waits, writes nothing and counts them as dropped. (Until this round it wrote the queue
+   * itself after its wait, and hung in the open.)
+   */
+  @Test
+  void theExitHookReturnsAndWritesNothingWhenTheSpoolBlocksForever(@TempDir Path dir) throws Exception {
+    Path fifo = dir.resolve("events.fifo");
+    Assumptions.assumeTrue(new ProcessBuilder("mkfifo", fifo.toString()).start().waitFor() == 0, "no mkfifo");
+    JsonEventLogger logger = JsonEventLogger.unstartedForTesting(fifo.toString(), quiet(), quiet());
+    logger.log(detection("queued-1"));
+    logger.log(detection("queued-2"));
+    Thread hook = daemon("ohmyrasp-test-exit-hook", logger::shutdownForExit);
+    try {
+      hook.join(TimeUnit.SECONDS.toMillis(BOUND_SECONDS));
+      assertFalse(hook.isAlive(), "the exit hook is stuck in the spool's output");
+      assertEquals(2, logger.droppedCount());
+    } finally {
+      // Opened read-write, the FIFO never blocks this open, and it lets a stuck open finish.
+      try (var reader = new java.io.RandomAccessFile(fifo.toFile(), "rw")) {
+        hook.join(TimeUnit.SECONDS.toMillis(BOUND_SECONDS));
+      }
+    }
+  }
+
+  /**
+   * The same with a running writer stuck in that open: the exit hook waits for it at most its bound, writes nothing,
+   * and drops what the writer had not taken.
+   */
+  @Test
+  void theExitHookReturnsWithinItsBoundWhileTheWriterIsStuckInTheSpool(@TempDir Path dir) throws Exception {
+    Path fifo = dir.resolve("events.fifo");
+    Assumptions.assumeTrue(new ProcessBuilder("mkfifo", fifo.toString()).start().waitFor() == 0, "no mkfifo");
+    JsonEventLogger logger = JsonEventLogger.newForTesting(null, fifo.toString(), 0, false, quiet(), quiet());
+    Thread writer = logger.writerThread();
+    try {
+      logger.log(detection("taken-by-the-writer"));
+      long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(BOUND_SECONDS);
+      while (logger.writeLock.isLocked() == false && System.nanoTime() < deadline) {
+        Thread.sleep(5);
+      }
+      logger.log(detection("queued"));
+      long began = System.nanoTime();
+      Thread hook = daemon("ohmyrasp-test-exit-hook", logger::shutdownForExit);
+      hook.join(TimeUnit.SECONDS.toMillis(BOUND_SECONDS));
+      assertFalse(hook.isAlive(), "the exit hook waited without bound for a writer stuck in its output");
+      assertTrue(System.nanoTime() - began < TimeUnit.SECONDS.toNanos(4), "the exit hook waited longer than its bound");
+      assertEquals(1, logger.droppedCount(), "the event the writer had not taken is dropped and counted");
+    } finally {
+      try (var reader = new java.io.RandomAccessFile(fifo.toFile(), "rw")) {
+        writer.join(TimeUnit.SECONDS.toMillis(BOUND_SECONDS));
+      }
+    }
   }
 
   /** The query keeps its shape; only the values of the parameters {@code parameters} redacts change. */
