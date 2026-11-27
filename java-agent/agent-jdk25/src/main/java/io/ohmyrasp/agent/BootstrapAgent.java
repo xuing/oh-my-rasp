@@ -45,6 +45,7 @@ public final class BootstrapAgent {
     // scopes, whose initial value is an empty RequestContext) and the DetectionMode every hook
     // compares against. AgentRuntime was initialised and started above.
     JsonEventLogger.get();
+    io.ohmyrasp.agent.log.HookMissLines.start();
     initialize(OhMyRaspHooks.class);
     initialize(RequestContext.class);
     initialize(DetectionMode.class);

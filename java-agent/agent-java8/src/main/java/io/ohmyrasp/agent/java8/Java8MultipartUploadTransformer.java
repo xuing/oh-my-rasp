@@ -6,8 +6,13 @@ import java.lang.instrument.ClassFileTransformer;
 import java.security.ProtectionDomain;
 import org.objectweb.asm.*;
 
-public final class Java8MultipartUploadTransformer implements ClassFileTransformer {
+public final class Java8MultipartUploadTransformer implements ClassFileTransformer, io.ohmyrasp.agent.hookmiss.NamedTargets {
   private static final Type HOOKS = Type.getType(Java8RaspHooks.class);
+
+  /** The hook-miss report checks the known part and request types; other classes are chosen by the getters they declare or call. */
+  @Override public boolean selectsByName(String className) {
+    return MultipartFilenameVisitor.known(className, true);
+  }
 
   @Override public byte[] transform(ClassLoader loader, final String owner, Class<?> loaded,
       ProtectionDomain domain, byte[] bytes) {

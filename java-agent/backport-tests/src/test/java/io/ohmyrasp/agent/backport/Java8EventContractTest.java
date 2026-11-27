@@ -4,6 +4,11 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import io.ohmyrasp.agent.hookmiss.HookExpectations;
+import io.ohmyrasp.agent.hookmiss.HookMissSink;
+import io.ohmyrasp.agent.hookmiss.HookMissWatch;
+import io.ohmyrasp.agent.hookmiss.HookMisses;
+import io.ohmyrasp.agent.java8.Java8JdbcTransformer;
 import io.ohmyrasp.agent.java8.Java8RaspBlockException;
 import io.ohmyrasp.agent.java8.Java8RaspHooks;
 import io.ohmyrasp.agent.java8.Java8RaspLine;
@@ -88,6 +93,62 @@ final class Java8EventContractTest {
     // The start lines of the three lines list their hooks in different orders, so each has its own file.
     Java8ContractFiles.assertGolden("events/backport/agent-start-" + Java8ContractFiles.lineToken() + ".json",
         only(log, false));
+  }
+
+  /** A transformer that did not instrument a class it was meant for, written by the real {@code BackportHookMisses}. */
+  @Test
+  void aHookThatDidNotApply() throws Exception {
+    Path log = dir.resolve("events.jsonl");
+    System.setProperty("ohmyrasp.java8.log", log.toString());
+    Path jar = Java8HookMissTest.jar(dir.resolve("mybatis-9.9.9.jar"), "9.9.9");
+    HookMisses.start(HookExpectations.parse(Java8HookMissTest.TABLE), new BackportHookMisses(), true);
+    try {
+      HookMissWatch.wrap(new Java8JdbcTransformer()).transform(Java8HookMissTest.APPLICATION, Java8HookMissTest.HANDLER,
+          null, Java8HookMissTest.domain(jar.toUri().toURL()),
+          Java8HookMissTest.classWith(Java8HookMissTest.HANDLER, Java8HookMissTest.CHANGED));
+    } finally {
+      HookMisses.stop();
+    }
+
+    Java8ContractFiles.assertGolden("events/backport/hook-miss.json", only(log, true));
+  }
+
+  /** The line after the limit; the lines before it, of the other file's kind, are not written to this log. */
+  @Test
+  void theHookMissLineAfterTheLimit() throws Exception {
+    Path log = dir.resolve("events.jsonl");
+    System.setProperty("ohmyrasp.java8.log", log.toString());
+    StringBuilder table = new StringBuilder();
+    for (int i = 0; i <= HookMisses.LIMIT; i++) {
+      table.append("Java{N}JdbcTransformer org/h2/jdbc/Missing").append(i).append(" report execute(Ljava/lang/String;)Z\n");
+    }
+    final BackportHookMisses real = new BackportHookMisses();
+    HookMisses.start(HookExpectations.parse(table.toString()), new HookMissSink() {
+      @Override public void write(String diagnostic, String fields) {
+        if (diagnostic.equals("hook_miss_suppressed")) {
+          real.write(diagnostic, fields);
+        }
+      }
+
+      @Override public boolean enterOwnIo() {
+        return real.enterOwnIo();
+      }
+
+      @Override public void exitOwnIo(boolean entered) {
+        real.exitOwnIo(entered);
+      }
+    }, true);
+    try {
+      java.lang.instrument.ClassFileTransformer jdbc = HookMissWatch.wrap(new Java8JdbcTransformer());
+      for (int i = 0; i <= HookMisses.LIMIT; i++) {
+        String name = "org/h2/jdbc/Missing" + i;
+        jdbc.transform(Java8HookMissTest.APPLICATION, name, null, null, Java8HookMissTest.classWith(name, "close()V"));
+      }
+    } finally {
+      HookMisses.stop();
+    }
+
+    Java8ContractFiles.assertGolden("events/backport/hook-miss-suppressed.json", only(log, true));
   }
 
   /**

@@ -30,10 +30,13 @@ public final class OhMyRaspTransformer implements ClassFileTransformer {
     if (className == null || classfileBuffer == null || className.startsWith("io/ohmyrasp/agent/")) {
       return null;
     }
+    HookMissProbe probe = null;
     try {
       boolean loadedJdbc = JdbcSqlMethod.isJdbcImplementation(classBeingRedefined);
       boolean skip = shouldSkip(className);
       if (skip && !loadedJdbc && loader == null) return null;
+      // Before the class is read, so a class file this ASM cannot read is reported as a failed transform too.
+      probe = HookMissProbe.of(className, registry);
       ClassReader reader = new ClassReader(classfileBuffer);
       boolean jdbc = loadedJdbc || JdbcSqlMethod.directJdbcInterface(reader.getInterfaces());
       boolean multipartCaller = loader != null && io.ohmyrasp.agent.http.MultipartFilenameVisitor.multipartCaller(reader);
@@ -42,13 +45,16 @@ public final class OhMyRaspTransformer implements ClassFileTransformer {
         System.err.println("[OHMYRASP] transforming hook target " + className);
       }
       ClassWriter writer = new ClassWriter(reader, ClassWriter.COMPUTE_MAXS);
-      ClassVisitor visitor = new HookClassVisitor(className, registry, writer, jdbc);
+      ClassVisitor visitor = new HookClassVisitor(className, registry, writer, jdbc, probe);
       if (multipartCaller) visitor = new io.ohmyrasp.agent.http.MultipartCollectionVisitor(visitor,
           org.objectweb.asm.Type.getObjectType("io/ohmyrasp/agent/hook/OhMyRaspHooks"));
       visitor = new SqlCallsiteClassVisitor(reader, visitor);
       reader.accept(visitor, ClassReader.EXPAND_FRAMES);
-      return writer.toByteArray();
+      byte[] transformed = writer.toByteArray();
+      if (probe != null) probe.finish(classfileBuffer, protectionDomain);
+      return transformed;
     } catch (Throwable throwable) {
+      if (probe != null) probe.failed(classfileBuffer, protectionDomain, throwable);
       if (Boolean.getBoolean("ohmyrasp.debug")) {
         System.err.println("[OHMYRASP] transform failed for " + className + ": " + throwable);
       }

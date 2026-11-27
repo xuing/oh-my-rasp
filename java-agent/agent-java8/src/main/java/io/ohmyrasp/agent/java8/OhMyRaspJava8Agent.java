@@ -51,6 +51,8 @@ public final class OhMyRaspJava8Agent {
     try {
       String logPath = RaspRuntime.resolveLogPath();
       io.ohmyrasp.agent.xml.SystemArchiveOrigins.initialize(instrumentation);
+      // The hook-miss report reads its table here, before any transformer: register() wraps each one in it.
+      io.ohmyrasp.agent.backport.BackportHookMisses.start();
       installTransformer(instrumentation, outsideJavaBase, registered);
       RaspRuntime.writeStartupLine(logPath, startupMessage(mode, agentArgs, instrumentation));
     } catch (RuntimeException | Error failure) {
@@ -99,8 +101,9 @@ public final class OhMyRaspJava8Agent {
 
   private static void register(Instrumentation instrumentation, List<ClassFileTransformer> registered,
       ClassFileTransformer transformer, boolean canRetransform) {
-    instrumentation.addTransformer(transformer, canRetransform);
-    registered.add(transformer);
+    ClassFileTransformer watched = io.ohmyrasp.agent.hookmiss.HookMissWatch.wrap(transformer);
+    instrumentation.addTransformer(watched, canRetransform);
+    registered.add(watched);
   }
 
   private static String startupMessage(
