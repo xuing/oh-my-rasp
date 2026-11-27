@@ -7,7 +7,8 @@ hook module injects a call to an OhMyRaspHooks entry method. The map is read, no
   `invokeHook("name", ...)` or `visitMethodInsn(INVOKESTATIC, hooks, "name", ...)`, so the name is a
   string literal under asm/ or shared/, alone or as the signature `void name(Type)` of a Method), and every
   method of the agent classes outside OhMyRaspHooks, detect/ and asm/ (the policy, control and runtime
-  classes the hooks call back into, and the classes the agent installs itself, such as DeserializationGuard);
+  classes the hooks call back into, and the classes the agent installs itself, such as DeserializationGuard),
+  except the classes of NOT_HOOK_EVIDENCE, which call hook entries at start and are neither roots nor walked into;
 * the edges are the calls in a method body, matched by name and by number of arguments: `Type.name(`,
   `new Type(`, `Type::name`, `name(` in the same class or a superclass, and `x.name(` where the declared
   type of `x` is a parameter, local variable or field of the same class (or `var x = new Type(`): it reaches
@@ -39,6 +40,12 @@ AGENT = ROOT / "agent-jdk25" / "src" / "main" / "java" / "io" / "ohmyrasp" / "ag
 SHARED = ROOT / "shared" / "src" / "main" / "java"
 ASM = AGENT / "asm"
 HOOKS_CLASS = "OhMyRaspHooks"
+# Agent classes that call OhMyRaspHooks entries without being a hook: a call from one is no evidence that a module
+# injects that entry, so they are neither roots nor walked into (BootstrapAgent, a root, calls Warmup.run()).
+NOT_HOOK_EVIDENCE = {
+    "Warmup": "calls the request, SQL and deserialization hooks once at start on constant input, before the "
+              "transformer is registered; a hook it calls is reached only when a module injects that call",
+}
 
 _KEYWORDS = {"if", "for", "while", "switch", "catch", "synchronized", "try", "return", "new", "else", "do",
              "throw", "assert", "super", "this"}
@@ -358,12 +365,13 @@ def reachable_methods() -> frozenset[tuple[str, str, int]]:
     """Method keys (class, name, number of parameters) that can run once some module has injected a call."""
     by_key, _, _ = _graph()
     roots = {m.key for m in _agent_methods() if m.owner == HOOKS_CLASS and m.name in named_in_emitters()}
-    roots |= {m.key for m in _agent_methods() if m.owner != HOOKS_CLASS and m.package not in ("detect", "asm")}
+    roots |= {m.key for m in _agent_methods() if m.owner != HOOKS_CLASS and m.package not in ("detect", "asm")
+              and m.owner not in NOT_HOOK_EVIDENCE}
     seen: set[tuple[str, str, int]] = set()
     todo = [k for k in roots if k in by_key]
     while todo:
         key = todo.pop()
-        if key in seen:
+        if key in seen or key[0] in NOT_HOOK_EVIDENCE:
             continue
         seen.add(key)
         for method in by_key[key]:

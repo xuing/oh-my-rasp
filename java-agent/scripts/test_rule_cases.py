@@ -158,6 +158,15 @@ class WiringTest(unittest.TestCase):
         self.assertTrue(rule_wiring.is_reachable("OhMyRaspHooks", "exitBodyRead"))
         self.assertFalse(rule_wiring.BODY_ONLY.keys() & rule_catalogue.not_wired().keys())
 
+    def test_the_start_warm_up_is_no_evidence_of_an_injected_call(self):
+        # hook/Warmup calls hook entries once at start, and BootstrapAgent (a root) calls it: neither makes an entry
+        # reachable. beforeDeserializationClass is called by the warm-up and by no module; if a module comes to
+        # inject it, replace it here with another entry only the warm-up calls, or drop the line.
+        self.assertIn("Warmup", rule_wiring.NOT_HOOK_EVIDENCE)
+        self.assertFalse({key for key in rule_wiring.reachable_methods() if key[0] in rule_wiring.NOT_HOOK_EVIDENCE})
+        self.assertNotIn("beforeDeserializationClass", rule_wiring.named_in_emitters())
+        self.assertFalse(rule_wiring.is_reachable("OhMyRaspHooks", "beforeDeserializationClass"))
+
     def test_a_compatibility_stub_is_not_a_capability(self):
         self.assertIn(("DeserializationDetector", "detectHessianType"), rule_wiring.empty_stubs())
         self.assertNotIn(("DeserializationDetector", "detectHessianAllocation"), rule_wiring.empty_stubs())
