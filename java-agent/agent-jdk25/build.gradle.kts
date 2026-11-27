@@ -38,6 +38,13 @@ dependencies {
     testImplementation("org.junit.platform:junit-platform-launcher:6.1.3")
 }
 
+// HookActivationTest takes the library side of its inventory of injected agent calls from the recorded hook map.
+tasks.named<Test>("test") {
+    val primaryHookMap = rootProject.file("probes/hook-targets/recorded/primary.txt")
+    inputs.file(primaryHookMap).withPropertyName("primaryHookMap").withPathSensitivity(PathSensitivity.RELATIVE)
+    systemProperty("ohmyrasp.hookTargets.primary", primaryHookMap.path)
+}
+
 tasks.register<Sync>("stageC3p0Probe") {
     from(configurations.testRuntimeClasspath) { include("c3p0-*.jar", "mchange-commons-java-*.jar") }
     into(layout.buildDirectory.dir("c3p0-probe"))
