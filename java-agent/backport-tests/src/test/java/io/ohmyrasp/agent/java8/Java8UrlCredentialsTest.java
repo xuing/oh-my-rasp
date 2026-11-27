@@ -88,4 +88,28 @@ final class Java8UrlCredentialsTest {
     assertFalse(spooled.contains(SENTINEL), spooled);
     assertFalse(spooled.contains(host), spooled);
   }
+
+  /**
+   * A body value equal to a credential's name ("password") inside the JDBC URL that carries that credential: the
+   * redaction reads the URL as the application built it, before the body scrubber renames the value, as on the
+   * primary. Scrubbing first left {@code ;[body:field]=<password>}.
+   */
+  @Test
+  void aBodyValueThatIsACredentialsNameDoesNotHideTheCredential() throws Exception {
+    for (int i = 0; i < 1024; i++) Java8RaspHooks.afterHttpRequest();
+    io.ohmyrasp.agent.http.RequestBodyCapture.dispatchExited(true);
+    final byte[] body = "{\"field\":\"password\"}".getBytes(StandardCharsets.UTF_8);
+    Java8RaspHooks.beforeHttpRequest(new Java8RequestBodyTest.BodyRequest("/app/ping", "application/json", body.length));
+    try {
+      Java8RaspHooks.exitBodyRead(body.length, Java8RaspHooks.enterBodyRead(new Object()), body, 0);
+      final String jdbc = "jdbc:h2:mem:reports;password=" + SENTINEL
+          + ";INIT=RUNSCRIPT FROM 'http://127.0.0.1:1/init.sql'";
+      assertThrows(Java8RaspBlockException.class, () -> Java8RaspHooks.beforeJdbcConnection(jdbc));
+    } finally {
+      Java8RaspHooks.afterHttpRequest();
+    }
+    String spooled = Files.exists(log) ? new String(Files.readAllBytes(log), StandardCharsets.UTF_8) : "";
+    assertTrue(spooled.contains("java8_jdbc_h2_code_execution"), spooled);
+    assertFalse(spooled.contains(SENTINEL), spooled);
+  }
 }

@@ -2618,12 +2618,14 @@ public final class OhMyRaspHooks {
       report(recorded, started, ruleEvaluationUs);
       return;
     }
-    // Blocking is decided. Nothing that fails while the event is built, redacted or recorded, or
-    // while the response is redirected, stops the block: the event is lost, or the block is not
-    // redirected.
-    Detection blocked = withoutUrlCredentials(publicView(recorded));
+    // Blocking is decided. Nothing that fails while the event is redacted, scrubbed or recorded, or
+    // while the response is redirected, stops the block: the block starts from the finding without
+    // its evidence, which nothing can fail to build, and every step that reads the evidence runs
+    // inside the try. A failure loses the event, or the evidence the block carries, or the redirect.
+    Detection blocked = withoutEvidence(recorded);
     try {
-      blocked = report(recorded, started, ruleEvaluationUs);
+      blocked = reportable(recorded);
+      record(blocked, started, ruleEvaluationUs);
     } catch (Throwable reportingFailure) {
       // The block below stands.
     }
@@ -2636,22 +2638,47 @@ public final class OhMyRaspHooks {
     throw new OhMyRaspBlockException(blocked, redirected);
   }
 
-  /**
-   * Records {@code event} without the evidence a response finding must not carry, without body text (see
-   * {@link #publicView}) and then without URL credentials (see {@link #withoutUrlCredentials}); returns what was
-   * recorded, as the block exception carries it. The body is scrubbed first: a body value inside a URL becomes its
-   * field's name and the URL's own credentials are still found around it.
-   */
+  /** Records {@code event} as {@link #reportable} makes it; returns what was recorded. */
   private static Detection report(Detection event, long started, long ruleEvaluationUs) {
-    Detection recorded = publicView(event);
+    Detection recorded = reportable(event);
+    record(recorded, started, ruleEvaluationUs);
+    return recorded;
+  }
+
+  private static void record(Detection reportable, long started, long ruleEvaluationUs) {
+    events().record(redactHttpObservation(reportable), elapsedMicros(started), ruleEvaluationUs);
+  }
+
+  /**
+   * {@code event} as it leaves the agent, in the event and in the block exception: without URL credentials
+   * ({@link #withoutUrlCredentials}), then without body text ({@link #publicView}), and without the evidence a
+   * response finding must not carry. The credentials go first, from the text as the application built it: a body
+   * value equal to a credential's name ({@code password}) would otherwise be renamed before the redaction looks for
+   * that name, and the value after it would stay. A body value the redaction cut through is still found by the
+   * body scrubber's fragment pass.
+   */
+  private static Detection reportable(Detection event) {
+    java.util.function.UnaryOperator<Detection> replaced = scrubberForTesting;
+    Detection recorded = replaced != null ? replaced.apply(event) : publicView(withoutUrlCredentials(event));
     if ("response_dataLeak".equals(recorded.algorithm()) || "xss_echo".equals(recorded.algorithm())) {
       Map<String, String> evidence = "response_dataLeak".equals(recorded.algorithm())
           ? Map.of("kind", recorded.details().get("kind")) : Map.of("decision_basis", "verbatim_request_markup");
       recorded = new Detection(recorded.timestamp(), recorded.hook(), recorded.algorithm(), recorded.action(),
           recorded.confidence(), recorded.message(), RequestContext.empty(), evidence);
     }
-    events().record(withoutUrlCredentials(redactHttpObservation(recorded)), elapsedMicros(started), ruleEvaluationUs);
-    return withoutUrlCredentials(recorded);
+    return recorded;
+  }
+
+  /** Replaces the redaction and scrubbing of {@link #reportable} in a test; null in production. */
+  static volatile java.util.function.UnaryOperator<Detection> scrubberForTesting;
+
+  /**
+   * {@code event} with none of its evidence: no details, no request, and a message of the agent's own words. What a
+   * block carries when the evidence could not be made safe; building it reads nothing the application supplied.
+   */
+  static Detection withoutEvidence(Detection event) {
+    return new Detection(event.timestamp(), event.hook(), event.algorithm(), event.action(), event.confidence(),
+        "OhMyRasp blocked a " + event.algorithm() + " finding", RequestContext.empty(), Map.of());
   }
 
   /**

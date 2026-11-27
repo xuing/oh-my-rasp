@@ -4560,7 +4560,10 @@ public final class BackportHooks {
     if (RaspRuntime.detectionOff()) {
       return;
     }
-    finding = publicFinding(finding);
+    // The credentials of a URL in the detail (a JDBC URL a pool configured) are removed first, from the text as the
+    // application built it, then the body's text (publicFinding): a body value equal to a credential's name would
+    // otherwise be renamed before the redaction looks for that name, and the value after it would stay.
+    finding = publicFinding(withoutUrlCredentials(finding));
     String logPath = RaspRuntime.resolveLogPath();
     String event =
         "{"
@@ -4586,8 +4589,7 @@ public final class BackportHooks {
             + "\"details\":{\""
             + json(finding.detailKey)
             + "\":\""
-            // The credentials of a URL in the detail (a JDBC URL a pool configured) never reach the spool.
-            + json(io.ohmyrasp.agent.util.Redaction.redactedUrls(finding.detailValue))
+            + json(finding.detailValue)
             + "\""
             + (argc < 0 ? "" : ",\"process_operation\":\"ProcessImpl.start\",\"argument_count\":\"" + argc + "\"")
             + (resolvedAddress == null ? "" : ",\"resolved_address\":\"" + json(resolvedAddress) + "\"")
@@ -4598,6 +4600,14 @@ public final class BackportHooks {
             + "}"
             + "}";
     RaspRuntime.writeEvent(logPath, event);
+  }
+
+  /** The finding with the credentials of every URL in its detail removed (Redaction.redactedUrls). */
+  private static Finding withoutUrlCredentials(Finding finding) {
+    String detail = io.ohmyrasp.agent.util.Redaction.redactedUrls(finding.detailValue);
+    if (detail == null || detail.equals(finding.detailValue)) return finding;
+    return new Finding(finding.algorithm, finding.confidence, finding.message, finding.detailKey, detail,
+        finding.decisionBasis, finding.policyDigest);
   }
 
   /**

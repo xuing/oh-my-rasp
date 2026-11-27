@@ -96,6 +96,59 @@ final class OhMyRaspHooksUrlCredentialsTest {
     }
   }
 
+  /**
+   * A body value equal to a credential's name ("password") inside a URL that carries that credential: the redaction
+   * reads the URL as the application built it, before the body scrubber renames the value, so neither the event nor
+   * the block carries the password. Scrubbing first left {@code ?[body:field]=<password>}.
+   */
+  @Test
+  void aBodyValueThatIsACredentialsNameDoesNotHideTheCredential(@TempDir Path dir) throws Exception {
+    Path log = dir.resolve("events.jsonl");
+    OhMyRaspHooks.reportTo(logger(log));
+    System.setProperty("ohmyrasp.block", "true");
+    byte[] body = "{\"field\":\"password\"}".getBytes(StandardCharsets.UTF_8);
+    OhMyRaspHooks.enterHttpRequest(new OhMyRaspHooksRequestBodyTest.BodyRequest("/app/ping", "application/json",
+        body.length), new OhMyRaspHooksPolicyTest.FakeResponse());
+    try {
+      OhMyRaspHooks.exitBodyRead(body.length, OhMyRaspHooks.enterBodyRead(new Object()), body, 0);
+      URL url = new URL("http://169.254.169.254/hook?password=" + SENTINEL);
+      OhMyRaspBlockException blocked = assertThrows(OhMyRaspBlockException.class, () -> OhMyRaspHooks.beforeUrlOpen(url));
+      String shown = blocked.detection().details() + " " + blocked.getMessage();
+      assertFalse(shown.contains(SENTINEL), shown);
+
+      assertThrows(OhMyRaspBlockException.class, () -> OhMyRaspHooks.beforeJdbcConnect(
+          "jdbc:h2:mem:reports;password=" + SENTINEL + ";INIT=RUNSCRIPT FROM 'http://127.0.0.1:1/init.sql'"));
+    } finally {
+      OhMyRaspHooks.exitHttpRequest();
+    }
+    String spooled = Files.readString(log);
+    assertTrue(spooled.contains("ssrf_aws") && spooled.contains("jdbc_h2_init"), spooled);
+    assertFalse(spooled.contains(SENTINEL), spooled);
+  }
+
+  /**
+   * A failure while the evidence is made safe (here the redaction and scrubbing step throws) never turns a block into
+   * an allow: the operation is still stopped, and the block carries the finding without its evidence.
+   */
+  @Test
+  void aScrubbingFailureStillBlocks(@TempDir Path dir) throws Exception {
+    OhMyRaspHooks.reportTo(logger(dir.resolve("events.jsonl")));
+    System.setProperty("ohmyrasp.block", "true");
+    OhMyRaspHooks.scrubberForTesting = event -> {
+      throw new IllegalStateException("scrubber failed");
+    };
+    try {
+      OhMyRaspBlockException blocked = assertThrows(OhMyRaspBlockException.class,
+          () -> OhMyRaspHooks.beforeJdbcConnect("jdbc:h2:mem:reports;password=" + SENTINEL
+              + ";INIT=RUNSCRIPT FROM 'http://127.0.0.1:1/init.sql'"));
+      assertEquals("jdbc_h2_init", blocked.detection().algorithm());
+      assertTrue(blocked.detection().details().isEmpty(), blocked.detection().details().toString());
+      assertFalse(blocked.getMessage().contains(SENTINEL), blocked.getMessage());
+    } finally {
+      OhMyRaspHooks.scrubberForTesting = null;
+    }
+  }
+
   private static JsonEventLogger logger(Path log) {
     PrintStream console = new PrintStream(new ByteArrayOutputStream());
     return JsonEventLogger.newForTesting(null, log.toString(), 0, true, console, console);
